@@ -83,8 +83,8 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
                     {getRefinerIcon(refiner.id)}
                   </div>
                   <div className="flex flex-col items-start overflow-hidden">
-                    <span className="truncate w-full">{refiner.name}</span>
-                    <span className="text-xs text-muted-foreground truncate w-full">{refiner.description}</span>
+                    <span className="truncate w-full text-left">{refiner.name}</span>
+                    <span className="text-xs text-muted-foreground truncate w-full text-left">{refiner.description}</span>
                   </div>
                 </Button>
               ))}

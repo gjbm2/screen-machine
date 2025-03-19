@@ -84,8 +84,8 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
                     {getWorkflowIcon(workflow.id)}
                   </div>
                   <div className="flex flex-col items-start overflow-hidden">
-                    <span className="truncate w-full">{workflow.name}</span>
-                    <span className="text-xs text-muted-foreground truncate w-full">{workflow.description}</span>
+                    <span className="truncate w-full text-left">{workflow.name}</span>
+                    <span className="text-xs text-muted-foreground truncate w-full text-left">{workflow.description}</span>
                   </div>
                 </Button>
               ))}

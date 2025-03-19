@@ -22,6 +22,30 @@
     {
       "display": "Studio Ghibli...",
       "prompt": "in the style of Studio Ghibli"
+    },
+    {
+      "display": "cyberpunk...",
+      "prompt": "in cyberpunk style with neon colors"
+    },
+    {
+      "display": "pixel art...",
+      "prompt": "as detailed pixel art"
+    },
+    {
+      "display": "comic book...",
+      "prompt": "in comic book style with bold outlines"
+    },
+    {
+      "display": "steampunk...",
+      "prompt": "in steampunk style with brass and cogs"
+    },
+    {
+      "display": "gothic...",
+      "prompt": "in dark gothic style"
+    },
+    {
+      "display": "photo-realistic...",
+      "prompt": "in photo-realistic style with detailed textures"
     }
   ]
 }

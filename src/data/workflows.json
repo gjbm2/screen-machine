@@ -24,6 +24,12 @@
         "name": "Guidance Scale",
         "type": "range",
         "default": 75
+      },
+      {
+        "id": "negative_prompt",
+        "name": "Negative Prompt",
+        "type": "text",
+        "default": ""
       }
     ]
   },

@@ -26,10 +26,18 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   const [showAllExamples, setShowAllExamples] = useState(false);
   const [showAllStyles, setShowAllStyles] = useState(false);
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
+  const [randomizedExamples, setRandomizedExamples] = useState<string[]>([]);
   
   // Get the initial number of examples and styles to show based on screen size
   const initialExamplesCount = 1; // Just one example
   const initialStylesCount = showMore ? 3 : 2; // 2 styles on mobile, 3 on desktop
+  
+  // Randomize examples on mount and whenever they change
+  useEffect(() => {
+    const examplesList = [...(examplePrompts.basicPrompts || [])];
+    const shuffled = examplesList.sort(() => Math.random() - 0.5);
+    setRandomizedExamples(shuffled);
+  }, []);
   
   const handleExampleClick = (example: string) => {
     onExampleClick(example);
@@ -57,12 +65,14 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   };
   
   const renderExamples = () => {
-    const examplesList = examplePrompts.basicPrompts || [];
+    if (randomizedExamples.length === 0) {
+      return null;
+    }
     
-    // Always show the first example, then shuffle the rest if more are shown
+    // Always show randomized examples
     const visibleExamples = showAllExamples 
-      ? [examplesList[0], ...examplesList.slice(1).sort(() => Math.random() - 0.5)]
-      : [examplesList[0]];
+      ? randomizedExamples 
+      : randomizedExamples.slice(0, initialExamplesCount);
       
     return (
       <div className="flex flex-wrap gap-1.5 items-center">
@@ -78,7 +88,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
           </Badge>
         ))}
         
-        {examplesList.length > initialExamplesCount && (
+        {randomizedExamples.length > initialExamplesCount && (
           <Button 
             variant="ghost" 
             size="sm" 
