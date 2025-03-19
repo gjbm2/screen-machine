@@ -59,7 +59,14 @@ const Index = () => {
       const newUrl = URL.createObjectURL(blob);
       setUploadedImageUrls([newUrl]);
       
+      // Set workflow to image-to-image
       setCurrentWorkflow('image-to-image');
+      
+      // Display the image in the prompt area (as if uploaded)
+      const uploadEvent = new CustomEvent('image-selected', { 
+        detail: { files: imageFiles, urls: [newUrl] } 
+      });
+      document.dispatchEvent(uploadEvent);
       
       toast.success('Image set as input');
     } catch (error) {
@@ -84,6 +91,16 @@ const Index = () => {
       currentRefiner || undefined,
       batchId
     );
+    
+    // Set focus to the new generation batch
+    if (batchId) {
+      const element = document.getElementById(`batch-${batchId}`);
+      if (element) {
+        setTimeout(() => {
+          element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 100);
+      }
+    }
     
     toast.info('Creating another image...');
   };
@@ -154,6 +171,7 @@ const Index = () => {
       console.log('Sending request with data:', requestData);
       addConsoleLog(`Sending request: ${JSON.stringify(requestData, null, 2)}`);
       
+      // Simulate 5-second generation time as requested
       setTimeout(() => {
         try {
           const mockImageUrls = [
@@ -203,6 +221,14 @@ const Index = () => {
             setImageUrl(newImages[0]?.url);
           }
           
+          // Auto-scroll to the newly generated images
+          setTimeout(() => {
+            const element = document.getElementById(`batch-${currentBatchId}`);
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+          }, 100);
+          
           toast.success(`${imageCount} image${imageCount > 1 ? 's' : ''} generated successfully!`);
         } catch (error) {
           console.error('Error processing response:', error);
@@ -215,7 +241,7 @@ const Index = () => {
           
           toast.error('An error occurred while processing images.');
         }
-      }, 1500);
+      }, 5000); // Use 5 seconds as requested for generation time
     } catch (error) {
       console.error('Error generating image:', error);
       addConsoleLog(`Error generating image: ${error}`);

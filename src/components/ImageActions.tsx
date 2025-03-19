@@ -10,7 +10,8 @@ import {
   Facebook,
   MessageCircle,
   PinIcon,
-  Info
+  Info,
+  Recycle
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -114,7 +115,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   
   const buttonSizeClass = isFullScreen 
     ? "px-2 py-2 text-sm" 
-    : "bg-white/20 hover:bg-white/40";
+    : "bg-black/80 hover:bg-black/90 text-white";
 
   return (
     <>
@@ -191,7 +192,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         </Tooltip>
       </TooltipProvider>
 
-      {/* Use as input button */}
+      {/* Use as input button - Changed to use Recycle icon */}
       {onUseAsInput && (
         <TooltipProvider>
           <Tooltip delayDuration={300}>
@@ -202,7 +203,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
                 className={buttonSizeClass}
                 onClick={onUseAsInput}
               >
-                <Plus className="h-4 w-4" />
+                <Recycle className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -212,7 +213,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         </TooltipProvider>
       )}
 
-      {/* Create Again button */}
+      {/* Create Again button - Kept with Plus icon */}
       {onCreateAgain && (
         <TooltipProvider>
           <Tooltip delayDuration={300}>

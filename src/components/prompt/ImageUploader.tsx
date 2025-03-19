@@ -1,5 +1,5 @@
 
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,22 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
+
+  // Listen for custom event triggered by "Use as input"
+  useEffect(() => {
+    const handleImageSelected = (event: CustomEvent) => {
+      if (event.detail && event.detail.files) {
+        onImageUpload(event.detail.files);
+        onWorkflowChange('image-to-image');
+      }
+    };
+
+    document.addEventListener('image-selected', handleImageSelected as EventListener);
+    
+    return () => {
+      document.removeEventListener('image-selected', handleImageSelected as EventListener);
+    };
+  }, [onImageUpload, onWorkflowChange]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;

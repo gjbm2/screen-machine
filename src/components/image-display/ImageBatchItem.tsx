@@ -55,7 +55,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
       
       {/* Delete button - always visible */}
       <button 
-        className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors z-20"
+        className="absolute top-2 left-2 bg-black/90 hover:bg-black text-white rounded-full p-2 transition-colors z-20"
         onClick={(e) => {
           e.stopPropagation();
           onDeleteImage(batchId, index);
@@ -110,15 +110,15 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         </DialogContent>
       </Dialog>
       
-      {/* Batch counter */}
+      {/* Batch counter - MOVED to bottom right */}
       {total > 1 && (
-        <div className="absolute top-10 left-2 bg-black/70 text-white px-3 py-1 rounded-full text-xs font-medium z-10">
+        <div className="absolute bottom-2 right-2 bg-black/90 text-white px-3 py-1 rounded-full text-xs font-medium z-10">
           {index + 1}/{total}
         </div>
       )}
       
-      {/* Image controls overlay - REDUCED HEIGHT to 20% of image */}
-      <div className="absolute bottom-0 left-0 right-0 bg-black/60 flex justify-center p-3 opacity-0 group-hover:opacity-100 transition-opacity z-10 h-[20%]">
+      {/* Image controls overlay - ALWAYS VISIBLE (reduced opacity when not hovered) */}
+      <div className="absolute bottom-0 left-0 right-0 bg-black/80 flex justify-center p-3 opacity-70 group-hover:opacity-100 transition-opacity z-10">
         <div className="flex flex-wrap gap-2 justify-center">
           <TooltipProvider>
             <ImageActions 
