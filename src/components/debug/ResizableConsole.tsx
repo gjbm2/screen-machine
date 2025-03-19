@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
-import { X } from 'lucide-react';
+import { X, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConsoleOutput from './ConsoleOutput';
+import { toast } from 'sonner';
 
 interface ResizableConsoleProps {
   logs: string[];
@@ -25,6 +26,24 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
     }
   }, [logs, isVisible]);
   
+  const handleSaveLogs = () => {
+    try {
+      const blob = new Blob([logs.join('\n')], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `console-logs-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Console logs saved successfully');
+    } catch (error) {
+      console.error('Error saving logs:', error);
+      toast.error('Failed to save console logs');
+    }
+  };
+  
   if (!isVisible) {
     return null;
   }
@@ -42,9 +61,26 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
           <div className="h-full flex flex-col">
             <div className="flex items-center justify-between px-4 py-2 border-b">
               <h3 className="text-sm font-medium">Console Output</h3>
-              <Button variant="ghost" size="icon" onClick={onClose} className="h-6 w-6">
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center space-x-1">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={handleSaveLogs} 
+                  className="h-6 w-6"
+                  title="Save logs"
+                >
+                  <Save className="h-4 w-4" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={onClose} 
+                  className="h-6 w-6"
+                  title="Close console"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div ref={consoleRef} className="flex-1 overflow-y-auto console-content p-4 text-xs">
               <ConsoleOutput logs={logs} />

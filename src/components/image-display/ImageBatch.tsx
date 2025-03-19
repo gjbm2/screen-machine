@@ -32,6 +32,7 @@ interface ImageBatchProps {
   onDeleteContainer: () => void;
   activeImageUrl: string | null;
   viewMode: ViewMode;
+  onFullScreenClick?: (image: any) => void;
 }
 
 const ImageBatch: React.FC<ImageBatchProps> = ({
@@ -44,7 +45,8 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   onDeleteImage,
   onDeleteContainer,
   activeImageUrl,
-  viewMode
+  viewMode,
+  onFullScreenClick
 }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -85,6 +87,15 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
 
   const handleCreateAgain = () => {
     onCreateAgain();
+  };
+
+  const handleFullScreenClick = (image: any) => {
+    if (onFullScreenClick) {
+      onFullScreenClick(image);
+    } else if (!isExpanded) {
+      // If not expanded and no fullscreen handler provided, expand
+      toggleExpand(batchId);
+    }
   };
   
   return (
@@ -183,12 +194,13 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                   onCreateAgain={() => onCreateAgain()}
                   onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
                   onDeleteImage={onDeleteImage}
-                  onFullScreen={() => toggleExpand(batchId)}
-                  onImageClick={(url) => {}}  // Don't expand on image click, use full screen icon instead
+                  onFullScreen={() => handleFullScreenClick(completedImages[activeImageIndex])}
+                  onImageClick={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
                   onNavigatePrev={completedImages.length > 1 ? handleNavigatePrev : undefined}
                   onNavigateNext={completedImages.length > 1 ? handleNavigateNext : undefined}
                   viewMode={viewMode}
                   showActions={true}
+                  isRolledUp={true}
                 />
               ) : anyGenerating ? (
                 <LoadingPlaceholder prompt={images[0]?.prompt || null} />

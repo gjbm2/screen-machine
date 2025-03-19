@@ -3,14 +3,16 @@ import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { Card, CardContent } from '@/components/ui/card';
-import { LayoutGrid, Grid, List } from 'lucide-react';
+import { LayoutGrid, Grid3, List, Image, Clock, ExternalLink } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import ImageBatch from './ImageBatch';
 import LoadingPlaceholder from './LoadingPlaceholder';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import ReferenceImagesSection from './ReferenceImagesSection';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import ImageDetailView from './ImageDetailView';
+import { formatDistanceToNow } from 'date-fns';
 
 // Export ViewMode type but remove 'large' as an option
 export type ViewMode = 'normal' | 'small' | 'table';
@@ -49,7 +51,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
   const [selectedImage, setSelectedImage] = useState<{ url: string; prompt: string; batchId: string; index: number } | null>(null);
-  
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -121,7 +124,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   
   // Function to handle small view image click to open full screen detail view
   const handleSmallImageClick = (image: any) => {
-    if (viewMode === 'small' && image.url) {
+    if (image?.url) {
       setSelectedImage({
         url: image.url,
         prompt: image.prompt || '',
@@ -130,8 +133,13 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       });
     }
   };
+
+  // Function to handle table row click
+  const handleTableRowClick = (batchId: string) => {
+    setSelectedBatchId(batchId);
+  };
   
-  // Flatten all images for small view
+  // Get all completed images for small view
   const getAllImages = () => {
     return generatedImages
       .filter(img => img.status === 'completed')
@@ -146,6 +154,12 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
         
         return a.batchIndex - b.batchIndex;
       });
+  };
+
+  // Function to format time
+  const formatTimeAgo = (timestamp: number) => {
+    if (!timestamp) return "Unknown";
+    return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
   };
   
   return (
@@ -177,7 +191,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <TabsTrigger value="small" className="px-1.5 sm:px-2">
-                      <Grid className="h-4 w-4" />
+                      <Grid3 className="h-4 w-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
                   <TooltipContent>Small View</TooltipContent>
@@ -229,26 +243,47 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     )}
                   </div>
                 ) : viewMode === 'table' ? (
-                  <div className="space-y-4">
-                    {imageContainerOrder.map(batchId => {
-                      if (!batches[batchId]) return null;
-                      
-                      return (
-                        <ImageBatch
-                          key={batchId}
-                          batchId={batchId}
-                          images={batches[batchId]}
-                          isExpanded={true}
-                          toggleExpand={handleToggleExpand}
-                          onImageClick={(url, prompt) => {}}
-                          onCreateAgain={() => handleCreateAgain(batchId)}
-                          onDeleteImage={onDeleteImage}
-                          onDeleteContainer={() => onDeleteContainer(batchId)}
-                          activeImageUrl={imageUrl}
-                          viewMode="table"
-                        />
-                      );
-                    })}
+                  <div className="w-full overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[80px]">No.</TableHead>
+                          <TableHead>Prompt</TableHead>
+                          <TableHead className="w-[80px] text-center">Batch</TableHead>
+                          <TableHead className="w-[120px]">When</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {imageContainerOrder.map((batchId, index) => {
+                          if (!batches[batchId]) return null;
+                          
+                          const batchImages = batches[batchId];
+                          const firstImage = batchImages[0];
+                          const completedImages = batchImages.filter(img => img.status === 'completed');
+                          const hasReferenceImage = !!firstImage.referenceImageUrl;
+                          
+                          return (
+                            <TableRow 
+                              key={batchId} 
+                              className="cursor-pointer hover:bg-muted/60"
+                              onClick={() => handleTableRowClick(batchId)}
+                            >
+                              <TableCell className="font-medium">{firstImage.containerId || index + 1}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center">
+                                  {hasReferenceImage && (
+                                    <Image className="h-4 w-4 text-primary mr-2" />
+                                  )}
+                                  <span className="truncate max-w-md">{firstImage.prompt}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center">{completedImages.length}</TableCell>
+                              <TableCell>{formatTimeAgo(firstImage.timestamp)}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -272,6 +307,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                             onDeleteContainer={() => onDeleteContainer(batchId)}
                             activeImageUrl={imageUrl}
                             viewMode="normal"
+                            onFullScreenClick={(image) => handleSmallImageClick(image)}
                           />
                         </div>
                       );
@@ -286,6 +322,11 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           <Dialog open={!!selectedImage} onOpenChange={(open) => !open && setSelectedImage(null)}>
             <DialogContent className="max-w-4xl">
               {selectedImage && (
+                <DialogHeader>
+                  <DialogTitle>Image Detail</DialogTitle>
+                </DialogHeader>
+              )}
+              {selectedImage && (
                 <div className="flex flex-col">
                   <div className="relative rounded-md overflow-hidden mb-4">
                     <img 
@@ -294,11 +335,72 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                       className="w-full h-auto object-contain max-h-[70vh]" 
                     />
                   </div>
-                  {selectedImage.prompt && (
-                    <div className="text-sm text-muted-foreground mt-2">
-                      {selectedImage.prompt}
+                  
+                  <div className="mt-4 space-y-2">
+                    {selectedImage.prompt && (
+                      <div className="text-sm">
+                        <p className="font-medium">Prompt:</p>
+                        <p className="text-muted-foreground">{selectedImage.prompt}</p>
+                      </div>
+                    )}
+                    
+                    <div className="flex justify-center mt-4">
+                      <div className="flex gap-2">
+                        {/* Insert action buttons from ImageDetailView here */}
+                        {batches[selectedImage.batchId] && (
+                          <button
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2"
+                            onClick={() => {
+                              const image = batches[selectedImage.batchId]?.find(img => img.batchIndex === selectedImage.index);
+                              if (image?.url) {
+                                onUseGeneratedAsInput(image.url);
+                                setSelectedImage(null);
+                              }
+                            }}
+                          >
+                            Use as Input
+                          </button>
+                        )}
+                        <button
+                          className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2"
+                          onClick={() => setSelectedImage(null)}
+                        >
+                          Close
+                        </button>
+                      </div>
                     </div>
-                  )}
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+          
+          {/* Table view batch dialog */}
+          <Dialog open={!!selectedBatchId} onOpenChange={(open) => !open && setSelectedBatchId(null)}>
+            <DialogContent className="max-w-4xl">
+              <DialogHeader>
+                <DialogTitle>Batch Images</DialogTitle>
+              </DialogHeader>
+              {selectedBatchId && batches[selectedBatchId] && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 pt-4">
+                  {batches[selectedBatchId]
+                    .filter(img => img.status === 'completed')
+                    .map((image, index) => (
+                      <div 
+                        key={`${selectedBatchId}-${index}`} 
+                        className="aspect-square rounded-md overflow-hidden border cursor-pointer group relative"
+                        onClick={() => handleSmallImageClick(image)}
+                      >
+                        <img 
+                          src={image.url}
+                          alt={image.prompt || `Generated image ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                          <ExternalLink className="h-6 w-6 text-white" />
+                        </div>
+                      </div>
+                    ))}
                 </div>
               )}
             </DialogContent>
