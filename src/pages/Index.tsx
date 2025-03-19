@@ -25,6 +25,7 @@ const Index = () => {
   const [currentParams, setCurrentParams] = useState<Record<string, any>>({});
   const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
+  const [imageContainerOrder, setImageContainerOrder] = useState<string[]>([]);
   
   const handleUseGeneratedAsInput = async (selectedImageUrl: string) => {
     if (!selectedImageUrl) return;
@@ -88,6 +89,11 @@ const Index = () => {
     try {
       const currentBatchId = batchId || `batch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       
+      // Add the new batch ID to the order if it doesn't exist already
+      if (!batchId) {
+        setImageContainerOrder(prev => [currentBatchId, ...prev]);
+      }
+      
       // Add a placeholder for the generating image
       const placeholderImage: GeneratedImage = {
         url: '',
@@ -120,10 +126,10 @@ const Index = () => {
       // Simulate API call with working image URLs
       setTimeout(() => {
         const mockImageUrls = [
-          "https://images.unsplash.com/photo-1543466835-00a7907e9de1",
-          "https://images.unsplash.com/photo-1605979257913-1704eb7b6246",
-          "https://images.unsplash.com/photo-1692891873526-61e7e87ea428",
-          "https://images.unsplash.com/photo-1533134486753-c833f0ed4866"
+          "https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9",
+          "https://images.unsplash.com/photo-1561037404-61cd46aa615b",
+          "https://images.unsplash.com/photo-1425082661705-1834bfd09dca",
+          "https://images.unsplash.com/photo-1560807707-8cc77767d783"
         ];
         
         const existingBatchCount = batchId ? 
@@ -177,6 +183,15 @@ const Index = () => {
     }
   };
 
+  const handleReorderContainers = (sourceIndex: number, destinationIndex: number) => {
+    setImageContainerOrder(prev => {
+      const newOrder = [...prev];
+      const [removed] = newOrder.splice(sourceIndex, 1);
+      newOrder.splice(destinationIndex, 0, removed);
+      return newOrder;
+    });
+  };
+
   return (
     <div className="min-h-screen hero-gradient">
       <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -203,9 +218,11 @@ const Index = () => {
             isLoading={activeGenerations.length > 0}
             uploadedImages={uploadedImageUrls}
             generatedImages={generatedImages}
+            imageContainerOrder={imageContainerOrder}
             workflow={currentWorkflow}
             onUseGeneratedAsInput={handleUseGeneratedAsInput}
             onCreateAgain={handleCreateAgain}
+            onReorderContainers={handleReorderContainers}
             generationParams={{...currentParams, ...currentGlobalParams}}
           />
         </div>

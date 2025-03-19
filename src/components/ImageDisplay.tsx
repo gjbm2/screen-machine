@@ -15,12 +15,17 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from '@/components/ui/button';
-import { Info, Download, Share2, Copy, FileInput, ChevronLeft, ChevronRight, Maximize, ChevronDown, ChevronUp } from 'lucide-react';
+import { Info, Download, Share2, Copy, FileInput, ChevronLeft, ChevronRight, Maximize, ChevronDown, ChevronUp, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import ImageActions from '@/components/ImageActions';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useIsMobile } from '@/hooks/use-mobile';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -37,31 +42,107 @@ interface ImageDisplayProps {
     batchIndex?: number;
     status?: 'generating' | 'completed' | 'error';
   }>;
+  imageContainerOrder?: string[];
   workflow?: string | null;
   onUseGeneratedAsInput?: (imageUrl: string) => void;
   onCreateAgain?: (batchId?: string) => void;
+  onReorderContainers?: (sourceIndex: number, destinationIndex: number) => void;
   generationParams?: Record<string, any>;
 }
 
+// Sortable container component
+const SortableContainer = ({ 
+  batchId, 
+  children,
+  batch,
+  expandedBatches,
+  toggleExpandBatch,
+}: { 
+  batchId: string; 
+  children: React.ReactNode;
+  batch: any;
+  expandedBatches: Record<string, boolean>;
+  toggleExpandBatch: (id: string) => void;
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: batchId });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 10 : 1,
+    position: 'relative' as 'relative',
+    marginBottom: '1rem',
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div className="flex items-center justify-between bg-card rounded-t-lg py-2 px-4 border-b">
+        <div 
+          {...attributes} 
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1"
+        >
+          <GripVertical className="h-5 w-5 opacity-70" />
+        </div>
+        <div className="flex-1 truncate mx-2 text-sm text-muted-foreground">
+          <span className="font-medium">Prompt:</span> {batch.images[0]?.prompt || 'Generated Image'}
+        </div>
+        <CollapsibleTrigger 
+          onClick={() => toggleExpandBatch(batchId)}
+          className="p-1 rounded-full hover:bg-accent/50 transition-colors"
+        >
+          {expandedBatches[batchId] ? (
+            <ChevronUp className="h-5 w-5" />
+          ) : (
+            <ChevronDown className="h-5 w-5" />
+          )}
+        </CollapsibleTrigger>
+      </div>
+      {children}
+    </div>
+  );
+};
+
+// Image display component
 const ImageDisplay: React.FC<ImageDisplayProps> = ({ 
   imageUrl, 
   prompt, 
   isLoading,
   uploadedImages = [],
   generatedImages = [],
+  imageContainerOrder = [],
   workflow,
   onUseGeneratedAsInput,
   onCreateAgain,
+  onReorderContainers,
   generationParams
 }) => {
   // State to track the currently viewed image in each batch
   const [activeImageIndices, setActiveImageIndices] = useState<Record<string, number>>({});
   // State to track which batch is currently being interacted with (for hover persistence)
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
-  // State to track the currently full-screen image
-  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
   // State to track which batches are expanded (unrolled)
   const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
+  
+  const isMobile = useIsMobile();
+  
+  // Configure DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor)
+  );
   
   // Always render the component when we have uploaded images or when we're loading
   // or when we have generated image results
@@ -81,17 +162,35 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       batches[batchId].push(img);
     });
     
-    // Sort batches by timestamp (newest first)
-    return Object.entries(batches)
+    // Order batches according to imageContainerOrder
+    const orderedBatches = [];
+    
+    // First add batches in the order specified by imageContainerOrder
+    for (const batchId of imageContainerOrder) {
+      if (batches[batchId]) {
+        orderedBatches.push({
+          batchId,
+          images: batches[batchId].sort((a, b) => (b.batchIndex || 0) - (a.batchIndex || 0))
+        });
+        delete batches[batchId];
+      }
+    }
+    
+    // Then add any remaining batches by timestamp (newest first)
+    Object.entries(batches)
       .sort(([, imagesA], [, imagesB]) => {
         const timeA = imagesA[0]?.timestamp || 0;
         const timeB = imagesB[0]?.timestamp || 0;
         return timeB - timeA;
       })
-      .map(([batchId, images]) => ({
-        batchId,
-        images: images.sort((a, b) => (b.batchIndex || 0) - (a.batchIndex || 0))
-      }));
+      .forEach(([batchId, images]) => {
+        orderedBatches.push({
+          batchId,
+          images: images.sort((a, b) => (b.batchIndex || 0) - (a.batchIndex || 0))
+        });
+      });
+    
+    return orderedBatches;
   };
 
   // Get active image for a batch
@@ -126,6 +225,20 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }));
   };
 
+  // Handle drag end for reordering
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    
+    if (over && active.id !== over.id) {
+      const oldIndex = imageContainerOrder.indexOf(String(active.id));
+      const newIndex = imageContainerOrder.indexOf(String(over.id));
+      
+      if (onReorderContainers) {
+        onReorderContainers(oldIndex, newIndex);
+      }
+    }
+  };
+
   // Format workflow name for display (remove hyphens and capitalize)
   const formatWorkflowName = (name: string) => {
     return name
@@ -140,15 +253,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       toast.info('Creating a new variant...');
     }
   };
-
-  // View image in full screen
-  const openFullScreen = (url: string, event: React.MouseEvent) => {
-    event.stopPropagation();
-    setFullScreenImage(url);
-  };
-
-  // Get batched images
-  const batchedImages = getBatchedImages();
 
   // Render an individual image within a batch
   const renderBatchImage = (image: typeof generatedImages[0], batchId: string, isActive: boolean, index: number, total: number) => {
@@ -185,14 +289,44 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               <Maximize className="h-4 w-4" />
             </button>
           </DialogTrigger>
-          <DialogContent fullscreen>
-            <div className="w-full h-full flex items-center justify-center">
-              <img
-                src={image.url}
-                alt={image.prompt || 'Generated image full view'}
-                className="max-w-full max-h-full object-contain"
-              />
+          <DialogContent className="p-0 overflow-hidden" fullscreen>
+            <DialogHeader className="absolute top-0 left-0 right-0 bg-black/80 z-10 p-4">
+              <DialogTitle className="text-white">Image View</DialogTitle>
+              <DialogDescription className="text-white/70 truncate">
+                {image.prompt}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="w-full h-full flex flex-col">
+              <div className="flex-1 flex items-center justify-center overflow-auto">
+                <div className="w-full h-full flex items-center justify-center overflow-auto">
+                  <img
+                    src={image.url}
+                    alt={image.prompt || 'Generated image full view'}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                </div>
+              </div>
+              
+              {/* Bottom controls for fullscreen view */}
+              <div className="p-4 bg-black/80 flex flex-wrap justify-center gap-2">
+                <ImageActions 
+                  imageUrl={image.url} 
+                  onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(image.url)}
+                  onCreateAgain={() => handleCreateVariant(batchId)}
+                  generationInfo={{
+                    prompt: image.prompt,
+                    workflow: image.workflow,
+                    params: image.params
+                  }}
+                  isFullScreen
+                />
+              </div>
             </div>
+            
+            <DialogClose className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-white z-20">
+              <span className="sr-only">Close</span>
+            </DialogClose>
           </DialogContent>
         </Dialog>
         
@@ -203,7 +337,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           </div>
         )}
         
-        {/* Image controls overlay - visible on hover/focus with better labels */}
+        {/* Image controls overlay - visible on hover/focus */}
         {isActive && (
           <div className="absolute inset-0 bg-black/60 flex flex-col justify-center items-center transition-opacity duration-200 opacity-100">
             <div className="flex flex-wrap justify-center gap-3 p-4">
@@ -289,6 +423,10 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     );
   };
 
+  // Get batched images
+  const batchedImages = getBatchedImages();
+  const sortableIds = batchedImages.map(batch => batch.batchId);
+
   return (
     <div className="mt-12 animate-fade-in">
       <div className="flex flex-col gap-6">
@@ -314,6 +452,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                       </button>
                     </DialogTrigger>
                     <DialogContent fullscreen>
+                      <DialogHeader>
+                        <DialogTitle className="sr-only">Reference Image</DialogTitle>
+                      </DialogHeader>
                       <div className="w-full h-full flex items-center justify-center">
                         <img
                           src={uploadedImages[0]}
@@ -347,6 +488,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                   </button>
                                 </DialogTrigger>
                                 <DialogContent fullscreen>
+                                  <DialogHeader>
+                                    <DialogTitle className="sr-only">Reference Image</DialogTitle>
+                                  </DialogHeader>
                                   <div className="w-full h-full flex items-center justify-center">
                                     <img
                                       src={url}
@@ -374,7 +518,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
         <div>
           <h3 className="text-lg font-semibold mb-3">Generated Images</h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="space-y-4">
             {/* If loading and no existing images, show single loading placeholder */}
             {isLoading && generatedImages.length === 0 && (
               <Card className="overflow-hidden">
@@ -390,125 +534,145 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             )}
             
             {/* Rendered image batches */}
-            {batchedImages.map(({ batchId, images }) => {
-              const activeIndex = getActiveImageIndex(batchId, images.length);
-              const activeImage = images[activeIndex];
-              const isActive = activeBatchId === batchId;
-              const isExpanded = expandedBatches[batchId];
-              
-              return (
-                <Collapsible 
-                  key={batchId} 
-                  open={isExpanded}
-                  onOpenChange={() => toggleExpandBatch(batchId)}
-                  className={isExpanded ? "col-span-full" : ""}
-                >
-                  <Card 
-                    className={`overflow-hidden relative ${isExpanded ? "mb-2" : ""}`}
-                    onMouseEnter={() => setActiveBatchId(batchId)}
-                    onMouseLeave={() => setActiveBatchId(null)}
-                  >
-                    {/* Expand/Collapse button */}
-                    <CollapsibleTrigger asChild>
-                      <button 
-                        className="absolute top-2 left-10 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors z-20"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {isExpanded ? 
-                          <ChevronUp className="h-4 w-4" /> : 
-                          <ChevronDown className="h-4 w-4" />
-                        }
-                      </button>
-                    </CollapsibleTrigger>
-                    
-                    {/* Collapsed view (carousel-like navigation) */}
-                    {!isExpanded && (
-                      <>
-                        {renderBatchImage(activeImage, batchId, isActive, activeIndex, images.length)}
-                        
-                        {/* Navigation controls */}
-                        {images.length > 1 && (
-                          <div className="absolute inset-0 pointer-events-none">
-                            <button 
-                              className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigatePrevImage(batchId, images.length);
-                              }}
-                            >
-                              <ChevronLeft className="h-5 w-5" />
-                            </button>
-                            <button 
-                              className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigateNextImage(batchId, images.length);
-                              }}
-                            >
-                              <ChevronRight className="h-5 w-5" />
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    )}
-                    
-                    {/* Expanded view (single selected image) */}
-                    {isExpanded && (
-                      <div className="aspect-square">
-                        {renderBatchImage(activeImage, batchId, isActive, activeIndex, images.length)}
-                      </div>
-                    )}
-                  </Card>
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext 
+                items={sortableIds}
+                strategy={verticalListSortingStrategy}
+              >
+                {batchedImages.map(({ batchId, images }) => {
+                  const activeIndex = getActiveImageIndex(batchId, images.length);
+                  const activeImage = images[activeIndex];
+                  const isActive = activeBatchId === batchId;
+                  const isExpanded = expandedBatches[batchId];
                   
-                  {/* Expanded content with all images in the batch */}
-                  <CollapsibleContent>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                      {images.map((image, index) => (
+                  return (
+                    <Collapsible 
+                      key={batchId} 
+                      open={isExpanded}
+                      className={`overflow-hidden rounded-lg bg-card border ${isExpanded ? "shadow-md" : ""}`}
+                    >
+                      <SortableContainer 
+                        batchId={batchId} 
+                        batch={{ images }}
+                        expandedBatches={expandedBatches}
+                        toggleExpandBatch={toggleExpandBatch}
+                      >
                         <Card 
-                          key={`${batchId}-${index}`}
-                          className={`overflow-hidden cursor-pointer transition-all ${activeIndex === index ? 'ring-2 ring-primary' : ''}`}
-                          onClick={() => setActiveImageIndices(prev => ({ ...prev, [batchId]: index }))}
+                          className="overflow-hidden relative border-0 rounded-none"
+                          onMouseEnter={() => setActiveBatchId(batchId)}
+                          onMouseLeave={() => setActiveBatchId(null)}
                         >
-                          <div className="aspect-square relative">
-                            <img
-                              src={image.url}
-                              alt={`Batch image ${index + 1}`}
-                              className="w-full h-full object-cover"
-                            />
+                          {/* Collapsed view (carousel-like navigation) */}
+                          {!isExpanded && (
+                            <>
+                              {renderBatchImage(activeImage, batchId, isActive, activeIndex, images.length)}
+                              
+                              {/* Navigation controls */}
+                              {images.length > 1 && (
+                                <div className="absolute inset-0 pointer-events-none">
+                                  <button 
+                                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigatePrevImage(batchId, images.length);
+                                    }}
+                                  >
+                                    <ChevronLeft className="h-5 w-5" />
+                                  </button>
+                                  <button 
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigateNextImage(batchId, images.length);
+                                    }}
+                                  >
+                                    <ChevronRight className="h-5 w-5" />
+                                  </button>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </Card>
+                      </SortableContainer>
+                      
+                      {/* Expanded content with all images in the batch */}
+                      <CollapsibleContent>
+                        <div className="p-4 space-y-4">
+                          {/* Selected image view */}
+                          <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden">
+                            {renderBatchImage(activeImage, batchId, isActive, activeIndex, images.length)}
                             
-                            {/* Full screen button */}
-                            <Dialog>
-                              <DialogTrigger asChild>
+                            {/* Navigation controls in expanded view */}
+                            {images.length > 1 && (
+                              <div className="absolute inset-0 pointer-events-none">
                                 <button 
-                                  className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors z-10"
-                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigatePrevImage(batchId, images.length);
+                                  }}
                                 >
-                                  <Maximize className="h-4 w-4" />
+                                  <ChevronLeft className="h-5 w-5" />
                                 </button>
-                              </DialogTrigger>
-                              <DialogContent fullscreen>
-                                <div className="w-full h-full flex items-center justify-center">
+                                <button 
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigateNextImage(batchId, images.length);
+                                  }}
+                                >
+                                  <ChevronRight className="h-5 w-5" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Thumbnail gallery */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                            {images.map((image, index) => (
+                              <Card 
+                                key={`${batchId}-${index}`}
+                                className={`overflow-hidden cursor-pointer transition-all ${activeIndex === index ? 'ring-2 ring-primary' : ''}`}
+                                onClick={() => setActiveImageIndices(prev => ({ ...prev, [batchId]: index }))}
+                              >
+                                <div className="aspect-square relative">
                                   <img
                                     src={image.url}
-                                    alt={`Batch image ${index + 1} full view`}
-                                    className="max-w-full max-h-full object-contain"
+                                    alt={`Batch image ${index + 1}`}
+                                    className="w-full h-full object-cover"
                                   />
+                                  
+                                  {/* Image number indicator */}
+                                  <div className="absolute bottom-1 right-1 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
+                                    {index + 1}
+                                  </div>
                                 </div>
-                              </DialogContent>
-                            </Dialog>
-                            
-                            {/* Image number indicator */}
-                            <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-1 rounded-full text-xs">
-                              {index + 1}
-                            </div>
+                              </Card>
+                            ))}
                           </div>
-                        </Card>
-                      ))}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              );
-            })}
+                          
+                          {/* Roll up button */}
+                          <div className="flex justify-center mt-4">
+                            <Button 
+                              variant="outline" 
+                              className="text-xs"
+                              onClick={() => toggleExpandBatch(batchId)}
+                            >
+                              <ChevronUp className="h-4 w-4 mr-1" />
+                              Roll Up
+                            </Button>
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  );
+                })}
+              </SortableContext>
+            </DndContext>
           </div>
         </div>
       </div>

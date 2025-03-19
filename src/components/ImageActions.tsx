@@ -44,13 +44,15 @@ interface ImageActionsProps {
     workflow: string;
     params?: Record<string, any>;
   };
+  isFullScreen?: boolean;
 }
 
 const ImageActions: React.FC<ImageActionsProps> = ({ 
   imageUrl, 
   onUseAsInput,
   onCreateAgain,
-  generationInfo
+  generationInfo,
+  isFullScreen = false
 }) => {
   const [isSaving, setSaving] = useState(false);
   const [isPublishing, setPublishing] = useState(false);
@@ -123,19 +125,23 @@ const ImageActions: React.FC<ImageActionsProps> = ({
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
   };
-
+  
+  const buttonSizeClass = isFullScreen 
+    ? "px-4 py-2 text-sm" 
+    : "bg-white/20 hover:bg-white/40";
+  
   return (
     <>
       {/* Save button */}
       <Button 
         variant="secondary" 
-        size="sm" 
-        className="bg-white/20 hover:bg-white/40 transition-colors"
+        size={isFullScreen ? "default" : "sm"}
+        className={buttonSizeClass}
         onClick={handleSaveImage}
         disabled={isSaving}
       >
         <Download className="h-4 w-4 mr-1" />
-        <span className="text-xs">{isSaving ? 'Saving...' : 'Save'}</span>
+        <span className={isFullScreen ? "" : "text-xs"}>{isSaving ? 'Saving...' : 'Save'}</span>
       </Button>
       
       {/* Publish dropdown button */}
@@ -143,12 +149,12 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         <DropdownMenuTrigger asChild>
           <Button 
             variant="secondary" 
-            size="sm"
-            className="bg-white/20 hover:bg-white/40 transition-colors"
+            size={isFullScreen ? "default" : "sm"}
+            className={buttonSizeClass}
             disabled={isPublishing}
           >
             <Share2 className="h-4 w-4 mr-1" />
-            <span className="text-xs">{isPublishing ? 'Publishing...' : 'Publish'}</span>
+            <span className={isFullScreen ? "" : "text-xs"}>{isPublishing ? 'Publishing...' : 'Publish'}</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="bg-background/90 backdrop-blur-sm z-50 border">
@@ -171,12 +177,12 @@ const ImageActions: React.FC<ImageActionsProps> = ({
       {onUseAsInput && (
         <Button 
           variant="secondary" 
-          size="sm" 
-          className="bg-white/20 hover:bg-white/40 transition-colors"
+          size={isFullScreen ? "default" : "sm"}
+          className={buttonSizeClass}
           onClick={onUseAsInput}
         >
           <Pencil className="h-4 w-4 mr-1" />
-          <span className="text-xs">Use as Input</span>
+          <span className={isFullScreen ? "" : "text-xs"}>Use as Input</span>
         </Button>
       )}
 
@@ -184,12 +190,12 @@ const ImageActions: React.FC<ImageActionsProps> = ({
       {onCreateAgain && (
         <Button 
           variant="secondary" 
-          size="sm" 
-          className="bg-white/20 hover:bg-white/40 transition-colors"
+          size={isFullScreen ? "default" : "sm"}
+          className={buttonSizeClass}
           onClick={onCreateAgain}
         >
           <RefreshCw className="h-4 w-4 mr-1" />
-          <span className="text-xs">Create Again</span>
+          <span className={isFullScreen ? "" : "text-xs"}>Create Again</span>
         </Button>
       )}
     </>
