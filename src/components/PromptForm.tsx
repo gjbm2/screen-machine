@@ -1,15 +1,15 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Upload, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import workflowsData from '@/data/workflows.json';
-import examplePromptsData from '@/data/example-prompts.json';
 import { Workflow } from '@/types/workflows';
-import { Badge } from '@/components/ui/badge';
+import PromptInput from '@/components/prompt/PromptInput';
+import PromptExamples from '@/components/prompt/PromptExamples';
+import ImageUploader from '@/components/prompt/ImageUploader';
 
 interface PromptFormProps {
   onSubmit: (prompt: string, imageFile?: File | null, workflow?: string, params?: Record<string, any>) => void;
@@ -22,7 +22,6 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>('text-to-image');
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({});
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const workflows = workflowsData as Workflow[];
   
   // Initialize default workflow parameters
@@ -50,74 +49,32 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
     onSubmit(prompt, imageFile, selectedWorkflow, workflowParams);
   };
 
-  const handleClearPrompt = () => {
-    setPrompt('');
-    toast.info('Prompt cleared');
-  };
-
   const handleExampleClick = (example: string) => {
     setPrompt(example);
   };
   
-  const handleStyleClick = (style: string) => {
-    // Append the style to the current prompt instead of replacing it
-    // Remove the "+" prefix from the style for appending
-    const styleText = style.startsWith('+') ? style.substring(1).trim() : style;
-    
-    if (prompt.trim() === '') {
-      toast.error('Please enter a base prompt first before adding a style');
-      return;
-    }
-    
-    // Check if the prompt already contains this style to avoid duplication
-    if (prompt.includes(styleText)) {
-      toast.info('This style is already applied to your prompt');
-      return;
-    }
-    
-    setPrompt(current => `${current.trim()} ${styleText}`);
+  const handleStyleClick = (newPrompt: string) => {
+    setPrompt(newPrompt);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Check if file is an image
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please upload an image file');
-      return;
-    }
-
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image size should be less than 5MB');
-      return;
-    }
-
-    setImageFile(file);
-    const imageUrl = URL.createObjectURL(file);
-    setPreviewUrl(imageUrl);
-    
-    // If uploading an image, automatically switch to image-to-image workflow
-    if (workflows.find(w => w.id === 'image-to-image')) {
-      setSelectedWorkflow('image-to-image');
+  const handleImageUpload = (file: File | null) => {
+    if (file) {
+      setImageFile(file);
+      const imageUrl = URL.createObjectURL(file);
+      setPreviewUrl(imageUrl);
+    } else {
+      setImageFile(null);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(null);
+      }
     }
   };
 
   const handleRemoveImage = () => {
-    setImageFile(null);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-    }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-    
+    handleImageUpload(null);
     // If removing an image, switch back to text-to-image workflow
-    if (selectedWorkflow === 'image-to-image') {
-      setSelectedWorkflow('text-to-image');
-    }
+    handleWorkflowChange('text-to-image');
   };
 
   const handleWorkflowChange = (workflowId: string) => {
@@ -141,10 +98,6 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
       ...prev,
       [paramId]: value
     }));
-  };
-
-  const triggerFileInput = () => {
-    fileInputRef.current?.click();
   };
 
   return (
@@ -173,76 +126,25 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
             </div>
           )}
           
-          <div className="relative">
-            <Textarea
-              placeholder="Describe the image you want to create..."
-              className="min-h-[120px] resize-none border-0 bg-transparent p-4 text-base placeholder:text-muted-foreground/50 focus-visible:ring-0"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              disabled={isLoading}
-            />
-            {prompt && (
-              <button
-                type="button"
-                onClick={handleClearPrompt}
-                className="absolute top-3 right-3 text-muted-foreground hover:text-foreground p-1 rounded-full transition-colors"
-                aria-label="Clear prompt"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
+          <PromptInput
+            prompt={prompt}
+            isLoading={isLoading}
+            onPromptChange={setPrompt}
+          />
           
-          <div className="px-4 pb-3">
-            <p className="text-xs text-muted-foreground mb-2">Try an example:</p>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {examplePromptsData.basicPrompts.map((example, index) => (
-                <button
-                  key={`basic-${index}`}
-                  type="button"
-                  className="text-xs bg-secondary/50 hover:bg-secondary px-2 py-1 rounded-full text-foreground/70 transition-colors"
-                  onClick={() => handleExampleClick(example)}
-                >
-                  {example.length > 30 ? `${example.slice(0, 30)}...` : example}
-                </button>
-              ))}
-            </div>
-            
-            <p className="text-xs text-muted-foreground mb-2">Add a style:</p>
-            <div className="flex flex-wrap gap-2">
-              {examplePromptsData.stylePrompts.map((style, index) => (
-                <button
-                  key={`style-${index}`}
-                  type="button"
-                  className="text-xs bg-purple-500/20 hover:bg-purple-500/30 px-2 py-1 rounded-full text-purple-700 transition-colors"
-                  onClick={() => handleStyleClick(style)}
-                >
-                  {style.length > 30 ? `${style.slice(0, 30)}...` : style}
-                </button>
-              ))}
-            </div>
-          </div>
+          <PromptExamples
+            prompt={prompt}
+            onExampleClick={handleExampleClick}
+            onStyleClick={handleStyleClick}
+          />
           
           <div className="p-3 pt-0 space-y-3">
             <div className="flex gap-3">
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                accept="image/*"
-                onChange={handleImageUpload}
-                disabled={isLoading}
+              <ImageUploader
+                isLoading={isLoading}
+                onImageUpload={handleImageUpload}
+                onWorkflowChange={handleWorkflowChange}
               />
-              <Button 
-                type="button" 
-                variant="outline"
-                onClick={triggerFileInput}
-                className="text-sm flex items-center gap-2 flex-1"
-                disabled={isLoading}
-              >
-                <Upload className="h-4 w-4" />
-                Upload Image
-              </Button>
               
               <Button 
                 type="submit" 
