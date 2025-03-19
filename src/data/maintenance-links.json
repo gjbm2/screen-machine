@@ -1,0 +1,23 @@
+
+[
+  {
+    "title": "Documentation",
+    "url": "https://docs.example.com",
+    "description": "View the API documentation and integration guides"
+  },
+  {
+    "title": "Status",
+    "url": "https://status.example.com",
+    "description": "Check the current system status and uptime"
+  },
+  {
+    "title": "Support",
+    "url": "https://support.example.com",
+    "description": "Get help with any issues or questions"
+  },
+  {
+    "title": "Release Notes",
+    "url": "https://releases.example.com",
+    "description": "See what's new in the latest version"
+  }
+]

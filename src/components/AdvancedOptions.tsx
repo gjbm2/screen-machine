@@ -7,10 +7,11 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
+  SheetFooter,
 } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Settings, ChevronDown } from 'lucide-react';
+import { Settings, ChevronDown, ExternalLink } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Workflow, WorkflowParam } from '@/types/workflows';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -18,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
 import globalOptionsData from '@/data/global-options.json';
+import maintenanceLinks from '@/data/maintenance-links.json';
 
 interface AdvancedOptionsProps {
   workflows: Workflow[];
@@ -52,7 +54,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
           Advanced Options
         </Button>
       </SheetTrigger>
-      <SheetContent className="sm:max-w-md">
+      <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle>Advanced Options</SheetTitle>
           <SheetDescription>
@@ -83,7 +85,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
             </p>
           </div>
 
-          {/* Workflow Parameters Section (Now ABOVE global settings) */}
+          {/* Workflow Parameters Section */}
           {currentWorkflow?.params && currentWorkflow.params.length > 0 && (
             <Collapsible
               open={isParamsOpen}
@@ -158,7 +160,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
             </Collapsible>
           )}
 
-          {/* Global Parameters Section (Now BELOW workflow params) */}
+          {/* Global Parameters Section (BELOW workflow params) */}
           <Collapsible
             open={isGlobalParamsOpen}
             onOpenChange={setIsGlobalParamsOpen}
@@ -231,6 +233,30 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
               ))}
             </CollapsibleContent>
           </Collapsible>
+        </div>
+        
+        <Separator className="my-4" />
+        
+        {/* Maintenance Links */}
+        <div className="pb-8">
+          <h3 className="text-sm font-medium mb-4">Resources</h3>
+          <div className="space-y-3">
+            {maintenanceLinks.map((link, index) => (
+              <a 
+                key={index}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-start gap-2 text-sm hover:text-primary transition-colors"
+              >
+                <ExternalLink className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <div className="font-medium">{link.title}</div>
+                  <div className="text-xs text-muted-foreground">{link.description}</div>
+                </div>
+              </a>
+            ))}
+          </div>
         </div>
       </SheetContent>
     </Sheet>
