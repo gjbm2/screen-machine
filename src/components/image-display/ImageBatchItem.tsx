@@ -83,12 +83,12 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   };
 
   const handleImageClick = (e: React.MouseEvent) => {
-    // For both mobile and desktop in normal view, clicking toggles the action panel
+    // For normal view, clicking toggles the action panel
     if (viewMode === 'normal') {
       setShowActionPanel(!showActionPanel);
-    } else if (image.url) {
-      // Small and table view behavior - trigger the provided click handler
-      onImageClick(image.url);
+    } else if (image.url && onFullScreen) {
+      // Small and table view behavior - show fullscreen via the same mechanism
+      onFullScreen(batchId, index);
     }
   };
   

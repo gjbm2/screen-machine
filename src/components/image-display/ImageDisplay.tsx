@@ -412,7 +412,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </DndContext>
           </div>
           
-          {/* Unified full screen view dialog */}
+          {/* Standard fullscreen view dialog for all entry points */}
           {fullScreenBatchId && (
             <Dialog 
               open={showFullScreenView} 

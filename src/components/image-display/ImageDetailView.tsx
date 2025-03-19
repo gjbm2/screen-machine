@@ -43,7 +43,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
 }) => {
   const activeImage = images[activeIndex];
   const [showReferenceImage, setShowReferenceImage] = React.useState(false);
-  const [showFullScreen, setShowFullScreen] = React.useState(false);
   const referenceImageUrl = activeImage?.referenceImageUrl;
   
   const handleCreateAgain = () => {
@@ -75,19 +74,13 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       
       {/* Selected image view */}
       <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden max-w-lg mx-auto group">
-        <div>
-          <ImageBatchItem 
-            image={activeImage}
-            batchId={batchId}
-            index={activeIndex}
-            total={images.length}
-            onCreateAgain={onCreateAgain}
-            onUseAsInput={onUseAsInput}
-            onDeleteImage={onDeleteImage}
-            onFullScreen={() => setShowFullScreen(true)}
-            onImageClick={(url: string) => setShowFullScreen(true)}
+        {activeImage && (
+          <img 
+            src={activeImage.url}
+            alt={activeImage.prompt || "Generated image"}
+            className="w-full h-full object-contain"
           />
-        </div>
+        )}
         
         {/* Navigation controls in expanded view */}
         {images.length > 1 && (
@@ -98,7 +91,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
         )}
       </div>
       
-      {/* Image Actions Bar */}
+      {/* Image Actions Bar - always visible in fullscreen mode */}
       {activeImage?.url && (
         <div className="flex justify-center space-x-2 py-2">
           <ImageActions
@@ -112,6 +105,13 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
             }}
             alwaysVisible={true}
           />
+        </div>
+      )}
+      
+      {/* Prompt info */}
+      {activeImage?.prompt && (
+        <div className="text-sm text-muted-foreground text-center max-w-lg mx-auto">
+          <p>{activeImage.prompt}</p>
         </div>
       )}
       
@@ -158,64 +158,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
           </DialogContent>
         </Dialog>
       )}
-      
-      {/* Full screen dialog */}
-      <Dialog open={showFullScreen} onOpenChange={setShowFullScreen}>
-        <DialogContent className="max-w-screen-lg p-0 overflow-hidden">
-          <DialogHeader className="p-4 pb-0">
-            <DialogTitle>Image Detail</DialogTitle>
-          </DialogHeader>
-          <div className="p-4 pt-0">
-            <div className="flex flex-col">
-              {/* Image with click-to-close */}
-              <div 
-                className="w-full overflow-hidden rounded-md" 
-                onClick={() => setShowFullScreen(false)}
-              >
-                <img 
-                  src={activeImage?.url} 
-                  alt={activeImage?.prompt || "Generated image"}
-                  className="w-full h-auto object-contain max-h-[60vh]"
-                />
-              </div>
-              
-              {/* Image info */}
-              <div className="mt-4 text-sm text-muted-foreground">
-                <p className="mb-2">{activeImage?.prompt || "No prompt information"}</p>
-                {activeImage?.workflow && (
-                  <p>Workflow: {activeImage.workflow}</p>
-                )}
-              </div>
-              
-              {/* Action buttons for full screen view - always visible */}
-              <div className="mt-4 flex justify-center space-x-2">
-                <ImageActions
-                  imageUrl={activeImage.url}
-                  onCreateAgain={handleCreateAgain}
-                  onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
-                  generationInfo={{
-                    prompt: activeImage.prompt || '',
-                    workflow: activeImage.workflow || '',
-                    params: activeImage.params
-                  }}
-                  isFullScreen={true}
-                  alwaysVisible={true}
-                />
-              </div>
-              
-              {/* Close button */}
-              <div className="mt-4 flex justify-center">
-                <Button 
-                  onClick={() => setShowFullScreen(false)}
-                  variant="outline"
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

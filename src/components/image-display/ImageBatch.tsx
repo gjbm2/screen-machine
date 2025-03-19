@@ -8,7 +8,6 @@ import { Trash2, Plus } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { ViewMode } from './ImageDisplay';
 import { Table, TableBody, TableRow, TableCell } from '@/components/ui/table';
-import ImageDetailView from './ImageDetailView';
 import { Skeleton } from "@/components/ui/skeleton";
 import LoadingPlaceholder from './LoadingPlaceholder';
 
@@ -91,7 +90,11 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
 
   const handleFullScreenClick = (image: any) => {
     if (onFullScreenClick) {
-      onFullScreenClick(image);
+      onFullScreenClick({
+        ...completedImages[activeImageIndex],
+        batchId,
+        batchIndex: completedImages[activeImageIndex].batchIndex || activeImageIndex
+      });
     } else if (!isExpanded) {
       // If not expanded and no fullscreen handler provided, expand
       toggleExpand(batchId);
@@ -145,18 +148,66 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
       ) : isExpanded ? (
         <Card className="rounded-t-none">
           <CardContent className="p-4">
-            <ImageDetailView
-              batchId={batchId}
-              images={completedImages.length > 0 ? completedImages : images}
-              activeIndex={activeImageIndex < completedImages.length ? activeImageIndex : 0}
-              onSetActiveIndex={setActiveImageIndex}
-              onNavigatePrev={handleNavigatePrev}
-              onNavigateNext={handleNavigateNext}
-              onToggleExpand={() => toggleExpand(batchId)}
-              onDeleteImage={onDeleteImage}
-              onCreateAgain={handleCreateAgain}
-              onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
-            />
+            {/* Replace with image detail content but use full screen trigger for any full screen actions */}
+            <div className="space-y-4">
+              {/* Main image display */}
+              <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden max-w-lg mx-auto">
+                {completedImages.length > 0 ? (
+                  <ImageBatchItem
+                    image={completedImages[activeImageIndex]}
+                    batchId={batchId}
+                    index={activeImageIndex}
+                    total={completedImages.length}
+                    onCreateAgain={handleCreateAgain}
+                    onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
+                    onDeleteImage={onDeleteImage}
+                    onFullScreen={() => handleFullScreenClick(completedImages[activeImageIndex])}
+                    onImageClick={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
+                    onNavigatePrev={completedImages.length > 1 ? handleNavigatePrev : undefined}
+                    onNavigateNext={completedImages.length > 1 ? handleNavigateNext : undefined}
+                    viewMode="normal"
+                    showActions={true}
+                  />
+                ) : anyGenerating ? (
+                  <LoadingPlaceholder prompt={images[0]?.prompt || null} />
+                ) : null}
+              </div>
+
+              {/* Navigation controls for expanded view are handled by ImageBatchItem */}
+              
+              {/* Thumbnail gallery */}
+              {completedImages.length > 1 && (
+                <div className="flex flex-wrap gap-2 justify-center pt-2">
+                  {completedImages.map((image, idx) => (
+                    <div 
+                      key={`thumb-${batchId}-${idx}`}
+                      className={`w-16 h-16 rounded-md overflow-hidden cursor-pointer border-2 ${
+                        idx === activeImageIndex ? 'border-primary' : 'border-transparent'
+                      }`}
+                      onClick={() => setActiveImageIndex(idx)}
+                    >
+                      <img 
+                        src={image.url} 
+                        alt={`Thumbnail ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Compact roll-up button */}
+              <div className="flex justify-center">
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  className="rounded-lg bg-card hover:bg-accent/20 text-xs h-7 px-3 border shadow"
+                  onClick={() => toggleExpand(batchId)}
+                >
+                  Roll Up
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -170,7 +221,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                   batchId={batchId}
                   index={activeImageIndex}
                   total={completedImages.length}
-                  onCreateAgain={() => onCreateAgain()}
+                  onCreateAgain={handleCreateAgain}
                   onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
                   onDeleteImage={onDeleteImage}
                   onFullScreen={() => handleFullScreenClick(completedImages[activeImageIndex])}
