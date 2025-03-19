@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { Card, CardContent } from '@/components/ui/card';
-import { LayoutGrid, Grid, List, Image, Clock, ExternalLink } from 'lucide-react';
+import { LayoutGrid, Grid, List, Image, Clock, ExternalLink, ArrowDown, ArrowUp } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import ImageBatch from './ImageBatch';
@@ -16,6 +16,8 @@ import SortableTableRow from './SortableTableRow';
 
 // Export ViewMode type but remove 'large' as an option
 export type ViewMode = 'normal' | 'small' | 'table';
+export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
+export type SortDirection = 'asc' | 'desc';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -52,6 +54,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
   const [selectedImage, setSelectedImage] = useState<{ url: string; prompt: string; batchId: string; index: number } | null>(null);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>('timestamp');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -138,23 +142,60 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   };
   
   const getAllImages = () => {
+    // Get all completed images and sort them by timestamp (newest first by default)
     return generatedImages
       .filter(img => img.status === 'completed')
       .sort((a, b) => {
-        const aContainerIndex = imageContainerOrder.indexOf(a.batchId);
-        const bContainerIndex = imageContainerOrder.indexOf(b.batchId);
-        
-        if (aContainerIndex !== bContainerIndex) {
-          return aContainerIndex - bContainerIndex;
-        }
-        
-        return a.batchIndex - b.batchIndex;
+        // Always sort by timestamp DESC (newest first) for small view
+        return b.timestamp - a.timestamp;
       });
   };
 
   const formatTimeAgo = (timestamp: number) => {
     if (!timestamp) return "Unknown";
     return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+  };
+
+  const handleSortClick = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle sort direction if clicking the same field
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Set new sort field and reset direction to descending
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
+  const getSortedContainers = () => {
+    return [...imageContainerOrder].sort((a, b) => {
+      const batchA = batches[a]?.[0];
+      const batchB = batches[b]?.[0];
+      
+      if (!batchA) return 1;
+      if (!batchB) return -1;
+      
+      let comparison = 0;
+      
+      switch (sortField) {
+        case 'index':
+          comparison = (batchA.containerId || 0) - (batchB.containerId || 0);
+          break;
+        case 'prompt':
+          comparison = (batchA.prompt || '').localeCompare(batchB.prompt || '');
+          break;
+        case 'batchSize':
+          comparison = batches[a].filter(img => img.status === 'completed').length - 
+                      batches[b].filter(img => img.status === 'completed').length;
+          break;
+        case 'timestamp':
+        default:
+          comparison = batchA.timestamp - batchB.timestamp;
+          break;
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
   };
   
   return (
@@ -238,14 +279,62 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-[80px]">No.</TableHead>
-                          <TableHead>Prompt</TableHead>
-                          <TableHead className="w-[80px] text-center">Batch</TableHead>
-                          <TableHead className="w-[120px]">When</TableHead>
+                          <TableHead 
+                            className="w-[80px] cursor-pointer" 
+                            onClick={() => handleSortClick('index')}
+                          >
+                            <div className="flex items-center space-x-1">
+                              <span>No.</span>
+                              {sortField === 'index' && (
+                                sortDirection === 'asc' ? 
+                                <ArrowUp className="h-3 w-3" /> : 
+                                <ArrowDown className="h-3 w-3" />
+                              )}
+                            </div>
+                          </TableHead>
+                          <TableHead 
+                            className="cursor-pointer"
+                            onClick={() => handleSortClick('prompt')}
+                          >
+                            <div className="flex items-center space-x-1">
+                              <span>Prompt</span>
+                              {sortField === 'prompt' && (
+                                sortDirection === 'asc' ? 
+                                <ArrowUp className="h-3 w-3" /> : 
+                                <ArrowDown className="h-3 w-3" />
+                              )}
+                            </div>
+                          </TableHead>
+                          <TableHead 
+                            className="w-[80px] text-center cursor-pointer"
+                            onClick={() => handleSortClick('batchSize')}
+                          >
+                            <div className="flex items-center justify-center space-x-1">
+                              <span>Batch</span>
+                              {sortField === 'batchSize' && (
+                                sortDirection === 'asc' ? 
+                                <ArrowUp className="h-3 w-3" /> : 
+                                <ArrowDown className="h-3 w-3" />
+                              )}
+                            </div>
+                          </TableHead>
+                          <TableHead 
+                            className="w-[120px] cursor-pointer"
+                            onClick={() => handleSortClick('timestamp')}
+                          >
+                            <div className="flex items-center space-x-1">
+                              <span>When</span>
+                              {sortField === 'timestamp' && (
+                                sortDirection === 'asc' ? 
+                                <ArrowUp className="h-3 w-3" /> : 
+                                <ArrowDown className="h-3 w-3" />
+                              )}
+                            </div>
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {imageContainerOrder.map((batchId) => {
+                        {getSortedContainers().map((batchId) => {
                           if (!batches[batchId]) return null;
                           
                           const batchImages = batches[batchId];
@@ -271,7 +360,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {imageContainerOrder.map(batchId => {
+                    {imageContainerOrder.map((batchId, index) => {
                       if (!batches[batchId]) return null;
                       
                       return (

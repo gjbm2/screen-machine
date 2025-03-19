@@ -52,11 +52,11 @@ const ReferenceImagesSection: React.FC<ReferenceImagesSectionProps> = ({ images 
       {images.length === 1 ? (
         <div className="flex items-center justify-start overflow-x-auto pb-2">
           <Card className="flex-shrink-0 overflow-hidden">
-            <div className="w-32 h-32 relative">
+            <div className="w-32 h-32 relative flex items-center justify-center">
               <img
                 src={images[0]}
                 alt="Reference image"
-                className="w-full h-full object-cover"
+                className="max-w-full max-h-full object-contain"
               />
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
@@ -88,13 +88,13 @@ const ReferenceImagesSection: React.FC<ReferenceImagesSectionProps> = ({ images 
           {images.map((image, idx) => (
             <Card key={idx} className="flex-shrink-0 overflow-hidden">
               <div 
-                className="w-32 h-32 relative"
+                className="w-32 h-32 relative flex items-center justify-center"
                 onClick={() => setCurrentIndex(idx)}
               >
                 <img
                   src={image}
                   alt={`Reference image ${idx + 1}`}
-                  className={`w-full h-full object-cover ${currentIndex === idx ? 'ring-2 ring-primary' : ''}`}
+                  className={`max-w-full max-h-full object-contain ${currentIndex === idx ? 'ring-2 ring-primary' : ''}`}
                 />
                 {currentIndex === idx && (
                   <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -120,9 +120,9 @@ const ReferenceImagesSection: React.FC<ReferenceImagesSectionProps> = ({ images 
                     </DialogContent>
                   </Dialog>
                 )}
-              </div>
-              <div className="absolute bottom-1 right-1 bg-black/70 text-white px-1.5 py-0.5 rounded-full text-xs">
-                {idx + 1}
+                <div className="absolute bottom-1 right-1 bg-black/70 text-white px-1.5 py-0.5 rounded-full text-xs">
+                  {idx + 1}
+                </div>
               </div>
             </Card>
           ))}

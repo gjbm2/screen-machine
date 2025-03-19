@@ -290,11 +290,6 @@ const Index = () => {
     setImageContainerOrder(prev => {
       const newOrder = [...prev];
       const [removed] = newOrder.splice(sourceIndex, 1);
-      
-      if (destinationIndex >= newOrder.length) {
-        return newOrder;
-      }
-      
       newOrder.splice(destinationIndex, 0, removed);
       return newOrder;
     });
