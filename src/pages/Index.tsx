@@ -11,8 +11,8 @@ interface GeneratedImage {
   workflow: string;
   timestamp: number;
   params?: Record<string, any>;
-  batchId?: string; // New property to group images in batches
-  batchIndex?: number; // Index within a batch
+  batchId?: string;
+  batchIndex?: number;
 }
 
 const Index = () => {
@@ -63,11 +63,11 @@ const Index = () => {
     // Re-submit with the same parameters but it will use a different random seed
     handleSubmitPrompt(
       currentPrompt, 
-      uploadedImageUrls.length > 0 ? [] : undefined, // Don't pass uploaded images for regeneration
+      uploadedImageUrls.length > 0 ? [] : undefined,
       currentWorkflow || undefined,
       currentParams,
       currentGlobalParams,
-      batchId // Pass the batch ID if provided
+      batchId 
     );
     
     toast.info('Regenerating image...');
@@ -79,7 +79,7 @@ const Index = () => {
     workflow?: string,
     params?: Record<string, any>,
     globalParams?: Record<string, any>,
-    batchId?: string // New parameter for batch ID
+    batchId?: string
   ) => {
     setIsLoading(true);
     setCurrentPrompt(prompt);
@@ -103,7 +103,7 @@ const Index = () => {
         global_params: globalParams || {},
         has_reference_images: imageFiles ? imageFiles.length > 0 : false,
         reference_image_count: imageFiles ? imageFiles.length : 0,
-        batch_id: batchId // Include batch ID in request
+        batch_id: batchId
       };
       
       console.log('Sending request with data:', requestData);
