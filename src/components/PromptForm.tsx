@@ -63,16 +63,20 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
       const imageUrl = URL.createObjectURL(file);
       setPreviewUrl(imageUrl);
     } else {
-      setImageFile(null);
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-        setPreviewUrl(null);
-      }
+      clearUploadedImage();
+    }
+  };
+
+  const clearUploadedImage = () => {
+    setImageFile(null);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
     }
   };
 
   const handleRemoveImage = () => {
-    handleImageUpload(null);
+    clearUploadedImage();
     // If removing an image, switch back to text-to-image workflow
     handleWorkflowChange('text-to-image');
   };

@@ -40,6 +40,10 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   };
 
   const triggerFileInput = () => {
+    // Reset the file input value before opening the file dialog
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     fileInputRef.current?.click();
   };
 
