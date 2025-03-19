@@ -52,11 +52,15 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
     onStyleClick(combinedPrompt);
   };
   
-  const toggleExamples = () => {
+  const toggleExamples = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     setShowAllExamples(!showAllExamples);
   };
   
-  const toggleStyles = () => {
+  const toggleStyles = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     setShowAllStyles(!showAllStyles);
   };
   
@@ -69,40 +73,40 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
       : [examplesList[randomExampleIndex]];
       
     return (
-      <div className="mb-2">
-        <div className="flex flex-wrap gap-1.5">
-          {visibleExamples.map((example, index) => (
-            <Badge 
-              key={index}
-              variant="secondary"
-              className="px-3 py-1.5 text-sm cursor-pointer hover:bg-secondary/80 font-normal"
-              onClick={() => handleExampleClick(example)}
-            >
-              {example}
-            </Badge>
-          ))}
-          
-          {examplesList.length > initialExamplesCount && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={toggleExamples}
-              className="h-8 text-xs"
-            >
-              {showAllExamples ? (
-                <>
-                  <ChevronUp className="mr-1 h-3 w-3" />
-                  Less
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="mr-1 h-3 w-3" />
-                  More
-                </>
-              )}
-            </Button>
-          )}
-        </div>
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-xs text-muted-foreground">Try:</span>
+        {visibleExamples.map((example, index) => (
+          <Badge 
+            key={index}
+            variant="secondary"
+            className="px-3 py-1.5 text-sm cursor-pointer hover:bg-secondary/80 font-normal"
+            onClick={() => handleExampleClick(example)}
+          >
+            {example}
+          </Badge>
+        ))}
+        
+        {examplesList.length > initialExamplesCount && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={toggleExamples}
+            className="h-8 text-xs"
+            type="button"
+          >
+            {showAllExamples ? (
+              <>
+                <ChevronUp className="mr-1 h-3 w-3" />
+                Less
+              </>
+            ) : (
+              <>
+                <ChevronDown className="mr-1 h-3 w-3" />
+                More
+              </>
+            )}
+          </Button>
+        )}
       </div>
     );
   };
@@ -115,50 +119,47 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
       : stylesList.slice(0, initialStylesCount);
       
     return (
-      <div>
-        <div className="flex flex-wrap gap-1.5">
-          {visibleStyles.map((style, index) => (
-            <Badge 
-              key={index}
-              variant="outline"
-              className="px-3 py-1.5 text-sm cursor-pointer hover:bg-accent bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 font-normal"
-              onClick={() => handleStyleClick(style)}
-            >
-              {style.display}
-            </Badge>
-          ))}
-          
-          {stylesList.length > initialStylesCount && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={toggleStyles}
-              className="h-8 text-xs"
-            >
-              {showAllStyles ? (
-                <>
-                  <ChevronUp className="mr-1 h-3 w-3" />
-                  Less
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="mr-1 h-3 w-3" />
-                  More
-                </>
-              )}
-            </Button>
-          )}
-        </div>
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-xs text-muted-foreground">Style:</span>
+        {visibleStyles.map((style, index) => (
+          <Badge 
+            key={index}
+            variant="outline"
+            className="px-3 py-1.5 text-sm cursor-pointer hover:bg-accent bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 font-normal"
+            onClick={() => handleStyleClick(style)}
+          >
+            {style.display}
+          </Badge>
+        ))}
+        
+        {stylesList.length > initialStylesCount && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={toggleStyles}
+            className="h-8 text-xs"
+            type="button"
+          >
+            {showAllStyles ? (
+              <>
+                <ChevronUp className="mr-1 h-3 w-3" />
+                Less
+              </>
+            ) : (
+              <>
+                <ChevronDown className="mr-1 h-3 w-3" />
+                More
+              </>
+            )}
+          </Button>
+        )}
       </div>
     );
   };
   
   return (
-    <div className="p-2">
-      <div className="mb-1 text-xs text-muted-foreground">Try:</div>
+    <div className="p-2 space-y-2">
       {renderExamples()}
-      
-      <div className="mb-1 text-xs text-muted-foreground">Style:</div>
       {renderStyles()}
     </div>
   );

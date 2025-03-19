@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -9,6 +8,7 @@ import { Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import Footer from '@/components/Footer';
+import introTexts from '@/data/intro-texts.json';
 
 interface GeneratedImage {
   url: string;
@@ -39,18 +39,25 @@ const Index = () => {
   const [isConsoleVisible, setIsConsoleVisible] = useState(false);
   const [nextContainerId, setNextContainerId] = useState<number>(1);
   const [isFirstRun, setIsFirstRun] = useState(true);
-  
+  const [randomIntroText, setRandomIntroText] = useState('');
+
+  useEffect(() => {
+    const introsList = introTexts.intros || [];
+    const randomIndex = Math.floor(Math.random() * introsList.length);
+    setRandomIntroText(introsList[randomIndex]);
+  }, []);
+
   useEffect(() => {
     if (currentGlobalParams.showConsoleOutput) {
       setIsConsoleVisible(true);
     }
   }, [currentGlobalParams.showConsoleOutput]);
-  
+
   const addConsoleLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setConsoleLogs(prev => [...prev, `[${timestamp}] ${message}`]);
   };
-  
+
   const handleUseGeneratedAsInput = async (selectedImageUrl: string) => {
     try {
       const response = await fetch(selectedImageUrl);
@@ -136,7 +143,6 @@ const Index = () => {
     refiner?: string,
     batchId?: string
   ) => {
-    // Set first run to false when the generator is first run
     if (isFirstRun) {
       setIsFirstRun(false);
     }
@@ -361,11 +367,9 @@ const Index = () => {
         </div>
         
         {isFirstRun && (
-          <div className="mt-16 mb-8 text-center">
-            <h1 className="text-3xl font-bold mb-4">Welcome to the Image Generator</h1>
+          <div className="mt-8 mb-6 text-center">
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Transform your imagination into stunning visuals. Enter a prompt below, 
-              select your options, and watch as your ideas come to life.
+              {randomIntroText}
             </p>
           </div>
         )}

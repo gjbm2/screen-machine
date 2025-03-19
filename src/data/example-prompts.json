@@ -1,10 +1,10 @@
 
 {
   "basicPrompts": [
-    "A peaceful lakeside cabin at sunset with mountains in the background",
-    "A futuristic cityscape with flying cars and neon lights",
-    "A magical forest with glowing mushrooms and fairy lights",
-    "An astronaut riding a horse on Mars"
+    "A sunset beach scene",
+    "Futuristic cityscape",
+    "Magic forest at night",
+    "Astronaut on Mars"
   ],
   "stylePrompts": [
     {

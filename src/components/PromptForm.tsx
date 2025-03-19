@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -304,42 +303,6 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                   onPromptChange={setPrompt}
                   uploadedImages={previewUrls}
                 />
-                
-                {/* Upload image button positioned at the right side */}
-                <div className="absolute right-3 top-3">
-                  {isMobile ? (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 bg-transparent hover:bg-muted/50"
-                        >
-                          <ImageUploader
-                            isLoading={isButtonDisabled}
-                            onImageUpload={handleImageUpload}
-                            onWorkflowChange={handleWorkflowChange}
-                            hideLabel={true}
-                          />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={handleCameraCapture}>
-                          <Camera className="mr-2 h-4 w-4" />
-                          <span>Take Photo</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  ) : (
-                    <ImageUploader
-                      isLoading={isButtonDisabled}
-                      onImageUpload={handleImageUpload}
-                      onWorkflowChange={handleWorkflowChange}
-                      hideLabel={true}
-                    />
-                  )}
-                </div>
               </div>
               
               <PromptExamples
@@ -354,7 +317,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                   {/* Removed settings button from here - will be relocated */}
                 </div>
                 
-                <div className="flex items-center gap-1 sm:gap-2">
+                <div className="flex items-center gap-1 sm:gap-2 justify-between">
                   <div className="flex items-center gap-1 sm:gap-2">
                     <ImageUploader
                       isLoading={isButtonDisabled}
@@ -379,7 +342,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                     <div className="flex items-center h-[48px]">
                       <Button 
                         type="button"
-                        className="h-[48px] rounded-l-md px-1 sm:px-1.5 hover:bg-purple-500/10 text-purple-700 border border-r-0 border-input"
+                        className="h-[36px] rounded-l-md px-1 sm:px-1.5 hover:bg-purple-500/10 text-purple-700 border border-r-0 border-input"
                         onClick={decrementBatchSize}
                         disabled={batchSize <= 1}
                         variant="outline"
@@ -387,13 +350,13 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                         <Minus className="h-3 w-3" />
                       </Button>
                       
-                      <div className="flex justify-center items-center h-[48px] bg-background border-y border-input text-foreground w-8 sm:w-9">
-                        <span className="text-lg font-medium">{batchSize}</span>
+                      <div className="flex justify-center items-center h-[36px] bg-background border-y border-input text-foreground w-6 sm:w-7">
+                        <span className="text-sm font-medium">{batchSize}</span>
                       </div>
                       
                       <Button 
                         type="button"
-                        className="h-[48px] rounded-r-md px-1 sm:px-1.5 hover:bg-purple-500/10 text-purple-700 border border-l-0 border-input"
+                        className="h-[36px] rounded-r-md px-1 sm:px-1.5 hover:bg-purple-500/10 text-purple-700 border border-l-0 border-input"
                         onClick={incrementBatchSize}
                         disabled={batchSize >= 9}
                         variant="outline"
@@ -401,43 +364,30 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                         <Plus className="h-3 w-3" />
                       </Button>
                     </div>
-                  </div>
 
-                  <div className="relative flex-1 flex items-center">
-                    {/* Settings button moved before arrow button */}
                     <Button 
                       type="button"
                       variant="outline" 
                       size="icon"
                       onClick={toggleAdvancedOptions}
-                      className="h-[48px] w-[48px] text-muted-foreground mr-1 hover:bg-purple-500/10 text-purple-700"
+                      className="h-[48px] w-[48px] text-muted-foreground hover:bg-purple-500/10 text-purple-700"
                       aria-label="Settings"
                     >
                       <Settings className="h-5 w-5" />
                     </Button>
-                    
-                    {/* Changed to up arrow icon with conditional styling */}
+                  </div>
+
+                  <div>
+                    {/* Changed to up arrow icon with circular styling */}
                     <Button 
                       type="submit" 
-                      className={`flex-grow h-[48px] rounded-full px-2 sm:px-4 transition-all hover:shadow-md text-lg font-medium flex items-center justify-center btn-shine ${
+                      className={`arrow-button transition-all hover:shadow-md text-lg font-medium flex items-center justify-center btn-shine ${
                         !prompt.trim() && imageFiles.length === 0 ? 'bg-gray-300 text-gray-600' : 'bg-primary text-primary-foreground'
                       }`}
                       disabled={isButtonDisabled || (!prompt.trim() && imageFiles.length === 0)}
                     >
                       <ArrowUp className="h-6 w-6" />
                     </Button>
-                    
-                    <AdvancedOptions
-                      workflows={workflows}
-                      selectedWorkflow={selectedWorkflow}
-                      onWorkflowChange={handleWorkflowChange}
-                      params={workflowParams}
-                      onParamChange={handleParamChange}
-                      globalParams={globalParams}
-                      onGlobalParamChange={handleGlobalParamChange}
-                      isOpen={isAdvancedOptionsOpen}
-                      onOpenChange={setIsAdvancedOptionsOpen}
-                    />
                   </div>
                 </div>
               </div>
@@ -445,6 +395,18 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
           </Card>
         </CollapsibleContent>
       </Collapsible>
+
+      <AdvancedOptions
+        workflows={workflows}
+        selectedWorkflow={selectedWorkflow}
+        onWorkflowChange={handleWorkflowChange}
+        params={workflowParams}
+        onParamChange={handleParamChange}
+        globalParams={globalParams}
+        onGlobalParamChange={handleGlobalParamChange}
+        isOpen={isAdvancedOptionsOpen}
+        onOpenChange={setIsAdvancedOptionsOpen}
+      />
     </div>
   );
 };
