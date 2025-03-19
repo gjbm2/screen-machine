@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { TouchEvent, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Clock, Ruler, ExternalLink } from 'lucide-react';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -43,6 +43,8 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   const activeImage = images[activeIndex];
   const [showReferenceImage, setShowReferenceImage] = React.useState(false);
   const referenceImageUrl = activeImage?.referenceImageUrl;
+  const touchRef = useRef<HTMLDivElement>(null);
+  const [startX, setStartX] = useState<number | null>(null);
   
   const handleCreateAgain = () => {
     onCreateAgain(batchId);
@@ -77,10 +79,40 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
     }
   };
   
+  // Touch event handlers for swipe navigation
+  const handleTouchStart = (e: TouchEvent) => {
+    setStartX(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = (e: TouchEvent) => {
+    if (startX === null || images.length <= 1) return;
+    
+    const endX = e.changedTouches[0].clientX;
+    const diff = startX - endX;
+    
+    // If swipe distance is sufficient (30px)
+    if (Math.abs(diff) > 30) {
+      if (diff > 0 && activeIndex < images.length - 1) {
+        // Swipe left, go to next image
+        onNavigateNext(e as unknown as React.MouseEvent);
+      } else if (diff < 0 && activeIndex > 0) {
+        // Swipe right, go to previous image
+        onNavigatePrev(e as unknown as React.MouseEvent);
+      }
+    }
+    
+    setStartX(null);
+  };
+  
   return (
     <div className="p-4 space-y-4">
       {/* Selected image view - maximize image display */}
-      <div className="relative flex justify-center items-center min-h-[50vh] max-h-[70vh] bg-secondary/10 rounded-md overflow-hidden group">
+      <div 
+        ref={touchRef}
+        className="relative flex justify-center items-center min-h-[50vh] max-h-[70vh] bg-secondary/10 rounded-md overflow-hidden group"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         {activeImage && (
           <div className="relative cursor-pointer flex justify-center items-center w-full h-full">
             <img 

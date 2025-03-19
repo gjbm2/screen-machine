@@ -257,7 +257,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 strategy={viewMode === 'small' ? horizontalListSortingStrategy : verticalListSortingStrategy}
               >
                 {viewMode === 'small' ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                  <div className="grid grid-cols-4 gap-2">
                     {getAllImages().map((image, idx) => (
                       <div 
                         key={`${image.batchId}-${image.batchIndex}`} 
@@ -298,7 +298,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                             </div>
                           </TableHead>
                           <TableHead 
-                            className="cursor-pointer"
+                            className="cursor-pointer max-w-[200px] md:max-w-[300px]"
                             onClick={() => handleSortClick('prompt')}
                           >
                             <div className="flex items-center space-x-1">
@@ -364,7 +364,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     </Table>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {imageContainerOrder.map((batchId, index) => {
                       if (!batches[batchId]) return null;
                       

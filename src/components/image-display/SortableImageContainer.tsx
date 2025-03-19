@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -49,7 +50,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
   const widthClass = viewMode === 'normal' 
     ? isExpanded 
       ? 'col-span-full w-full' // Full width when expanded in normal mode
-      : 'w-full max-w-md' // Width for rolled up view
+      : 'w-full max-w-[160px] sm:max-w-[200px] md:max-w-md' // Width for rolled up view - smaller on mobile
     : 'w-full'; // Default width for other view modes
 
   const style = {

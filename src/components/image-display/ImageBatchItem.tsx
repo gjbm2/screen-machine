@@ -85,6 +85,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   const handleImageClick = (e: React.MouseEvent) => {
     // For normal view, clicking toggles the action panel
     if (viewMode === 'normal') {
+      // Toggle the action panel visibility
       setShowActionPanel(!showActionPanel);
     } else if (image.url && onFullScreen) {
       // Small and table view behavior - show fullscreen via the same mechanism
@@ -113,7 +114,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
 
   // Determine if action panel should be visible
   // For mobile: show based on showActionPanel state (toggled by click)
-  // For desktop: show on hover OR if showActionPanel is true
+  // For desktop: show on hover OR if showActionPanel is true (after click)
   const shouldShowActionsMenu = (isMobile ? showActionPanel : (isHovered || showActionPanel)) && 
                       image.url && 
                       viewMode === 'normal' &&
@@ -123,13 +124,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     <div 
       className={`relative rounded-md overflow-hidden group ${viewMode === 'small' ? 'mb-2' : ''}`}
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => {
-        setIsHovered(false);
-        // On desktop, hide the panel on mouse leave unless it was explicitly toggled
-        if (!isMobile && !showActionPanel) {
-          setShowActionPanel(false);
-        }
-      }}
+      onMouseLeave={() => setIsHovered(false)}
     >
       <div 
         className={`relative ${sizeClasses} cursor-pointer`}
@@ -209,7 +204,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
                 workflow: image.workflow || '',
                 params: image.params
               }}
-              isMouseOver={isHovered}
+              isMouseOver={isHovered || showActionPanel}
             />
           </div>
         )}

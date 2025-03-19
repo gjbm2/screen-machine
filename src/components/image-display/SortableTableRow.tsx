@@ -58,11 +58,11 @@ const SortableTableRow: React.FC<SortableTableRowProps> = ({
     >
       <TableCell className="font-medium">{index}</TableCell>
       <TableCell>
-        <div className="flex items-center">
+        <div className="flex items-start">
           {hasReferenceImage && (
-            <Image className="h-4 w-4 text-primary mr-2" />
+            <Image className="h-4 w-4 text-primary mr-2 mt-1 flex-shrink-0" />
           )}
-          <span className="truncate max-w-md">{prompt}</span>
+          <span className="break-words whitespace-normal max-w-[200px] md:max-w-[300px]">{prompt}</span>
         </div>
       </TableCell>
       <TableCell className="text-center">{completedImages}</TableCell>
