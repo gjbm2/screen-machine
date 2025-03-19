@@ -8,7 +8,6 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
-import { Icons } from '@/components/ui/icons';
 import { Image, Wand, PaintBucket } from 'lucide-react';
 
 interface WorkflowIconSelectorProps {
