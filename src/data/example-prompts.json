@@ -7,9 +7,9 @@
     "An astronaut riding a horse on Mars"
   ],
   "stylePrompts": [
-    "A medieval castle on a hilltop in the style of an oil painting",
-    "A beautiful portrait of a woman in the style of watercolor",
-    "A bustling market street in impressionist style",
-    "A serene beach landscape in the style of Studio Ghibli"
+    "+ in the style of an oil painting",
+    "+ in the style of watercolor",
+    "+ in impressionist style",
+    "+ in the style of Studio Ghibli"
   ]
 }

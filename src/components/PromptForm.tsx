@@ -53,6 +53,25 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
   const handleExampleClick = (example: string) => {
     setPrompt(example);
   };
+  
+  const handleStyleClick = (style: string) => {
+    // Append the style to the current prompt instead of replacing it
+    // Remove the "+" prefix from the style for appending
+    const styleText = style.startsWith('+') ? style.substring(1).trim() : style;
+    
+    if (prompt.trim() === '') {
+      toast.error('Please enter a base prompt first before adding a style');
+      return;
+    }
+    
+    // Check if the prompt already contains this style to avoid duplication
+    if (prompt.includes(styleText)) {
+      toast.info('This style is already applied to your prompt');
+      return;
+    }
+    
+    setPrompt(current => `${current.trim()} ${styleText}`);
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -172,16 +191,16 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
               ))}
             </div>
             
-            <p className="text-xs text-muted-foreground mb-2">Try a style:</p>
+            <p className="text-xs text-muted-foreground mb-2">Add a style:</p>
             <div className="flex flex-wrap gap-2">
-              {examplePromptsData.stylePrompts.map((example, index) => (
+              {examplePromptsData.stylePrompts.map((style, index) => (
                 <button
                   key={`style-${index}`}
                   type="button"
                   className="text-xs bg-purple-500/20 hover:bg-purple-500/30 px-2 py-1 rounded-full text-purple-700 transition-colors"
-                  onClick={() => handleExampleClick(example)}
+                  onClick={() => handleStyleClick(style)}
                 >
-                  {example.length > 30 ? `${example.slice(0, 30)}...` : example}
+                  {style.length > 30 ? `${style.slice(0, 30)}...` : style}
                 </button>
               ))}
             </div>
