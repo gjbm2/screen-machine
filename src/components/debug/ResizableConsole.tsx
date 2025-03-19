@@ -52,7 +52,7 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border">
       <ResizablePanelGroup direction="vertical">
         <ResizablePanel 
-          defaultSize={size} 
+          defaultSize={100} 
           onResize={setSize} 
           minSize={15}
           maxSize={60}

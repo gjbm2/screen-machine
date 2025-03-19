@@ -84,9 +84,13 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     // In normal view, clicking the image toggles action panel
     if (viewMode === 'normal') {
       setShowActionPanel(!showActionPanel);
-    }
-    
-    if (image.url) {
+      
+      // Only trigger the onImageClick if we're in small view
+      if (viewMode === 'small' && image.url) {
+        onImageClick(image.url);
+      }
+    } else if (viewMode === 'small' && image.url) {
+      // Small view behavior - open full screen
       onImageClick(image.url);
     }
   };
