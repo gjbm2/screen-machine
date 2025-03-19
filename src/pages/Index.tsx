@@ -120,7 +120,6 @@ const Index = () => {
           <PromptForm onSubmit={handleSubmitPrompt} isLoading={isLoading} />
         </div>
         
-        {/* Always show the ImageDisplay component. It will handle displaying loading state or the image */}
         <div className="mb-20">
           <ImageDisplay 
             imageUrl={imageUrl}

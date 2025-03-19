@@ -44,6 +44,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   return (
     <div className="mt-12 animate-fade-in">
       <div className="flex flex-col md:flex-row gap-6">
+        {/* Only show the reference images section if we have uploaded images */}
         {uploadedImages && uploadedImages.length > 0 && (
           <Card className="relative w-full md:w-1/2 overflow-hidden border border-border/30 rounded-lg">
             {uploadedImages.length === 1 ? (
@@ -85,41 +86,44 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           </Card>
         )}
 
-        <Card className="relative w-full md:w-1/2 overflow-hidden border border-border/30 rounded-lg">
-          <div className="aspect-square overflow-hidden bg-secondary/20">
-            {isLoading ? (
-              <div className="flex h-full items-center justify-center">
-                <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-              </div>
-            ) : imageUrl ? (
-              <img
-                src={imageUrl}
-                alt={prompt || 'Generated image'}
-                className="w-full h-full object-contain"
-              />
-            ) : null}
-          </div>
-          <div className="p-3">
-            {prompt && (
-              <p className="text-sm text-center text-muted-foreground truncate">
-                {prompt}
-              </p>
-            )}
-            {workflow && (
-              <p className="text-xs text-center text-muted-foreground mt-1">
-                Workflow: {formatWorkflowName(workflow)}
-              </p>
-            )}
-            
-            {/* Add image actions for generated images */}
-            {imageUrl && !isLoading && (
-              <ImageActions 
-                imageUrl={imageUrl}
-                onUseAsInput={onUseGeneratedAsInput}
-              />
-            )}
-          </div>
-        </Card>
+        {/* Only show the output section if we're loading or have a generated image */}
+        {(isLoading || imageUrl) && (
+          <Card className="relative w-full md:w-1/2 overflow-hidden border border-border/30 rounded-lg">
+            <div className="aspect-square overflow-hidden bg-secondary/20">
+              {isLoading ? (
+                <div className="flex h-full items-center justify-center">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+                </div>
+              ) : imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt={prompt || 'Generated image'}
+                  className="w-full h-full object-contain"
+                />
+              ) : null}
+            </div>
+            <div className="p-3">
+              {prompt && (
+                <p className="text-sm text-center text-muted-foreground truncate">
+                  {prompt}
+                </p>
+              )}
+              {workflow && (
+                <p className="text-xs text-center text-muted-foreground mt-1">
+                  Workflow: {formatWorkflowName(workflow)}
+                </p>
+              )}
+              
+              {/* Add image actions for generated images */}
+              {imageUrl && !isLoading && (
+                <ImageActions 
+                  imageUrl={imageUrl}
+                  onUseAsInput={onUseGeneratedAsInput}
+                />
+              )}
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );
