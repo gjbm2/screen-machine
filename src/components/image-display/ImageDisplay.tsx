@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
@@ -10,11 +9,11 @@ import { GridIcon, List, LayoutList, Maximize2 } from 'lucide-react';
 import ImageBatch from './ImageBatch';
 import ImageDetailView from './ImageDetailView';
 import ReferenceImagesSection from './ReferenceImagesSection';
-import { useIsMobile } from '@/hooks/use-mobile'; // Fixed: useMobile → useIsMobile
+import { useIsMobile } from '@/hooks/use-mobile'; 
 import LoadingPlaceholder from './LoadingPlaceholder';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-// Make sure this type definition is consistent across files
+// Export ViewMode type so it can be used by other components
 export type ViewMode = 'normal' | 'small' | 'table' | 'fullWidth';
 
 interface ImageDisplayProps {
@@ -140,7 +139,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       
       {activeImage && !isLoading && (
         <div className="mt-4">
-          {/* Fixed: passing correct props structure to ImageDetailView */}
           <ImageDetailView 
             batchId={activeBatchId || ""}
             images={[{
@@ -165,7 +163,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       {isLoading && (
         <Card className="mt-4">
           <CardContent className="pt-6 pb-4">
-            {/* Fixed: changed message to prompt */}
             <LoadingPlaceholder prompt={prompt} />
           </CardContent>
         </Card>

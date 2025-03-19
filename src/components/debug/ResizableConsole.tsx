@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect, useState } from 'react';
-import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import ConsoleOutput from './ConsoleOutput';
 import { Button } from '../ui/button';
 import { X, Save } from 'lucide-react';
@@ -16,15 +16,9 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
   isVisible,
   onClose
 }) => {
-  // Default console size is 30% of viewport height
+  // Use state to control the panel size (default to 30% of viewport height)
   const [size, setSize] = useState(30);
   
-  const handleResize = (sizes: number[]) => {
-    if (sizes[0]) {
-      setSize(sizes[0]);
-    }
-  };
-
   const handleSaveLogs = () => {
     try {
       const blob = new Blob([logs.join('\n')], { type: 'text/plain' });
@@ -48,15 +42,11 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
       }`}
       style={{ height: isVisible ? `${size}vh` : '0' }}
     >
-      <PanelGroup direction="vertical" onLayout={handleResize}>
-        <Panel 
-          defaultSize={size} 
-          minSize={10}
-          className="overflow-hidden"
-        >
+      <ResizablePanelGroup direction="vertical" className="h-full">
+        <ResizablePanel defaultSize={100} className="overflow-hidden">
           <div className="h-full flex flex-col">
             <div className="flex justify-between items-center p-2 border-b">
-              <div className="w-12 h-1 bg-muted-foreground/30 rounded-full absolute left-1/2 top-2 -translate-x-1/2 cursor-ns-resize" />
+              <div className="w-12 h-1 bg-muted-foreground/30 rounded-full absolute left-1/2 top-2 -translate-x-1/2 cursor-ns-resize"></div>
               <h3 className="text-sm font-medium ml-2">Console Output</h3>
               <div className="flex items-center space-x-2">
                 <Button 
@@ -85,11 +75,9 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
               />
             </div>
           </div>
-        </Panel>
-        <PanelResizeHandle 
-          className="h-1.5 bg-muted hover:bg-primary/20 cursor-ns-resize transition-colors"
-        />
-      </PanelGroup>
+        </ResizablePanel>
+        <ResizableHandle className="h-1.5 bg-muted hover:bg-primary/20 cursor-ns-resize transition-colors" />
+      </ResizablePanelGroup>
     </div>
   );
 };

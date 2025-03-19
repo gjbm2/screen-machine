@@ -1,38 +1,33 @@
-import React from 'react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
-import SortableImageContainer from './SortableImageContainer';
+
+import React, { useState } from 'react';
 import ImageBatchItem from './ImageBatchItem';
-import NavigationControls from './NavigationControls';
-import ImageDetailView from './ImageDetailView';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Maximize, X } from 'lucide-react';
-import ImageActions from '@/components/ImageActions';
-import { ViewMode } from './ImageDisplay'; // Import ViewMode type from ImageDisplay
+import SortableImageContainer from './SortableImageContainer';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Trash2, Plus } from 'lucide-react';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { ViewMode } from './ImageDisplay';
+
+interface Image {
+  url: string;
+  prompt: string;
+  workflow: string;
+  batchIndex: number;
+  status: 'generating' | 'completed' | 'error';
+  referenceImageUrl?: string;
+}
 
 interface ImageBatchProps {
   batchId: string;
-  images: Array<{
-    url: string;
-    prompt?: string;
-    workflow: string;
-    timestamp: number;
-    params?: Record<string, any>;
-    batchId?: string;
-    batchIndex?: number;
-    status?: 'generating' | 'completed' | 'error';
-    referenceImageUrl?: string;
-  }>;
+  images: Image[];
   isExpanded: boolean;
   toggleExpand: (id: string) => void;
   onImageClick: (url: string, prompt: string) => void;
-  onCreateAgain: (batchId: string) => void;
-  onDeleteImage: (index: number) => void;
+  onCreateAgain: () => void;
+  onDeleteImage: (batchId: string, index: number) => void;
   onDeleteContainer: () => void;
   activeImageUrl: string | null;
-  viewMode?: ViewMode;
+  viewMode: ViewMode;
 }
 
 const ImageBatch: React.FC<ImageBatchProps> = ({
@@ -45,195 +40,151 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   onDeleteImage,
   onDeleteContainer,
   activeImageUrl,
-  viewMode = 'normal'
+  viewMode
 }) => {
-  if (!images || images.length === 0) return null;
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   
-  const [activeIndex, setActiveIndex] = React.useState(0);
-  const [activeBatchId, setActiveBatchId] = React.useState<string | null>(null);
-  const [openFullScreen, setOpenFullScreen] = React.useState(false);
+  if (!images || images.length === 0) {
+    return null;
+  }
   
-  const isSmallView = viewMode === 'small';
-  const activeImage = images[activeIndex];
+  const anyGenerating = images.some(img => img.status === 'generating');
+  const mostRecentImage = images[0] || {};
   
-  React.useEffect(() => {
-    // Reset to the first image when the batch changes
-    setActiveIndex(0);
-  }, [batchId]);
-  
-  const handleNavigatePrevImage = () => {
-    setActiveIndex(prev => (prev > 0 ? prev - 1 : images.length - 1));
-  };
-  
-  const handleNavigateNextImage = () => {
-    setActiveIndex(prev => (prev < images.length - 1 ? prev + 1 : 0));
-  };
-  
-  const handleImageClick = (url: string, prompt: string) => {
-    const newIndex = images.findIndex(img => img.url === url);
-    if (newIndex >= 0) {
-      setActiveIndex(newIndex);
-    }
-    onImageClick(url, prompt);
-  };
-  
-  const handleOpenFullScreen = () => {
-    setOpenFullScreen(true);
-  };
-  
-  const handleCreateAgain = () => {
-    onCreateAgain(batchId);
-  };
-  
-  const handleUseAsInput = (url: string) => {
-    // This will be forwarded from props if needed
-  };
-  
-  const handleSetActiveImageIndex = (index: number) => {
-    setActiveIndex(index);
-    if (images[index]) {
-      onImageClick(images[index].url, images[index].prompt || '');
-    }
-  };
-  
-  return (
-    <Collapsible 
-      key={batchId} 
-      open={isExpanded}
-      className={`overflow-hidden rounded-lg bg-card border ${
-        isExpanded ? 'col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-4 xl:col-span-5' : 'col-span-1'
-      }`}
-      id={`batch-${batchId}`}
-    >
-      <SortableImageContainer 
-        batchId={batchId} 
+  // If in small mode and not expanded, just show the first image
+  if (viewMode === 'small' && !isExpanded) {
+    return (
+      <SortableImageContainer
+        batchId={batchId}
         batch={{ images }}
         isExpanded={isExpanded}
         toggleExpand={toggleExpand}
         viewMode={viewMode}
       >
-        {!isExpanded && (
-          <Card 
-            className="overflow-hidden relative border-0 rounded-none"
-            onMouseEnter={() => setActiveBatchId(batchId)}
-            onMouseLeave={() => setActiveBatchId(null)}
-          >
-            {/* Collapsed view (carousel-like navigation) */}
-            <ImageBatchItem 
-              image={activeImage} 
-              batchId={batchId} 
-              index={activeIndex}
-              total={images.length}
-              onCreateAgain={onCreateAgain}
-              onUseAsInput={handleUseAsInput}
-              onDeleteImage={onDeleteImage}
-              onFullScreen={handleOpenFullScreen}
-              viewMode={viewMode}
-            />
-            
-            {/* Navigation controls */}
-            {images.length > 1 && !isSmallView && (
-              <NavigationControls 
-                onPrevious={(e) => {
-                  e.stopPropagation();
-                  handleNavigatePrevImage();
-                }}
-                onNext={(e) => {
-                  e.stopPropagation();
-                  handleNavigateNextImage();
-                }}
-              />
-            )}
-          </Card>
-        )}
-        {isExpanded && (
-          <Card 
-            className="overflow-hidden relative border-0 rounded-none"
-            onMouseEnter={() => setActiveBatchId(batchId)}
-            onMouseLeave={() => setActiveBatchId(null)}
-          >
-            {/* Empty content for expanded view */}
-          </Card>
-        )}
+        <div 
+          className="cursor-pointer"
+          onClick={() => toggleExpand(batchId)}
+        >
+          <ImageBatchItem
+            key={`${batchId}-0`}
+            image={mostRecentImage}
+            isActive={mostRecentImage.url === activeImageUrl}
+            onImageClick={onImageClick}
+            onDeleteImage={(index) => onDeleteImage(batchId, index)}
+            mini={true}
+          />
+        </div>
       </SortableImageContainer>
-      
-      {/* Expanded content */}
-      <CollapsibleContent>
-        <ImageDetailView 
-          batchId={batchId}
-          images={images}
-          activeIndex={activeIndex}
-          onSetActiveIndex={handleSetActiveImageIndex}
-          onNavigatePrev={(e) => {
-            e.stopPropagation();
-            handleNavigatePrevImage();
-          }}
-          onNavigateNext={(e) => {
-            e.stopPropagation();
-            handleNavigateNextImage();
-          }}
-          onToggleExpand={toggleExpand}
-          onDeleteImage={onDeleteImage}
-          onCreateAgain={onCreateAgain}
-        />
-      </CollapsibleContent>
-      
-      {/* Full screen dialog */}
-      <Dialog open={openFullScreen} onOpenChange={setOpenFullScreen}>
-        <DialogContent className="max-w-screen-lg p-0 overflow-hidden">
-          <DialogHeader className="p-4 pb-0">
-            <DialogTitle>Image Details</DialogTitle>
-          </DialogHeader>
-          <div className="p-4 pt-0">
-            <div className="flex flex-col">
-              {/* Image with click-to-close */}
-              <div 
-                className="w-full overflow-hidden rounded-md cursor-pointer" 
-                onClick={() => setOpenFullScreen(false)}
-              >
-                <img 
-                  src={activeImage?.url} 
-                  alt={activeImage?.prompt || "Generated image"}
-                  className="w-full h-auto object-contain max-h-[70vh]"
-                />
-              </div>
-              
-              {/* Image info */}
-              <div className="mt-4 text-sm text-muted-foreground">
-                <p className="mb-2">{activeImage?.prompt || "No prompt information"}</p>
-                {activeImage?.workflow && (
-                  <p>Workflow: {activeImage.workflow}</p>
-                )}
-              </div>
-              
-              {/* Action buttons */}
-              <div className="mt-4 flex justify-center space-x-2">
-                <ImageActions
-                  imageUrl={activeImage.url}
-                  onCreateAgain={handleCreateAgain}
-                  generationInfo={{
-                    prompt: activeImage.prompt || '',
-                    workflow: activeImage.workflow || '',
-                    params: activeImage.params
-                  }}
-                  isFullScreen={true}
-                />
-              </div>
-              
-              {/* Close button */}
-              <div className="mt-4 flex justify-center">
-                <Button 
-                  onClick={() => setOpenFullScreen(false)}
-                  variant="outline"
-                >
-                  Close
-                </Button>
-              </div>
+    );
+  }
+  
+  // Do not display the container at all if all images are generating
+  if (images.every(img => img.status === 'generating')) {
+    return null;
+  }
+  
+  const completedImages = images.filter(img => img.status === 'completed');
+  
+  return (
+    <SortableImageContainer 
+      batchId={batchId}
+      batch={{ images }}
+      isExpanded={isExpanded}
+      toggleExpand={toggleExpand}
+      viewMode={viewMode}
+    >
+      <Card className={`rounded-t-none ${viewMode === 'table' ? 'p-0' : ''}`}>
+        <CardContent className={`${viewMode === 'table' ? 'p-2' : 'p-4'}`}>
+          {viewMode === 'table' ? (
+            <div className="space-y-2">
+              {completedImages.map((image, index) => (
+                <div key={`${batchId}-${index}`} className="flex items-center border-b border-border pb-2 last:border-0 last:pb-0">
+                  <div className="w-16 h-16 mr-3 overflow-hidden rounded">
+                    <img 
+                      src={image.url}
+                      alt={image.prompt}
+                      className="w-full h-full object-cover"
+                      onClick={() => onImageClick(image.url, image.prompt)}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs truncate text-muted-foreground">{image.prompt}</p>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8 ml-2"
+                    onClick={() => onDeleteImage(batchId, image.batchIndex)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
             </div>
+          ) : (
+            <div className={`grid gap-4 ${viewMode === 'fullWidth' ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}>
+              {completedImages.map((image, index) => (
+                <ImageBatchItem
+                  key={`${batchId}-${index}`}
+                  image={image}
+                  isActive={image.url === activeImageUrl}
+                  onImageClick={onImageClick}
+                  onDeleteImage={(index) => onDeleteImage(batchId, index)}
+                />
+              ))}
+              {anyGenerating && (
+                <div className="relative aspect-square rounded-lg bg-muted animate-pulse flex items-center justify-center">
+                  <div className="text-sm text-muted-foreground">Generating...</div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          <div className="flex justify-between mt-4">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="text-xs"
+              onClick={onCreateAgain}
+            >
+              <Plus className="h-3 w-3 mr-1" /> Create Another
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-destructive hover:text-destructive"
+              onClick={() => setShowDeleteDialog(true)}
+            >
+              <Trash2 className="h-3 w-3 mr-1" /> Delete All
+            </Button>
           </div>
+        </CardContent>
+      </Card>
+      
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete All Images</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete all images in this batch? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => {
+                onDeleteContainer();
+                setShowDeleteDialog(false);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Collapsible>
+    </SortableImageContainer>
   );
 };
 

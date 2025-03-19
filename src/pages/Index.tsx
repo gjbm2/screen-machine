@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -8,6 +7,7 @@ import ResizableConsole from '@/components/debug/ResizableConsole';
 import { Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import Footer from '@/components/Footer';
 
 interface GeneratedImage {
   url: string;
@@ -83,13 +83,11 @@ const Index = () => {
       return;
     }
     
-    // When creating another image, we need to find the original parameters
     let originalParams = { ...currentParams };
     let originalWorkflow = currentWorkflow;
     let originalRefiner = currentRefiner;
     let originalUploadedImages = [...uploadedImageUrls];
     
-    // If a batchId is specified, find the original parameters from that batch
     if (batchId) {
       const batchImage = generatedImages.find(img => img.batchId === batchId);
       if (batchImage) {
@@ -97,7 +95,6 @@ const Index = () => {
         originalWorkflow = batchImage.workflow;
         originalRefiner = batchImage.refiner || null;
         
-        // If there was a reference image, use it
         if (batchImage.referenceImageUrl) {
           originalUploadedImages = [batchImage.referenceImageUrl];
         } else {
@@ -106,10 +103,8 @@ const Index = () => {
       }
     }
     
-    // Make a proper image reference if needed
     const imageFiles = originalUploadedImages.length > 0 ? originalUploadedImages : undefined;
     
-    // Always set batch size to 1 for "create another" action
     const modifiedGlobalParams = { 
       ...currentGlobalParams, 
       batchSize: 1 
@@ -151,7 +146,6 @@ const Index = () => {
       
       const currentBatchId = batchId || `batch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       
-      // Assign container ID to new batches
       const currentContainerId = nextContainerId;
       if (!batchId) {
         setNextContainerId(prev => prev + 1);
@@ -173,7 +167,6 @@ const Index = () => {
       
       const batchSize = globalParams?.batchSize || 1;
       
-      // Create placeholder images for all items in the batch
       const placeholderImages: GeneratedImage[] = [];
       
       for (let i = 0; i < batchSize; i++) {
@@ -198,10 +191,8 @@ const Index = () => {
         placeholderImages.push(placeholderImage);
       }
       
-      // First update placeholders
       setGeneratedImages(prev => [...placeholderImages, ...prev]);
       
-      // Then update active generations
       setActiveGenerations(prev => [...prev, currentBatchId]);
       
       const requestData = {
@@ -219,7 +210,6 @@ const Index = () => {
       console.log('Sending request with data:', requestData);
       addConsoleLog(`Sending request: ${JSON.stringify(requestData, null, 2)}`);
       
-      // Set a 5-second delay for simulating generation
       setTimeout(() => {
         try {
           const mockImageUrls = [
@@ -283,7 +273,7 @@ const Index = () => {
           
           toast.error('An error occurred while processing images.');
         }
-      }, 5000); // Set to 5 seconds for simulation
+      }, 5000);
     } catch (error) {
       console.error('Error generating image:', error);
       addConsoleLog(`Error generating image: ${error}`);
@@ -312,15 +302,12 @@ const Index = () => {
 
   const handleDeleteImage = (batchId: string, imageIndex: number) => {
     setGeneratedImages(prev => {
-      // Get all images for this batch
       const batchImages = prev.filter(img => img.batchId === batchId);
       
-      // If this was the last image in the batch, remove the batch from the order
       if (batchImages.length === 1) {
         setImageContainerOrder(order => order.filter(id => id !== batchId));
       }
       
-      // Filter out only the specific image we want to delete
       return prev.filter(img => !(img.batchId === batchId && img.batchIndex === imageIndex));
     });
   };
@@ -348,8 +335,8 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen hero-gradient">
-      <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen hero-gradient flex flex-col">
+      <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 flex-grow">
         <div className="flex justify-between items-center">
           <Header />
           <Tooltip>
@@ -395,6 +382,8 @@ const Index = () => {
           />
         </div>
       </div>
+      
+      <Footer />
       
       <ResizableConsole 
         logs={consoleLogs}
