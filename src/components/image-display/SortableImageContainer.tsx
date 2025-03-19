@@ -44,8 +44,8 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
 
   // Determine the title text based on prompt availability
   const titleText = promptText ? 
-    `${containerId ? `#${containerId} ` : ''}${promptText}` : 
-    `${containerId ? `#${containerId} ` : ''}${workflowName}`;
+    `#${containerId} ${promptText}` : 
+    `#${containerId} ${workflowName}`;
 
   const style = {
     transform: CSS.Transform.toString(transform),

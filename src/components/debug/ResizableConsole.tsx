@@ -1,8 +1,9 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
+import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
+import ConsoleOutput from './ConsoleOutput';
+import { Button } from '../ui/button';
 import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 
 interface ResizableConsoleProps {
   logs: string[];
@@ -10,46 +11,56 @@ interface ResizableConsoleProps {
   onClose: () => void;
 }
 
-const ResizableConsole: React.FC<ResizableConsoleProps> = ({ logs, isVisible, onClose }) => {
-  const [height, setHeight] = useState(300);
-  const contentRef = useRef<HTMLDivElement>(null);
+const ResizableConsole: React.FC<ResizableConsoleProps> = ({ 
+  logs, 
+  isVisible,
+  onClose
+}) => {
+  // Increase the default size from 20 to 40 percent
+  const [size, setSize] = useState(40);
+  const resizeHandleRef = useRef<HTMLDivElement>(null);
   
-  useEffect(() => {
-    if (contentRef.current && isVisible) {
-      contentRef.current.scrollTop = contentRef.current.scrollHeight;
+  const handleResize = (sizes: number[]) => {
+    if (sizes[0]) {
+      setSize(sizes[0]);
     }
-  }, [logs, isVisible]);
-  
-  if (!isVisible) return null;
+  };
   
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border shadow-lg">
-      <ResizablePanelGroup direction="vertical">
-        <ResizablePanel defaultSize={40} minSize={20} maxSize={80}>
-          <div className="flex justify-between items-center p-2 border-b">
-            <div className="font-mono text-sm">Console Output</div>
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
+    <div 
+      className={`fixed bottom-0 left-0 right-0 bg-background border-t border-border z-50 transition-all duration-300 ease-in-out ${
+        isVisible ? 'translate-y-0' : 'translate-y-full'
+      }`}
+      style={{ height: isVisible ? `${size}vh` : '0' }}
+    >
+      <PanelGroup direction="vertical" onLayout={handleResize}>
+        <Panel 
+          defaultSize={size} 
+          minSize={10}
+          className="overflow-hidden"
+        >
+          <div className="h-full flex flex-col">
+            <div className="flex justify-between items-center p-2 border-b">
+              <h3 className="text-sm font-medium">Console Output</h3>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={onClose}
+                className="h-7 w-7 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-grow overflow-auto">
+              <ConsoleOutput logs={logs} />
+            </div>
           </div>
-          
-          <div 
-            ref={contentRef}
-            className="console-content h-96 p-3 overflow-auto text-sm font-mono whitespace-pre-wrap"
-          >
-            {logs.length === 0 ? (
-              <div className="text-muted-foreground italic">No logs yet</div>
-            ) : (
-              logs.map((log, index) => (
-                <div key={index} className="mb-1">
-                  {log}
-                </div>
-              ))
-            )}
-          </div>
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-      </ResizablePanelGroup>
+        </Panel>
+        <PanelResizeHandle 
+          ref={resizeHandleRef}
+          className="h-1.5 bg-muted hover:bg-primary/20 cursor-ns-resize transition-colors"
+        />
+      </PanelGroup>
     </div>
   );
 };

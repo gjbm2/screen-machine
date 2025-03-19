@@ -121,7 +121,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </div>
         )}
         
-        {/* Delete button */}
+        {/* Delete button - improved positioning and visibility */}
         {onDeleteImage && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -136,9 +136,9 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </Tooltip>
         )}
         
-        {/* Image Actions - always visible in normal view with higher opacity when hovered */}
+        {/* Image Actions - improved visibility */}
         {image.url && viewMode !== 'small' && (
-          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 opacity-70 group-hover:opacity-100 transition-opacity bg-black/50 rounded-md p-1">
+          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 opacity-70 group-hover:opacity-100 transition-opacity bg-black/70 rounded-md p-1">
             <ImageActions
               imageUrl={image.url}
               onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}

@@ -358,9 +358,9 @@ const Index = () => {
                 variant="ghost" 
                 size="icon" 
                 onClick={toggleConsole}
-                className="h-10 w-10 fixed top-4 right-4 z-10 bg-background/80 backdrop-blur-sm md:static md:bg-transparent md:backdrop-blur-0"
+                className="h-10 w-10 fixed top-4 right-4 z-50 bg-background/80 backdrop-blur-sm md:static md:bg-transparent md:backdrop-blur-0"
               >
-                <Terminal className="h-5 w-5" />
+                <Terminal className={`h-5 w-5 ${isConsoleVisible ? 'text-primary' : ''}`} />
               </Button>
             </TooltipTrigger>
             <TooltipContent>

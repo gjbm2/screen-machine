@@ -61,7 +61,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       {/* Reference image section (directly displayed) */}
       {referenceImageUrl && (
         <div className="mb-4">
-          <p className="text-sm text-muted-foreground mb-2">Reference image used:</p>
+          <p className="text-sm text-muted-foreground mb-2">Reference image:</p>
           <div className="border rounded-md overflow-hidden max-h-40 flex justify-center">
             <img 
               src={referenceImageUrl} 

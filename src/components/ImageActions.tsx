@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { 
@@ -122,14 +121,10 @@ const ImageActions: React.FC<ImageActionsProps> = ({
     setShowInfoDialog(true);
   };
   
-  // Apply transparency based on interaction type
-  const opacityClass = isMouseOver 
-    ? "bg-black/60 hover:bg-black/70" 
-    : "";
-  
+  // Improve button styling for better contrast
   const buttonSizeClass = isFullScreen 
     ? "px-3 py-2 text-sm" 
-    : `${opacityClass} text-white border border-white/20`;
+    : "text-white bg-black/60 hover:bg-black/70 border border-white/20";
 
   const buttonVariant = isFullScreen ? "default" : "secondary";
 
