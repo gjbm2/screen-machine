@@ -49,14 +49,13 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
   }
   
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border">
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border" style={{ height: `${size}vh` }}>
       <ResizablePanelGroup direction="vertical">
         <ResizablePanel 
           defaultSize={100} 
           onResize={setSize} 
           minSize={15}
           maxSize={60}
-          className="h-auto"
         >
           <div className="h-full flex flex-col">
             <div className="flex items-center justify-between px-4 py-2 border-b">
@@ -82,7 +81,7 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
                 </Button>
               </div>
             </div>
-            <div ref={consoleRef} className="flex-1 overflow-y-auto console-content p-4 text-xs">
+            <div ref={consoleRef} className="flex-1 overflow-y-auto p-4 text-xs h-full">
               <ConsoleOutput logs={logs} />
             </div>
           </div>

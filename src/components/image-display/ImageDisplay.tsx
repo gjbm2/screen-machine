@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
@@ -8,10 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import ImageBatch from './ImageBatch';
 import LoadingPlaceholder from './LoadingPlaceholder';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import ReferenceImagesSection from './ReferenceImagesSection';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import ImageDetailView from './ImageDetailView';
 import { formatDistanceToNow } from 'date-fns';
+import SortableTableRow from './SortableTableRow';
 
 // Export ViewMode type but remove 'large' as an option
 export type ViewMode = 'normal' | 'small' | 'table';
@@ -158,10 +159,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   
   return (
     <div className="mt-8">
-      {uploadedImages.length > 0 && (
-        <ReferenceImagesSection images={uploadedImages} />
-      )}
-      
       {hasBatches && (
         <div className="mt-8">
           <div className="flex justify-between items-center mb-4">
@@ -248,7 +245,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {imageContainerOrder.map((batchId, index) => {
+                        {imageContainerOrder.map((batchId) => {
                           if (!batches[batchId]) return null;
                           
                           const batchImages = batches[batchId];
@@ -257,23 +254,16 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                           const hasReferenceImage = !!firstImage.referenceImageUrl;
                           
                           return (
-                            <TableRow 
-                              key={batchId} 
-                              className="cursor-pointer hover:bg-muted/60"
+                            <SortableTableRow 
+                              key={batchId}
+                              id={batchId}
                               onClick={() => handleTableRowClick(batchId)}
-                            >
-                              <TableCell className="font-medium">{firstImage.containerId || index + 1}</TableCell>
-                              <TableCell>
-                                <div className="flex items-center">
-                                  {hasReferenceImage && (
-                                    <Image className="h-4 w-4 text-primary mr-2" />
-                                  )}
-                                  <span className="truncate max-w-md">{firstImage.prompt}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-center">{completedImages.length}</TableCell>
-                              <TableCell>{formatTimeAgo(firstImage.timestamp)}</TableCell>
-                            </TableRow>
+                              index={firstImage.containerId || 0}
+                              prompt={firstImage.prompt}
+                              hasReferenceImage={hasReferenceImage}
+                              completedImages={completedImages.length}
+                              timestamp={firstImage.timestamp}
+                            />
                           );
                         })}
                       </TableBody>

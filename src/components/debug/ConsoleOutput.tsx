@@ -17,7 +17,7 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs }) => {
   return (
     <div 
       ref={consoleRef}
-      className="h-full font-mono text-xs bg-black text-white flex-1 overflow-y-auto p-2"
+      className="h-full font-mono text-xs bg-black text-white overflow-y-auto p-2 w-full"
     >
       {logs.length === 0 ? (
         <p className="text-white/60 p-2">No console logs yet.</p>
