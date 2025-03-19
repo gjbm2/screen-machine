@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -6,19 +7,14 @@ import { toast } from 'sonner';
 import { Upload, X } from 'lucide-react';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import workflowsData from '@/data/workflows.json';
+import examplePromptsData from '@/data/example-prompts.json';
 import { Workflow } from '@/types/workflows';
+import { Badge } from '@/components/ui/badge';
 
 interface PromptFormProps {
   onSubmit: (prompt: string, imageFile?: File | null, workflow?: string, params?: Record<string, any>) => void;
   isLoading: boolean;
 }
-
-const EXAMPLE_PROMPTS = [
-  "A peaceful lakeside cabin at sunset with mountains in the background",
-  "A futuristic cityscape with flying cars and neon lights",
-  "A magical forest with glowing mushrooms and fairy lights",
-  "An astronaut riding a horse on Mars"
-];
 
 const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
   const [prompt, setPrompt] = useState('');
@@ -163,12 +159,26 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
           
           <div className="px-4 pb-3">
             <p className="text-xs text-muted-foreground mb-2">Try an example:</p>
-            <div className="flex flex-wrap gap-2">
-              {EXAMPLE_PROMPTS.map((example, index) => (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {examplePromptsData.basicPrompts.map((example, index) => (
                 <button
-                  key={index}
+                  key={`basic-${index}`}
                   type="button"
                   className="text-xs bg-secondary/50 hover:bg-secondary px-2 py-1 rounded-full text-foreground/70 transition-colors"
+                  onClick={() => handleExampleClick(example)}
+                >
+                  {example.length > 30 ? `${example.slice(0, 30)}...` : example}
+                </button>
+              ))}
+            </div>
+            
+            <p className="text-xs text-muted-foreground mb-2">Try a style:</p>
+            <div className="flex flex-wrap gap-2">
+              {examplePromptsData.stylePrompts.map((example, index) => (
+                <button
+                  key={`style-${index}`}
+                  type="button"
+                  className="text-xs bg-purple-500/20 hover:bg-purple-500/30 px-2 py-1 rounded-full text-purple-700 transition-colors"
                   onClick={() => handleExampleClick(example)}
                 >
                   {example.length > 30 ? `${example.slice(0, 30)}...` : example}

@@ -1,0 +1,15 @@
+
+{
+  "basicPrompts": [
+    "A peaceful lakeside cabin at sunset with mountains in the background",
+    "A futuristic cityscape with flying cars and neon lights",
+    "A magical forest with glowing mushrooms and fairy lights",
+    "An astronaut riding a horse on Mars"
+  ],
+  "stylePrompts": [
+    "A medieval castle on a hilltop in the style of an oil painting",
+    "A beautiful portrait of a woman in the style of watercolor",
+    "A bustling market street in impressionist style",
+    "A serene beach landscape in the style of Studio Ghibli"
+  ]
+}
