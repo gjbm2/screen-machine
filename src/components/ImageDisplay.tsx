@@ -17,9 +17,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from '@/components/ui/button';
-import { Info, Download, Share2, Copy, FileInput, ChevronLeft, ChevronRight, Maximize } from 'lucide-react';
+import { Info, Download, Share2, Copy, FileInput, ChevronLeft, ChevronRight, Maximize, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import ImageActions from '@/components/ImageActions';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -59,6 +60,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   // State to track the currently full-screen image
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
+  // State to track which batches are expanded (unrolled)
+  const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
   
   // Always render the component when we have uploaded images or when we're loading
   // or when we have generated image results
@@ -115,6 +118,14 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }));
   };
 
+  // Toggle expanded state for a batch
+  const toggleExpandBatch = (batchId: string) => {
+    setExpandedBatches(prev => ({
+      ...prev,
+      [batchId]: !prev[batchId]
+    }));
+  };
+
   // Format workflow name for display (remove hyphens and capitalize)
   const formatWorkflowName = (name: string) => {
     return name
@@ -138,6 +149,145 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
   // Get batched images
   const batchedImages = getBatchedImages();
+
+  // Render an individual image within a batch
+  const renderBatchImage = (image: typeof generatedImages[0], batchId: string, isActive: boolean, index: number, total: number) => {
+    const isGenerating = image.status === 'generating';
+    
+    if (isGenerating) {
+      return (
+        <div className="aspect-square flex items-center justify-center bg-secondary/20">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          {image.prompt && (
+            <p className="text-sm text-center text-muted-foreground absolute mt-20">
+              Generating: {image.prompt}
+            </p>
+          )}
+        </div>
+      );
+    }
+    
+    return (
+      <div className="aspect-square relative">
+        <img
+          src={image.url}
+          alt={image.prompt || 'Generated image'}
+          className="w-full h-full object-cover"
+        />
+        
+        {/* Full screen view button */}
+        <Dialog>
+          <DialogTrigger asChild>
+            <button 
+              className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors z-20"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Maximize className="h-4 w-4" />
+            </button>
+          </DialogTrigger>
+          <DialogContent fullscreen>
+            <div className="w-full h-full flex items-center justify-center">
+              <img
+                src={image.url}
+                alt={image.prompt || 'Generated image full view'}
+                className="max-w-full max-h-full object-contain"
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+        
+        {/* Batch counter */}
+        {total > 1 && (
+          <div className="absolute top-2 left-2 bg-black/70 text-white px-3 py-1 rounded-full text-xs font-medium z-10">
+            {index + 1}/{total}
+          </div>
+        )}
+        
+        {/* Image controls overlay - visible on hover/focus with better labels */}
+        {isActive && (
+          <div className="absolute inset-0 bg-black/60 flex flex-col justify-center items-center transition-opacity duration-200 opacity-100">
+            <div className="flex flex-wrap justify-center gap-3 p-4">
+              {/* Info button */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/40 transition-colors">
+                    <Info className="h-4 w-4 mr-1" />
+                    <span className="text-xs">Info</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Image Generation Details</DialogTitle>
+                    <DialogDescription>
+                      Information about this generated image.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-2 mt-4">
+                    <div>
+                      <h4 className="font-semibold">Prompt:</h4>
+                      <p className="text-sm text-muted-foreground">{image.prompt}</p>
+                    </div>
+                    {image.workflow && (
+                      <div>
+                        <h4 className="font-semibold">Workflow:</h4>
+                        <p className="text-sm text-muted-foreground">{formatWorkflowName(image.workflow)}</p>
+                      </div>
+                    )}
+                    {image.params && Object.keys(image.params).length > 0 && (
+                      <div>
+                        <h4 className="font-semibold">Parameters:</h4>
+                        <div className="text-sm text-muted-foreground">
+                          {Object.entries(image.params).map(([key, value]) => (
+                            <div key={key} className="flex justify-between">
+                              <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                              <span>{value?.toString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {total > 1 && (
+                      <div>
+                        <h4 className="font-semibold">Batch:</h4>
+                        <p className="text-sm text-muted-foreground">Image {index + 1} of {total}</p>
+                      </div>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+              
+              {/* New variant button */}
+              <Button 
+                variant="secondary" 
+                size="sm" 
+                className="bg-white/20 hover:bg-white/40 transition-colors"
+                onClick={() => handleCreateVariant(batchId)}
+              >
+                <Copy className="h-4 w-4 mr-1" />
+                <span className="text-xs">New Variant</span>
+              </Button>
+              
+              {/* Image actions via ImageActions component */}
+              <ImageActions 
+                imageUrl={image.url} 
+                onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(image.url)}
+                generationInfo={{
+                  prompt: image.prompt,
+                  workflow: image.workflow,
+                  params: image.params
+                }}
+              />
+            </div>
+            
+            {/* Prompt preview */}
+            <div className="absolute bottom-0 w-full bg-black/70 p-2">
+              <p className="text-xs text-white truncate">{image.prompt}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="mt-12 animate-fade-in">
@@ -244,170 +394,119 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               const activeIndex = getActiveImageIndex(batchId, images.length);
               const activeImage = images[activeIndex];
               const isActive = activeBatchId === batchId;
-              const isGenerating = activeImage.status === 'generating';
+              const isExpanded = expandedBatches[batchId];
               
               return (
-                <Card 
+                <Collapsible 
                   key={batchId} 
-                  className="overflow-hidden relative"
-                  onMouseEnter={() => setActiveBatchId(batchId)}
-                  onMouseLeave={() => setActiveBatchId(null)}
+                  open={isExpanded}
+                  onOpenChange={() => toggleExpandBatch(batchId)}
+                  className={isExpanded ? "col-span-full" : ""}
                 >
-                  {/* Show loading overlay if generating new image for this batch */}
-                  {isGenerating ? (
-                    <div className="aspect-square flex items-center justify-center bg-secondary/20">
-                      <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-                      {activeImage.prompt && (
-                        <p className="text-sm text-center text-muted-foreground absolute mt-20">
-                          Generating: {activeImage.prompt}
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="aspect-square relative">
-                      <img
-                        src={activeImage.url}
-                        alt={activeImage.prompt || 'Generated image'}
-                        className="w-full h-full object-cover"
-                      />
-                      
-                      {/* Full screen view button */}
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <button 
-                            className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors z-20"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Maximize className="h-4 w-4" />
-                          </button>
-                        </DialogTrigger>
-                        <DialogContent fullscreen>
-                          <div className="w-full h-full flex items-center justify-center">
-                            <img
-                              src={activeImage.url}
-                              alt={activeImage.prompt || 'Generated image full view'}
-                              className="max-w-full max-h-full object-contain"
-                            />
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                      
-                      {/* Batch counter */}
-                      {images.length > 1 && (
-                        <div className="absolute top-2 left-2 bg-black/70 text-white px-3 py-1 rounded-full text-xs font-medium z-10">
-                          {activeIndex + 1}/{images.length}
-                        </div>
-                      )}
-                      
-                      {/* Navigation controls - improved for visibility and reliability */}
-                      {images.length > 1 && (
-                        <div className="absolute inset-0 pointer-events-none">
-                          <button 
-                            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigatePrevImage(batchId, images.length);
-                            }}
-                          >
-                            <ChevronLeft className="h-5 w-5" />
-                          </button>
-                          <button 
-                            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigateNextImage(batchId, images.length);
-                            }}
-                          >
-                            <ChevronRight className="h-5 w-5" />
-                          </button>
-                        </div>
-                      )}
-                      
-                      {/* Image controls overlay - visible on hover/focus with better labels */}
-                      <div 
-                        className={`absolute inset-0 bg-black/60 flex flex-col justify-center items-center transition-opacity duration-200 ${isActive ? 'opacity-100' : 'opacity-0'}`}
+                  <Card 
+                    className={`overflow-hidden relative ${isExpanded ? "mb-2" : ""}`}
+                    onMouseEnter={() => setActiveBatchId(batchId)}
+                    onMouseLeave={() => setActiveBatchId(null)}
+                  >
+                    {/* Expand/Collapse button */}
+                    <CollapsibleTrigger asChild>
+                      <button 
+                        className="absolute top-2 left-10 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors z-20"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="flex flex-wrap justify-center gap-3 p-4">
-                          {/* Info button */}
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/40 transition-colors">
-                                <Info className="h-4 w-4 mr-1" />
-                                <span className="text-xs">Info</span>
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Image Generation Details</DialogTitle>
-                                <DialogDescription>
-                                  Information about this generated image.
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-2 mt-4">
-                                <div>
-                                  <h4 className="font-semibold">Prompt:</h4>
-                                  <p className="text-sm text-muted-foreground">{activeImage.prompt}</p>
-                                </div>
-                                {activeImage.workflow && (
-                                  <div>
-                                    <h4 className="font-semibold">Workflow:</h4>
-                                    <p className="text-sm text-muted-foreground">{formatWorkflowName(activeImage.workflow)}</p>
-                                  </div>
-                                )}
-                                {activeImage.params && Object.keys(activeImage.params).length > 0 && (
-                                  <div>
-                                    <h4 className="font-semibold">Parameters:</h4>
-                                    <div className="text-sm text-muted-foreground">
-                                      {Object.entries(activeImage.params).map(([key, value]) => (
-                                        <div key={key} className="flex justify-between">
-                                          <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                                          <span>{value?.toString()}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                {images.length > 1 && (
-                                  <div>
-                                    <h4 className="font-semibold">Batch:</h4>
-                                    <p className="text-sm text-muted-foreground">Image {activeIndex + 1} of {images.length}</p>
-                                  </div>
-                                )}
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                          
-                          {/* New variant button */}
-                          <Button 
-                            variant="secondary" 
-                            size="sm" 
-                            className="bg-white/20 hover:bg-white/40 transition-colors"
-                            onClick={() => handleCreateVariant(batchId)}
-                          >
-                            <Copy className="h-4 w-4 mr-1" />
-                            <span className="text-xs">New Variant</span>
-                          </Button>
-                          
-                          {/* Image actions via ImageActions component */}
-                          <ImageActions 
-                            imageUrl={activeImage.url} 
-                            onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(activeImage.url)}
-                            generationInfo={{
-                              prompt: activeImage.prompt,
-                              workflow: activeImage.workflow,
-                              params: activeImage.params
-                            }}
-                          />
-                        </div>
+                        {isExpanded ? 
+                          <ChevronUp className="h-4 w-4" /> : 
+                          <ChevronDown className="h-4 w-4" />
+                        }
+                      </button>
+                    </CollapsibleTrigger>
+                    
+                    {/* Collapsed view (carousel-like navigation) */}
+                    {!isExpanded && (
+                      <>
+                        {renderBatchImage(activeImage, batchId, isActive, activeIndex, images.length)}
                         
-                        {/* Prompt preview */}
-                        <div className="absolute bottom-0 w-full bg-black/70 p-2">
-                          <p className="text-xs text-white truncate">{activeImage.prompt}</p>
-                        </div>
+                        {/* Navigation controls */}
+                        {images.length > 1 && (
+                          <div className="absolute inset-0 pointer-events-none">
+                            <button 
+                              className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigatePrevImage(batchId, images.length);
+                              }}
+                            >
+                              <ChevronLeft className="h-5 w-5" />
+                            </button>
+                            <button 
+                              className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigateNextImage(batchId, images.length);
+                              }}
+                            >
+                              <ChevronRight className="h-5 w-5" />
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    
+                    {/* Expanded view (single selected image) */}
+                    {isExpanded && (
+                      <div className="aspect-square">
+                        {renderBatchImage(activeImage, batchId, isActive, activeIndex, images.length)}
                       </div>
+                    )}
+                  </Card>
+                  
+                  {/* Expanded content with all images in the batch */}
+                  <CollapsibleContent>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                      {images.map((image, index) => (
+                        <Card 
+                          key={`${batchId}-${index}`}
+                          className={`overflow-hidden cursor-pointer transition-all ${activeIndex === index ? 'ring-2 ring-primary' : ''}`}
+                          onClick={() => setActiveImageIndices(prev => ({ ...prev, [batchId]: index }))}
+                        >
+                          <div className="aspect-square relative">
+                            <img
+                              src={image.url}
+                              alt={`Batch image ${index + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                            
+                            {/* Full screen button */}
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <button 
+                                  className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors z-10"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Maximize className="h-4 w-4" />
+                                </button>
+                              </DialogTrigger>
+                              <DialogContent fullscreen>
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <img
+                                    src={image.url}
+                                    alt={`Batch image ${index + 1} full view`}
+                                    className="max-w-full max-h-full object-contain"
+                                  />
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                            
+                            {/* Image number indicator */}
+                            <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-1 rounded-full text-xs">
+                              {index + 1}
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
                     </div>
-                  )}
-                </Card>
+                  </CollapsibleContent>
+                </Collapsible>
               );
             })}
           </div>
