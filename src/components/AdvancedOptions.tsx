@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   Sheet,
@@ -7,10 +8,11 @@ import {
   SheetTitle,
   SheetTrigger,
   SheetFooter,
+  SheetClose,
 } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Settings, ChevronDown, ExternalLink } from 'lucide-react';
+import { Settings, ChevronDown, ExternalLink, X } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Workflow, WorkflowParam } from '@/types/workflows';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -28,6 +30,8 @@ interface AdvancedOptionsProps {
   onParamChange: (paramId: string, value: any) => void;
   globalParams?: Record<string, any>;
   onGlobalParamChange?: (paramId: string, value: any) => void;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
@@ -38,32 +42,28 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   onParamChange,
   globalParams = {},
   onGlobalParamChange = () => {},
+  isOpen = false,
+  onOpenChange = () => {},
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
   const [isParamsOpen, setIsParamsOpen] = useState(true);
   const [isGlobalParamsOpen, setIsGlobalParamsOpen] = useState(true);
   
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflow) || workflows[0];
 
   return (
-    <Sheet open={isOpen} onOpenChange={setIsOpen}>
-      <SheetTrigger asChild>
-        <Button 
-          variant="outline" 
-          className="w-full"
-          data-advanced-options-trigger
-        >
-          <Settings className="h-4 w-4 mr-2" />
-          Advanced Options
-        </Button>
-      </SheetTrigger>
+    <Sheet open={isOpen} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Advanced Options</SheetTitle>
-          <SheetDescription>
-            Configure generation settings for your images
-          </SheetDescription>
-        </SheetHeader>
+        <div className="flex justify-between items-center mb-4">
+          <SheetHeader className="text-left p-0">
+            <SheetTitle>Advanced Options</SheetTitle>
+            <SheetDescription>
+              Configure generation settings for your images
+            </SheetDescription>
+          </SheetHeader>
+          <SheetClose className="rounded-full p-1 hover:bg-accent/50">
+            <X className="h-5 w-5" />
+          </SheetClose>
+        </div>
         
         <div className="py-6 space-y-6">
           <div className="space-y-2">

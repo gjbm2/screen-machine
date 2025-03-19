@@ -72,7 +72,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         type="button" 
         variant="outline"
         onClick={triggerFileInput}
-        className="rounded-full flex-shrink-0 text-sm flex items-center gap-2 px-4 py-6"
+        className="rounded-full flex-shrink-0 text-sm flex items-center gap-2 px-4 h-[48px]"
         disabled={isLoading}
       >
         <Upload className="h-4 w-4" />

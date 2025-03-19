@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -65,7 +64,7 @@ const Index = () => {
       batchId 
     );
     
-    toast.info('Regenerating image...');
+    toast.info('Creating another image...');
   };
 
   const handleSubmitPrompt = async (
@@ -187,11 +186,14 @@ const Index = () => {
     setImageContainerOrder(prev => {
       const newOrder = [...prev];
       const [removed] = newOrder.splice(sourceIndex, 1);
+      
       // If we're moving to the end (which implies deleting a container)
       if (destinationIndex >= newOrder.length) {
         // Simply don't add it back, effectively deleting it
         return newOrder;
       }
+      
+      // Otherwise insert at the destination index
       newOrder.splice(destinationIndex, 0, removed);
       return newOrder;
     });
@@ -211,7 +213,7 @@ const Index = () => {
         <div className="mt-8 max-w-2xl mx-auto">
           <PromptForm 
             onSubmit={handleSubmitPrompt} 
-            isLoading={false} // Never disable the form
+            isLoading={activeGenerations.length > 0}
             currentPrompt={currentPrompt}
           />
         </div>

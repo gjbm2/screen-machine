@@ -9,12 +9,14 @@ interface WorkflowIconSelectorProps {
   workflows: Workflow[];
   selectedWorkflow: string;
   onWorkflowChange: (workflowId: string) => void;
+  hideWorkflowName?: boolean;
 }
 
 const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   workflows,
   selectedWorkflow,
   onWorkflowChange,
+  hideWorkflowName = false,
 }) => {
   // Get the icon based on workflow ID
   const getWorkflowIcon = (workflowId: string) => {
@@ -35,11 +37,13 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
-          {currentWorkflow?.name}
-        </p>
-      </div>
+      {!hideWorkflowName && currentWorkflow && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            {currentWorkflow.name}
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {workflows.map((workflow) => (

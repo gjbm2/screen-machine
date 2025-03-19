@@ -18,7 +18,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from '@/components/ui/button';
-import { Info, Download, Share2, Copy, FileInput, ChevronLeft, ChevronRight, Maximize, ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from 'lucide-react';
+import { Info, Download, Share2, Plus, FileInput, ChevronLeft, ChevronRight, Maximize, ChevronDown, ChevronUp, GripVertical, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import ImageActions from '@/components/ImageActions';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -26,6 +26,11 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -292,10 +297,10 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       .join(' ');
   };
 
-  const handleCreateVariant = (batchId: string) => {
+  const handleCreateAnother = (batchId: string) => {
     if (onCreateAgain) {
       onCreateAgain(batchId);
-      toast.info('Creating a new variant...');
+      toast.info('Creating another image...');
     }
   };
 
@@ -317,14 +322,14 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
     
     return (
-      <div className="aspect-square relative">
+      <div className="aspect-square relative group">
         <img
           src={image.url}
           alt={image.prompt || 'Generated image'}
           className="w-full h-full object-cover"
         />
         
-        {/* Delete button */}
+        {/* Delete button - always visible */}
         <button 
           className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors z-20"
           onClick={(e) => {
@@ -335,7 +340,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           <Trash2 className="h-4 w-4" />
         </button>
         
-        {/* Full screen view button */}
+        {/* Full screen view button - always visible */}
         <Dialog>
           <DialogTrigger asChild>
             <button 
@@ -346,11 +351,16 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </button>
           </DialogTrigger>
           <DialogContent className="p-0 overflow-hidden" fullscreen>
-            <DialogHeader className="absolute top-0 left-0 right-0 bg-black/80 z-10 p-4">
-              <DialogTitle className="text-white">Image View</DialogTitle>
-              <DialogDescription className="text-white/70 truncate pr-10">
-                {image.prompt}
-              </DialogDescription>
+            <DialogHeader className="absolute top-0 left-0 right-0 bg-black/80 z-10 p-4 flex justify-between items-start">
+              <div>
+                <DialogTitle className="text-white">Image View</DialogTitle>
+                <DialogDescription className="text-white/70 truncate pr-10">
+                  {image.prompt}
+                </DialogDescription>
+              </div>
+              <DialogClose className="rounded-full p-1 hover:bg-black/40 text-white">
+                <X className="h-6 w-6" />
+              </DialogClose>
             </DialogHeader>
             
             <div className="w-full h-full flex flex-col">
@@ -369,13 +379,14 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 <ImageActions 
                   imageUrl={image.url} 
                   onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(image.url)}
-                  onCreateAgain={() => handleCreateVariant(batchId)}
+                  onCreateAgain={() => handleCreateAnother(batchId)}
                   generationInfo={{
                     prompt: image.prompt,
                     workflow: image.workflow,
                     params: image.params
                   }}
                   isFullScreen
+                  createButtonLabel="Create Another"
                 />
               </div>
             </div>
@@ -389,89 +400,91 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           </div>
         )}
         
-        {/* Image controls overlay - visible on hover/focus */}
-        {isActive && (
-          <div className="absolute inset-0 bg-black/60 flex flex-col justify-center items-center transition-opacity duration-200 opacity-100">
-            <div className="flex flex-wrap justify-center gap-3 p-4">
-              {/* Info button */}
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/40 transition-colors">
-                    <Info className="h-4 w-4 mr-1" />
-                    <span className="text-xs">Info</span>
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
+        {/* Image controls overlay - visible on hover/focus with improved UI */}
+        <div className="absolute bottom-0 left-0 right-0 bg-black/60 flex justify-center p-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+          <div className="flex flex-wrap gap-2 justify-center">
+            {/* Info button */}
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/40 transition-colors">
+                  <Info className="h-4 w-4 mr-1" />
+                  <span className="text-xs">Info</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <div className="flex justify-between items-start">
                   <DialogHeader>
                     <DialogTitle>Image Generation Details</DialogTitle>
                     <DialogDescription>
                       Information about this generated image.
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="space-y-2 mt-4">
-                    <div>
-                      <h4 className="font-semibold">Prompt:</h4>
-                      <p className="text-sm text-muted-foreground">{image.prompt}</p>
-                    </div>
-                    {image.workflow && (
-                      <div>
-                        <h4 className="font-semibold">Workflow:</h4>
-                        <p className="text-sm text-muted-foreground">{formatWorkflowName(image.workflow)}</p>
-                      </div>
-                    )}
-                    {image.params && Object.keys(image.params).length > 0 && (
-                      <div>
-                        <h4 className="font-semibold">Parameters:</h4>
-                        <div className="text-sm text-muted-foreground">
-                          {Object.entries(image.params).map(([key, value]) => (
-                            <div key={key} className="flex justify-between">
-                              <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                              <span>{value?.toString()}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {total > 1 && (
-                      <div>
-                        <h4 className="font-semibold">Batch:</h4>
-                        <p className="text-sm text-muted-foreground">Image {index + 1} of {total}</p>
-                      </div>
-                    )}
+                  <DialogClose className="rounded-full p-1 hover:bg-accent/50">
+                    <X className="h-5 w-5" />
+                  </DialogClose>
+                </div>
+                <div className="space-y-2 mt-4">
+                  <div>
+                    <h4 className="font-semibold">Prompt:</h4>
+                    <p className="text-sm text-muted-foreground">{image.prompt}</p>
                   </div>
-                </DialogContent>
-              </Dialog>
-              
-              {/* New variant button */}
-              <Button 
-                variant="secondary" 
-                size="sm" 
-                className="bg-white/20 hover:bg-white/40 transition-colors"
-                onClick={() => handleCreateVariant(batchId)}
-              >
-                <Copy className="h-4 w-4 mr-1" />
-                <span className="text-xs">New Variant</span>
-              </Button>
-              
-              {/* Image actions via ImageActions component */}
-              <ImageActions 
-                imageUrl={image.url} 
-                onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(image.url)}
-                onCreateAgain={() => handleCreateVariant(batchId)}
-                generationInfo={{
-                  prompt: image.prompt,
-                  workflow: image.workflow,
-                  params: image.params
-                }}
-              />
-            </div>
+                  {image.workflow && (
+                    <div>
+                      <h4 className="font-semibold">Workflow:</h4>
+                      <p className="text-sm text-muted-foreground">{formatWorkflowName(image.workflow)}</p>
+                    </div>
+                  )}
+                  {image.params && Object.keys(image.params).length > 0 && (
+                    <div>
+                      <h4 className="font-semibold">Parameters:</h4>
+                      <div className="text-sm text-muted-foreground">
+                        {Object.entries(image.params).map(([key, value]) => (
+                          <div key={key} className="flex justify-between">
+                            <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                            <span>{value?.toString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {total > 1 && (
+                    <div>
+                      <h4 className="font-semibold">Batch:</h4>
+                      <p className="text-sm text-muted-foreground">Image {index + 1} of {total}</p>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
             
-            {/* Prompt preview */}
-            <div className="absolute bottom-0 w-full bg-black/70 p-2">
-              <p className="text-xs text-white truncate">{image.prompt}</p>
-            </div>
+            {/* Create Another button */}
+            <Button 
+              variant="secondary" 
+              size="sm" 
+              className="bg-white/20 hover:bg-white/40 transition-colors"
+              onClick={() => handleCreateAnother(batchId)}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              <span className="text-xs">Create Another</span>
+            </Button>
+            
+            {/* Image actions */}
+            <Button 
+              variant="secondary" 
+              size="sm" 
+              className="bg-white/20 hover:bg-white/40 transition-colors"
+              onClick={() => onUseGeneratedAsInput && onUseGeneratedAsInput(image.url)}
+            >
+              <FileInput className="h-4 w-4 mr-1" />
+              <span className="text-xs">Use as Input</span>
+            </Button>
           </div>
-        )}
+        </div>
+        
+        {/* Light prompt preview at bottom */}
+        <div className="absolute bottom-0 left-0 right-0 bg-black/40 px-2 py-1 opacity-0 group-hover:opacity-0">
+          <p className="text-xs text-white truncate">{image.prompt}</p>
+        </div>
       </div>
     );
   };
@@ -481,11 +494,11 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     return (
       <Card
         className="overflow-hidden cursor-pointer border-dashed border-2 bg-secondary/10 hover:bg-secondary/20 transition-colors"
-        onClick={() => handleCreateVariant(batchId)}
+        onClick={() => handleCreateAnother(batchId)}
       >
         <div className="aspect-square flex flex-col items-center justify-center p-4 text-muted-foreground">
           <Plus className="h-12 w-12 mb-2 text-primary/60" />
-          <p className="text-sm font-medium">Create New Variant</p>
+          <p className="text-sm font-medium">Create Another</p>
           <p className="text-xs mt-1 text-center">Click to generate a new image based on this prompt</p>
         </div>
       </Card>
@@ -612,7 +625,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 items={sortableIds}
                 strategy={verticalListSortingStrategy}
               >
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                   {batchedImages.map(({ batchId, images }) => {
                     // Skip empty batches
                     if (images.length === 0) return null;
@@ -634,7 +647,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         <Collapsible 
                           key={batchId} 
                           open={isExpanded}
-                          className="overflow-hidden rounded-lg bg-card border shadow-md col-span-1 md:col-span-3 lg:col-span-4"
+                          className="overflow-hidden rounded-lg bg-card border shadow-md col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-4 xl:col-span-5"
                         >
                           <SortableContainer 
                             batchId={batchId} 
@@ -655,7 +668,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                           <CollapsibleContent>
                             <div className="p-4 space-y-4">
                               {/* Selected image view */}
-                              <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden max-w-lg mx-auto">
+                              <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden max-w-lg mx-auto group">
                                 {renderBatchImage(activeImage, batchId, true, activeIndex, filteredImages.length)}
                                 
                                 {/* Navigation controls in expanded view */}
@@ -688,13 +701,14 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                 <ImageActions 
                                   imageUrl={activeImage.url} 
                                   onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(activeImage.url)}
-                                  onCreateAgain={() => handleCreateVariant(batchId)}
+                                  onCreateAgain={() => handleCreateAnother(batchId)}
                                   generationInfo={{
                                     prompt: activeImage.prompt,
                                     workflow: activeImage.workflow,
                                     params: activeImage.params
                                   }}
                                   isFullScreen
+                                  createButtonLabel="Create Another"
                                 />
                               </div>
                               
@@ -706,7 +720,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                     className={`overflow-hidden cursor-pointer transition-all ${activeIndex === index ? 'ring-2 ring-primary' : ''}`}
                                     onClick={() => setActiveImageIndices(prev => ({ ...prev, [batchId]: index }))}
                                   >
-                                    <div className="aspect-square relative">
+                                    <div className="aspect-square relative group">
                                       <img
                                         src={image.url}
                                         alt={`Batch image ${index + 1}`}
@@ -715,7 +729,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                       
                                       {/* Delete button on thumbnail */}
                                       <button 
-                                        className="absolute top-1 left-1 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-20"
+                                        className="absolute top-1 left-1 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-20 opacity-0 group-hover:opacity-100"
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           handleDeleteImage(batchId, index);
@@ -733,15 +747,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                 ))}
                                 
                                 {/* New variant placeholder in gallery */}
-                                <Card 
-                                  className="overflow-hidden cursor-pointer border-dashed border bg-secondary/10 hover:bg-secondary/20 transition-colors"
-                                  onClick={() => handleCreateVariant(batchId)}
-                                >
-                                  <div className="aspect-square flex flex-col items-center justify-center p-2 text-muted-foreground">
-                                    <Plus className="h-8 w-8 mb-1 text-primary/60" />
-                                    <p className="text-xs font-medium">New Variant</p>
-                                  </div>
-                                </Card>
+                                {renderNewVariantPlaceholder(batchId)}
                               </div>
                               
                               {/* Roll up button */}

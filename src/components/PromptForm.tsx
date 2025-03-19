@@ -33,6 +33,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>('text-to-image');
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({});
   const [globalParams, setGlobalParams] = useState<Record<string, any>>({});
+  const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   const workflows = workflowsData as Workflow[];
   
   useEffect(() => {
@@ -138,6 +139,10 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
     }));
   };
 
+  const toggleAdvancedOptions = () => {
+    setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
+  };
+
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
 
   return (
@@ -195,7 +200,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
           
           <PromptInput
             prompt={prompt}
-            isLoading={false}
+            isLoading={isLoading}
             onPromptChange={setPrompt}
           />
           
@@ -208,57 +213,55 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
           <div className="p-3 pt-0 space-y-3">
             <div className="flex justify-between items-center gap-2">
               <div className="flex items-center gap-2">
-                <WorkflowIconSelector
-                  workflows={workflows}
-                  selectedWorkflow={selectedWorkflow}
-                  onWorkflowChange={handleWorkflowChange}
-                />
-                
-                <Button 
-                  type="button"
-                  variant="outline" 
-                  size="sm"
-                  data-advanced-options-trigger
-                  onClick={() => {
-                    const advancedOptionsButton = document.querySelector('[data-advanced-options-trigger]') as HTMLButtonElement;
-                    if (advancedOptionsButton) {
-                      advancedOptionsButton.click();
-                    }
-                  }}
-                  className="px-3 text-xs text-muted-foreground"
-                >
-                  <Settings className="h-3 w-3 mr-1" />
-                  Advanced
-                </Button>
+                <div className="flex items-center gap-2">
+                  <WorkflowIconSelector
+                    workflows={workflows}
+                    selectedWorkflow={selectedWorkflow}
+                    onWorkflowChange={handleWorkflowChange}
+                    hideWorkflowName={true}
+                  />
+                  
+                  <Button 
+                    type="button"
+                    variant="outline" 
+                    size="sm"
+                    onClick={toggleAdvancedOptions}
+                    className="px-3 text-xs text-muted-foreground h-[36px]"
+                  >
+                    <Settings className="h-3 w-3 mr-1" />
+                    Advanced
+                  </Button>
+                </div>
               </div>
             </div>
             
             <div className="flex gap-2 items-center">
               <ImageUploader
-                isLoading={false}
+                isLoading={isLoading}
                 onImageUpload={handleImageUpload}
                 onWorkflowChange={handleWorkflowChange}
               />
               
               <Button 
                 type="submit" 
-                className="btn-shine rounded-full px-6 transition-all hover:shadow-md py-6 text-lg font-medium flex-1"
+                className="btn-shine rounded-full px-6 transition-all hover:shadow-md h-[48px] text-lg font-medium flex-1"
+                disabled={isLoading}
               >
                 Generate
               </Button>
             </div>
             
-            <div className="hidden">
-              <AdvancedOptions
-                workflows={workflows}
-                selectedWorkflow={selectedWorkflow}
-                onWorkflowChange={handleWorkflowChange}
-                params={workflowParams}
-                onParamChange={handleParamChange}
-                globalParams={globalParams}
-                onGlobalParamChange={handleGlobalParamChange}
-              />
-            </div>
+            <AdvancedOptions
+              workflows={workflows}
+              selectedWorkflow={selectedWorkflow}
+              onWorkflowChange={handleWorkflowChange}
+              params={workflowParams}
+              onParamChange={handleParamChange}
+              globalParams={globalParams}
+              onGlobalParamChange={handleGlobalParamChange}
+              isOpen={isAdvancedOptionsOpen}
+              onOpenChange={setIsAdvancedOptionsOpen}
+            />
           </div>
         </form>
       </Card>
