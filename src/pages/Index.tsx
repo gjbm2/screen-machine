@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -10,6 +11,8 @@ const Index = () => {
   const [currentPrompt, setCurrentPrompt] = useState<string | null>(null);
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
   const [currentWorkflow, setCurrentWorkflow] = useState<string | null>(null);
+  const [currentParams, setCurrentParams] = useState<Record<string, any>>({});
+  const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
   
   // Function to handle using the generated image as input
   const handleUseGeneratedAsInput = async () => {
@@ -39,6 +42,25 @@ const Index = () => {
     }
   };
 
+  // Function to handle creating the image again with a different seed
+  const handleCreateAgain = () => {
+    if (!currentPrompt) {
+      toast.error('No prompt available to regenerate');
+      return;
+    }
+    
+    // Re-submit with the same parameters but it will use a different random seed
+    handleSubmitPrompt(
+      currentPrompt, 
+      uploadedImageUrls.length > 0 ? [] : undefined, // Don't pass uploaded images for regeneration
+      currentWorkflow || undefined,
+      currentParams,
+      currentGlobalParams
+    );
+    
+    toast.info('Regenerating image...');
+  };
+
   const handleSubmitPrompt = async (
     prompt: string, 
     imageFiles?: File[],
@@ -49,6 +71,8 @@ const Index = () => {
     setIsLoading(true);
     setCurrentPrompt(prompt);
     setCurrentWorkflow(workflow || null);
+    setCurrentParams(params || {});
+    setCurrentGlobalParams(globalParams || {});
     
     // If user uploaded images, create local URLs for display
     if (imageFiles && imageFiles.length > 0) {
@@ -129,6 +153,8 @@ const Index = () => {
             uploadedImages={uploadedImageUrls}
             workflow={currentWorkflow}
             onUseGeneratedAsInput={handleUseGeneratedAsInput}
+            onCreateAgain={handleCreateAgain}
+            generationParams={{...currentParams, ...currentGlobalParams}}
           />
         </div>
       </div>

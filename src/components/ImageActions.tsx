@@ -9,7 +9,9 @@ import {
   Twitter,
   Facebook,
   MessageCircle,
-  PinIcon
+  PinIcon,
+  RefreshCw,
+  Info
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -21,13 +23,34 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
 import publishDestinations from '@/data/publish-destinations.json';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface ImageActionsProps {
   imageUrl: string;
   onUseAsInput?: () => void;
+  onCreateAgain?: () => void;
+  generationInfo?: {
+    prompt: string;
+    workflow: string;
+    params?: Record<string, any>;
+  };
 }
 
-const ImageActions: React.FC<ImageActionsProps> = ({ imageUrl, onUseAsInput }) => {
+const ImageActions: React.FC<ImageActionsProps> = ({ 
+  imageUrl, 
+  onUseAsInput,
+  onCreateAgain,
+  generationInfo
+}) => {
   const [isSaving, setSaving] = useState(false);
   const [isPublishing, setPublishing] = useState(false);
   
@@ -92,8 +115,27 @@ const ImageActions: React.FC<ImageActionsProps> = ({ imageUrl, onUseAsInput }) =
     }, 1000);
   };
 
+  // Format workflow name for display
+  const formatWorkflowName = (name: string) => {
+    return name
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   return (
     <div className="flex justify-center gap-2 mt-4">
+      {onCreateAgain && (
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onCreateAgain}
+        >
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Create Again
+        </Button>
+      )}
+      
       <Button 
         variant="outline" 
         size="sm" 
@@ -140,6 +182,45 @@ const ImageActions: React.FC<ImageActionsProps> = ({ imageUrl, onUseAsInput }) =
           <Pencil className="h-4 w-4 mr-2" />
           Use as Input
         </Button>
+      )}
+
+      {generationInfo && (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Info className="h-4 w-4 mr-2" />
+              Info
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-80 p-4">
+            <div className="space-y-2">
+              <h4 className="font-medium">Generation Details</h4>
+              <div className="text-sm">
+                <p className="font-semibold">Prompt:</p>
+                <p className="text-muted-foreground mb-2">{generationInfo.prompt || "No prompt provided"}</p>
+                
+                <p className="font-semibold">Workflow:</p>
+                <p className="text-muted-foreground mb-2">
+                  {generationInfo.workflow ? formatWorkflowName(generationInfo.workflow) : "Standard"}
+                </p>
+                
+                {generationInfo.params && Object.keys(generationInfo.params).length > 0 && (
+                  <>
+                    <p className="font-semibold">Parameters:</p>
+                    <div className="text-muted-foreground">
+                      {Object.entries(generationInfo.params).map(([key, value]) => (
+                        <div key={key} className="flex justify-between">
+                          <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                          <span>{value?.toString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
       )}
     </div>
   );

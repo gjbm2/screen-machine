@@ -17,6 +17,8 @@ interface ImageDisplayProps {
   uploadedImages?: string[];
   workflow?: string | null;
   onUseGeneratedAsInput?: () => void;
+  onCreateAgain?: () => void;
+  generationParams?: Record<string, any>;
 }
 
 const ImageDisplay: React.FC<ImageDisplayProps> = ({ 
@@ -25,7 +27,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   isLoading,
   uploadedImages = [],
   workflow,
-  onUseGeneratedAsInput
+  onUseGeneratedAsInput,
+  onCreateAgain,
+  generationParams
 }) => {
   // Always render the component when we have uploaded images or when we're loading
   // or when we have a generated image result
@@ -119,6 +123,12 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 <ImageActions 
                   imageUrl={imageUrl}
                   onUseAsInput={onUseGeneratedAsInput}
+                  onCreateAgain={onCreateAgain}
+                  generationInfo={{
+                    prompt: prompt || '',
+                    workflow: workflow || 'text-to-image',
+                    params: generationParams
+                  }}
                 />
               )}
             </div>
