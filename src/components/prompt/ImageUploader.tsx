@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 
 interface ImageUploaderProps {
   isLoading: boolean;
-  onImageUpload: (file: File | null) => void;
+  onImageUpload: (files: File[]) => void;
   onWorkflowChange: (workflowId: string) => void;
 }
 
@@ -18,25 +18,34 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    // Check if file is an image
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please upload an image file');
-      return;
-    }
-
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image size should be less than 5MB');
-      return;
-    }
-
-    onImageUpload(file);
+    const validFiles: File[] = [];
     
-    // If uploading an image, automatically switch to image-to-image workflow
-    onWorkflowChange('image-to-image');
+    // Validate each file
+    Array.from(files).forEach(file => {
+      // Check if file is an image
+      if (!file.type.startsWith('image/')) {
+        toast.error(`${file.name} is not an image file`);
+        return;
+      }
+
+      // Check file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`${file.name} exceeds the 5MB size limit`);
+        return;
+      }
+
+      validFiles.push(file);
+    });
+
+    if (validFiles.length > 0) {
+      onImageUpload(validFiles);
+      
+      // If uploading images, automatically switch to image-to-image workflow
+      onWorkflowChange('image-to-image');
+    }
   };
 
   const triggerFileInput = () => {
@@ -56,6 +65,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         accept="image/*"
         onChange={handleImageUpload}
         disabled={isLoading}
+        multiple
       />
       
       <Button 
@@ -66,7 +76,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         disabled={isLoading}
       >
         <Upload className="h-4 w-4" />
-        Upload Image
+        Upload Images
       </Button>
     </>
   );

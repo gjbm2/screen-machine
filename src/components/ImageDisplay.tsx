@@ -1,12 +1,19 @@
 
 import React from 'react';
 import { Card } from '@/components/ui/card';
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 
 interface ImageDisplayProps {
   imageUrl: string | null;
   prompt: string | null;
   isLoading: boolean;
-  uploadedImage?: string | null;
+  uploadedImages?: string[];
   workflow?: string | null;
 }
 
@@ -14,29 +21,55 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   imageUrl, 
   prompt, 
   isLoading,
-  uploadedImage,
+  uploadedImages = [],
   workflow
 }) => {
-  // Always render the component when we have an uploaded image or when we're loading
+  // Always render the component when we have uploaded images or when we're loading
   // or when we have a generated image result
-  const shouldDisplay = isLoading || imageUrl || uploadedImage;
+  const shouldDisplay = isLoading || imageUrl || (uploadedImages && uploadedImages.length > 0);
   
   if (!shouldDisplay) return null;
 
   return (
     <div className="mt-12 animate-fade-in">
       <div className="flex flex-col md:flex-row gap-6">
-        {uploadedImage && (
+        {uploadedImages && uploadedImages.length > 0 && (
           <Card className="relative w-full md:w-1/2 overflow-hidden border border-border/30 rounded-lg">
-            <div className="aspect-square overflow-hidden bg-secondary/20">
-              <img
-                src={uploadedImage}
-                alt="Reference image"
-                className="w-full h-full object-contain"
-              />
-            </div>
+            {uploadedImages.length === 1 ? (
+              <div className="aspect-square overflow-hidden bg-secondary/20">
+                <img
+                  src={uploadedImages[0]}
+                  alt="Reference image"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            ) : (
+              <div className="aspect-square overflow-hidden bg-secondary/20">
+                <Carousel className="w-full h-full">
+                  <CarouselContent className="h-full">
+                    {uploadedImages.map((url, index) => (
+                      <CarouselItem key={index} className="h-full">
+                        <div className="h-full flex items-center justify-center">
+                          <img
+                            src={url}
+                            alt={`Reference image ${index + 1}`}
+                            className="max-w-full max-h-full object-contain"
+                          />
+                        </div>
+                      </CarouselItem>
+                    ))}
+                  </CarouselContent>
+                  <CarouselPrevious className="left-2" />
+                  <CarouselNext className="right-2" />
+                </Carousel>
+              </div>
+            )}
             <div className="p-3 text-center">
-              <h3 className="text-sm font-medium">Reference Image</h3>
+              <h3 className="text-sm font-medium">
+                {uploadedImages.length > 1 
+                  ? `Reference Images (${uploadedImages.length})` 
+                  : "Reference Image"}
+              </h3>
             </div>
           </Card>
         )}

@@ -10,16 +10,23 @@ import { Workflow } from '@/types/workflows';
 import PromptInput from '@/components/prompt/PromptInput';
 import PromptExamples from '@/components/prompt/PromptExamples';
 import ImageUploader from '@/components/prompt/ImageUploader';
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 
 interface PromptFormProps {
-  onSubmit: (prompt: string, imageFile?: File | null, workflow?: string, params?: Record<string, any>) => void;
+  onSubmit: (prompt: string, imageFiles?: File[], workflow?: string, params?: Record<string, any>) => void;
   isLoading: boolean;
 }
 
 const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
   const [prompt, setPrompt] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>('text-to-image');
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({});
   const workflows = workflowsData as Workflow[];
@@ -41,12 +48,12 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!prompt.trim() && !imageFile) {
-      toast.error('Please enter a prompt or upload an image');
+    if (!prompt.trim() && imageFiles.length === 0) {
+      toast.error('Please enter a prompt or upload at least one image');
       return;
     }
     
-    onSubmit(prompt, imageFile, selectedWorkflow, workflowParams);
+    onSubmit(prompt, imageFiles.length > 0 ? imageFiles : undefined, selectedWorkflow, workflowParams);
   };
 
   const handleExampleClick = (example: string) => {
@@ -57,28 +64,36 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
     setPrompt(newPrompt);
   };
 
-  const handleImageUpload = (file: File | null) => {
-    if (file) {
-      setImageFile(file);
-      const imageUrl = URL.createObjectURL(file);
-      setPreviewUrl(imageUrl);
-    } else {
-      clearUploadedImage();
+  const handleImageUpload = (files: File[]) => {
+    if (files.length > 0) {
+      // Create URLs for each new file
+      const newUrls = files.map(file => URL.createObjectURL(file));
+      
+      // Add new files to existing ones
+      setImageFiles(prev => [...prev, ...files]);
+      setPreviewUrls(prev => [...prev, ...newUrls]);
     }
   };
 
-  const clearUploadedImage = () => {
-    setImageFile(null);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-    }
+  const clearAllImages = () => {
+    // Clean up all object URLs to avoid memory leaks
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
+    setImageFiles([]);
+    setPreviewUrls([]);
   };
 
-  const handleRemoveImage = () => {
-    clearUploadedImage();
-    // If removing an image, switch back to text-to-image workflow
-    handleWorkflowChange('text-to-image');
+  const handleRemoveImage = (index: number) => {
+    // Clean up the object URL for the removed image
+    URL.revokeObjectURL(previewUrls[index]);
+    
+    // Remove the image from both arrays
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
+    
+    // If removing the last image, switch back to text-to-image workflow
+    if (imageFiles.length === 1) {
+      handleWorkflowChange('text-to-image');
+    }
   };
 
   const handleWorkflowChange = (workflowId: string) => {
@@ -108,25 +123,52 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
     <div className="animate-fade-up">
       <Card className="overflow-hidden glass border border-border/30">
         <form onSubmit={handleSubmit} className="p-1">
-          {previewUrl && (
-            <div className="relative p-4 pb-0">
-              <div className="relative rounded-lg overflow-hidden h-40 border border-border/30">
-                <img 
-                  src={previewUrl} 
-                  alt="Uploaded image preview" 
-                  className="w-full h-full object-contain"
-                />
-                <button
-                  type="button"
-                  onClick={handleRemoveImage}
-                  className="absolute top-2 right-2 bg-foreground/20 text-background hover:bg-foreground/30 p-1 rounded-full"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {imageFile?.name}
-              </p>
+          {previewUrls.length > 0 && (
+            <div className="relative p-4 pb-2">
+              <Carousel className="w-full">
+                <CarouselContent>
+                  {previewUrls.map((url, index) => (
+                    <CarouselItem key={index} className="basis-full md:basis-1/2 lg:basis-1/3">
+                      <div className="relative rounded-lg overflow-hidden h-48 border border-border/30">
+                        <img 
+                          src={url} 
+                          alt={`Uploaded image ${index + 1}`} 
+                          className="w-full h-full object-contain"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImage(index)}
+                          className="absolute top-2 right-2 bg-foreground/20 text-background hover:bg-foreground/30 p-1 rounded-full"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground truncate">
+                        {imageFiles[index]?.name}
+                      </p>
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+                {previewUrls.length > 1 && (
+                  <>
+                    <CarouselPrevious className="left-1" />
+                    <CarouselNext className="right-1" />
+                  </>
+                )}
+              </Carousel>
+              {previewUrls.length > 1 && (
+                <div className="flex justify-end mt-2">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={clearAllImages}
+                    className="text-xs"
+                  >
+                    Clear All Images
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           

@@ -9,12 +9,12 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string | null>(null);
-  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
   const [currentWorkflow, setCurrentWorkflow] = useState<string | null>(null);
 
   const handleSubmitPrompt = async (
     prompt: string, 
-    imageFile?: File | null,
+    imageFiles?: File[],
     workflow?: string,
     params?: Record<string, any>
   ) => {
@@ -22,20 +22,24 @@ const Index = () => {
     setCurrentPrompt(prompt);
     setCurrentWorkflow(workflow || null);
     
-    // If user uploaded an image, create a local URL for display
-    if (imageFile) {
-      const localImageUrl = URL.createObjectURL(imageFile);
-      setUploadedImageUrl(localImageUrl);
+    // If user uploaded images, create local URLs for display
+    if (imageFiles && imageFiles.length > 0) {
+      const localImageUrls = imageFiles.map(file => URL.createObjectURL(file));
+      setUploadedImageUrls(localImageUrls);
     } else {
-      setUploadedImageUrl(null);
+      setUploadedImageUrls([]);
     }
     
     try {
-      // In a real implementation, you would send both the prompt and image file
+      // In a real implementation, you would send both the prompt and image files
       // to your backend using FormData
       const formData = new FormData();
       if (prompt) formData.append('prompt', prompt);
-      if (imageFile) formData.append('image', imageFile);
+      if (imageFiles) {
+        imageFiles.forEach((file, index) => {
+          formData.append(`image_${index}`, file);
+        });
+      }
       if (workflow) formData.append('workflow', workflow);
       if (params) {
         // Convert params object to a JSON string and append to FormData
@@ -52,7 +56,8 @@ const Index = () => {
           prompt,
           workflow: workflow || 'text-to-image',
           params: params || {},
-          has_reference_image: imageFile ? true : false 
+          has_reference_images: imageFiles ? imageFiles.length > 0 : false,
+          reference_image_count: imageFiles ? imageFiles.length : 0
         }),
       });
       
@@ -83,7 +88,7 @@ const Index = () => {
             Turn your words into <span className="text-primary">art</span>
           </h1>
           <p className="mt-6 text-lg text-foreground/70 max-w-2xl mx-auto">
-            Describe anything you can imagine, or upload a reference image, and watch as AI transforms your ideas into stunning visuals in seconds.
+            Describe anything you can imagine, or upload reference images, and watch as AI transforms your ideas into stunning visuals in seconds.
           </p>
         </div>
         
@@ -97,7 +102,7 @@ const Index = () => {
             imageUrl={imageUrl}
             prompt={currentPrompt}
             isLoading={isLoading}
-            uploadedImage={uploadedImageUrl}
+            uploadedImages={uploadedImageUrls}
             workflow={currentWorkflow}
           />
         </div>
