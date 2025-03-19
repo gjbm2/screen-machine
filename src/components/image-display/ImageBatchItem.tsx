@@ -24,7 +24,7 @@ interface ImageBatchItemProps {
   onCreateAgain?: (batchId: string) => void;
   onUseAsInput?: ((imageUrl: string) => void) | null;
   onDeleteImage?: (batchId: string, index: number) => void;
-  onFullScreen?: (batchId: string) => void;
+  onFullScreen?: (batchId: string, index: number) => void;
   viewMode?: 'normal' | 'small' | 'table';
 }
 
@@ -56,7 +56,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   const handleFullScreen = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onFullScreen) {
-      onFullScreen(batchId);
+      onFullScreen(batchId, index);
     }
   };
 
@@ -68,7 +68,13 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     >
       <div 
         className="relative aspect-square cursor-pointer"
-        onClick={handleFullScreen}
+        onClick={(e) => {
+          // Handle click based on view mode
+          if (viewMode === 'small' || viewMode === 'table') {
+            handleFullScreen(e);
+          }
+          // In normal view, just show image, don't trigger full screen
+        }}
       >
         {image.url ? (
           <img
@@ -141,7 +147,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         )}
         
         {/* Fullscreen button - separate from other actions for better visibility */}
-        {viewMode !== 'small' && onFullScreen && (
+        {onFullScreen && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button 

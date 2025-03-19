@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -286,6 +287,14 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                 
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-2">
+                    {/* Moved Image Uploader to the left side */}
+                    <ImageUploader
+                      isLoading={isButtonDisabled}
+                      onImageUpload={handleImageUpload}
+                      onWorkflowChange={handleWorkflowChange}
+                      hideLabel={isCompact}
+                    />
+                    
                     <WorkflowIconSelector
                       workflows={workflows}
                       selectedWorkflow={selectedWorkflow}
@@ -297,30 +306,23 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                       selectedRefiner={selectedRefiner}
                       onRefinerChange={handleRefinerChange}
                     />
-                    
-                    <Button 
-                      type="button"
-                      variant="outline" 
-                      size="icon"
-                      onClick={toggleAdvancedOptions}
-                      className="h-[36px] w-[36px] text-muted-foreground"
-                      aria-label="Settings"
-                    >
-                      <Settings className="h-4 w-4" />
-                    </Button>
                   </div>
 
-                  <ImageUploader
-                    isLoading={isButtonDisabled}
-                    onImageUpload={handleImageUpload}
-                    onWorkflowChange={handleWorkflowChange}
-                    hideLabel={isCompact}
-                  />
-                  
-                  <div className="relative flex-1">
+                  <div className="relative flex-1 flex items-center">
+                    {/* Minus button (left side) */}
+                    <Button 
+                      type="button"
+                      className="h-[48px] rounded-l-full px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground border-r border-primary-foreground/20"
+                      onClick={decrementBatchSize}
+                      disabled={batchSize <= 1}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    
+                    {/* Main generate button */}
                     <Button 
                       type="submit" 
-                      className="rounded-l-full pr-12 pl-4 sm:pl-6 transition-all hover:shadow-md h-[48px] text-lg font-medium w-full flex items-center gap-2 btn-shine"
+                      className="rounded-none h-[48px] px-4 sm:px-6 transition-all hover:shadow-md text-lg font-medium flex-grow flex items-center justify-center gap-2 btn-shine"
                       disabled={isButtonDisabled}
                     >
                       <Rocket className="h-5 w-5" />
@@ -330,22 +332,27 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                       </span>
                     </Button>
                     
-                    <div className="absolute right-0 top-0 bottom-0 flex flex-col h-[48px] overflow-hidden rounded-r-full border-l border-primary-foreground/20">
-                      <Button 
-                        type="button"
-                        className="h-[24px] rounded-none rounded-tr-full px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
-                        onClick={incrementBatchSize}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                      <Button 
-                        type="button"
-                        className="h-[24px] rounded-none rounded-br-full px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
-                        onClick={decrementBatchSize}
-                      >
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                    </div>
+                    {/* Plus button (right side) */}
+                    <Button 
+                      type="button"
+                      className="h-[48px] rounded-r-full px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground border-l border-primary-foreground/20"
+                      onClick={incrementBatchSize}
+                      disabled={batchSize >= 9}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                    
+                    {/* Moved Settings button to the right side */}
+                    <Button 
+                      type="button"
+                      variant="outline" 
+                      size="icon"
+                      onClick={toggleAdvancedOptions}
+                      className="h-[36px] w-[36px] text-muted-foreground ml-2"
+                      aria-label="Settings"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               </div>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -264,8 +263,12 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     return "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
   };
 
-  const handleFullScreenImage = (batchId: string, index: number) => {
-    setOpenImageFullScreen({ batchId, imageIndex: index });
+  const handleFullScreenImage = (batchId: string, index?: number) => {
+    const imageIndex = index !== undefined 
+      ? index 
+      : getActiveImageIndex(batchId, batchedImages.find(b => b.batchId === batchId)?.images.length || 1);
+    
+    setOpenImageFullScreen({ batchId, imageIndex });
   };
 
   const renderAllImagesInSmallView = () => {
@@ -302,7 +305,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               onCreateAgain={handleCreateAnother}
               onUseAsInput={onUseGeneratedAsInput}
               onDeleteImage={handleDeleteImage}
-              onFullScreen={() => handleFullScreenImage(batchId, index)}
+              onFullScreen={(batchId, index) => handleFullScreenImage(batchId, index)}
               viewMode="small"
             />
           </div>
@@ -418,7 +421,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     );
   };
 
-  // Find image for full screen display
   const getFullScreenImage = () => {
     if (!openImageFullScreen) return null;
     
@@ -549,6 +551,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                               onDeleteImage={handleDeleteImage}
                               onCreateAgain={handleCreateAnother}
                               onUseAsInput={onUseGeneratedAsInput}
+                              onFullScreen={handleFullScreenImage}
                               extraComponents={extraComponents}
                               viewMode={viewMode}
                             />
@@ -561,11 +564,12 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               </TooltipProvider>
             )}
             
-            {/* Batch dialog for table view */}
             {openBatchDialog && (
               <Dialog open={!!openBatchDialog} onOpenChange={() => setOpenBatchDialog(null)}>
                 <DialogContent className="max-w-4xl p-0 overflow-hidden">
-                  <DialogTitle className="px-6 pt-6">Image Batch</DialogTitle>
+                  <DialogHeader>
+                    <DialogTitle className="px-6 pt-6">Image Batch</DialogTitle>
+                  </DialogHeader>
                   {batchedImages.find(b => b.batchId === openBatchDialog)?.images.length > 0 && (
                     <div className="p-6 pt-2">
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -583,7 +587,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                             <div className="absolute bottom-2 right-2 bg-black/90 text-white px-2 py-1 rounded-full text-xs">
                               {index + 1}
                             </div>
-                            {/* Always visible delete button */}
                             <button 
                               className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors z-10"
                               onClick={(e) => {
@@ -602,7 +605,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               </Dialog>
             )}
             
-            {/* Full Screen Image */}
             {fullScreenImage && (
               <Dialog 
                 open={!!openImageFullScreen} 
@@ -614,7 +616,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                   </DialogHeader>
                   <div className="p-4 pt-0">
                     <div className="flex flex-col">
-                      {/* Image with click-to-close */}
                       <div 
                         className="w-full overflow-hidden rounded-md cursor-pointer" 
                         onClick={() => setOpenImageFullScreen(null)}
@@ -626,7 +627,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         />
                       </div>
                       
-                      {/* Image info */}
                       <div className="mt-4 text-sm text-muted-foreground">
                         <p className="mb-2">{fullScreenImage.prompt || "No prompt information"}</p>
                         {fullScreenImage.workflow && (
@@ -634,7 +634,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         )}
                       </div>
                       
-                      {/* Action buttons */}
                       <div className="mt-4 flex justify-center space-x-2">
                         <ImageActions
                           imageUrl={fullScreenImage.url}
@@ -649,7 +648,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         />
                       </div>
                       
-                      {/* Close button */}
                       <div className="mt-4 flex justify-center">
                         <Button 
                           onClick={() => setOpenImageFullScreen(null)}
