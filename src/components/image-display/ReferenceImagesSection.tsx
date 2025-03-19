@@ -1,6 +1,5 @@
 
 import React, { useState, useRef, TouchEvent } from 'react';
-import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Maximize } from 'lucide-react';
@@ -50,58 +49,22 @@ const ReferenceImagesSection: React.FC<ReferenceImagesSectionProps> = ({ images 
   return (
     <div>
       <h3 className="text-lg font-semibold mb-3">Reference Images</h3>
-      <div className="overflow-hidden bg-secondary/20 rounded-lg">
-        {images.length === 1 ? (
-          <div className="aspect-square w-full max-w-xs mx-auto overflow-hidden relative">
-            <img
-              src={images[0]}
-              alt="Reference image"
-              className="w-full h-full object-contain"
-            />
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <button 
-                  className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Maximize className="h-4 w-4" />
-                </button>
-              </DialogTrigger>
-              <DialogContent fullscreen>
-                <DialogHeader>
-                  <DialogTitle className="sr-only">Reference Image</DialogTitle>
-                </DialogHeader>
-                <div className="w-full h-full flex items-center justify-center">
-                  <img
-                    src={images[0]}
-                    alt="Reference image full view"
-                    className="max-w-full max-h-full object-contain"
-                  />
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        ) : (
-          <div 
-            ref={touchRef}
-            className="relative"
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-          >
-            <div className="aspect-square w-full max-w-xs mx-auto overflow-hidden relative">
+      {images.length === 1 ? (
+        <div className="flex items-center justify-start overflow-x-auto pb-2">
+          <Card className="flex-shrink-0 overflow-hidden">
+            <div className="w-32 h-32 relative">
               <img
-                src={images[currentIndex]}
-                alt={`Reference image ${currentIndex + 1}`}
-                className="w-full h-full object-contain"
+                src={images[0]}
+                alt="Reference image"
+                className="w-full h-full object-cover"
               />
-              
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
                   <button 
-                    className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors"
+                    className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <Maximize className="h-4 w-4" />
+                    <Maximize className="h-3 w-3" />
                   </button>
                 </DialogTrigger>
                 <DialogContent fullscreen>
@@ -110,33 +73,61 @@ const ReferenceImagesSection: React.FC<ReferenceImagesSectionProps> = ({ images 
                   </DialogHeader>
                   <div className="w-full h-full flex items-center justify-center">
                     <img
-                      src={images[currentIndex]}
-                      alt={`Reference image ${currentIndex + 1} full view`}
+                      src={images[0]}
+                      alt="Reference image full view"
                       className="max-w-full max-h-full object-contain"
                     />
                   </div>
                 </DialogContent>
               </Dialog>
-              
-              <NavigationControls
-                onPrevious={(e) => {
-                  e.stopPropagation();
-                  handlePrevious();
-                }}
-                onNext={(e) => {
-                  e.stopPropagation();
-                  handleNext();
-                }}
-                size="small"
-              />
-              
-              <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-1 rounded-full text-xs">
-                {currentIndex + 1}/{images.length}
-              </div>
             </div>
-          </div>
-        )}
-      </div>
+          </Card>
+        </div>
+      ) : (
+        <div className="flex items-start space-x-2 overflow-x-auto pb-2">
+          {images.map((image, idx) => (
+            <Card key={idx} className="flex-shrink-0 overflow-hidden">
+              <div 
+                className="w-32 h-32 relative"
+                onClick={() => setCurrentIndex(idx)}
+              >
+                <img
+                  src={image}
+                  alt={`Reference image ${idx + 1}`}
+                  className={`w-full h-full object-cover ${currentIndex === idx ? 'ring-2 ring-primary' : ''}`}
+                />
+                {currentIndex === idx && (
+                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <DialogTrigger asChild>
+                      <button 
+                        className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Maximize className="h-3 w-3" />
+                      </button>
+                    </DialogTrigger>
+                    <DialogContent fullscreen>
+                      <DialogHeader>
+                        <DialogTitle className="sr-only">Reference Image</DialogTitle>
+                      </DialogHeader>
+                      <div className="w-full h-full flex items-center justify-center">
+                        <img
+                          src={image}
+                          alt={`Reference image ${idx + 1} full view`}
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </div>
+              <div className="absolute bottom-1 right-1 bg-black/70 text-white px-1.5 py-0.5 rounded-full text-xs">
+                {idx + 1}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

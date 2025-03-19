@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Settings, ChevronDown, ExternalLink, X } from 'lucide-react';
+import { Settings, ChevronDown, ExternalLink } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Workflow, WorkflowParam } from '@/types/workflows';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -61,9 +61,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
                 Configure generation settings for your images
               </SheetDescription>
             </div>
-            <SheetClose className="rounded-full p-1 hover:bg-accent/50">
-              <X className="h-5 w-5" />
-            </SheetClose>
+            {/* Removed duplicate close button, only the SheetClose below remains */}
           </div>
         </SheetHeader>
         
@@ -263,6 +261,12 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
             ))}
           </div>
         </div>
+        
+        <SheetFooter className="absolute bottom-4 right-4">
+          <SheetClose asChild>
+            <Button variant="outline">Close</Button>
+          </SheetClose>
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   );

@@ -3,7 +3,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import ConsoleOutput from './ConsoleOutput';
 import { Button } from '../ui/button';
-import { X } from 'lucide-react';
+import { X, Save } from 'lucide-react';
 
 interface ResizableConsoleProps {
   logs: string[];
@@ -16,12 +16,28 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
   isVisible,
   onClose
 }) => {
-  // Increase the default size from 20 to 40 percent
-  const [size, setSize] = useState(40);
+  // Default console size is 30% of viewport height
+  const [size, setSize] = useState(30);
   
   const handleResize = (sizes: number[]) => {
     if (sizes[0]) {
       setSize(sizes[0]);
+    }
+  };
+
+  const handleSaveLogs = () => {
+    try {
+      const blob = new Blob([logs.join('\n')], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `console-logs-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error saving logs:', error);
     }
   };
   
@@ -40,15 +56,26 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
         >
           <div className="h-full flex flex-col">
             <div className="flex justify-between items-center p-2 border-b">
-              <h3 className="text-sm font-medium">Console Output</h3>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={onClose}
-                className="h-7 w-7 p-0"
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="w-12 h-1 bg-muted-foreground/30 rounded-full absolute left-1/2 top-2 -translate-x-1/2 cursor-ns-resize" />
+              <h3 className="text-sm font-medium ml-2">Console Output</h3>
+              <div className="flex items-center space-x-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-7 text-xs"
+                  onClick={handleSaveLogs}
+                >
+                  <Save className="h-3 w-3 mr-1" /> Save Logs
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={onClose}
+                  className="h-7 w-7 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div className="flex-grow overflow-auto">
               <ConsoleOutput 

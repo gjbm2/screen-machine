@@ -6,7 +6,7 @@ import { GripVertical, ChevronUp, ChevronDown, Maximize, Image } from 'lucide-re
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 
-type ViewMode = 'normal' | 'small' | 'table';
+type ViewMode = 'normal' | 'small' | 'table' | 'fullWidth';
 
 interface SortableContainerProps { 
   batchId: string; 
@@ -54,6 +54,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     zIndex: isDragging ? 10 : 1,
     position: 'relative' as 'relative',
     marginBottom: '1rem',
+    width: viewMode === 'fullWidth' ? '100%' : undefined,
   };
 
   // In small view, we hide the header or simplify it
@@ -94,7 +95,10 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
         <div className="flex-1 truncate mx-2 text-sm text-muted-foreground">
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="font-medium cursor-help">
+              <span className="font-medium cursor-help flex items-center">
+                {referenceImageUrl && (
+                  <Image className="h-4 w-4 mr-1.5 text-primary" />
+                )}
                 {titleText}
               </span>
             </TooltipTrigger>
