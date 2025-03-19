@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -23,9 +22,10 @@ import {
 interface PromptFormProps {
   onSubmit: (prompt: string, imageFiles?: File[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>) => void;
   isLoading: boolean;
+  currentPrompt?: string | null;
 }
 
-const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
+const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormProps) => {
   const [prompt, setPrompt] = useState('');
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -33,6 +33,12 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({});
   const [globalParams, setGlobalParams] = useState<Record<string, any>>({});
   const workflows = workflowsData as Workflow[];
+  
+  useEffect(() => {
+    if (currentPrompt !== null) {
+      setPrompt(currentPrompt);
+    }
+  }, [currentPrompt]);
   
   useEffect(() => {
     const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
@@ -48,7 +54,6 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
   }, [selectedWorkflow, workflows]);
   
   useEffect(() => {
-    // Initialize global parameters with default values
     const defaultGlobalParams: Record<string, any> = {};
     globalOptionsData.forEach((param: any) => {
       if (param.default !== undefined) {

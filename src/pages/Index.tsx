@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -22,18 +21,16 @@ const Index = () => {
       const blob = await response.blob();
       const file = new File([blob], 'generated-image.png', { type: 'image/png' });
       
-      // Add the generated image to the uploaded images
+      // Clear all current state
+      setCurrentPrompt('');
+      
+      // Add the generated image to the uploaded images and clear the current generated image
       const localImageUrl = URL.createObjectURL(file);
       setUploadedImageUrls([localImageUrl]);
-      
-      // Clear the current generated image
       setImageUrl(null);
-      setCurrentPrompt(null);
       
       // Switch workflow to image-to-image if not already
-      if (currentWorkflow !== 'image-to-image') {
-        setCurrentWorkflow('image-to-image');
-      }
+      setCurrentWorkflow('image-to-image');
       
       toast.success('Generated image added as input!');
     } catch (error) {
@@ -117,7 +114,11 @@ const Index = () => {
         </div>
         
         <div className="mt-12 max-w-2xl mx-auto">
-          <PromptForm onSubmit={handleSubmitPrompt} isLoading={isLoading} />
+          <PromptForm 
+            onSubmit={handleSubmitPrompt} 
+            isLoading={isLoading}
+            currentPrompt={currentPrompt}
+          />
         </div>
         
         <div className="mb-20">
