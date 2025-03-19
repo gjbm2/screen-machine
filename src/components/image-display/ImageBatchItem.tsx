@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ExternalLink, Trash2, Maximize } from 'lucide-react';
+import { ExternalLink, Trash2, Maximize, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import ImageActions from '@/components/ImageActions';
@@ -27,6 +27,8 @@ interface ImageBatchItemProps {
   onDeleteImage?: (batchId: string, index: number) => void;
   onFullScreen?: (batchId: string, index: number) => void;
   onImageClick: (url: string) => void;
+  onNavigateNext?: () => void;
+  onNavigatePrev?: () => void;
   viewMode?: ViewMode;
   showActions?: boolean;
 }
@@ -41,6 +43,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   onDeleteImage,
   onFullScreen,
   onImageClick,
+  onNavigateNext,
+  onNavigatePrev,
   viewMode = 'normal',
   showActions = true
 }) => {
@@ -76,6 +80,20 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   const handleImageClick = (e: React.MouseEvent) => {
     if (image.url) {
       onImageClick(image.url);
+    }
+  };
+  
+  const handleNavigatePrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onNavigatePrev) {
+      onNavigatePrev();
+    }
+  };
+  
+  const handleNavigateNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onNavigateNext) {
+      onNavigateNext();
     }
   };
 
@@ -131,8 +149,33 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </Tooltip>
         )}
         
-        {/* Action panel - only on normal and large views if showActions is true */}
-        {image.url && showActions && (viewMode === 'normal' || viewMode === 'large') && (
+        {/* Navigation arrows - only show if multiple images */}
+        {total > 1 && (
+          <>
+            {/* Previous arrow */}
+            {index > 0 && onNavigatePrev && (
+              <button 
+                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 text-white transition-colors z-10"
+                onClick={handleNavigatePrev}
+              >
+                <ChevronLeft className="h-3 w-3" />
+              </button>
+            )}
+            
+            {/* Next arrow */}
+            {index < total - 1 && onNavigateNext && (
+              <button 
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 text-white transition-colors z-10"
+                onClick={handleNavigateNext}
+              >
+                <ChevronRight className="h-3 w-3" />
+              </button>
+            )}
+          </>
+        )}
+        
+        {/* Action panel - only on normal views if showActions is true */}
+        {image.url && showActions && viewMode === 'normal' && (
           <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 rounded-md p-1">
             <ImageActions
               imageUrl={image.url}

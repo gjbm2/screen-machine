@@ -8,6 +8,7 @@ import { Trash2, Plus } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { ViewMode } from './ImageDisplay';
 import { Table, TableBody, TableRow, TableCell } from '@/components/ui/table';
+import ImageDetailView from './ImageDetailView';
 
 interface Image {
   url: string;
@@ -44,6 +45,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   viewMode
 }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   
   if (!images || images.length === 0) {
     return null;
@@ -77,6 +79,20 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
       </>
     );
   }
+  
+  const handleNavigatePrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (activeImageIndex > 0) {
+      setActiveImageIndex(activeImageIndex - 1);
+    }
+  };
+  
+  const handleNavigateNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (activeImageIndex < completedImages.length - 1) {
+      setActiveImageIndex(activeImageIndex + 1);
+    }
+  };
   
   return (
     <SortableImageContainer 
@@ -121,22 +137,39 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                 ))}
               </TableBody>
             </Table>
+          ) : isExpanded ? (
+            // Expanded view - detailed view with all images
+            <ImageDetailView
+              batchId={batchId}
+              images={completedImages}
+              activeIndex={activeImageIndex}
+              onSetActiveIndex={setActiveImageIndex}
+              onNavigatePrev={handleNavigatePrev}
+              onNavigateNext={handleNavigateNext}
+              onToggleExpand={toggleExpand}
+              onDeleteImage={onDeleteImage}
+              onCreateAgain={() => onCreateAgain()}
+              onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
+            />
           ) : (
-            // Large or Normal view
-            <div className={`grid gap-4 ${viewMode === 'large' ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}>
-              {completedImages.map((image, index) => (
-                <ImageBatchItem
-                  key={`${batchId}-${index}`}
-                  image={image}
-                  batchId={batchId}
-                  index={index}
-                  total={completedImages.length}
-                  onDeleteImage={onDeleteImage}
-                  onImageClick={(url) => onImageClick(url, image.prompt)}
-                  viewMode={viewMode}
-                  showActions={true}
-                />
-              ))}
+            // Collapsed/Normal view - just show the current image with navigation
+            <div className="grid gap-4 grid-cols-1">
+              <ImageBatchItem
+                key={`${batchId}-${activeImageIndex}`}
+                image={completedImages[activeImageIndex]}
+                batchId={batchId}
+                index={activeImageIndex}
+                total={completedImages.length}
+                onCreateAgain={() => onCreateAgain()}
+                onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
+                onDeleteImage={onDeleteImage}
+                onFullScreen={() => toggleExpand(batchId)}
+                onImageClick={() => toggleExpand(batchId)}
+                onNavigatePrev={completedImages.length > 1 ? handleNavigatePrev : undefined}
+                onNavigateNext={completedImages.length > 1 ? handleNavigateNext : undefined}
+                viewMode={viewMode}
+                showActions={true}
+              />
               
               {/* Show loading placeholder for generating images */}
               {anyGenerating && (
@@ -153,7 +186,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               variant="outline" 
               size="sm" 
               className="text-xs"
-              onClick={onCreateAgain}
+              onClick={() => onCreateAgain()}
             >
               <Plus className="h-3 w-3 mr-1" /> Create Another
             </Button>

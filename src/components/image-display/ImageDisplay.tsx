@@ -1,21 +1,16 @@
-
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LayoutList, GridIcon, Grid2X2, Table2 } from 'lucide-react';
+import { GridIcon, Grid2X2, Table2 } from 'lucide-react';
 import ImageBatch from './ImageBatch';
-import ImageDetailView from './ImageDetailView';
-import ReferenceImagesSection from './ReferenceImagesSection';
-import { useIsMobile } from '@/hooks/use-mobile'; 
 import LoadingPlaceholder from './LoadingPlaceholder';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-// Export ViewMode type so it can be used by other components
-export type ViewMode = 'large' | 'normal' | 'small' | 'table';
+// Export ViewMode type but remove 'large' as an option
+export type ViewMode = 'normal' | 'small' | 'table';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -48,7 +43,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onDeleteImage,
   onDeleteContainer
 }) => {
-  const isMobile = useIsMobile();
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
   
@@ -99,11 +93,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const batches = getImageBatches();
   const hasBatches = Object.keys(batches).length > 0;
   
-  // Determine if a container should be expanded
-  const shouldExpandContainer = (batchId: string) => {
-    return expandedContainers[batchId] || viewMode === 'large';
-  };
-  
   return (
     <div className="mt-8">
       {uploadedImages.length > 0 && (
@@ -121,16 +110,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               onValueChange={(value) => setViewMode(value as ViewMode)}
               className="w-auto"
             >
-              <TabsList className="grid grid-cols-4 h-8 w-auto">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <TabsTrigger value="large" className="px-1.5 sm:px-2">
-                      <LayoutList className="h-4 w-4" />
-                    </TabsTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent>Large View</TooltipContent>
-                </Tooltip>
-                
+              <TabsList className="grid grid-cols-3 h-8 w-auto">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <TabsTrigger value="normal" className="px-1.5 sm:px-2">
@@ -162,7 +142,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           </div>
           
           <ScrollArea className="h-[calc(100vh-24rem)] pr-4">
-            {/* Loading placeholder only shown at the top level */}
+            {/* Loading placeholder */}
             {isLoading && (
               <Card className="mb-4">
                 <CardContent className="pt-6 pb-4">
@@ -178,7 +158,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             >
               <SortableContext 
                 items={imageContainerOrder}
-                strategy={viewMode === 'large' ? verticalListSortingStrategy : horizontalListSortingStrategy}
+                strategy={horizontalListSortingStrategy}
               >
                 {viewMode === 'small' ? (
                   // Small view - grid of small thumbnails
@@ -199,29 +179,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                           onDeleteContainer={() => onDeleteContainer(batchId)}
                           activeImageUrl={imageUrl}
                           viewMode="small"
-                        />
-                      );
-                    })}
-                  </div>
-                ) : viewMode === 'large' ? (
-                  // Large view - one container at a time, full width
-                  <div className="space-y-4">
-                    {imageContainerOrder.map(batchId => {
-                      if (!batches[batchId]) return null;
-                      
-                      return (
-                        <ImageBatch
-                          key={batchId}
-                          batchId={batchId}
-                          images={batches[batchId]}
-                          isExpanded={true}
-                          toggleExpand={handleToggleExpand}
-                          onImageClick={(url, prompt) => {}}
-                          onCreateAgain={() => onCreateAgain(batchId)}
-                          onDeleteImage={onDeleteImage}
-                          onDeleteContainer={() => onDeleteContainer(batchId)}
-                          activeImageUrl={imageUrl}
-                          viewMode="large"
                         />
                       );
                     })}
