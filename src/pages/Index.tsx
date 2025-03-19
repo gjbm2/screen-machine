@@ -11,6 +11,8 @@ interface GeneratedImage {
   workflow: string;
   timestamp: number;
   params?: Record<string, any>;
+  batchId?: string; // New property to group images in batches
+  batchIndex?: number; // Index within a batch
 }
 
 const Index = () => {
@@ -36,7 +38,6 @@ const Index = () => {
       // Clear all current state
       setCurrentPrompt('');
       setImageUrl(null);
-      setGeneratedImages([]);
       
       // Add the generated image to the uploaded images
       const localImageUrl = URL.createObjectURL(file);
@@ -53,7 +54,7 @@ const Index = () => {
   };
 
   // Function to handle creating the image again with a different seed
-  const handleCreateAgain = () => {
+  const handleCreateAgain = (batchId?: string) => {
     if (!currentPrompt) {
       toast.error('No prompt available to regenerate');
       return;
@@ -65,7 +66,8 @@ const Index = () => {
       uploadedImageUrls.length > 0 ? [] : undefined, // Don't pass uploaded images for regeneration
       currentWorkflow || undefined,
       currentParams,
-      currentGlobalParams
+      currentGlobalParams,
+      batchId // Pass the batch ID if provided
     );
     
     toast.info('Regenerating image...');
@@ -76,7 +78,8 @@ const Index = () => {
     imageFiles?: File[],
     workflow?: string,
     params?: Record<string, any>,
-    globalParams?: Record<string, any>
+    globalParams?: Record<string, any>,
+    batchId?: string // New parameter for batch ID
   ) => {
     setIsLoading(true);
     setCurrentPrompt(prompt);
@@ -99,7 +102,8 @@ const Index = () => {
         params: params || {},
         global_params: globalParams || {},
         has_reference_images: imageFiles ? imageFiles.length > 0 : false,
-        reference_image_count: imageFiles ? imageFiles.length : 0
+        reference_image_count: imageFiles ? imageFiles.length : 0,
+        batch_id: batchId // Include batch ID in request
       };
       
       console.log('Sending request with data:', requestData);
@@ -107,7 +111,7 @@ const Index = () => {
       // For testing purposes, let's add a mock response directly
       // instead of actually making the network request
       setTimeout(() => {
-        // Mock successful response
+        // Mock successful response - now supporting multiple images per generation
         const mockImageUrls = [
           "https://images.unsplash.com/photo-1543466835-00a7907e9de1?q=80&w=1974&auto=format&fit=crop",
           "https://images.unsplash.com/photo-1605979257913-1704eb7b6246?q=80&w=1770&auto=format&fit=crop",
@@ -115,27 +119,44 @@ const Index = () => {
           "https://images.unsplash.com/photo-1533134486753-c833f0ed4866?q=80&w=1770&auto=format&fit=crop"
         ];
         
-        // Select a random image from the mock images
-        const randomIndex = Math.floor(Math.random() * mockImageUrls.length);
-        const newImageUrl = mockImageUrls[randomIndex];
+        // Determine if this is a new batch or adding to an existing one
+        const currentBatchId = batchId || `batch-${Date.now()}`;
         
-        // Create a new generated image object
-        const newGeneratedImage: GeneratedImage = {
-          url: newImageUrl,
-          prompt: prompt,
-          workflow: workflow || 'text-to-image',
-          timestamp: Date.now(),
-          params: { ...params, ...globalParams }
-        };
+        // Get count of images in this batch (for index assignment)
+        const existingBatchCount = batchId ? 
+          generatedImages.filter(img => img.batchId === batchId).length : 0;
         
-        // Add the new image to the beginning of the generatedImages array
-        setGeneratedImages(prev => [newGeneratedImage, ...prev]);
+        // Generate between 1-2 images (randomly) for realistic mock
+        const imageCount = Math.floor(Math.random() * 2) + 1;
+        const newImages: GeneratedImage[] = [];
+        
+        for (let i = 0; i < imageCount; i++) {
+          // Select a random image from the mock images
+          const randomIndex = Math.floor(Math.random() * mockImageUrls.length);
+          const newImageUrl = mockImageUrls[randomIndex];
+          
+          // Create a new generated image object
+          const newGeneratedImage: GeneratedImage = {
+            url: newImageUrl,
+            prompt: prompt,
+            workflow: workflow || 'text-to-image',
+            timestamp: Date.now(),
+            params: { ...params, ...globalParams },
+            batchId: currentBatchId,
+            batchIndex: existingBatchCount + i
+          };
+          
+          newImages.push(newGeneratedImage);
+        }
+        
+        // Add the new images to the generatedImages array
+        setGeneratedImages(prev => [...newImages, ...prev]);
         
         // Also update the current imageUrl for backwards compatibility
-        setImageUrl(newImageUrl);
+        setImageUrl(newImages[0].url);
         
         setIsLoading(false);
-        toast.success('Image generated successfully!');
+        toast.success(`${imageCount} image${imageCount > 1 ? 's' : ''} generated successfully!`);
       }, 1500); // Simulate network delay
       
     } catch (error) {
