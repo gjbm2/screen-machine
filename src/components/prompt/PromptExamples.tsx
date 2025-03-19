@@ -43,7 +43,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   };
   
   const renderExamples = () => {
-    const examplesList = examplePrompts.examples || [];
+    const examplesList = examplePrompts.basicPrompts || [];
     
     const visibleExamples = showAllExamples 
       ? examplesList 
@@ -89,7 +89,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   };
   
   const renderStyles = () => {
-    const stylesList = examplePrompts.styles || [];
+    const stylesList = examplePrompts.stylePrompts || [];
     
     const visibleStyles = showAllStyles
       ? stylesList
