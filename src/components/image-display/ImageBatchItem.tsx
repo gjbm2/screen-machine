@@ -1,8 +1,10 @@
+
 import React, { useState } from 'react';
 import { ExternalLink, Trash2, Maximize } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import ImageActions from '@/components/ImageActions';
+import { ViewMode } from './ImageDisplay';
 
 interface ImageBatchItemProps {
   image: {
@@ -25,7 +27,8 @@ interface ImageBatchItemProps {
   onDeleteImage?: (batchId: string, index: number) => void;
   onFullScreen?: (batchId: string, index: number) => void;
   onImageClick: (url: string) => void;
-  viewMode?: 'normal' | 'small' | 'table';
+  viewMode?: ViewMode;
+  showActions?: boolean;
 }
 
 const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
@@ -38,7 +41,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   onDeleteImage,
   onFullScreen,
   onImageClick,
-  viewMode = 'normal'
+  viewMode = 'normal',
+  showActions = true
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -70,23 +74,24 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   };
 
   const handleImageClick = (e: React.MouseEvent) => {
-    // In small view or table view, clicking the image should open full screen
-    // In normal view, don't do anything on image click (other interactions handle this)
-    if ((viewMode === 'small' || viewMode === 'table') && onFullScreen) {
-      handleFullScreen(e);
-    } else if (image.url) {
+    if (image.url) {
       onImageClick(image.url);
     }
   };
 
+  // Determine the size and styling based on the view mode
+  const sizeClasses = viewMode === 'small' 
+    ? 'aspect-square' 
+    : 'aspect-square';
+
   return (
     <div 
-      className="relative rounded-md overflow-hidden group"
+      className={`relative rounded-md overflow-hidden group ${viewMode === 'small' ? 'mb-2' : ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div 
-        className="relative aspect-square cursor-pointer"
+        className={`relative ${sizeClasses} cursor-pointer`}
         onClick={handleImageClick}
       >
         {image.url ? (
@@ -104,25 +109,14 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </div>
         )}
         
-        {viewMode === 'small' && (
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="bg-black/50 border-white/20 text-white"
-              onClick={handleFullScreen}
-            >
-              <Maximize className="h-4 w-4 mr-1" /> View
-            </Button>
-          </div>
-        )}
-        
+        {/* Image indicator */}
         {total > 1 && viewMode !== 'small' && (
           <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
             {index + 1}/{total}
           </div>
         )}
         
+        {/* Delete button - show on all views */}
         {onDeleteImage && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -137,8 +131,9 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </Tooltip>
         )}
         
-        {image.url && viewMode !== 'small' && (
-          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 opacity-70 group-hover:opacity-100 transition-opacity bg-black/70 rounded-md p-1">
+        {/* Action panel - only on normal and large views */}
+        {image.url && showActions && (viewMode === 'normal' || viewMode === 'large') && (
+          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 rounded-md p-1">
             <ImageActions
               imageUrl={image.url}
               onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
@@ -153,7 +148,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </div>
         )}
         
-        {onFullScreen && viewMode === 'normal' && (
+        {/* Fullscreen button */}
+        {onFullScreen && viewMode !== 'small' && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button 

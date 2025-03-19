@@ -52,32 +52,8 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     zIndex: isDragging ? 10 : 1,
     position: 'relative' as 'relative',
     marginBottom: '1rem',
-    width: viewMode === 'fullWidth' ? '100%' : undefined,
+    width: viewMode === 'large' ? '100%' : undefined,
   };
-
-  if (viewMode === 'small' && !isExpanded) {
-    return (
-      <div ref={setNodeRef} style={style}>
-        {children}
-        <div className="absolute top-2 right-2 z-10">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button 
-                className="bg-black/70 hover:bg-black/90 text-white rounded-full p-1.5 transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleExpand(batchId);
-                }}
-              >
-                <Maximize className="h-4 w-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Expand</TooltipContent>
-          </Tooltip>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div ref={setNodeRef} style={style}>
@@ -115,7 +91,9 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
           )}
         </button>
       </div>
-      {children}
+      
+      {/* Only show content if expanded or in large view */}
+      {isExpanded && children}
 
       {referenceImageUrl && (
         <Dialog open={showReferenceImage} onOpenChange={setShowReferenceImage}>

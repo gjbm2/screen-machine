@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Trash2, Plus } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { ViewMode } from './ImageDisplay';
+import { Table, TableBody, TableRow, TableCell } from '@/components/ui/table';
 
 interface Image {
   url: string;
@@ -55,6 +56,27 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   if (images.every(img => img.status === 'generating')) {
     return null;
   }
+
+  // In small view, we show individual images without the container
+  if (viewMode === 'small') {
+    return (
+      <div className="mb-2">
+        {completedImages.map((image, index) => (
+          <ImageBatchItem
+            key={`${batchId}-${index}`}
+            image={image}
+            batchId={batchId}
+            index={index}
+            total={completedImages.length}
+            onDeleteImage={onDeleteImage}
+            onImageClick={(url) => onImageClick(url, image.prompt)}
+            viewMode="small"
+            showActions={false}
+          />
+        ))}
+      </div>
+    );
+  }
   
   return (
     <SortableImageContainer 
@@ -67,33 +89,39 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
       <Card className={`rounded-t-none ${viewMode === 'table' ? 'p-0' : ''}`}>
         <CardContent className={`${viewMode === 'table' ? 'p-2' : 'p-4'}`}>
           {viewMode === 'table' ? (
-            <div className="space-y-2">
-              {completedImages.map((image, index) => (
-                <div key={`${batchId}-${index}`} className="flex items-center border-b border-border pb-2 last:border-0 last:pb-0">
-                  <div className="w-16 h-16 mr-3 overflow-hidden rounded">
-                    <img 
-                      src={image.url}
-                      alt={image.prompt}
-                      className="w-full h-full object-cover"
-                      onClick={() => onImageClick(image.url, image.prompt)}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs truncate text-muted-foreground">{image.prompt}</p>
-                  </div>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-8 w-8 ml-2"
-                    onClick={() => onDeleteImage(batchId, image.batchIndex)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
+            <Table>
+              <TableBody>
+                {completedImages.map((image, index) => (
+                  <TableRow key={`${batchId}-${index}`}>
+                    <TableCell className="p-2">
+                      <div className="w-16 h-16 overflow-hidden rounded">
+                        <img 
+                          src={image.url}
+                          alt={image.prompt}
+                          className="w-full h-full object-cover"
+                          onClick={() => onImageClick(image.url, image.prompt)}
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="p-2">
+                      <p className="text-xs truncate text-muted-foreground max-w-md">{image.prompt}</p>
+                    </TableCell>
+                    <TableCell className="p-2 text-right">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8"
+                        onClick={() => onDeleteImage(batchId, image.batchIndex)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           ) : (
-            <div className={`grid gap-4 ${viewMode === 'fullWidth' ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}>
+            <div className={`grid gap-4 ${viewMode === 'large' ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}>
               {completedImages.map((image, index) => (
                 <ImageBatchItem
                   key={`${batchId}-${index}`}
@@ -103,6 +131,8 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                   total={completedImages.length}
                   onDeleteImage={onDeleteImage}
                   onImageClick={(url) => onImageClick(url, image.prompt)}
+                  viewMode={viewMode}
+                  showActions={true}
                 />
               ))}
               {anyGenerating && (

@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { GridIcon, List, LayoutList, Maximize2 } from 'lucide-react';
+import { GridIcon, List, LayoutList, Grid2X2, Table2 } from 'lucide-react';
 import ImageBatch from './ImageBatch';
 import ImageDetailView from './ImageDetailView';
 import ReferenceImagesSection from './ReferenceImagesSection';
@@ -15,7 +15,7 @@ import LoadingPlaceholder from './LoadingPlaceholder';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 // Export ViewMode type so it can be used by other components
-export type ViewMode = 'normal' | 'small' | 'table' | 'fullWidth';
+export type ViewMode = 'large' | 'normal' | 'small' | 'table';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -101,10 +101,10 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       case 'normal':
         return <GridIcon className="h-4 w-4" />;
       case 'small':
-        return <Maximize2 className="h-4 w-4" />;
+        return <Grid2X2 className="h-4 w-4" />;
       case 'table':
-        return <List className="h-4 w-4" />;
-      case 'fullWidth':
+        return <Table2 className="h-4 w-4" />;
+      case 'large':
         return <LayoutList className="h-4 w-4" />;
       default:
         return <GridIcon className="h-4 w-4" />;
@@ -141,38 +141,38 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               <TabsList className="grid grid-cols-4 h-8 w-auto">
                 <Tooltip>
                   <TooltipTrigger asChild>
+                    <TabsTrigger value="large" className="px-2">
+                      <LayoutList className="h-4 w-4" />
+                    </TabsTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Large View</TooltipContent>
+                </Tooltip>
+                
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <TabsTrigger value="normal" className="px-2">
                       <GridIcon className="h-4 w-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>Grid View</TooltipContent>
+                  <TooltipContent>Normal View</TooltipContent>
                 </Tooltip>
                 
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <TabsTrigger value="small" className="px-2">
-                      <Maximize2 className="h-4 w-4" />
+                      <Grid2X2 className="h-4 w-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>Compact View</TooltipContent>
+                  <TooltipContent>Small View</TooltipContent>
                 </Tooltip>
                 
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <TabsTrigger value="table" className="px-2">
-                      <List className="h-4 w-4" />
+                      <Table2 className="h-4 w-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
                   <TooltipContent>Table View</TooltipContent>
-                </Tooltip>
-                
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <TabsTrigger value="fullWidth" className="px-2">
-                      <LayoutList className="h-4 w-4" />
-                    </TabsTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent>Full Width View</TooltipContent>
                 </Tooltip>
               </TabsList>
             </Tabs>
@@ -186,9 +186,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             >
               <SortableContext 
                 items={imageContainerOrder}
-                strategy={viewMode === 'fullWidth' ? verticalListSortingStrategy : horizontalListSortingStrategy}
+                strategy={viewMode === 'large' ? verticalListSortingStrategy : horizontalListSortingStrategy}
               >
-                <div className={viewMode === 'fullWidth' ? 'space-y-4' : ''}>
+                <div className={`${viewMode === 'large' ? 'space-y-4' : ''} ${viewMode === 'small' ? 'grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2' : ''}`}>
                   {imageContainerOrder.map(batchId => {
                     if (!batches[batchId]) return null;
                     
