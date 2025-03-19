@@ -1,9 +1,8 @@
-
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
 import PromptForm from '@/components/PromptForm';
-import ImageDisplay from '@/components/ImageDisplay';
+import ImageDisplay from '@/components/image-display/ImageDisplay';
 
 interface GeneratedImage {
   url: string;
