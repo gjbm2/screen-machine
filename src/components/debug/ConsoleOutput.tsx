@@ -80,56 +80,17 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs, isVisible, onClose 
   
   return (
     <div 
-      className={`fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 shadow-2xl transition-transform duration-300 ${
-        isVisible ? 'translate-y-0' : 'translate-y-full'
-      }`}
-      style={{ height: `${height}px` }}
+      className="p-3 overflow-auto font-mono text-xs bg-black text-white h-full"
     >
-      {/* Drag handle - Improved visual feedback */}
-      <div 
-        className={`absolute left-0 right-0 top-0 h-3 bg-muted cursor-ns-resize ${isDragging ? 'bg-muted-foreground/30' : ''}`}
-        onMouseDown={handleMouseDown}
-      >
-        <div className="w-12 h-1 bg-muted-foreground/30 rounded-full mx-auto mt-1" />
-      </div>
-      
-      <div className="flex justify-between items-center p-2 border-b mt-3">
-        <h3 className="font-medium text-sm">Console Output</h3>
-        <div className="flex items-center space-x-1">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="h-6 text-xs"
-            onClick={handleSaveLogs}
-          >
-            <Save className="h-3 w-3 mr-1" /> Save
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-6 w-6" 
-            onClick={onClose}
-          >
-            <X className="h-3 w-3" />
-          </Button>
-        </div>
-      </div>
-      
-      <div 
-        ref={consoleRef}
-        className="p-3 overflow-auto font-mono text-xs bg-black text-white"
-        style={{ height: `calc(100% - 40px)` }}
-      >
-        {logs.length === 0 ? (
-          <p className="text-white/60">No console logs yet.</p>
-        ) : (
-          logs.map((log, index) => (
-            <div key={index} className="py-1 border-b border-white/10 last:border-0">
-              {log}
-            </div>
-          ))
-        )}
-      </div>
+      {logs.length === 0 ? (
+        <p className="text-white/60">No console logs yet.</p>
+      ) : (
+        logs.map((log, index) => (
+          <div key={index} className="py-1 border-b border-white/10 last:border-0">
+            {log}
+          </div>
+        ))
+      )}
     </div>
   );
 };

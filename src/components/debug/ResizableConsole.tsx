@@ -18,7 +18,6 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
 }) => {
   // Increase the default size from 20 to 40 percent
   const [size, setSize] = useState(40);
-  const resizeHandleRef = useRef<HTMLDivElement>(null);
   
   const handleResize = (sizes: number[]) => {
     if (sizes[0]) {
@@ -52,12 +51,15 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
               </Button>
             </div>
             <div className="flex-grow overflow-auto">
-              <ConsoleOutput logs={logs} />
+              <ConsoleOutput 
+                logs={logs} 
+                isVisible={isVisible} 
+                onClose={onClose} 
+              />
             </div>
           </div>
         </Panel>
         <PanelResizeHandle 
-          ref={resizeHandleRef}
           className="h-1.5 bg-muted hover:bg-primary/20 cursor-ns-resize transition-colors"
         />
       </PanelGroup>
