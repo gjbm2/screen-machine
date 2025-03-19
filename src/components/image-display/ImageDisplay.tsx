@@ -52,10 +52,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
-  const [selectedImage, setSelectedImage] = useState<{ url: string; prompt: string; batchId: string; index: number } | null>(null);
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
-  const [sortField, setSortField] = useState<SortField>('timestamp');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [showFullScreenView, setShowFullScreenView] = useState(false);
+  const [fullScreenBatchId, setFullScreenBatchId] = useState<string | null>(null);
+  const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -126,19 +125,33 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
   };
   
+  // Unified function to open full screen view
+  const openFullScreenView = (batchId: string, imageIndex: number = 0) => {
+    setFullScreenBatchId(batchId);
+    setFullScreenImageIndex(imageIndex);
+    setShowFullScreenView(true);
+  };
+  
+  // Handler for small view image clicks
   const handleSmallImageClick = (image: any) => {
-    if (image?.url) {
-      setSelectedImage({
-        url: image.url,
-        prompt: image.prompt || '',
-        batchId: image.batchId,
-        index: image.batchIndex
-      });
+    if (image?.url && image.batchId) {
+      openFullScreenView(image.batchId, image.batchIndex || 0);
     }
   };
 
+  // Handle table row click - now checks if batch has only one image
   const handleTableRowClick = (batchId: string) => {
-    setSelectedBatchId(batchId);
+    const batchImages = batches[batchId]?.filter(img => img.status === 'completed');
+    // If there's only one image, go straight to fullscreen
+    if (batchImages && batchImages.length === 1) {
+      openFullScreenView(batchId, 0);
+    } else {
+      // Multiple images, expand the batch
+      setExpandedContainers(prev => ({
+        ...prev,
+        [batchId]: true
+      }));
+    }
   };
   
   const getAllImages = () => {
@@ -197,6 +210,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       return sortDirection === 'asc' ? comparison : -comparison;
     });
   };
+
+  const [sortField, setSortField] = useState<SortField>('timestamp');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   
   return (
     <div className="mt-8">
@@ -380,7 +396,12 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                             onDeleteContainer={() => onDeleteContainer(batchId)}
                             activeImageUrl={imageUrl}
                             viewMode="normal"
-                            onFullScreenClick={(image) => handleSmallImageClick(image)}
+                            onFullScreenClick={(image) => {
+                              // Route all fullscreen requests through our unified handler
+                              if (image && image.batchId) {
+                                openFullScreenView(image.batchId, image.batchIndex || 0);
+                              }
+                            }}
                           />
                         </div>
                       );
@@ -391,90 +412,52 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </DndContext>
           </div>
           
-          <Dialog open={!!selectedImage} onOpenChange={(open) => !open && setSelectedImage(null)}>
-            <DialogContent className="max-w-4xl">
-              {selectedImage && (
-                <DialogHeader>
+          {/* Unified full screen view dialog */}
+          {fullScreenBatchId && (
+            <Dialog 
+              open={showFullScreenView} 
+              onOpenChange={(open) => setShowFullScreenView(open)}
+            >
+              <DialogContent className="max-w-4xl p-0 overflow-hidden">
+                <DialogHeader className="p-4 pb-0">
                   <DialogTitle>Image Detail</DialogTitle>
                 </DialogHeader>
-              )}
-              {selectedImage && (
-                <div className="flex flex-col">
-                  <div className="relative rounded-md overflow-hidden mb-4">
-                    <img 
-                      src={selectedImage.url} 
-                      alt={selectedImage.prompt}
-                      className="w-full h-auto object-contain max-h-[70vh]" 
+                <div className="p-4 pt-0">
+                  {batches[fullScreenBatchId] && (
+                    <ImageDetailView
+                      batchId={fullScreenBatchId}
+                      images={batches[fullScreenBatchId].filter(img => img.status === 'completed')}
+                      activeIndex={fullScreenImageIndex}
+                      onSetActiveIndex={setFullScreenImageIndex}
+                      onNavigatePrev={(e) => {
+                        e.stopPropagation();
+                        if (fullScreenImageIndex > 0) {
+                          setFullScreenImageIndex(fullScreenImageIndex - 1);
+                        }
+                      }}
+                      onNavigateNext={(e) => {
+                        e.stopPropagation();
+                        const completedImages = batches[fullScreenBatchId].filter(img => img.status === 'completed');
+                        if (fullScreenImageIndex < completedImages.length - 1) {
+                          setFullScreenImageIndex(fullScreenImageIndex + 1);
+                        }
+                      }}
+                      onToggleExpand={() => {
+                        setShowFullScreenView(false);
+                        handleToggleExpand(fullScreenBatchId);
+                      }}
+                      onDeleteImage={onDeleteImage}
+                      onCreateAgain={onCreateAgain}
+                      onUseAsInput={(url) => {
+                        onUseGeneratedAsInput(url);
+                        setShowFullScreenView(false);
+                      }}
                     />
-                  </div>
-                  
-                  <div className="mt-4 space-y-2">
-                    {selectedImage.prompt && (
-                      <div className="text-sm">
-                        <p className="font-medium">Prompt:</p>
-                        <p className="text-muted-foreground">{selectedImage.prompt}</p>
-                      </div>
-                    )}
-                    
-                    <div className="flex justify-center mt-4">
-                      <div className="flex gap-2">
-                        {batches[selectedImage.batchId] && (
-                          <button
-                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2"
-                            onClick={() => {
-                              const image = batches[selectedImage.batchId]?.find(img => img.batchIndex === selectedImage.index);
-                              if (image?.url) {
-                                onUseGeneratedAsInput(image.url);
-                                setSelectedImage(null);
-                              }
-                            }}
-                          >
-                            Use as Input
-                          </button>
-                        )}
-                        <button
-                          className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2"
-                          onClick={() => setSelectedImage(null)}
-                        >
-                          Close
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
-              )}
-            </DialogContent>
-          </Dialog>
-          
-          <Dialog open={!!selectedBatchId} onOpenChange={(open) => !open && setSelectedBatchId(null)}>
-            <DialogContent className="max-w-4xl">
-              <DialogHeader>
-                <DialogTitle>Batch Images</DialogTitle>
-              </DialogHeader>
-              {selectedBatchId && batches[selectedBatchId] && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 pt-4">
-                  {batches[selectedBatchId]
-                    .filter(img => img.status === 'completed')
-                    .map((image, index) => (
-                      <div 
-                        key={`${selectedBatchId}-${index}`} 
-                        className="aspect-square rounded-md overflow-hidden border cursor-pointer group relative"
-                        onClick={() => handleSmallImageClick(image)}
-                      >
-                        <img 
-                          src={image.url}
-                          alt={image.prompt || `Generated image ${index + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                          <ExternalLink className="h-6 w-6 text-white" />
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       )}
     </div>

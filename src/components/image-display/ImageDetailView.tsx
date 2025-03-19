@@ -58,15 +58,15 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   
   return (
     <div className="p-4 space-y-4">
-      {/* Reference image section (directly displayed) */}
+      {/* Reference image section - displayed without cropping */}
       {referenceImageUrl && (
         <div className="mb-4">
           <p className="text-sm text-muted-foreground mb-2">Reference image:</p>
-          <div className="border rounded-md overflow-hidden max-h-40 flex justify-center">
+          <div className="border rounded-md overflow-hidden flex justify-center h-auto max-h-40">
             <img 
               src={referenceImageUrl} 
               alt="Reference image"
-              className="h-full object-contain cursor-pointer"
+              className="h-full w-auto object-contain cursor-pointer"
               onClick={() => setShowReferenceImage(true)}
             />
           </div>
@@ -75,7 +75,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       
       {/* Selected image view */}
       <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden max-w-lg mx-auto group">
-        <div onClick={() => setShowFullScreen(true)} className="cursor-pointer">
+        <div>
           <ImageBatchItem 
             image={activeImage}
             batchId={batchId}
@@ -110,6 +110,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
               workflow: activeImage.workflow || '',
               params: activeImage.params
             }}
+            alwaysVisible={true}
           />
         </div>
       )}
@@ -150,7 +151,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
                 <img 
                   src={referenceImageUrl} 
                   alt="Reference image"
-                  className="w-full h-auto"
+                  className="w-full h-auto object-contain"
                 />
               </div>
             </div>
