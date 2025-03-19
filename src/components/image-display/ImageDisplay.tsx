@@ -10,11 +10,12 @@ import { GridIcon, List, LayoutList, Maximize2 } from 'lucide-react';
 import ImageBatch from './ImageBatch';
 import ImageDetailView from './ImageDetailView';
 import ReferenceImagesSection from './ReferenceImagesSection';
-import { useMobile } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/hooks/use-mobile'; // Fixed: useMobile → useIsMobile
 import LoadingPlaceholder from './LoadingPlaceholder';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-type ViewMode = 'normal' | 'small' | 'table' | 'fullWidth';
+// Make sure this type definition is consistent across files
+export type ViewMode = 'normal' | 'small' | 'table' | 'fullWidth';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -47,7 +48,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onDeleteImage,
   onDeleteContainer
 }) => {
-  const isMobile = useMobile();
+  const isMobile = useIsMobile();
   const [activeImage, setActiveImage] = useState<string | null>(null);
   const [activePrompt, setActivePrompt] = useState<string | null>(null);
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
@@ -139,12 +140,24 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       
       {activeImage && !isLoading && (
         <div className="mt-4">
+          {/* Fixed: passing correct props structure to ImageDetailView */}
           <ImageDetailView 
-            imageUrl={activeImage}
-            prompt={activePrompt}
-            generationParams={generationParams}
-            onUseAsInput={onUseGeneratedAsInput}
+            batchId={activeBatchId || ""}
+            images={[{
+              url: activeImage,
+              prompt: activePrompt || "",
+              workflow: workflow || "text-to-image",
+              status: "completed",
+              params: generationParams
+            }]}
+            activeIndex={0}
+            onSetActiveIndex={() => {}}
+            onNavigatePrev={() => {}}
+            onNavigateNext={() => {}}
+            onToggleExpand={() => {}}
+            onDeleteImage={onDeleteImage}
             onCreateAgain={() => onCreateAgain(activeBatchId || undefined)}
+            onUseAsInput={onUseGeneratedAsInput}
           />
         </div>
       )}
@@ -152,7 +165,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       {isLoading && (
         <Card className="mt-4">
           <CardContent className="pt-6 pb-4">
-            <LoadingPlaceholder message="Generating your images..." />
+            {/* Fixed: changed message to prompt */}
+            <LoadingPlaceholder prompt={prompt} />
           </CardContent>
         </Card>
       )}

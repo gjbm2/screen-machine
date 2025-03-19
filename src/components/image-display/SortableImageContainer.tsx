@@ -1,12 +1,10 @@
-
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, ChevronUp, ChevronDown, Maximize, Image } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-
-type ViewMode = 'normal' | 'small' | 'table' | 'fullWidth';
+import { ViewMode } from './ImageDisplay';
 
 interface SortableContainerProps { 
   batchId: string; 
@@ -42,7 +40,6 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
   const promptText = batch.images[0]?.prompt || '';
   const workflowName = batch.images[0]?.workflow || 'Generated Image';
 
-  // Determine the title text based on prompt availability
   const titleText = promptText ? 
     `#${containerId} ${promptText}` : 
     `#${containerId} ${workflowName}`;
@@ -57,7 +54,6 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     width: viewMode === 'fullWidth' ? '100%' : undefined,
   };
 
-  // In small view, we hide the header or simplify it
   if (viewMode === 'small' && !isExpanded) {
     return (
       <div ref={setNodeRef} style={style}>
@@ -120,7 +116,6 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
       </div>
       {children}
 
-      {/* Reference image popup */}
       {referenceImageUrl && (
         <Dialog open={showReferenceImage} onOpenChange={setShowReferenceImage}>
           <DialogContent className="max-w-lg">

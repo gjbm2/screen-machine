@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,8 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Maximize, X } from 'lucide-react';
 import ImageActions from '@/components/ImageActions';
-
-type ViewMode = 'normal' | 'small' | 'table';
+import { ViewMode } from './ImageDisplay'; // Import ViewMode type from ImageDisplay
 
 interface ImageBatchProps {
   batchId: string;
@@ -28,76 +26,75 @@ interface ImageBatchProps {
     referenceImageUrl?: string;
   }>;
   isExpanded: boolean;
-  activeIndex: number;
-  activeBatchId: string | null;
-  onSetActiveBatchId: (id: string | null) => void;
-  onSetActiveImageIndex: (batchId: string, index: number) => void;
-  onToggleExpandBatch: (id: string) => void;
-  onNavigatePrevImage: (batchId: string, imagesCount: number) => void;
-  onNavigateNextImage: (batchId: string, imagesCount: number) => void;
-  onDeleteImage: (batchId: string, index: number) => void;
+  toggleExpand: (id: string) => void;
+  onImageClick: (url: string, prompt: string) => void;
   onCreateAgain: (batchId: string) => void;
-  onUseAsInput?: ((imageUrl: string) => void) | null;
-  extraComponents?: React.ReactNode;
+  onDeleteImage: (index: number) => void;
+  onDeleteContainer: () => void;
+  activeImageUrl: string | null;
   viewMode?: ViewMode;
-  onOpenBatchDialog?: (batchId: string) => void;
-  onFullScreen?: (batchId: string, index?: number) => void;
 }
 
 const ImageBatch: React.FC<ImageBatchProps> = ({
   batchId,
   images,
   isExpanded,
-  activeIndex,
-  activeBatchId,
-  onSetActiveBatchId,
-  onSetActiveImageIndex,
-  onToggleExpandBatch,
-  onNavigatePrevImage,
-  onNavigateNextImage,
-  onDeleteImage,
+  toggleExpand,
+  onImageClick,
   onCreateAgain,
-  onUseAsInput,
-  extraComponents,
-  viewMode = 'normal',
-  onOpenBatchDialog,
-  onFullScreen
+  onDeleteImage,
+  onDeleteContainer,
+  activeImageUrl,
+  viewMode = 'normal'
 }) => {
   if (!images || images.length === 0) return null;
   
-  const activeImage = images[activeIndex];
-  const isActive = activeBatchId === batchId;
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const [activeBatchId, setActiveBatchId] = React.useState<string | null>(null);
   const [openFullScreen, setOpenFullScreen] = React.useState(false);
   
   const isSmallView = viewMode === 'small';
+  const activeImage = images[activeIndex];
+  
+  React.useEffect(() => {
+    // Reset to the first image when the batch changes
+    setActiveIndex(0);
+  }, [batchId]);
+  
+  const handleNavigatePrevImage = () => {
+    setActiveIndex(prev => (prev > 0 ? prev - 1 : images.length - 1));
+  };
+  
+  const handleNavigateNextImage = () => {
+    setActiveIndex(prev => (prev < images.length - 1 ? prev + 1 : 0));
+  };
+  
+  const handleImageClick = (url: string, prompt: string) => {
+    const newIndex = images.findIndex(img => img.url === url);
+    if (newIndex >= 0) {
+      setActiveIndex(newIndex);
+    }
+    onImageClick(url, prompt);
+  };
   
   const handleOpenFullScreen = () => {
-    if (onFullScreen) {
-      onFullScreen(batchId, activeIndex);
-    } else {
-      setOpenFullScreen(true);
-    }
+    setOpenFullScreen(true);
   };
   
   const handleCreateAgain = () => {
     onCreateAgain(batchId);
   };
   
-  const handleUseAsInput = () => {
-    if (onUseAsInput && activeImage.url) {
-      onUseAsInput(activeImage.url);
-    }
+  const handleUseAsInput = (url: string) => {
+    // This will be forwarded from props if needed
   };
   
-  const handleSwipe = React.useCallback((direction: 'left' | 'right') => {
-    if (direction === 'left') {
-      onNavigateNextImage(batchId, images.length);
-    } else {
-      onNavigatePrevImage(batchId, images.length);
+  const handleSetActiveImageIndex = (index: number) => {
+    setActiveIndex(index);
+    if (images[index]) {
+      onImageClick(images[index].url, images[index].prompt || '');
     }
-  }, [batchId, images.length, onNavigateNextImage, onNavigatePrevImage]);
-  
-  const promptTitle = activeImage?.prompt || '';
+  };
   
   return (
     <Collapsible 
@@ -112,14 +109,14 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
         batchId={batchId} 
         batch={{ images }}
         isExpanded={isExpanded}
-        toggleExpand={onToggleExpandBatch}
+        toggleExpand={toggleExpand}
         viewMode={viewMode}
       >
         {!isExpanded && (
           <Card 
             className="overflow-hidden relative border-0 rounded-none"
-            onMouseEnter={() => onSetActiveBatchId(batchId)}
-            onMouseLeave={() => onSetActiveBatchId(null)}
+            onMouseEnter={() => setActiveBatchId(batchId)}
+            onMouseLeave={() => setActiveBatchId(null)}
           >
             {/* Collapsed view (carousel-like navigation) */}
             <ImageBatchItem 
@@ -128,7 +125,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               index={activeIndex}
               total={images.length}
               onCreateAgain={onCreateAgain}
-              onUseAsInput={onUseAsInput}
+              onUseAsInput={handleUseAsInput}
               onDeleteImage={onDeleteImage}
               onFullScreen={handleOpenFullScreen}
               viewMode={viewMode}
@@ -139,11 +136,11 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               <NavigationControls 
                 onPrevious={(e) => {
                   e.stopPropagation();
-                  onNavigatePrevImage(batchId, images.length);
+                  handleNavigatePrevImage();
                 }}
                 onNext={(e) => {
                   e.stopPropagation();
-                  onNavigateNextImage(batchId, images.length);
+                  handleNavigateNextImage();
                 }}
               />
             )}
@@ -152,8 +149,8 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
         {isExpanded && (
           <Card 
             className="overflow-hidden relative border-0 rounded-none"
-            onMouseEnter={() => onSetActiveBatchId(batchId)}
-            onMouseLeave={() => onSetActiveBatchId(null)}
+            onMouseEnter={() => setActiveBatchId(batchId)}
+            onMouseLeave={() => setActiveBatchId(null)}
           >
             {/* Empty content for expanded view */}
           </Card>
@@ -166,19 +163,18 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
           batchId={batchId}
           images={images}
           activeIndex={activeIndex}
-          onSetActiveIndex={(index) => onSetActiveImageIndex(batchId, index)}
+          onSetActiveIndex={handleSetActiveImageIndex}
           onNavigatePrev={(e) => {
             e.stopPropagation();
-            onNavigatePrevImage(batchId, images.length);
+            handleNavigatePrevImage();
           }}
           onNavigateNext={(e) => {
             e.stopPropagation();
-            onNavigateNextImage(batchId, images.length);
+            handleNavigateNextImage();
           }}
-          onToggleExpand={onToggleExpandBatch}
+          onToggleExpand={toggleExpand}
           onDeleteImage={onDeleteImage}
           onCreateAgain={onCreateAgain}
-          onUseAsInput={onUseAsInput}
         />
       </CollapsibleContent>
       
@@ -215,7 +211,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                 <ImageActions
                   imageUrl={activeImage.url}
                   onCreateAgain={handleCreateAgain}
-                  onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
                   generationInfo={{
                     prompt: activeImage.prompt || '',
                     workflow: activeImage.workflow || '',
