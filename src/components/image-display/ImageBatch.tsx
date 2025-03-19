@@ -71,7 +71,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
             batchId={batchId}
             index={0}
             total={images.length}
-            onImageClick={() => onImageClick(mostRecentImage.url, mostRecentImage.prompt)}
+            onImageClick={(url: string) => onImageClick(mostRecentImage.url, mostRecentImage.prompt)}
             onDeleteImage={onDeleteImage}
           />
         </div>
@@ -131,8 +131,8 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                   batchId={batchId}
                   index={index}
                   total={completedImages.length}
-                  onImageClick={() => onImageClick(image.url, image.prompt)}
-                  onDeleteImage={(batchId, index) => onDeleteImage(batchId, index)}
+                  onImageClick={(url: string) => onImageClick(image.url, image.prompt)}
+                  onDeleteImage={onDeleteImage}
                 />
               ))}
               {anyGenerating && (

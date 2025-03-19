@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { ExternalLink, Trash2, Maximize } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -25,6 +24,7 @@ interface ImageBatchItemProps {
   onUseAsInput?: ((imageUrl: string) => void) | null;
   onDeleteImage?: (batchId: string, index: number) => void;
   onFullScreen?: (batchId: string, index: number) => void;
+  onImageClick: (url: string) => void;
   viewMode?: 'normal' | 'small' | 'table';
 }
 
@@ -37,6 +37,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   onUseAsInput,
   onDeleteImage,
   onFullScreen,
+  onImageClick,
   viewMode = 'normal'
 }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -73,6 +74,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     // In normal view, don't do anything on image click (other interactions handle this)
     if ((viewMode === 'small' || viewMode === 'table') && onFullScreen) {
       handleFullScreen(e);
+    } else if (image.url) {
+      onImageClick(image.url);
     }
   };
 
@@ -114,14 +117,12 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </div>
         )}
         
-        {/* Show image number indicator only if we have more than 1 image and not in small view mode */}
         {total > 1 && viewMode !== 'small' && (
           <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
             {index + 1}/{total}
           </div>
         )}
         
-        {/* Delete button - improved positioning and visibility */}
         {onDeleteImage && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -136,7 +137,6 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </Tooltip>
         )}
         
-        {/* Image Actions - improved visibility */}
         {image.url && viewMode !== 'small' && (
           <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 opacity-70 group-hover:opacity-100 transition-opacity bg-black/70 rounded-md p-1">
             <ImageActions
@@ -153,7 +153,6 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </div>
         )}
         
-        {/* Fullscreen button - separate from other actions for better visibility */}
         {onFullScreen && viewMode === 'normal' && (
           <Tooltip>
             <TooltipTrigger asChild>
