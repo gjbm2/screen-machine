@@ -49,7 +49,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onDeleteContainer
 }) => {
   const isMobile = useIsMobile();
-  const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? 'small' : 'normal');
+  const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? 'normal' : 'normal');
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
   
   const sensors = useSensors(
@@ -120,15 +120,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
         <ReferenceImagesSection images={uploadedImages} />
       )}
       
-      {isLoading && (
-        <Card className="mt-4">
-          <CardContent className="pt-6 pb-4">
-            <LoadingPlaceholder prompt={prompt} />
-          </CardContent>
-        </Card>
-      )}
+      {/* Loading placeholder should only be shown in the generated images section */}
       
-      {hasBatches && (
+      {hasBatches || isLoading ? (
         <div className="mt-8">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">Generated Images</h2>
@@ -178,6 +172,14 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </Tabs>
           </div>
           
+          {isLoading && (
+            <Card className="mb-4">
+              <CardContent className="pt-6 pb-4">
+                <LoadingPlaceholder prompt={prompt} />
+              </CardContent>
+            </Card>
+          )}
+          
           <ScrollArea className="h-[calc(100vh-24rem)] pr-4">
             <DndContext 
               sensors={sensors}
@@ -188,7 +190,11 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 items={imageContainerOrder}
                 strategy={viewMode === 'large' ? verticalListSortingStrategy : horizontalListSortingStrategy}
               >
-                <div className={`${viewMode === 'large' ? 'space-y-4' : ''} ${viewMode === 'small' ? 'grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2' : ''}`}>
+                <div className={`
+                  ${viewMode === 'large' ? 'space-y-4' : ''} 
+                  ${viewMode === 'small' ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2' : ''}
+                  ${viewMode === 'normal' ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : ''}
+                `}>
                   {imageContainerOrder.map(batchId => {
                     if (!batches[batchId]) return null;
                     
@@ -213,7 +219,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </DndContext>
           </ScrollArea>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

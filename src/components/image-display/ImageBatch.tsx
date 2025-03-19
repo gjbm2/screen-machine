@@ -78,11 +78,12 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
     );
   }
   
+  // For large, normal, and table views we use the container
   return (
     <SortableImageContainer 
       batchId={batchId}
       batch={{ images }}
-      isExpanded={isExpanded}
+      isExpanded={isExpanded || viewMode === 'large'}
       toggleExpand={toggleExpand}
       viewMode={viewMode}
     >
@@ -132,7 +133,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                   onDeleteImage={onDeleteImage}
                   onImageClick={(url) => onImageClick(url, image.prompt)}
                   viewMode={viewMode}
-                  showActions={true}
+                  showActions={viewMode === 'large' || viewMode === 'normal'}
                 />
               ))}
               {anyGenerating && (
