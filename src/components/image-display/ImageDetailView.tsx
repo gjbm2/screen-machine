@@ -186,7 +186,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
                 )}
               </div>
               
-              {/* Action buttons - ensure identical to hover actions */}
+              {/* Action buttons for full screen view */}
               <div className="mt-4 flex justify-center space-x-2">
                 <ImageActions
                   imageUrl={activeImage.url}
