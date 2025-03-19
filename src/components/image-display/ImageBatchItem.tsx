@@ -5,6 +5,8 @@ import { Maximize, Trash2, X } from 'lucide-react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import ImageActions from '@/components/ImageActions';
 
+type ViewMode = 'normal' | 'small' | 'table';
+
 interface ImageBatchItemProps {
   image: {
     url: string;
@@ -20,6 +22,7 @@ interface ImageBatchItemProps {
   onCreateAgain: (batchId: string) => void;
   onUseAsInput?: ((imageUrl: string) => void) | null;
   onDeleteImage: (batchId: string, index: number) => void;
+  viewMode?: ViewMode;
 }
 
 const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
@@ -30,16 +33,18 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   onCreateAgain,
   onUseAsInput,
   onDeleteImage,
+  viewMode = 'normal'
 }) => {
   const isGenerating = image.status === 'generating';
   const [actionsVisible, setActionsVisible] = useState(false);
   const [isClicked, setIsClicked] = useState(false);
+  const isSmallView = viewMode === 'small';
   
   if (isGenerating) {
     return (
       <div className="aspect-square flex items-center justify-center bg-secondary/20">
         <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-        {image.prompt && (
+        {image.prompt && !isSmallView && (
           <p className="text-sm text-center text-muted-foreground absolute mt-20">
             Generating: {image.prompt}
           </p>
@@ -67,18 +72,20 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         className="w-full h-full object-cover"
       />
       
-      {/* Delete button - always visible */}
-      <button 
-        className="absolute top-2 left-2 bg-black/90 hover:bg-black text-white rounded-full p-2 transition-colors z-20"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDeleteImage(batchId, index);
-        }}
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
+      {/* Delete button - always visible in normal mode, hidden in small mode */}
+      {!isSmallView && (
+        <button 
+          className="absolute top-2 left-2 bg-black/90 hover:bg-black text-white rounded-full p-2 transition-colors z-20"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteImage(batchId, index);
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
       
-      {/* Full screen view button - always visible */}
+      {/* Full screen view button - always available */}
       <Dialog>
         <DialogContent className="p-0 overflow-hidden" fullscreen>
           <DialogHeader className="absolute top-0 left-0 right-0 bg-black/80 z-10 p-4 flex justify-between items-start">
@@ -136,6 +143,9 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         className={`absolute bottom-0 left-0 right-0 bg-black/90 flex justify-center p-3 z-10 transition-transform duration-300 ${
           actionsVisible ? 'translate-y-0' : 'translate-y-full'
         }`}
+        style={{ 
+          backgroundColor: isClicked ? 'rgba(0, 0, 0, 0.90)' : 'rgba(0, 0, 0, 0.75)'
+        }}
       >
         <div className="flex gap-2 justify-center">
           <TooltipProvider>

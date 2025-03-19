@@ -284,7 +284,7 @@ const Index = () => {
         <div className="mt-8 max-w-2xl mx-auto">
           <PromptForm 
             onSubmit={handleSubmitPrompt} 
-            isLoading={false} // Allow multiple generations
+            isLoading={false} // Always allow submissions
             currentPrompt={currentPrompt}
           />
         </div>

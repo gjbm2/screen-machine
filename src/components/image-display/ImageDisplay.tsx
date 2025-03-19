@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -7,6 +8,14 @@ import LoadingPlaceholder from './LoadingPlaceholder';
 import ReferenceImageIndicator from './ReferenceImageIndicator';
 import { DropdownMenu } from '@/components/ui/dropdown-menu';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { LayoutGrid, List, Table2, Maximize, ExternalLink } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { formatDistanceToNow } from 'date-fns';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+
+type ViewMode = 'normal' | 'small' | 'table';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -55,6 +64,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
   const [deletedImages, setDeletedImages] = useState<Record<string, Set<number>>>({});
   const [focusBatchId, setFocusBatchId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('normal');
+  const [openBatchDialog, setOpenBatchDialog] = useState<string | null>(null);
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -239,70 +250,202 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     return null;
   };
 
+  const getGridColsClass = () => {
+    if (viewMode === 'small') {
+      return "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8";
+    }
+    return "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
+  };
+
+  const handleOpenBatchDialog = (batchId: string) => {
+    setOpenBatchDialog(batchId);
+    const batch = batchedImages.find(b => b.batchId === batchId);
+    if (batch) {
+      setExpandedBatches(prev => ({
+        ...prev,
+        [batchId]: true
+      }));
+    }
+  };
+
+  const renderTableView = () => {
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Prompt</TableHead>
+            <TableHead className="w-32">When</TableHead>
+            <TableHead className="w-20 text-center">Batch</TableHead>
+            <TableHead className="w-16 text-center">Open</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {batchedImages.map(({ batchId, images }) => {
+            const timestamp = images[0]?.timestamp || Date.now();
+            const timeAgo = formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+            const promptText = images[0]?.prompt || 'No prompt';
+            
+            return (
+              <TableRow key={batchId}>
+                <TableCell className="font-medium">
+                  <div className="truncate max-w-64">{promptText}</div>
+                </TableCell>
+                <TableCell>{timeAgo}</TableCell>
+                <TableCell className="text-center">{images.length}</TableCell>
+                <TableCell className="text-center">
+                  <Button variant="ghost" size="icon" onClick={() => handleOpenBatchDialog(batchId)}>
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    );
+  };
+
   return (
     <div className="mt-12 animate-fade-in">
       <div className="flex flex-col gap-6">
         <div>
-          <h3 className="text-lg font-semibold mb-3">Generated Images</h3>
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-lg font-semibold">Generated Images</h3>
+            <div className="flex items-center gap-2 bg-card rounded-md p-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={viewMode === 'normal' ? 'secondary' : 'ghost'}
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setViewMode('normal')}
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Normal view</TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={viewMode === 'small' ? 'secondary' : 'ghost'}
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setViewMode('small')}
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Small view</TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setViewMode('table')}
+                  >
+                    <Table2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Table view</TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
           
           <div className="space-y-4">
             {isLoading && generatedImages.length === 0 && (
               <LoadingPlaceholder prompt={prompt} />
             )}
             
-            <TooltipProvider>
-              <DndContext 
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext 
-                  items={sortableIds}
-                  strategy={verticalListSortingStrategy}
+            {viewMode === 'table' ? (
+              renderTableView()
+            ) : (
+              <TooltipProvider>
+                <DndContext 
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
                 >
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                    {batchedImages.map(({ batchId, images }) => {
-                      if (images.length === 0) return null;
-                      
-                      const filteredImages = deletedImages[batchId] 
-                        ? images.filter((_, i) => !deletedImages[batchId].has(i))
-                        : images;
-                      
-                      if (filteredImages.length === 0) return null;
-                      
-                      const activeIndex = getActiveImageIndex(batchId, filteredImages.length);
-                      const isExpanded = expandedBatches[batchId];
-                      const activeImage = filteredImages[activeIndex];
-                      
-                      const extraComponents = activeImage?.referenceImageUrl ? 
-                        renderReferenceImageIndicator(activeImage) : 
-                        null;
-                      
-                      return (
-                        <DropdownMenu key={batchId}>
-                          <ImageBatch
-                            batchId={batchId}
-                            images={filteredImages}
-                            isExpanded={isExpanded}
-                            activeIndex={activeIndex}
-                            activeBatchId={activeBatchId}
-                            onSetActiveBatchId={setActiveBatchId}
-                            onSetActiveImageIndex={setActiveImageIndex}
-                            onToggleExpandBatch={toggleExpandBatch}
-                            onNavigatePrevImage={navigatePrevImage}
-                            onNavigateNextImage={navigateNextImage}
-                            onDeleteImage={handleDeleteImage}
-                            onCreateAgain={handleCreateAnother}
-                            onUseAsInput={onUseGeneratedAsInput}
-                            extraComponents={extraComponents}
-                          />
-                        </DropdownMenu>
-                      );
-                    })}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            </TooltipProvider>
+                  <SortableContext 
+                    items={sortableIds}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className={`grid ${getGridColsClass()} gap-4`}>
+                      {batchedImages.map(({ batchId, images }) => {
+                        if (images.length === 0) return null;
+                        
+                        const filteredImages = deletedImages[batchId] 
+                          ? images.filter((_, i) => !deletedImages[batchId].has(i))
+                          : images;
+                        
+                        if (filteredImages.length === 0) return null;
+                        
+                        const activeIndex = getActiveImageIndex(batchId, filteredImages.length);
+                        const isExpanded = expandedBatches[batchId];
+                        const activeImage = filteredImages[activeIndex];
+                        
+                        const extraComponents = activeImage?.referenceImageUrl ? 
+                          renderReferenceImageIndicator(activeImage) : 
+                          null;
+                        
+                        return (
+                          <DropdownMenu key={batchId}>
+                            <ImageBatch
+                              batchId={batchId}
+                              images={filteredImages}
+                              isExpanded={isExpanded}
+                              activeIndex={activeIndex}
+                              activeBatchId={activeBatchId}
+                              onSetActiveBatchId={setActiveBatchId}
+                              onSetActiveImageIndex={setActiveImageIndex}
+                              onToggleExpandBatch={toggleExpandBatch}
+                              onNavigatePrevImage={navigatePrevImage}
+                              onNavigateNextImage={navigateNextImage}
+                              onDeleteImage={handleDeleteImage}
+                              onCreateAgain={handleCreateAnother}
+                              onUseAsInput={onUseGeneratedAsInput}
+                              extraComponents={extraComponents}
+                              viewMode={viewMode}
+                            />
+                          </DropdownMenu>
+                        );
+                      })}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              </TooltipProvider>
+            )}
+            
+            {/* Batch dialog for table view */}
+            {openBatchDialog && (
+              <Dialog open={!!openBatchDialog} onOpenChange={() => setOpenBatchDialog(null)}>
+                <DialogContent className="max-w-4xl p-0 overflow-hidden">
+                  {batchedImages.find(b => b.batchId === openBatchDialog)?.images.length > 0 && (
+                    <div className="p-6">
+                      <h2 className="text-xl font-semibold mb-4">Image Batch</h2>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                        {batchedImages.find(b => b.batchId === openBatchDialog)?.images.map((image, index) => (
+                          <div key={index} className="relative rounded-md overflow-hidden border">
+                            <img 
+                              src={image.url} 
+                              alt={`Image ${index + 1}`} 
+                              className="w-full aspect-square object-cover" 
+                            />
+                            <div className="absolute bottom-2 right-2 bg-black/90 text-white px-2 py-1 rounded-full text-xs">
+                              {index + 1}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         </div>
       </div>

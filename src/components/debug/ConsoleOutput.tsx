@@ -1,9 +1,7 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Maximize, Minimize, Save } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { X, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { ResizablePanel, ResizablePanelGroup, ResizableHandle } from '@/components/ui/resizable';
 import { toast } from 'sonner';
 
 interface ConsoleOutputProps {
@@ -13,97 +11,112 @@ interface ConsoleOutputProps {
 }
 
 const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs, isVisible, onClose }) => {
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
+  const [height, setHeight] = useState(300);
+  const [isDragging, setIsDragging] = useState(false);
+  const consoleRef = useRef<HTMLDivElement>(null);
+  const dragStartPosition = useRef<number | null>(null);
+  const dragStartHeight = useRef<number | null>(null);
+  
   useEffect(() => {
-    // Auto-scroll to bottom when new logs are added
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (isVisible && consoleRef.current) {
+      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
-  }, [logs]);
-
+  }, [logs, isVisible]);
+  
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    dragStartPosition.current = e.clientY;
+    dragStartHeight.current = height;
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+  
+  const handleMouseMove = (e: MouseEvent) => {
+    if (isDragging && dragStartPosition.current !== null && dragStartHeight.current !== null) {
+      const deltaY = dragStartPosition.current - e.clientY;
+      const newHeight = Math.max(100, Math.min(window.innerHeight * 0.7, dragStartHeight.current + deltaY));
+      setHeight(newHeight);
+    }
+  };
+  
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+  };
+  
   const handleSaveLogs = () => {
     try {
-      const logContent = logs.join('\n');
-      const blob = new Blob([logContent], { type: 'text/plain' });
+      const blob = new Blob([logs.join('\n')], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
-      
       const a = document.createElement('a');
       a.href = url;
-      a.download = `console-logs-${new Date().toISOString().split('T')[0]}.txt`;
+      a.download = `console-logs-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
-      toast.success('Console logs saved');
+      toast.success('Console logs saved successfully');
     } catch (error) {
       console.error('Error saving logs:', error);
-      toast.error('Failed to save logs');
+      toast.error('Failed to save console logs');
     }
   };
-
+  
   if (!isVisible) return null;
-
+  
   return (
     <div 
-      className={`fixed ${isFullscreen ? 'inset-0' : 'bottom-0 left-0 right-0'} bg-black text-white z-50 transition-all`}
+      className="fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 shadow-2xl"
+      style={{ height: `${height}px` }}
     >
-      <ResizablePanelGroup
-        direction="vertical"
-        className={`h-${isFullscreen ? 'screen' : '64'}`}
+      {/* Drag handle */}
+      <div 
+        className="absolute left-0 right-0 top-0 h-2 bg-muted cursor-ns-resize"
+        onMouseDown={handleMouseDown}
       >
-        <ResizablePanel defaultSize={100} minSize={10}>
-          <div className="flex items-center justify-between p-3 border-b border-gray-700">
-            <h3 className="text-sm font-semibold">Console Output</h3>
-            <div className="flex gap-2">
-              <Button 
-                variant="ghost" 
-                size="icon"
-                className="h-6 w-6 text-gray-400 hover:text-white hover:bg-gray-800"
-                onClick={handleSaveLogs}
-                title="Save logs"
-              >
-                <Save className="h-4 w-4" />
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="icon"
-                className="h-6 w-6 text-gray-400 hover:text-white hover:bg-gray-800"
-                onClick={() => setIsFullscreen(!isFullscreen)}
-                title={isFullscreen ? "Minimize" : "Maximize"}
-              >
-                {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="icon"
-                className="h-6 w-6 text-gray-400 hover:text-white hover:bg-gray-800"
-                onClick={onClose}
-                title="Close"
-              >
-                <X className="h-4 w-4" />
-              </Button>
+        <div className="w-12 h-1 bg-muted-foreground/30 rounded-full mx-auto" />
+      </div>
+      
+      <div className="flex justify-between items-center p-3 border-b">
+        <h3 className="font-semibold">Console Output</h3>
+        <div className="flex items-center space-x-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="h-8"
+            onClick={handleSaveLogs}
+          >
+            <Save className="h-4 w-4 mr-1" /> Save
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-8 w-8" 
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      
+      <div 
+        ref={consoleRef}
+        className="p-3 overflow-auto font-mono text-xs"
+        style={{ height: `calc(100% - 45px)` }}
+      >
+        {logs.length === 0 ? (
+          <p className="text-muted-foreground">No console logs yet.</p>
+        ) : (
+          logs.map((log, index) => (
+            <div key={index} className="py-1 border-b border-border/20 last:border-0">
+              {log}
             </div>
-          </div>
-          
-          <ScrollArea className="h-[calc(100%-40px)]" ref={scrollRef}>
-            <div className="p-3 font-mono text-xs whitespace-pre-wrap">
-              {logs.length === 0 ? (
-                <div className="text-gray-500 italic">No logs to display yet...</div>
-              ) : (
-                logs.map((log, index) => (
-                  <div key={index} className="mb-1">
-                    {log}
-                  </div>
-                ))
-              )}
-            </div>
-          </ScrollArea>
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-      </ResizablePanelGroup>
+          ))
+        )}
+      </div>
     </div>
   );
 };

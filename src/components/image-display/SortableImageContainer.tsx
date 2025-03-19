@@ -3,6 +3,9 @@ import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+
+type ViewMode = 'normal' | 'small' | 'table';
 
 interface SortableContainerProps { 
   batchId: string; 
@@ -12,6 +15,7 @@ interface SortableContainerProps {
   };
   isExpanded: boolean;
   toggleExpand: (id: string) => void;
+  viewMode?: ViewMode;
 }
 
 const SortableImageContainer: React.FC<SortableContainerProps> = ({ 
@@ -20,6 +24,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
   batch,
   isExpanded,
   toggleExpand,
+  viewMode = 'normal'
 }) => {
   const {
     attributes,
@@ -39,6 +44,15 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     marginBottom: '1rem',
   };
 
+  // In small view, we hide the header or simplify it
+  if (viewMode === 'small' && !isExpanded) {
+    return (
+      <div ref={setNodeRef} style={style}>
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div ref={setNodeRef} style={style}>
       <div className="flex items-center justify-between bg-card rounded-t-lg py-2 px-4 border-b">
@@ -50,7 +64,16 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
           <GripVertical className="h-5 w-5 opacity-70" />
         </div>
         <div className="flex-1 truncate mx-2 text-sm text-muted-foreground">
-          <span className="font-medium">Prompt:</span> {batch.images[0]?.prompt || 'Generated Image'}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="font-medium cursor-help">
+                Prompt: <span className="font-normal">{batch.images[0]?.prompt || 'Generated Image'}</span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-md whitespace-normal">
+              {batch.images[0]?.prompt || 'No prompt provided'}
+            </TooltipContent>
+          </Tooltip>
         </div>
         <button 
           onClick={() => toggleExpand(batchId)}

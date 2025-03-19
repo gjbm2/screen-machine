@@ -6,6 +6,10 @@ import SortableImageContainer from './SortableImageContainer';
 import ImageBatchItem from './ImageBatchItem';
 import NavigationControls from './NavigationControls';
 import ImageDetailView from './ImageDetailView';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Maximize } from 'lucide-react';
+
+type ViewMode = 'normal' | 'small' | 'table';
 
 interface ImageBatchProps {
   batchId: string;
@@ -32,6 +36,7 @@ interface ImageBatchProps {
   onCreateAgain: (batchId: string) => void;
   onUseAsInput?: ((imageUrl: string) => void) | null;
   extraComponents?: React.ReactNode;
+  viewMode?: ViewMode;
 }
 
 const ImageBatch: React.FC<ImageBatchProps> = ({
@@ -48,12 +53,18 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   onDeleteImage,
   onCreateAgain,
   onUseAsInput,
-  extraComponents
+  extraComponents,
+  viewMode = 'normal'
 }) => {
   if (!images || images.length === 0) return null;
   
   const activeImage = images[activeIndex];
   const isActive = activeBatchId === batchId;
+  
+  const isSmallView = viewMode === 'small';
+  
+  // Show entire prompt on hover for normal size
+  const promptTitle = activeImage?.prompt || '';
   
   return (
     <Collapsible 
@@ -69,6 +80,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
         batch={{ images }}
         isExpanded={isExpanded}
         toggleExpand={onToggleExpandBatch}
+        viewMode={viewMode}
       >
         {!isExpanded && (
           <Card 
@@ -76,6 +88,26 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
             onMouseEnter={() => onSetActiveBatchId(batchId)}
             onMouseLeave={() => onSetActiveBatchId(null)}
           >
+            {/* Full screen button - always visible */}
+            {viewMode === 'normal' && (
+              <div className="absolute top-2 right-2 z-10">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button 
+                      className="bg-black/70 hover:bg-black/90 text-white rounded-full p-1.5 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleExpandBatch(batchId);
+                      }}
+                    >
+                      <Maximize className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Expand</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
+            
             {/* Collapsed view (carousel-like navigation) */}
             <ImageBatchItem 
               image={activeImage} 
@@ -85,10 +117,11 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               onCreateAgain={onCreateAgain}
               onUseAsInput={onUseAsInput}
               onDeleteImage={onDeleteImage}
+              viewMode={viewMode}
             />
             
             {/* Navigation controls */}
-            {images.length > 1 && (
+            {images.length > 1 && !isSmallView && (
               <NavigationControls 
                 onPrevious={(e) => {
                   e.stopPropagation();

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -37,6 +38,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({});
   const [globalParams, setGlobalParams] = useState<Record<string, any>>({});
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
+  const [isButtonDisabled, setIsButtonDisabled] = useState(false);
   const workflows = workflowsData as Workflow[];
   const isMobile = useIsMobile();
   
@@ -76,6 +78,12 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
       toast.error('Please enter a prompt or upload at least one image');
       return;
     }
+    
+    // Temporarily disable button for 1 second
+    setIsButtonDisabled(true);
+    setTimeout(() => {
+      setIsButtonDisabled(false);
+    }, 1000);
     
     onSubmit(
       prompt, 
@@ -266,7 +274,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
               </div>
 
               <ImageUploader
-                isLoading={isLoading}
+                isLoading={isButtonDisabled}
                 onImageUpload={handleImageUpload}
                 onWorkflowChange={handleWorkflowChange}
               />
@@ -274,7 +282,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
               <Button 
                 type="submit" 
                 className="btn-shine rounded-full px-4 sm:px-6 transition-all hover:shadow-md h-[48px] text-lg font-medium flex-1 flex items-center gap-2"
-                disabled={isLoading}
+                disabled={isButtonDisabled}
               >
                 <Rocket className="h-5 w-5" />
                 {!isMobile && "Generate"}
