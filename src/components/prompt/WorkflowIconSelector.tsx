@@ -14,7 +14,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Image, Code, FileText, Video, Music, LayoutDashboard, Zap, ChevronDown } from 'lucide-react';
+import { Image, Code, FileText, Video, Music, LayoutDashboard, Zap, Layers } from 'lucide-react';
 
 interface WorkflowIconSelectorProps {
   workflows: Workflow[];
@@ -57,7 +57,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
                 size="icon"
                 className="hover:bg-purple-500/10 text-purple-700"
               >
-                {getWorkflowIcon(selectedWorkflow).props.children}
+                <Layers className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
@@ -65,7 +65,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
             <p>Workflow: {currentWorkflow?.name}</p>
             <p className="text-xs text-muted-foreground">Select a workflow</p>
           </TooltipContent>
-          <DropdownMenuContent align="end" className="bg-background/90 backdrop-blur-sm">
+          <DropdownMenuContent align="end" alignOffset={-5} sideOffset={5} className="bg-background/90 backdrop-blur-sm">
             {workflows.map((workflow) => (
               <DropdownMenuItem
                 key={workflow.id}

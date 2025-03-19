@@ -71,7 +71,7 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
             <p>Refiner: {currentRefiner.name}</p>
             <p className="text-xs text-muted-foreground">Select an image refiner</p>
           </TooltipContent>
-          <DropdownMenuContent align="end" className="bg-background/90 backdrop-blur-sm">
+          <DropdownMenuContent align="end" alignOffset={-5} sideOffset={5} className="bg-background/90 backdrop-blur-sm">
             {refinersData.map((refiner) => (
               <DropdownMenuItem
                 key={refiner.id}
