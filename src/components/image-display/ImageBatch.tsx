@@ -146,6 +146,27 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               onCreateAgain={handleCreateAgain}
               onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
             />
+            
+            {/* These buttons always show in expanded mode */}
+            <div className="flex justify-between mt-4">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="text-xs"
+                onClick={handleCreateAgain}
+              >
+                <Plus className="h-3 w-3 mr-1" /> Create Another
+              </Button>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-destructive hover:text-destructive"
+                onClick={() => setShowDeleteDialog(true)}
+              >
+                <Trash2 className="h-3 w-3 mr-1" /> Delete All
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -173,29 +194,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                 <LoadingPlaceholder prompt={images[0]?.prompt || null} />
               ) : null}
             </div>
-          
-            {/* Only show these buttons when expanded */}
-            {isExpanded && (
-              <div className="flex justify-between mt-4">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="text-xs"
-                  onClick={handleCreateAgain}
-                >
-                  <Plus className="h-3 w-3 mr-1" /> Create Another
-                </Button>
-                
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs text-destructive hover:text-destructive"
-                  onClick={() => setShowDeleteDialog(true)}
-                >
-                  <Trash2 className="h-3 w-3 mr-1" /> Delete All
-                </Button>
-              </div>
-            )}
           </CardContent>
         </Card>
       )}

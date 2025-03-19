@@ -1,14 +1,16 @@
+
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { Card, CardContent } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LayoutGrid, Grid, List } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ImageBatch from './ImageBatch';
 import LoadingPlaceholder from './LoadingPlaceholder';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import ReferenceImagesSection from './ReferenceImagesSection';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import ImageDetailView from './ImageDetailView';
 
 // Export ViewMode type but remove 'large' as an option
 export type ViewMode = 'normal' | 'small' | 'table';
@@ -46,6 +48,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
+  const [selectedImage, setSelectedImage] = useState<{ url: string; prompt: string; batchId: string; index: number } | null>(null);
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -116,6 +119,35 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
   };
   
+  // Function to handle small view image click to open full screen detail view
+  const handleSmallImageClick = (image: any) => {
+    if (viewMode === 'small' && image.url) {
+      setSelectedImage({
+        url: image.url,
+        prompt: image.prompt || '',
+        batchId: image.batchId,
+        index: image.batchIndex
+      });
+    }
+  };
+  
+  // Flatten all images for small view
+  const getAllImages = () => {
+    return generatedImages
+      .filter(img => img.status === 'completed')
+      .sort((a, b) => {
+        // Sort by container order first, then by batch index
+        const aContainerIndex = imageContainerOrder.indexOf(a.batchId);
+        const bContainerIndex = imageContainerOrder.indexOf(b.batchId);
+        
+        if (aContainerIndex !== bContainerIndex) {
+          return aContainerIndex - bContainerIndex;
+        }
+        
+        return a.batchIndex - b.batchIndex;
+      });
+  };
+  
   return (
     <div className="mt-8">
       {uploadedImages.length > 0 && (
@@ -163,7 +195,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </Tabs>
           </div>
           
-          <ScrollArea className="h-[calc(100vh-24rem)] pr-4">
+          <div className="pr-4">
             <DndContext 
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -175,25 +207,26 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               >
                 {viewMode === 'small' ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                    {imageContainerOrder.map(batchId => {
-                      if (!batches[batchId]) return null;
-                      
-                      return (
-                        <ImageBatch
-                          key={batchId}
-                          batchId={batchId}
-                          images={batches[batchId]}
-                          isExpanded={false}
-                          toggleExpand={handleToggleExpand}
-                          onImageClick={(url, prompt) => {}}
-                          onCreateAgain={() => handleCreateAgain(batchId)}
-                          onDeleteImage={onDeleteImage}
-                          onDeleteContainer={() => onDeleteContainer(batchId)}
-                          activeImageUrl={imageUrl}
-                          viewMode="small"
+                    {getAllImages().map((image, idx) => (
+                      <div 
+                        key={`${image.batchId}-${image.batchIndex}`} 
+                        className="aspect-square rounded-md overflow-hidden cursor-pointer"
+                        onClick={() => handleSmallImageClick(image)}
+                      >
+                        <img 
+                          src={image.url}
+                          alt={image.prompt || `Generated image ${idx + 1}`}
+                          className="w-full h-full object-cover"
                         />
-                      );
-                    })}
+                      </div>
+                    ))}
+                    {isLoading && (
+                      <div className="aspect-square rounded-md overflow-hidden bg-muted flex items-center justify-center">
+                        <div className="animate-pulse flex flex-col items-center">
+                          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : viewMode === 'table' ? (
                   <div className="space-y-4">
@@ -247,7 +280,29 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 )}
               </SortableContext>
             </DndContext>
-          </ScrollArea>
+          </div>
+          
+          {/* Fullscreen detail view for small mode */}
+          <Dialog open={!!selectedImage} onOpenChange={(open) => !open && setSelectedImage(null)}>
+            <DialogContent className="max-w-4xl">
+              {selectedImage && (
+                <div className="flex flex-col">
+                  <div className="relative rounded-md overflow-hidden mb-4">
+                    <img 
+                      src={selectedImage.url} 
+                      alt={selectedImage.prompt}
+                      className="w-full h-auto object-contain max-h-[70vh]" 
+                    />
+                  </div>
+                  {selectedImage.prompt && (
+                    <div className="text-sm text-muted-foreground mt-2">
+                      {selectedImage.prompt}
+                    </div>
+                  )}
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
         </div>
       )}
     </div>

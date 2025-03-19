@@ -50,7 +50,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
   const widthClass = viewMode === 'normal' 
     ? isExpanded 
       ? 'col-span-full w-full' // Full width when expanded in normal mode
-      : 'w-full' // Normal width for rolled up view (removed max-w constraint)
+      : 'w-full max-w-md' // Width for rolled up view
     : 'w-full'; // Default width for other view modes
 
   const style = {
@@ -61,6 +61,13 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     position: 'relative' as 'relative',
     marginBottom: '1rem',
     width: '100%',
+  };
+
+  const handleReferenceImageClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (referenceImageUrl) {
+      setShowReferenceImage(true);
+    }
   };
 
   return (
@@ -78,7 +85,9 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
             <TooltipTrigger asChild>
               <span className="font-medium cursor-help flex items-center">
                 {referenceImageUrl && (
-                  <Image className="h-4 w-4 mr-1.5 text-primary" />
+                  <button onClick={handleReferenceImageClick} className="mr-1.5">
+                    <Image className="h-4 w-4 text-primary" />
+                  </button>
                 )}
                 {titleText}
               </span>

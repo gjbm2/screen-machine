@@ -79,7 +79,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   };
 
   const handleImageClick = (e: React.MouseEvent) => {
-    // In non-expanded mode, clicking the image toggles action panel
+    // In normal view, clicking the image toggles action panel
     if (viewMode === 'normal') {
       setShowActionPanel(!showActionPanel);
     }

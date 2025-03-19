@@ -1,6 +1,8 @@
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import ConsoleOutput from './ConsoleOutput';
 
 interface ResizableConsoleProps {
@@ -9,109 +11,48 @@ interface ResizableConsoleProps {
   onClose: () => void;
 }
 
-const ResizableConsole: React.FC<ResizableConsoleProps> = ({ 
-  logs, 
-  isVisible, 
-  onClose 
+const ResizableConsole: React.FC<ResizableConsoleProps> = ({
+  logs,
+  isVisible,
+  onClose
 }) => {
-  const [size, setSize] = useState(30); // Height in vh
-  const [isDragging, setIsDragging] = useState(false);
-  const startPosRef = useRef(0);
-  const startSizeRef = useRef(0);
+  const [size, setSize] = useState<number>(25);
   const consoleRef = useRef<HTMLDivElement>(null);
-  const animationFrameRef = useRef<number | null>(null);
-  
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Only handle left click
-    if (e.button !== 0) return;
-    
-    setIsDragging(true);
-    startPosRef.current = e.clientY;
-    startSizeRef.current = size;
-    e.preventDefault();
-  };
-  
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging) return;
-    
-    // Cancel any pending animation frame
-    if (animationFrameRef.current !== null) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    
-    // Schedule a new animation frame for the update
-    animationFrameRef.current = requestAnimationFrame(() => {
-      // Calculate the difference in mouse position
-      const diff = startPosRef.current - e.clientY;
-      
-      // Convert the difference to vh units
-      const diffVh = (diff / window.innerHeight) * 100;
-      
-      // Calculate the new size (percentage of viewport height)
-      const newSize = Math.max(10, Math.min(70, startSizeRef.current + diffVh));
-      
-      setSize(newSize);
-    });
-  }, [isDragging]);
-  
-  const handleMouseUp = () => {
-    setIsDragging(false);
-    
-    // Cancel any pending animation frame
-    if (animationFrameRef.current !== null) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-  };
   
   useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    } else {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+    if (isVisible && consoleRef.current) {
+      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
-    
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      
-      // Clean up any pending animation frame
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [isDragging, handleMouseMove]);
+  }, [logs, isVisible]);
   
-  if (!isVisible) return null;
+  if (!isVisible) {
+    return null;
+  }
   
   return (
-    <div 
-      ref={consoleRef}
-      className="fixed bottom-0 left-0 right-0 bg-black text-white shadow-lg z-50 border-t border-gray-700 flex flex-col"
-      style={{ height: `${size}vh` }}
-    >
-      <div 
-        className="cursor-row-resize h-4 bg-gray-900 w-full flex items-center justify-center"
-        onMouseDown={handleMouseDown}
-      >
-        <div className="w-16 h-1 bg-gray-600 rounded-full"></div>
-      </div>
-      
-      <div className="flex justify-between items-center bg-gray-900 px-4 py-2">
-        <h3 className="text-sm font-semibold">Console Output</h3>
-        <button 
-          className="text-gray-400 hover:text-white transition-colors"
-          onClick={onClose}
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border">
+      <ResizablePanelGroup direction="vertical">
+        <ResizablePanel 
+          defaultSize={size} 
+          onResize={setSize} 
+          minSize={15}
+          maxSize={60}
+          className="h-auto"
         >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-      
-      <div className="flex-1 overflow-auto p-4 bg-black">
-        <ConsoleOutput logs={logs} />
-      </div>
+          <div className="h-full flex flex-col">
+            <div className="flex items-center justify-between px-4 py-2 border-b">
+              <h3 className="text-sm font-medium">Console Output</h3>
+              <Button variant="ghost" size="icon" onClick={onClose} className="h-6 w-6">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div ref={consoleRef} className="flex-1 overflow-y-auto console-content p-4 text-xs">
+              <ConsoleOutput logs={logs} />
+            </div>
+          </div>
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+      </ResizablePanelGroup>
     </div>
   );
 };
