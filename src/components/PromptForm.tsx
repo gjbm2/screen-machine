@@ -106,11 +106,11 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
         <form onSubmit={handleSubmit} className="p-1">
           {previewUrl && (
             <div className="relative p-4 pb-0">
-              <div className="relative rounded-lg overflow-hidden h-32 border border-border/30">
+              <div className="relative rounded-lg overflow-hidden h-40 border border-border/30">
                 <img 
                   src={previewUrl} 
                   alt="Uploaded image preview" 
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain"
                 />
                 <button
                   type="button"
