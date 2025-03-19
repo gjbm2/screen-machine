@@ -17,7 +17,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from '@/components/ui/button';
-import { Info, Download, Share2, Plus, FileInput, ChevronLeft, ChevronRight, Maximize, ChevronDown, ChevronUp, GripVertical, Trash2, X } from 'lucide-react';
+import { Info, Download, Share2, Plus, ChevronLeft, ChevronRight, Maximize, ChevronDown, ChevronUp, GripVertical, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import ImageActions from '@/components/ImageActions';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -30,6 +30,7 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -48,7 +49,7 @@ interface ImageDisplayProps {
   }>;
   imageContainerOrder?: string[];
   workflow?: string | null;
-  onUseGeneratedAsInput?: (imageUrl: string) => void;
+  onUseGeneratedAsInput?: ((imageUrl: string) => void) | null;
   onCreateAgain?: (batchId?: string) => void;
   onReorderContainers?: (sourceIndex: number, destinationIndex: number) => void;
   onDeleteImage?: (batchId: string, imageIndex: number) => void;
@@ -396,17 +397,18 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               
               {/* Bottom controls for fullscreen view */}
               <div className="p-4 bg-black/80 flex flex-wrap justify-center gap-2">
-                <ImageActions 
-                  imageUrl={image.url} 
-                  onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(image.url)}
-                  onCreateAgain={() => handleCreateAnother(batchId)}
-                  generationInfo={{
-                    prompt: image.prompt,
-                    workflow: image.workflow,
-                    params: image.params
-                  }}
-                  isFullScreen
-                />
+                <TooltipProvider>
+                  <ImageActions 
+                    imageUrl={image.url}
+                    onCreateAgain={() => handleCreateAnother(batchId)}
+                    generationInfo={{
+                      prompt: image.prompt,
+                      workflow: image.workflow,
+                      params: image.params
+                    }}
+                    isFullScreen
+                  />
+                </TooltipProvider>
               </div>
             </div>
           </DialogContent>
@@ -422,81 +424,17 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
         {/* Image controls overlay - REDUCED HEIGHT to 20% of image */}
         <div className="absolute bottom-0 left-0 right-0 bg-black/60 flex justify-center p-3 opacity-0 group-hover:opacity-100 transition-opacity z-10 h-[20%]">
           <div className="flex flex-wrap gap-2 justify-center">
-            {/* Info button */}
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/40 transition-colors">
-                  <Info className="h-4 w-4 mr-1" />
-                  <span className="text-xs">Info</span>
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <div className="flex justify-between items-start">
-                  <DialogHeader>
-                    <DialogTitle>Image Generation Details</DialogTitle>
-                    <DialogDescription>
-                      Information about this generated image.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogClose className="rounded-full p-1 hover:bg-accent/50">
-                    <X className="h-5 w-5" />
-                  </DialogClose>
-                </div>
-                <div className="space-y-2 mt-4">
-                  <div>
-                    <h4 className="font-semibold">Prompt:</h4>
-                    <p className="text-sm text-muted-foreground">{image.prompt}</p>
-                  </div>
-                  {image.workflow && (
-                    <div>
-                      <h4 className="font-semibold">Workflow:</h4>
-                      <p className="text-sm text-muted-foreground">{formatWorkflowName(image.workflow)}</p>
-                    </div>
-                  )}
-                  {image.params && Object.keys(image.params).length > 0 && (
-                    <div>
-                      <h4 className="font-semibold">Parameters:</h4>
-                      <div className="text-sm text-muted-foreground">
-                        {Object.entries(image.params).map(([key, value]) => (
-                          <div key={key} className="flex justify-between">
-                            <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                            <span>{value?.toString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {total > 1 && (
-                    <div>
-                      <h4 className="font-semibold">Batch:</h4>
-                      <p className="text-sm text-muted-foreground">Image {index + 1} of {total}</p>
-                    </div>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-            
-            {/* Create Another button */}
-            <Button 
-              variant="secondary" 
-              size="sm" 
-              className="bg-white/20 hover:bg-white/40 transition-colors"
-              onClick={() => handleCreateAnother(batchId)}
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              <span className="text-xs">Create Another</span>
-            </Button>
-            
-            {/* Use as Input button */}
-            <Button 
-              variant="secondary" 
-              size="sm" 
-              className="bg-white/20 hover:bg-white/40 transition-colors"
-              onClick={() => onUseGeneratedAsInput && onUseGeneratedAsInput(image.url)}
-            >
-              <FileInput className="h-4 w-4 mr-1" />
-              <span className="text-xs">Use as Input</span>
-            </Button>
+            <TooltipProvider>
+              <ImageActions 
+                imageUrl={image.url}
+                onCreateAgain={() => handleCreateAnother(batchId)}
+                generationInfo={{
+                  prompt: image.prompt,
+                  workflow: image.workflow,
+                  params: image.params
+                }}
+              />
+            </TooltipProvider>
           </div>
         </div>
       </div>

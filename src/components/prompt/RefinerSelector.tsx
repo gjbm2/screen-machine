@@ -63,7 +63,7 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
                 size="icon"
                 className="hover:bg-purple-500/10 text-purple-700"
               >
-                {getRefinerIcon(currentRefiner.icon)}
+                <Filter className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -30,32 +29,7 @@ const Index = () => {
   const [imageContainerOrder, setImageContainerOrder] = useState<string[]>([]);
   
   const handleUseGeneratedAsInput = async (selectedImageUrl: string) => {
-    if (!selectedImageUrl) return;
-    
-    try {
-      const response = await fetch(selectedImageUrl);
-      const blob = await response.blob();
-      const file = new File([blob], 'generated-image.png', { type: 'image/png' });
-      
-      // Create a local URL for the file
-      const localImageUrl = URL.createObjectURL(file);
-      
-      // Set the uploaded image URL and switch to image-to-image workflow
-      setUploadedImageUrls([localImageUrl]);
-      setCurrentWorkflow('image-to-image');
-      
-      // Clear any existing prompt and image URL
-      setCurrentPrompt('');
-      setImageUrl(null);
-      
-      toast.success('Image added as input!');
-      
-      // Scroll to the top to show the prompt form
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (error) {
-      console.error('Error using generated image as input:', error);
-      toast.error('Failed to use image as input. Please try again.');
-    }
+    toast.error('This feature has been removed');
   };
 
   const handleCreateAgain = (batchId?: string) => {
@@ -64,8 +38,6 @@ const Index = () => {
       return;
     }
     
-    const newBatchId = `batch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    
     handleSubmitPrompt(
       currentPrompt, 
       uploadedImageUrls.length > 0 ? [] : undefined,
@@ -73,16 +45,8 @@ const Index = () => {
       currentParams,
       currentGlobalParams,
       currentRefiner || undefined,
-      newBatchId
+      batchId
     );
-    
-    // Scroll to where the new image will appear
-    setTimeout(() => {
-      const container = document.getElementById(newBatchId);
-      if (container) {
-        container.scrollIntoView({ behavior: 'smooth' });
-      }
-    }, 100);
     
     toast.info('Creating another image...');
   };
@@ -110,12 +74,10 @@ const Index = () => {
     try {
       const currentBatchId = batchId || `batch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       
-      // Add the new batch ID to the order if it doesn't exist already
-      if (!batchId) {
+      if (!batchId || !imageContainerOrder.includes(batchId)) {
         setImageContainerOrder(prev => [currentBatchId, ...prev]);
       }
       
-      // Add a placeholder for the generating image
       const placeholderImage: GeneratedImage = {
         url: '',
         prompt: prompt,
@@ -124,13 +86,12 @@ const Index = () => {
         params: { ...params, ...globalParams },
         refiner: refiner,
         batchId: currentBatchId,
-        batchIndex: 0,
+        batchIndex: batchId ? generatedImages.filter(img => img.batchId === batchId).length : 0,
         status: 'generating'
       };
       
       setGeneratedImages(prev => [placeholderImage, ...prev]);
       
-      // Track this generation as active
       setActiveGenerations(prev => [...prev, currentBatchId]);
       
       const requestData = {
@@ -146,9 +107,7 @@ const Index = () => {
       
       console.log('Sending request with data:', requestData);
       
-      // Return control to the user immediately
       setTimeout(() => {
-        // Simulate API call with working image URLs
         const mockImageUrls = [
           "https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9",
           "https://images.unsplash.com/photo-1561037404-61cd46aa615b",
@@ -181,15 +140,12 @@ const Index = () => {
           newImages.push(newGeneratedImage);
         }
         
-        // Remove the placeholder and add the real images
         setGeneratedImages(prev => {
-          // Create a copy to avoid modifying during rendering
           const prevCopy = [...prev];
           const filteredImages = prevCopy.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'));
           return [...newImages, ...filteredImages];
         });
         
-        // Mark this generation as complete
         setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
         
         if (!imageUrl) {
@@ -202,7 +158,6 @@ const Index = () => {
       console.error('Error generating image:', error);
       toast.error('Failed to generate image. Please try again.');
       
-      // Remove the placeholder for this batch and mark generation as complete
       setGeneratedImages(prev => 
         prev.filter(img => !(img.batchId === batchId && img.status === 'generating'))
       );
@@ -215,39 +170,30 @@ const Index = () => {
       const newOrder = [...prev];
       const [removed] = newOrder.splice(sourceIndex, 1);
       
-      // If we're moving to the end (which implies deleting a container)
       if (destinationIndex >= newOrder.length) {
-        // Simply don't add it back, effectively deleting it
         return newOrder;
       }
       
-      // Otherwise insert at the destination index
       newOrder.splice(destinationIndex, 0, removed);
       return newOrder;
     });
   };
 
   const handleDeleteImage = (batchId: string, imageIndex: number) => {
-    // Delete a specific image
     setGeneratedImages(prev => {
-      // Find all images with the same batchId
       const batchImages = prev.filter(img => img.batchId === batchId);
       
-      // If this was the last image in the container, remove the container from order
       if (batchImages.length === 1) {
         setImageContainerOrder(order => order.filter(id => id !== batchId));
       }
       
-      // Filter out the specific image to delete
       return prev.filter(img => !(img.batchId === batchId && img.batchIndex === imageIndex));
     });
   };
 
   const handleDeleteContainer = (batchId: string) => {
-    // Delete all images in a container
     setGeneratedImages(prev => prev.filter(img => img.batchId !== batchId));
     
-    // Remove the container from the order
     setImageContainerOrder(prev => prev.filter(id => id !== batchId));
   };
 
@@ -279,7 +225,7 @@ const Index = () => {
             generatedImages={generatedImages}
             imageContainerOrder={imageContainerOrder}
             workflow={currentWorkflow}
-            onUseGeneratedAsInput={handleUseGeneratedAsInput}
+            onUseGeneratedAsInput={null}
             onCreateAgain={handleCreateAgain}
             onReorderContainers={handleReorderContainers}
             onDeleteImage={handleDeleteImage}

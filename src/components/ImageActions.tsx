@@ -2,17 +2,15 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { 
-  Save, 
+  Download, 
   Share2, 
-  Pencil,
+  Plus,
   Instagram,
   Twitter,
   Facebook,
   MessageCircle,
   PinIcon,
-  Plus,
-  Info,
-  Download,
+  Info
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -32,7 +30,6 @@ import {
 
 interface ImageActionsProps {
   imageUrl: string;
-  onUseAsInput?: () => void;
   onCreateAgain?: () => void;
   generationInfo?: {
     prompt: string;
@@ -44,7 +41,6 @@ interface ImageActionsProps {
 
 const ImageActions: React.FC<ImageActionsProps> = ({ 
   imageUrl, 
-  onUseAsInput,
   onCreateAgain,
   generationInfo,
   isFullScreen = false
@@ -114,76 +110,105 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   };
   
   const buttonSizeClass = isFullScreen 
-    ? "px-4 py-2 text-sm" 
+    ? "px-2 py-2 text-sm" 
     : "bg-white/20 hover:bg-white/40";
-  
+
   return (
     <>
       {/* Save button */}
-      <Button 
-        variant="secondary" 
-        size={isFullScreen ? "default" : "sm"}
-        className={buttonSizeClass}
-        onClick={handleSaveImage}
-        disabled={isSaving}
-      >
-        <Download className="h-4 w-4 mr-1" />
-        <span className={isFullScreen ? "" : "text-xs"}>{isSaving ? 'Saving...' : 'Save'}</span>
-      </Button>
+      <TooltipProvider>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="secondary" 
+              size={isFullScreen ? "default" : "sm"}
+              className={buttonSizeClass}
+              onClick={handleSaveImage}
+              disabled={isSaving}
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p>Save image</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       
       {/* Publish dropdown button */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button 
-            variant="secondary" 
-            size={isFullScreen ? "default" : "sm"}
-            className={buttonSizeClass}
-            disabled={isPublishing}
-          >
-            <Share2 className="h-4 w-4 mr-1" />
-            <span className={isFullScreen ? "" : "text-xs"}>{isPublishing ? 'Publishing...' : 'Publish'}</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="bg-background/90 backdrop-blur-sm z-50 border">
-          <DropdownMenuLabel>Share to</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {publishDestinations.map((destination) => (
-            <DropdownMenuItem 
-              key={destination.id}
-              onClick={() => handlePublish(destination.id)}
-              className="cursor-pointer"
-            >
-              {getIconComponent(destination.icon)}
-              {destination.name}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <TooltipProvider>
+        <Tooltip delayDuration={300}>
+          <DropdownMenu>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="secondary" 
+                  size={isFullScreen ? "default" : "sm"}
+                  className={buttonSizeClass}
+                  disabled={isPublishing}
+                >
+                  <Share2 className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Publish/Share</p>
+            </TooltipContent>
+            <DropdownMenuContent align="end" className="bg-background/90 backdrop-blur-sm z-50 border">
+              <DropdownMenuLabel>Share to</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {publishDestinations.map((destination) => (
+                <DropdownMenuItem 
+                  key={destination.id}
+                  onClick={() => handlePublish(destination.id)}
+                  className="cursor-pointer"
+                >
+                  {getIconComponent(destination.icon)}
+                  {destination.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </Tooltip>
+      </TooltipProvider>
       
-      {/* Use as input button */}
-      {onUseAsInput && (
-        <Button 
-          variant="secondary" 
-          size={isFullScreen ? "default" : "sm"}
-          className={buttonSizeClass}
-          onClick={onUseAsInput}
-        >
-          <Pencil className="h-4 w-4 mr-1" />
-          <span className={isFullScreen ? "" : "text-xs"}>Use as Input</span>
-        </Button>
-      )}
+      {/* Info button */}
+      <TooltipProvider>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="secondary" 
+              size={isFullScreen ? "default" : "sm"}
+              className={buttonSizeClass}
+            >
+              <Info className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p>Image info</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       {/* Create Again button */}
       {onCreateAgain && (
-        <Button 
-          variant="secondary" 
-          size={isFullScreen ? "default" : "sm"}
-          className={buttonSizeClass}
-          onClick={onCreateAgain}
-        >
-          <Plus className="h-4 w-4 mr-1" />
-          <span className={isFullScreen ? "" : "text-xs"}>Create Another</span>
-        </Button>
+        <TooltipProvider>
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="secondary" 
+                size={isFullScreen ? "default" : "sm"}
+                className={buttonSizeClass}
+                onClick={onCreateAgain}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Create another</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
     </>
   );

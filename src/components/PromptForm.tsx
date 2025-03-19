@@ -247,7 +247,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                     size="icon"
                     onClick={toggleAdvancedOptions}
                     className="h-[36px] w-[36px] text-muted-foreground"
-                    aria-label="Advanced settings"
+                    aria-label="Settings"
                   >
                     <Settings className="h-4 w-4" />
                   </Button>
