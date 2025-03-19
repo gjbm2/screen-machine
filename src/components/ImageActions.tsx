@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { 
@@ -28,6 +29,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface ImageActionsProps {
   imageUrl: string;
@@ -39,6 +41,7 @@ interface ImageActionsProps {
     params?: Record<string, any>;
   };
   isFullScreen?: boolean;
+  isMouseOver?: boolean;
 }
 
 const ImageActions: React.FC<ImageActionsProps> = ({ 
@@ -46,10 +49,12 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   onCreateAgain,
   onUseAsInput,
   generationInfo,
-  isFullScreen = false
+  isFullScreen = false,
+  isMouseOver = false
 }) => {
   const [isSaving, setSaving] = useState(false);
   const [isPublishing, setPublishing] = useState(false);
+  const [showInfoDialog, setShowInfoDialog] = useState(false);
   
   const handleSaveImage = async () => {
     try {
@@ -112,15 +117,44 @@ const ImageActions: React.FC<ImageActionsProps> = ({
     }, 1000);
   };
   
+  const handleShowInfo = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowInfoDialog(true);
+  };
+  
+  // Apply transparency based on interaction type
+  const opacityClass = isMouseOver 
+    ? "bg-black/60 hover:bg-black/70" 
+    : "bg-black/90 hover:bg-black/100";
+  
   const buttonSizeClass = isFullScreen 
     ? "px-3 py-2 text-sm" 
-    : "bg-black hover:bg-black/80 text-white border border-white/20";
+    : `${opacityClass} text-white border border-white/20`;
 
   return (
     <>
+      {/* Info button - Now first in order */}
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="secondary" 
+              size={isFullScreen ? "default" : "sm"}
+              className={buttonSizeClass}
+              onClick={handleShowInfo}
+            >
+              <Info className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <p>Image info</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      
       {/* Save button */}
-      <TooltipProvider>
-        <Tooltip delayDuration={300}>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
           <TooltipTrigger asChild>
             <Button 
               variant="secondary" 
@@ -132,69 +166,55 @@ const ImageActions: React.FC<ImageActionsProps> = ({
               <Download className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
+          <TooltipContent side="top">
             <p>Save image</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
       
       {/* Publish dropdown button */}
-      <TooltipProvider>
-        <Tooltip delayDuration={300}>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
           <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button 
-                variant="secondary" 
-                size={isFullScreen ? "default" : "sm"}
-                className={buttonSizeClass}
-                disabled={isPublishing}
-              >
-                <Share2 className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
+            <span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="secondary" 
+                    size={isFullScreen ? "default" : "sm"}
+                    className={buttonSizeClass}
+                    disabled={isPublishing}
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" className="bg-background/95 backdrop-blur-sm z-[100] border">
+                  <DropdownMenuLabel>Share to</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {publishDestinations.map((destination) => (
+                    <DropdownMenuItem 
+                      key={destination.id}
+                      onClick={() => handlePublish(destination.id)}
+                      className="cursor-pointer"
+                    >
+                      {getIconComponent(destination.icon)}
+                      <span className="ml-2">{destination.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </span>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
+          <TooltipContent side="top">
             <p>Publish/Share</p>
-          </TooltipContent>
-          <DropdownMenuContent align="end" className="bg-background/90 backdrop-blur-sm z-50 border">
-            <DropdownMenuLabel>Share to</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {publishDestinations.map((destination) => (
-              <DropdownMenuItem 
-                key={destination.id}
-                onClick={() => handlePublish(destination.id)}
-                className="cursor-pointer"
-              >
-                {getIconComponent(destination.icon)}
-                {destination.name}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </Tooltip>
-      </TooltipProvider>
-      
-      {/* Info button */}
-      <TooltipProvider>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <Button 
-              variant="secondary" 
-              size={isFullScreen ? "default" : "sm"}
-              className={buttonSizeClass}
-            >
-              <Info className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            <p>Image info</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
 
-      {/* Use as input button - Changed to use Recycle icon */}
+      {/* Use as input button */}
       {onUseAsInput && (
-        <TooltipProvider>
-          <Tooltip delayDuration={300}>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
             <TooltipTrigger asChild>
               <Button 
                 variant="secondary" 
@@ -205,17 +225,17 @@ const ImageActions: React.FC<ImageActionsProps> = ({
                 <Recycle className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">
+            <TooltipContent side="top">
               <p>Use as input</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )}
 
-      {/* Create Again button - With Plus icon */}
+      {/* Create Again button */}
       {onCreateAgain && (
-        <TooltipProvider>
-          <Tooltip delayDuration={300}>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
             <TooltipTrigger asChild>
               <Button 
                 variant="secondary" 
@@ -226,12 +246,48 @@ const ImageActions: React.FC<ImageActionsProps> = ({
                 <Plus className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">
+            <TooltipContent side="top">
               <p>Create another</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )}
+      
+      {/* Image Info Dialog */}
+      <Dialog open={showInfoDialog} onOpenChange={setShowInfoDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Image Information</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {generationInfo?.prompt && (
+              <div>
+                <h4 className="text-sm font-medium mb-1">Prompt</h4>
+                <p className="text-sm text-muted-foreground">{generationInfo.prompt}</p>
+              </div>
+            )}
+            {generationInfo?.workflow && (
+              <div>
+                <h4 className="text-sm font-medium mb-1">Workflow</h4>
+                <p className="text-sm text-muted-foreground">{generationInfo.workflow}</p>
+              </div>
+            )}
+            {generationInfo?.params && Object.keys(generationInfo.params).length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium mb-1">Parameters</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(generationInfo.params).map(([key, value]) => (
+                    <div key={key}>
+                      <p className="text-xs font-medium">{key}</p>
+                      <p className="text-xs text-muted-foreground">{String(value)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

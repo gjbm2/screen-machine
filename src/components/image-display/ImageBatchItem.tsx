@@ -33,6 +33,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
 }) => {
   const isGenerating = image.status === 'generating';
   const [actionsVisible, setActionsVisible] = useState(false);
+  const [isClicked, setIsClicked] = useState(false);
   
   if (isGenerating) {
     return (
@@ -47,16 +48,18 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     );
   }
   
-  const toggleActions = () => {
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsClicked(!isClicked);
     setActionsVisible(!actionsVisible);
   };
   
   return (
     <div 
-      className="aspect-square relative group" 
-      onClick={toggleActions}
-      onMouseEnter={() => setActionsVisible(true)}
-      onMouseLeave={() => setActionsVisible(false)}
+      className="aspect-square relative group cursor-pointer" 
+      onClick={handleClick}
+      onMouseEnter={() => !isClicked && setActionsVisible(true)}
+      onMouseLeave={() => !isClicked && setActionsVisible(false)}
     >
       <img
         src={image.url}
@@ -121,7 +124,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         </DialogContent>
       </Dialog>
       
-      {/* Batch counter - MOVED to bottom right */}
+      {/* Batch counter - Bottom right position */}
       {total > 1 && (
         <div className="absolute bottom-2 right-2 bg-black/90 text-white px-3 py-1 rounded-full text-xs font-medium z-10">
           {index + 1}/{total}
@@ -145,6 +148,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
                 workflow: image.workflow,
                 params: image.params
               }}
+              isMouseOver={!isClicked}
             />
           </TooltipProvider>
         </div>

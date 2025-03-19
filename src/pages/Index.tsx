@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -35,8 +36,6 @@ const Index = () => {
   useEffect(() => {
     if (currentGlobalParams.showConsoleOutput) {
       setIsConsoleVisible(true);
-    } else {
-      setIsConsoleVisible(false);
     }
   }, [currentGlobalParams.showConsoleOutput]);
   
@@ -88,15 +87,6 @@ const Index = () => {
       currentRefiner || undefined,
       batchId
     );
-    
-    if (batchId) {
-      const element = document.getElementById(`batch-${batchId}`);
-      if (element) {
-        setTimeout(() => {
-          element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 100);
-      }
-    }
     
     toast.info('Creating another image...');
   };
@@ -205,8 +195,7 @@ const Index = () => {
           }
           
           setGeneratedImages(prev => {
-            const prevCopy = [...prev];
-            const filteredImages = prevCopy.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'));
+            const filteredImages = prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'));
             return [...newImages, ...filteredImages];
           });
           
@@ -215,13 +204,6 @@ const Index = () => {
           if (!imageUrl) {
             setImageUrl(newImages[0]?.url);
           }
-          
-          setTimeout(() => {
-            const element = document.getElementById(`batch-${currentBatchId}`);
-            if (element) {
-              element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
-          }, 100);
           
           toast.success(`${imageCount} image${imageCount > 1 ? 's' : ''} generated successfully!`);
         } catch (error) {
@@ -235,7 +217,7 @@ const Index = () => {
           
           toast.error('An error occurred while processing images.');
         }
-      }, 5000);
+      }, 5000); // 5 second delay for mock generation
     } catch (error) {
       console.error('Error generating image:', error);
       addConsoleLog(`Error generating image: ${error}`);
@@ -280,6 +262,14 @@ const Index = () => {
     setImageContainerOrder(prev => prev.filter(id => id !== batchId));
   };
 
+  const handleCloseConsole = () => {
+    setIsConsoleVisible(false);
+    setCurrentGlobalParams(prev => ({
+      ...prev,
+      showConsoleOutput: false
+    }));
+  };
+
   return (
     <div className="min-h-screen hero-gradient">
       <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -294,7 +284,7 @@ const Index = () => {
         <div className="mt-8 max-w-2xl mx-auto">
           <PromptForm 
             onSubmit={handleSubmitPrompt} 
-            isLoading={activeGenerations.length > 0}
+            isLoading={false} // Allow multiple generations
             currentPrompt={currentPrompt}
           />
         </div>
@@ -321,13 +311,7 @@ const Index = () => {
       <ConsoleOutput 
         logs={consoleLogs}
         isVisible={isConsoleVisible}
-        onClose={() => {
-          setIsConsoleVisible(false);
-          setCurrentGlobalParams(prev => ({
-            ...prev,
-            showConsoleOutput: false
-          }));
-        }}
+        onClose={handleCloseConsole}
       />
     </div>
   );
