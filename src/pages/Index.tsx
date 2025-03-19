@@ -36,6 +36,11 @@ const Index = () => {
       const formData = new FormData();
       if (prompt) formData.append('prompt', prompt);
       if (imageFile) formData.append('image', imageFile);
+      if (workflow) formData.append('workflow', workflow);
+      if (params) {
+        // Convert params object to a JSON string and append to FormData
+        formData.append('params', JSON.stringify(params));
+      }
       
       // For the mock implementation, we'll just use the existing endpoint
       const response = await fetch('http://localhost:5000/generate-image', {

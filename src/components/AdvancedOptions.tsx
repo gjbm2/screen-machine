@@ -13,6 +13,9 @@ import { Button } from '@/components/ui/button';
 import { Settings, ChevronDown } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Workflow, WorkflowParam } from '@/types/workflows';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
 
 interface AdvancedOptionsProps {
   workflows: Workflow[];
@@ -92,11 +95,11 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
               <CollapsibleContent className="space-y-4 mt-2">
                 {currentWorkflow.params.map((param: WorkflowParam) => (
                   <div key={param.id} className="space-y-1">
-                    <label className="text-sm font-medium">{param.name}</label>
+                    <Label htmlFor={param.id} className="text-sm font-medium">{param.name}</Label>
                     
                     {param.type === 'select' && (
                       <Select 
-                        value={params[param.id] || param.default?.toString() || ''}
+                        value={String(params[param.id] !== undefined ? params[param.id] : param.default)}
                         onValueChange={(value) => onParamChange(param.id, value)}
                       >
                         <SelectTrigger className="w-full">
@@ -114,14 +117,31 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
                     
                     {param.type === 'checkbox' && (
                       <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           id={param.id}
-                          checked={params[param.id] !== undefined ? params[param.id] : param.default}
-                          onChange={(e) => onParamChange(param.id, e.target.checked)}
-                          className="rounded border-gray-300 text-primary focus:ring-primary"
+                          checked={params[param.id] !== undefined ? params[param.id] : Boolean(param.default)}
+                          onCheckedChange={(checked) => onParamChange(param.id, Boolean(checked))}
                         />
-                        <label htmlFor={param.id} className="text-sm">Enable</label>
+                        <Label htmlFor={param.id} className="text-sm cursor-pointer">Enable</Label>
+                      </div>
+                    )}
+
+                    {param.type === 'range' && (
+                      <div className="space-y-2">
+                        <Slider
+                          id={param.id}
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={[params[param.id] !== undefined ? Number(params[param.id]) : Number(param.default) || 50]}
+                          onValueChange={(value) => onParamChange(param.id, value[0])}
+                          className="mt-2"
+                        />
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>0%</span>
+                          <span>Current: {params[param.id] !== undefined ? params[param.id] : param.default || 50}%</span>
+                          <span>100%</span>
+                        </div>
                       </div>
                     )}
                   </div>
