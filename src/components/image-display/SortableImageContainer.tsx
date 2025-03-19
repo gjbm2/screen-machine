@@ -41,15 +41,16 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
   const promptText = batch.images[0]?.prompt || '';
   const workflowName = batch.images[0]?.workflow || 'Generated Image';
 
+  // Changed format: no leading #, now with trailing dot
   const titleText = promptText ? 
-    `#${containerId} ${promptText}` : 
-    `#${containerId} ${workflowName}`;
+    `${containerId}. ${promptText}` : 
+    `${containerId}. ${workflowName}`;
 
   // Create width class based on viewMode and isExpanded state
   const widthClass = viewMode === 'normal' 
     ? isExpanded 
       ? 'col-span-full w-full' // Full width when expanded in normal mode
-      : 'w-full max-w-[calc(33.333%-1rem)]' // Slightly narrower when rolled up
+      : 'w-full' // Normal width for rolled up view (removed max-w constraint)
     : 'w-full'; // Default width for other view modes
 
   const style = {

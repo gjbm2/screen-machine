@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { GridIcon, Grid2X2, Table2 } from 'lucide-react';
+import { LayoutGrid, Grid, List } from 'lucide-react';
 import ImageBatch from './ImageBatch';
 import LoadingPlaceholder from './LoadingPlaceholder';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -59,10 +58,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     })
   );
 
-  // Ensure that when a new container is created, we automatically go to it
   useEffect(() => {
     if (imageContainerOrder.length > 0 && isLoading) {
-      // Scroll to the first container that is loading
       const container = document.getElementById(imageContainerOrder[0]);
       if (container) {
         container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -106,11 +103,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const batches = getImageBatches();
   const hasBatches = Object.keys(batches).length > 0 || isLoading;
   
-  // Make sure to handle "create again" requests by focusing on the new batch
   const handleCreateAgain = (batchId?: string) => {
     onCreateAgain(batchId);
     
-    // Auto-expand the first container (which will be the new one)
     if (imageContainerOrder.length > 0) {
       setTimeout(() => {
         setExpandedContainers(prev => ({
@@ -127,7 +122,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
         <ReferenceImagesSection images={uploadedImages} />
       )}
       
-      {/* Generated Images Section */}
       {hasBatches && (
         <div className="mt-8">
           <div className="flex justify-between items-center mb-4">
@@ -142,7 +136,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <TabsTrigger value="normal" className="px-1.5 sm:px-2">
-                      <GridIcon className="h-4 w-4" />
+                      <LayoutGrid className="h-4 w-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
                   <TooltipContent>Normal View</TooltipContent>
@@ -151,7 +145,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <TabsTrigger value="small" className="px-1.5 sm:px-2">
-                      <Grid2X2 className="h-4 w-4" />
+                      <Grid className="h-4 w-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
                   <TooltipContent>Small View</TooltipContent>
@@ -160,7 +154,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <TabsTrigger value="table" className="px-1.5 sm:px-2">
-                      <Table2 className="h-4 w-4" />
+                      <List className="h-4 w-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
                   <TooltipContent>Table View</TooltipContent>
@@ -180,7 +174,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 strategy={viewMode === 'small' ? horizontalListSortingStrategy : verticalListSortingStrategy}
               >
                 {viewMode === 'small' ? (
-                  // Small view - grid of small thumbnails
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
                     {imageContainerOrder.map(batchId => {
                       if (!batches[batchId]) return null;
@@ -203,7 +196,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     })}
                   </div>
                 ) : viewMode === 'table' ? (
-                  // Table view - list of images with details
                   <div className="space-y-4">
                     {imageContainerOrder.map(batchId => {
                       if (!batches[batchId]) return null;
@@ -226,7 +218,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     })}
                   </div>
                 ) : (
-                  // Normal view (default) - grid of medium-sized containers
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {imageContainerOrder.map(batchId => {
                       if (!batches[batchId]) return null;
@@ -239,7 +230,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                             isExpanded={!!expandedContainers[batchId]}
                             toggleExpand={handleToggleExpand}
                             onImageClick={(url, prompt) => {
-                              // Do not expand on click, only use as input
                               if (url) {
                                 onUseGeneratedAsInput(url);
                               }
