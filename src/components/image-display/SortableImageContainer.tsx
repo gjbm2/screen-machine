@@ -45,6 +45,13 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     `#${containerId} ${promptText}` : 
     `#${containerId} ${workflowName}`;
 
+  // Create width class based on viewMode and isExpanded state
+  const widthClass = viewMode === 'normal' 
+    ? isExpanded 
+      ? 'col-span-full w-full' // Full width when expanded in normal mode
+      : 'w-full max-w-[calc(33.333%-1rem)]' // Slightly narrower when rolled up
+    : 'w-full'; // Default width for other view modes
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -53,11 +60,10 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     position: 'relative' as 'relative',
     marginBottom: '1rem',
     width: '100%',
-    gridColumn: isExpanded && viewMode === 'normal' ? '1 / -1' : undefined,
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="block">
+    <div ref={setNodeRef} style={style} className={`block ${widthClass}`}>
       <div className="flex items-center justify-between bg-card rounded-t-lg py-2 px-4 border-b">
         <div 
           {...attributes} 
@@ -93,8 +99,8 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
         </button>
       </div>
       
-      {/* Always show content, but with different styling based on expanded state */}
-      <div className={isExpanded ? "block" : "block"}>
+      {/* Always show content */}
+      <div className="block">
         {children}
       </div>
 

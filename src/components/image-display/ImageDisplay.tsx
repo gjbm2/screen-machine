@@ -59,6 +59,17 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     })
   );
 
+  // Ensure that when a new container is created, we automatically go to it
+  useEffect(() => {
+    if (imageContainerOrder.length > 0 && isLoading) {
+      // Scroll to the first container that is loading
+      const container = document.getElementById(imageContainerOrder[0]);
+      if (container) {
+        container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [imageContainerOrder, isLoading]);
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     
@@ -94,6 +105,21 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
   const batches = getImageBatches();
   const hasBatches = Object.keys(batches).length > 0 || isLoading;
+  
+  // Make sure to handle "create again" requests by focusing on the new batch
+  const handleCreateAgain = (batchId?: string) => {
+    onCreateAgain(batchId);
+    
+    // Auto-expand the first container (which will be the new one)
+    if (imageContainerOrder.length > 0) {
+      setTimeout(() => {
+        setExpandedContainers(prev => ({
+          ...prev,
+          [imageContainerOrder[0]]: true
+        }));
+      }, 100);
+    }
+  };
   
   return (
     <div className="mt-8">
@@ -167,7 +193,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                           isExpanded={false}
                           toggleExpand={handleToggleExpand}
                           onImageClick={(url, prompt) => {}}
-                          onCreateAgain={() => onCreateAgain(batchId)}
+                          onCreateAgain={() => handleCreateAgain(batchId)}
                           onDeleteImage={onDeleteImage}
                           onDeleteContainer={() => onDeleteContainer(batchId)}
                           activeImageUrl={imageUrl}
@@ -190,7 +216,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                           isExpanded={true}
                           toggleExpand={handleToggleExpand}
                           onImageClick={(url, prompt) => {}}
-                          onCreateAgain={() => onCreateAgain(batchId)}
+                          onCreateAgain={() => handleCreateAgain(batchId)}
                           onDeleteImage={onDeleteImage}
                           onDeleteContainer={() => onDeleteContainer(batchId)}
                           activeImageUrl={imageUrl}
@@ -206,14 +232,19 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                       if (!batches[batchId]) return null;
                       
                       return (
-                        <div key={batchId} className={expandedContainers[batchId] ? "col-span-full" : ""}>
+                        <div key={batchId} id={batchId} className={expandedContainers[batchId] ? "col-span-full" : ""}>
                           <ImageBatch
                             batchId={batchId}
                             images={batches[batchId]}
                             isExpanded={!!expandedContainers[batchId]}
                             toggleExpand={handleToggleExpand}
-                            onImageClick={(url, prompt) => {}}
-                            onCreateAgain={() => onCreateAgain(batchId)}
+                            onImageClick={(url, prompt) => {
+                              // Do not expand on click, only use as input
+                              if (url) {
+                                onUseGeneratedAsInput(url);
+                              }
+                            }}
+                            onCreateAgain={() => handleCreateAgain(batchId)}
                             onDeleteImage={onDeleteImage}
                             onDeleteContainer={() => onDeleteContainer(batchId)}
                             activeImageUrl={imageUrl}

@@ -49,6 +49,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   showActions = true
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const [showActionPanel, setShowActionPanel] = useState(false);
 
   const handleCreateAgain = () => {
     if (onCreateAgain) {
@@ -78,6 +79,11 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   };
 
   const handleImageClick = (e: React.MouseEvent) => {
+    // In non-expanded mode, clicking the image toggles action panel
+    if (viewMode === 'normal') {
+      setShowActionPanel(!showActionPanel);
+    }
+    
     if (image.url) {
       onImageClick(image.url);
     }
@@ -106,7 +112,12 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     <div 
       className={`relative rounded-md overflow-hidden group ${viewMode === 'small' ? 'mb-2' : ''}`}
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        if (!showActionPanel) {
+          setShowActionPanel(false);
+        }
+      }}
     >
       <div 
         className={`relative ${sizeClasses} cursor-pointer`}
@@ -174,9 +185,9 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </>
         )}
         
-        {/* Action panel - only on normal views if showActions is true */}
-        {image.url && showActions && viewMode === 'normal' && (
-          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 rounded-md p-1">
+        {/* Action panel - show when hovered or clicked in normal view */}
+        {image.url && showActions && viewMode === 'normal' && (isHovered || showActionPanel) && (
+          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 transition-opacity bg-black/70 rounded-md p-1">
             <ImageActions
               imageUrl={image.url}
               onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}

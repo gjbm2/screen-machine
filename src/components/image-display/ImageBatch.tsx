@@ -63,14 +63,11 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   const anyGenerating = images.some(img => img.status === 'generating');
   const completedImages = images.filter(img => img.status === 'completed');
   
-  // Do not display the container at all if all images are generating but have no URL
+  // Always show containers regardless of generation status
   const allGeneratingWithoutUrl = images.every(img => img.status === 'generating' && !img.url);
-  
-  if (allGeneratingWithoutUrl && viewMode !== 'normal') {
-    return null;
-  }
 
-  if (viewMode === 'small' && completedImages.length === 0) {
+  // Show all images in grid view for small mode
+  if (viewMode === 'small' && completedImages.length === 0 && !anyGenerating) {
     return null;
   }
   
@@ -84,6 +81,10 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
     if (activeImageIndex < completedImages.length - 1) {
       setActiveImageIndex(activeImageIndex + 1);
     }
+  };
+
+  const handleCreateAgain = () => {
+    onCreateAgain();
   };
   
   return (
@@ -142,7 +143,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               onNavigateNext={handleNavigateNext}
               onToggleExpand={() => toggleExpand(batchId)}
               onDeleteImage={onDeleteImage}
-              onCreateAgain={() => onCreateAgain()}
+              onCreateAgain={handleCreateAgain}
               onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
             />
           </CardContent>
@@ -162,7 +163,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                   onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
                   onDeleteImage={onDeleteImage}
                   onFullScreen={() => toggleExpand(batchId)}
-                  onImageClick={() => toggleExpand(batchId)}
+                  onImageClick={(url) => {}}  // Don't expand on image click, use full screen icon instead
                   onNavigatePrev={completedImages.length > 1 ? handleNavigatePrev : undefined}
                   onNavigateNext={completedImages.length > 1 ? handleNavigateNext : undefined}
                   viewMode={viewMode}
@@ -173,25 +174,28 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               ) : null}
             </div>
           
-            <div className="flex justify-between mt-4">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="text-xs"
-                onClick={() => onCreateAgain()}
-              >
-                <Plus className="h-3 w-3 mr-1" /> Create Another
-              </Button>
-              
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-destructive hover:text-destructive"
-                onClick={() => setShowDeleteDialog(true)}
-              >
-                <Trash2 className="h-3 w-3 mr-1" /> Delete All
-              </Button>
-            </div>
+            {/* Only show these buttons when expanded */}
+            {isExpanded && (
+              <div className="flex justify-between mt-4">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-xs"
+                  onClick={handleCreateAgain}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Create Another
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-destructive hover:text-destructive"
+                  onClick={() => setShowDeleteDialog(true)}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" /> Delete All
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
