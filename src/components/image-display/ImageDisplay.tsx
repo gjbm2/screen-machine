@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
@@ -14,7 +13,6 @@ import ImageDetailView from './ImageDetailView';
 import { formatDistanceToNow } from 'date-fns';
 import SortableTableRow from './SortableTableRow';
 
-// Export ViewMode type but remove 'large' as an option
 export type ViewMode = 'normal' | 'small' | 'table';
 export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
 export type SortDirection = 'asc' | 'desc';
@@ -125,28 +123,23 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
   };
   
-  // Unified function to open full screen view
   const openFullScreenView = (batchId: string, imageIndex: number = 0) => {
     setFullScreenBatchId(batchId);
     setFullScreenImageIndex(imageIndex);
     setShowFullScreenView(true);
   };
   
-  // Handler for small view image clicks
   const handleSmallImageClick = (image: any) => {
     if (image?.url && image.batchId) {
       openFullScreenView(image.batchId, image.batchIndex || 0);
     }
   };
 
-  // Handle table row click - now checks if batch has only one image
   const handleTableRowClick = (batchId: string) => {
     const batchImages = batches[batchId]?.filter(img => img.status === 'completed');
-    // If there's only one image, go straight to fullscreen
     if (batchImages && batchImages.length === 1) {
       openFullScreenView(batchId, 0);
     } else {
-      // Multiple images, expand the batch
       setExpandedContainers(prev => ({
         ...prev,
         [batchId]: true
@@ -155,11 +148,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   };
   
   const getAllImages = () => {
-    // Get all completed images and sort them by timestamp (newest first by default)
     return generatedImages
       .filter(img => img.status === 'completed')
       .sort((a, b) => {
-        // Always sort by timestamp DESC (newest first) for small view
         return b.timestamp - a.timestamp;
       });
   };
@@ -171,10 +162,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
   const handleSortClick = (field: SortField) => {
     if (sortField === field) {
-      // Toggle sort direction if clicking the same field
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
-      // Set new sort field and reset direction to descending
       setSortField(field);
       setSortDirection('desc');
     }
@@ -397,7 +386,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                             activeImageUrl={imageUrl}
                             viewMode="normal"
                             onFullScreenClick={(image) => {
-                              // Route all fullscreen requests through our unified handler
                               if (image && image.batchId) {
                                 openFullScreenView(image.batchId, image.batchIndex || 0);
                               }
@@ -412,13 +400,16 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </DndContext>
           </div>
           
-          {/* Standard fullscreen view dialog for all entry points */}
           {fullScreenBatchId && (
             <Dialog 
               open={showFullScreenView} 
               onOpenChange={(open) => setShowFullScreenView(open)}
             >
-              <DialogContent className="max-w-4xl p-0 overflow-hidden">
+              <DialogContent 
+                className="max-w-4xl" 
+                noPadding
+                description="Detailed view of generated image"
+              >
                 <DialogHeader className="p-4 pb-0">
                   <DialogTitle>Image Detail</DialogTitle>
                 </DialogHeader>
@@ -442,10 +433,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                           setFullScreenImageIndex(fullScreenImageIndex + 1);
                         }
                       }}
-                      onToggleExpand={() => {
-                        setShowFullScreenView(false);
-                        handleToggleExpand(fullScreenBatchId);
-                      }}
+                      onToggleExpand={() => {}}
                       onDeleteImage={onDeleteImage}
                       onCreateAgain={onCreateAgain}
                       onUseAsInput={(url) => {

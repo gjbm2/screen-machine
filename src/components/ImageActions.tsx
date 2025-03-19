@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { 
@@ -260,7 +259,10 @@ const ImageActions: React.FC<ImageActionsProps> = ({
       
       {/* Image Info Dialog */}
       <Dialog open={showInfoDialog} onOpenChange={setShowInfoDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent 
+          className="sm:max-w-md"
+          description="Information about the generated image"
+        >
           <DialogHeader>
             <DialogTitle>Image Information</DialogTitle>
           </DialogHeader>

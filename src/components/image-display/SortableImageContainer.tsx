@@ -1,10 +1,9 @@
-
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, ChevronUp, ChevronDown, Maximize, Image } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ViewMode } from './ImageDisplay';
 
 interface SortableContainerProps { 
@@ -116,14 +115,20 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
 
       {referenceImageUrl && (
         <Dialog open={showReferenceImage} onOpenChange={setShowReferenceImage}>
-          <DialogContent className="max-w-lg">
+          <DialogContent 
+            className="max-w-lg"
+            description="Reference image used for generation"
+          >
+            <DialogHeader>
+              <DialogTitle>Reference Image</DialogTitle>
+            </DialogHeader>
             <div className="flex flex-col items-center">
               <p className="text-sm mb-2 text-muted-foreground">Reference image used for generation</p>
               <div className="border rounded-md overflow-hidden">
                 <img 
                   src={referenceImageUrl} 
                   alt="Reference image"
-                  className="w-full h-auto"
+                  className="w-full h-auto object-contain"
                 />
               </div>
             </div>

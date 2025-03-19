@@ -36,7 +36,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   onSetActiveIndex,
   onNavigatePrev,
   onNavigateNext,
-  onToggleExpand,
   onDeleteImage,
   onCreateAgain,
   onUseAsInput
@@ -80,21 +79,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   
   return (
     <div className="p-4 space-y-4">
-      {/* Reference image section - displayed without cropping */}
-      {referenceImageUrl && (
-        <div className="mb-4">
-          <p className="text-sm text-muted-foreground mb-2">Reference image:</p>
-          <div className="border rounded-md overflow-hidden flex justify-center h-auto max-h-40">
-            <img 
-              src={referenceImageUrl} 
-              alt="Reference image"
-              className="h-full w-auto object-contain cursor-pointer"
-              onClick={() => setShowReferenceImage(true)}
-            />
-          </div>
-        </div>
-      )}
-      
       {/* Selected image view - maximize image display */}
       <div className="relative flex justify-center items-center min-h-[50vh] max-h-[70vh] bg-secondary/10 rounded-md overflow-hidden group">
         {activeImage && (
@@ -169,6 +153,23 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       {activeImage?.prompt && (
         <div className="text-sm text-muted-foreground text-center max-w-lg mx-auto">
           <p>{activeImage.prompt}</p>
+        </div>
+      )}
+
+      {/* Reference image at the bottom */}
+      {referenceImageUrl && (
+        <div className="mt-4 border-t pt-4">
+          <p className="text-sm text-muted-foreground mb-2">Reference image:</p>
+          <div className="flex justify-center">
+            <div className="border rounded-md overflow-hidden w-24 h-24">
+              <img 
+                src={referenceImageUrl} 
+                alt="Reference image"
+                className="w-full h-full object-cover cursor-pointer"
+                onClick={() => setShowReferenceImage(true)}
+              />
+            </div>
+          </div>
         </div>
       )}
 
