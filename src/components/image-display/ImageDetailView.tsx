@@ -1,8 +1,8 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { ChevronUp, Image, Clock, Ruler } from 'lucide-react';
-import { TooltipProvider } from '@/components/ui/tooltip';
+import { Clock, Ruler, ExternalLink } from 'lucide-react';
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import NavigationControls from './NavigationControls';
 import ImageActions from '@/components/ImageActions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -70,6 +70,13 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       height: img.naturalHeight
     });
   };
+
+  // Open image in new tab
+  const handleImageClick = () => {
+    if (activeImage?.url) {
+      window.open(activeImage.url, '_blank', 'noopener,noreferrer');
+    }
+  };
   
   return (
     <div className="p-4 space-y-4">
@@ -88,15 +95,34 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
         </div>
       )}
       
-      {/* Selected image view */}
-      <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden max-w-lg mx-auto group">
+      {/* Selected image view - maximize image display */}
+      <div className="relative flex justify-center items-center min-h-[50vh] max-h-[70vh] bg-secondary/10 rounded-md overflow-hidden group">
         {activeImage && (
-          <img 
-            src={activeImage.url}
-            alt={activeImage.prompt || "Generated image"}
-            className="w-full h-full object-contain"
-            onLoad={handleImageLoad}
-          />
+          <div className="relative cursor-pointer flex justify-center items-center w-full h-full">
+            <img 
+              src={activeImage.url}
+              alt={activeImage.prompt || "Generated image"}
+              className="max-w-full max-h-full object-contain"
+              onLoad={handleImageLoad}
+              onClick={handleImageClick}
+            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleImageClick();
+                  }}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open image in new tab</TooltipContent>
+            </Tooltip>
+          </div>
         )}
         
         {/* Navigation controls - only if multiple images */}
@@ -104,6 +130,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
           <NavigationControls 
             onPrevious={onNavigatePrev}
             onNext={onNavigateNext}
+            size="large"
           />
         )}
       </div>
@@ -133,6 +160,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
               params: activeImage.params
             }}
             alwaysVisible={true}
+            isFullScreen={true}
           />
         </div>
       )}
@@ -143,19 +171,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
           <p>{activeImage.prompt}</p>
         </div>
       )}
-      
-      {/* Compact roll-up button attached to bottom of container */}
-      <div className="flex justify-center">
-        <Button 
-          variant="ghost" 
-          size="sm"
-          className="rounded-t-none rounded-b-lg bg-card hover:bg-accent/20 text-xs h-7 px-3 -mt-1 border-t border-x shadow"
-          onClick={() => onToggleExpand(batchId)}
-        >
-          <ChevronUp className="h-4 w-4 mr-1" />
-          Roll Up
-        </Button>
-      </div>
 
       {/* Reference image popup (full size view) */}
       {referenceImageUrl && (
