@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
@@ -30,6 +29,7 @@ interface ImageBatchProps {
   onDeleteImage: (batchId: string, index: number) => void;
   onCreateAgain: (batchId: string) => void;
   onUseAsInput?: ((imageUrl: string) => void) | null;
+  extraComponents?: React.ReactNode;
 }
 
 const ImageBatch: React.FC<ImageBatchProps> = ({
@@ -45,7 +45,8 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   onNavigateNextImage,
   onDeleteImage,
   onCreateAgain,
-  onUseAsInput
+  onUseAsInput,
+  extraComponents
 }) => {
   if (!images || images.length === 0) return null;
   

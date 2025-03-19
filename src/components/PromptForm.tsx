@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -24,7 +23,7 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile';
 
 interface PromptFormProps {
-  onSubmit: (prompt: string, imageFiles?: File[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string) => void;
+  onSubmit: (prompt: string, imageFiles?: File[] | string[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string) => void;
   isLoading: boolean;
   currentPrompt?: string | null;
 }
