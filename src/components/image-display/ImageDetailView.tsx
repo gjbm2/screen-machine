@@ -85,6 +85,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
             onUseAsInput={onUseAsInput}
             onDeleteImage={onDeleteImage}
             onFullScreen={() => setShowFullScreen(true)}
+            onImageClick={(url: string) => setShowFullScreen(true)}
           />
         </div>
         
