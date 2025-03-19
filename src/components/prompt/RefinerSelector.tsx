@@ -1,28 +1,14 @@
 
 import React from 'react';
-import { 
-  Sparkles, 
-  Maximize, 
-  Heart, 
-  Palette, 
-  XCircle,
-  Filter 
-} from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Sparkles, XCircle, Maximize, Heart, Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
 import refinersData from '@/data/refiners.json';
-import { useWindowSize } from '@/hooks/use-mobile';
 
 interface RefinerSelectorProps {
   selectedRefiner: string;
@@ -33,90 +19,70 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
   selectedRefiner,
   onRefinerChange,
 }) => {
+  const isMobile = useIsMobile();
   const { width } = useWindowSize();
-  const showName = width >= 768; // Show name on medium screens and up
+  const isNarrow = width < 600;
   
-  const getRefinerIcon = (iconName: string) => {
-    switch (iconName) {
-      case 'sparkles':
-        return <Sparkles className="h-4 w-4 mr-2" />;
-      case 'maximize':
-        return <Maximize className="h-4 w-4 mr-2" />;
-      case 'heart':
-        return <Heart className="h-4 w-4 mr-2" />;
-      case 'palette':
-        return <Palette className="h-4 w-4 mr-2" />;
-      case 'x-circle':
-        return <XCircle className="h-4 w-4 mr-2" />;
-      default:
-        return <Filter className="h-4 w-4 mr-2" />;
-    }
-  };
-
-  // Find the current refiner
-  const currentRefiner = refinersData.find(r => r.id === selectedRefiner) || refinersData[0];
+  const selectedRefinerObj = refinersData.find(r => r.id === selectedRefiner);
   
-  // Get the current refiner icon for the button
-  const getCurrentRefinerIcon = () => {
-    const iconName = currentRefiner?.icon || 'filter';
-    switch (iconName) {
-      case 'sparkles':
+  // Get the icon for a refiner
+  const getRefinerIcon = (refinerId: string) => {
+    switch (refinerId) {
+      case 'enhance':
         return <Sparkles className="h-5 w-5" />;
-      case 'maximize':
+      case 'upscale':
         return <Maximize className="h-5 w-5" />;
-      case 'heart':
+      case 'beautify':
         return <Heart className="h-5 w-5" />;
-      case 'palette':
+      case 'stylize':
         return <Palette className="h-5 w-5" />;
-      case 'x-circle':
-        return <XCircle className="h-5 w-5" />;
+      case 'none':
       default:
-        return <Filter className="h-5 w-5" />;
+        return <XCircle className="h-5 w-5" />;
     }
   };
-
+  
   return (
-    <TooltipProvider>
-      <Tooltip delayDuration={300}>
-        <DropdownMenu>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                className={`hover:bg-purple-500/10 text-purple-700 ${showName ? 'px-3' : ''}`}
-                size={showName ? "default" : "icon"}
-              >
-                <div className="flex items-center">
-                  {getCurrentRefinerIcon()}
-                  {showName && (
-                    <span className="ml-2 text-sm">{currentRefiner.name}</span>
-                  )}
-                </div>
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            <p>Refiner: {currentRefiner.name}</p>
-            <p className="text-xs text-muted-foreground">Select an image refiner</p>
-          </TooltipContent>
-          <DropdownMenuContent align="end" alignOffset={-5} sideOffset={5} className="bg-background/90 backdrop-blur-sm">
-            {refinersData.map((refiner) => (
-              <DropdownMenuItem
-                key={refiner.id}
-                onClick={() => onRefinerChange(refiner.id)}
-                className="cursor-pointer"
-              >
-                {getRefinerIcon(refiner.icon)}
-                <div>
-                  <p>{refiner.name}</p>
-                  <p className="text-xs text-muted-foreground">{refiner.description}</p>
-                </div>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </Tooltip>
-    </TooltipProvider>
+    <div className="flex items-center h-[48px]">
+      <HoverCard>
+        <HoverCardTrigger asChild>
+          <Button
+            variant="outline"
+            className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700"
+            onClick={() => {}}
+          >
+            {getRefinerIcon(selectedRefiner)}
+            {!isNarrow && (
+              <span className="ml-2 text-sm">{selectedRefinerObj?.name || 'No Refiner'}</span>
+            )}
+          </Button>
+        </HoverCardTrigger>
+        <HoverCardContent className="w-64 p-2">
+          <div className="space-y-2">
+            <h4 className="text-sm font-semibold">Refiners</h4>
+            <div className="grid grid-cols-1 gap-1">
+              {refinersData.map((refiner) => (
+                <Button
+                  key={refiner.id}
+                  variant={refiner.id === selectedRefiner ? "secondary" : "ghost"}
+                  size="sm"
+                  className="justify-start text-sm h-9"
+                  onClick={() => onRefinerChange(refiner.id)}
+                >
+                  <div className="mr-2">
+                    {getRefinerIcon(refiner.id)}
+                  </div>
+                  <div className="flex flex-col items-start">
+                    <span>{refiner.name}</span>
+                    <span className="text-xs text-muted-foreground">{refiner.description}</span>
+                  </div>
+                </Button>
+              ))}
+            </div>
+          </div>
+        </HoverCardContent>
+      </HoverCard>
+    </div>
   );
 };
 

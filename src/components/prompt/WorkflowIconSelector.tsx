@@ -2,27 +2,14 @@
 import React from 'react';
 import { Workflow } from '@/types/workflows';
 import { Button } from '@/components/ui/button';
+import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { 
-  Image, 
-  ImagePlus, 
-  Sparkles, 
-  PaintBucket, 
-  Workflow as WorkflowIcon, 
-  Layers 
-} from 'lucide-react';
-import { useWindowSize } from '@/hooks/use-mobile';
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import { Icons } from '@/components/ui/icons';
+import { Image, Wand, PaintBucket } from 'lucide-react';
 
 interface WorkflowIconSelectorProps {
   workflows: Workflow[];
@@ -35,84 +22,69 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   workflows,
   selectedWorkflow,
   onWorkflowChange,
-  hideWorkflowName = false,
+  hideWorkflowName = false
 }) => {
+  const isMobile = useIsMobile();
   const { width } = useWindowSize();
-  const showName = !hideWorkflowName && width >= 768; // Show name on medium screens and up
+  const isNarrow = width < 600;
+  const shouldHideName = hideWorkflowName || isNarrow;
   
-  // Get the icon based on workflow ID
+  const selectedWorkflowObj = workflows.find(w => w.id === selectedWorkflow);
+  
   const getWorkflowIcon = (workflowId: string) => {
     switch (workflowId) {
       case 'text-to-image':
-        return <Image className="h-4 w-4 mr-2" />;
-      case 'image-to-image':
-        return <ImagePlus className="h-4 w-4 mr-2" />;
-      case 'artistic-style-transfer':
-        return <PaintBucket className="h-4 w-4 mr-2" />;
-      default:
-        return <WorkflowIcon className="h-4 w-4 mr-2" />;
-    }
-  };
-
-  // Get the current workflow name
-  const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
-  
-  // Get the current workflow icon for the button
-  const getCurrentWorkflowIcon = () => {
-    switch (selectedWorkflow) {
-      case 'text-to-image':
         return <Image className="h-5 w-5" />;
       case 'image-to-image':
-        return <ImagePlus className="h-5 w-5" />;
-      case 'artistic-style-transfer':
         return <PaintBucket className="h-5 w-5" />;
+      case 'artistic-style-transfer':
+        return <Wand className="h-5 w-5" />;
       default:
-        return <Layers className="h-5 w-5" />;
+        return <Image className="h-5 w-5" />;
     }
   };
-
+  
   return (
-    <TooltipProvider>
-      <Tooltip delayDuration={300}>
-        <DropdownMenu>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                className={`hover:bg-purple-500/10 text-purple-700 ${showName ? 'px-3' : ''}`}
-                size={showName ? "default" : "icon"}
-              >
-                <div className="flex items-center">
-                  {getCurrentWorkflowIcon()}
-                  {showName && (
-                    <span className="ml-2 text-sm">{currentWorkflow?.name}</span>
-                  )}
-                </div>
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            <p>Workflow: {currentWorkflow?.name}</p>
-            <p className="text-xs text-muted-foreground">Select a workflow</p>
-          </TooltipContent>
-          <DropdownMenuContent align="end" alignOffset={-5} sideOffset={5} className="bg-background/90 backdrop-blur-sm">
-            {workflows.map((workflow) => (
-              <DropdownMenuItem
-                key={workflow.id}
-                onClick={() => onWorkflowChange(workflow.id)}
-                className="cursor-pointer"
-              >
-                {getWorkflowIcon(workflow.id)}
-                <div>
-                  <p>{workflow.name}</p>
-                  <p className="text-xs text-muted-foreground">{workflow.description}</p>
-                </div>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </Tooltip>
-    </TooltipProvider>
+    <div className="flex items-center h-[48px]">
+      <HoverCard>
+        <HoverCardTrigger asChild>
+          <Button
+            variant="outline"
+            className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700"
+            onClick={() => {}}
+          >
+            {getWorkflowIcon(selectedWorkflow)}
+            {!shouldHideName && (
+              <span className="ml-2 text-sm">{selectedWorkflowObj?.name || 'Workflow'}</span>
+            )}
+          </Button>
+        </HoverCardTrigger>
+        <HoverCardContent className="w-64 p-2">
+          <div className="space-y-2">
+            <h4 className="text-sm font-semibold">Workflows</h4>
+            <div className="grid grid-cols-1 gap-1">
+              {workflows.map((workflow) => (
+                <Button
+                  key={workflow.id}
+                  variant={workflow.id === selectedWorkflow ? "secondary" : "ghost"}
+                  size="sm"
+                  className="justify-start text-sm h-9"
+                  onClick={() => onWorkflowChange(workflow.id)}
+                >
+                  <div className="mr-2">
+                    {getWorkflowIcon(workflow.id)}
+                  </div>
+                  <div className="flex flex-col items-start">
+                    <span>{workflow.name}</span>
+                    <span className="text-xs text-muted-foreground">{workflow.description}</span>
+                  </div>
+                </Button>
+              ))}
+            </div>
+          </div>
+        </HoverCardContent>
+      </HoverCard>
+    </div>
   );
 };
 

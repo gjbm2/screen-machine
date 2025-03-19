@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { ExternalLink, Trash2, Maximize, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
