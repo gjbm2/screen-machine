@@ -146,3 +146,22 @@
 .animate-slide-out-down {
   animation: slide-out-down 0.3s ease-out forwards;
 }
+
+/* Custom styles for the image batches grid */
+.image-batches-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.25rem;
+}
+
+@media (min-width: 640px) {
+  .image-batches-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .image-batches-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

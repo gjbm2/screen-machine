@@ -1,108 +1,146 @@
 
 import React, { useState } from 'react';
-import { toast } from 'sonner';
-import examplePromptsData from '@/data/example-prompts.json';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import examplePrompts from '@/data/example-prompts.json';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface PromptExamplesProps {
   prompt: string;
   onExampleClick: (example: string) => void;
-  onStyleClick: (style: string) => void;
+  onStyleClick: (prompt: string) => void;
+  showMore?: boolean;
 }
 
-const PromptExamples: React.FC<PromptExamplesProps> = ({
-  prompt,
-  onExampleClick,
+const PromptExamples: React.FC<PromptExamplesProps> = ({ 
+  prompt, 
+  onExampleClick, 
   onStyleClick,
+  showMore = false
 }) => {
-  const [showMoreBasic, setShowMoreBasic] = useState(false);
-  const [showMoreStyles, setShowMoreStyles] = useState(false);
+  const [showAllExamples, setShowAllExamples] = useState(false);
+  const [showAllStyles, setShowAllStyles] = useState(false);
   
-  const handleBasicPromptClick = (example: string) => {
+  // Get the initial number of examples to show based on screen size
+  const initialExamplesCount = showMore ? 4 : 2;
+  const initialStylesCount = showMore ? 6 : 4;
+  
+  const handleExampleClick = (example: string) => {
     onExampleClick(example);
   };
-
-  const handleStyleClick = (style: string) => {
-    // Remove the "+" prefix from the style for appending
-    const styleText = style.startsWith('+') ? style.substring(1).trim() : style;
-    
-    // Check if the prompt already contains this style to avoid duplication
-    if (prompt.includes(styleText)) {
-      toast.info('This style is already applied to your prompt');
-      return;
-    }
-    
-    // Apply the style, even if the prompt is empty
-    onStyleClick(`${prompt.trim()} ${styleText}`.trim());
+  
+  const handleStyleClick = (stylePrompt: string) => {
+    const combinedPrompt = prompt ? `${prompt}, ${stylePrompt}` : stylePrompt;
+    onStyleClick(combinedPrompt);
   };
-
-  const visiblePrompts = showMoreBasic ? examplePromptsData.basicPrompts : examplePromptsData.basicPrompts.slice(0, 2);
-  const visibleStyles = showMoreStyles ? examplePromptsData.stylePrompts : examplePromptsData.stylePrompts.slice(0, 2);
-
-  return (
-    <div className="px-4 pb-3">
-      <div className="flex flex-wrap gap-2 mb-3">
-        <span className="text-xs text-muted-foreground whitespace-nowrap py-1 mr-1">Try:</span>
-        <div className="flex-1 flex flex-wrap gap-2">
-          {visiblePrompts.map((example, index) => (
-            <button
-              key={`basic-${index}`}
-              type="button"
-              className="text-xs bg-secondary/50 hover:bg-secondary px-2 py-1 rounded-full text-foreground/70 transition-colors text-[11px]"
-              onClick={() => handleBasicPromptClick(example)}
+  
+  const toggleExamples = () => {
+    setShowAllExamples(!showAllExamples);
+  };
+  
+  const toggleStyles = () => {
+    setShowAllStyles(!showAllStyles);
+  };
+  
+  const renderExamples = () => {
+    const examplesList = examplePrompts.examples || [];
+    
+    const visibleExamples = showAllExamples 
+      ? examplesList 
+      : examplesList.slice(0, initialExamplesCount);
+      
+    return (
+      <div className="mb-2">
+        <div className="flex flex-wrap gap-1.5">
+          {visibleExamples.map((example, index) => (
+            <Badge 
+              key={index}
+              variant="secondary"
+              className="px-3 py-1.5 text-sm cursor-pointer hover:bg-secondary/80 font-normal"
+              onClick={() => handleExampleClick(example)}
             >
-              {example.length > 30 ? `${example.slice(0, 30)}...` : example}
-            </button>
+              {example}
+            </Badge>
           ))}
           
-          {examplePromptsData.basicPrompts.length > 2 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-[11px] h-6 px-2 py-0 rounded-full text-muted-foreground hover:text-foreground/70"
-              onClick={() => setShowMoreBasic(!showMoreBasic)}
+          {examplesList.length > initialExamplesCount && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={toggleExamples}
+              className="h-8 text-xs"
             >
-              {showMoreBasic ? (
-                <>Less <ChevronUp className="ml-1 h-3 w-3" /></>
+              {showAllExamples ? (
+                <>
+                  <ChevronUp className="mr-1 h-3 w-3" />
+                  Less
+                </>
               ) : (
-                <>More <ChevronDown className="ml-1 h-3 w-3" /></>
+                <>
+                  <ChevronDown className="mr-1 h-3 w-3" />
+                  More
+                </>
               )}
             </Button>
           )}
         </div>
       </div>
+    );
+  };
+  
+  const renderStyles = () => {
+    const stylesList = examplePrompts.styles || [];
+    
+    const visibleStyles = showAllStyles
+      ? stylesList
+      : stylesList.slice(0, initialStylesCount);
       
-      <div className="flex flex-wrap gap-2">
-        <span className="text-xs text-muted-foreground whitespace-nowrap py-1 mr-1">Style:</span>
-        <div className="flex-1 flex flex-wrap gap-2">
+    return (
+      <div>
+        <div className="flex flex-wrap gap-1.5">
           {visibleStyles.map((style, index) => (
-            <button
-              key={`style-${index}`}
-              type="button"
-              className="text-[11px] bg-purple-500/20 hover:bg-purple-500/30 px-2 py-1 rounded-full text-purple-700 transition-colors"
+            <Badge 
+              key={index}
+              variant="outline"
+              className="px-3 py-1.5 text-sm cursor-pointer hover:bg-accent font-normal"
               onClick={() => handleStyleClick(style)}
             >
-              {style.length > 30 ? `${style.slice(0, 30)}...` : style}
-            </button>
+              {style}
+            </Badge>
           ))}
           
-          {examplePromptsData.stylePrompts.length > 2 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-[11px] h-6 px-2 py-0 rounded-full text-muted-foreground hover:text-foreground/70"
-              onClick={() => setShowMoreStyles(!showMoreStyles)}
+          {stylesList.length > initialStylesCount && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={toggleStyles}
+              className="h-8 text-xs"
             >
-              {showMoreStyles ? (
-                <>Less <ChevronUp className="ml-1 h-3 w-3" /></>
+              {showAllStyles ? (
+                <>
+                  <ChevronUp className="mr-1 h-3 w-3" />
+                  Less
+                </>
               ) : (
-                <>More <ChevronDown className="ml-1 h-3 w-3" /></>
+                <>
+                  <ChevronDown className="mr-1 h-3 w-3" />
+                  More
+                </>
               )}
             </Button>
           )}
         </div>
       </div>
+    );
+  };
+  
+  return (
+    <div className="p-2">
+      <div className="mb-1 text-xs text-muted-foreground">Try an example:</div>
+      {renderExamples()}
+      
+      <div className="mb-1 text-xs text-muted-foreground">Add a style:</div>
+      {renderStyles()}
     </div>
   );
 };

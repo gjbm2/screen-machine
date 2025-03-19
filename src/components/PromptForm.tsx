@@ -22,7 +22,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,9 +34,10 @@ interface PromptFormProps {
   onSubmit: (prompt: string, imageFiles?: File[] | string[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string) => void;
   isLoading: boolean;
   currentPrompt?: string | null;
+  isFirstRun: boolean;
 }
 
-const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormProps) => {
+const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = true }: PromptFormProps) => {
   const [prompt, setPrompt] = useState('');
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -47,7 +48,6 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   const [isButtonDisabled, setIsButtonDisabled] = useState(false);
   const [batchSize, setBatchSize] = useState(1);
-  const [isFormCollapsed, setIsFormCollapsed] = useState(false);
   const workflows = workflowsData as Workflow[];
   const isMobile = useIsMobile();
   const { width } = useWindowSize();
@@ -246,17 +246,8 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
   };
 
   return (
-    <div className="animate-fade-up">
-      <Collapsible open={!isFormCollapsed} onOpenChange={(open) => setIsFormCollapsed(!open)}>
-        <div className="flex justify-between items-center mb-2">
-          <div></div> {/* Removed the header text "Turn your words into art" */}
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 w-8">
-              {isFormCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </Button>
-          </CollapsibleTrigger>
-        </div>
-        
+    <div className={`animate-fade-up transition-all duration-500 ${isFirstRun ? 'mb-12' : 'mb-4'}`}>
+      <Collapsible open={true}>
         <CollapsibleContent>
           <Card className="overflow-hidden glass border border-border/30">
             <form onSubmit={handleSubmit} className="p-1">
@@ -355,6 +346,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                 prompt={prompt}
                 onExampleClick={handleExampleClick}
                 onStyleClick={handleStyleClick}
+                showMore={!isCompact}
               />
               
               <div className="p-2 pt-0 space-y-2">
@@ -364,48 +356,55 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                 
                 <div className="flex items-center gap-1 sm:gap-2">
                   <div className="flex items-center gap-1 sm:gap-2">
+                    <ImageUploader
+                      isLoading={isButtonDisabled}
+                      onImageUpload={handleImageUpload}
+                      onWorkflowChange={handleWorkflowChange}
+                      hideLabel={isCompact}
+                    />
+                    
                     <WorkflowIconSelector
                       workflows={workflows}
                       selectedWorkflow={selectedWorkflow}
                       onWorkflowChange={handleWorkflowChange}
-                      hideWorkflowName={true}
+                      hideWorkflowName={isCompact}
                     />
                     
                     <RefinerSelector
                       selectedRefiner={selectedRefiner}
                       onRefinerChange={handleRefinerChange}
                     />
-                  </div>
-
-                  <div className="relative flex-1 flex items-center">
-                    {/* Styled batch size controls like workflow/refiner buttons */}
-                    <div className="flex items-center mr-1">
+                    
+                    {/* Styled batch size controls like workflow/refiner buttons but smaller */}
+                    <div className="flex items-center h-[48px]">
                       <Button 
                         type="button"
-                        className="h-[48px] rounded-l-md px-1 sm:px-2 hover:bg-purple-500/10 text-purple-700 border border-r-0 border-input"
+                        className="h-[48px] rounded-l-md px-1 sm:px-1.5 hover:bg-purple-500/10 text-purple-700 border border-r-0 border-input"
                         onClick={decrementBatchSize}
                         disabled={batchSize <= 1}
                         variant="outline"
                       >
-                        <Minus className="h-4 w-4" />
+                        <Minus className="h-3 w-3" />
                       </Button>
                       
-                      <div className="flex justify-center items-center h-[48px] bg-background border-y border-input text-foreground w-10 sm:w-12">
+                      <div className="flex justify-center items-center h-[48px] bg-background border-y border-input text-foreground w-8 sm:w-9">
                         <span className="text-lg font-medium">{batchSize}</span>
                       </div>
                       
                       <Button 
                         type="button"
-                        className="h-[48px] rounded-r-md px-1 sm:px-2 hover:bg-purple-500/10 text-purple-700 border border-l-0 border-input"
+                        className="h-[48px] rounded-r-md px-1 sm:px-1.5 hover:bg-purple-500/10 text-purple-700 border border-l-0 border-input"
                         onClick={incrementBatchSize}
                         disabled={batchSize >= 9}
                         variant="outline"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-3 w-3" />
                       </Button>
                     </div>
-                    
-                    {/* Settings button moved before Go button */}
+                  </div>
+
+                  <div className="relative flex-1 flex items-center">
+                    {/* Settings button moved before arrow button */}
                     <Button 
                       type="button"
                       variant="outline" 
@@ -417,7 +416,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                       <Settings className="h-5 w-5" />
                     </Button>
                     
-                    {/* Changed from 'Go' to up arrow icon with conditional styling */}
+                    {/* Changed to up arrow icon with conditional styling */}
                     <Button 
                       type="submit" 
                       className={`flex-grow h-[48px] rounded-full px-2 sm:px-4 transition-all hover:shadow-md text-lg font-medium flex items-center justify-center btn-shine ${

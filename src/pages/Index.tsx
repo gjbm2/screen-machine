@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -37,6 +38,7 @@ const Index = () => {
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
   const [isConsoleVisible, setIsConsoleVisible] = useState(false);
   const [nextContainerId, setNextContainerId] = useState<number>(1);
+  const [isFirstRun, setIsFirstRun] = useState(true);
   
   useEffect(() => {
     if (currentGlobalParams.showConsoleOutput) {
@@ -134,6 +136,11 @@ const Index = () => {
     refiner?: string,
     batchId?: string
   ) => {
+    // Set first run to false when the generator is first run
+    if (isFirstRun) {
+      setIsFirstRun(false);
+    }
+    
     setCurrentPrompt(prompt);
     setCurrentWorkflow(workflow || null);
     setCurrentParams(params || {});
@@ -341,7 +348,7 @@ const Index = () => {
                   variant="ghost" 
                   size="icon" 
                   onClick={toggleConsole}
-                  className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50"
+                  className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50 mr-2"
                 >
                   <Terminal className={`h-5 w-5 ${isConsoleVisible ? 'text-primary' : ''}`} />
                 </Button>
@@ -353,11 +360,22 @@ const Index = () => {
           </div>
         </div>
         
-        <div className="mt-8">
+        {isFirstRun && (
+          <div className="mt-16 mb-8 text-center">
+            <h1 className="text-3xl font-bold mb-4">Welcome to the Image Generator</h1>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Transform your imagination into stunning visuals. Enter a prompt below, 
+              select your options, and watch as your ideas come to life.
+            </p>
+          </div>
+        )}
+        
+        <div className={`${isFirstRun ? 'mt-4' : 'mt-8'} transition-all duration-500`}>
           <PromptForm 
             onSubmit={handleSubmitPrompt} 
             isLoading={activeGenerations.length > 0}
             currentPrompt={currentPrompt}
+            isFirstRun={isFirstRun}
           />
         </div>
         

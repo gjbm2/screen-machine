@@ -128,7 +128,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
             <Button 
               type="button" 
               variant="outline"
-              className="rounded-full flex-shrink-0 text-sm flex items-center gap-2 px-3 h-[48px]"
+              className="h-[48px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 border border-input"
               disabled={isLoading}
             >
               <Upload className="h-4 w-4" />
@@ -166,7 +166,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         type="button" 
         variant="outline"
         onClick={triggerFileInput}
-        className="rounded-full flex-shrink-0 text-sm flex items-center gap-2 px-3 h-[48px]"
+        className="h-[48px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 border border-input"
         disabled={isLoading}
       >
         <Upload className="h-4 w-4" />

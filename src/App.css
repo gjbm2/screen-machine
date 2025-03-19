@@ -44,7 +44,7 @@
 
 /* Image containers custom styles */
 :root {
-  --image-container-padding: 0.25rem;
+  --image-container-padding: 0.1rem;
 }
 
 .image-batch-container .card-content {
@@ -53,18 +53,67 @@
 
 @media (max-width: 640px) {
   .image-batch-container .card-content {
-    padding: 0.125rem;
+    padding: 0.05rem;
   }
 }
 
 /* Reduce overall padding for tighter layout */
 .image-batch-container {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.15rem;
 }
 
 /* Make hover action buttons smaller */
 .image-action-button {
-  padding: 0.25rem !important;
-  height: 1.5rem !important;
-  width: 1.5rem !important;
+  padding: 0.2rem !important;
+  height: 1.4rem !important;
+  width: 1.4rem !important;
+}
+
+/* For 2 items per row in normal view */
+@media (min-width: 640px) {
+  .image-batches-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.25rem;
+  }
+}
+
+/* Button shine effect */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-shine::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: rotate(30deg);
+  animation: shine 4s infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes shine {
+  0% {
+    left: -100%;
+    opacity: 0;
+  }
+  20% {
+    left: 100%;
+    opacity: 0.6;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
 }
