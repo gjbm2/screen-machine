@@ -12,7 +12,8 @@ import {
   PinIcon,
   RefreshCw,
   Info,
-  Download
+  Download,
+  Plus
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -186,7 +187,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         </Button>
       )}
 
-      {/* Create again button */}
+      {/* Create Again button */}
       {onCreateAgain && (
         <Button 
           variant="secondary" 
@@ -194,8 +195,8 @@ const ImageActions: React.FC<ImageActionsProps> = ({
           className={buttonSizeClass}
           onClick={onCreateAgain}
         >
-          <RefreshCw className="h-4 w-4 mr-1" />
-          <span className={isFullScreen ? "" : "text-xs"}>Create Again</span>
+          <Plus className="h-4 w-4 mr-1" />
+          <span className={isFullScreen ? "" : "text-xs"}>Create Another</span>
         </Button>
       )}
     </>

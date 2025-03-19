@@ -138,6 +138,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
   // Track deleted image indices for each batch
   const [deletedImages, setDeletedImages] = useState<Record<string, Set<number>>>({});
+  // Track the focused batch ID for auto-scrolling to new variants
+  const [focusBatchId, setFocusBatchId] = useState<string | null>(null);
   
   const isMobile = useIsMobile();
   
@@ -150,6 +152,17 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }),
     useSensor(KeyboardSensor)
   );
+  
+  // Scroll to newly created variant
+  React.useEffect(() => {
+    if (focusBatchId) {
+      const element = document.getElementById(`batch-${focusBatchId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+      setFocusBatchId(null);
+    }
+  }, [focusBatchId, generatedImages]);
   
   // Always render the component when we have uploaded images or when we're loading
   // or when we have generated image results
@@ -232,9 +245,11 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       newDeletedImages[batchId].add(imageIndex);
       
       // If this was the last image in the batch, update the expanded state
-      const batch = generatedImages.filter(img => img.batchId === batchId);
-      const remainingImages = batch.length - newDeletedImages[batchId].size;
-      if (remainingImages === 0) {
+      const batch = getBatchedImages().find(batch => batch.batchId === batchId);
+      const remainingImagesCount = batch ? 
+        batch.images.length - (newDeletedImages[batchId].size || 0) : 0;
+      
+      if (remainingImagesCount <= 1) {
         // Remove the batch from imageContainerOrder
         if (onReorderContainers) {
           const index = imageContainerOrder.indexOf(batchId);
@@ -299,6 +314,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
   const handleCreateAnother = (batchId: string) => {
     if (onCreateAgain) {
+      // Set focus batch ID to auto-scroll to the new variant
+      setFocusBatchId(batchId);
       onCreateAgain(batchId);
       toast.info('Creating another image...');
     }
@@ -386,7 +403,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     params: image.params
                   }}
                   isFullScreen
-                  createButtonLabel="Create Another"
                 />
               </div>
             </div>
@@ -400,8 +416,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           </div>
         )}
         
-        {/* Image controls overlay - visible on hover/focus with improved UI */}
-        <div className="absolute bottom-0 left-0 right-0 bg-black/60 flex justify-center p-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        {/* Image controls overlay - visible on hover/focus but only partially covering the image */}
+        <div className="absolute bottom-0 left-0 right-0 bg-black/60 flex justify-center p-3 opacity-0 group-hover:opacity-100 transition-opacity z-10 h-[40%]">
           <div className="flex flex-wrap gap-2 justify-center">
             {/* Info button */}
             <Dialog>
@@ -468,7 +484,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               <span className="text-xs">Create Another</span>
             </Button>
             
-            {/* Image actions */}
+            {/* Use as Input button */}
             <Button 
               variant="secondary" 
               size="sm" 
@@ -479,11 +495,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               <span className="text-xs">Use as Input</span>
             </Button>
           </div>
-        </div>
-        
-        {/* Light prompt preview at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 bg-black/40 px-2 py-1 opacity-0 group-hover:opacity-0">
-          <p className="text-xs text-white truncate">{image.prompt}</p>
         </div>
       </div>
     );
@@ -648,6 +659,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                           key={batchId} 
                           open={isExpanded}
                           className="overflow-hidden rounded-lg bg-card border shadow-md col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-4 xl:col-span-5"
+                          id={`batch-${batchId}`}
                         >
                           <SortableContainer 
                             batchId={batchId} 
@@ -708,7 +720,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                     params: activeImage.params
                                   }}
                                   isFullScreen
-                                  createButtonLabel="Create Another"
                                 />
                               </div>
                               
@@ -749,18 +760,19 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                 {/* New variant placeholder in gallery */}
                                 {renderNewVariantPlaceholder(batchId)}
                               </div>
+                            </div>
                               
-                              {/* Roll up button */}
-                              <div className="flex justify-center mt-4">
-                                <Button 
-                                  variant="outline" 
-                                  className="text-xs"
-                                  onClick={() => toggleExpandBatch(batchId)}
-                                >
-                                  <ChevronUp className="h-4 w-4 mr-1" />
-                                  Roll Up
-                                </Button>
-                              </div>
+                            {/* Compact roll-up button attached to bottom of container */}
+                            <div className="flex justify-center">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                className="rounded-t-none rounded-b-lg bg-card hover:bg-accent/20 text-xs h-7 px-3 -mt-1 border-t border-x shadow"
+                                onClick={() => toggleExpandBatch(batchId)}
+                              >
+                                <ChevronUp className="h-4 w-4 mr-1" />
+                                Roll Up
+                              </Button>
                             </div>
                           </CollapsibleContent>
                         </Collapsible>
@@ -771,6 +783,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                           key={batchId} 
                           open={isExpanded}
                           className="overflow-hidden rounded-lg bg-card border col-span-1"
+                          id={`batch-${batchId}`}
                         >
                           <SortableContainer 
                             batchId={batchId} 

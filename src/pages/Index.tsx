@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -34,13 +35,19 @@ const Index = () => {
       const blob = await response.blob();
       const file = new File([blob], 'generated-image.png', { type: 'image/png' });
       
+      // Clear any previous images and use this one as input
+      setUploadedImageUrls([]);
+      
+      // Create a local URL for the file
+      const localImageUrl = URL.createObjectURL(file);
+      
+      // Set the uploaded image URL and switch to image-to-image workflow
+      setUploadedImageUrls([localImageUrl]);
+      setCurrentWorkflow('image-to-image');
+      
+      // Clear any existing prompt and image URL
       setCurrentPrompt('');
       setImageUrl(null);
-      
-      const localImageUrl = URL.createObjectURL(file);
-      setUploadedImageUrls([localImageUrl]);
-      
-      setCurrentWorkflow('image-to-image');
       
       toast.success('Generated image added as input!');
     } catch (error) {
