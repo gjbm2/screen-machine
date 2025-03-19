@@ -168,7 +168,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
             <div className="flex flex-col">
               {/* Image with click-to-close */}
               <div 
-                className="w-full overflow-hidden rounded-md cursor-pointer" 
+                className="w-full overflow-hidden rounded-md" 
                 onClick={() => setShowFullScreen(false)}
               >
                 <img 
@@ -186,7 +186,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
                 )}
               </div>
               
-              {/* Action buttons for full screen view */}
+              {/* Action buttons for full screen view - always visible */}
               <div className="mt-4 flex justify-center space-x-2">
                 <ImageActions
                   imageUrl={activeImage.url}
@@ -198,6 +198,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
                     params: activeImage.params
                   }}
                   isFullScreen={true}
+                  alwaysVisible={true}
                 />
               </div>
               

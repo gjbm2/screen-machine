@@ -42,6 +42,7 @@ interface ImageActionsProps {
   };
   isFullScreen?: boolean;
   isMouseOver?: boolean;
+  alwaysVisible?: boolean;
 }
 
 const ImageActions: React.FC<ImageActionsProps> = ({ 
@@ -50,7 +51,8 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   onUseAsInput,
   generationInfo,
   isFullScreen = false,
-  isMouseOver = false
+  isMouseOver = false,
+  alwaysVisible = false
 }) => {
   const [isSaving, setSaving] = useState(false);
   const [isPublishing, setPublishing] = useState(false);
@@ -128,6 +130,11 @@ const ImageActions: React.FC<ImageActionsProps> = ({
     : "text-white bg-black/60 hover:bg-black/70 border border-white/20";
 
   const buttonVariant = isFullScreen ? "default" : "secondary";
+
+  // Only render all buttons when specified conditions are met
+  if (!isFullScreen && !isMouseOver && !alwaysVisible) {
+    return null;
+  }
 
   return (
     <>
