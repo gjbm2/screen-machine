@@ -16,6 +16,13 @@
     "default": false
   },
   {
+    "id": "showConsoleOutput",
+    "name": "Show Console Output",
+    "description": "Display real-time console output from the generator backend",
+    "type": "checkbox",
+    "default": false
+  },
+  {
     "id": "quality",
     "name": "Output Quality",
     "description": "Control the quality of the generated output",

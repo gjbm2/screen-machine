@@ -3,9 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { toast } from 'sonner';
-import ReferenceImagesSection from './ReferenceImagesSection';
 import ImageBatch from './ImageBatch';
 import LoadingPlaceholder from './LoadingPlaceholder';
+import ReferenceImageIndicator from './ReferenceImageIndicator';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -21,6 +21,8 @@ interface ImageDisplayProps {
     batchId?: string;
     batchIndex?: number;
     status?: 'generating' | 'completed' | 'error';
+    refiner?: string;
+    referenceImageUrl?: string; // Added field for reference image
   }>;
   imageContainerOrder?: string[];
   workflow?: string | null;
@@ -79,9 +81,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
   }, [focusBatchId, generatedImages]);
   
-  // Always render the component when we have uploaded images or when we're loading
+  // Always render the component when we're loading
   // or when we have generated image results
-  const shouldDisplay = isLoading || generatedImages.length > 0 || (uploadedImages && uploadedImages.length > 0);
+  const shouldDisplay = isLoading || generatedImages.length > 0;
   
   if (!shouldDisplay) return null;
 
@@ -246,15 +248,17 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const batchedImages = getBatchedImages();
   const sortableIds = batchedImages.map(batch => batch.batchId);
 
+  // Function to render a reference image indicator if needed
+  const renderReferenceImageIndicator = (image: typeof generatedImages[0]) => {
+    if (image.referenceImageUrl) {
+      return <ReferenceImageIndicator imageUrl={image.referenceImageUrl} />;
+    }
+    return null;
+  };
+
   return (
     <div className="mt-12 animate-fade-in">
       <div className="flex flex-col gap-6">
-        {/* Reference images section */}
-        {uploadedImages && uploadedImages.length > 0 && (
-          <ReferenceImagesSection images={uploadedImages} />
-        )}
-
-        {/* Generated images section */}
         <div>
           <h3 className="text-lg font-semibold mb-3">Generated Images</h3>
           
@@ -288,6 +292,12 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     
                     const activeIndex = getActiveImageIndex(batchId, filteredImages.length);
                     const isExpanded = expandedBatches[batchId];
+                    const activeImage = filteredImages[activeIndex];
+                    
+                    // Add the reference image indicator component
+                    const extraComponents = activeImage?.referenceImageUrl ? 
+                      renderReferenceImageIndicator(activeImage) : 
+                      null;
                     
                     return (
                       <ImageBatch
@@ -305,6 +315,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         onDeleteImage={handleDeleteImage}
                         onCreateAgain={handleCreateAnother}
                         onUseAsInput={onUseGeneratedAsInput}
+                        extraComponents={extraComponents}
                       />
                     );
                   })}

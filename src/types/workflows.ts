@@ -1,4 +1,3 @@
-
 export interface WorkflowParam {
   id: string;
   name: string;
@@ -12,4 +11,12 @@ export interface Workflow {
   name: string;
   description: string;
   params: WorkflowParam[];
+}
+
+// Add a new interface for reference image data
+export interface ReferenceImageData {
+  url: string;
+  name?: string;
+  size?: number;
+  type?: string;
 }

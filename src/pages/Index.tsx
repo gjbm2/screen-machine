@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
 import PromptForm from '@/components/PromptForm';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
+import ConsoleOutput from '@/components/debug/ConsoleOutput';
 
 interface GeneratedImage {
   url: string;
@@ -14,6 +16,7 @@ interface GeneratedImage {
   batchIndex?: number;
   status?: 'generating' | 'completed' | 'error';
   refiner?: string;
+  referenceImageUrl?: string; // Added to track associated reference image
 }
 
 const Index = () => {
@@ -27,6 +30,23 @@ const Index = () => {
   const [currentRefiner, setCurrentRefiner] = useState<string | null>(null);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [imageContainerOrder, setImageContainerOrder] = useState<string[]>([]);
+  const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
+  const [isConsoleVisible, setIsConsoleVisible] = useState(false);
+  
+  // Effect to monitor global params and show/hide console
+  useEffect(() => {
+    if (currentGlobalParams.showConsoleOutput) {
+      setIsConsoleVisible(true);
+    } else {
+      setIsConsoleVisible(false);
+    }
+  }, [currentGlobalParams.showConsoleOutput]);
+  
+  // Function to add a log to the console
+  const addConsoleLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setConsoleLogs(prev => [...prev, `[${timestamp}] ${message}`]);
+  };
   
   const handleUseGeneratedAsInput = async (selectedImageUrl: string) => {
     try {
@@ -63,7 +83,7 @@ const Index = () => {
     
     handleSubmitPrompt(
       currentPrompt, 
-      uploadedImageUrls.length > 0 ? [] : undefined,
+      uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
       currentWorkflow || undefined,
       currentParams,
       currentGlobalParams,
@@ -76,7 +96,7 @@ const Index = () => {
 
   const handleSubmitPrompt = async (
     prompt: string, 
-    imageFiles?: File[],
+    imageUrls?: string[],
     workflow?: string,
     params?: Record<string, any>,
     globalParams?: Record<string, any>,
@@ -90,13 +110,11 @@ const Index = () => {
     setCurrentGlobalParams(globalParams || {});
     setCurrentRefiner(refiner || null);
     
-    // Handle uploaded images
-    if (imageFiles && imageFiles.length > 0) {
-      const localImageUrls = imageFiles.map(file => URL.createObjectURL(file));
-      setUploadedImageUrls(localImageUrls);
-    }
-    
     try {
+      // Add debug log
+      addConsoleLog(`Starting image generation: "${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}"`);
+      addConsoleLog(`Workflow: ${workflow || 'text-to-image'}, Refiner: ${refiner || 'none'}`);
+      
       // Generate a batch ID if one wasn't provided
       const currentBatchId = batchId || `batch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       
@@ -104,6 +122,9 @@ const Index = () => {
       if (!batchId || !imageContainerOrder.includes(batchId)) {
         setImageContainerOrder(prev => [currentBatchId, ...prev]);
       }
+      
+      // Get reference image if any
+      const referenceImageUrl = imageUrls && imageUrls.length > 0 ? imageUrls[0] : undefined;
       
       // Create a placeholder for the generating image
       const placeholderImage: GeneratedImage = {
@@ -115,7 +136,8 @@ const Index = () => {
         refiner: refiner,
         batchId: currentBatchId,
         batchIndex: batchId ? generatedImages.filter(img => img.batchId === batchId).length : 0,
-        status: 'generating'
+        status: 'generating',
+        referenceImageUrl
       };
       
       // Add the placeholder to the generated images
@@ -131,12 +153,13 @@ const Index = () => {
         params: params || {},
         global_params: globalParams || {},
         refiner: refiner || 'none',
-        has_reference_images: imageFiles ? imageFiles.length > 0 : false,
-        reference_image_count: imageFiles ? imageFiles.length : 0,
+        has_reference_images: imageUrls ? imageUrls.length > 0 : false,
+        reference_image_count: imageUrls ? imageUrls.length : 0,
         batch_id: currentBatchId
       };
       
       console.log('Sending request with data:', requestData);
+      addConsoleLog(`Sending request: ${JSON.stringify(requestData, null, 2)}`);
       
       // Mock API response
       setTimeout(() => {
@@ -147,54 +170,71 @@ const Index = () => {
           "https://images.unsplash.com/photo-1560807707-8cc77767d783"
         ];
         
-        // Count existing images in this batch (excluding generating ones)
-        const existingBatchCount = batchId ? 
-          generatedImages.filter(img => img.batchId === batchId && img.status !== 'generating').length : 0;
-        
-        // Generate 1-2 random images
-        const imageCount = Math.floor(Math.random() * 2) + 1;
-        const newImages: GeneratedImage[] = [];
-        
-        for (let i = 0; i < imageCount; i++) {
-          const randomIndex = Math.floor(Math.random() * mockImageUrls.length);
-          const newImageUrl = mockImageUrls[randomIndex];
+        try {
+          // Count existing images in this batch (excluding generating ones)
+          const existingBatchCount = batchId ? 
+            generatedImages.filter(img => img.batchId === batchId && img.status !== 'generating').length : 0;
           
-          // Create the generated image object
-          const newGeneratedImage: GeneratedImage = {
-            url: newImageUrl,
-            prompt: prompt,
-            workflow: workflow || 'text-to-image',
-            timestamp: Date.now(),
-            params: { ...params, ...globalParams },
-            refiner: refiner,
-            batchId: currentBatchId,
-            batchIndex: existingBatchCount + i,
-            status: 'completed'
-          };
+          // Generate 1-2 random images
+          const imageCount = Math.floor(Math.random() * 2) + 1;
+          const newImages: GeneratedImage[] = [];
           
-          newImages.push(newGeneratedImage);
+          addConsoleLog(`Received response: ${imageCount} images generated`);
+          
+          for (let i = 0; i < imageCount; i++) {
+            const randomIndex = Math.floor(Math.random() * mockImageUrls.length);
+            const newImageUrl = mockImageUrls[randomIndex];
+            
+            // Create the generated image object
+            const newGeneratedImage: GeneratedImage = {
+              url: newImageUrl,
+              prompt: prompt,
+              workflow: workflow || 'text-to-image',
+              timestamp: Date.now(),
+              params: { ...params, ...globalParams },
+              refiner: refiner,
+              batchId: currentBatchId,
+              batchIndex: existingBatchCount + i,
+              status: 'completed',
+              referenceImageUrl
+            };
+            
+            newImages.push(newGeneratedImage);
+          }
+          
+          // Update the generated images list (replacing placeholder)
+          setGeneratedImages(prev => {
+            const prevCopy = [...prev];
+            // Remove generating placeholders for this batch
+            const filteredImages = prevCopy.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'));
+            return [...newImages, ...filteredImages];
+          });
+          
+          // Mark generation as complete
+          setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
+          
+          // Set the first image URL if none is set yet
+          if (!imageUrl) {
+            setImageUrl(newImages[0]?.url);
+          }
+          
+          toast.success(`${imageCount} image${imageCount > 1 ? 's' : ''} generated successfully!`);
+        } catch (error) {
+          console.error('Error processing response:', error);
+          addConsoleLog(`Error processing response: ${error}`);
+          
+          // Clean up failed generations
+          setGeneratedImages(prev => 
+            prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'))
+          );
+          setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
+          
+          toast.error('An error occurred while processing images.');
         }
-        
-        // Update the generated images list (replacing placeholder)
-        setGeneratedImages(prev => {
-          const prevCopy = [...prev];
-          // Remove generating placeholders for this batch
-          const filteredImages = prevCopy.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'));
-          return [...newImages, ...filteredImages];
-        });
-        
-        // Mark generation as complete
-        setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
-        
-        // Set the first image URL if none is set yet
-        if (!imageUrl) {
-          setImageUrl(newImages[0]?.url);
-        }
-        
-        toast.success(`${imageCount} image${imageCount > 1 ? 's' : ''} generated successfully!`);
       }, 1500);
     } catch (error) {
       console.error('Error generating image:', error);
+      addConsoleLog(`Error generating image: ${error}`);
       toast.error('Failed to generate image. Please try again.');
       
       // Clean up failed generations
@@ -261,7 +301,7 @@ const Index = () => {
             imageUrl={imageUrl}
             prompt={currentPrompt}
             isLoading={activeGenerations.length > 0}
-            uploadedImages={uploadedImageUrls}
+            uploadedImages={[]} // We no longer need to pass these here
             generatedImages={generatedImages}
             imageContainerOrder={imageContainerOrder}
             workflow={currentWorkflow}
@@ -274,6 +314,18 @@ const Index = () => {
           />
         </div>
       </div>
+      
+      <ConsoleOutput 
+        logs={consoleLogs}
+        isVisible={isConsoleVisible}
+        onClose={() => {
+          setIsConsoleVisible(false);
+          setCurrentGlobalParams(prev => ({
+            ...prev,
+            showConsoleOutput: false
+          }));
+        }}
+      />
     </div>
   );
 };
