@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -257,6 +256,45 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     return "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
   };
 
+  const renderAllImagesInSmallView = () => {
+    const allImages: Array<{
+      batchId: string;
+      image: typeof generatedImages[0];
+      index: number;
+      total: number;
+    }> = [];
+    
+    batchedImages.forEach(({ batchId, images }) => {
+      images.forEach((image, index) => {
+        allImages.push({
+          batchId,
+          image,
+          index,
+          total: images.length
+        });
+      });
+    });
+    
+    return (
+      <div className={`grid ${getGridColsClass()} gap-4`}>
+        {allImages.map(({ batchId, image, index, total }, itemIndex) => (
+          <div key={`${batchId}-${index}`} className="relative">
+            <ImageBatchItem
+              image={image}
+              batchId={batchId}
+              index={index}
+              total={total}
+              onCreateAgain={handleCreateAnother}
+              onUseAsInput={onUseGeneratedAsInput}
+              onDeleteImage={handleDeleteImage}
+              viewMode="small"
+            />
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const handleOpenBatchDialog = (batchId: string) => {
     setOpenBatchDialog(batchId);
     const batch = batchedImages.find(b => b.batchId === batchId);
@@ -363,6 +401,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             
             {viewMode === 'table' ? (
               renderTableView()
+            ) : viewMode === 'small' ? (
+              renderAllImagesInSmallView()
             ) : (
               <TooltipProvider>
                 <DndContext 

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
-import { Maximize, Trash2, X } from 'lucide-react';
+import { Maximize, Trash2, X, Info } from 'lucide-react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import ImageActions from '@/components/ImageActions';
 
@@ -55,6 +55,13 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   }
   
   const handleClick = (e: React.MouseEvent) => {
+    if (isSmallView) {
+      // In small view, clicking opens fullscreen
+      e.stopPropagation();
+      setFullScreenOpen(true);
+      return;
+    }
+    
     e.stopPropagation();
     setIsClicked(!isClicked);
     setActionsVisible(!actionsVisible);
@@ -76,10 +83,10 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   
   return (
     <div 
-      className="aspect-square relative group cursor-pointer" 
+      className={`aspect-square relative group cursor-pointer ${isSmallView ? "overflow-hidden" : ""}`} 
       onClick={handleClick}
-      onMouseEnter={() => !isClicked && setActionsVisible(true)}
-      onMouseLeave={() => !isClicked && setActionsVisible(false)}
+      onMouseEnter={() => !isClicked && !isSmallView && setActionsVisible(true)}
+      onMouseLeave={() => !isClicked && !isSmallView && setActionsVisible(false)}
     >
       <img
         src={image.url}
@@ -97,26 +104,30 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         </button>
       )}
       
-      {/* Full screen view button - always available */}
-      <button 
-        className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 text-white rounded-full p-1.5 transition-colors z-20"
-        onClick={handleOpenFullScreen}
-      >
-        <Maximize className="h-4 w-4" />
-      </button>
+      {/* Full screen view button - always available except in small view mode */}
+      {!isSmallView && (
+        <button 
+          className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 text-white rounded-full p-1.5 transition-colors z-20"
+          onClick={handleOpenFullScreen}
+        >
+          <Maximize className="h-4 w-4" />
+        </button>
+      )}
       
       {/* Full-screen dialog */}
       <Dialog open={fullScreenOpen} onOpenChange={setFullScreenOpen}>
-        <DialogContent className="p-0 overflow-hidden" fullscreen>
+        <DialogContent className="p-0 overflow-hidden max-w-[95vw] max-h-[95vh]" fullscreen>
           <DialogHeader className="absolute top-0 left-0 right-0 bg-black/80 z-10 p-4 flex justify-between items-center">
-            <DialogTitle className="text-white">Image View</DialogTitle>
+            <DialogTitle className="text-white">
+              {image.prompt || 'Generated Image'}
+            </DialogTitle>
             <DialogClose className="rounded-full p-1 hover:bg-black/40 text-white">
               <X className="h-6 w-6" />
             </DialogClose>
           </DialogHeader>
           
           <div className="w-full h-full flex flex-col">
-            <div className="flex-1 flex items-center justify-center overflow-auto">
+            <div className="flex-1 flex items-center justify-center overflow-auto p-4 pt-16 pb-20">
               <img
                 src={image.url}
                 alt={image.prompt || 'Generated image full view'}
@@ -124,8 +135,23 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
               />
             </div>
             
+            {/* Information section */}
+            <div className="absolute top-16 left-4 bg-black/80 p-3 rounded-md text-white text-xs max-w-xs">
+              {image.prompt && (
+                <div className="mb-2">
+                  <p className="font-medium">Prompt:</p>
+                  <p>{image.prompt}</p>
+                </div>
+              )}
+              {image.workflow && (
+                <div>
+                  <p className="font-medium">Workflow: {image.workflow}</p>
+                </div>
+              )}
+            </div>
+            
             {/* Bottom controls for fullscreen view */}
-            <div className="p-4 bg-black/80 flex flex-wrap justify-center gap-2">
+            <div className="absolute bottom-0 left-0 right-0 p-4 bg-black/80 flex flex-wrap justify-center gap-2">
               <TooltipProvider>
                 <ImageActions 
                   imageUrl={image.url}
@@ -151,31 +177,33 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         </div>
       )}
       
-      {/* Image controls overlay - ANIMATED slide in/out */}
-      <div 
-        className={`absolute bottom-0 left-0 right-0 bg-black/90 flex justify-center p-3 z-10 transition-transform duration-300 ${
-          actionsVisible ? 'translate-y-0' : 'translate-y-full'
-        }`}
-        style={{ 
-          backgroundColor: isClicked ? 'rgba(0, 0, 0, 0.90)' : 'rgba(0, 0, 0, 0.75)'
-        }}
-      >
-        <div className="flex gap-2 justify-center">
-          <TooltipProvider>
-            <ImageActions 
-              imageUrl={image.url}
-              onCreateAgain={handleCreateAgain}
-              onUseAsInput={() => onUseAsInput && onUseAsInput(image.url)}
-              generationInfo={{
-                prompt: image.prompt || '',
-                workflow: image.workflow,
-                params: image.params
-              }}
-              isMouseOver={!isClicked}
-            />
-          </TooltipProvider>
+      {/* Image controls overlay - ANIMATED slide in/out - Only in normal view */}
+      {!isSmallView && (
+        <div 
+          className={`absolute bottom-0 left-0 right-0 bg-black/90 flex justify-center p-3 z-10 transition-transform duration-300 ${
+            actionsVisible ? 'translate-y-0' : 'translate-y-full'
+          }`}
+          style={{ 
+            backgroundColor: isClicked ? 'rgba(0, 0, 0, 0.90)' : 'rgba(0, 0, 0, 0.75)'
+          }}
+        >
+          <div className="flex gap-2 justify-center">
+            <TooltipProvider>
+              <ImageActions 
+                imageUrl={image.url}
+                onCreateAgain={handleCreateAgain}
+                onUseAsInput={() => onUseAsInput && onUseAsInput(image.url)}
+                generationInfo={{
+                  prompt: image.prompt || '',
+                  workflow: image.workflow,
+                  params: image.params
+                }}
+                isMouseOver={!isClicked}
+              />
+            </TooltipProvider>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

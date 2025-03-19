@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Settings, X, Rocket } from 'lucide-react';
+import { Settings, X, Rocket, Plus, Minus } from 'lucide-react';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import workflowsData from '@/data/workflows.json';
 import globalOptionsData from '@/data/global-options.json';
@@ -39,6 +39,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
   const [globalParams, setGlobalParams] = useState<Record<string, any>>({});
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   const [isButtonDisabled, setIsButtonDisabled] = useState(false);
+  const [batchSize, setBatchSize] = useState(1);
   const workflows = workflowsData as Workflow[];
   const isMobile = useIsMobile();
   
@@ -85,12 +86,18 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
       setIsButtonDisabled(false);
     }, 1000);
     
+    // Include batch size in global params
+    const updatedGlobalParams = {
+      ...globalParams,
+      batchSize
+    };
+    
     onSubmit(
       prompt, 
       imageFiles.length > 0 ? imageFiles : undefined, 
       selectedWorkflow, 
       workflowParams, 
-      globalParams,
+      updatedGlobalParams,
       selectedRefiner !== 'none' ? selectedRefiner : undefined
     );
   };
@@ -164,6 +171,20 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
 
   const toggleAdvancedOptions = () => {
     setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
+  };
+  
+  const incrementBatchSize = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (batchSize < 9) {
+      setBatchSize(prev => prev + 1);
+    }
+  };
+  
+  const decrementBatchSize = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (batchSize > 1) {
+      setBatchSize(prev => prev - 1);
+    }
   };
 
   return (
@@ -279,14 +300,37 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                 onWorkflowChange={handleWorkflowChange}
               />
               
-              <Button 
-                type="submit" 
-                className="btn-shine rounded-full px-4 sm:px-6 transition-all hover:shadow-md h-[48px] text-lg font-medium flex-1 flex items-center gap-2"
-                disabled={isButtonDisabled}
-              >
-                <Rocket className="h-5 w-5" />
-                {!isMobile && "Generate"}
-              </Button>
+              <div className="relative flex-1">
+                <Button 
+                  type="submit" 
+                  className="btn-shine rounded-l-full pr-12 pl-4 sm:pl-6 transition-all hover:shadow-md h-[48px] text-lg font-medium w-full flex items-center gap-2"
+                  disabled={isButtonDisabled}
+                >
+                  <Rocket className="h-5 w-5" />
+                  {!isMobile && "Generate"}
+                  <span className="inline-flex items-center justify-center bg-primary-foreground/20 text-primary-foreground rounded-md px-1.5 py-0.5 text-xs ml-2">
+                    x{batchSize}
+                  </span>
+                </Button>
+                
+                {/* Batch size controls */}
+                <div className="absolute right-0 top-0 bottom-0 flex flex-col h-[48px] overflow-hidden rounded-r-full border-l border-primary-foreground/20">
+                  <Button 
+                    type="button"
+                    className="h-[24px] rounded-none rounded-tr-full px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
+                    onClick={incrementBatchSize}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                  <Button 
+                    type="button"
+                    className="h-[24px] rounded-none rounded-br-full px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
+                    onClick={decrementBatchSize}
+                  >
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </form>

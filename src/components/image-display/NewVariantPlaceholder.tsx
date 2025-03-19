@@ -10,6 +10,7 @@ interface NewVariantPlaceholderProps {
 
 const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({ batchId, onClick }) => {
   const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     onClick(batchId);
   };

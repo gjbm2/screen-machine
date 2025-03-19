@@ -74,13 +74,13 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs, isVisible, onClose 
     >
       {/* Drag handle */}
       <div 
-        className="absolute left-0 right-0 top-0 h-2 bg-muted cursor-ns-resize"
+        className="absolute left-0 right-0 top-0 h-4 bg-muted cursor-ns-resize"
         onMouseDown={handleMouseDown}
       >
-        <div className="w-12 h-1 bg-muted-foreground/30 rounded-full mx-auto" />
+        <div className="w-16 h-1.5 bg-muted-foreground/30 rounded-full mx-auto mt-1.5" />
       </div>
       
-      <div className="flex justify-between items-center p-3 border-b">
+      <div className="flex justify-between items-center p-3 border-b mt-4">
         <h3 className="font-semibold">Console Output</h3>
         <div className="flex items-center space-x-2">
           <Button 
@@ -105,7 +105,7 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs, isVisible, onClose 
       <div 
         ref={consoleRef}
         className="p-3 overflow-auto font-mono text-xs"
-        style={{ height: `calc(100% - 45px)` }}
+        style={{ height: `calc(100% - 55px)` }}
       >
         {logs.length === 0 ? (
           <p className="text-muted-foreground">No console logs yet.</p>

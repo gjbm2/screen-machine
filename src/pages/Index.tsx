@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -128,20 +129,28 @@ const Index = () => {
         }
       }
       
-      const placeholderImage: GeneratedImage = {
-        url: '',
-        prompt: prompt,
-        workflow: workflow || 'text-to-image',
-        timestamp: Date.now(),
-        params: { ...params, ...globalParams },
-        refiner: refiner,
-        batchId: currentBatchId,
-        batchIndex: batchId ? generatedImages.filter(img => img.batchId === batchId).length : 0,
-        status: 'generating',
-        referenceImageUrl
-      };
+      // Handle batch size from globalParams
+      const batchSize = globalParams?.batchSize || 1;
       
-      setGeneratedImages(prev => [placeholderImage, ...prev]);
+      // Create placeholder images for all items in batch
+      for (let i = 0; i < batchSize; i++) {
+        const placeholderImage: GeneratedImage = {
+          url: '',
+          prompt: prompt,
+          workflow: workflow || 'text-to-image',
+          timestamp: Date.now(),
+          params: { ...params, ...globalParams },
+          refiner: refiner,
+          batchId: currentBatchId,
+          batchIndex: batchId ? 
+            generatedImages.filter(img => img.batchId === batchId).length + i : 
+            i,
+          status: 'generating',
+          referenceImageUrl
+        };
+        
+        setGeneratedImages(prev => [placeholderImage, ...prev]);
+      }
       
       setActiveGenerations(prev => [...prev, currentBatchId]);
       
@@ -153,7 +162,8 @@ const Index = () => {
         refiner: refiner || 'none',
         has_reference_images: imageFiles ? imageFiles.length > 0 : false,
         reference_image_count: imageFiles ? imageFiles.length : 0,
-        batch_id: currentBatchId
+        batch_id: currentBatchId,
+        batch_size: batchSize
       };
       
       console.log('Sending request with data:', requestData);
@@ -171,7 +181,8 @@ const Index = () => {
           const existingBatchCount = batchId ? 
             generatedImages.filter(img => img.batchId === batchId && img.status !== 'generating').length : 0;
           
-          const imageCount = Math.floor(Math.random() * 2) + 1;
+          // Create the number of images specified by batch size
+          const imageCount = batchSize;
           const newImages: GeneratedImage[] = [];
           
           addConsoleLog(`Received response: ${imageCount} images generated`);
