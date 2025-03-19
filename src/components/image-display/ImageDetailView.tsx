@@ -3,7 +3,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { ChevronUp } from 'lucide-react';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { DropdownMenu } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent } from '@/components/ui/dropdown-menu';
 import ImageActions from '@/components/ImageActions';
 import NavigationControls from './NavigationControls';
 import ThumbnailGallery from './ThumbnailGallery';
@@ -69,17 +69,22 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       <div className="flex flex-wrap justify-center gap-2 mt-4">
         <TooltipProvider>
           <DropdownMenu>
-            <ImageActions 
-              imageUrl={activeImage.url} 
-              onUseAsInput={() => onUseAsInput && onUseAsInput(activeImage.url)}
-              onCreateAgain={() => onCreateAgain(batchId)}
-              generationInfo={{
-                prompt: activeImage.prompt || '',
-                workflow: activeImage.workflow,
-                params: activeImage.params
-              }}
-              isFullScreen
-            />
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">Actions</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center">
+              <ImageActions 
+                imageUrl={activeImage.url} 
+                onUseAsInput={() => onUseAsInput && onUseAsInput(activeImage.url)}
+                onCreateAgain={() => onCreateAgain(batchId)}
+                generationInfo={{
+                  prompt: activeImage.prompt || '',
+                  workflow: activeImage.workflow,
+                  params: activeImage.params
+                }}
+                isFullScreen
+              />
+            </DropdownMenuContent>
           </DropdownMenu>
         </TooltipProvider>
       </div>
