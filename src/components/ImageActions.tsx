@@ -132,9 +132,10 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         size="sm" 
         className="bg-white/20 hover:bg-white/40 transition-colors"
         onClick={handleSaveImage}
+        disabled={isSaving}
       >
         <Download className="h-4 w-4 mr-1" />
-        <span className="text-xs">Save</span>
+        <span className="text-xs">{isSaving ? 'Saving...' : 'Save'}</span>
       </Button>
       
       {/* Publish dropdown button */}
@@ -150,7 +151,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
             <span className="text-xs">{isPublishing ? 'Publishing...' : 'Publish'}</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="bg-background/90 backdrop-blur-sm z-50 border">
+        <DropdownMenuContent align="end" className="bg-background/90 backdrop-blur-sm z-50 border">
           <DropdownMenuLabel>Share to</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {publishDestinations.map((destination) => (
@@ -176,6 +177,19 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         >
           <Pencil className="h-4 w-4 mr-1" />
           <span className="text-xs">Use as Input</span>
+        </Button>
+      )}
+
+      {/* Create again button */}
+      {onCreateAgain && (
+        <Button 
+          variant="secondary" 
+          size="sm" 
+          className="bg-white/20 hover:bg-white/40 transition-colors"
+          onClick={onCreateAgain}
+        >
+          <RefreshCw className="h-4 w-4 mr-1" />
+          <span className="text-xs">Create Again</span>
         </Button>
       )}
     </>

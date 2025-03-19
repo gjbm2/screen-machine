@@ -16,7 +16,8 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   onExampleClick,
   onStyleClick,
 }) => {
-  const [showMore, setShowMore] = useState(false);
+  const [showMoreBasic, setShowMoreBasic] = useState(false);
+  const [showMoreStyles, setShowMoreStyles] = useState(false);
   
   const handleBasicPromptClick = (example: string) => {
     onExampleClick(example);
@@ -36,12 +37,13 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
     onStyleClick(`${prompt.trim()} ${styleText}`.trim());
   };
 
-  const visiblePrompts = showMore ? examplePromptsData.basicPrompts : examplePromptsData.basicPrompts.slice(0, 3);
+  const visiblePrompts = showMoreBasic ? examplePromptsData.basicPrompts : examplePromptsData.basicPrompts.slice(0, 3);
+  const visibleStyles = showMoreStyles ? examplePromptsData.stylePrompts : examplePromptsData.stylePrompts.slice(0, 3);
 
   return (
     <div className="px-4 pb-3">
-      <p className="text-xs text-muted-foreground mb-2">Try an example:</p>
-      <div className="flex flex-wrap gap-2 mb-3">
+      <div className="flex flex-wrap gap-2 mb-3 items-center">
+        <span className="text-xs text-muted-foreground whitespace-nowrap">Try an example:</span>
         {visiblePrompts.map((example, index) => (
           <button
             key={`basic-${index}`}
@@ -58,9 +60,9 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
             variant="ghost"
             size="sm"
             className="text-[10px] h-6 px-2 rounded-full"
-            onClick={() => setShowMore(!showMore)}
+            onClick={() => setShowMoreBasic(!showMoreBasic)}
           >
-            {showMore ? (
+            {showMoreBasic ? (
               <>Less <ChevronUp className="ml-1 h-3 w-3" /></>
             ) : (
               <>More <ChevronDown className="ml-1 h-3 w-3" /></>
@@ -69,9 +71,9 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
         )}
       </div>
       
-      <p className="text-xs text-muted-foreground mb-2">Add a style:</p>
-      <div className="flex flex-wrap gap-2">
-        {examplePromptsData.stylePrompts.map((style, index) => (
+      <div className="flex flex-wrap gap-2 items-center">
+        <span className="text-xs text-muted-foreground whitespace-nowrap">Add a style:</span>
+        {visibleStyles.map((style, index) => (
           <button
             key={`style-${index}`}
             type="button"
@@ -81,6 +83,21 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
             {style.length > 30 ? `${style.slice(0, 30)}...` : style}
           </button>
         ))}
+        
+        {examplePromptsData.stylePrompts.length > 3 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-[10px] h-6 px-2 rounded-full"
+            onClick={() => setShowMoreStyles(!showMoreStyles)}
+          >
+            {showMoreStyles ? (
+              <>Less <ChevronUp className="ml-1 h-3 w-3" /></>
+            ) : (
+              <>More <ChevronDown className="ml-1 h-3 w-3" /></>
+            )}
+          </Button>
+        )}
       </div>
     </div>
   );

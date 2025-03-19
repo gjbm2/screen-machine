@@ -194,7 +194,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
           
           <PromptInput
             prompt={prompt}
-            isLoading={isLoading}
+            isLoading={false}
             onPromptChange={setPrompt}
           />
           
@@ -213,7 +213,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
 
             <div className="flex gap-3">
               <ImageUploader
-                isLoading={isLoading}
+                isLoading={false}
                 onImageUpload={handleImageUpload}
                 onWorkflowChange={handleWorkflowChange}
               />
@@ -221,9 +221,8 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
               <Button 
                 type="submit" 
                 className="btn-shine rounded-full px-6 transition-all hover:shadow-md flex-1"
-                disabled={isLoading}
               >
-                {isLoading ? 'Generating...' : 'Generate'}
+                Generate
               </Button>
             </div>
             

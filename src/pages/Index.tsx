@@ -13,10 +13,11 @@ interface GeneratedImage {
   params?: Record<string, any>;
   batchId?: string;
   batchIndex?: number;
+  status?: 'generating' | 'completed' | 'error';
 }
 
 const Index = () => {
-  const [isLoading, setIsLoading] = useState(false);
+  const [activeGenerations, setActiveGenerations] = useState<string[]>([]); // Track active generation batch IDs
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string | null>(null);
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
@@ -74,7 +75,6 @@ const Index = () => {
     globalParams?: Record<string, any>,
     batchId?: string
   ) => {
-    setIsLoading(true);
     setCurrentPrompt(prompt);
     setCurrentWorkflow(workflow || null);
     setCurrentParams(params || {});
@@ -86,6 +86,25 @@ const Index = () => {
     }
     
     try {
+      const currentBatchId = batchId || `batch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      
+      // Add a placeholder for the generating image
+      const placeholderImage: GeneratedImage = {
+        url: '',
+        prompt: prompt,
+        workflow: workflow || 'text-to-image',
+        timestamp: Date.now(),
+        params: { ...params, ...globalParams },
+        batchId: currentBatchId,
+        batchIndex: 0,
+        status: 'generating'
+      };
+      
+      setGeneratedImages(prev => [placeholderImage, ...prev]);
+      
+      // Track this generation as active
+      setActiveGenerations(prev => [...prev, currentBatchId]);
+      
       const requestData = {
         prompt,
         workflow: workflow || 'text-to-image',
@@ -93,7 +112,7 @@ const Index = () => {
         global_params: globalParams || {},
         has_reference_images: imageFiles ? imageFiles.length > 0 : false,
         reference_image_count: imageFiles ? imageFiles.length : 0,
-        batch_id: batchId
+        batch_id: currentBatchId
       };
       
       console.log('Sending request with data:', requestData);
@@ -106,10 +125,8 @@ const Index = () => {
           "https://images.unsplash.com/photo-1533134486753-c833f0ed4866?q=80&w=1770&auto=format&fit=crop"
         ];
         
-        const currentBatchId = batchId || `batch-${Date.now()}`;
-        
         const existingBatchCount = batchId ? 
-          generatedImages.filter(img => img.batchId === batchId).length : 0;
+          generatedImages.filter(img => img.batchId === batchId && img.status !== 'generating').length : 0;
         
         const imageCount = Math.floor(Math.random() * 2) + 1;
         const newImages: GeneratedImage[] = [];
@@ -125,22 +142,37 @@ const Index = () => {
             timestamp: Date.now(),
             params: { ...params, ...globalParams },
             batchId: currentBatchId,
-            batchIndex: existingBatchCount + i
+            batchIndex: existingBatchCount + i,
+            status: 'completed'
           };
           
           newImages.push(newGeneratedImage);
         }
         
-        setGeneratedImages(prev => [...newImages, ...prev]);
-        setImageUrl(newImages[0].url);
+        // Remove the placeholder and add the real images
+        setGeneratedImages(prev => {
+          const filteredImages = prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'));
+          return [...newImages, ...filteredImages];
+        });
         
-        setIsLoading(false);
+        // Mark this generation as complete
+        setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
+        
+        if (!imageUrl) {
+          setImageUrl(newImages[0].url);
+        }
+        
         toast.success(`${imageCount} image${imageCount > 1 ? 's' : ''} generated successfully!`);
       }, 1500);
     } catch (error) {
       console.error('Error generating image:', error);
       toast.error('Failed to generate image. Please try again.');
-      setIsLoading(false);
+      
+      // Remove the placeholder for this batch and mark generation as complete
+      setGeneratedImages(prev => 
+        prev.filter(img => !(img.batchId === batchId && img.status === 'generating'))
+      );
+      setActiveGenerations(prev => prev.filter(id => id !== batchId));
     }
   };
 
@@ -158,7 +190,7 @@ const Index = () => {
         <div className="mt-8 max-w-2xl mx-auto">
           <PromptForm 
             onSubmit={handleSubmitPrompt} 
-            isLoading={isLoading}
+            isLoading={false} // Never disable the form
             currentPrompt={currentPrompt}
           />
         </div>
@@ -167,7 +199,7 @@ const Index = () => {
           <ImageDisplay 
             imageUrl={imageUrl}
             prompt={currentPrompt}
-            isLoading={isLoading}
+            isLoading={activeGenerations.length > 0}
             uploadedImages={uploadedImageUrls}
             generatedImages={generatedImages}
             workflow={currentWorkflow}
