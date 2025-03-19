@@ -7,6 +7,7 @@ import ImageBatchItem from './ImageBatchItem';
 import NavigationControls from './NavigationControls';
 import ImageDetailView from './ImageDetailView';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Maximize } from 'lucide-react';
 
 type ViewMode = 'normal' | 'small' | 'table';
@@ -37,6 +38,7 @@ interface ImageBatchProps {
   onUseAsInput?: ((imageUrl: string) => void) | null;
   extraComponents?: React.ReactNode;
   viewMode?: ViewMode;
+  onOpenBatchDialog?: (batchId: string) => void;
 }
 
 const ImageBatch: React.FC<ImageBatchProps> = ({
@@ -54,16 +56,21 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   onCreateAgain,
   onUseAsInput,
   extraComponents,
-  viewMode = 'normal'
+  viewMode = 'normal',
+  onOpenBatchDialog
 }) => {
   if (!images || images.length === 0) return null;
   
   const activeImage = images[activeIndex];
   const isActive = activeBatchId === batchId;
+  const [openFullScreen, setOpenFullScreen] = React.useState(false);
   
   const isSmallView = viewMode === 'small';
   
-  // Show entire prompt on hover for normal size
+  const handleOpenFullScreen = () => {
+    setOpenFullScreen(true);
+  };
+  
   const promptTitle = activeImage?.prompt || '';
   
   return (
@@ -97,13 +104,13 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                       className="bg-black/70 hover:bg-black/90 text-white rounded-full p-1.5 transition-colors"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onToggleExpandBatch(batchId);
+                        handleOpenFullScreen();
                       }}
                     >
                       <Maximize className="h-4 w-4" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>Expand</TooltipContent>
+                  <TooltipContent>Full Screen</TooltipContent>
                 </Tooltip>
               </div>
             )}
@@ -117,6 +124,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               onCreateAgain={onCreateAgain}
               onUseAsInput={onUseAsInput}
               onDeleteImage={onDeleteImage}
+              onFullScreen={handleOpenFullScreen}
               viewMode={viewMode}
             />
             
@@ -167,6 +175,65 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
           onUseAsInput={onUseAsInput}
         />
       </CollapsibleContent>
+      
+      {/* Full screen dialog */}
+      <Dialog open={openFullScreen} onOpenChange={setOpenFullScreen}>
+        <DialogContent className="max-w-screen-lg p-0 overflow-hidden">
+          <DialogTitle className="px-6 pt-4">Image Details</DialogTitle>
+          <div className="p-4">
+            <div className="flex flex-col">
+              <div className="w-full overflow-hidden rounded-md">
+                <img 
+                  src={activeImage?.url} 
+                  alt={activeImage?.prompt || "Generated image"}
+                  className="w-full h-auto object-contain"
+                />
+              </div>
+              
+              {/* Image info */}
+              <div className="mt-4 text-sm text-muted-foreground">
+                <p className="mb-2">{activeImage?.prompt || "No prompt information"}</p>
+                {activeImage?.workflow && (
+                  <p>Workflow: {activeImage.workflow}</p>
+                )}
+              </div>
+              
+              {/* Action buttons */}
+              <div className="mt-4 flex gap-2 justify-center">
+                {onUseAsInput && (
+                  <Button 
+                    onClick={() => onUseAsInput(activeImage.url)}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Use as Input
+                  </Button>
+                )}
+                
+                <Button 
+                  onClick={() => onCreateAgain(batchId)}
+                  variant="outline"
+                  size="sm"
+                >
+                  Create Again
+                </Button>
+                
+                <Button 
+                  onClick={() => {
+                    onDeleteImage(batchId, activeIndex);
+                    setOpenFullScreen(false);
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive"
+                >
+                  Delete
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Collapsible>
   );
 };

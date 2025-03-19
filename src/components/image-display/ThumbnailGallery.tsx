@@ -60,9 +60,11 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
             </button>
             
             {/* Image number indicator */}
-            <div className="absolute bottom-1 right-1 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
-              {index + 1}
-            </div>
+            {images.length > 1 && (
+              <div className="absolute bottom-1 right-1 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
+                {index + 1}
+              </div>
+            )}
           </div>
         </Card>
       ))}

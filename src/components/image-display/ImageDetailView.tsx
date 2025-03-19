@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { ChevronUp, Image } from 'lucide-react';
+import { ChevronUp, Image, Maximize } from 'lucide-react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NavigationControls from './NavigationControls';
 import ThumbnailGallery from './ThumbnailGallery';
@@ -42,6 +42,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
 }) => {
   const activeImage = images[activeIndex];
   const [showReferenceImage, setShowReferenceImage] = React.useState(false);
+  const [showFullScreen, setShowFullScreen] = React.useState(false);
   const referenceImageUrl = activeImage?.referenceImageUrl;
   
   return (
@@ -71,6 +72,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
           onCreateAgain={onCreateAgain}
           onUseAsInput={onUseAsInput}
           onDeleteImage={onDeleteImage}
+          onFullScreen={() => setShowFullScreen(true)}
         />
         
         {/* Navigation controls in expanded view */}
@@ -80,6 +82,18 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
             onNext={onNavigateNext}
           />
         )}
+        
+        {/* Full screen button */}
+        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button 
+            variant="ghost" 
+            size="icon"
+            className="h-8 w-8 bg-black/70 hover:bg-black/90 text-white rounded-full"
+            onClick={() => setShowFullScreen(true)}
+          >
+            <Maximize className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
       
       {/* Thumbnail gallery */}
@@ -122,6 +136,70 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
           </DialogContent>
         </Dialog>
       )}
+      
+      {/* Full screen dialog */}
+      <Dialog open={showFullScreen} onOpenChange={setShowFullScreen}>
+        <DialogContent className="max-w-screen-lg p-0 overflow-hidden">
+          <div className="p-4">
+            <div className="flex flex-col">
+              <div className="w-full overflow-hidden rounded-md">
+                <img 
+                  src={activeImage?.url} 
+                  alt={activeImage?.prompt || "Generated image"}
+                  className="w-full h-auto object-contain"
+                />
+              </div>
+              
+              {/* Image info */}
+              <div className="mt-4 text-sm text-muted-foreground">
+                <p className="mb-2">{activeImage?.prompt || "No prompt information"}</p>
+                {activeImage?.workflow && (
+                  <p>Workflow: {activeImage.workflow}</p>
+                )}
+              </div>
+              
+              {/* Action buttons */}
+              <div className="mt-4 flex gap-2 justify-center">
+                {onUseAsInput && (
+                  <Button 
+                    onClick={() => {
+                      onUseAsInput(activeImage.url);
+                      setShowFullScreen(false);
+                    }}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Use as Input
+                  </Button>
+                )}
+                
+                <Button 
+                  onClick={() => {
+                    onCreateAgain(batchId);
+                    setShowFullScreen(false);
+                  }}
+                  variant="outline"
+                  size="sm"
+                >
+                  Create Again
+                </Button>
+                
+                <Button 
+                  onClick={() => {
+                    onDeleteImage(batchId, activeIndex);
+                    setShowFullScreen(false);
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive"
+                >
+                  Delete
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

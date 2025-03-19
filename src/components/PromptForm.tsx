@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -20,7 +21,7 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
 
 interface PromptFormProps {
   onSubmit: (prompt: string, imageFiles?: File[] | string[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string) => void;
@@ -41,6 +42,8 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
   const [batchSize, setBatchSize] = useState(1);
   const workflows = workflowsData as Workflow[];
   const isMobile = useIsMobile();
+  const { width } = useWindowSize();
+  const isCompact = width && width < 640;
   
   useEffect(() => {
     if (currentPrompt !== null) {
@@ -297,16 +300,17 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                 isLoading={isButtonDisabled}
                 onImageUpload={handleImageUpload}
                 onWorkflowChange={handleWorkflowChange}
+                hideLabel={isCompact}
               />
               
               <div className="relative flex-1">
                 <Button 
                   type="submit" 
-                  className="btn-shine rounded-l-full pr-12 pl-4 sm:pl-6 transition-all hover:shadow-md h-[48px] text-lg font-medium w-full flex items-center gap-2"
+                  className="rounded-l-full pr-12 pl-4 sm:pl-6 transition-all hover:shadow-md h-[48px] text-lg font-medium w-full flex items-center gap-2 btn-shine"
                   disabled={isButtonDisabled}
                 >
                   <Rocket className="h-5 w-5" />
-                  {!isMobile && "Generate"}
+                  {!isCompact && "Generate"}
                   <span className="inline-flex items-center justify-center bg-primary-foreground/20 text-primary-foreground rounded-md px-1.5 py-0.5 text-xs ml-2">
                     x{batchSize}
                   </span>

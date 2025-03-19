@@ -1,7 +1,8 @@
 
 import React from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Trash2, Maximize } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface ImageBatchItemProps {
   image: {
@@ -22,6 +23,7 @@ interface ImageBatchItemProps {
   onCreateAgain?: (batchId: string) => void;
   onUseAsInput?: ((imageUrl: string) => void) | null;
   onDeleteImage?: (batchId: string, index: number) => void;
+  onFullScreen?: (batchId: string) => void;
   viewMode?: 'normal' | 'small' | 'table';
 }
 
@@ -33,26 +35,85 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   onCreateAgain,
   onUseAsInput,
   onDeleteImage,
+  onFullScreen,
   viewMode = 'normal'
 }) => {
   return (
     <div className="relative rounded-md overflow-hidden group">
       <div className="relative aspect-square">
-        <img
-          src={image.url}
-          alt={image.prompt || `Generated image ${index + 1}`}
-          className="w-full h-full object-cover"
-        />
+        {image.url ? (
+          <img
+            src={image.url}
+            alt={image.prompt || `Generated image ${index + 1}`}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-muted">
+            <div className="animate-pulse flex flex-col items-center">
+              <div className="h-8 w-8 bg-muted-foreground/20 rounded-full mb-2"></div>
+              <div className="h-2 w-24 bg-muted-foreground/20 rounded"></div>
+            </div>
+          </div>
+        )}
+        
         {viewMode === 'small' && (
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-            <Button variant="outline" size="sm" className="bg-black/50 border-white/20 text-white">
-              <ExternalLink className="h-4 w-4 mr-1" /> View
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="bg-black/50 border-white/20 text-white"
+              onClick={() => onFullScreen && onFullScreen(batchId)}
+            >
+              <Maximize className="h-4 w-4 mr-1" /> View
             </Button>
           </div>
         )}
-        <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
-          {index + 1}/{total}
-        </div>
+        
+        {/* Show image number indicator only if we have more than 1 image and not in small view mode */}
+        {total > 1 && viewMode !== 'small' && (
+          <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
+            {index + 1}/{total}
+          </div>
+        )}
+        
+        {/* Action buttons */}
+        {viewMode !== 'small' && (
+          <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {onDeleteImage && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button 
+                    className="bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteImage(batchId, index);
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Delete image</TooltipContent>
+              </Tooltip>
+            )}
+            
+            {onFullScreen && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button 
+                    className="bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onFullScreen(batchId);
+                    }}
+                  >
+                    <Maximize className="h-3 w-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Full screen</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

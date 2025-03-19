@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
 import PromptForm from '@/components/PromptForm';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
-import ConsoleOutput from '@/components/debug/ConsoleOutput';
+import ResizableConsole from '@/components/debug/ResizableConsole';
 import { Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -86,7 +85,7 @@ const Index = () => {
       uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
       currentWorkflow || undefined,
       currentParams,
-      currentGlobalParams,
+      { ...currentGlobalParams, batchSize: 1 },
       currentRefiner || undefined,
       batchId
     );
@@ -129,10 +128,8 @@ const Index = () => {
         }
       }
       
-      // Handle batch size from globalParams
       const batchSize = globalParams?.batchSize || 1;
       
-      // Create placeholder images for all items in batch
       for (let i = 0; i < batchSize; i++) {
         const placeholderImage: GeneratedImage = {
           url: '',
@@ -181,7 +178,6 @@ const Index = () => {
           const existingBatchCount = batchId ? 
             generatedImages.filter(img => img.batchId === batchId && img.status !== 'generating').length : 0;
           
-          // Create the number of images specified by batch size
           const imageCount = batchSize;
           const newImages: GeneratedImage[] = [];
           
@@ -230,7 +226,7 @@ const Index = () => {
           
           toast.error('An error occurred while processing images.');
         }
-      }, 1000); // 1 second delay for mock generation
+      }, 1000);
     } catch (error) {
       console.error('Error generating image:', error);
       addConsoleLog(`Error generating image: ${error}`);
@@ -323,7 +319,7 @@ const Index = () => {
         <div className="mt-8 max-w-2xl mx-auto">
           <PromptForm 
             onSubmit={handleSubmitPrompt} 
-            isLoading={false} // Always allow submissions after 1 second
+            isLoading={false}
             currentPrompt={currentPrompt}
           />
         </div>
@@ -347,7 +343,7 @@ const Index = () => {
         </div>
       </div>
       
-      <ConsoleOutput 
+      <ResizableConsole 
         logs={consoleLogs}
         isVisible={isConsoleVisible}
         onClose={handleCloseConsole}
