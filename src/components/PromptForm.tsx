@@ -7,11 +7,13 @@ import { X, Settings } from 'lucide-react';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import workflowsData from '@/data/workflows.json';
 import globalOptionsData from '@/data/global-options.json';
+import refinersData from '@/data/refiners.json';
 import { Workflow } from '@/types/workflows';
 import PromptInput from '@/components/prompt/PromptInput';
 import PromptExamples from '@/components/prompt/PromptExamples';
 import ImageUploader from '@/components/prompt/ImageUploader';
 import WorkflowIconSelector from '@/components/prompt/WorkflowIconSelector';
+import RefinerSelector from '@/components/prompt/RefinerSelector';
 import {
   Carousel,
   CarouselContent,
@@ -21,7 +23,7 @@ import {
 } from "@/components/ui/carousel";
 
 interface PromptFormProps {
-  onSubmit: (prompt: string, imageFiles?: File[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>) => void;
+  onSubmit: (prompt: string, imageFiles?: File[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string) => void;
   isLoading: boolean;
   currentPrompt?: string | null;
 }
@@ -31,6 +33,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>('text-to-image');
+  const [selectedRefiner, setSelectedRefiner] = useState<string>('none');
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({});
   const [globalParams, setGlobalParams] = useState<Record<string, any>>({});
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
@@ -73,7 +76,14 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
       return;
     }
     
-    onSubmit(prompt, imageFiles.length > 0 ? imageFiles : undefined, selectedWorkflow, workflowParams, globalParams);
+    onSubmit(
+      prompt, 
+      imageFiles.length > 0 ? imageFiles : undefined, 
+      selectedWorkflow, 
+      workflowParams, 
+      globalParams,
+      selectedRefiner !== 'none' ? selectedRefiner : undefined
+    );
   };
 
   const handleExampleClick = (example: string) => {
@@ -124,6 +134,10 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
       setWorkflowParams(defaultParams);
     }
   };
+  
+  const handleRefinerChange = (refinerId: string) => {
+    setSelectedRefiner(refinerId);
+  };
 
   const handleParamChange = (paramId: string, value: any) => {
     setWorkflowParams(prev => ({
@@ -142,8 +156,6 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
   const toggleAdvancedOptions = () => {
     setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
   };
-
-  const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
 
   return (
     <div className="animate-fade-up">
@@ -219,6 +231,11 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                     selectedWorkflow={selectedWorkflow}
                     onWorkflowChange={handleWorkflowChange}
                     hideWorkflowName={true}
+                  />
+                  
+                  <RefinerSelector
+                    selectedRefiner={selectedRefiner}
+                    onRefinerChange={handleRefinerChange}
                   />
                   
                   <Button 

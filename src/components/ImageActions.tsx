@@ -10,10 +10,9 @@ import {
   Facebook,
   MessageCircle,
   PinIcon,
-  RefreshCw,
+  Plus,
   Info,
   Download,
-  Plus
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -30,11 +29,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 
 interface ImageActionsProps {
   imageUrl: string;
@@ -117,14 +111,6 @@ const ImageActions: React.FC<ImageActionsProps> = ({
       toast.success(`Image shared to ${destination?.name || destinationId}!`);
       setPublishing(false);
     }, 1000);
-  };
-
-  // Format workflow name for display
-  const formatWorkflowName = (name: string) => {
-    return name
-      .split('-')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
   };
   
   const buttonSizeClass = isFullScreen 

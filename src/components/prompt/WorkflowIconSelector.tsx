@@ -37,14 +37,6 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
 
   return (
     <div className="space-y-2">
-      {!hideWorkflowName && currentWorkflow && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            {currentWorkflow.name}
-          </p>
-        </div>
-      )}
-
       <div className="flex flex-wrap gap-2">
         {workflows.map((workflow) => (
           <TooltipProvider key={workflow.id}>

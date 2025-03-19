@@ -1,0 +1,33 @@
+
+[
+  {
+    "id": "none",
+    "name": "No Refiner",
+    "description": "Generate without applying any refiners",
+    "icon": "x-circle"
+  },
+  {
+    "id": "enhance",
+    "name": "Enhance",
+    "description": "Improve image clarity and details",
+    "icon": "sparkles"
+  },
+  {
+    "id": "upscale",
+    "name": "Upscale",
+    "description": "Increase resolution while preserving details",
+    "icon": "maximize"
+  },
+  {
+    "id": "beautify",
+    "name": "Beautify",
+    "description": "Apply beauty enhancement",
+    "icon": "heart"
+  },
+  {
+    "id": "stylize",
+    "name": "Stylize",
+    "description": "Apply artistic styling",
+    "icon": "palette"
+  }
+]
