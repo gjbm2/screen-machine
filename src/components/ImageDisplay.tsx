@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Info, Download, Share2, Copy, FileInput, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
+import ImageActions from '@/components/ImageActions';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -119,38 +120,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       .join(' ');
   };
 
-  const handleSaveImage = async (imgUrl: string) => {
-    try {
-      // Fetch the image data
-      const response = await fetch(imgUrl);
-      const blob = await response.blob();
-      
-      // Create a temporary anchor element
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      
-      // Set filename with date
-      const date = new Date().toISOString().split('T')[0];
-      link.download = `generated-image-${date}.png`;
-      
-      // Trigger download and clean up
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
-      
-      toast.success('Image saved successfully!');
-    } catch (error) {
-      console.error('Error saving image:', error);
-      toast.error('Failed to save image. Please try again.');
-    }
-  };
-
-  const handlePublish = (imgUrl: string) => {
-    toast.success('Image published successfully!');
-    // In a real app, we would implement publishing logic here
-  };
-
   const handleCreateVariant = (batchId: string) => {
     if (onCreateAgain) {
       onCreateAgain(batchId);
@@ -209,8 +178,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           <h3 className="text-lg font-semibold mb-3">Generated Images</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Loading placeholder - now as a separate card */}
-            {isLoading && (
+            {/* If loading and no existing images, show single loading placeholder */}
+            {isLoading && generatedImages.length === 0 && (
               <Card className="overflow-hidden">
                 <div className="aspect-square flex items-center justify-center bg-secondary/20">
                   <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
@@ -225,6 +194,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             
             {/* Rendered image batches */}
             {batchedImages.map(({ batchId, images }) => {
+              const isGeneratingForThisBatch = isLoading && onCreateAgain && batchId === generatedImages[0]?.batchId;
               const activeIndex = getActiveImageIndex(batchId, images.length);
               const activeImage = images[activeIndex];
               const isActive = activeBatchId === batchId;
@@ -236,151 +206,139 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                   onMouseEnter={() => setActiveBatchId(batchId)}
                   onMouseLeave={() => setActiveBatchId(null)}
                 >
-                  <div className="aspect-square relative">
-                    <img
-                      src={activeImage.url}
-                      alt={activeImage.prompt || 'Generated image'}
-                      className="w-full h-full object-cover"
-                    />
-                    
-                    {/* Batch counter */}
-                    {images.length > 1 && (
-                      <div className="absolute top-2 left-2 bg-black/70 text-white px-3 py-1 rounded-full text-xs font-medium">
-                        {activeIndex + 1}/{images.length}
-                      </div>
-                    )}
-                    
-                    {/* Navigation controls - now persistent when hovering over child elements */}
-                    {images.length > 1 && (
-                      <>
-                        <button 
-                          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigatePrevImage(batchId, images.length);
-                          }}
-                        >
-                          <ChevronLeft className="h-5 w-5" />
-                        </button>
-                        <button 
-                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigateNextImage(batchId, images.length);
-                          }}
-                        >
-                          <ChevronRight className="h-5 w-5" />
-                        </button>
-                      </>
-                    )}
-                    
-                    {/* Image controls overlay - visible on hover/focus with better labels */}
-                    <div 
-                      className={`absolute inset-0 bg-black/60 flex flex-col justify-center items-center transition-opacity duration-200 ${isActive ? 'opacity-100' : 'opacity-0'}`}
-                    >
-                      <div className="flex flex-wrap justify-center gap-3 p-4">
-                        {/* Info button */}
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/40 transition-colors">
-                              <Info className="h-4 w-4 mr-1" />
-                              <span className="text-xs">Info</span>
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Image Generation Details</DialogTitle>
-                              <DialogDescription>
-                                Information about this generated image.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-2 mt-4">
-                              <div>
-                                <h4 className="font-semibold">Prompt:</h4>
-                                <p className="text-sm text-muted-foreground">{activeImage.prompt}</p>
-                              </div>
-                              {activeImage.workflow && (
+                  {/* Show loading overlay if generating new image for this batch */}
+                  {isGeneratingForThisBatch ? (
+                    <div className="aspect-square flex items-center justify-center bg-secondary/20">
+                      <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+                      {prompt && (
+                        <p className="text-sm text-center text-muted-foreground absolute mt-20">
+                          Generating variant: {prompt}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="aspect-square relative">
+                      <img
+                        src={activeImage.url}
+                        alt={activeImage.prompt || 'Generated image'}
+                        className="w-full h-full object-cover"
+                      />
+                      
+                      {/* Batch counter */}
+                      {images.length > 1 && (
+                        <div className="absolute top-2 left-2 bg-black/70 text-white px-3 py-1 rounded-full text-xs font-medium z-10">
+                          {activeIndex + 1}/{images.length}
+                        </div>
+                      )}
+                      
+                      {/* Navigation controls - improved for visibility and reliability */}
+                      {images.length > 1 && (
+                        <div className="absolute inset-0 pointer-events-none">
+                          <button 
+                            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigatePrevImage(batchId, images.length);
+                            }}
+                          >
+                            <ChevronLeft className="h-5 w-5" />
+                          </button>
+                          <button 
+                            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigateNextImage(batchId, images.length);
+                            }}
+                          >
+                            <ChevronRight className="h-5 w-5" />
+                          </button>
+                        </div>
+                      )}
+                      
+                      {/* Image controls overlay - visible on hover/focus with better labels */}
+                      <div 
+                        className={`absolute inset-0 bg-black/60 flex flex-col justify-center items-center transition-opacity duration-200 ${isActive ? 'opacity-100' : 'opacity-0'}`}
+                      >
+                        <div className="flex flex-wrap justify-center gap-3 p-4">
+                          {/* Info button */}
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/40 transition-colors">
+                                <Info className="h-4 w-4 mr-1" />
+                                <span className="text-xs">Info</span>
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Image Generation Details</DialogTitle>
+                                <DialogDescription>
+                                  Information about this generated image.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-2 mt-4">
                                 <div>
-                                  <h4 className="font-semibold">Workflow:</h4>
-                                  <p className="text-sm text-muted-foreground">{formatWorkflowName(activeImage.workflow)}</p>
+                                  <h4 className="font-semibold">Prompt:</h4>
+                                  <p className="text-sm text-muted-foreground">{activeImage.prompt}</p>
                                 </div>
-                              )}
-                              {activeImage.params && Object.keys(activeImage.params).length > 0 && (
-                                <div>
-                                  <h4 className="font-semibold">Parameters:</h4>
-                                  <div className="text-sm text-muted-foreground">
-                                    {Object.entries(activeImage.params).map(([key, value]) => (
-                                      <div key={key} className="flex justify-between">
-                                        <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                                        <span>{value?.toString()}</span>
-                                      </div>
-                                    ))}
+                                {activeImage.workflow && (
+                                  <div>
+                                    <h4 className="font-semibold">Workflow:</h4>
+                                    <p className="text-sm text-muted-foreground">{formatWorkflowName(activeImage.workflow)}</p>
                                   </div>
-                                </div>
-                              )}
-                              {images.length > 1 && (
-                                <div>
-                                  <h4 className="font-semibold">Batch:</h4>
-                                  <p className="text-sm text-muted-foreground">Image {activeIndex + 1} of {images.length}</p>
-                                </div>
-                              )}
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                        
-                        {/* New variant button */}
-                        <Button 
-                          variant="secondary" 
-                          size="sm" 
-                          className="bg-white/20 hover:bg-white/40 transition-colors"
-                          onClick={() => handleCreateVariant(batchId)}
-                        >
-                          <Copy className="h-4 w-4 mr-1" />
-                          <span className="text-xs">New Variant</span>
-                        </Button>
-                        
-                        {/* Save button */}
-                        <Button 
-                          variant="secondary" 
-                          size="sm" 
-                          className="bg-white/20 hover:bg-white/40 transition-colors"
-                          onClick={() => handleSaveImage(activeImage.url)}
-                        >
-                          <Download className="h-4 w-4 mr-1" />
-                          <span className="text-xs">Save</span>
-                        </Button>
-                        
-                        {/* Publish button */}
-                        <Button 
-                          variant="secondary" 
-                          size="sm" 
-                          className="bg-white/20 hover:bg-white/40 transition-colors"
-                          onClick={() => handlePublish(activeImage.url)}
-                        >
-                          <Share2 className="h-4 w-4 mr-1" />
-                          <span className="text-xs">Publish</span>
-                        </Button>
-                        
-                        {/* Use as input button */}
-                        {onUseGeneratedAsInput && (
+                                )}
+                                {activeImage.params && Object.keys(activeImage.params).length > 0 && (
+                                  <div>
+                                    <h4 className="font-semibold">Parameters:</h4>
+                                    <div className="text-sm text-muted-foreground">
+                                      {Object.entries(activeImage.params).map(([key, value]) => (
+                                        <div key={key} className="flex justify-between">
+                                          <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                                          <span>{value?.toString()}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {images.length > 1 && (
+                                  <div>
+                                    <h4 className="font-semibold">Batch:</h4>
+                                    <p className="text-sm text-muted-foreground">Image {activeIndex + 1} of {images.length}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                          
+                          {/* New variant button */}
                           <Button 
                             variant="secondary" 
                             size="sm" 
                             className="bg-white/20 hover:bg-white/40 transition-colors"
-                            onClick={() => onUseGeneratedAsInput && onUseGeneratedAsInput(activeImage.url)}
+                            onClick={() => handleCreateVariant(batchId)}
                           >
-                            <FileInput className="h-4 w-4 mr-1" />
-                            <span className="text-xs">Use as Input</span>
+                            <Copy className="h-4 w-4 mr-1" />
+                            <span className="text-xs">New Variant</span>
                           </Button>
-                        )}
-                      </div>
-                      
-                      {/* Prompt preview */}
-                      <div className="absolute bottom-0 w-full bg-black/70 p-2">
-                        <p className="text-xs text-white truncate">{activeImage.prompt}</p>
+                          
+                          {/* Image actions via ImageActions component */}
+                          <ImageActions 
+                            imageUrl={activeImage.url} 
+                            onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(activeImage.url)}
+                            generationInfo={{
+                              prompt: activeImage.prompt,
+                              workflow: activeImage.workflow,
+                              params: activeImage.params
+                            }}
+                          />
+                        </div>
+                        
+                        {/* Prompt preview */}
+                        <div className="absolute bottom-0 w-full bg-black/70 p-2">
+                          <p className="text-xs text-white truncate">{activeImage.prompt}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </Card>
               );
             })}

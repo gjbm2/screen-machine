@@ -11,7 +11,8 @@ import {
   MessageCircle,
   PinIcon,
   RefreshCw,
-  Info
+  Info,
+  Download
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -124,40 +125,32 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   };
 
   return (
-    <div className="flex justify-center gap-2 mt-4">
-      {onCreateAgain && (
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onCreateAgain}
-        >
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Create Again
-        </Button>
-      )}
-      
+    <>
+      {/* Save button */}
       <Button 
-        variant="outline" 
+        variant="secondary" 
         size="sm" 
+        className="bg-white/20 hover:bg-white/40 transition-colors"
         onClick={handleSaveImage}
-        disabled={isSaving}
       >
-        <Save className="h-4 w-4 mr-2" />
-        {isSaving ? 'Saving...' : 'Save'}
+        <Download className="h-4 w-4 mr-1" />
+        <span className="text-xs">Save</span>
       </Button>
       
+      {/* Publish dropdown button */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button 
-            variant="outline" 
+            variant="secondary" 
             size="sm"
+            className="bg-white/20 hover:bg-white/40 transition-colors"
             disabled={isPublishing}
           >
-            <Share2 className="h-4 w-4 mr-2" />
-            {isPublishing ? 'Publishing...' : 'Publish'}
+            <Share2 className="h-4 w-4 mr-1" />
+            <span className="text-xs">{isPublishing ? 'Publishing...' : 'Publish'}</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="bg-background z-50">
+        <DropdownMenuContent className="bg-background/90 backdrop-blur-sm z-50 border">
           <DropdownMenuLabel>Share to</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {publishDestinations.map((destination) => (
@@ -173,56 +166,19 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         </DropdownMenuContent>
       </DropdownMenu>
       
+      {/* Use as input button */}
       {onUseAsInput && (
         <Button 
-          variant="outline" 
-          size="sm"
+          variant="secondary" 
+          size="sm" 
+          className="bg-white/20 hover:bg-white/40 transition-colors"
           onClick={onUseAsInput}
         >
-          <Pencil className="h-4 w-4 mr-2" />
-          Use as Input
+          <Pencil className="h-4 w-4 mr-1" />
+          <span className="text-xs">Use as Input</span>
         </Button>
       )}
-
-      {generationInfo && (
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm">
-              <Info className="h-4 w-4 mr-2" />
-              Info
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-80 p-4">
-            <div className="space-y-2">
-              <h4 className="font-medium">Generation Details</h4>
-              <div className="text-sm">
-                <p className="font-semibold">Prompt:</p>
-                <p className="text-muted-foreground mb-2">{generationInfo.prompt || "No prompt provided"}</p>
-                
-                <p className="font-semibold">Workflow:</p>
-                <p className="text-muted-foreground mb-2">
-                  {generationInfo.workflow ? formatWorkflowName(generationInfo.workflow) : "Standard"}
-                </p>
-                
-                {generationInfo.params && Object.keys(generationInfo.params).length > 0 && (
-                  <>
-                    <p className="font-semibold">Parameters:</p>
-                    <div className="text-muted-foreground">
-                      {Object.entries(generationInfo.params).map(([key, value]) => (
-                        <div key={key} className="flex justify-between">
-                          <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                          <span>{value?.toString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
-      )}
-    </div>
+    </>
   );
 };
 
