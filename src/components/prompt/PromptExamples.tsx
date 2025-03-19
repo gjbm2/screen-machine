@@ -22,18 +22,14 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
     // Remove the "+" prefix from the style for appending
     const styleText = style.startsWith('+') ? style.substring(1).trim() : style;
     
-    if (prompt.trim() === '') {
-      toast.error('Please enter a base prompt first before adding a style');
-      return;
-    }
-    
     // Check if the prompt already contains this style to avoid duplication
     if (prompt.includes(styleText)) {
       toast.info('This style is already applied to your prompt');
       return;
     }
     
-    onStyleClick(`${prompt.trim()} ${styleText}`);
+    // Apply the style, even if the prompt is empty
+    onStyleClick(`${prompt.trim()} ${styleText}`.trim());
   };
 
   return (
