@@ -22,14 +22,14 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
   return (
     <div className="absolute inset-0 pointer-events-none">
       <button 
-        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/10 hover:bg-black/30 rounded-full p-1 text-white/60 transition-colors pointer-events-auto z-20"
+        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/5 hover:bg-black/30 rounded-full p-1 text-white/40 transition-colors pointer-events-auto z-20"
         onClick={onPrevious}
         aria-label="Previous image"
       >
         <ChevronLeft className={sizeClasses[size]} />
       </button>
       <button 
-        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/10 hover:bg-black/30 rounded-full p-1 text-white/60 transition-colors pointer-events-auto z-20"
+        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/5 hover:bg-black/30 rounded-full p-1 text-white/40 transition-colors pointer-events-auto z-20"
         onClick={onNext}
         aria-label="Next image"
       >

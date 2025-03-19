@@ -1,12 +1,13 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { ChevronUp, Image, Maximize } from 'lucide-react';
+import { ChevronUp, Image, Maximize, X } from 'lucide-react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NavigationControls from './NavigationControls';
 import ThumbnailGallery from './ThumbnailGallery';
 import ImageBatchItem from './ImageBatchItem';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import ImageActions from '@/components/ImageActions';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface ImageDetailViewProps {
   batchId: string;
@@ -45,6 +46,16 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   const [showFullScreen, setShowFullScreen] = React.useState(false);
   const referenceImageUrl = activeImage?.referenceImageUrl;
   
+  const handleCreateAgain = () => {
+    onCreateAgain(batchId);
+  };
+  
+  const handleUseAsInput = () => {
+    if (onUseAsInput && activeImage.url) {
+      onUseAsInput(activeImage.url);
+    }
+  };
+  
   return (
     <div className="p-4 space-y-4">
       {/* Reference image indicator */}
@@ -64,16 +75,18 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       
       {/* Selected image view */}
       <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden max-w-lg mx-auto group">
-        <ImageBatchItem 
-          image={activeImage}
-          batchId={batchId}
-          index={activeIndex}
-          total={images.length}
-          onCreateAgain={onCreateAgain}
-          onUseAsInput={onUseAsInput}
-          onDeleteImage={onDeleteImage}
-          onFullScreen={() => setShowFullScreen(true)}
-        />
+        <div onClick={() => setShowFullScreen(true)} className="cursor-pointer">
+          <ImageBatchItem 
+            image={activeImage}
+            batchId={batchId}
+            index={activeIndex}
+            total={images.length}
+            onCreateAgain={onCreateAgain}
+            onUseAsInput={onUseAsInput}
+            onDeleteImage={onDeleteImage}
+            onFullScreen={() => setShowFullScreen(true)}
+          />
+        </div>
         
         {/* Navigation controls in expanded view */}
         {images.length > 1 && (
@@ -82,19 +95,23 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
             onNext={onNavigateNext}
           />
         )}
-        
-        {/* Full screen button */}
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Button 
-            variant="ghost" 
-            size="icon"
-            className="h-8 w-8 bg-black/70 hover:bg-black/90 text-white rounded-full"
-            onClick={() => setShowFullScreen(true)}
-          >
-            <Maximize className="h-4 w-4" />
-          </Button>
-        </div>
       </div>
+      
+      {/* Image Actions Bar */}
+      {activeImage?.url && (
+        <div className="flex justify-center space-x-2 py-2">
+          <ImageActions
+            imageUrl={activeImage.url}
+            onCreateAgain={handleCreateAgain}
+            onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
+            generationInfo={{
+              prompt: activeImage.prompt || '',
+              workflow: activeImage.workflow || '',
+              params: activeImage.params
+            }}
+          />
+        </div>
+      )}
       
       {/* Thumbnail gallery */}
       <ThumbnailGallery 
@@ -123,6 +140,9 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       {referenceImageUrl && (
         <Dialog open={showReferenceImage} onOpenChange={setShowReferenceImage}>
           <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Reference Image</DialogTitle>
+            </DialogHeader>
             <div className="flex flex-col items-center">
               <p className="text-sm mb-2 text-muted-foreground">Reference image used for generation</p>
               <div className="border rounded-md overflow-hidden">
@@ -140,9 +160,16 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       {/* Full screen dialog */}
       <Dialog open={showFullScreen} onOpenChange={setShowFullScreen}>
         <DialogContent className="max-w-screen-lg p-0 overflow-hidden">
-          <div className="p-4">
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle>Image Detail</DialogTitle>
+          </DialogHeader>
+          <div className="p-4 pt-0">
             <div className="flex flex-col">
-              <div className="w-full overflow-hidden rounded-md">
+              {/* Image with click-to-close */}
+              <div 
+                className="w-full overflow-hidden rounded-md cursor-pointer" 
+                onClick={() => setShowFullScreen(false)}
+              >
                 <img 
                   src={activeImage?.url} 
                   alt={activeImage?.prompt || "Generated image"}
@@ -159,41 +186,27 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
               </div>
               
               {/* Action buttons */}
-              <div className="mt-4 flex gap-2 justify-center">
-                {onUseAsInput && (
-                  <Button 
-                    onClick={() => {
-                      onUseAsInput(activeImage.url);
-                      setShowFullScreen(false);
-                    }}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Use as Input
-                  </Button>
-                )}
-                
-                <Button 
-                  onClick={() => {
-                    onCreateAgain(batchId);
-                    setShowFullScreen(false);
+              <div className="mt-4 flex justify-center space-x-2">
+                <ImageActions
+                  imageUrl={activeImage.url}
+                  onCreateAgain={handleCreateAgain}
+                  onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
+                  generationInfo={{
+                    prompt: activeImage.prompt || '',
+                    workflow: activeImage.workflow || '',
+                    params: activeImage.params
                   }}
-                  variant="outline"
-                  size="sm"
-                >
-                  Create Again
-                </Button>
-                
+                  isFullScreen={true}
+                />
+              </div>
+              
+              {/* Close button */}
+              <div className="mt-4 flex justify-center">
                 <Button 
-                  onClick={() => {
-                    onDeleteImage(batchId, activeIndex);
-                    setShowFullScreen(false);
-                  }}
+                  onClick={() => setShowFullScreen(false)}
                   variant="outline"
-                  size="sm"
-                  className="text-destructive"
                 >
-                  Delete
+                  Close
                 </Button>
               </div>
             </div>

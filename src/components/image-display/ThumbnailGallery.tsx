@@ -44,7 +44,8 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
     const endX = e.changedTouches[0].clientX;
     const diff = startX - endX;
     
-    if (Math.abs(diff) > 50) {
+    // Make the threshold smaller for more responsive swiping
+    if (Math.abs(diff) > 30) {
       if (diff > 0 && activeIndex < images.length - 1) {
         onThumbnailClick(activeIndex + 1);
       } else if (diff < 0 && activeIndex > 0) {
@@ -77,9 +78,9 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
               className="w-full h-full object-cover"
             />
             
-            {/* Delete button on thumbnail */}
+            {/* Always visible delete button */}
             <button 
-              className="absolute top-1 left-1 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-20 opacity-0 group-hover:opacity-100"
+              className="absolute top-1 left-1 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-20"
               onClick={(e) => {
                 e.stopPropagation();
                 onDeleteImage(batchId, index);

@@ -14,7 +14,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Image, Code, FileText, Video, Music, LayoutDashboard, Zap, Layers } from 'lucide-react';
+import { 
+  Image, 
+  ImagePlus, 
+  Sparkles, 
+  PaintBucket, 
+  Workflow as WorkflowIcon, 
+  Layers 
+} from 'lucide-react';
 
 interface WorkflowIconSelectorProps {
   workflows: Workflow[];
@@ -35,16 +42,30 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
       case 'text-to-image':
         return <Image className="h-4 w-4 mr-2" />;
       case 'image-to-image':
-        return <Image className="h-4 w-4 mr-2" />;
+        return <ImagePlus className="h-4 w-4 mr-2" />;
       case 'artistic-style-transfer':
-        return <Zap className="h-4 w-4 mr-2" />;
+        return <PaintBucket className="h-4 w-4 mr-2" />;
       default:
-        return <LayoutDashboard className="h-4 w-4 mr-2" />;
+        return <WorkflowIcon className="h-4 w-4 mr-2" />;
     }
   };
 
   // Get the current workflow name
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
+  
+  // Get the current workflow icon for the button
+  const getCurrentWorkflowIcon = () => {
+    switch (selectedWorkflow) {
+      case 'text-to-image':
+        return <Image className="h-5 w-5" />;
+      case 'image-to-image':
+        return <ImagePlus className="h-5 w-5" />;
+      case 'artistic-style-transfer':
+        return <PaintBucket className="h-5 w-5" />;
+      default:
+        return <Layers className="h-5 w-5" />;
+    }
+  };
 
   return (
     <TooltipProvider>
@@ -57,7 +78,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
                 size="icon"
                 className="hover:bg-purple-500/10 text-purple-700"
               >
-                <Layers className="h-5 w-5" />
+                {getCurrentWorkflowIcon()}
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>

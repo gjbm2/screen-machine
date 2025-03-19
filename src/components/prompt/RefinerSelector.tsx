@@ -51,6 +51,25 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
 
   // Find the current refiner
   const currentRefiner = refinersData.find(r => r.id === selectedRefiner) || refinersData[0];
+  
+  // Get the current refiner icon for the button
+  const getCurrentRefinerIcon = () => {
+    const iconName = currentRefiner?.icon || 'filter';
+    switch (iconName) {
+      case 'sparkles':
+        return <Sparkles className="h-5 w-5" />;
+      case 'maximize':
+        return <Maximize className="h-5 w-5" />;
+      case 'heart':
+        return <Heart className="h-5 w-5" />;
+      case 'palette':
+        return <Palette className="h-5 w-5" />;
+      case 'x-circle':
+        return <XCircle className="h-5 w-5" />;
+      default:
+        return <Filter className="h-5 w-5" />;
+    }
+  };
 
   return (
     <TooltipProvider>
@@ -63,7 +82,7 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
                 size="icon"
                 className="hover:bg-purple-500/10 text-purple-700"
               >
-                <Filter className="h-5 w-5" />
+                {getCurrentRefinerIcon()}
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>

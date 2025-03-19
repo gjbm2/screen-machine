@@ -8,8 +8,9 @@ import ImageBatchItem from './ImageBatchItem';
 import NavigationControls from './NavigationControls';
 import ImageDetailView from './ImageDetailView';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { Maximize } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Maximize, X } from 'lucide-react';
+import ImageActions from '@/components/ImageActions';
 
 type ViewMode = 'normal' | 'small' | 'table';
 
@@ -72,6 +73,24 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
     setOpenFullScreen(true);
   };
   
+  const handleCreateAgain = () => {
+    onCreateAgain(batchId);
+  };
+  
+  const handleUseAsInput = () => {
+    if (onUseAsInput && activeImage.url) {
+      onUseAsInput(activeImage.url);
+    }
+  };
+  
+  const handleSwipe = React.useCallback((direction: 'left' | 'right') => {
+    if (direction === 'left') {
+      onNavigateNextImage(batchId, images.length);
+    } else {
+      onNavigatePrevImage(batchId, images.length);
+    }
+  }, [batchId, images.length, onNavigateNextImage, onNavigatePrevImage]);
+  
   const promptTitle = activeImage?.prompt || '';
   
   return (
@@ -96,26 +115,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
             onMouseEnter={() => onSetActiveBatchId(batchId)}
             onMouseLeave={() => onSetActiveBatchId(null)}
           >
-            {/* Full screen button - always visible */}
-            {viewMode === 'normal' && (
-              <div className="absolute top-2 right-2 z-10">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button 
-                      className="bg-black/70 hover:bg-black/90 text-white rounded-full p-1.5 transition-colors"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenFullScreen();
-                      }}
-                    >
-                      <Maximize className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Full Screen</TooltipContent>
-                </Tooltip>
-              </div>
-            )}
-            
             {/* Collapsed view (carousel-like navigation) */}
             <ImageBatchItem 
               image={activeImage} 
@@ -180,14 +179,20 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
       {/* Full screen dialog */}
       <Dialog open={openFullScreen} onOpenChange={setOpenFullScreen}>
         <DialogContent className="max-w-screen-lg p-0 overflow-hidden">
-          <DialogTitle className="px-6 pt-4">Image Details</DialogTitle>
-          <div className="p-4">
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle>Image Details</DialogTitle>
+          </DialogHeader>
+          <div className="p-4 pt-0">
             <div className="flex flex-col">
-              <div className="w-full overflow-hidden rounded-md">
+              {/* Image with click-to-close */}
+              <div 
+                className="w-full overflow-hidden rounded-md cursor-pointer" 
+                onClick={() => setOpenFullScreen(false)}
+              >
                 <img 
                   src={activeImage?.url} 
                   alt={activeImage?.prompt || "Generated image"}
-                  className="w-full h-auto object-contain"
+                  className="w-full h-auto object-contain max-h-[70vh]"
                 />
               </div>
               
@@ -200,35 +205,27 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               </div>
               
               {/* Action buttons */}
-              <div className="mt-4 flex gap-2 justify-center">
-                {onUseAsInput && (
-                  <Button 
-                    onClick={() => onUseAsInput(activeImage.url)}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Use as Input
-                  </Button>
-                )}
-                
-                <Button 
-                  onClick={() => onCreateAgain(batchId)}
-                  variant="outline"
-                  size="sm"
-                >
-                  Create Again
-                </Button>
-                
-                <Button 
-                  onClick={() => {
-                    onDeleteImage(batchId, activeIndex);
-                    setOpenFullScreen(false);
+              <div className="mt-4 flex justify-center space-x-2">
+                <ImageActions
+                  imageUrl={activeImage.url}
+                  onCreateAgain={handleCreateAgain}
+                  onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
+                  generationInfo={{
+                    prompt: activeImage.prompt || '',
+                    workflow: activeImage.workflow || '',
+                    params: activeImage.params
                   }}
+                  isFullScreen={true}
+                />
+              </div>
+              
+              {/* Close button */}
+              <div className="mt-4 flex justify-center">
+                <Button 
+                  onClick={() => setOpenFullScreen(false)}
                   variant="outline"
-                  size="sm"
-                  className="text-destructive"
                 >
-                  Delete
+                  Close
                 </Button>
               </div>
             </div>

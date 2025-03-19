@@ -1,8 +1,9 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ExternalLink, Trash2, Maximize } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import ImageActions from '@/components/ImageActions';
 
 interface ImageBatchItemProps {
   image: {
@@ -38,9 +39,30 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   onFullScreen,
   viewMode = 'normal'
 }) => {
+  const [isHovered, setIsHovered] = useState(false);
+
+  const handleCreateAgain = () => {
+    if (onCreateAgain) {
+      onCreateAgain(batchId);
+    }
+  };
+
+  const handleUseAsInput = () => {
+    if (onUseAsInput && image.url) {
+      onUseAsInput(image.url);
+    }
+  };
+
   return (
-    <div className="relative rounded-md overflow-hidden group">
-      <div className="relative aspect-square">
+    <div 
+      className="relative rounded-md overflow-hidden group"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div 
+        className="relative aspect-square cursor-pointer"
+        onClick={() => onFullScreen && onFullScreen(batchId)}
+      >
         {image.url ? (
           <img
             src={image.url}
@@ -62,7 +84,10 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
               variant="outline" 
               size="sm" 
               className="bg-black/50 border-white/20 text-white"
-              onClick={() => onFullScreen && onFullScreen(batchId)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onFullScreen && onFullScreen(batchId);
+              }}
             >
               <Maximize className="h-4 w-4 mr-1" /> View
             </Button>
@@ -76,43 +101,57 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </div>
         )}
         
-        {/* Action buttons */}
-        {viewMode !== 'small' && (
-          <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {onDeleteImage && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    className="bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteImage(batchId, index);
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Delete image</TooltipContent>
-              </Tooltip>
-            )}
-            
-            {onFullScreen && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    className="bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onFullScreen(batchId);
-                    }}
-                  >
-                    <Maximize className="h-3 w-3" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Full screen</TooltipContent>
-              </Tooltip>
-            )}
+        {/* Always visible delete button in top left */}
+        {onDeleteImage && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button 
+                className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors z-10"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteImage(batchId, index);
+                }}
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Delete image</TooltipContent>
+          </Tooltip>
+        )}
+        
+        {/* Image Actions */}
+        {image.url && viewMode !== 'small' && (
+          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 rounded-md p-1">
+            <ImageActions
+              imageUrl={image.url}
+              onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
+              onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
+              generationInfo={{
+                prompt: image.prompt || '',
+                workflow: image.workflow || '',
+                params: image.params
+              }}
+              isMouseOver={true}
+            />
           </div>
+        )}
+        
+        {/* Fullscreen button - separate from other actions for better visibility */}
+        {viewMode !== 'small' && onFullScreen && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button 
+                className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors z-10"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onFullScreen(batchId);
+                }}
+              >
+                <Maximize className="h-3 w-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Full screen</TooltipContent>
+          </Tooltip>
         )}
       </div>
     </div>
