@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Settings, X, Plus, Minus, ChevronUp, ChevronDown, Camera } from 'lucide-react';
+import { Settings, X, Plus, Minus, ChevronUp, ChevronDown, Camera, ArrowUp } from 'lucide-react';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import workflowsData from '@/data/workflows.json';
 import globalOptionsData from '@/data/global-options.json';
@@ -249,9 +249,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
     <div className="animate-fade-up">
       <Collapsible open={!isFormCollapsed} onOpenChange={(open) => setIsFormCollapsed(!open)}>
         <div className="flex justify-between items-center mb-2">
-          <h2 className="text-lg font-medium text-foreground/70">
-            Turn your words into <span className="text-primary">art</span>
-          </h2>
+          <div></div> {/* Removed the header text "Turn your words into art" */}
           <CollapsibleTrigger asChild>
             <Button variant="ghost" size="sm" className="h-8 w-8">
               {isFormCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
@@ -316,7 +314,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                   uploadedImages={previewUrls}
                 />
                 
-                {/* Move upload image to the right side */}
+                {/* Upload image button positioned at the right side */}
                 <div className="absolute right-3 top-3">
                   {isMobile ? (
                     <DropdownMenu>
@@ -361,27 +359,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
               
               <div className="p-2 pt-0 space-y-2">
                 <div className="flex justify-end items-center">
-                  <Button 
-                    type="button"
-                    variant="outline" 
-                    size="icon"
-                    onClick={toggleAdvancedOptions}
-                    className="h-8 w-8 text-muted-foreground"
-                    aria-label="Settings"
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                  <AdvancedOptions
-                    workflows={workflows}
-                    selectedWorkflow={selectedWorkflow}
-                    onWorkflowChange={handleWorkflowChange}
-                    params={workflowParams}
-                    onParamChange={handleParamChange}
-                    globalParams={globalParams}
-                    onGlobalParamChange={handleGlobalParamChange}
-                    isOpen={isAdvancedOptionsOpen}
-                    onOpenChange={setIsAdvancedOptionsOpen}
-                  />
+                  {/* Removed settings button from here - will be relocated */}
                 </div>
                 
                 <div className="flex items-center gap-1 sm:gap-2">
@@ -400,37 +378,67 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                   </div>
 
                   <div className="relative flex-1 flex items-center">
+                    {/* Styled batch size controls like workflow/refiner buttons */}
                     <div className="flex items-center mr-1">
                       <Button 
                         type="button"
-                        className="h-[48px] rounded-l-full px-1 sm:px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground border-r border-primary-foreground/20"
+                        className="h-[48px] rounded-l-md px-1 sm:px-2 hover:bg-purple-500/10 text-purple-700 border border-r-0 border-input"
                         onClick={decrementBatchSize}
                         disabled={batchSize <= 1}
+                        variant="outline"
                       >
                         <Minus className="h-4 w-4" />
                       </Button>
                       
-                      <div className="flex justify-center items-center h-[48px] bg-primary text-primary-foreground w-10 sm:w-12">
+                      <div className="flex justify-center items-center h-[48px] bg-background border-y border-input text-foreground w-10 sm:w-12">
                         <span className="text-lg font-medium">{batchSize}</span>
                       </div>
                       
                       <Button 
                         type="button"
-                        className="h-[48px] rounded-r-full px-1 sm:px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground border-l border-primary-foreground/20"
+                        className="h-[48px] rounded-r-md px-1 sm:px-2 hover:bg-purple-500/10 text-purple-700 border border-l-0 border-input"
                         onClick={incrementBatchSize}
                         disabled={batchSize >= 9}
+                        variant="outline"
                       >
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
                     
+                    {/* Settings button moved before Go button */}
+                    <Button 
+                      type="button"
+                      variant="outline" 
+                      size="icon"
+                      onClick={toggleAdvancedOptions}
+                      className="h-[48px] w-[48px] text-muted-foreground mr-1 hover:bg-purple-500/10 text-purple-700"
+                      aria-label="Settings"
+                    >
+                      <Settings className="h-5 w-5" />
+                    </Button>
+                    
+                    {/* Changed from 'Go' to up arrow icon with conditional styling */}
                     <Button 
                       type="submit" 
-                      className="flex-grow h-[48px] rounded-full px-2 sm:px-4 transition-all hover:shadow-md text-lg font-medium flex items-center justify-center btn-shine"
-                      disabled={isButtonDisabled}
+                      className={`flex-grow h-[48px] rounded-full px-2 sm:px-4 transition-all hover:shadow-md text-lg font-medium flex items-center justify-center btn-shine ${
+                        !prompt.trim() && imageFiles.length === 0 ? 'bg-gray-300 text-gray-600' : 'bg-primary text-primary-foreground'
+                      }`}
+                      disabled={isButtonDisabled || (!prompt.trim() && imageFiles.length === 0)}
                     >
-                      Go
+                      <ArrowUp className="h-6 w-6" />
                     </Button>
+                    
+                    <AdvancedOptions
+                      workflows={workflows}
+                      selectedWorkflow={selectedWorkflow}
+                      onWorkflowChange={handleWorkflowChange}
+                      params={workflowParams}
+                      onParamChange={handleParamChange}
+                      globalParams={globalParams}
+                      onGlobalParamChange={handleGlobalParamChange}
+                      isOpen={isAdvancedOptionsOpen}
+                      onOpenChange={setIsAdvancedOptionsOpen}
+                    />
                   </div>
                 </div>
               </div>
