@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -10,13 +9,7 @@ import { Workflow } from '@/types/workflows';
 import PromptInput from '@/components/prompt/PromptInput';
 import PromptExamples from '@/components/prompt/PromptExamples';
 import ImageUploader from '@/components/prompt/ImageUploader';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import WorkflowIconSelector from '@/components/prompt/WorkflowIconSelector';
 import {
   Carousel,
   CarouselContent,
@@ -38,7 +31,6 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({});
   const workflows = workflowsData as Workflow[];
   
-  // Initialize default workflow parameters
   useEffect(() => {
     const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
     if (currentWorkflow) {
@@ -73,31 +65,25 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
 
   const handleImageUpload = (files: File[]) => {
     if (files.length > 0) {
-      // Create URLs for each new file
       const newUrls = files.map(file => URL.createObjectURL(file));
       
-      // Add new files to existing ones
       setImageFiles(prev => [...prev, ...files]);
       setPreviewUrls(prev => [...prev, ...newUrls]);
     }
   };
 
   const clearAllImages = () => {
-    // Clean up all object URLs to avoid memory leaks
     previewUrls.forEach(url => URL.revokeObjectURL(url));
     setImageFiles([]);
     setPreviewUrls([]);
   };
 
   const handleRemoveImage = (index: number) => {
-    // Clean up the object URL for the removed image
     URL.revokeObjectURL(previewUrls[index]);
     
-    // Remove the image from both arrays
     setImageFiles(prev => prev.filter((_, i) => i !== index));
     setPreviewUrls(prev => prev.filter((_, i) => i !== index));
     
-    // If removing the last image, switch back to text-to-image workflow
     if (imageFiles.length === 1) {
       handleWorkflowChange('text-to-image');
     }
@@ -106,7 +92,6 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
   const handleWorkflowChange = (workflowId: string) => {
     setSelectedWorkflow(workflowId);
     
-    // Reset params when workflow changes
     const currentWorkflow = workflows.find(w => w.id === workflowId);
     if (currentWorkflow) {
       const defaultParams: Record<string, any> = {};
@@ -126,7 +111,6 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
     }));
   };
 
-  // Get the current workflow object
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
 
   return (
@@ -195,33 +179,11 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
           />
           
           <div className="p-3 pt-0 space-y-3">
-            {/* Workflow selection UI */}
-            <div className="flex flex-col md:flex-row gap-2">
-              <div className="flex-1">
-                <Select
-                  value={selectedWorkflow}
-                  onValueChange={handleWorkflowChange}
-                >
-                  <SelectTrigger
-                    className="w-full text-sm bg-purple-500/10 border-purple-500/20 text-purple-700 hover:bg-purple-500/20 transition-colors"
-                  >
-                    <SelectValue placeholder="Select workflow" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {workflows.map((workflow) => (
-                      <SelectItem key={workflow.id} value={workflow.id}>
-                        {workflow.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {currentWorkflow && (
-                  <p className="text-xs text-muted-foreground mt-1 ml-1">
-                    {currentWorkflow.description}
-                  </p>
-                )}
-              </div>
-            </div>
+            <WorkflowIconSelector
+              workflows={workflows}
+              selectedWorkflow={selectedWorkflow}
+              onWorkflowChange={handleWorkflowChange}
+            />
 
             <div className="flex gap-3">
               <ImageUploader
