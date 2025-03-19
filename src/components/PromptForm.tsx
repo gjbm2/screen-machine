@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -315,6 +314,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                     isLoading={isButtonDisabled}
                     onImageUpload={handleImageUpload}
                     onWorkflowChange={handleWorkflowChange}
+                    hideLabel={isCompact}
                   />
                   
                   <div className="relative flex-1">

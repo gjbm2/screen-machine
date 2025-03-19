@@ -9,12 +9,14 @@ interface ImageUploaderProps {
   isLoading: boolean;
   onImageUpload: (files: File[]) => void;
   onWorkflowChange: (workflowId: string) => void;
+  hideLabel?: boolean;
 }
 
 const ImageUploader: React.FC<ImageUploaderProps> = ({
   isLoading,
   onImageUpload,
   onWorkflowChange,
+  hideLabel = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
@@ -81,6 +83,12 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     fileInputRef.current?.click();
   };
 
+  const getButtonText = () => {
+    if (hideLabel) return null;
+    if (isMobile) return 'Upload';
+    return 'Upload Images';
+  };
+
   return (
     <>
       <input
@@ -101,7 +109,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         disabled={isLoading}
       >
         <Upload className="h-4 w-4" />
-        {isMobile ? 'Upload' : 'Upload Images'}
+        {getButtonText()}
       </Button>
     </>
   );
