@@ -1,11 +1,74 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { toast } from 'sonner';
+import Header from '@/components/Header';
+import PromptForm from '@/components/PromptForm';
+import ImageDisplay from '@/components/ImageDisplay';
 
 const Index = () => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [currentPrompt, setCurrentPrompt] = useState<string | null>(null);
+
+  const handleSubmitPrompt = async (prompt: string) => {
+    setIsLoading(true);
+    setCurrentPrompt(prompt);
+    
+    try {
+      const response = await fetch('http://localhost:5000/generate-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate image');
+      }
+      
+      const data = await response.json();
+      setImageUrl(data.image_url);
+      toast.success('Image generated successfully!');
+    } catch (error) {
+      console.error('Error generating image:', error);
+      toast.error('Failed to generate image. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-gray-600">Start building your amazing project here!</p>
+    <div className="min-h-screen hero-gradient">
+      <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <Header />
+        
+        <motion.div 
+          className="mt-16 md:mt-24 text-center"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight">
+            Turn your words into <span className="text-primary">art</span>
+          </h1>
+          <p className="mt-6 text-lg text-foreground/70 max-w-2xl mx-auto">
+            Describe anything you can imagine, and watch as AI transforms your ideas into stunning visuals in seconds.
+          </p>
+        </motion.div>
+        
+        <div className="mt-12 max-w-2xl mx-auto">
+          <PromptForm onSubmit={handleSubmitPrompt} isLoading={isLoading} />
+        </div>
+        
+        <div className="mb-20">
+          <ImageDisplay 
+            imageUrl={imageUrl}
+            prompt={currentPrompt}
+            isLoading={isLoading}
+          />
+        </div>
       </div>
     </div>
   );
