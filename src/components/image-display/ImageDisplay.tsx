@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
@@ -78,7 +77,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   }, [imageContainerOrder, isLoading]);
   
   useEffect(() => {
-    // Flatten all completed images into one array for global navigation
     const allImages = generatedImages
       .filter(img => img.status === 'completed')
       .map(img => ({
@@ -151,23 +149,18 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     setFullScreenImageIndex(imageIndex);
     setShowFullScreenView(true);
     
-    // Find the global index if coming from small view
-    if (viewMode === 'small') {
-      const selectedImage = generatedImages.find(
-        img => img.batchId === batchId && img.batchIndex === imageIndex && img.status === 'completed'
+    const selectedImage = generatedImages.find(
+      img => img.batchId === batchId && img.batchIndex === imageIndex && img.status === 'completed'
+    );
+    
+    if (selectedImage) {
+      const globalIndex = allImagesFlat.findIndex(
+        img => img.batchId === batchId && img.batchIndex === imageIndex
       );
       
-      if (selectedImage) {
-        const globalIndex = allImagesFlat.findIndex(
-          img => img.batchId === batchId && img.batchIndex === imageIndex
-        );
-        
-        if (globalIndex !== -1) {
-          setCurrentGlobalIndex(globalIndex);
-        }
+      if (globalIndex !== -1) {
+        setCurrentGlobalIndex(globalIndex);
       }
-    } else {
-      setCurrentGlobalIndex(null);
     }
   };
   
@@ -491,9 +484,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         onUseGeneratedAsInput(url);
                         setShowFullScreenView(false);
                       }}
-                      allImages={viewMode === 'small' ? allImagesFlat : undefined}
-                      isNavigatingAllImages={viewMode === 'small'}
-                      onNavigateGlobal={viewMode === 'small' ? handleNavigateGlobal : undefined}
+                      allImages={allImagesFlat}
+                      isNavigatingAllImages={true}
+                      onNavigateGlobal={handleNavigateGlobal}
                       currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
                     />
                   )}

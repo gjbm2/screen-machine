@@ -85,8 +85,14 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
     });
   };
 
-  // Open image in new tab
+  // Open image in new tab - now only happens when clicking the external link button
   const handleImageClick = () => {
+    // No action on image click in fullscreen view
+    return;
+  };
+  
+  const handleOpenInNewTab = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (activeImage?.url) {
       window.open(activeImage.url, '_blank', 'noopener,noreferrer');
     }
@@ -105,7 +111,8 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
     
     // If swipe distance is sufficient (30px)
     if (Math.abs(diff) > 30) {
-      if (isNavigatingAllImages && onNavigateGlobal && allImages && allImages.length > 1) {
+      // Always use global navigation for both swipe and arrow navigation in fullscreen
+      if (onNavigateGlobal && allImages && allImages.length > 1) {
         // Global navigation across all images
         if (diff > 0 && (currentGlobalIndex as number) < allImages.length - 1) {
           // Swipe left, go to next image
@@ -115,7 +122,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
           onNavigateGlobal(currentGlobalIndex as number - 1);
         }
       } else if (images.length > 1) {
-        // Navigation within a batch
+        // Fallback to batch navigation if global navigation not available
         if (diff > 0 && activeIndex < images.length - 1) {
           // Swipe left, go to next image
           onNavigateNext(e as unknown as React.MouseEvent);
@@ -139,7 +146,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
         onTouchEnd={handleTouchEnd}
       >
         {activeImage && (
-          <div className="relative cursor-pointer flex justify-center items-center w-full h-full">
+          <div className="relative flex justify-center items-center w-full h-full">
             <img 
               src={activeImage.url}
               alt={activeImage.prompt || "Generated image"}
@@ -153,10 +160,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
                   variant="outline" 
                   size="icon" 
                   className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleImageClick();
-                  }}
+                  onClick={handleOpenInNewTab}
                 >
                   <ExternalLink className="h-4 w-4" />
                 </Button>
@@ -166,27 +170,21 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
           </div>
         )}
         
-        {/* Navigation controls */}
-        {(isNavigatingAllImages ? (allImages && allImages.length > 1) : (images.length > 1)) && (
+        {/* Navigation controls - Always use global navigation in fullscreen */}
+        {allImages && allImages.length > 1 && onNavigateGlobal && (
           <NavigationControls 
-            onPrevious={isNavigatingAllImages && onNavigateGlobal 
-              ? (e) => { 
-                  e.stopPropagation();
-                  if ((currentGlobalIndex as number) > 0) {
-                    onNavigateGlobal((currentGlobalIndex as number) - 1);
-                  }
-                }
-              : onNavigatePrev
-            }
-            onNext={isNavigatingAllImages && onNavigateGlobal
-              ? (e) => { 
-                  e.stopPropagation();
-                  if (allImages && (currentGlobalIndex as number) < allImages.length - 1) {
-                    onNavigateGlobal((currentGlobalIndex as number) + 1);
-                  }
-                }
-              : onNavigateNext
-            }
+            onPrevious={(e) => {
+              e.stopPropagation();
+              if ((currentGlobalIndex as number) > 0) {
+                onNavigateGlobal((currentGlobalIndex as number) - 1);
+              }
+            }}
+            onNext={(e) => {
+              e.stopPropagation();
+              if ((currentGlobalIndex as number) < allImages.length - 1) {
+                onNavigateGlobal((currentGlobalIndex as number) + 1);
+              }
+            }}
             size="large"
           />
         )}

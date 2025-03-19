@@ -50,7 +50,12 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
           <Button
             variant="outline"
             className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700"
-            onClick={() => {}}
+            onClick={(e) => {
+              // Prevent any default action or propagation
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            type="button"
           >
             {getWorkflowIcon(selectedWorkflow)}
             {!shouldHideName && (
@@ -68,7 +73,12 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
                   variant={workflow.id === selectedWorkflow ? "secondary" : "ghost"}
                   size="sm"
                   className="justify-start text-sm h-9"
-                  onClick={() => onWorkflowChange(workflow.id)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onWorkflowChange(workflow.id);
+                  }}
+                  type="button"
                 >
                   <div className="mr-2">
                     {getWorkflowIcon(workflow.id)}

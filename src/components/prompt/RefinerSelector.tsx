@@ -49,7 +49,12 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
           <Button
             variant="outline"
             className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700"
-            onClick={() => {}}
+            onClick={(e) => {
+              // Prevent any default action or propagation
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            type="button"
           >
             {getRefinerIcon(selectedRefiner)}
             {!isNarrow && (
@@ -67,7 +72,12 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
                   variant={refiner.id === selectedRefiner ? "secondary" : "ghost"}
                   size="sm"
                   className="justify-start text-sm h-9"
-                  onClick={() => onRefinerChange(refiner.id)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onRefinerChange(refiner.id);
+                  }}
+                  type="button"
                 >
                   <div className="mr-2">
                     {getRefinerIcon(refiner.id)}
