@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
@@ -8,6 +9,7 @@ import { GridIcon, Grid2X2, Table2 } from 'lucide-react';
 import ImageBatch from './ImageBatch';
 import LoadingPlaceholder from './LoadingPlaceholder';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import ReferenceImagesSection from './ReferenceImagesSection';
 
 // Export ViewMode type but remove 'large' as an option
 export type ViewMode = 'normal' | 'small' | 'table';

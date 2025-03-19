@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -52,7 +51,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     zIndex: isDragging ? 10 : 1,
     position: 'relative' as 'relative',
     marginBottom: '1rem',
-    width: viewMode === 'large' ? '100%' : undefined,
+    width: '100%',
   };
 
   return (
@@ -92,7 +91,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
         </button>
       </div>
       
-      {/* Only show content if expanded or in large view */}
+      {/* Only show content if expanded */}
       {isExpanded && children}
 
       {referenceImageUrl && (

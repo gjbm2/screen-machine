@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import ImageBatchItem from './ImageBatchItem';
 import SortableImageContainer from './SortableImageContainer';
@@ -54,12 +53,10 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   const anyGenerating = images.some(img => img.status === 'generating');
   const completedImages = images.filter(img => img.status === 'completed');
   
-  // Do not display the container at all if all images are generating
   if (images.every(img => img.status === 'generating')) {
     return null;
   }
 
-  // For small view, we directly render the images without the container
   if (viewMode === 'small') {
     return (
       <>
@@ -80,15 +77,13 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
     );
   }
   
-  const handleNavigatePrev = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleNavigatePrev = () => {
     if (activeImageIndex > 0) {
       setActiveImageIndex(activeImageIndex - 1);
     }
   };
   
-  const handleNavigateNext = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleNavigateNext = () => {
     if (activeImageIndex < completedImages.length - 1) {
       setActiveImageIndex(activeImageIndex + 1);
     }
@@ -105,7 +100,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
       <Card className={`rounded-t-none ${viewMode === 'table' ? 'p-0' : ''}`}>
         <CardContent className={`${viewMode === 'table' ? 'p-2' : 'p-4'}`}>
           {viewMode === 'table' ? (
-            // Table view
             <Table>
               <TableBody>
                 {completedImages.map((image, index) => (
@@ -138,7 +132,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               </TableBody>
             </Table>
           ) : isExpanded ? (
-            // Expanded view - detailed view with all images
             <ImageDetailView
               batchId={batchId}
               images={completedImages}
@@ -152,7 +145,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
             />
           ) : (
-            // Collapsed/Normal view - just show the current image with navigation
             <div className="grid gap-4 grid-cols-1">
               <ImageBatchItem
                 key={`${batchId}-${activeImageIndex}`}
@@ -171,7 +163,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                 showActions={true}
               />
               
-              {/* Show loading placeholder for generating images */}
               {anyGenerating && (
                 <div className="relative aspect-square rounded-lg bg-muted animate-pulse flex items-center justify-center">
                   <div className="text-sm text-muted-foreground">Generating...</div>
@@ -180,7 +171,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
             </div>
           )}
           
-          {/* Action buttons for all views */}
           <div className="flex justify-between mt-4">
             <Button 
               variant="outline" 
@@ -203,7 +193,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
         </CardContent>
       </Card>
       
-      {/* Delete confirmation dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
