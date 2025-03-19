@@ -9,17 +9,23 @@ interface PromptInputProps {
   isLoading: boolean;
   uploadedImages?: string[];
   onPromptChange: (prompt: string) => void;
+  onClearPrompt?: () => void;
 }
 
 const PromptInput: React.FC<PromptInputProps> = ({ 
   prompt, 
   isLoading,
   uploadedImages = [],
-  onPromptChange 
+  onPromptChange,
+  onClearPrompt
 }) => {
   const handleClearPrompt = () => {
-    onPromptChange('');
-    toast.info('Prompt cleared');
+    if (onClearPrompt) {
+      onClearPrompt();
+    } else {
+      onPromptChange('');
+      toast.info('Prompt cleared');
+    }
   };
 
   return (

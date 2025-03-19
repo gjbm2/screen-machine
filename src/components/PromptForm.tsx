@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -91,13 +90,11 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
       return;
     }
     
-    // Temporarily disable button for 1 second
     setIsButtonDisabled(true);
     setTimeout(() => {
       setIsButtonDisabled(false);
     }, 1000);
     
-    // Include batch size in global params
     const updatedGlobalParams = {
       ...globalParams,
       batchSize
@@ -211,7 +208,6 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
     }
   };
 
-  // Handle mobile camera capture
   const handleCameraCapture = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -224,12 +220,10 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
       video.srcObject = stream;
       video.play();
       
-      // Wait for video to be ready
       await new Promise(resolve => {
         video.onloadedmetadata = resolve;
       });
       
-      // Create canvas to capture frame
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -239,17 +233,14 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
         throw new Error("Could not get canvas context");
       }
       
-      // Draw video frame to canvas
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       
-      // Get image from canvas
       canvas.toBlob((blob) => {
         if (blob) {
           const file = new File([blob], `camera-capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
           handleImageUpload([file]);
         }
         
-        // Stop camera
         stream.getTracks().forEach(track => track.stop());
       }, 'image/jpeg', 0.8);
       
@@ -350,7 +341,6 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                       onRefinerChange={handleRefinerChange}
                     />
                     
-                    {/* Styled batch size controls like workflow/refiner buttons but smaller */}
                     <div className="flex items-center h-[48px]">
                       <Button 
                         type="button"
@@ -390,7 +380,6 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                   </div>
 
                   <div className="ml-4">
-                    {/* Circular Go button with arrow up icon */}
                     <Button 
                       type="submit" 
                       className={`h-12 w-12 rounded-full transition-all hover:shadow-md flex items-center justify-center btn-shine ${
