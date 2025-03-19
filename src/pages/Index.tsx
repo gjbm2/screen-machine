@@ -11,6 +11,36 @@ const Index = () => {
   const [currentPrompt, setCurrentPrompt] = useState<string | null>(null);
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
   const [currentWorkflow, setCurrentWorkflow] = useState<string | null>(null);
+  
+  // Function to handle using the generated image as input
+  const handleUseGeneratedAsInput = async () => {
+    if (!imageUrl) return;
+    
+    try {
+      // Fetch the image to create a File object
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const file = new File([blob], 'generated-image.png', { type: 'image/png' });
+      
+      // Add the generated image to the uploaded images
+      const localImageUrl = URL.createObjectURL(file);
+      setUploadedImageUrls([localImageUrl]);
+      
+      // Clear the current generated image
+      setImageUrl(null);
+      setCurrentPrompt(null);
+      
+      // Switch workflow to image-to-image if not already
+      if (currentWorkflow !== 'image-to-image') {
+        setCurrentWorkflow('image-to-image');
+      }
+      
+      toast.success('Generated image added as input!');
+    } catch (error) {
+      console.error('Error using generated image as input:', error);
+      toast.error('Failed to use image as input. Please try again.');
+    }
+  };
 
   const handleSubmitPrompt = async (
     prompt: string, 
@@ -120,6 +150,7 @@ const Index = () => {
             isLoading={isLoading}
             uploadedImages={uploadedImageUrls}
             workflow={currentWorkflow}
+            onUseGeneratedAsInput={handleUseGeneratedAsInput}
           />
         </div>
       </div>

@@ -1,0 +1,33 @@
+
+[
+  {
+    "id": "instagram",
+    "name": "Instagram",
+    "icon": "instagram",
+    "description": "Share your creation on Instagram"
+  },
+  {
+    "id": "twitter",
+    "name": "Twitter",
+    "icon": "twitter",
+    "description": "Tweet your creation"
+  },
+  {
+    "id": "pinterest",
+    "name": "Pinterest",
+    "icon": "pinterest",
+    "description": "Pin your creation to a board"
+  },
+  {
+    "id": "facebook",
+    "name": "Facebook",
+    "icon": "facebook",
+    "description": "Share your creation on Facebook"
+  },
+  {
+    "id": "discord",
+    "name": "Discord",
+    "icon": "message-circle",
+    "description": "Share your creation on Discord"
+  }
+]

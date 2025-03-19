@@ -8,6 +8,7 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import ImageActions from '@/components/ImageActions';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -15,6 +16,7 @@ interface ImageDisplayProps {
   isLoading: boolean;
   uploadedImages?: string[];
   workflow?: string | null;
+  onUseGeneratedAsInput?: () => void;
 }
 
 const ImageDisplay: React.FC<ImageDisplayProps> = ({ 
@@ -22,7 +24,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   prompt, 
   isLoading,
   uploadedImages = [],
-  workflow
+  workflow,
+  onUseGeneratedAsInput
 }) => {
   // Always render the component when we have uploaded images or when we're loading
   // or when we have a generated image result
@@ -98,6 +101,14 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               <p className="text-xs text-center text-muted-foreground mt-1">
                 Workflow: {workflow.replace(/-/g, ' ')}
               </p>
+            )}
+            
+            {/* Add image actions for generated images */}
+            {imageUrl && !isLoading && (
+              <ImageActions 
+                imageUrl={imageUrl}
+                onUseAsInput={onUseGeneratedAsInput}
+              />
             )}
           </div>
         </Card>
