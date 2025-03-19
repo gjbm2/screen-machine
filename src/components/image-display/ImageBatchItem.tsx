@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import { Maximize, Trash2, X } from 'lucide-react';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -12,6 +12,7 @@ interface ImageBatchItemProps {
     workflow: string;
     status?: 'generating' | 'completed' | 'error';
     params?: Record<string, any>;
+    referenceImageUrl?: string;
   };
   batchId: string;
   index: number;
@@ -31,6 +32,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   onDeleteImage,
 }) => {
   const isGenerating = image.status === 'generating';
+  const [actionsVisible, setActionsVisible] = useState(false);
   
   if (isGenerating) {
     return (
@@ -45,8 +47,17 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     );
   }
   
+  const toggleActions = () => {
+    setActionsVisible(!actionsVisible);
+  };
+  
   return (
-    <div className="aspect-square relative group">
+    <div 
+      className="aspect-square relative group" 
+      onClick={toggleActions}
+      onMouseEnter={() => setActionsVisible(true)}
+      onMouseLeave={() => setActionsVisible(false)}
+    >
       <img
         src={image.url}
         alt={image.prompt || 'Generated image'}
@@ -117,9 +128,13 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         </div>
       )}
       
-      {/* Image controls overlay - ALWAYS VISIBLE (reduced opacity when not hovered) */}
-      <div className="absolute bottom-0 left-0 right-0 bg-black/80 flex justify-center p-3 opacity-70 group-hover:opacity-100 transition-opacity z-10">
-        <div className="flex flex-wrap gap-2 justify-center">
+      {/* Image controls overlay - ANIMATED slide in/out */}
+      <div 
+        className={`absolute bottom-0 left-0 right-0 bg-black/90 flex justify-center p-3 z-10 transition-transform duration-300 ${
+          actionsVisible ? 'translate-y-0' : 'translate-y-full'
+        }`}
+      >
+        <div className="flex gap-2 justify-center">
           <TooltipProvider>
             <ImageActions 
               imageUrl={image.url}

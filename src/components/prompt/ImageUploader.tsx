@@ -25,6 +25,12 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       if (event.detail && event.detail.files) {
         onImageUpload(event.detail.files);
         onWorkflowChange('image-to-image');
+        
+        // If there are URLs in the event detail, we can use them directly
+        if (event.detail.urls && event.detail.urls.length > 0) {
+          // This is a generated image being used as input
+          toast.info('Using generated image as input');
+        }
       }
     };
 

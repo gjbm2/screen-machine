@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { 
@@ -114,8 +113,8 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   };
   
   const buttonSizeClass = isFullScreen 
-    ? "px-2 py-2 text-sm" 
-    : "bg-black/80 hover:bg-black/90 text-white";
+    ? "px-3 py-2 text-sm" 
+    : "bg-black hover:bg-black/80 text-white border border-white/20";
 
   return (
     <>
@@ -213,7 +212,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         </TooltipProvider>
       )}
 
-      {/* Create Again button - Kept with Plus icon */}
+      {/* Create Again button - With Plus icon */}
       {onCreateAgain && (
         <TooltipProvider>
           <Tooltip delayDuration={300}>

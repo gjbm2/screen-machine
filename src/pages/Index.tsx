@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -16,11 +15,11 @@ interface GeneratedImage {
   batchIndex?: number;
   status?: 'generating' | 'completed' | 'error';
   refiner?: string;
-  referenceImageUrl?: string; // Added to track associated reference image
+  referenceImageUrl?: string;
 }
 
 const Index = () => {
-  const [activeGenerations, setActiveGenerations] = useState<string[]>([]); // Track active generation batch IDs
+  const [activeGenerations, setActiveGenerations] = useState<string[]>([]);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string | null>(null);
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
@@ -59,10 +58,8 @@ const Index = () => {
       const newUrl = URL.createObjectURL(blob);
       setUploadedImageUrls([newUrl]);
       
-      // Set workflow to image-to-image
       setCurrentWorkflow('image-to-image');
       
-      // Display the image in the prompt area (as if uploaded)
       const uploadEvent = new CustomEvent('image-selected', { 
         detail: { files: imageFiles, urls: [newUrl] } 
       });
@@ -92,7 +89,6 @@ const Index = () => {
       batchId
     );
     
-    // Set focus to the new generation batch
     if (batchId) {
       const element = document.getElementById(`batch-${batchId}`);
       if (element) {
@@ -171,7 +167,6 @@ const Index = () => {
       console.log('Sending request with data:', requestData);
       addConsoleLog(`Sending request: ${JSON.stringify(requestData, null, 2)}`);
       
-      // Simulate 5-second generation time as requested
       setTimeout(() => {
         try {
           const mockImageUrls = [
@@ -221,7 +216,6 @@ const Index = () => {
             setImageUrl(newImages[0]?.url);
           }
           
-          // Auto-scroll to the newly generated images
           setTimeout(() => {
             const element = document.getElementById(`batch-${currentBatchId}`);
             if (element) {
@@ -241,7 +235,7 @@ const Index = () => {
           
           toast.error('An error occurred while processing images.');
         }
-      }, 5000); // Use 5 seconds as requested for generation time
+      }, 5000);
     } catch (error) {
       console.error('Error generating image:', error);
       addConsoleLog(`Error generating image: ${error}`);
@@ -310,7 +304,7 @@ const Index = () => {
             imageUrl={imageUrl}
             prompt={currentPrompt}
             isLoading={activeGenerations.length > 0}
-            uploadedImages={[]} // We no longer need to pass these here
+            uploadedImages={uploadedImageUrls}
             generatedImages={generatedImages}
             imageContainerOrder={imageContainerOrder}
             workflow={currentWorkflow}

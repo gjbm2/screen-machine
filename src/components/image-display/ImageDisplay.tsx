@@ -106,9 +106,15 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     
     for (const batchId of imageContainerOrder) {
       if (batches[batchId]) {
+        const sortedImages = batches[batchId].sort((a, b) => {
+          if (a.referenceImageUrl && !b.referenceImageUrl) return -1;
+          if (!a.referenceImageUrl && b.referenceImageUrl) return 1;
+          return (b.batchIndex || 0) - (a.batchIndex || 0);
+        });
+        
         orderedBatches.push({
           batchId,
-          images: batches[batchId].sort((a, b) => (b.batchIndex || 0) - (a.batchIndex || 0))
+          images: sortedImages
         });
         delete batches[batchId];
       }
@@ -121,9 +127,15 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
         return timeB - timeA;
       })
       .forEach(([batchId, images]) => {
+        const sortedImages = images.sort((a, b) => {
+          if (a.referenceImageUrl && !b.referenceImageUrl) return -1;
+          if (!a.referenceImageUrl && b.referenceImageUrl) return 1;
+          return (b.batchIndex || 0) - (a.batchIndex || 0);
+        });
+        
         orderedBatches.push({
           batchId,
-          images: images.sort((a, b) => (b.batchIndex || 0) - (a.batchIndex || 0))
+          images: sortedImages
         });
       });
     

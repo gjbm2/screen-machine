@@ -6,7 +6,6 @@ import SortableImageContainer from './SortableImageContainer';
 import ImageBatchItem from './ImageBatchItem';
 import NavigationControls from './NavigationControls';
 import ImageDetailView from './ImageDetailView';
-import { DropdownMenu } from '@/components/ui/dropdown-menu';
 
 interface ImageBatchProps {
   batchId: string;
@@ -19,6 +18,7 @@ interface ImageBatchProps {
     batchId?: string;
     batchIndex?: number;
     status?: 'generating' | 'completed' | 'error';
+    referenceImageUrl?: string;
   }>;
   isExpanded: boolean;
   activeIndex: number;

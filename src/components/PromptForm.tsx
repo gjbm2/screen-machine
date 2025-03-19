@@ -215,6 +215,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
             prompt={prompt}
             isLoading={isLoading}
             onPromptChange={setPrompt}
+            uploadedImages={previewUrls}
           />
           
           <PromptExamples
