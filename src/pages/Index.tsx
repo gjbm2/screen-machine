@@ -5,6 +5,14 @@ import Header from '@/components/Header';
 import PromptForm from '@/components/PromptForm';
 import ImageDisplay from '@/components/ImageDisplay';
 
+interface GeneratedImage {
+  url: string;
+  prompt: string;
+  workflow: string;
+  timestamp: number;
+  params?: Record<string, any>;
+}
+
 const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -13,24 +21,26 @@ const Index = () => {
   const [currentWorkflow, setCurrentWorkflow] = useState<string | null>(null);
   const [currentParams, setCurrentParams] = useState<Record<string, any>>({});
   const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
+  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   
   // Function to handle using the generated image as input
-  const handleUseGeneratedAsInput = async () => {
-    if (!imageUrl) return;
+  const handleUseGeneratedAsInput = async (selectedImageUrl: string) => {
+    if (!selectedImageUrl) return;
     
     try {
       // Fetch the image to create a File object
-      const response = await fetch(imageUrl);
+      const response = await fetch(selectedImageUrl);
       const blob = await response.blob();
       const file = new File([blob], 'generated-image.png', { type: 'image/png' });
       
       // Clear all current state
       setCurrentPrompt('');
+      setImageUrl(null);
+      setGeneratedImages([]);
       
-      // Add the generated image to the uploaded images and clear the current generated image
+      // Add the generated image to the uploaded images
       const localImageUrl = URL.createObjectURL(file);
       setUploadedImageUrls([localImageUrl]);
-      setImageUrl(null);
       
       // Switch workflow to image-to-image if not already
       setCurrentWorkflow('image-to-image');
@@ -78,8 +88,6 @@ const Index = () => {
     if (imageFiles && imageFiles.length > 0) {
       const localImageUrls = imageFiles.map(file => URL.createObjectURL(file));
       setUploadedImageUrls(localImageUrls);
-    } else {
-      setUploadedImageUrls([]);
     }
     
     try {
@@ -109,7 +117,23 @@ const Index = () => {
         
         // Select a random image from the mock images
         const randomIndex = Math.floor(Math.random() * mockImageUrls.length);
-        setImageUrl(mockImageUrls[randomIndex]);
+        const newImageUrl = mockImageUrls[randomIndex];
+        
+        // Create a new generated image object
+        const newGeneratedImage: GeneratedImage = {
+          url: newImageUrl,
+          prompt: prompt,
+          workflow: workflow || 'text-to-image',
+          timestamp: Date.now(),
+          params: { ...params, ...globalParams }
+        };
+        
+        // Add the new image to the beginning of the generatedImages array
+        setGeneratedImages(prev => [newGeneratedImage, ...prev]);
+        
+        // Also update the current imageUrl for backwards compatibility
+        setImageUrl(newImageUrl);
+        
         setIsLoading(false);
         toast.success('Image generated successfully!');
       }, 1500); // Simulate network delay
@@ -117,8 +141,6 @@ const Index = () => {
     } catch (error) {
       console.error('Error generating image:', error);
       toast.error('Failed to generate image. Please try again.');
-      // Clear the imageUrl on error to avoid showing stale images
-      setImageUrl(null);
       setIsLoading(false);
     }
   };
@@ -151,6 +173,7 @@ const Index = () => {
             prompt={currentPrompt}
             isLoading={isLoading}
             uploadedImages={uploadedImageUrls}
+            generatedImages={generatedImages}
             workflow={currentWorkflow}
             onUseGeneratedAsInput={handleUseGeneratedAsInput}
             onCreateAgain={handleCreateAgain}

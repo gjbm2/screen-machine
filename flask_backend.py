@@ -4,12 +4,13 @@ from flask_cors import CORS
 import os
 import time
 import random
+import uuid
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# In a real implementation, you would integrate with actual AI image generation here
-# This is just a mock implementation that returns placeholder images
+# In-memory dictionary to store generated images
+generated_images = {}
 
 # Sample placeholder images (replace with actual implementation)
 PLACEHOLDER_IMAGES = [
@@ -34,6 +35,7 @@ def generate_image():
     has_reference_image = data.get('has_reference_image', False)
     workflow = data.get('workflow', 'text-to-image')
     params = data.get('params', {})
+    global_params = data.get('global_params', {})
     
     if not prompt and not has_reference_image:
         return jsonify({"error": "Prompt or reference image is required"}), 400
@@ -52,14 +54,48 @@ def generate_image():
     else:
         image_url = random.choice(PLACEHOLDER_IMAGES)
     
+    # Generate a unique ID for this image
+    image_id = str(uuid.uuid4())
+    
+    # Store the image metadata in our dictionary
+    generated_images[image_id] = {
+        "id": image_id,
+        "url": image_url,
+        "prompt": prompt,
+        "workflow": workflow,
+        "timestamp": time.time(),
+        "params": params,
+        "global_params": global_params,
+        "used_reference_image": has_reference_image
+    }
+    
+    # Return the generated image data
     return jsonify({
         "success": True,
+        "image_id": image_id,
         "prompt": prompt,
         "workflow": workflow,
         "params": params,
         "image_url": image_url,
         "used_reference_image": has_reference_image
     })
+
+@app.route('/images', methods=['GET'])
+def get_images():
+    # Return all stored images, sorted by timestamp (newest first)
+    sorted_images = sorted(
+        generated_images.values(), 
+        key=lambda x: x["timestamp"], 
+        reverse=True
+    )
+    return jsonify({"images": sorted_images})
+
+@app.route('/images/<image_id>', methods=['GET'])
+def get_image(image_id):
+    # Return a specific image by ID
+    if image_id in generated_images:
+        return jsonify(generated_images[image_id])
+    return jsonify({"error": "Image not found"}), 404
 
 if __name__ == '__main__':
     app.run(debug=True)

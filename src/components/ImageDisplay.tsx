@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import {
   Carousel,
@@ -15,8 +15,15 @@ interface ImageDisplayProps {
   prompt: string | null;
   isLoading: boolean;
   uploadedImages?: string[];
+  generatedImages?: Array<{
+    url: string;
+    prompt: string;
+    workflow: string;
+    timestamp: number;
+    params?: Record<string, any>;
+  }>;
   workflow?: string | null;
-  onUseGeneratedAsInput?: () => void;
+  onUseGeneratedAsInput?: (imageUrl: string) => void;
   onCreateAgain?: () => void;
   generationParams?: Record<string, any>;
 }
@@ -26,14 +33,19 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   prompt, 
   isLoading,
   uploadedImages = [],
+  generatedImages = [],
   workflow,
   onUseGeneratedAsInput,
   onCreateAgain,
   generationParams
 }) => {
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(
+    generatedImages.length > 0 ? 0 : null
+  );
+  
   // Always render the component when we have uploaded images or when we're loading
-  // or when we have a generated image result
-  const shouldDisplay = isLoading || imageUrl || (uploadedImages && uploadedImages.length > 0);
+  // or when we have generated image results
+  const shouldDisplay = isLoading || generatedImages.length > 0 || (uploadedImages && uploadedImages.length > 0);
   
   if (!shouldDisplay) return null;
 
@@ -44,6 +56,12 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
   };
+
+  const handleImageSelect = (index: number) => {
+    setSelectedImageIndex(index);
+  };
+
+  const selectedImage = selectedImageIndex !== null ? generatedImages[selectedImageIndex] : null;
 
   return (
     <div className="mt-12 animate-fade-in">
@@ -90,46 +108,67 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           </Card>
         )}
 
-        {/* Only show the output section if we're loading or have a generated image */}
-        {(isLoading || imageUrl) && (
+        {/* Generated images section */}
+        {(isLoading || generatedImages.length > 0) && (
           <Card className="relative w-full md:w-1/2 overflow-hidden border border-border/30 rounded-lg">
             <div className="aspect-square overflow-hidden bg-secondary/20">
               {isLoading ? (
                 <div className="flex h-full items-center justify-center">
                   <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
                 </div>
-              ) : imageUrl ? (
-                <img
-                  src={imageUrl}
-                  alt={prompt || 'Generated image'}
-                  className="w-full h-full object-contain"
-                />
+              ) : generatedImages.length > 0 ? (
+                <Carousel className="w-full h-full">
+                  <CarouselContent className="h-full">
+                    {generatedImages.map((img, index) => (
+                      <CarouselItem key={index} className="h-full relative">
+                        <div 
+                          className={`h-full flex items-center justify-center cursor-pointer ${selectedImageIndex === index ? 'ring-2 ring-primary' : ''}`}
+                          onClick={() => handleImageSelect(index)}
+                        >
+                          <img
+                            src={img.url}
+                            alt={img.prompt || 'Generated image'}
+                            className="max-w-full max-h-full object-contain"
+                          />
+                        </div>
+                      </CarouselItem>
+                    ))}
+                  </CarouselContent>
+                  <CarouselPrevious className="left-2" />
+                  <CarouselNext className="right-2" />
+                </Carousel>
               ) : null}
             </div>
             <div className="p-3">
-              {prompt && (
-                <p className="text-sm text-center text-muted-foreground truncate">
-                  {prompt}
-                </p>
-              )}
-              {workflow && (
-                <p className="text-xs text-center text-muted-foreground mt-1">
-                  Workflow: {formatWorkflowName(workflow)}
-                </p>
+              {selectedImage && (
+                <>
+                  <p className="text-sm text-center text-muted-foreground truncate">
+                    {selectedImage.prompt}
+                  </p>
+                  {selectedImage.workflow && (
+                    <p className="text-xs text-center text-muted-foreground mt-1">
+                      Workflow: {formatWorkflowName(selectedImage.workflow)}
+                    </p>
+                  )}
+                  
+                  {/* Add image actions only for the selected image */}
+                  <ImageActions 
+                    imageUrl={selectedImage.url}
+                    onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(selectedImage.url)}
+                    onCreateAgain={onCreateAgain}
+                    generationInfo={{
+                      prompt: selectedImage.prompt || '',
+                      workflow: selectedImage.workflow || 'text-to-image',
+                      params: selectedImage.params || {}
+                    }}
+                  />
+                </>
               )}
               
-              {/* Add image actions for generated images */}
-              {imageUrl && !isLoading && (
-                <ImageActions 
-                  imageUrl={imageUrl}
-                  onUseAsInput={onUseGeneratedAsInput}
-                  onCreateAgain={onCreateAgain}
-                  generationInfo={{
-                    prompt: prompt || '',
-                    workflow: workflow || 'text-to-image',
-                    params: generationParams
-                  }}
-                />
+              {isLoading && prompt && (
+                <p className="text-sm text-center text-muted-foreground truncate">
+                  Generating: {prompt}
+                </p>
               )}
             </div>
           </Card>
