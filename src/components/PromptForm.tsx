@@ -11,6 +11,13 @@ import PromptInput from '@/components/prompt/PromptInput';
 import PromptExamples from '@/components/prompt/PromptExamples';
 import ImageUploader from '@/components/prompt/ImageUploader';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Carousel,
   CarouselContent,
   CarouselItem,
@@ -119,6 +126,9 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
     }));
   };
 
+  // Get the current workflow object
+  const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
+
   return (
     <div className="animate-fade-up">
       <Card className="overflow-hidden glass border border-border/30">
@@ -185,6 +195,34 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
           />
           
           <div className="p-3 pt-0 space-y-3">
+            {/* Workflow selection UI */}
+            <div className="flex flex-col md:flex-row gap-2">
+              <div className="flex-1">
+                <Select
+                  value={selectedWorkflow}
+                  onValueChange={handleWorkflowChange}
+                >
+                  <SelectTrigger
+                    className="w-full text-sm bg-purple-500/10 border-purple-500/20 text-purple-700 hover:bg-purple-500/20 transition-colors"
+                  >
+                    <SelectValue placeholder="Select workflow" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workflows.map((workflow) => (
+                      <SelectItem key={workflow.id} value={workflow.id}>
+                        {workflow.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {currentWorkflow && (
+                  <p className="text-xs text-muted-foreground mt-1 ml-1">
+                    {currentWorkflow.description}
+                  </p>
+                )}
+              </div>
+            </div>
+
             <div className="flex gap-3">
               <ImageUploader
                 isLoading={isLoading}
