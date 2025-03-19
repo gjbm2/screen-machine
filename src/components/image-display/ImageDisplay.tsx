@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
@@ -153,7 +154,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             onNavigatePrev={() => {}}
             onNavigateNext={() => {}}
             onToggleExpand={() => {}}
-            onDeleteImage={onDeleteImage}
+            onDeleteImage={(batchId, index) => onDeleteImage(batchId, index)}
             onCreateAgain={() => onCreateAgain(activeBatchId || undefined)}
             onUseAsInput={onUseGeneratedAsInput}
           />
@@ -241,7 +242,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         toggleExpand={handleToggleExpand}
                         onImageClick={(url, prompt) => handleImageClick(batchId, url, prompt)}
                         onCreateAgain={() => onCreateAgain(batchId)}
-                        onDeleteImage={(index) => onDeleteImage(batchId, index)}
+                        onDeleteImage={onDeleteImage}
                         onDeleteContainer={() => onDeleteContainer(batchId)}
                         activeImageUrl={activeImage}
                         viewMode={viewMode}
