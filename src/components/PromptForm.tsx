@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { X, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import workflowsData from '@/data/workflows.json';
 import globalOptionsData from '@/data/global-options.json';
@@ -224,15 +224,18 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
           
           <div className="p-3 pt-0 space-y-3">
             <div className="flex justify-between items-center gap-2">
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-4">
+                {/* Group workflow selectors in a visually distinct container */}
+                <div className="flex items-center bg-background/40 p-1 rounded-lg border border-border/20">
                   <WorkflowIconSelector
                     workflows={workflows}
                     selectedWorkflow={selectedWorkflow}
                     onWorkflowChange={handleWorkflowChange}
                     hideWorkflowName={true}
                   />
-                  
+                </div>
+                
+                <div className="flex items-center gap-2">
                   <RefinerSelector
                     selectedRefiner={selectedRefiner}
                     onRefinerChange={handleRefinerChange}
@@ -241,12 +244,12 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                   <Button 
                     type="button"
                     variant="outline" 
-                    size="sm"
+                    size="icon"
                     onClick={toggleAdvancedOptions}
-                    className="px-3 text-xs text-muted-foreground h-[36px]"
+                    className="h-[36px] w-[36px] text-muted-foreground"
+                    aria-label="Advanced settings"
                   >
-                    <Settings className="h-3 w-3 mr-1" />
-                    Advanced
+                    <Settings className="h-4 w-4" />
                   </Button>
                 </div>
               </div>

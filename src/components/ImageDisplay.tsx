@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import {
@@ -52,6 +51,8 @@ interface ImageDisplayProps {
   onUseGeneratedAsInput?: (imageUrl: string) => void;
   onCreateAgain?: (batchId?: string) => void;
   onReorderContainers?: (sourceIndex: number, destinationIndex: number) => void;
+  onDeleteImage?: (batchId: string, imageIndex: number) => void;
+  onDeleteContainer?: (batchId: string) => void;
   generationParams?: Record<string, any>;
 }
 
@@ -128,6 +129,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onUseGeneratedAsInput,
   onCreateAgain,
   onReorderContainers,
+  onDeleteImage,
+  onDeleteContainer,
   generationParams
 }) => {
   // State to track the currently viewed image in each batch
@@ -416,8 +419,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           </div>
         )}
         
-        {/* Image controls overlay - visible on hover/focus but only partially covering the image */}
-        <div className="absolute bottom-0 left-0 right-0 bg-black/60 flex justify-center p-3 opacity-0 group-hover:opacity-100 transition-opacity z-10 h-[40%]">
+        {/* Image controls overlay - REDUCED HEIGHT to 20% of image */}
+        <div className="absolute bottom-0 left-0 right-0 bg-black/60 flex justify-center p-3 opacity-0 group-hover:opacity-100 transition-opacity z-10 h-[20%]">
           <div className="flex flex-wrap gap-2 justify-center">
             {/* Info button */}
             <Dialog>

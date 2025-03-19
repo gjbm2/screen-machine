@@ -37,7 +37,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5">
         {workflows.map((workflow) => (
           <TooltipProvider key={workflow.id}>
             <Tooltip delayDuration={300}>
