@@ -33,6 +33,14 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   
   if (!shouldDisplay) return null;
 
+  // Format workflow name for display (remove hyphens and capitalize)
+  const formatWorkflowName = (name: string) => {
+    return name
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   return (
     <div className="mt-12 animate-fade-in">
       <div className="flex flex-col md:flex-row gap-6">
@@ -99,7 +107,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             )}
             {workflow && (
               <p className="text-xs text-center text-muted-foreground mt-1">
-                Workflow: {workflow.replace(/-/g, ' ')}
+                Workflow: {formatWorkflowName(workflow)}
               </p>
             )}
             

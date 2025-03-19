@@ -62,64 +62,42 @@ const Index = () => {
     }
     
     try {
-      // In a real implementation, you would send both the prompt and image files
-      // to your backend using FormData
-      const formData = new FormData();
-      if (prompt) formData.append('prompt', prompt);
-      if (imageFiles) {
-        imageFiles.forEach((file, index) => {
-          formData.append(`image_${index}`, file);
-        });
-      }
-      if (workflow) formData.append('workflow', workflow);
-      if (params) {
-        // Convert params object to a JSON string and append to FormData
-        formData.append('params', JSON.stringify(params));
-      }
-      if (globalParams) {
-        // Convert global params object to a JSON string and append to FormData
-        formData.append('global_params', JSON.stringify(globalParams));
-      }
-      
-      // For the mock implementation, we'll just use the existing endpoint
-      const response = await fetch('http://localhost:5000/generate-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          prompt,
-          workflow: workflow || 'text-to-image',
-          params: params || {},
-          global_params: globalParams || {},
-          has_reference_images: imageFiles ? imageFiles.length > 0 : false,
-          reference_image_count: imageFiles ? imageFiles.length : 0
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to generate image');
-      }
-      
-      const data = await response.json();
-      setImageUrl(data.image_url);
-      
-      // Log the full request for debugging purposes
-      console.log('Request params:', {
+      // In a production environment, you would use FormData for file uploads
+      // For this mock implementation, we'll just pass the data as JSON
+      const requestData = {
         prompt,
-        workflow,
-        workflowParams: params,
-        globalParams,
-        imageCount: imageFiles?.length || 0
-      });
+        workflow: workflow || 'text-to-image',
+        params: params || {},
+        global_params: globalParams || {},
+        has_reference_images: imageFiles ? imageFiles.length > 0 : false,
+        reference_image_count: imageFiles ? imageFiles.length : 0
+      };
       
-      toast.success('Image generated successfully!');
+      console.log('Sending request with data:', requestData);
+      
+      // For testing purposes, let's add a mock response directly
+      // instead of actually making the network request
+      setTimeout(() => {
+        // Mock successful response
+        const mockImageUrls = [
+          "https://images.unsplash.com/photo-1543466835-00a7907e9de1?q=80&w=1974&auto=format&fit=crop",
+          "https://images.unsplash.com/photo-1605979257913-1704eb7b6246?q=80&w=1770&auto=format&fit=crop",
+          "https://images.unsplash.com/photo-1692891873526-61e7e87ea428?q=80&w=1780&auto=format&fit=crop",
+          "https://images.unsplash.com/photo-1533134486753-c833f0ed4866?q=80&w=1770&auto=format&fit=crop"
+        ];
+        
+        // Select a random image from the mock images
+        const randomIndex = Math.floor(Math.random() * mockImageUrls.length);
+        setImageUrl(mockImageUrls[randomIndex]);
+        setIsLoading(false);
+        toast.success('Image generated successfully!');
+      }, 1500); // Simulate network delay
+      
     } catch (error) {
       console.error('Error generating image:', error);
       toast.error('Failed to generate image. Please try again.');
       // Clear the imageUrl on error to avoid showing stale images
       setImageUrl(null);
-    } finally {
       setIsLoading(false);
     }
   };
