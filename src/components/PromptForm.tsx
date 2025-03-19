@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -313,7 +312,6 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                   </span>
                 </Button>
                 
-                {/* Batch size controls */}
                 <div className="absolute right-0 top-0 bottom-0 flex flex-col h-[48px] overflow-hidden rounded-r-full border-l border-primary-foreground/20">
                   <Button 
                     type="button"

@@ -65,6 +65,19 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs, isVisible, onClose 
     }
   };
   
+  useEffect(() => {
+    // Add cursor style to the body when dragging
+    if (isDragging) {
+      document.body.style.cursor = 'ns-resize';
+    } else {
+      document.body.style.cursor = '';
+    }
+    
+    return () => {
+      document.body.style.cursor = '';
+    };
+  }, [isDragging]);
+  
   return (
     <div 
       className={`fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 shadow-2xl transition-transform duration-300 ${
@@ -72,9 +85,9 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs, isVisible, onClose 
       }`}
       style={{ height: `${height}px` }}
     >
-      {/* Drag handle */}
+      {/* Drag handle - Improved visual feedback */}
       <div 
-        className="absolute left-0 right-0 top-0 h-4 bg-muted cursor-ns-resize"
+        className={`absolute left-0 right-0 top-0 h-4 bg-muted cursor-ns-resize ${isDragging ? 'bg-muted-foreground/30' : ''}`}
         onMouseDown={handleMouseDown}
       >
         <div className="w-16 h-1.5 bg-muted-foreground/30 rounded-full mx-auto mt-1.5" />
@@ -104,14 +117,14 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs, isVisible, onClose 
       
       <div 
         ref={consoleRef}
-        className="p-3 overflow-auto font-mono text-xs"
+        className="p-3 overflow-auto font-mono text-xs bg-black text-white"
         style={{ height: `calc(100% - 55px)` }}
       >
         {logs.length === 0 ? (
-          <p className="text-muted-foreground">No console logs yet.</p>
+          <p className="text-white/60">No console logs yet.</p>
         ) : (
           logs.map((log, index) => (
-            <div key={index} className="py-1 border-b border-border/20 last:border-0">
+            <div key={index} className="py-1 border-b border-white/10 last:border-0">
               {log}
             </div>
           ))

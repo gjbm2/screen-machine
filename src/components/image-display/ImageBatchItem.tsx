@@ -1,28 +1,28 @@
 
-import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
-import { Maximize, Trash2, X, Info } from 'lucide-react';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import ImageActions from '@/components/ImageActions';
-
-type ViewMode = 'normal' | 'small' | 'table';
+import React from 'react';
+import { ExternalLink } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface ImageBatchItemProps {
   image: {
     url: string;
     prompt?: string;
-    workflow: string;
-    status?: 'generating' | 'completed' | 'error';
+    workflow?: string;
+    timestamp?: number;
     params?: Record<string, any>;
+    batchId?: string;
+    batchIndex?: number;
+    status?: 'generating' | 'completed' | 'error';
+    refiner?: string;
     referenceImageUrl?: string;
   };
   batchId: string;
   index: number;
   total: number;
-  onCreateAgain: (batchId: string) => void;
+  onCreateAgain?: (batchId: string) => void;
   onUseAsInput?: ((imageUrl: string) => void) | null;
-  onDeleteImage: (batchId: string, index: number) => void;
-  viewMode?: ViewMode;
+  onDeleteImage?: (batchId: string, index: number) => void;
+  viewMode?: 'normal' | 'small' | 'table';
 }
 
 const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
@@ -35,175 +35,25 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   onDeleteImage,
   viewMode = 'normal'
 }) => {
-  const isGenerating = image.status === 'generating';
-  const [actionsVisible, setActionsVisible] = useState(false);
-  const [isClicked, setIsClicked] = useState(false);
-  const [fullScreenOpen, setFullScreenOpen] = useState(false);
-  const isSmallView = viewMode === 'small';
-  
-  if (isGenerating) {
-    return (
-      <div className="aspect-square flex items-center justify-center bg-secondary/20">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-        {image.prompt && !isSmallView && (
-          <p className="text-sm text-center text-muted-foreground absolute mt-20">
-            Generating: {image.prompt}
-          </p>
-        )}
-      </div>
-    );
-  }
-  
-  const handleClick = (e: React.MouseEvent) => {
-    if (isSmallView) {
-      // In small view, clicking opens fullscreen
-      e.stopPropagation();
-      setFullScreenOpen(true);
-      return;
-    }
-    
-    e.stopPropagation();
-    setIsClicked(!isClicked);
-    setActionsVisible(!actionsVisible);
-  };
-
-  const handleDeleteImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onDeleteImage(batchId, index);
-  };
-
-  const handleCreateAgain = () => {
-    onCreateAgain(batchId);
-  };
-
-  const handleOpenFullScreen = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setFullScreenOpen(true);
-  };
-  
   return (
-    <div 
-      className={`aspect-square relative group cursor-pointer ${isSmallView ? "overflow-hidden" : ""}`} 
-      onClick={handleClick}
-      onMouseEnter={() => !isClicked && !isSmallView && setActionsVisible(true)}
-      onMouseLeave={() => !isClicked && !isSmallView && setActionsVisible(false)}
-    >
-      <img
-        src={image.url}
-        alt={image.prompt || 'Generated image'}
-        className="w-full h-full object-cover"
-      />
-      
-      {/* Delete button - always visible in normal mode, hidden in small mode */}
-      {!isSmallView && (
-        <button 
-          className="absolute top-2 left-2 bg-black/90 hover:bg-black text-white rounded-full p-2 transition-colors z-20"
-          onClick={handleDeleteImage}
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      )}
-      
-      {/* Full screen view button - always available except in small view mode */}
-      {!isSmallView && (
-        <button 
-          className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 text-white rounded-full p-1.5 transition-colors z-20"
-          onClick={handleOpenFullScreen}
-        >
-          <Maximize className="h-4 w-4" />
-        </button>
-      )}
-      
-      {/* Full-screen dialog */}
-      <Dialog open={fullScreenOpen} onOpenChange={setFullScreenOpen}>
-        <DialogContent className="p-0 overflow-hidden max-w-[95vw] max-h-[95vh]" fullscreen>
-          <DialogHeader className="absolute top-0 left-0 right-0 bg-black/80 z-10 p-4 flex justify-between items-center">
-            <DialogTitle className="text-white">
-              {image.prompt || 'Generated Image'}
-            </DialogTitle>
-            <DialogClose className="rounded-full p-1 hover:bg-black/40 text-white">
-              <X className="h-6 w-6" />
-            </DialogClose>
-          </DialogHeader>
-          
-          <div className="w-full h-full flex flex-col">
-            <div className="flex-1 flex items-center justify-center overflow-auto p-4 pt-16 pb-20">
-              <img
-                src={image.url}
-                alt={image.prompt || 'Generated image full view'}
-                className="max-w-full max-h-full object-contain"
-              />
-            </div>
-            
-            {/* Information section */}
-            <div className="absolute top-16 left-4 bg-black/80 p-3 rounded-md text-white text-xs max-w-xs">
-              {image.prompt && (
-                <div className="mb-2">
-                  <p className="font-medium">Prompt:</p>
-                  <p>{image.prompt}</p>
-                </div>
-              )}
-              {image.workflow && (
-                <div>
-                  <p className="font-medium">Workflow: {image.workflow}</p>
-                </div>
-              )}
-            </div>
-            
-            {/* Bottom controls for fullscreen view */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-black/80 flex flex-wrap justify-center gap-2">
-              <TooltipProvider>
-                <ImageActions 
-                  imageUrl={image.url}
-                  onCreateAgain={handleCreateAgain}
-                  onUseAsInput={() => onUseAsInput && onUseAsInput(image.url)}
-                  generationInfo={{
-                    prompt: image.prompt || '',
-                    workflow: image.workflow,
-                    params: image.params
-                  }}
-                  isFullScreen
-                />
-              </TooltipProvider>
-            </div>
+    <div className="relative rounded-md overflow-hidden group">
+      <div className="relative aspect-square">
+        <img
+          src={image.url}
+          alt={image.prompt || `Generated image ${index + 1}`}
+          className="w-full h-full object-cover"
+        />
+        {viewMode === 'small' && (
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+            <Button variant="outline" size="sm" className="bg-black/50 border-white/20 text-white">
+              <ExternalLink className="h-4 w-4 mr-1" /> View
+            </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-      
-      {/* Batch counter - Bottom right position */}
-      {total > 1 && (
-        <div className="absolute bottom-2 right-2 bg-black/90 text-white px-3 py-1 rounded-full text-xs font-medium z-10">
+        )}
+        <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
           {index + 1}/{total}
         </div>
-      )}
-      
-      {/* Image controls overlay - ANIMATED slide in/out - Only in normal view */}
-      {!isSmallView && (
-        <div 
-          className={`absolute bottom-0 left-0 right-0 bg-black/90 flex justify-center p-3 z-10 transition-transform duration-300 ${
-            actionsVisible ? 'translate-y-0' : 'translate-y-full'
-          }`}
-          style={{ 
-            backgroundColor: isClicked ? 'rgba(0, 0, 0, 0.90)' : 'rgba(0, 0, 0, 0.75)'
-          }}
-        >
-          <div className="flex gap-2 justify-center">
-            <TooltipProvider>
-              <ImageActions 
-                imageUrl={image.url}
-                onCreateAgain={handleCreateAgain}
-                onUseAsInput={() => onUseAsInput && onUseAsInput(image.url)}
-                generationInfo={{
-                  prompt: image.prompt || '',
-                  workflow: image.workflow,
-                  params: image.params
-                }}
-                isMouseOver={!isClicked}
-              />
-            </TooltipProvider>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };

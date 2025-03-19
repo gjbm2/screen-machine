@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -49,6 +50,9 @@
     --sidebar-border: 220 13% 91%;
 
     --sidebar-ring: 217.2 91.2% 59.8%;
+    
+    --console-bg: 0 0% 0%;
+    --console-text: 0 0% 100%;
   }
 
   .dark {
@@ -87,6 +91,9 @@
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+    
+    --console-bg: 0 0% 0%;
+    --console-text: 0 0% 100%;
   }
 }
 
@@ -98,4 +105,16 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Console specific styles */
+.console-content {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  background-color: hsl(var(--console-bg));
+  color: hsl(var(--console-text));
+}
+
+/* Custom utility for rounded batch size buttons */
+.batch-size-controls {
+  @apply rounded-r-full overflow-hidden;
 }

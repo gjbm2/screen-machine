@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { toast } from 'sonner';
@@ -9,12 +10,15 @@ import { DropdownMenu } from '@/components/ui/dropdown-menu';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { LayoutGrid, List, Table2, Maximize, ExternalLink } from 'lucide-react';
+import { LayoutGrid, List, Table2, Maximize, ExternalLink, ChevronUp, ChevronDown } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatDistanceToNow } from 'date-fns';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import ImageBatchItem from './ImageBatchItem';
 
 type ViewMode = 'normal' | 'small' | 'table';
+type SortColumn = 'prompt' | 'when' | 'batch';
+type SortDirection = 'asc' | 'desc';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -65,6 +69,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [focusBatchId, setFocusBatchId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [openBatchDialog, setOpenBatchDialog] = useState<string | null>(null);
+  const [sortColumn, setSortColumn] = useState<SortColumn>('when');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -278,7 +284,11 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     return (
       <div className={`grid ${getGridColsClass()} gap-4`}>
         {allImages.map(({ batchId, image, index, total }, itemIndex) => (
-          <div key={`${batchId}-${index}`} className="relative">
+          <div 
+            key={`${batchId}-${index}`} 
+            className="relative"
+            onClick={() => handleOpenBatchDialog(batchId)}
+          >
             <ImageBatchItem
               image={image}
               batchId={batchId}
@@ -306,19 +316,78 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
   };
 
+  const handleSortColumn = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('desc');
+    }
+  };
+
+  const sortedBatchedImages = [...batchedImages].sort((a, b) => {
+    const imageA = a.images[0];
+    const imageB = b.images[0];
+    
+    if (!imageA || !imageB) return 0;
+    
+    if (sortColumn === 'prompt') {
+      const promptA = imageA.prompt || '';
+      const promptB = imageB.prompt || '';
+      return sortDirection === 'asc' 
+        ? promptA.localeCompare(promptB) 
+        : promptB.localeCompare(promptA);
+    } else if (sortColumn === 'when') {
+      const timestampA = imageA.timestamp || 0;
+      const timestampB = imageB.timestamp || 0;
+      return sortDirection === 'asc' 
+        ? timestampA - timestampB 
+        : timestampB - timestampA;
+    } else if (sortColumn === 'batch') {
+      return sortDirection === 'asc' 
+        ? a.images.length - b.images.length 
+        : b.images.length - a.images.length;
+    }
+    
+    return 0;
+  });
+
+  const renderSortIcon = (column: SortColumn) => {
+    if (sortColumn !== column) return null;
+    
+    return sortDirection === 'asc' 
+      ? <ChevronUp className="inline h-4 w-4 ml-1" /> 
+      : <ChevronDown className="inline h-4 w-4 ml-1" />;
+  };
+
   const renderTableView = () => {
     return (
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Prompt</TableHead>
-            <TableHead className="w-32">When</TableHead>
-            <TableHead className="w-20 text-center">Batch</TableHead>
+            <TableHead 
+              className="cursor-pointer"
+              onClick={() => handleSortColumn('prompt')}
+            >
+              Prompt {renderSortIcon('prompt')}
+            </TableHead>
+            <TableHead 
+              className="w-32 cursor-pointer"
+              onClick={() => handleSortColumn('when')}
+            >
+              When {renderSortIcon('when')}
+            </TableHead>
+            <TableHead 
+              className="w-20 text-center cursor-pointer"
+              onClick={() => handleSortColumn('batch')}
+            >
+              Batch {renderSortIcon('batch')}
+            </TableHead>
             <TableHead className="w-16 text-center">Open</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {batchedImages.map(({ batchId, images }) => {
+          {sortedBatchedImages.map(({ batchId, images }) => {
             const timestamp = images[0]?.timestamp || Date.now();
             const timeAgo = formatDistanceToNow(new Date(timestamp), { addSuffix: true });
             const promptText = images[0]?.prompt || 'No prompt';
@@ -464,9 +533,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             {openBatchDialog && (
               <Dialog open={!!openBatchDialog} onOpenChange={() => setOpenBatchDialog(null)}>
                 <DialogContent className="max-w-4xl p-0 overflow-hidden">
+                  <DialogTitle className="px-6 pt-6">Image Batch</DialogTitle>
                   {batchedImages.find(b => b.batchId === openBatchDialog)?.images.length > 0 && (
-                    <div className="p-6">
-                      <h2 className="text-xl font-semibold mb-4">Image Batch</h2>
+                    <div className="p-6 pt-2">
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                         {batchedImages.find(b => b.batchId === openBatchDialog)?.images.map((image, index) => (
                           <div key={index} className="relative rounded-md overflow-hidden border">

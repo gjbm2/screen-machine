@@ -14,16 +14,18 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
   return (
     <div className="absolute inset-0 pointer-events-none">
       <button 
-        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 rounded-full p-1.5 text-white transition-colors pointer-events-auto z-20"
+        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/30 hover:bg-black/50 rounded-full p-1 text-white/80 transition-colors pointer-events-auto z-20"
         onClick={onPrevious}
+        aria-label="Previous image"
       >
-        <ChevronLeft className="h-4 w-4" />
+        <ChevronLeft className="h-3 w-3" />
       </button>
       <button 
-        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 rounded-full p-1.5 text-white transition-colors pointer-events-auto z-20"
+        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/30 hover:bg-black/50 rounded-full p-1 text-white/80 transition-colors pointer-events-auto z-20"
         onClick={onNext}
+        aria-label="Next image"
       >
-        <ChevronRight className="h-4 w-4" />
+        <ChevronRight className="h-3 w-3" />
       </button>
     </div>
   );
