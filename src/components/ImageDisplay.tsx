@@ -9,9 +9,10 @@ interface ImageDisplayProps {
   imageUrl: string | null;
   prompt: string | null;
   isLoading: boolean;
+  uploadedImage?: string | null;
 }
 
-const ImageDisplay = ({ imageUrl, prompt, isLoading }: ImageDisplayProps) => {
+const ImageDisplay = ({ imageUrl, prompt, isLoading, uploadedImage }: ImageDisplayProps) => {
   // Mock function for downloading the image
   const handleDownload = () => {
     if (!imageUrl) return;
@@ -45,44 +46,63 @@ const ImageDisplay = ({ imageUrl, prompt, isLoading }: ImageDisplayProps) => {
     );
   }
 
-  if (!imageUrl) {
+  if (!imageUrl && !uploadedImage) {
     return null;
   }
 
   return (
     <div className="mt-8 animate-fade-in">
-      <Card className="overflow-hidden border border-border/30 image-container">
-        <div className="aspect-square sm:aspect-video md:aspect-[4/3] relative overflow-hidden rounded-t-lg">
-          <img 
-            src={imageUrl} 
-            alt={prompt || 'Generated image'} 
-            className="h-full w-full object-cover animate-blur-in"
-          />
-        </div>
-        <div className="p-4 flex justify-between items-center">
-          <p className="text-sm text-muted-foreground line-clamp-1">{prompt}</p>
-          <div className="flex gap-2">
-            <Button 
-              size="sm" 
-              variant="outline" 
-              className="rounded-full h-8 w-8 p-0" 
-              onClick={handleDownload}
-            >
-              <Download className="h-4 w-4" />
-              <span className="sr-only">Download</span>
-            </Button>
-            <Button 
-              size="sm" 
-              variant="outline" 
-              className="rounded-full h-8 w-8 p-0" 
-              onClick={handleShare}
-            >
-              <Share2 className="h-4 w-4" />
-              <span className="sr-only">Share</span>
-            </Button>
-          </div>
-        </div>
-      </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {uploadedImage && (
+          <Card className="overflow-hidden border border-border/30 image-container">
+            <div className="aspect-square sm:aspect-video md:aspect-[4/3] relative overflow-hidden rounded-t-lg">
+              <img 
+                src={uploadedImage} 
+                alt="Uploaded reference image" 
+                className="h-full w-full object-cover animate-blur-in"
+              />
+            </div>
+            <div className="p-4 flex justify-between items-center">
+              <p className="text-sm text-muted-foreground">Source Image</p>
+            </div>
+          </Card>
+        )}
+        
+        {imageUrl && (
+          <Card className={`overflow-hidden border border-border/30 image-container ${!uploadedImage ? 'md:col-span-2' : ''}`}>
+            <div className="aspect-square sm:aspect-video md:aspect-[4/3] relative overflow-hidden rounded-t-lg">
+              <img 
+                src={imageUrl} 
+                alt={prompt || 'Generated image'} 
+                className="h-full w-full object-cover animate-blur-in"
+              />
+            </div>
+            <div className="p-4 flex justify-between items-center">
+              <p className="text-sm text-muted-foreground line-clamp-1">{prompt}</p>
+              <div className="flex gap-2">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="rounded-full h-8 w-8 p-0" 
+                  onClick={handleDownload}
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="sr-only">Download</span>
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="rounded-full h-8 w-8 p-0" 
+                  onClick={handleShare}
+                >
+                  <Share2 className="h-4 w-4" />
+                  <span className="sr-only">Share</span>
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+      </div>
     </div>
   );
 };

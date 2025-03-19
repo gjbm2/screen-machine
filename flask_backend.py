@@ -21,31 +21,30 @@ PLACEHOLDER_IMAGES = [
 
 @app.route('/generate-image', methods=['POST'])
 def generate_image():
-    # Get the prompt from the request
+    # Get the data from the request
     data = request.get_json()
     prompt = data.get('prompt', '')
+    has_reference_image = data.get('has_reference_image', False)
     
-    if not prompt:
-        return jsonify({"error": "Prompt is required"}), 400
+    if not prompt and not has_reference_image:
+        return jsonify({"error": "Prompt or reference image is required"}), 400
     
     # Simulate processing time
     time.sleep(2)
     
-    # In a real implementation, you would call your AI model here
+    # In a real implementation, you would:
+    # 1. Handle the uploaded image file if present
+    # 2. Pass both the prompt and the image to your AI model for img2img generation
+    # 3. Return the generated image
+    
     # For this example, we're just returning a random placeholder image
-    
-    # You could integrate with:
-    # - OpenAI's DALL-E
-    # - Stability AI's Stable Diffusion
-    # - Midjourney
-    # - Or any other image generation model
-    
     image_url = random.choice(PLACEHOLDER_IMAGES)
     
     return jsonify({
         "success": True,
         "prompt": prompt,
-        "image_url": image_url
+        "image_url": image_url,
+        "used_reference_image": has_reference_image
     })
 
 if __name__ == '__main__':

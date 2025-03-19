@@ -9,18 +9,35 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string | null>(null);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
 
-  const handleSubmitPrompt = async (prompt: string) => {
+  const handleSubmitPrompt = async (prompt: string, imageFile?: File | null) => {
     setIsLoading(true);
     setCurrentPrompt(prompt);
     
+    // If user uploaded an image, create a local URL for display
+    if (imageFile) {
+      const localImageUrl = URL.createObjectURL(imageFile);
+      setUploadedImageUrl(localImageUrl);
+    }
+    
     try {
+      // In a real implementation, you would send both the prompt and image file
+      // to your backend using FormData
+      const formData = new FormData();
+      if (prompt) formData.append('prompt', prompt);
+      if (imageFile) formData.append('image', imageFile);
+      
+      // For the mock implementation, we'll just use the existing endpoint
       const response = await fetch('http://localhost:5000/generate-image', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ 
+          prompt,
+          has_reference_image: imageFile ? true : false 
+        }),
       });
       
       if (!response.ok) {
@@ -48,7 +65,7 @@ const Index = () => {
             Turn your words into <span className="text-primary">art</span>
           </h1>
           <p className="mt-6 text-lg text-foreground/70 max-w-2xl mx-auto">
-            Describe anything you can imagine, and watch as AI transforms your ideas into stunning visuals in seconds.
+            Describe anything you can imagine, or upload a reference image, and watch as AI transforms your ideas into stunning visuals in seconds.
           </p>
         </div>
         
@@ -61,6 +78,7 @@ const Index = () => {
             imageUrl={imageUrl}
             prompt={currentPrompt}
             isLoading={isLoading}
+            uploadedImage={uploadedImageUrl}
           />
         </div>
       </div>
