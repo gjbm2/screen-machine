@@ -79,9 +79,9 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     }
   };
 
-  // Determine the size and styling based on the view mode
+  // Small view has smaller images
   const sizeClasses = viewMode === 'small' 
-    ? 'aspect-square' 
+    ? 'aspect-square w-full h-full' 
     : 'aspect-square';
 
   return (
@@ -109,7 +109,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </div>
         )}
         
-        {/* Image indicator */}
+        {/* Image number indicator */}
         {total > 1 && viewMode !== 'small' && (
           <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
             {index + 1}/{total}
@@ -131,7 +131,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </Tooltip>
         )}
         
-        {/* Action panel - only on normal and large views */}
+        {/* Action panel - only on normal and large views if showActions is true */}
         {image.url && showActions && (viewMode === 'normal' || viewMode === 'large') && (
           <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 rounded-md p-1">
             <ImageActions

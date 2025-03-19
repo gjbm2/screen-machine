@@ -57,10 +57,10 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
     return null;
   }
 
-  // In small view, we show individual images without the container
+  // For small view, we directly render the images without the container
   if (viewMode === 'small') {
     return (
-      <div className="mb-2">
+      <>
         {completedImages.map((image, index) => (
           <ImageBatchItem
             key={`${batchId}-${index}`}
@@ -74,22 +74,22 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
             showActions={false}
           />
         ))}
-      </div>
+      </>
     );
   }
   
-  // For large, normal, and table views we use the container
   return (
     <SortableImageContainer 
       batchId={batchId}
       batch={{ images }}
-      isExpanded={isExpanded || viewMode === 'large'}
+      isExpanded={isExpanded}
       toggleExpand={toggleExpand}
       viewMode={viewMode}
     >
       <Card className={`rounded-t-none ${viewMode === 'table' ? 'p-0' : ''}`}>
         <CardContent className={`${viewMode === 'table' ? 'p-2' : 'p-4'}`}>
           {viewMode === 'table' ? (
+            // Table view
             <Table>
               <TableBody>
                 {completedImages.map((image, index) => (
@@ -122,6 +122,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               </TableBody>
             </Table>
           ) : (
+            // Large or Normal view
             <div className={`grid gap-4 ${viewMode === 'large' ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}>
               {completedImages.map((image, index) => (
                 <ImageBatchItem
@@ -133,9 +134,11 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                   onDeleteImage={onDeleteImage}
                   onImageClick={(url) => onImageClick(url, image.prompt)}
                   viewMode={viewMode}
-                  showActions={viewMode === 'large' || viewMode === 'normal'}
+                  showActions={true}
                 />
               ))}
+              
+              {/* Show loading placeholder for generating images */}
               {anyGenerating && (
                 <div className="relative aspect-square rounded-lg bg-muted animate-pulse flex items-center justify-center">
                   <div className="text-sm text-muted-foreground">Generating...</div>
@@ -144,6 +147,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
             </div>
           )}
           
+          {/* Action buttons for all views */}
           <div className="flex justify-between mt-4">
             <Button 
               variant="outline" 
@@ -166,6 +170,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
         </CardContent>
       </Card>
       
+      {/* Delete confirmation dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

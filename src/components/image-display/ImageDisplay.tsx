@@ -49,7 +49,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onDeleteContainer
 }) => {
   const isMobile = useIsMobile();
-  const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? 'normal' : 'normal');
+  const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
   
   const sensors = useSensors(
@@ -98,6 +98,11 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
   const batches = getImageBatches();
   const hasBatches = Object.keys(batches).length > 0;
+  
+  // Determine if a container should be expanded
+  const shouldExpandContainer = (batchId: string) => {
+    return expandedContainers[batchId] || viewMode === 'large';
+  };
   
   return (
     <div className="mt-8">
@@ -156,15 +161,16 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </Tabs>
           </div>
           
-          {isLoading && (
-            <Card className="mb-4">
-              <CardContent className="pt-6 pb-4">
-                <LoadingPlaceholder prompt={prompt} />
-              </CardContent>
-            </Card>
-          )}
-          
           <ScrollArea className="h-[calc(100vh-24rem)] pr-4">
+            {/* Loading placeholder only shown at the top level */}
+            {isLoading && (
+              <Card className="mb-4">
+                <CardContent className="pt-6 pb-4">
+                  <LoadingPlaceholder prompt={prompt} />
+                </CardContent>
+              </Card>
+            )}
+            
             <DndContext 
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -174,32 +180,99 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 items={imageContainerOrder}
                 strategy={viewMode === 'large' ? verticalListSortingStrategy : horizontalListSortingStrategy}
               >
-                <div className={`
-                  ${viewMode === 'large' ? 'space-y-4' : ''} 
-                  ${viewMode === 'small' ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2' : ''}
-                  ${viewMode === 'normal' ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : ''}
-                  ${viewMode === 'table' ? '' : ''}
-                `}>
-                  {imageContainerOrder.map(batchId => {
-                    if (!batches[batchId]) return null;
-                    
-                    return (
-                      <ImageBatch
-                        key={batchId}
-                        batchId={batchId}
-                        images={batches[batchId]}
-                        isExpanded={!!expandedContainers[batchId] || viewMode === 'large'}
-                        toggleExpand={handleToggleExpand}
-                        onImageClick={(url, prompt) => {}}
-                        onCreateAgain={() => onCreateAgain(batchId)}
-                        onDeleteImage={onDeleteImage}
-                        onDeleteContainer={() => onDeleteContainer(batchId)}
-                        activeImageUrl={imageUrl}
-                        viewMode={viewMode}
-                      />
-                    );
-                  })}
-                </div>
+                {viewMode === 'small' ? (
+                  // Small view - grid of small thumbnails
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                    {imageContainerOrder.map(batchId => {
+                      if (!batches[batchId]) return null;
+                      
+                      return (
+                        <ImageBatch
+                          key={batchId}
+                          batchId={batchId}
+                          images={batches[batchId]}
+                          isExpanded={false}
+                          toggleExpand={handleToggleExpand}
+                          onImageClick={(url, prompt) => {}}
+                          onCreateAgain={() => onCreateAgain(batchId)}
+                          onDeleteImage={onDeleteImage}
+                          onDeleteContainer={() => onDeleteContainer(batchId)}
+                          activeImageUrl={imageUrl}
+                          viewMode="small"
+                        />
+                      );
+                    })}
+                  </div>
+                ) : viewMode === 'large' ? (
+                  // Large view - one container at a time, full width
+                  <div className="space-y-4">
+                    {imageContainerOrder.map(batchId => {
+                      if (!batches[batchId]) return null;
+                      
+                      return (
+                        <ImageBatch
+                          key={batchId}
+                          batchId={batchId}
+                          images={batches[batchId]}
+                          isExpanded={true}
+                          toggleExpand={handleToggleExpand}
+                          onImageClick={(url, prompt) => {}}
+                          onCreateAgain={() => onCreateAgain(batchId)}
+                          onDeleteImage={onDeleteImage}
+                          onDeleteContainer={() => onDeleteContainer(batchId)}
+                          activeImageUrl={imageUrl}
+                          viewMode="large"
+                        />
+                      );
+                    })}
+                  </div>
+                ) : viewMode === 'table' ? (
+                  // Table view - list of images with details
+                  <div className="space-y-4">
+                    {imageContainerOrder.map(batchId => {
+                      if (!batches[batchId]) return null;
+                      
+                      return (
+                        <ImageBatch
+                          key={batchId}
+                          batchId={batchId}
+                          images={batches[batchId]}
+                          isExpanded={true}
+                          toggleExpand={handleToggleExpand}
+                          onImageClick={(url, prompt) => {}}
+                          onCreateAgain={() => onCreateAgain(batchId)}
+                          onDeleteImage={onDeleteImage}
+                          onDeleteContainer={() => onDeleteContainer(batchId)}
+                          activeImageUrl={imageUrl}
+                          viewMode="table"
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  // Normal view (default) - grid of medium-sized containers
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {imageContainerOrder.map(batchId => {
+                      if (!batches[batchId]) return null;
+                      
+                      return (
+                        <ImageBatch
+                          key={batchId}
+                          batchId={batchId}
+                          images={batches[batchId]}
+                          isExpanded={!!expandedContainers[batchId]}
+                          toggleExpand={handleToggleExpand}
+                          onImageClick={(url, prompt) => {}}
+                          onCreateAgain={() => onCreateAgain(batchId)}
+                          onDeleteImage={onDeleteImage}
+                          onDeleteContainer={() => onDeleteContainer(batchId)}
+                          activeImageUrl={imageUrl}
+                          viewMode="normal"
+                        />
+                      );
+                    })}
+                  </div>
+                )}
               </SortableContext>
             </DndContext>
           </ScrollArea>
