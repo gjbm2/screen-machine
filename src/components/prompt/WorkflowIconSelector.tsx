@@ -45,7 +45,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   
   return (
     <div className="flex items-center h-[48px]">
-      <HoverCard>
+      <HoverCard openDelay={0} closeDelay={100}>
         <HoverCardTrigger asChild>
           <Button
             variant="outline"
@@ -63,7 +63,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
             )}
           </Button>
         </HoverCardTrigger>
-        <HoverCardContent className="w-64 p-2">
+        <HoverCardContent className="w-64 p-2" align="start">
           <div className="space-y-2">
             <h4 className="text-sm font-semibold">Workflows</h4>
             <div className="grid grid-cols-1 gap-1">

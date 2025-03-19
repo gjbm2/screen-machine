@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { ExternalLink, Trash2, Maximize, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -83,6 +82,12 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   };
 
   const handleImageClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('.image-action-button') ||
+        (e.target as HTMLElement).closest('button')) {
+      e.stopPropagation();
+      return;
+    }
+    
     if (viewMode === 'normal' && isRolledUp) {
       if (image.url && onFullScreen) {
         onFullScreen(batchId, index);
@@ -112,7 +117,6 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     ? 'aspect-square w-full h-full' 
     : 'aspect-square w-full';
 
-  // Show action buttons on hover for normal view (including rolled up)
   const shouldShowActionsMenu = (isMobile ? showActionPanel : (isHovered || showActionPanel)) && 
                       image.url && 
                       viewMode === 'normal' &&
@@ -186,7 +190,10 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         )}
         
         {shouldShowActionsMenu && (
-          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-0.5 transition-opacity bg-black/70 rounded-md p-1">
+          <div 
+            className="absolute bottom-2 left-2 right-2 flex justify-center space-x-0.5 transition-opacity bg-black/70 rounded-md p-1"
+            onClick={(e) => e.stopPropagation()}
+          >
             <ImageActions
               imageUrl={image.url}
               onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
