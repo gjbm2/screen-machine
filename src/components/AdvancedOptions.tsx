@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   Sheet,
@@ -49,7 +48,11 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
-        <Button variant="outline" className="w-full">
+        <Button 
+          variant="outline" 
+          className="w-full"
+          data-advanced-options-trigger
+        >
           <Settings className="h-4 w-4 mr-2" />
           Advanced Options
         </Button>

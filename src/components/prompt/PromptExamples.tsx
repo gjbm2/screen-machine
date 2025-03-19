@@ -42,8 +42,8 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
 
   return (
     <div className="px-4 pb-3">
-      <div className="flex flex-wrap gap-2 mb-3 items-center">
-        <span className="text-xs text-muted-foreground whitespace-nowrap">Try an example:</span>
+      <div className="flex flex-wrap gap-2 mb-3">
+        <span className="text-xs text-muted-foreground whitespace-nowrap py-1 mr-1">Try:</span>
         <div className="flex-1 flex flex-wrap gap-2">
           {visiblePrompts.map((example, index) => (
             <button
@@ -60,7 +60,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
             <Button
               variant="ghost"
               size="sm"
-              className="text-[10px] h-6 px-2 rounded-full"
+              className="text-[10px] h-6 px-2 py-0 rounded-full text-muted-foreground hover:text-foreground/70"
               onClick={() => setShowMoreBasic(!showMoreBasic)}
             >
               {showMoreBasic ? (
@@ -73,8 +73,8 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
         </div>
       </div>
       
-      <div className="flex flex-wrap gap-2 items-center">
-        <span className="text-xs text-muted-foreground whitespace-nowrap">Add a style:</span>
+      <div className="flex flex-wrap gap-2">
+        <span className="text-xs text-muted-foreground whitespace-nowrap py-1 mr-1">Style:</span>
         <div className="flex-1 flex flex-wrap gap-2">
           {visibleStyles.map((style, index) => (
             <button
@@ -91,7 +91,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
             <Button
               variant="ghost"
               size="sm"
-              className="text-[10px] h-6 px-2 rounded-full"
+              className="text-[10px] h-6 px-2 py-0 rounded-full text-muted-foreground hover:text-foreground/70"
               onClick={() => setShowMoreStyles(!showMoreStyles)}
             >
               {showMoreStyles ? (

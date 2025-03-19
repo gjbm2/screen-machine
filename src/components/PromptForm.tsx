@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { X } from 'lucide-react';
+import { X, Settings } from 'lucide-react';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import workflowsData from '@/data/workflows.json';
 import globalOptionsData from '@/data/global-options.json';
@@ -205,36 +205,60 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
           />
           
           <div className="p-3 pt-0 space-y-3">
-            <WorkflowIconSelector
-              workflows={workflows}
-              selectedWorkflow={selectedWorkflow}
-              onWorkflowChange={handleWorkflowChange}
-            />
-
-            <div className="flex gap-3">
-              <ImageUploader
-                isLoading={false}
-                onImageUpload={handleImageUpload}
-                onWorkflowChange={handleWorkflowChange}
-              />
+            <div className="flex gap-2 items-center">
+              <div className="flex-grow-0 mr-1">
+                <WorkflowIconSelector
+                  workflows={workflows}
+                  selectedWorkflow={selectedWorkflow}
+                  onWorkflowChange={handleWorkflowChange}
+                />
+              </div>
               
+              <div className="flex-grow">
+                <ImageUploader
+                  isLoading={false}
+                  onImageUpload={handleImageUpload}
+                  onWorkflowChange={handleWorkflowChange}
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
               <Button 
                 type="submit" 
-                className="btn-shine rounded-full px-6 transition-all hover:shadow-md flex-1"
+                className="btn-shine rounded-full px-6 transition-all hover:shadow-md flex-1 py-6 text-lg font-medium"
               >
                 Generate
               </Button>
+              
+              <Button 
+                type="button"
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  const advancedOptionsButton = document.querySelector('[data-advanced-options-trigger]') as HTMLButtonElement;
+                  if (advancedOptionsButton) {
+                    advancedOptionsButton.click();
+                  }
+                }}
+                className="px-3 text-xs text-muted-foreground"
+              >
+                <Settings className="h-3 w-3 mr-1" />
+                Advanced
+              </Button>
             </div>
             
-            <AdvancedOptions
-              workflows={workflows}
-              selectedWorkflow={selectedWorkflow}
-              onWorkflowChange={handleWorkflowChange}
-              params={workflowParams}
-              onParamChange={handleParamChange}
-              globalParams={globalParams}
-              onGlobalParamChange={handleGlobalParamChange}
-            />
+            <div className="hidden">
+              <AdvancedOptions
+                workflows={workflows}
+                selectedWorkflow={selectedWorkflow}
+                onWorkflowChange={handleWorkflowChange}
+                params={workflowParams}
+                onParamChange={handleParamChange}
+                globalParams={globalParams}
+                onGlobalParamChange={handleGlobalParamChange}
+              />
+            </div>
           </div>
         </form>
       </Card>
