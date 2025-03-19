@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Settings, X } from 'lucide-react';
+import { Settings, X, Rocket } from 'lucide-react';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import workflowsData from '@/data/workflows.json';
 import globalOptionsData from '@/data/global-options.json';
@@ -20,6 +21,7 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface PromptFormProps {
   onSubmit: (prompt: string, imageFiles?: File[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string) => void;
@@ -37,6 +39,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
   const [globalParams, setGlobalParams] = useState<Record<string, any>>({});
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   const workflows = workflowsData as Workflow[];
+  const isMobile = useIsMobile();
   
   useEffect(() => {
     if (currentPrompt !== null) {
@@ -270,10 +273,11 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
               
               <Button 
                 type="submit" 
-                className="btn-shine rounded-full px-6 transition-all hover:shadow-md h-[48px] text-lg font-medium flex-1"
+                className="btn-shine rounded-full px-4 sm:px-6 transition-all hover:shadow-md h-[48px] text-lg font-medium flex-1 flex items-center gap-2"
                 disabled={isLoading}
               >
-                Generate
+                <Rocket className="h-5 w-5" />
+                {!isMobile && "Generate"}
               </Button>
             </div>
           </div>

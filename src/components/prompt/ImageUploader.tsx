@@ -3,6 +3,7 @@ import React, { useRef } from 'react';
 import { toast } from 'sonner';
 import { Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ImageUploaderProps {
   isLoading: boolean;
@@ -16,6 +17,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   onWorkflowChange,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -73,11 +75,11 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         type="button" 
         variant="outline"
         onClick={triggerFileInput}
-        className="rounded-full flex-shrink-0 text-sm flex items-center gap-2 px-4 h-[48px]"
+        className="rounded-full flex-shrink-0 text-sm flex items-center gap-2 px-3 h-[48px]"
         disabled={isLoading}
       >
         <Upload className="h-4 w-4" />
-        Upload Images
+        {isMobile ? 'Upload' : 'Upload Images'}
       </Button>
     </>
   );
