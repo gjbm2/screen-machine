@@ -10,10 +10,10 @@ import { DropdownMenu } from '@/components/ui/dropdown-menu';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { LayoutGrid, List, Table2, Maximize, ExternalLink, ChevronUp, ChevronDown } from 'lucide-react';
+import { LayoutGrid, List, Table2, Maximize, ExternalLink, ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatDistanceToNow } from 'date-fns';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogClose } from '@/components/ui/dialog';
 import ImageBatchItem from './ImageBatchItem';
 import ImageActions from '@/components/ImageActions';
 
