@@ -50,7 +50,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
   const widthClass = viewMode === 'normal' 
     ? isExpanded 
       ? 'col-span-full w-full' // Full width when expanded in normal mode
-      : 'w-full max-w-[160px] sm:max-w-[200px] md:max-w-md' // Width for rolled up view - smaller on mobile
+      : 'w-full max-w-[150px] sm:max-w-[180px] md:max-w-[200px]' // Width for rolled up view - smaller on mobile to fit 2 per row
     : 'w-full'; // Default width for other view modes
 
   const style = {
@@ -59,7 +59,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     opacity: isDragging ? 0.6 : 1,
     zIndex: isDragging ? 10 : 1,
     position: 'relative' as 'relative',
-    marginBottom: '1rem',
+    marginBottom: '0.5rem', // Reduced margin from 1rem to 0.5rem
     width: '100%',
   };
 
@@ -72,21 +72,21 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
 
   return (
     <div ref={setNodeRef} style={style} className={`block ${widthClass}`}>
-      <div className="flex items-center justify-between bg-card rounded-t-lg py-2 px-4 border-b">
+      <div className="flex items-center justify-between bg-card rounded-t-lg py-1 px-2 border-b">
         <div 
           {...attributes} 
           {...listeners}
           className="cursor-grab active:cursor-grabbing p-1"
         >
-          <GripVertical className="h-5 w-5 opacity-70" />
+          <GripVertical className="h-4 w-4 opacity-70" />
         </div>
-        <div className="flex-1 truncate mx-2 text-sm text-muted-foreground">
+        <div className="flex-1 truncate mx-1 text-xs text-muted-foreground">
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="font-medium cursor-help flex items-center">
                 {referenceImageUrl && (
-                  <button onClick={handleReferenceImageClick} className="mr-1.5">
-                    <Image className="h-4 w-4 text-primary" />
+                  <button onClick={handleReferenceImageClick} className="mr-1">
+                    <Image className="h-3 w-3 text-primary" />
                   </button>
                 )}
                 {titleText}
@@ -102,9 +102,9 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
           className="p-1 rounded-full hover:bg-accent/50 transition-colors"
         >
           {isExpanded ? (
-            <ChevronUp className="h-5 w-5" />
+            <ChevronUp className="h-4 w-4" />
           ) : (
-            <ChevronDown className="h-5 w-5" />
+            <ChevronDown className="h-4 w-4" />
           )}
         </button>
       </div>

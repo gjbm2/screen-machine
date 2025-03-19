@@ -334,21 +334,23 @@ const Index = () => {
       <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 flex-grow">
         <div className="flex justify-between items-center">
           <Header />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={toggleConsole}
-                className="h-10 w-10 fixed top-4 right-4 z-50 bg-background/80 backdrop-blur-sm md:static md:bg-transparent md:backdrop-blur-0"
-              >
-                <Terminal className={`h-5 w-5 ${isConsoleVisible ? 'text-primary' : ''}`} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Toggle Command Console</p>
-            </TooltipContent>
-          </Tooltip>
+          <div className="flex items-center space-x-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={toggleConsole}
+                  className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50"
+                >
+                  <Terminal className={`h-5 w-5 ${isConsoleVisible ? 'text-primary' : ''}`} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Toggle Command Console</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
         
         <div className="mt-8">

@@ -111,12 +111,12 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
     >
       {viewMode === 'table' ? (
         <Card className="rounded-t-none">
-          <CardContent className="p-2">
+          <CardContent className="p-1">
             <Table>
               <TableBody>
                 {completedImages.map((image, index) => (
                   <TableRow key={`${batchId}-${index}`}>
-                    <TableCell className="p-2">
+                    <TableCell className="p-1">
                       <div className="w-16 h-16 overflow-hidden rounded">
                         <img 
                           src={image.url}
@@ -126,10 +126,10 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                         />
                       </div>
                     </TableCell>
-                    <TableCell className="p-2">
+                    <TableCell className="p-1">
                       <p className="text-xs truncate text-muted-foreground max-w-md">{image.prompt}</p>
                     </TableCell>
-                    <TableCell className="p-2 text-right">
+                    <TableCell className="p-1 text-right">
                       <Button 
                         variant="ghost" 
                         size="icon" 
@@ -147,11 +147,11 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
         </Card>
       ) : isExpanded ? (
         <Card className="rounded-t-none">
-          <CardContent className="p-4">
+          <CardContent className="p-2">
             {/* Replace with image detail content but use full screen trigger for any full screen actions */}
-            <div className="space-y-4">
+            <div className="space-y-2">
               {/* Main image display */}
-              <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden max-w-lg mx-auto">
+              <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden max-w-full mx-auto">
                 {completedImages.length > 0 ? (
                   <ImageBatchItem
                     image={completedImages[activeImageIndex]}
@@ -177,11 +177,11 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
               
               {/* Thumbnail gallery */}
               {completedImages.length > 1 && (
-                <div className="flex flex-wrap gap-2 justify-center pt-2">
+                <div className="flex flex-wrap gap-1 justify-center pt-1">
                   {completedImages.map((image, idx) => (
                     <div 
                       key={`thumb-${batchId}-${idx}`}
-                      className={`w-16 h-16 rounded-md overflow-hidden cursor-pointer border-2 ${
+                      className={`w-14 h-14 rounded-md overflow-hidden cursor-pointer border-2 ${
                         idx === activeImageIndex ? 'border-primary' : 'border-transparent'
                       }`}
                       onClick={() => setActiveImageIndex(idx)}
@@ -212,8 +212,8 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
         </Card>
       ) : (
         <Card className="rounded-t-none">
-          <CardContent className="p-4">
-            <div className="grid gap-4 grid-cols-1">
+          <CardContent className="p-2">
+            <div className="grid gap-1 grid-cols-1">
               {completedImages.length > 0 ? (
                 <ImageBatchItem
                   key={`${batchId}-${activeImageIndex}`}

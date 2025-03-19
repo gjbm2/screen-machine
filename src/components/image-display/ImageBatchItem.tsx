@@ -127,7 +127,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
 
   return (
     <div 
-      className={`relative rounded-md overflow-hidden group ${viewMode === 'small' ? 'mb-2' : ''}`}
+      className={`relative rounded-md overflow-hidden group ${viewMode === 'small' ? 'mb-1' : ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

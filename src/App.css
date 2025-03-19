@@ -35,7 +35,7 @@
 }
 
 .card {
-  padding: 1em;
+  padding: 0.5em;
 }
 
 .read-the-docs {
@@ -44,7 +44,7 @@
 
 /* Image containers custom styles */
 :root {
-  --image-container-padding: 0.5rem;
+  --image-container-padding: 0.25rem;
 }
 
 .image-batch-container .card-content {
@@ -53,6 +53,18 @@
 
 @media (max-width: 640px) {
   .image-batch-container .card-content {
-    padding: 0.25rem;
+    padding: 0.125rem;
   }
+}
+
+/* Reduce overall padding for tighter layout */
+.image-batch-container {
+  margin-bottom: 0.25rem;
+}
+
+/* Make hover action buttons smaller */
+.image-action-button {
+  padding: 0.25rem !important;
+  height: 1.5rem !important;
+  width: 1.5rem !important;
 }

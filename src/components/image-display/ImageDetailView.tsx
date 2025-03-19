@@ -27,6 +27,15 @@ interface ImageDetailViewProps {
   onDeleteImage: (batchId: string, index: number) => void;
   onCreateAgain: (batchId: string) => void;
   onUseAsInput?: ((imageUrl: string) => void) | null;
+  allImages?: Array<{
+    url: string;
+    batchId: string;
+    batchIndex: number;
+    prompt?: string;
+  }>;
+  isNavigatingAllImages?: boolean;
+  onNavigateGlobal?: (imageIndex: number) => void;
+  currentGlobalIndex?: number;
 }
 
 const ImageDetailView: React.FC<ImageDetailViewProps> = ({
@@ -38,7 +47,11 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   onNavigateNext,
   onDeleteImage,
   onCreateAgain,
-  onUseAsInput
+  onUseAsInput,
+  allImages,
+  isNavigatingAllImages,
+  onNavigateGlobal,
+  currentGlobalIndex
 }) => {
   const activeImage = images[activeIndex];
   const [showReferenceImage, setShowReferenceImage] = React.useState(false);
@@ -85,19 +98,31 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   };
 
   const handleTouchEnd = (e: TouchEvent) => {
-    if (startX === null || images.length <= 1) return;
+    if (startX === null) return;
     
     const endX = e.changedTouches[0].clientX;
     const diff = startX - endX;
     
     // If swipe distance is sufficient (30px)
     if (Math.abs(diff) > 30) {
-      if (diff > 0 && activeIndex < images.length - 1) {
-        // Swipe left, go to next image
-        onNavigateNext(e as unknown as React.MouseEvent);
-      } else if (diff < 0 && activeIndex > 0) {
-        // Swipe right, go to previous image
-        onNavigatePrev(e as unknown as React.MouseEvent);
+      if (isNavigatingAllImages && onNavigateGlobal && allImages && allImages.length > 1) {
+        // Global navigation across all images
+        if (diff > 0 && (currentGlobalIndex as number) < allImages.length - 1) {
+          // Swipe left, go to next image
+          onNavigateGlobal(currentGlobalIndex as number + 1);
+        } else if (diff < 0 && (currentGlobalIndex as number) > 0) {
+          // Swipe right, go to previous image
+          onNavigateGlobal(currentGlobalIndex as number - 1);
+        }
+      } else if (images.length > 1) {
+        // Navigation within a batch
+        if (diff > 0 && activeIndex < images.length - 1) {
+          // Swipe left, go to next image
+          onNavigateNext(e as unknown as React.MouseEvent);
+        } else if (diff < 0 && activeIndex > 0) {
+          // Swipe right, go to previous image
+          onNavigatePrev(e as unknown as React.MouseEvent);
+        }
       }
     }
     
@@ -141,11 +166,27 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
           </div>
         )}
         
-        {/* Navigation controls - only if multiple images */}
-        {images.length > 1 && (
+        {/* Navigation controls */}
+        {(isNavigatingAllImages ? (allImages && allImages.length > 1) : (images.length > 1)) && (
           <NavigationControls 
-            onPrevious={onNavigatePrev}
-            onNext={onNavigateNext}
+            onPrevious={isNavigatingAllImages && onNavigateGlobal 
+              ? (e) => { 
+                  e.stopPropagation();
+                  if ((currentGlobalIndex as number) > 0) {
+                    onNavigateGlobal((currentGlobalIndex as number) - 1);
+                  }
+                }
+              : onNavigatePrev
+            }
+            onNext={isNavigatingAllImages && onNavigateGlobal
+              ? (e) => { 
+                  e.stopPropagation();
+                  if (allImages && (currentGlobalIndex as number) < allImages.length - 1) {
+                    onNavigateGlobal((currentGlobalIndex as number) + 1);
+                  }
+                }
+              : onNavigateNext
+            }
             size="large"
           />
         )}

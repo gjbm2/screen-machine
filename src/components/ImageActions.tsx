@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { 
@@ -123,10 +124,10 @@ const ImageActions: React.FC<ImageActionsProps> = ({
     setShowInfoDialog(true);
   };
   
-  // Improve button styling for better contrast
+  // Improve button styling for better contrast and make them smaller
   const buttonSizeClass = isFullScreen 
     ? "px-3 py-2 text-sm" 
-    : "text-white bg-black/60 hover:bg-black/70 border border-white/20 px-1.5 py-1";
+    : "text-white bg-black/60 hover:bg-black/70 border border-white/20 px-1 py-0.5 h-6 w-6 image-action-button";
 
   const buttonVariant = isFullScreen ? "default" : "secondary";
 
@@ -147,7 +148,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
               className={buttonSizeClass}
               onClick={handleShowInfo}
             >
-              <Info className="h-3.5 w-3.5" />
+              <Info className="h-3 w-3" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">
@@ -167,7 +168,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
               onClick={handleSaveImage}
               disabled={isSaving}
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="h-3 w-3" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">
@@ -189,7 +190,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
                     className={buttonSizeClass}
                     disabled={isPublishing}
                   >
-                    <Share2 className="h-3.5 w-3.5" />
+                    <Share2 className="h-3 w-3" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="center" className="bg-background/95 backdrop-blur-sm z-[100] border">
@@ -226,7 +227,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
                 className={buttonSizeClass}
                 onClick={onUseAsInput}
               >
-                <Recycle className="h-3.5 w-3.5" />
+                <Recycle className="h-3 w-3" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="top">
@@ -247,7 +248,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
                 className={buttonSizeClass}
                 onClick={onCreateAgain}
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="h-3 w-3" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="top">

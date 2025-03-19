@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Settings, X, Rocket, Plus, Minus, ChevronUp, ChevronDown } from 'lucide-react';
+import { Settings, X, Plus, Minus, ChevronUp, ChevronDown, Camera } from 'lucide-react';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import workflowsData from '@/data/workflows.json';
 import globalOptionsData from '@/data/global-options.json';
@@ -22,6 +23,12 @@ import {
 } from "@/components/ui/carousel";
 import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface PromptFormProps {
   onSubmit: (prompt: string, imageFiles?: File[] | string[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string) => void;
@@ -190,6 +197,54 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
     }
   };
 
+  // Handle mobile camera capture
+  const handleCameraCapture = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        toast.error("Camera access not supported in your browser");
+        return;
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.play();
+      
+      // Wait for video to be ready
+      await new Promise(resolve => {
+        video.onloadedmetadata = resolve;
+      });
+      
+      // Create canvas to capture frame
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error("Could not get canvas context");
+      }
+      
+      // Draw video frame to canvas
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Get image from canvas
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const file = new File([blob], `camera-capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
+          handleImageUpload([file]);
+        }
+        
+        // Stop camera
+        stream.getTracks().forEach(track => track.stop());
+      }, 'image/jpeg', 0.8);
+      
+    } catch (error) {
+      console.error("Error accessing camera:", error);
+      toast.error("Could not access camera");
+    }
+  };
+
   return (
     <div className="animate-fade-up">
       <Collapsible open={!isFormCollapsed} onOpenChange={(open) => setIsFormCollapsed(!open)}>
@@ -227,9 +282,6 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                               <X className="h-4 w-4" />
                             </button>
                           </div>
-                          <p className="mt-2 text-xs text-muted-foreground truncate">
-                            {imageFiles[index]?.name}
-                          </p>
                         </CarouselItem>
                       ))}
                     </CarouselContent>
@@ -263,13 +315,41 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                   onPromptChange={setPrompt}
                   uploadedImages={previewUrls}
                 />
+                
+                {/* Move upload image to the right side */}
                 <div className="absolute right-3 top-3">
-                  <ImageUploader
-                    isLoading={isButtonDisabled}
-                    onImageUpload={handleImageUpload}
-                    onWorkflowChange={handleWorkflowChange}
-                    hideLabel={true}
-                  />
+                  {isMobile ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 bg-transparent hover:bg-muted/50"
+                        >
+                          <ImageUploader
+                            isLoading={isButtonDisabled}
+                            onImageUpload={handleImageUpload}
+                            onWorkflowChange={handleWorkflowChange}
+                            hideLabel={true}
+                          />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={handleCameraCapture}>
+                          <Camera className="mr-2 h-4 w-4" />
+                          <span>Take Photo</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    <ImageUploader
+                      isLoading={isButtonDisabled}
+                      onImageUpload={handleImageUpload}
+                      onWorkflowChange={handleWorkflowChange}
+                      hideLabel={true}
+                    />
+                  )}
                 </div>
               </div>
               
@@ -280,7 +360,17 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
               />
               
               <div className="p-2 pt-0 space-y-2">
-                <div className="flex justify-between items-center">
+                <div className="flex justify-end items-center">
+                  <Button 
+                    type="button"
+                    variant="outline" 
+                    size="icon"
+                    onClick={toggleAdvancedOptions}
+                    className="h-8 w-8 text-muted-foreground"
+                    aria-label="Settings"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
                   <AdvancedOptions
                     workflows={workflows}
                     selectedWorkflow={selectedWorkflow}
@@ -310,44 +400,36 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                   </div>
 
                   <div className="relative flex-1 flex items-center">
-                    <Button 
-                      type="button"
-                      className="h-[48px] rounded-l-full px-1 sm:px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground border-r border-primary-foreground/20"
-                      onClick={decrementBatchSize}
-                      disabled={batchSize <= 1}
-                    >
-                      <Minus className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center mr-1">
+                      <Button 
+                        type="button"
+                        className="h-[48px] rounded-l-full px-1 sm:px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground border-r border-primary-foreground/20"
+                        onClick={decrementBatchSize}
+                        disabled={batchSize <= 1}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      
+                      <div className="flex justify-center items-center h-[48px] bg-primary text-primary-foreground w-10 sm:w-12">
+                        <span className="text-lg font-medium">{batchSize}</span>
+                      </div>
+                      
+                      <Button 
+                        type="button"
+                        className="h-[48px] rounded-r-full px-1 sm:px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground border-l border-primary-foreground/20"
+                        onClick={incrementBatchSize}
+                        disabled={batchSize >= 9}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                     
                     <Button 
                       type="submit" 
-                      className="rounded-none h-[48px] px-2 sm:px-4 md:px-6 transition-all hover:shadow-md text-lg font-medium flex-grow flex items-center justify-center gap-1 sm:gap-2 btn-shine"
+                      className="flex-grow h-[48px] rounded-full px-2 sm:px-4 transition-all hover:shadow-md text-lg font-medium flex items-center justify-center btn-shine"
                       disabled={isButtonDisabled}
                     >
-                      Render
-                      <span className="inline-flex items-center justify-center bg-primary-foreground/20 text-primary-foreground rounded-md px-1.5 py-0.5 text-xs ml-1 sm:ml-2">
-                        x{batchSize}
-                      </span>
-                    </Button>
-                    
-                    <Button 
-                      type="button"
-                      className="h-[48px] rounded-r-full px-1 sm:px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground border-l border-primary-foreground/20"
-                      onClick={incrementBatchSize}
-                      disabled={batchSize >= 9}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                    
-                    <Button 
-                      type="button"
-                      variant="outline" 
-                      size="icon"
-                      onClick={toggleAdvancedOptions}
-                      className="h-[36px] w-[36px] text-muted-foreground ml-1 sm:ml-2"
-                      aria-label="Settings"
-                    >
-                      <Settings className="h-4 w-4" />
+                      Go
                     </Button>
                   </div>
                 </div>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
@@ -53,6 +54,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [showFullScreenView, setShowFullScreenView] = useState(false);
   const [fullScreenBatchId, setFullScreenBatchId] = useState<string | null>(null);
   const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
+  const [allImagesFlat, setAllImagesFlat] = useState<any[]>([]);
+  const [currentGlobalIndex, setCurrentGlobalIndex] = useState<number | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -73,6 +76,26 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       }
     }
   }, [imageContainerOrder, isLoading]);
+  
+  useEffect(() => {
+    // Flatten all completed images into one array for global navigation
+    const allImages = generatedImages
+      .filter(img => img.status === 'completed')
+      .map(img => ({
+        url: img.url,
+        prompt: img.prompt,
+        batchId: img.batchId,
+        batchIndex: img.batchIndex,
+        workflow: img.workflow,
+        timestamp: img.timestamp,
+        referenceImageUrl: img.referenceImageUrl,
+        params: img.params,
+        refiner: img.refiner
+      }))
+      .sort((a, b) => b.timestamp - a.timestamp);
+    
+    setAllImagesFlat(allImages);
+  }, [generatedImages]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -127,6 +150,34 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     setFullScreenBatchId(batchId);
     setFullScreenImageIndex(imageIndex);
     setShowFullScreenView(true);
+    
+    // Find the global index if coming from small view
+    if (viewMode === 'small') {
+      const selectedImage = generatedImages.find(
+        img => img.batchId === batchId && img.batchIndex === imageIndex && img.status === 'completed'
+      );
+      
+      if (selectedImage) {
+        const globalIndex = allImagesFlat.findIndex(
+          img => img.batchId === batchId && img.batchIndex === imageIndex
+        );
+        
+        if (globalIndex !== -1) {
+          setCurrentGlobalIndex(globalIndex);
+        }
+      }
+    } else {
+      setCurrentGlobalIndex(null);
+    }
+  };
+  
+  const handleNavigateGlobal = (index: number) => {
+    if (index >= 0 && index < allImagesFlat.length) {
+      const targetImage = allImagesFlat[index];
+      setFullScreenBatchId(targetImage.batchId);
+      setFullScreenImageIndex(targetImage.batchIndex);
+      setCurrentGlobalIndex(index);
+    }
   };
   
   const handleSmallImageClick = (image: any) => {
@@ -206,8 +257,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   return (
     <div className="mt-4">
       {hasBatches && (
-        <div className="mt-4">
-          <div className="flex justify-between items-center mb-2">
+        <div className="mt-2">
+          <div className="flex justify-between items-center mb-1">
             <h2 className="text-xl font-bold">Generated Images</h2>
             <Tabs 
               defaultValue="normal" 
@@ -257,7 +308,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 strategy={viewMode === 'small' ? horizontalListSortingStrategy : verticalListSortingStrategy}
               >
                 {viewMode === 'small' ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1">
+                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-0.5">
                     {getAllImages().map((image, idx) => (
                       <div 
                         key={`${image.batchId}-${image.batchIndex}`} 
@@ -364,7 +415,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     </Table>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1">
                     {imageContainerOrder.map((batchId, index) => {
                       if (!batches[batchId]) return null;
                       
@@ -440,6 +491,10 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         onUseGeneratedAsInput(url);
                         setShowFullScreenView(false);
                       }}
+                      allImages={viewMode === 'small' ? allImagesFlat : undefined}
+                      isNavigatingAllImages={viewMode === 'small'}
+                      onNavigateGlobal={viewMode === 'small' ? handleNavigateGlobal : undefined}
+                      currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
                     />
                   )}
                 </div>
