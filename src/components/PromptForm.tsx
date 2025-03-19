@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -205,46 +206,45 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
           />
           
           <div className="p-3 pt-0 space-y-3">
-            <div className="flex gap-2 items-center">
-              <div className="flex-grow-0 mr-1">
+            <div className="flex justify-between items-center gap-2">
+              <div className="flex items-center gap-2">
                 <WorkflowIconSelector
                   workflows={workflows}
                   selectedWorkflow={selectedWorkflow}
                   onWorkflowChange={handleWorkflowChange}
                 />
-              </div>
-              
-              <div className="flex-grow">
-                <ImageUploader
-                  isLoading={false}
-                  onImageUpload={handleImageUpload}
-                  onWorkflowChange={handleWorkflowChange}
-                />
+                
+                <Button 
+                  type="button"
+                  variant="outline" 
+                  size="sm"
+                  data-advanced-options-trigger
+                  onClick={() => {
+                    const advancedOptionsButton = document.querySelector('[data-advanced-options-trigger]') as HTMLButtonElement;
+                    if (advancedOptionsButton) {
+                      advancedOptionsButton.click();
+                    }
+                  }}
+                  className="px-3 text-xs text-muted-foreground"
+                >
+                  <Settings className="h-3 w-3 mr-1" />
+                  Advanced
+                </Button>
               </div>
             </div>
             
-            <div className="flex gap-2">
-              <Button 
-                type="submit" 
-                className="btn-shine rounded-full px-6 transition-all hover:shadow-md flex-1 py-6 text-lg font-medium"
-              >
-                Generate
-              </Button>
+            <div className="flex gap-2 items-center">
+              <ImageUploader
+                isLoading={false}
+                onImageUpload={handleImageUpload}
+                onWorkflowChange={handleWorkflowChange}
+              />
               
               <Button 
-                type="button"
-                variant="outline" 
-                size="sm"
-                onClick={() => {
-                  const advancedOptionsButton = document.querySelector('[data-advanced-options-trigger]') as HTMLButtonElement;
-                  if (advancedOptionsButton) {
-                    advancedOptionsButton.click();
-                  }
-                }}
-                className="px-3 text-xs text-muted-foreground"
+                type="submit" 
+                className="btn-shine rounded-full px-6 transition-all hover:shadow-md py-6 text-lg font-medium flex-1"
               >
-                <Settings className="h-3 w-3 mr-1" />
-                Advanced
+                Generate
               </Button>
             </div>
             

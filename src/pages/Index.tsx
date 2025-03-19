@@ -187,6 +187,11 @@ const Index = () => {
     setImageContainerOrder(prev => {
       const newOrder = [...prev];
       const [removed] = newOrder.splice(sourceIndex, 1);
+      // If we're moving to the end (which implies deleting a container)
+      if (destinationIndex >= newOrder.length) {
+        // Simply don't add it back, effectively deleting it
+        return newOrder;
+      }
       newOrder.splice(destinationIndex, 0, removed);
       return newOrder;
     });

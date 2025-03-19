@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import {
@@ -17,7 +18,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from '@/components/ui/button';
-import { Info, Download, Share2, Copy, FileInput, ChevronLeft, ChevronRight, Maximize, ChevronDown, ChevronUp, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
+import { Info, Download, Share2, Copy, FileInput, ChevronLeft, ChevronRight, Maximize, ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import ImageActions from '@/components/ImageActions';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -130,6 +131,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   // State to track which batches are expanded (unrolled)
   const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
+  // Track deleted image indices for each batch
+  const [deletedImages, setDeletedImages] = useState<Record<string, Set<number>>>({});
   
   const isMobile = useIsMobile();
   
@@ -159,6 +162,20 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
         batches[batchId] = [];
       }
       batches[batchId].push(img);
+    });
+    
+    // Filter out deleted images from each batch
+    Object.entries(batches).forEach(([batchId, images]) => {
+      if (deletedImages[batchId]) {
+        batches[batchId] = images.filter((_, index) => !deletedImages[batchId].has(index));
+      }
+    });
+    
+    // Remove empty batches
+    Object.entries(batches).forEach(([batchId, images]) => {
+      if (images.length === 0) {
+        delete batches[batchId];
+      }
     });
     
     // Order batches according to imageContainerOrder
@@ -197,7 +214,36 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     if (activeImageIndices[batchId] === undefined) {
       return 0;
     }
-    return activeImageIndices[batchId];
+    return Math.min(activeImageIndices[batchId], imagesCount - 1);
+  };
+
+  // Delete an image from a batch
+  const handleDeleteImage = (batchId: string, imageIndex: number) => {
+    setDeletedImages(prev => {
+      const newDeletedImages = { ...prev };
+      if (!newDeletedImages[batchId]) {
+        newDeletedImages[batchId] = new Set();
+      }
+      newDeletedImages[batchId].add(imageIndex);
+      
+      // If this was the last image in the batch, update the expanded state
+      const batch = generatedImages.filter(img => img.batchId === batchId);
+      const remainingImages = batch.length - newDeletedImages[batchId].size;
+      if (remainingImages === 0) {
+        // Remove the batch from imageContainerOrder
+        if (onReorderContainers) {
+          const index = imageContainerOrder.indexOf(batchId);
+          if (index !== -1) {
+            // This effectively removes the batch from the order
+            onReorderContainers(index, imageContainerOrder.length);
+          }
+        }
+      }
+      
+      return newDeletedImages;
+    });
+    
+    toast.success('Image deleted');
   };
 
   // Navigate to the previous image in a batch
@@ -278,6 +324,17 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           className="w-full h-full object-cover"
         />
         
+        {/* Delete button */}
+        <button 
+          className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors z-20"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleDeleteImage(batchId, index);
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+        
         {/* Full screen view button */}
         <Dialog>
           <DialogTrigger asChild>
@@ -327,7 +384,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
         
         {/* Batch counter */}
         {total > 1 && (
-          <div className="absolute top-2 left-2 bg-black/70 text-white px-3 py-1 rounded-full text-xs font-medium z-10">
+          <div className="absolute top-10 left-2 bg-black/70 text-white px-3 py-1 rounded-full text-xs font-medium z-10">
             {index + 1}/{total}
           </div>
         )}
@@ -400,6 +457,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               <ImageActions 
                 imageUrl={image.url} 
                 onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(image.url)}
+                onCreateAgain={() => handleCreateVariant(batchId)}
                 generationInfo={{
                   prompt: image.prompt,
                   workflow: image.workflow,
@@ -415,6 +473,22 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           </div>
         )}
       </div>
+    );
+  };
+
+  // Render new variant placeholder
+  const renderNewVariantPlaceholder = (batchId: string) => {
+    return (
+      <Card
+        className="overflow-hidden cursor-pointer border-dashed border-2 bg-secondary/10 hover:bg-secondary/20 transition-colors"
+        onClick={() => handleCreateVariant(batchId)}
+      >
+        <div className="aspect-square flex flex-col items-center justify-center p-4 text-muted-foreground">
+          <Plus className="h-12 w-12 mb-2 text-primary/60" />
+          <p className="text-sm font-medium">Create New Variant</p>
+          <p className="text-xs mt-1 text-center">Click to generate a new image based on this prompt</p>
+        </div>
+      </Card>
     );
   };
 
@@ -538,10 +612,20 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 items={sortableIds}
                 strategy={verticalListSortingStrategy}
               >
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {batchedImages.map(({ batchId, images }) => {
-                    const activeIndex = getActiveImageIndex(batchId, images.length);
-                    const activeImage = images[activeIndex];
+                    // Skip empty batches
+                    if (images.length === 0) return null;
+                    
+                    const filteredImages = deletedImages[batchId] 
+                      ? images.filter((_, i) => !deletedImages[batchId].has(i))
+                      : images;
+                    
+                    // Skip if all images in batch are deleted
+                    if (filteredImages.length === 0) return null;
+                    
+                    const activeIndex = getActiveImageIndex(batchId, filteredImages.length);
+                    const activeImage = filteredImages[activeIndex];
                     const isActive = activeBatchId === batchId;
                     const isExpanded = expandedBatches[batchId];
                     
@@ -550,11 +634,11 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         <Collapsible 
                           key={batchId} 
                           open={isExpanded}
-                          className="overflow-hidden rounded-lg bg-card border shadow-md col-span-1 md:col-span-2 lg:col-span-3"
+                          className="overflow-hidden rounded-lg bg-card border shadow-md col-span-1 md:col-span-3 lg:col-span-4"
                         >
                           <SortableContainer 
                             batchId={batchId} 
-                            batch={{ images }}
+                            batch={{ images: filteredImages }}
                             expandedBatches={expandedBatches}
                             toggleExpandBatch={toggleExpandBatch}
                           >
@@ -572,16 +656,16 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                             <div className="p-4 space-y-4">
                               {/* Selected image view */}
                               <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden max-w-lg mx-auto">
-                                {renderBatchImage(activeImage, batchId, isActive, activeIndex, images.length)}
+                                {renderBatchImage(activeImage, batchId, true, activeIndex, filteredImages.length)}
                                 
                                 {/* Navigation controls in expanded view */}
-                                {images.length > 1 && (
+                                {filteredImages.length > 1 && (
                                   <div className="absolute inset-0 pointer-events-none">
                                     <button 
                                       className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        navigatePrevImage(batchId, images.length);
+                                        navigatePrevImage(batchId, filteredImages.length);
                                       }}
                                     >
                                       <ChevronLeft className="h-5 w-5" />
@@ -590,7 +674,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                       className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        navigateNextImage(batchId, images.length);
+                                        navigateNextImage(batchId, filteredImages.length);
                                       }}
                                     >
                                       <ChevronRight className="h-5 w-5" />
@@ -599,9 +683,24 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                 )}
                               </div>
                               
+                              {/* Action buttons in expanded view */}
+                              <div className="flex flex-wrap justify-center gap-2 mt-4">
+                                <ImageActions 
+                                  imageUrl={activeImage.url} 
+                                  onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(activeImage.url)}
+                                  onCreateAgain={() => handleCreateVariant(batchId)}
+                                  generationInfo={{
+                                    prompt: activeImage.prompt,
+                                    workflow: activeImage.workflow,
+                                    params: activeImage.params
+                                  }}
+                                  isFullScreen
+                                />
+                              </div>
+                              
                               {/* Thumbnail gallery */}
                               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                                {images.map((image, index) => (
+                                {filteredImages.map((image, index) => (
                                   <Card 
                                     key={`${batchId}-${index}`}
                                     className={`overflow-hidden cursor-pointer transition-all ${activeIndex === index ? 'ring-2 ring-primary' : ''}`}
@@ -614,6 +713,17 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                         className="w-full h-full object-cover"
                                       />
                                       
+                                      {/* Delete button on thumbnail */}
+                                      <button 
+                                        className="absolute top-1 left-1 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-20"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteImage(batchId, index);
+                                        }}
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                      
                                       {/* Image number indicator */}
                                       <div className="absolute bottom-1 right-1 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
                                         {index + 1}
@@ -621,6 +731,17 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                     </div>
                                   </Card>
                                 ))}
+                                
+                                {/* New variant placeholder in gallery */}
+                                <Card 
+                                  className="overflow-hidden cursor-pointer border-dashed border bg-secondary/10 hover:bg-secondary/20 transition-colors"
+                                  onClick={() => handleCreateVariant(batchId)}
+                                >
+                                  <div className="aspect-square flex flex-col items-center justify-center p-2 text-muted-foreground">
+                                    <Plus className="h-8 w-8 mb-1 text-primary/60" />
+                                    <p className="text-xs font-medium">New Variant</p>
+                                  </div>
+                                </Card>
                               </div>
                               
                               {/* Roll up button */}
@@ -647,7 +768,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         >
                           <SortableContainer 
                             batchId={batchId} 
-                            batch={{ images }}
+                            batch={{ images: filteredImages }}
                             expandedBatches={expandedBatches}
                             toggleExpandBatch={toggleExpandBatch}
                           >
@@ -657,16 +778,16 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                               onMouseLeave={() => setActiveBatchId(null)}
                             >
                               {/* Collapsed view (carousel-like navigation) */}
-                              {renderBatchImage(activeImage, batchId, isActive, activeIndex, images.length)}
+                              {renderBatchImage(activeImage, batchId, isActive, activeIndex, filteredImages.length)}
                               
                               {/* Navigation controls */}
-                              {images.length > 1 && (
+                              {filteredImages.length > 1 && (
                                 <div className="absolute inset-0 pointer-events-none">
                                   <button 
                                     className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      navigatePrevImage(batchId, images.length);
+                                      navigatePrevImage(batchId, filteredImages.length);
                                     }}
                                   >
                                     <ChevronLeft className="h-5 w-5" />
@@ -675,7 +796,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                     className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors pointer-events-auto z-20"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      navigateNextImage(batchId, images.length);
+                                      navigateNextImage(batchId, filteredImages.length);
                                     }}
                                   >
                                     <ChevronRight className="h-5 w-5" />
