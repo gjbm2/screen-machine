@@ -101,22 +101,50 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         return <PinIcon className="h-4 w-4" />;
       case 'message-circle':
         return <MessageCircle className="h-4 w-4" />;
+      case 'share2':
+        return <Share2 className="h-4 w-4" />;
       default:
         return <Share2 className="h-4 w-4" />;
     }
   };
 
-  const handlePublish = (destinationId: string) => {
+  const handlePublish = async (destinationId: string) => {
     setPublishing(true);
     
-    // In a real implementation, this would handle the publishing logic
-    // for now, we'll just show a toast
-    const destination = publishDestinations.find(d => d.id === destinationId);
+    if (destinationId === 'share') {
+      try {
+        // Web Share API for mobile sharing
+        if (navigator.share) {
+          const response = await fetch(imageUrl);
+          const blob = await response.blob();
+          const file = new File([blob], 'generated-image.png', { type: 'image/png' });
+          
+          await navigator.share({
+            title: 'My Generated Image',
+            text: generationInfo?.prompt || 'Check out this AI-generated image!',
+            files: [file]
+          });
+          
+          toast.success('Opened share dialog');
+        } else {
+          // Fallback for browsers that don't support Web Share API
+          toast.error('Share functionality not supported on this device');
+        }
+      } catch (error) {
+        console.error('Error sharing:', error);
+        toast.error('Failed to share image');
+      }
+    } else {
+      // In a real implementation, this would handle the publishing logic
+      // for now, we'll just show a toast
+      const destination = publishDestinations.find(d => d.id === destinationId);
+      
+      setTimeout(() => {
+        toast.success(`Image shared to ${destination?.name || destinationId}!`);
+      }, 1000);
+    }
     
-    setTimeout(() => {
-      toast.success(`Image shared to ${destination?.name || destinationId}!`);
-      setPublishing(false);
-    }, 1000);
+    setPublishing(false);
   };
   
   const handleShowInfo = (e: React.MouseEvent) => {

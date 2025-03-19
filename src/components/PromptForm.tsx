@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -30,7 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface PromptFormProps {
-  onSubmit: (prompt: string, imageFiles?: File[] | string[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string) => void;
+  onSubmit: (prompt: string, imageFiles?: File[] | string[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string, refinerParams?: Record<string, any>) => void;
   isLoading: boolean;
   currentPrompt?: string | null;
   isFirstRun: boolean;
@@ -43,6 +44,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>('text-to-image');
   const [selectedRefiner, setSelectedRefiner] = useState<string>('none');
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({});
+  const [refinerParams, setRefinerParams] = useState<Record<string, any>>({});
   const [globalParams, setGlobalParams] = useState<Record<string, any>>({});
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   const [isButtonDisabled, setIsButtonDisabled] = useState(false);
@@ -107,7 +109,8 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
       selectedWorkflow, 
       workflowParams, 
       updatedGlobalParams,
-      selectedRefiner !== 'none' ? selectedRefiner : undefined
+      selectedRefiner !== 'none' ? selectedRefiner : undefined,
+      refinerParams
     );
   };
 
@@ -145,6 +148,10 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
     }
   };
 
+  const handleClearPrompt = () => {
+    setPrompt('');
+  };
+
   const handleWorkflowChange = (workflowId: string) => {
     setSelectedWorkflow(workflowId);
     
@@ -162,10 +169,18 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
   
   const handleRefinerChange = (refinerId: string) => {
     setSelectedRefiner(refinerId);
+    setRefinerParams({});
   };
 
   const handleParamChange = (paramId: string, value: any) => {
     setWorkflowParams(prev => ({
+      ...prev,
+      [paramId]: value
+    }));
+  };
+
+  const handleRefinerParamChange = (paramId: string, value: any) => {
+    setRefinerParams(prev => ({
       ...prev,
       [paramId]: value
     }));
@@ -302,6 +317,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                   isLoading={isLoading}
                   onPromptChange={setPrompt}
                   uploadedImages={previewUrls}
+                  onClearPrompt={handleClearPrompt}
                 />
               </div>
               
@@ -313,10 +329,6 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
               />
               
               <div className="p-2 pt-0 space-y-2">
-                <div className="flex justify-end items-center">
-                  {/* Removed settings button from here - will be relocated */}
-                </div>
-                
                 <div className="flex items-center gap-1 sm:gap-2 justify-between">
                   <div className="flex items-center gap-1 sm:gap-2">
                     <ImageUploader
@@ -377,11 +389,11 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                     </Button>
                   </div>
 
-                  <div>
-                    {/* Changed to up arrow icon with circular styling */}
+                  <div className="ml-4">
+                    {/* Circular Go button with arrow up icon */}
                     <Button 
                       type="submit" 
-                      className={`arrow-button transition-all hover:shadow-md text-lg font-medium flex items-center justify-center btn-shine ${
+                      className={`h-12 w-12 rounded-full transition-all hover:shadow-md flex items-center justify-center btn-shine ${
                         !prompt.trim() && imageFiles.length === 0 ? 'bg-gray-300 text-gray-600' : 'bg-primary text-primary-foreground'
                       }`}
                       disabled={isButtonDisabled || (!prompt.trim() && imageFiles.length === 0)}
@@ -404,6 +416,10 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
         onParamChange={handleParamChange}
         globalParams={globalParams}
         onGlobalParamChange={handleGlobalParamChange}
+        selectedRefiner={selectedRefiner}
+        onRefinerChange={handleRefinerChange}
+        refinerParams={refinerParams}
+        onRefinerParamChange={handleRefinerParamChange}
         isOpen={isAdvancedOptionsOpen}
         onOpenChange={setIsAdvancedOptionsOpen}
       />

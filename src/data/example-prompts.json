@@ -1,10 +1,10 @@
 
 {
   "basicPrompts": [
+    "Astronaut riding a horse",
     "A sunset beach scene",
     "Futuristic cityscape",
-    "Magic forest at night",
-    "Astronaut on Mars"
+    "Magic forest at night"
   ],
   "stylePrompts": [
     {

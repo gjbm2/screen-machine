@@ -1,6 +1,12 @@
 
 [
   {
+    "id": "share",
+    "name": "Share...",
+    "icon": "share2",
+    "description": "Use device sharing options"
+  },
+  {
     "id": "instagram",
     "name": "Instagram",
     "icon": "instagram",

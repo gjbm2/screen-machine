@@ -25,15 +25,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
 }) => {
   const [showAllExamples, setShowAllExamples] = useState(false);
   const [showAllStyles, setShowAllStyles] = useState(false);
-  const [randomExampleIndex, setRandomExampleIndex] = useState(0);
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
-  
-  // Generate a random example on component mount
-  useEffect(() => {
-    const examplesList = examplePrompts.basicPrompts || [];
-    const randomIndex = Math.floor(Math.random() * examplesList.length);
-    setRandomExampleIndex(randomIndex);
-  }, []);
   
   // Get the initial number of examples and styles to show based on screen size
   const initialExamplesCount = 1; // Just one example
@@ -67,10 +59,10 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   const renderExamples = () => {
     const examplesList = examplePrompts.basicPrompts || [];
     
-    // If not showing all examples, just show the random one
+    // Always show the first example, then shuffle the rest if more are shown
     const visibleExamples = showAllExamples 
-      ? examplesList 
-      : [examplesList[randomExampleIndex]];
+      ? [examplesList[0], ...examplesList.slice(1).sort(() => Math.random() - 0.5)]
+      : [examplesList[0]];
       
     return (
       <div className="flex flex-wrap gap-1.5 items-center">
@@ -125,7 +117,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
           <Badge 
             key={index}
             variant="outline"
-            className="px-3 py-1.5 text-sm cursor-pointer hover:bg-accent bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 font-normal"
+            className="px-3 py-1.5 text-sm cursor-pointer hover:bg-purple-100 bg-purple-50 text-purple-700 border-purple-200 font-normal"
             onClick={() => handleStyleClick(style)}
           >
             {style.display}

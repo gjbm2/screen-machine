@@ -111,10 +111,10 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     ? 'aspect-square w-full h-full' 
     : 'aspect-square w-full';
 
+  // Show action buttons on hover for normal view (including rolled up)
   const shouldShowActionsMenu = (isMobile ? showActionPanel : (isHovered || showActionPanel)) && 
                       image.url && 
                       viewMode === 'normal' &&
-                      !isRolledUp &&
                       showActions;
 
   return (

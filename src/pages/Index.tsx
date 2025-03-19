@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -20,6 +21,7 @@ interface GeneratedImage {
   batchIndex?: number;
   status?: 'generating' | 'completed' | 'error';
   refiner?: string;
+  refinerParams?: Record<string, any>;
   referenceImageUrl?: string;
   containerId?: number;
 }
@@ -33,6 +35,7 @@ const Index = () => {
   const [currentParams, setCurrentParams] = useState<Record<string, any>>({});
   const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
   const [currentRefiner, setCurrentRefiner] = useState<string | null>(null);
+  const [currentRefinerParams, setCurrentRefinerParams] = useState<Record<string, any>>({});
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [imageContainerOrder, setImageContainerOrder] = useState<string[]>([]);
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
@@ -95,6 +98,7 @@ const Index = () => {
     let originalParams = { ...currentParams };
     let originalWorkflow = currentWorkflow;
     let originalRefiner = currentRefiner;
+    let originalRefinerParams = { ...currentRefinerParams };
     let originalUploadedImages = [...uploadedImageUrls];
     
     if (batchId) {
@@ -103,6 +107,7 @@ const Index = () => {
         originalParams = batchImage.params || {};
         originalWorkflow = batchImage.workflow;
         originalRefiner = batchImage.refiner || null;
+        originalRefinerParams = batchImage.refinerParams || {};
         
         if (batchImage.referenceImageUrl) {
           originalUploadedImages = [batchImage.referenceImageUrl];
@@ -128,6 +133,7 @@ const Index = () => {
       originalParams,
       modifiedGlobalParams,
       originalRefiner || undefined,
+      originalRefinerParams,
       batchId
     );
     
@@ -141,6 +147,7 @@ const Index = () => {
     params?: Record<string, any>,
     globalParams?: Record<string, any>,
     refiner?: string,
+    refinerParams?: Record<string, any>,
     batchId?: string
   ) => {
     if (isFirstRun) {
@@ -152,6 +159,7 @@ const Index = () => {
     setCurrentParams(params || {});
     setCurrentGlobalParams(globalParams || {});
     setCurrentRefiner(refiner || null);
+    setCurrentRefinerParams(refinerParams || {});
     
     try {
       addConsoleLog(`Starting image generation: "${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}"`);
@@ -190,6 +198,7 @@ const Index = () => {
           timestamp: Date.now(),
           params: { ...params, ...globalParams },
           refiner: refiner,
+          refinerParams: refinerParams,
           batchId: currentBatchId,
           batchIndex: batchId ? 
             generatedImages.filter(img => img.batchId === batchId).length + i : 
@@ -214,6 +223,7 @@ const Index = () => {
         params: params || {},
         global_params: globalParams || {},
         refiner: refiner || 'none',
+        refiner_params: refinerParams || {},
         has_reference_images: imageFiles ? imageFiles.length > 0 : false,
         reference_image_count: imageFiles ? imageFiles.length : 0,
         batch_id: currentBatchId,
@@ -251,6 +261,7 @@ const Index = () => {
               timestamp: Date.now(),
               params: { ...params },
               refiner: refiner,
+              refinerParams: refinerParams,
               batchId: currentBatchId,
               batchIndex: existingBatchCount + i,
               status: 'completed',

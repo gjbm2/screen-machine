@@ -56,17 +56,32 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
     setStartX(null);
   };
 
+  // Calculate grid columns class based on number of images
+  const getGridColumnsClass = () => {
+    const totalItems = images.length + 1; // +1 for new variant placeholder
+    
+    if (totalItems <= 2) {
+      return "grid-cols-1 sm:grid-cols-2";
+    } else if (totalItems <= 3) {
+      return "grid-cols-2 sm:grid-cols-3";
+    } else if (totalItems <= 4) {
+      return "grid-cols-2 sm:grid-cols-4";
+    } else {
+      return "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6";
+    }
+  };
+
   return (
     <div 
       ref={touchRef}
-      className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2"
+      className={`grid ${getGridColumnsClass()} gap-2`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
       {images.map((image, index) => (
         <Card 
           key={`${batchId}-${index}`}
-          className={`overflow-hidden cursor-pointer transition-all ${
+          className={`overflow-hidden cursor-pointer transition-all w-full ${
             activeIndex === index ? 'ring-2 ring-primary' : ''
           }`}
           onClick={() => onThumbnailClick(index)}

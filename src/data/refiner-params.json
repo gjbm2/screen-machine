@@ -1,0 +1,79 @@
+
+[
+  {
+    "id": "enhance",
+    "params": [
+      {
+        "id": "enhanceStrength",
+        "name": "Enhancement Strength",
+        "type": "range",
+        "default": 75,
+        "description": "Controls the intensity of the enhancement effect"
+      },
+      {
+        "id": "enhanceMode",
+        "name": "Enhancement Mode",
+        "type": "select",
+        "default": "balanced",
+        "options": ["light", "balanced", "strong"],
+        "description": "The type of enhancement to apply"
+      }
+    ]
+  },
+  {
+    "id": "upscale",
+    "params": [
+      {
+        "id": "upscaleFactor",
+        "name": "Upscale Factor",
+        "type": "select",
+        "default": "2x",
+        "options": ["1.5x", "2x", "4x"],
+        "description": "How much to increase the resolution"
+      },
+      {
+        "id": "preserveDetail",
+        "name": "Preserve Detail",
+        "type": "range",
+        "default": 60,
+        "description": "Controls the level of detail preservation"
+      }
+    ]
+  },
+  {
+    "id": "beautify",
+    "params": [
+      {
+        "id": "beautifyStrength",
+        "name": "Beauty Strength",
+        "type": "range",
+        "default": 70,
+        "description": "Intensity of beauty enhancement"
+      }
+    ]
+  },
+  {
+    "id": "stylize",
+    "params": [
+      {
+        "id": "stylizeIntensity",
+        "name": "Style Intensity",
+        "type": "range",
+        "default": 80,
+        "description": "Controls how strongly to apply the style"
+      },
+      {
+        "id": "stylizeMode",
+        "name": "Style Mode",
+        "type": "select",
+        "default": "artistic",
+        "options": ["subtle", "balanced", "artistic", "extreme"],
+        "description": "The style transformation approach"
+      }
+    ]
+  },
+  {
+    "id": "none",
+    "params": []
+  }
+]

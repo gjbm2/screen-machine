@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Button } from '@/components/ui/button';
 import refinersData from '@/data/refiners.json';
+import { useWindowSize } from '@/hooks/use-mobile';
 
 interface RefinerSelectorProps {
   selectedRefiner: string;
@@ -32,6 +33,9 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
   selectedRefiner,
   onRefinerChange,
 }) => {
+  const { width } = useWindowSize();
+  const showName = width >= 768; // Show name on medium screens and up
+  
   const getRefinerIcon = (iconName: string) => {
     switch (iconName) {
       case 'sparkles':
@@ -79,10 +83,15 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                size="icon"
-                className="hover:bg-purple-500/10 text-purple-700"
+                className={`hover:bg-purple-500/10 text-purple-700 ${showName ? 'px-3' : ''}`}
+                size={showName ? "default" : "icon"}
               >
-                {getCurrentRefinerIcon()}
+                <div className="flex items-center">
+                  {getCurrentRefinerIcon()}
+                  {showName && (
+                    <span className="ml-2 text-sm">{currentRefiner.name}</span>
+                  )}
+                </div>
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>

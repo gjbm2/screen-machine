@@ -22,6 +22,7 @@ import {
   Workflow as WorkflowIcon, 
   Layers 
 } from 'lucide-react';
+import { useWindowSize } from '@/hooks/use-mobile';
 
 interface WorkflowIconSelectorProps {
   workflows: Workflow[];
@@ -36,6 +37,9 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   onWorkflowChange,
   hideWorkflowName = false,
 }) => {
+  const { width } = useWindowSize();
+  const showName = !hideWorkflowName && width >= 768; // Show name on medium screens and up
+  
   // Get the icon based on workflow ID
   const getWorkflowIcon = (workflowId: string) => {
     switch (workflowId) {
@@ -75,10 +79,15 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                size="icon"
-                className="hover:bg-purple-500/10 text-purple-700"
+                className={`hover:bg-purple-500/10 text-purple-700 ${showName ? 'px-3' : ''}`}
+                size={showName ? "default" : "icon"}
               >
-                {getCurrentWorkflowIcon()}
+                <div className="flex items-center">
+                  {getCurrentWorkflowIcon()}
+                  {showName && (
+                    <span className="ml-2 text-sm">{currentWorkflow?.name}</span>
+                  )}
+                </div>
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
