@@ -1,13 +1,12 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { ChevronUp, Image, X } from 'lucide-react';
+import { ChevronUp, Image, Clock, Ruler } from 'lucide-react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NavigationControls from './NavigationControls';
-import ThumbnailGallery from './ThumbnailGallery';
-import ImageBatchItem from './ImageBatchItem';
 import ImageActions from '@/components/ImageActions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { formatDistanceToNow } from 'date-fns';
 
 interface ImageDetailViewProps {
   batchId: string;
@@ -18,6 +17,7 @@ interface ImageDetailViewProps {
     status?: 'generating' | 'completed' | 'error';
     params?: Record<string, any>;
     referenceImageUrl?: string;
+    timestamp?: number;
   }>;
   activeIndex: number;
   onSetActiveIndex: (index: number) => void;
@@ -55,6 +55,22 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
     }
   };
   
+  const formatTimeAgo = (timestamp?: number) => {
+    if (!timestamp) return "Unknown time";
+    return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+  };
+  
+  // Get image dimensions when loaded
+  const [imageDimensions, setImageDimensions] = React.useState({ width: 0, height: 0 });
+  
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    setImageDimensions({
+      width: img.naturalWidth,
+      height: img.naturalHeight
+    });
+  };
+  
   return (
     <div className="p-4 space-y-4">
       {/* Reference image section - displayed without cropping */}
@@ -79,16 +95,29 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
             src={activeImage.url}
             alt={activeImage.prompt || "Generated image"}
             className="w-full h-full object-contain"
+            onLoad={handleImageLoad}
           />
         )}
         
-        {/* Navigation controls in expanded view */}
+        {/* Navigation controls - only if multiple images */}
         {images.length > 1 && (
           <NavigationControls 
             onPrevious={onNavigatePrev}
             onNext={onNavigateNext}
           />
         )}
+      </div>
+      
+      {/* Image metadata */}
+      <div className="flex justify-between items-center text-sm text-muted-foreground">
+        <div className="flex items-center">
+          <Ruler className="h-4 w-4 mr-1" />
+          <span>{imageDimensions.width} × {imageDimensions.height} px</span>
+        </div>
+        <div className="flex items-center">
+          <Clock className="h-4 w-4 mr-1" />
+          <span>{formatTimeAgo(activeImage?.timestamp)}</span>
+        </div>
       </div>
       
       {/* Image Actions Bar - always visible in fullscreen mode */}
@@ -114,16 +143,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
           <p>{activeImage.prompt}</p>
         </div>
       )}
-      
-      {/* Thumbnail gallery */}
-      <ThumbnailGallery 
-        images={images}
-        batchId={batchId}
-        activeIndex={activeIndex}
-        onThumbnailClick={onSetActiveIndex}
-        onDeleteImage={onDeleteImage}
-        onCreateAgain={onCreateAgain}
-      />
       
       {/* Compact roll-up button attached to bottom of container */}
       <div className="flex justify-center">

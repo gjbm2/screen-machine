@@ -114,7 +114,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   // Determine if action panel should be visible
   // For mobile: show based on showActionPanel state (toggled by click)
   // For desktop: show on hover OR if showActionPanel is true
-  const shouldShowActions = (isMobile ? showActionPanel : (isHovered || showActionPanel)) && 
+  const shouldShowActionsMenu = (isMobile ? showActionPanel : (isHovered || showActionPanel)) && 
                       image.url && 
                       viewMode === 'normal' &&
                       showActions;
@@ -198,7 +198,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         )}
         
         {/* Action panel - show when hovered/clicked in normal view based on device */}
-        {shouldShowActions && (
+        {shouldShowActionsMenu && (
           <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 transition-opacity bg-black/70 rounded-md p-1">
             <ImageActions
               imageUrl={image.url}
