@@ -49,9 +49,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onDeleteContainer
 }) => {
   const isMobile = useIsMobile();
-  const [activeImage, setActiveImage] = useState<string | null>(null);
-  const [activePrompt, setActivePrompt] = useState<string | null>(null);
-  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? 'small' : 'normal');
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
   
@@ -65,16 +62,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-  
-  useEffect(() => {
-    if (!activeImage && generatedImages.length > 0) {
-      const latestImage = generatedImages[0];
-      setActiveImage(latestImage.url);
-      setActivePrompt(latestImage.prompt);
-      setActiveBatchId(latestImage.batchId);
-    }
-  }, [generatedImages, activeImage]);
-  
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     
@@ -86,12 +74,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
         onReorderContainers(oldIndex, newIndex);
       }
     }
-  };
-  
-  const handleImageClick = (batchId: string, imageUrl: string, prompt: string) => {
-    setActiveImage(imageUrl);
-    setActivePrompt(prompt);
-    setActiveBatchId(batchId);
   };
   
   const handleToggleExpand = (batchId: string) => {
@@ -136,29 +118,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     <div className="mt-8">
       {uploadedImages.length > 0 && (
         <ReferenceImagesSection images={uploadedImages} />
-      )}
-      
-      {activeImage && !isLoading && (
-        <div className="mt-4">
-          <ImageDetailView 
-            batchId={activeBatchId || ""}
-            images={[{
-              url: activeImage,
-              prompt: activePrompt || "",
-              workflow: workflow || "text-to-image",
-              status: "completed",
-              params: generationParams
-            }]}
-            activeIndex={0}
-            onSetActiveIndex={() => {}}
-            onNavigatePrev={() => {}}
-            onNavigateNext={() => {}}
-            onToggleExpand={() => {}}
-            onDeleteImage={(batchId, index) => onDeleteImage(batchId, index)}
-            onCreateAgain={() => onCreateAgain(activeBatchId || undefined)}
-            onUseAsInput={onUseGeneratedAsInput}
-          />
-        </div>
       )}
       
       {isLoading && (
@@ -240,11 +199,11 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         images={batches[batchId]}
                         isExpanded={!!expandedContainers[batchId]}
                         toggleExpand={handleToggleExpand}
-                        onImageClick={(url, prompt) => handleImageClick(batchId, url, prompt)}
+                        onImageClick={(url, prompt) => {}}
                         onCreateAgain={() => onCreateAgain(batchId)}
                         onDeleteImage={onDeleteImage}
                         onDeleteContainer={() => onDeleteContainer(batchId)}
-                        activeImageUrl={activeImage}
+                        activeImageUrl={imageUrl}
                         viewMode={viewMode}
                       />
                     );

@@ -1,10 +1,8 @@
 
 import React, { useState } from 'react';
 import { Textarea } from '@/components/ui/textarea';
-import { X, Image } from 'lucide-react';
+import { X } from 'lucide-react';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogClose, DialogTrigger } from '@/components/ui/dialog';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface PromptInputProps {
   prompt: string;
@@ -19,8 +17,6 @@ const PromptInput: React.FC<PromptInputProps> = ({
   uploadedImages = [],
   onPromptChange 
 }) => {
-  const [showImageDialog, setShowImageDialog] = useState(false);
-  
   const handleClearPrompt = () => {
     onPromptChange('');
     toast.info('Prompt cleared');
@@ -35,40 +31,6 @@ const PromptInput: React.FC<PromptInputProps> = ({
         onChange={(e) => onPromptChange(e.target.value)}
         disabled={isLoading}
       />
-      
-      {/* Upload image indicator with Tooltip */}
-      {uploadedImages.length > 0 && (
-        <Dialog open={showImageDialog} onOpenChange={setShowImageDialog}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DialogTrigger asChild>
-                <button
-                  type="button"
-                  className="absolute bottom-3 left-3 bg-primary/10 hover:bg-primary/20 text-primary rounded-full p-1.5 transition-colors"
-                  aria-label="View uploaded image"
-                >
-                  <Image className="h-4 w-4" />
-                </button>
-              </DialogTrigger>
-            </TooltipTrigger>
-            <TooltipContent>View uploaded reference image</TooltipContent>
-          </Tooltip>
-          <DialogContent className="sm:max-w-md">
-            <div className="space-y-3">
-              <h3 className="text-lg font-medium">Uploaded Reference Image</h3>
-              <div className="aspect-square bg-secondary/20 rounded-md overflow-hidden">
-                <img 
-                  src={uploadedImages[0]} 
-                  alt="Uploaded reference" 
-                  className="w-full h-full object-contain"
-                />
-              </div>
-              <p className="text-sm text-muted-foreground">This image will be used as a reference for the generation.</p>
-            </div>
-            <DialogClose className="absolute top-4 right-4" />
-          </DialogContent>
-        </Dialog>
-      )}
       
       {prompt && (
         <button
