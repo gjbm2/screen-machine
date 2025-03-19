@@ -59,7 +59,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
           >
             {getWorkflowIcon(selectedWorkflow)}
             {!shouldHideName && (
-              <span className="ml-2 text-sm">{selectedWorkflowObj?.name || 'Workflow'}</span>
+              <span className="ml-2 text-sm truncate max-w-[90px]">{selectedWorkflowObj?.name || 'Workflow'}</span>
             )}
           </Button>
         </HoverCardTrigger>
@@ -72,7 +72,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
                   key={workflow.id}
                   variant={workflow.id === selectedWorkflow ? "secondary" : "ghost"}
                   size="sm"
-                  className="justify-start text-sm h-9"
+                  className="justify-start text-sm h-auto py-2"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -80,12 +80,12 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
                   }}
                   type="button"
                 >
-                  <div className="mr-2">
+                  <div className="mr-2 flex-shrink-0">
                     {getWorkflowIcon(workflow.id)}
                   </div>
-                  <div className="flex flex-col items-start">
-                    <span>{workflow.name}</span>
-                    <span className="text-xs text-muted-foreground">{workflow.description}</span>
+                  <div className="flex flex-col items-start overflow-hidden">
+                    <span className="truncate w-full">{workflow.name}</span>
+                    <span className="text-xs text-muted-foreground truncate w-full">{workflow.description}</span>
                   </div>
                 </Button>
               ))}
