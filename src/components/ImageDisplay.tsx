@@ -17,7 +17,11 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   uploadedImage,
   workflow
 }) => {
-  if (!imageUrl && !isLoading && !uploadedImage) return null;
+  // Always render the component when we have an uploaded image or when we're loading
+  // or when we have a generated image result
+  const shouldDisplay = isLoading || imageUrl || uploadedImage;
+  
+  if (!shouldDisplay) return null;
 
   return (
     <div className="mt-12 animate-fade-in">

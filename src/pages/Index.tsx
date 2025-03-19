@@ -66,6 +66,8 @@ const Index = () => {
     } catch (error) {
       console.error('Error generating image:', error);
       toast.error('Failed to generate image. Please try again.');
+      // Clear the imageUrl on error to avoid showing stale images
+      setImageUrl(null);
     } finally {
       setIsLoading(false);
     }
@@ -89,6 +91,7 @@ const Index = () => {
           <PromptForm onSubmit={handleSubmitPrompt} isLoading={isLoading} />
         </div>
         
+        {/* Always show the ImageDisplay component. It will handle displaying loading state or the image */}
         <div className="mb-20">
           <ImageDisplay 
             imageUrl={imageUrl}
