@@ -118,3 +118,31 @@
 .batch-size-controls {
   @apply rounded-r-full overflow-hidden;
 }
+
+/* Animation for console slide-in */
+@keyframes slide-in-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in-up {
+  animation: slide-in-up 0.3s ease-out forwards;
+}
+
+/* Animation for console slide-out */
+@keyframes slide-out-down {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+.animate-slide-out-down {
+  animation: slide-out-down 0.3s ease-out forwards;
+}

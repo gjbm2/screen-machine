@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { 
@@ -130,7 +131,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
 
   return (
     <>
-      {/* Info button - Now first in order */}
+      {/* Info button - First in order */}
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>

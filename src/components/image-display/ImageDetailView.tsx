@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { ChevronUp, Image, Maximize, X } from 'lucide-react';
+import { ChevronUp, Image, X } from 'lucide-react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NavigationControls from './NavigationControls';
 import ThumbnailGallery from './ThumbnailGallery';
