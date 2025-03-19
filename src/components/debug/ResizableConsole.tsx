@@ -25,7 +25,7 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({ logs, isVisible, on
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border shadow-lg">
       <ResizablePanelGroup direction="vertical">
-        <ResizablePanel defaultSize={20} minSize={15} maxSize={80}>
+        <ResizablePanel defaultSize={40} minSize={20} maxSize={80}>
           <div className="flex justify-between items-center p-2 border-b">
             <div className="font-mono text-sm">Console Output</div>
             <Button variant="ghost" size="sm" onClick={onClose}>
@@ -35,7 +35,7 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({ logs, isVisible, on
           
           <div 
             ref={contentRef}
-            className="console-content h-64 p-3 overflow-auto text-sm font-mono whitespace-pre-wrap"
+            className="console-content h-96 p-3 overflow-auto text-sm font-mono whitespace-pre-wrap"
           >
             {logs.length === 0 ? (
               <div className="text-muted-foreground italic">No logs yet</div>

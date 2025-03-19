@@ -73,7 +73,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           if (viewMode === 'small' || viewMode === 'table') {
             handleFullScreen(e);
           }
-          // In normal view, just show image, don't trigger full screen
+          // In normal view, don't trigger full screen on image click
         }}
       >
         {image.url ? (
@@ -85,8 +85,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-muted">
             <div className="animate-pulse flex flex-col items-center">
-              <div className="h-8 w-8 bg-muted-foreground/20 rounded-full mb-2"></div>
-              <div className="h-2 w-24 bg-muted-foreground/20 rounded"></div>
+              <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+              <div className="h-2 w-24 bg-muted-foreground/20 rounded mt-2"></div>
             </div>
           </div>
         )}
@@ -129,9 +129,9 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </Tooltip>
         )}
         
-        {/* Image Actions */}
+        {/* Image Actions - always visible in normal view with higher opacity when hovered */}
         {image.url && viewMode !== 'small' && (
-          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 rounded-md p-1">
+          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 opacity-70 group-hover:opacity-100 transition-opacity bg-black/50 rounded-md p-1">
             <ImageActions
               imageUrl={image.url}
               onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -17,7 +18,7 @@ import ImageBatchItem from './ImageBatchItem';
 import ImageActions from '@/components/ImageActions';
 
 type ViewMode = 'normal' | 'small' | 'table';
-type SortColumn = 'prompt' | 'when' | 'batch';
+type SortColumn = 'prompt' | 'when' | 'batch' | 'id';
 type SortDirection = 'asc' | 'desc';
 
 interface ImageDisplayProps {
@@ -72,6 +73,20 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [openImageFullScreen, setOpenImageFullScreen] = useState<{batchId: string, imageIndex: number} | null>(null);
   const [sortColumn, setSortColumn] = useState<SortColumn>('when');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [containerCounters] = useState<Map<string, number>>(new Map());
+  const [nextContainerId, setNextContainerId] = useState<number>(1);
+  
+  // Assign container IDs to new containers
+  useEffect(() => {
+    let modified = false;
+    imageContainerOrder.forEach(batchId => {
+      if (!containerCounters.has(batchId)) {
+        containerCounters.set(batchId, nextContainerId);
+        setNextContainerId(prev => prev + 1);
+        modified = true;
+      }
+    });
+  }, [imageContainerOrder, containerCounters, nextContainerId]);
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -107,6 +122,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       batches[batchId].push(img);
     });
     
+    // Avoid modifying the deletedImages state here, just filter the batches
     Object.entries(batches).forEach(([batchId, images]) => {
       if (deletedImages[batchId]) {
         batches[batchId] = images.filter((_, index) => !deletedImages[batchId].has(index));
@@ -167,29 +183,17 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   };
 
   const handleDeleteImage = (batchId: string, imageIndex: number) => {
+    // First ensure we're working with the correct index
     setDeletedImages(prev => {
       const newDeletedImages = { ...prev };
       if (!newDeletedImages[batchId]) {
         newDeletedImages[batchId] = new Set();
       }
       newDeletedImages[batchId].add(imageIndex);
-      
-      const batch = getBatchedImages().find(batch => batch.batchId === batchId);
-      const remainingImagesCount = batch ? 
-        batch.images.length - (newDeletedImages[batchId].size || 0) : 0;
-      
-      if (remainingImagesCount <= 1) {
-        if (onReorderContainers) {
-          const index = imageContainerOrder.indexOf(batchId);
-          if (index !== -1) {
-            onReorderContainers(index, imageContainerOrder.length);
-          }
-        }
-      }
-      
       return newDeletedImages;
     });
     
+    // Call the parent handler
     if (onDeleteImage) {
       onDeleteImage(batchId, imageIndex);
     }
@@ -305,7 +309,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               onCreateAgain={handleCreateAnother}
               onUseAsInput={onUseGeneratedAsInput}
               onDeleteImage={handleDeleteImage}
-              onFullScreen={(batchId, index) => handleFullScreenImage(batchId, index)}
+              onFullScreen={handleFullScreenImage}
               viewMode="small"
             />
           </div>
@@ -356,6 +360,12 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       return sortDirection === 'asc' 
         ? a.images.length - b.images.length 
         : b.images.length - a.images.length;
+    } else if (sortColumn === 'id') {
+      const idA = containerCounters.get(a.batchId) || 0;
+      const idB = containerCounters.get(b.batchId) || 0;
+      return sortDirection === 'asc'
+        ? idA - idB
+        : idB - idA;
     }
     
     return 0;
@@ -374,6 +384,12 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead 
+              className="w-16 text-center cursor-pointer"
+              onClick={() => handleSortColumn('id')}
+            >
+              # {renderSortIcon('id')}
+            </TableHead>
             <TableHead 
               className="cursor-pointer"
               onClick={() => handleSortColumn('prompt')}
@@ -400,9 +416,11 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             const timestamp = images[0]?.timestamp || Date.now();
             const timeAgo = formatDistanceToNow(new Date(timestamp), { addSuffix: true });
             const promptText = images[0]?.prompt || 'No prompt';
+            const containerId = containerCounters.get(batchId) || 0;
             
             return (
               <TableRow key={batchId}>
+                <TableCell className="text-center font-mono">{containerId}</TableCell>
                 <TableCell className="font-medium">
                   <div className="truncate max-w-64">{promptText}</div>
                 </TableCell>

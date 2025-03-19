@@ -208,6 +208,7 @@ const Index = () => {
       console.log('Sending request with data:', requestData);
       addConsoleLog(`Sending request: ${JSON.stringify(requestData, null, 2)}`);
       
+      // Increase the simulation delay to 5 seconds
       setTimeout(() => {
         try {
           const mockImageUrls = [
@@ -268,7 +269,7 @@ const Index = () => {
           
           toast.error('An error occurred while processing images.');
         }
-      }, 1000);
+      }, 5000); // Set to 5 seconds for simulation
     } catch (error) {
       console.error('Error generating image:', error);
       addConsoleLog(`Error generating image: ${error}`);
@@ -297,12 +298,15 @@ const Index = () => {
 
   const handleDeleteImage = (batchId: string, imageIndex: number) => {
     setGeneratedImages(prev => {
+      // Get all images for this batch
       const batchImages = prev.filter(img => img.batchId === batchId);
       
+      // If this was the last image in the batch, remove the batch from the order
       if (batchImages.length === 1) {
         setImageContainerOrder(order => order.filter(id => id !== batchId));
       }
       
+      // Filter out only the specific image we want to delete
       return prev.filter(img => !(img.batchId === batchId && img.batchIndex === imageIndex));
     });
   };
@@ -341,7 +345,7 @@ const Index = () => {
                 variant="ghost" 
                 size="icon" 
                 onClick={toggleConsole}
-                className="h-10 w-10"
+                className="h-10 w-10 fixed top-4 right-4 z-10 bg-background/80 backdrop-blur-sm md:static md:bg-transparent md:backdrop-blur-0"
               >
                 <Terminal className="h-5 w-5" />
               </Button>
