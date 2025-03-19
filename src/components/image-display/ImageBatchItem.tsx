@@ -59,6 +59,22 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
       onFullScreen(batchId, index);
     }
   };
+  
+  const handleDeleteImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (onDeleteImage) {
+      onDeleteImage(batchId, index);
+    }
+  };
+
+  const handleImageClick = (e: React.MouseEvent) => {
+    // In small view or table view, clicking the image should open full screen
+    // In normal view, don't do anything on image click (other interactions handle this)
+    if ((viewMode === 'small' || viewMode === 'table') && onFullScreen) {
+      handleFullScreen(e);
+    }
+  };
 
   return (
     <div 
@@ -68,13 +84,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     >
       <div 
         className="relative aspect-square cursor-pointer"
-        onClick={(e) => {
-          // Handle click based on view mode
-          if (viewMode === 'small' || viewMode === 'table') {
-            handleFullScreen(e);
-          }
-          // In normal view, don't trigger full screen on image click
-        }}
+        onClick={handleImageClick}
       >
         {image.url ? (
           <img
@@ -111,21 +121,18 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </div>
         )}
         
-        {/* Always visible delete button in top left */}
+        {/* Delete button */}
         {onDeleteImage && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button 
                 className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors z-10"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteImage(batchId, index);
-                }}
+                onClick={handleDeleteImage}
               >
                 <Trash2 className="h-3 w-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Delete image</TooltipContent>
+            <TooltipContent>Delete this image</TooltipContent>
           </Tooltip>
         )}
         
@@ -141,13 +148,13 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
                 workflow: image.workflow || '',
                 params: image.params
               }}
-              isMouseOver={true}
+              isMouseOver={isHovered}
             />
           </div>
         )}
         
         {/* Fullscreen button - separate from other actions for better visibility */}
-        {onFullScreen && (
+        {onFullScreen && viewMode === 'normal' && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button 

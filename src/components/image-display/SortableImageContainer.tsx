@@ -38,6 +38,14 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
 
   const [showReferenceImage, setShowReferenceImage] = React.useState(false);
   const referenceImageUrl = batch.images[0]?.referenceImageUrl;
+  const containerId = batch.images[0]?.containerId || '';
+  const promptText = batch.images[0]?.prompt || '';
+  const workflowName = batch.images[0]?.workflow || 'Generated Image';
+
+  // Determine the title text based on prompt availability
+  const titleText = promptText ? 
+    `${containerId ? `#${containerId} ` : ''}${promptText}` : 
+    `${containerId ? `#${containerId} ` : ''}${workflowName}`;
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -86,24 +94,12 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
         <div className="flex-1 truncate mx-2 text-sm text-muted-foreground">
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="font-medium cursor-help flex items-center">
-                {/* Reference image icon placed on the left */}
-                {referenceImageUrl && (
-                  <button 
-                    className="mr-1.5 text-primary/70 hover:text-primary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowReferenceImage(true);
-                    }}
-                  >
-                    <Image className="h-4 w-4" />
-                  </button>
-                )}
-                <span className="font-normal">{batch.images[0]?.prompt || 'Generated Image'}</span>
+              <span className="font-medium cursor-help">
+                {titleText}
               </span>
             </TooltipTrigger>
             <TooltipContent className="max-w-md whitespace-normal">
-              {batch.images[0]?.prompt || 'No prompt provided'}
+              {titleText}
             </TooltipContent>
           </Tooltip>
         </div>

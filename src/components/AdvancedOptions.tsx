@@ -53,17 +53,19 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <SheetHeader className="text-left p-0">
-            <SheetTitle>Advanced Options</SheetTitle>
-            <SheetDescription>
-              Configure generation settings for your images
-            </SheetDescription>
-          </SheetHeader>
-          <SheetClose className="rounded-full p-1 hover:bg-accent/50">
-            <X className="h-5 w-5" />
-          </SheetClose>
-        </div>
+        <SheetHeader className="text-left p-0">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <SheetTitle>Advanced Options</SheetTitle>
+              <SheetDescription>
+                Configure generation settings for your images
+              </SheetDescription>
+            </div>
+            <SheetClose className="rounded-full p-1 hover:bg-accent/50">
+              <X className="h-5 w-5" />
+            </SheetClose>
+          </div>
+        </SheetHeader>
         
         <div className="py-6 space-y-6">
           <div className="space-y-2">

@@ -20,6 +20,7 @@ interface GeneratedImage {
   status?: 'generating' | 'completed' | 'error';
   refiner?: string;
   referenceImageUrl?: string;
+  containerId?: number;
 }
 
 const Index = () => {
@@ -35,6 +36,7 @@ const Index = () => {
   const [imageContainerOrder, setImageContainerOrder] = useState<string[]>([]);
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
   const [isConsoleVisible, setIsConsoleVisible] = useState(false);
+  const [nextContainerId, setNextContainerId] = useState<number>(1);
   
   useEffect(() => {
     if (currentGlobalParams.showConsoleOutput) {
@@ -149,6 +151,12 @@ const Index = () => {
       
       const currentBatchId = batchId || `batch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       
+      // Assign container ID to new batches
+      const currentContainerId = nextContainerId;
+      if (!batchId) {
+        setNextContainerId(prev => prev + 1);
+      }
+      
       if (!batchId || !imageContainerOrder.includes(batchId)) {
         setImageContainerOrder(prev => [currentBatchId, ...prev]);
       }
@@ -181,7 +189,10 @@ const Index = () => {
             generatedImages.filter(img => img.batchId === batchId).length + i : 
             i,
           status: 'generating',
-          referenceImageUrl
+          referenceImageUrl,
+          containerId: batchId ? 
+            generatedImages.find(img => img.batchId === batchId)?.containerId : 
+            currentContainerId
         };
         
         placeholderImages.push(placeholderImage);
@@ -208,7 +219,7 @@ const Index = () => {
       console.log('Sending request with data:', requestData);
       addConsoleLog(`Sending request: ${JSON.stringify(requestData, null, 2)}`);
       
-      // Increase the simulation delay to 5 seconds
+      // Set a 5-second delay for simulating generation
       setTimeout(() => {
         try {
           const mockImageUrls = [
@@ -240,7 +251,10 @@ const Index = () => {
               batchId: currentBatchId,
               batchIndex: existingBatchCount + i,
               status: 'completed',
-              referenceImageUrl
+              referenceImageUrl,
+              containerId: batchId ? 
+                generatedImages.find(img => img.batchId === batchId)?.containerId : 
+                currentContainerId
             };
             
             newImages.push(newGeneratedImage);
@@ -313,7 +327,6 @@ const Index = () => {
 
   const handleDeleteContainer = (batchId: string) => {
     setGeneratedImages(prev => prev.filter(img => img.batchId !== batchId));
-    
     setImageContainerOrder(prev => prev.filter(id => id !== batchId));
   };
 

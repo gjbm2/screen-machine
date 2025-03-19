@@ -58,18 +58,18 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   
   return (
     <div className="p-4 space-y-4">
-      {/* Reference image indicator */}
+      {/* Reference image section (directly displayed) */}
       {referenceImageUrl && (
-        <div className="flex justify-start mb-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="text-xs gap-1"
-            onClick={() => setShowReferenceImage(true)}
-          >
-            <Image className="h-3.5 w-3.5" />
-            Reference Image
-          </Button>
+        <div className="mb-4">
+          <p className="text-sm text-muted-foreground mb-2">Reference image used:</p>
+          <div className="border rounded-md overflow-hidden max-h-40 flex justify-center">
+            <img 
+              src={referenceImageUrl} 
+              alt="Reference image"
+              className="h-full object-contain cursor-pointer"
+              onClick={() => setShowReferenceImage(true)}
+            />
+          </div>
         </div>
       )}
       
@@ -136,7 +136,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
         </Button>
       </div>
 
-      {/* Reference image popup */}
+      {/* Reference image popup (full size view) */}
       {referenceImageUrl && (
         <Dialog open={showReferenceImage} onOpenChange={setShowReferenceImage}>
           <DialogContent className="max-w-lg">
