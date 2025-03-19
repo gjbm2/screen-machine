@@ -551,9 +551,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                               onDeleteImage={handleDeleteImage}
                               onCreateAgain={handleCreateAnother}
                               onUseAsInput={onUseGeneratedAsInput}
-                              onFullScreen={handleFullScreenImage}
                               extraComponents={extraComponents}
                               viewMode={viewMode}
+                              onFullScreen={handleFullScreenImage}
                             />
                           </DropdownMenu>
                         );

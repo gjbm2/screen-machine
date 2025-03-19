@@ -41,6 +41,7 @@ interface ImageBatchProps {
   extraComponents?: React.ReactNode;
   viewMode?: ViewMode;
   onOpenBatchDialog?: (batchId: string) => void;
+  onFullScreen?: (batchId: string, index?: number) => void;
 }
 
 const ImageBatch: React.FC<ImageBatchProps> = ({
@@ -59,7 +60,8 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   onUseAsInput,
   extraComponents,
   viewMode = 'normal',
-  onOpenBatchDialog
+  onOpenBatchDialog,
+  onFullScreen
 }) => {
   if (!images || images.length === 0) return null;
   
@@ -70,7 +72,11 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   const isSmallView = viewMode === 'small';
   
   const handleOpenFullScreen = () => {
-    setOpenFullScreen(true);
+    if (onFullScreen) {
+      onFullScreen(batchId, activeIndex);
+    } else {
+      setOpenFullScreen(true);
+    }
   };
   
   const handleCreateAgain = () => {
