@@ -2,8 +2,19 @@
 import React from 'react';
 import { Workflow } from '@/types/workflows';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Image, Code, FileText, Video, Music, LayoutDashboard, Zap } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Image, Code, FileText, Video, Music, LayoutDashboard, Zap, ChevronDown } from 'lucide-react';
 
 interface WorkflowIconSelectorProps {
   workflows: Workflow[];
@@ -22,13 +33,13 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   const getWorkflowIcon = (workflowId: string) => {
     switch (workflowId) {
       case 'text-to-image':
-        return <Image className="h-5 w-5" />;
+        return <Image className="h-4 w-4 mr-2" />;
       case 'image-to-image':
-        return <Image className="h-5 w-5" />;
+        return <Image className="h-4 w-4 mr-2" />;
       case 'artistic-style-transfer':
-        return <Zap className="h-5 w-5" />;
+        return <Zap className="h-4 w-4 mr-2" />;
       default:
-        return <LayoutDashboard className="h-5 w-5" />;
+        return <LayoutDashboard className="h-4 w-4 mr-2" />;
     }
   };
 
@@ -36,33 +47,42 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-1.5">
-        {workflows.map((workflow) => (
-          <TooltipProvider key={workflow.id}>
-            <Tooltip delayDuration={300}>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant={selectedWorkflow === workflow.id ? "default" : "outline"}
-                  size="icon"
-                  className={selectedWorkflow === workflow.id 
-                    ? "bg-purple-500 hover:bg-purple-600" 
-                    : "hover:bg-purple-500/10 text-purple-700"}
-                  onClick={() => onWorkflowChange(workflow.id)}
-                >
-                  {getWorkflowIcon(workflow.id)}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p>{workflow.name}</p>
-                <p className="text-xs text-muted-foreground">{workflow.description}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ))}
-      </div>
-    </div>
+    <TooltipProvider>
+      <Tooltip delayDuration={300}>
+        <DropdownMenu>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="hover:bg-purple-500/10 text-purple-700"
+              >
+                {getWorkflowIcon(selectedWorkflow).props.children}
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p>Workflow: {currentWorkflow?.name}</p>
+            <p className="text-xs text-muted-foreground">Select a workflow</p>
+          </TooltipContent>
+          <DropdownMenuContent align="end" className="bg-background/90 backdrop-blur-sm">
+            {workflows.map((workflow) => (
+              <DropdownMenuItem
+                key={workflow.id}
+                onClick={() => onWorkflowChange(workflow.id)}
+                className="cursor-pointer"
+              >
+                {getWorkflowIcon(workflow.id)}
+                <div>
+                  <p>{workflow.name}</p>
+                  <p className="text-xs text-muted-foreground">{workflow.description}</p>
+                </div>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </Tooltip>
+    </TooltipProvider>
   );
 };
 

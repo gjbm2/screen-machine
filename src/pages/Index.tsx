@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -83,24 +84,29 @@ const Index = () => {
     refiner?: string,
     batchId?: string
   ) => {
+    // Store current form state
     setCurrentPrompt(prompt);
     setCurrentWorkflow(workflow || null);
     setCurrentParams(params || {});
     setCurrentGlobalParams(globalParams || {});
     setCurrentRefiner(refiner || null);
     
+    // Handle uploaded images
     if (imageFiles && imageFiles.length > 0) {
       const localImageUrls = imageFiles.map(file => URL.createObjectURL(file));
       setUploadedImageUrls(localImageUrls);
     }
     
     try {
+      // Generate a batch ID if one wasn't provided
       const currentBatchId = batchId || `batch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       
+      // Add batch to the order if it's new
       if (!batchId || !imageContainerOrder.includes(batchId)) {
         setImageContainerOrder(prev => [currentBatchId, ...prev]);
       }
       
+      // Create a placeholder for the generating image
       const placeholderImage: GeneratedImage = {
         url: '',
         prompt: prompt,
@@ -113,10 +119,13 @@ const Index = () => {
         status: 'generating'
       };
       
+      // Add the placeholder to the generated images
       setGeneratedImages(prev => [placeholderImage, ...prev]);
       
+      // Mark this batch as actively generating
       setActiveGenerations(prev => [...prev, currentBatchId]);
       
+      // Prepare the request data (for the mock API)
       const requestData = {
         prompt,
         workflow: workflow || 'text-to-image',
@@ -130,6 +139,7 @@ const Index = () => {
       
       console.log('Sending request with data:', requestData);
       
+      // Mock API response
       setTimeout(() => {
         const mockImageUrls = [
           "https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9",
@@ -138,9 +148,11 @@ const Index = () => {
           "https://images.unsplash.com/photo-1560807707-8cc77767d783"
         ];
         
+        // Count existing images in this batch (excluding generating ones)
         const existingBatchCount = batchId ? 
           generatedImages.filter(img => img.batchId === batchId && img.status !== 'generating').length : 0;
         
+        // Generate 1-2 random images
         const imageCount = Math.floor(Math.random() * 2) + 1;
         const newImages: GeneratedImage[] = [];
         
@@ -148,6 +160,7 @@ const Index = () => {
           const randomIndex = Math.floor(Math.random() * mockImageUrls.length);
           const newImageUrl = mockImageUrls[randomIndex];
           
+          // Create the generated image object
           const newGeneratedImage: GeneratedImage = {
             url: newImageUrl,
             prompt: prompt,
@@ -163,16 +176,20 @@ const Index = () => {
           newImages.push(newGeneratedImage);
         }
         
+        // Update the generated images list (replacing placeholder)
         setGeneratedImages(prev => {
           const prevCopy = [...prev];
+          // Remove generating placeholders for this batch
           const filteredImages = prevCopy.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'));
           return [...newImages, ...filteredImages];
         });
         
+        // Mark generation as complete
         setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
         
+        // Set the first image URL if none is set yet
         if (!imageUrl) {
-          setImageUrl(newImages[0].url);
+          setImageUrl(newImages[0]?.url);
         }
         
         toast.success(`${imageCount} image${imageCount > 1 ? 's' : ''} generated successfully!`);
@@ -181,6 +198,7 @@ const Index = () => {
       console.error('Error generating image:', error);
       toast.error('Failed to generate image. Please try again.');
       
+      // Clean up failed generations
       setGeneratedImages(prev => 
         prev.filter(img => !(img.batchId === batchId && img.status === 'generating'))
       );

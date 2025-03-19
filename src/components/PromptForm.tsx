@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -223,39 +222,46 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
           />
           
           <div className="p-3 pt-0 space-y-3">
-            <div className="flex justify-between items-center gap-2">
-              <div className="flex items-center gap-4">
-                {/* Group workflow selectors in a visually distinct container */}
-                <div className="flex items-center bg-background/40 p-1 rounded-lg border border-border/20">
-                  <WorkflowIconSelector
-                    workflows={workflows}
-                    selectedWorkflow={selectedWorkflow}
-                    onWorkflowChange={handleWorkflowChange}
-                    hideWorkflowName={true}
-                  />
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <RefinerSelector
-                    selectedRefiner={selectedRefiner}
-                    onRefinerChange={handleRefinerChange}
-                  />
-                  
-                  <Button 
-                    type="button"
-                    variant="outline" 
-                    size="icon"
-                    onClick={toggleAdvancedOptions}
-                    className="h-[36px] w-[36px] text-muted-foreground"
-                    aria-label="Settings"
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+            <div className="flex justify-between items-center">
+              <AdvancedOptions
+                workflows={workflows}
+                selectedWorkflow={selectedWorkflow}
+                onWorkflowChange={handleWorkflowChange}
+                params={workflowParams}
+                onParamChange={handleParamChange}
+                globalParams={globalParams}
+                onGlobalParamChange={handleGlobalParamChange}
+                isOpen={isAdvancedOptionsOpen}
+                onOpenChange={setIsAdvancedOptionsOpen}
+              />
             </div>
             
-            <div className="flex gap-2 items-center">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <WorkflowIconSelector
+                  workflows={workflows}
+                  selectedWorkflow={selectedWorkflow}
+                  onWorkflowChange={handleWorkflowChange}
+                  hideWorkflowName={true}
+                />
+                
+                <RefinerSelector
+                  selectedRefiner={selectedRefiner}
+                  onRefinerChange={handleRefinerChange}
+                />
+                
+                <Button 
+                  type="button"
+                  variant="outline" 
+                  size="icon"
+                  onClick={toggleAdvancedOptions}
+                  className="h-[36px] w-[36px] text-muted-foreground"
+                  aria-label="Settings"
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </div>
+
               <ImageUploader
                 isLoading={isLoading}
                 onImageUpload={handleImageUpload}
@@ -270,18 +276,6 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                 Generate
               </Button>
             </div>
-            
-            <AdvancedOptions
-              workflows={workflows}
-              selectedWorkflow={selectedWorkflow}
-              onWorkflowChange={handleWorkflowChange}
-              params={workflowParams}
-              onParamChange={handleParamChange}
-              globalParams={globalParams}
-              onGlobalParamChange={handleGlobalParamChange}
-              isOpen={isAdvancedOptionsOpen}
-              onOpenChange={setIsAdvancedOptionsOpen}
-            />
           </div>
         </form>
       </Card>
