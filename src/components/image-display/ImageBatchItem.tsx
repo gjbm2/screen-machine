@@ -38,6 +38,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   const isGenerating = image.status === 'generating';
   const [actionsVisible, setActionsVisible] = useState(false);
   const [isClicked, setIsClicked] = useState(false);
+  const [fullScreenOpen, setFullScreenOpen] = useState(false);
   const isSmallView = viewMode === 'small';
   
   if (isGenerating) {
@@ -61,8 +62,16 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
 
   const handleDeleteImage = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Directly use the current index for this specific image
     onDeleteImage(batchId, index);
+  };
+
+  const handleCreateAgain = () => {
+    onCreateAgain(batchId);
+  };
+
+  const handleOpenFullScreen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFullScreenOpen(true);
   };
   
   return (
@@ -89,15 +98,18 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
       )}
       
       {/* Full screen view button - always available */}
-      <Dialog>
+      <button 
+        className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 text-white rounded-full p-1.5 transition-colors z-20"
+        onClick={handleOpenFullScreen}
+      >
+        <Maximize className="h-4 w-4" />
+      </button>
+      
+      {/* Full-screen dialog */}
+      <Dialog open={fullScreenOpen} onOpenChange={setFullScreenOpen}>
         <DialogContent className="p-0 overflow-hidden" fullscreen>
-          <DialogHeader className="absolute top-0 left-0 right-0 bg-black/80 z-10 p-4 flex justify-between items-start">
-            <div>
-              <DialogTitle className="text-white">Image View</DialogTitle>
-              <p className="text-white/70 truncate pr-10">
-                {image.prompt}
-              </p>
-            </div>
+          <DialogHeader className="absolute top-0 left-0 right-0 bg-black/80 z-10 p-4 flex justify-between items-center">
+            <DialogTitle className="text-white">Image View</DialogTitle>
             <DialogClose className="rounded-full p-1 hover:bg-black/40 text-white">
               <X className="h-6 w-6" />
             </DialogClose>
@@ -105,13 +117,11 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           
           <div className="w-full h-full flex flex-col">
             <div className="flex-1 flex items-center justify-center overflow-auto">
-              <div className="w-full h-full flex items-center justify-center overflow-auto">
-                <img
-                  src={image.url}
-                  alt={image.prompt || 'Generated image full view'}
-                  className="max-w-full max-h-full object-contain"
-                />
-              </div>
+              <img
+                src={image.url}
+                alt={image.prompt || 'Generated image full view'}
+                className="max-w-full max-h-full object-contain"
+              />
             </div>
             
             {/* Bottom controls for fullscreen view */}
@@ -119,7 +129,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
               <TooltipProvider>
                 <ImageActions 
                   imageUrl={image.url}
-                  onCreateAgain={() => onCreateAgain(batchId)}
+                  onCreateAgain={handleCreateAgain}
                   onUseAsInput={() => onUseAsInput && onUseAsInput(image.url)}
                   generationInfo={{
                     prompt: image.prompt || '',
@@ -154,7 +164,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           <TooltipProvider>
             <ImageActions 
               imageUrl={image.url}
-              onCreateAgain={() => onCreateAgain(batchId)}
+              onCreateAgain={handleCreateAgain}
               onUseAsInput={() => onUseAsInput && onUseAsInput(image.url)}
               generationInfo={{
                 prompt: image.prompt || '',

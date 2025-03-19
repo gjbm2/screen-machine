@@ -2,8 +2,9 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, ChevronUp, ChevronDown, Maximize } from 'lucide-react';
+import { GripVertical, ChevronUp, ChevronDown, Maximize, Image } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 type ViewMode = 'normal' | 'small' | 'table';
 
@@ -34,6 +35,9 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     transition,
     isDragging,
   } = useSortable({ id: batchId });
+
+  const [showReferenceImage, setShowReferenceImage] = React.useState(false);
+  const referenceImageUrl = batch.images[0]?.referenceImageUrl;
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -82,8 +86,19 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
         <div className="flex-1 truncate mx-2 text-sm text-muted-foreground">
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="font-medium cursor-help">
-                Prompt: <span className="font-normal">{batch.images[0]?.prompt || 'Generated Image'}</span>
+              <span className="font-medium cursor-help flex items-center">
+                <span className="font-normal">{batch.images[0]?.prompt || 'Generated Image'}</span>
+                {referenceImageUrl && (
+                  <button 
+                    className="ml-1.5 text-primary/70 hover:text-primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowReferenceImage(true);
+                    }}
+                  >
+                    <Image className="h-4 w-4" />
+                  </button>
+                )}
               </span>
             </TooltipTrigger>
             <TooltipContent className="max-w-md whitespace-normal">
@@ -103,6 +118,24 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
         </button>
       </div>
       {children}
+
+      {/* Reference image popup */}
+      {referenceImageUrl && (
+        <Dialog open={showReferenceImage} onOpenChange={setShowReferenceImage}>
+          <DialogContent className="max-w-lg">
+            <div className="flex flex-col items-center">
+              <p className="text-sm mb-2 text-muted-foreground">Reference image used for generation</p>
+              <div className="border rounded-md overflow-hidden">
+                <img 
+                  src={referenceImageUrl} 
+                  alt="Reference image"
+                  className="w-full h-auto"
+                />
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 };

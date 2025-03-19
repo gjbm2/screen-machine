@@ -1,11 +1,12 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { ChevronUp } from 'lucide-react';
+import { ChevronUp, Image } from 'lucide-react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NavigationControls from './NavigationControls';
 import ThumbnailGallery from './ThumbnailGallery';
 import ImageBatchItem from './ImageBatchItem';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 interface ImageDetailViewProps {
   batchId: string;
@@ -15,6 +16,7 @@ interface ImageDetailViewProps {
     workflow: string;
     status?: 'generating' | 'completed' | 'error';
     params?: Record<string, any>;
+    referenceImageUrl?: string;
   }>;
   activeIndex: number;
   onSetActiveIndex: (index: number) => void;
@@ -39,9 +41,26 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   onUseAsInput
 }) => {
   const activeImage = images[activeIndex];
+  const [showReferenceImage, setShowReferenceImage] = React.useState(false);
+  const referenceImageUrl = activeImage?.referenceImageUrl;
   
   return (
     <div className="p-4 space-y-4">
+      {/* Reference image indicator */}
+      {referenceImageUrl && (
+        <div className="flex justify-start mb-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="text-xs gap-1"
+            onClick={() => setShowReferenceImage(true)}
+          >
+            <Image className="h-3.5 w-3.5" />
+            Reference Image
+          </Button>
+        </div>
+      )}
+      
       {/* Selected image view */}
       <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden max-w-lg mx-auto group">
         <ImageBatchItem 
@@ -85,6 +104,24 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
           Roll Up
         </Button>
       </div>
+
+      {/* Reference image popup */}
+      {referenceImageUrl && (
+        <Dialog open={showReferenceImage} onOpenChange={setShowReferenceImage}>
+          <DialogContent className="max-w-lg">
+            <div className="flex flex-col items-center">
+              <p className="text-sm mb-2 text-muted-foreground">Reference image used for generation</p>
+              <div className="border rounded-md overflow-hidden">
+                <img 
+                  src={referenceImageUrl} 
+                  alt="Reference image"
+                  className="w-full h-auto"
+                />
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 };
