@@ -19,6 +19,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import globalOptionsData from '@/data/global-options.json';
 import refinersData from '@/data/refiners.json';
 import refinerParamsData from '@/data/refiner-params.json';
@@ -78,6 +80,76 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
     }
   }, [selectedRefiner]);
 
+  // Render parameter inputs based on type
+  const renderParamInput = (param: WorkflowParam, value: any, onChange: (paramId: string, value: any) => void) => {
+    switch (param.type) {
+      case 'select':
+        return (
+          <Select 
+            value={String(value !== undefined ? value : param.default)}
+            onValueChange={(value) => onChange(param.id, value)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder={`Select ${param.name.toLowerCase()}`} />
+            </SelectTrigger>
+            <SelectContent>
+              {param.options?.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      
+      case 'checkbox':
+        return (
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id={param.id}
+              checked={value !== undefined ? value : Boolean(param.default)}
+              onCheckedChange={(checked) => onChange(param.id, Boolean(checked))}
+            />
+            <Label htmlFor={param.id} className="text-sm cursor-pointer">Enable</Label>
+          </div>
+        );
+      
+      case 'range':
+        return (
+          <div className="space-y-2">
+            <Slider
+              id={param.id}
+              min={0}
+              max={100}
+              step={1}
+              value={[value !== undefined ? Number(value) : Number(param.default) || 50]}
+              onValueChange={(val) => onChange(param.id, val[0])}
+              className="mt-2"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>0%</span>
+              <span>Current: {value !== undefined ? value : param.default || 50}%</span>
+              <span>100%</span>
+            </div>
+          </div>
+        );
+      
+      case 'text':
+        return (
+          <Textarea
+            id={param.id}
+            value={value !== undefined ? value : (param.default || '')}
+            onChange={(e) => onChange(param.id, e.target.value)}
+            placeholder={`Enter ${param.name.toLowerCase()}`}
+            className="resize-none min-h-[100px]"
+          />
+        );
+      
+      default:
+        return null;
+    }
+  };
+
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
@@ -136,54 +208,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
                 {currentWorkflow.params.map((param: WorkflowParam) => (
                   <div key={param.id} className="space-y-1">
                     <Label htmlFor={param.id} className="text-sm font-medium">{param.name}</Label>
-                    
-                    {param.type === 'select' && (
-                      <Select 
-                        value={String(params[param.id] !== undefined ? params[param.id] : param.default)}
-                        onValueChange={(value) => onParamChange(param.id, value)}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder={`Select ${param.name.toLowerCase()}`} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {param.options?.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    
-                    {param.type === 'checkbox' && (
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id={param.id}
-                          checked={params[param.id] !== undefined ? params[param.id] : Boolean(param.default)}
-                          onCheckedChange={(checked) => onParamChange(param.id, Boolean(checked))}
-                        />
-                        <Label htmlFor={param.id} className="text-sm cursor-pointer">Enable</Label>
-                      </div>
-                    )}
-
-                    {param.type === 'range' && (
-                      <div className="space-y-2">
-                        <Slider
-                          id={param.id}
-                          min={0}
-                          max={100}
-                          step={1}
-                          value={[params[param.id] !== undefined ? Number(params[param.id]) : Number(param.default) || 50]}
-                          onValueChange={(value) => onParamChange(param.id, value[0])}
-                          className="mt-2"
-                        />
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>0%</span>
-                          <span>Current: {params[param.id] !== undefined ? params[param.id] : param.default || 50}%</span>
-                          <span>100%</span>
-                        </div>
-                      </div>
-                    )}
+                    {renderParamInput(param, params[param.id], onParamChange)}
                   </div>
                 ))}
               </CollapsibleContent>
@@ -235,54 +260,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
                   <div key={param.id} className="space-y-1">
                     <Label htmlFor={param.id} className="text-sm font-medium">{param.name}</Label>
                     {param.description && <p className="text-xs text-muted-foreground mb-2">{param.description}</p>}
-                    
-                    {param.type === 'select' && (
-                      <Select 
-                        value={String(refinerParams[param.id] !== undefined ? refinerParams[param.id] : param.default)}
-                        onValueChange={(value) => onRefinerParamChange(param.id, value)}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder={`Select ${param.name.toLowerCase()}`} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {param.options?.map((option: string) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    
-                    {param.type === 'checkbox' && (
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id={param.id}
-                          checked={refinerParams[param.id] !== undefined ? refinerParams[param.id] : Boolean(param.default)}
-                          onCheckedChange={(checked) => onRefinerParamChange(param.id, Boolean(checked))}
-                        />
-                        <Label htmlFor={param.id} className="text-sm cursor-pointer">Enable</Label>
-                      </div>
-                    )}
-
-                    {param.type === 'range' && (
-                      <div className="space-y-2">
-                        <Slider
-                          id={param.id}
-                          min={0}
-                          max={100}
-                          step={1}
-                          value={[refinerParams[param.id] !== undefined ? Number(refinerParams[param.id]) : Number(param.default) || 50]}
-                          onValueChange={(value) => onRefinerParamChange(param.id, value[0])}
-                          className="mt-2"
-                        />
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>0%</span>
-                          <span>Current: {refinerParams[param.id] !== undefined ? refinerParams[param.id] : param.default || 50}%</span>
-                          <span>100%</span>
-                        </div>
-                      </div>
-                    )}
+                    {renderParamInput(param, refinerParams[param.id], onRefinerParamChange)}
                   </div>
                 ))}
               </CollapsibleContent>
@@ -310,54 +288,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
                 <div key={param.id} className="space-y-1">
                   <Label htmlFor={param.id} className="text-sm font-medium">{param.name}</Label>
                   <p className="text-xs text-muted-foreground mb-2">{param.description}</p>
-                  
-                  {param.type === 'select' && (
-                    <Select 
-                      value={String(globalParams[param.id] !== undefined ? globalParams[param.id] : param.default)}
-                      onValueChange={(value) => onGlobalParamChange(param.id, value)}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder={`Select ${param.name.toLowerCase()}`} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {param.options?.map((option: string) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  
-                  {param.type === 'checkbox' && (
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id={param.id}
-                        checked={globalParams[param.id] !== undefined ? globalParams[param.id] : Boolean(param.default)}
-                        onCheckedChange={(checked) => onGlobalParamChange(param.id, Boolean(checked))}
-                      />
-                      <Label htmlFor={param.id} className="text-sm cursor-pointer">Enable</Label>
-                    </div>
-                  )}
-
-                  {param.type === 'range' && (
-                    <div className="space-y-2">
-                      <Slider
-                        id={param.id}
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={[globalParams[param.id] !== undefined ? Number(globalParams[param.id]) : Number(param.default) || 50]}
-                        onValueChange={(value) => onGlobalParamChange(param.id, value[0])}
-                        className="mt-2"
-                      />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>0%</span>
-                        <span>Current: {globalParams[param.id] !== undefined ? globalParams[param.id] : param.default || 50}%</span>
-                        <span>100%</span>
-                      </div>
-                    </div>
-                  )}
+                  {renderParamInput(param, globalParams[param.id], onGlobalParamChange)}
                 </div>
               ))}
             </CollapsibleContent>

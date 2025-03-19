@@ -10,6 +10,8 @@ interface PromptInputProps {
   uploadedImages?: string[];
   onPromptChange: (prompt: string) => void;
   onClearPrompt?: () => void;
+  placeholder?: string;
+  minHeight?: string;
 }
 
 const PromptInput: React.FC<PromptInputProps> = ({ 
@@ -17,7 +19,9 @@ const PromptInput: React.FC<PromptInputProps> = ({
   isLoading,
   uploadedImages = [],
   onPromptChange,
-  onClearPrompt
+  onClearPrompt,
+  placeholder = "Describe the image you want to create...",
+  minHeight = "min-h-[120px]"
 }) => {
   const handleClearPrompt = () => {
     if (onClearPrompt) {
@@ -31,8 +35,8 @@ const PromptInput: React.FC<PromptInputProps> = ({
   return (
     <div className="relative">
       <Textarea
-        placeholder="Describe the image you want to create..."
-        className="min-h-[120px] resize-none border-0 bg-transparent p-4 text-base placeholder:text-muted-foreground/50 focus-visible:ring-0"
+        placeholder={placeholder}
+        className={`${minHeight} resize-none border-0 bg-transparent p-4 text-base placeholder:text-muted-foreground/50 focus-visible:ring-0`}
         value={prompt}
         onChange={(e) => onPromptChange(e.target.value)}
         disabled={isLoading}
