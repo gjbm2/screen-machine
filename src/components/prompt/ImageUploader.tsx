@@ -45,6 +45,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       
       // If uploading images, automatically switch to image-to-image workflow
       onWorkflowChange('image-to-image');
+      toast.info('Switched to Image-to-Image workflow');
     }
   };
 

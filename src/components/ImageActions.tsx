@@ -25,12 +25,14 @@ import publishDestinations from '@/data/publish-destinations.json';
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
 interface ImageActionsProps {
   imageUrl: string;
   onCreateAgain?: () => void;
+  onUseAsInput?: () => void;
   generationInfo?: {
     prompt: string;
     workflow: string;
@@ -42,6 +44,7 @@ interface ImageActionsProps {
 const ImageActions: React.FC<ImageActionsProps> = ({ 
   imageUrl, 
   onCreateAgain,
+  onUseAsInput,
   generationInfo,
   isFullScreen = false
 }) => {
@@ -82,17 +85,17 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   const getIconComponent = (iconName: string) => {
     switch (iconName) {
       case 'instagram':
-        return <Instagram className="h-4 w-4 mr-2" />;
+        return <Instagram className="h-4 w-4" />;
       case 'twitter':
-        return <Twitter className="h-4 w-4 mr-2" />;
+        return <Twitter className="h-4 w-4" />;
       case 'facebook':
-        return <Facebook className="h-4 w-4 mr-2" />;
+        return <Facebook className="h-4 w-4" />;
       case 'pinterest':
-        return <PinIcon className="h-4 w-4 mr-2" />;
+        return <PinIcon className="h-4 w-4" />;
       case 'message-circle':
-        return <MessageCircle className="h-4 w-4 mr-2" />;
+        return <MessageCircle className="h-4 w-4" />;
       default:
-        return <Share2 className="h-4 w-4 mr-2" />;
+        return <Share2 className="h-4 w-4" />;
     }
   };
 
@@ -138,37 +141,35 @@ const ImageActions: React.FC<ImageActionsProps> = ({
       {/* Publish dropdown button */}
       <TooltipProvider>
         <Tooltip delayDuration={300}>
-          <DropdownMenu>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="secondary" 
-                  size={isFullScreen ? "default" : "sm"}
-                  className={buttonSizeClass}
-                  disabled={isPublishing}
-                >
-                  <Share2 className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>Publish/Share</p>
-            </TooltipContent>
-            <DropdownMenuContent align="end" className="bg-background/90 backdrop-blur-sm z-50 border">
-              <DropdownMenuLabel>Share to</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {publishDestinations.map((destination) => (
-                <DropdownMenuItem 
-                  key={destination.id}
-                  onClick={() => handlePublish(destination.id)}
-                  className="cursor-pointer"
-                >
-                  {getIconComponent(destination.icon)}
-                  {destination.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="secondary" 
+                size={isFullScreen ? "default" : "sm"}
+                className={buttonSizeClass}
+                disabled={isPublishing}
+              >
+                <Share2 className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p>Publish/Share</p>
+          </TooltipContent>
+          <DropdownMenuContent align="end" className="bg-background/90 backdrop-blur-sm z-50 border">
+            <DropdownMenuLabel>Share to</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {publishDestinations.map((destination) => (
+              <DropdownMenuItem 
+                key={destination.id}
+                onClick={() => handlePublish(destination.id)}
+                className="cursor-pointer"
+              >
+                {getIconComponent(destination.icon)}
+                {destination.name}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
         </Tooltip>
       </TooltipProvider>
       
@@ -189,6 +190,27 @@ const ImageActions: React.FC<ImageActionsProps> = ({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
+
+      {/* Use as input button */}
+      {onUseAsInput && (
+        <TooltipProvider>
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="secondary" 
+                size={isFullScreen ? "default" : "sm"}
+                className={buttonSizeClass}
+                onClick={onUseAsInput}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Use as input</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
 
       {/* Create Again button */}
       {onCreateAgain && (

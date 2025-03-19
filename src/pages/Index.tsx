@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -29,7 +30,30 @@ const Index = () => {
   const [imageContainerOrder, setImageContainerOrder] = useState<string[]>([]);
   
   const handleUseGeneratedAsInput = async (selectedImageUrl: string) => {
-    toast.error('This feature has been removed');
+    try {
+      // Fetch the image as a blob
+      const response = await fetch(selectedImageUrl);
+      const blob = await response.blob();
+      
+      // Create a File object from the blob
+      const fileName = `input-image-${Date.now()}.png`;
+      const file = new File([blob], fileName, { type: 'image/png' });
+      
+      // Create an array with just this file
+      const imageFiles = [file];
+      
+      // Update the uploaded image URLs
+      const newUrl = URL.createObjectURL(blob);
+      setUploadedImageUrls([newUrl]);
+      
+      // Automatically switch to image-to-image workflow
+      setCurrentWorkflow('image-to-image');
+      
+      toast.success('Image set as input');
+    } catch (error) {
+      console.error('Error using image as input:', error);
+      toast.error('Failed to use image as input');
+    }
   };
 
   const handleCreateAgain = (batchId?: string) => {
@@ -225,7 +249,7 @@ const Index = () => {
             generatedImages={generatedImages}
             imageContainerOrder={imageContainerOrder}
             workflow={currentWorkflow}
-            onUseGeneratedAsInput={null}
+            onUseGeneratedAsInput={handleUseGeneratedAsInput}
             onCreateAgain={handleCreateAgain}
             onReorderContainers={handleReorderContainers}
             onDeleteImage={handleDeleteImage}

@@ -401,6 +401,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                   <ImageActions 
                     imageUrl={image.url}
                     onCreateAgain={() => handleCreateAnother(batchId)}
+                    onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(image.url)}
                     generationInfo={{
                       prompt: image.prompt,
                       workflow: image.workflow,
@@ -428,6 +429,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               <ImageActions 
                 imageUrl={image.url}
                 onCreateAgain={() => handleCreateAnother(batchId)}
+                onUseAsInput={() => onUseGeneratedAsInput && onUseGeneratedAsInput(image.url)}
                 generationInfo={{
                   prompt: image.prompt,
                   workflow: image.workflow,
