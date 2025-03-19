@@ -6,7 +6,7 @@ import SortableImageContainer from './SortableImageContainer';
 import ImageBatchItem from './ImageBatchItem';
 import NavigationControls from './NavigationControls';
 import ImageDetailView from './ImageDetailView';
-import { DropdownMenuProvider } from '@radix-ui/react-dropdown-menu';
+import { DropdownMenu } from '@/components/ui/dropdown-menu';
 
 interface ImageBatchProps {
   batchId: string;
