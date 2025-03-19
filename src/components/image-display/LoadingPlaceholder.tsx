@@ -8,7 +8,7 @@ interface LoadingPlaceholderProps {
 
 const LoadingPlaceholder: React.FC<LoadingPlaceholderProps> = ({ prompt }) => {
   return (
-    <Card className="overflow-hidden max-w-xs mx-auto">
+    <Card className="overflow-hidden w-full rounded-b-lg rounded-t-none">
       <div className="aspect-square flex flex-col items-center justify-center bg-secondary/10">
         <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4"></div>
         {prompt && (

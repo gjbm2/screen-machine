@@ -57,7 +57,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
   };
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div ref={setNodeRef} style={style} className="block">
       <div className="flex items-center justify-between bg-card rounded-t-lg py-2 px-4 border-b">
         <div 
           {...attributes} 
@@ -93,8 +93,10 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
         </button>
       </div>
       
-      {/* Only show content if expanded */}
-      {isExpanded && children}
+      {/* Always show content, but with different styling based on expanded state */}
+      <div className={isExpanded ? "block" : "block"}>
+        {children}
+      </div>
 
       {referenceImageUrl && (
         <Dialog open={showReferenceImage} onOpenChange={setShowReferenceImage}>

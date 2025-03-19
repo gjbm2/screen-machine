@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ImageBatchItem from './ImageBatchItem';
 import SortableImageContainer from './SortableImageContainer';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { ViewMode } from './ImageDisplay';
 import { Table, TableBody, TableRow, TableCell } from '@/components/ui/table';
 import ImageDetailView from './ImageDetailView';
 import { Skeleton } from "@/components/ui/skeleton";
+import LoadingPlaceholder from './LoadingPlaceholder';
 
 interface Image {
   url: string;
@@ -48,6 +49,13 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   
+  // Reset active image index when images change
+  useEffect(() => {
+    if (images.length > 0 && activeImageIndex >= images.length) {
+      setActiveImageIndex(0);
+    }
+  }, [images, activeImageIndex]);
+  
   if (!images || images.length === 0) {
     return null;
   }
@@ -64,26 +72,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
 
   if (viewMode === 'small' && completedImages.length === 0) {
     return null;
-  }
-  
-  if (viewMode === 'small') {
-    return (
-      <>
-        {completedImages.map((image, index) => (
-          <ImageBatchItem
-            key={`${batchId}-${index}`}
-            image={image}
-            batchId={batchId}
-            index={index}
-            total={completedImages.length}
-            onDeleteImage={onDeleteImage}
-            onImageClick={(url) => onImageClick(url, image.prompt)}
-            viewMode="small"
-            showActions={false}
-          />
-        ))}
-      </>
-    );
   }
   
   const handleNavigatePrev = () => {
@@ -106,9 +94,9 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
       toggleExpand={toggleExpand}
       viewMode={viewMode}
     >
-      <Card className={`rounded-t-none ${viewMode === 'table' ? 'p-0' : ''}`}>
-        <CardContent className={`${viewMode === 'table' ? 'p-2' : 'p-4'}`}>
-          {viewMode === 'table' ? (
+      {viewMode === 'table' ? (
+        <Card className="rounded-t-none">
+          <CardContent className="p-2">
             <Table>
               <TableBody>
                 {completedImages.map((image, index) => (
@@ -140,20 +128,28 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                 ))}
               </TableBody>
             </Table>
-          ) : isExpanded ? (
+          </CardContent>
+        </Card>
+      ) : isExpanded ? (
+        <Card className="rounded-t-none">
+          <CardContent className="p-4">
             <ImageDetailView
               batchId={batchId}
-              images={completedImages}
-              activeIndex={activeImageIndex}
+              images={completedImages.length > 0 ? completedImages : images}
+              activeIndex={activeImageIndex < completedImages.length ? activeImageIndex : 0}
               onSetActiveIndex={setActiveImageIndex}
               onNavigatePrev={handleNavigatePrev}
               onNavigateNext={handleNavigateNext}
-              onToggleExpand={toggleExpand}
+              onToggleExpand={() => toggleExpand(batchId)}
               onDeleteImage={onDeleteImage}
               onCreateAgain={() => onCreateAgain()}
               onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
             />
-          ) : (
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="rounded-t-none">
+          <CardContent className="p-4">
             <div className="grid gap-4 grid-cols-1">
               {completedImages.length > 0 ? (
                 <ImageBatchItem
@@ -172,40 +168,33 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                   viewMode={viewMode}
                   showActions={true}
                 />
-              ) : anyGenerating && (
-                <div className="aspect-square flex flex-col items-center justify-center bg-secondary/10 rounded-md p-4">
-                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4"></div>
-                  {images[0]?.prompt && (
-                    <p className="text-sm text-center text-muted-foreground px-4">
-                      Generating: {images[0].prompt}
-                    </p>
-                  )}
-                </div>
-              )}
+              ) : anyGenerating ? (
+                <LoadingPlaceholder prompt={images[0]?.prompt || null} />
+              ) : null}
             </div>
-          )}
           
-          <div className="flex justify-between mt-4">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="text-xs"
-              onClick={() => onCreateAgain()}
-            >
-              <Plus className="h-3 w-3 mr-1" /> Create Another
-            </Button>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs text-destructive hover:text-destructive"
-              onClick={() => setShowDeleteDialog(true)}
-            >
-              <Trash2 className="h-3 w-3 mr-1" /> Delete All
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="flex justify-between mt-4">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="text-xs"
+                onClick={() => onCreateAgain()}
+              >
+                <Plus className="h-3 w-3 mr-1" /> Create Another
+              </Button>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-destructive hover:text-destructive"
+                onClick={() => setShowDeleteDialog(true)}
+              >
+                <Trash2 className="h-3 w-3 mr-1" /> Delete All
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent className="sm:max-w-md">
