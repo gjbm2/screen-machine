@@ -87,30 +87,30 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs, isVisible, onClose 
     >
       {/* Drag handle - Improved visual feedback */}
       <div 
-        className={`absolute left-0 right-0 top-0 h-4 bg-muted cursor-ns-resize ${isDragging ? 'bg-muted-foreground/30' : ''}`}
+        className={`absolute left-0 right-0 top-0 h-3 bg-muted cursor-ns-resize ${isDragging ? 'bg-muted-foreground/30' : ''}`}
         onMouseDown={handleMouseDown}
       >
-        <div className="w-16 h-1.5 bg-muted-foreground/30 rounded-full mx-auto mt-1.5" />
+        <div className="w-12 h-1 bg-muted-foreground/30 rounded-full mx-auto mt-1" />
       </div>
       
-      <div className="flex justify-between items-center p-3 border-b mt-4">
-        <h3 className="font-semibold">Console Output</h3>
-        <div className="flex items-center space-x-2">
+      <div className="flex justify-between items-center p-2 border-b mt-3">
+        <h3 className="font-medium text-sm">Console Output</h3>
+        <div className="flex items-center space-x-1">
           <Button 
             variant="outline" 
             size="sm" 
-            className="h-8"
+            className="h-6 text-xs"
             onClick={handleSaveLogs}
           >
-            <Save className="h-4 w-4 mr-1" /> Save
+            <Save className="h-3 w-3 mr-1" /> Save
           </Button>
           <Button 
             variant="ghost" 
             size="icon" 
-            className="h-8 w-8" 
+            className="h-6 w-6" 
             onClick={onClose}
           >
-            <X className="h-4 w-4" />
+            <X className="h-3 w-3" />
           </Button>
         </div>
       </div>
@@ -118,7 +118,7 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs, isVisible, onClose 
       <div 
         ref={consoleRef}
         className="p-3 overflow-auto font-mono text-xs bg-black text-white"
-        style={{ height: `calc(100% - 55px)` }}
+        style={{ height: `calc(100% - 40px)` }}
       >
         {logs.length === 0 ? (
           <p className="text-white/60">No console logs yet.</p>

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Settings, X, Rocket, Plus, Minus } from 'lucide-react';
+import { Settings, X, Rocket, Plus, Minus, ChevronUp, ChevronDown } from 'lucide-react';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import workflowsData from '@/data/workflows.json';
 import globalOptionsData from '@/data/global-options.json';
@@ -22,6 +22,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface PromptFormProps {
   onSubmit: (prompt: string, imageFiles?: File[] | string[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string) => void;
@@ -40,6 +41,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   const [isButtonDisabled, setIsButtonDisabled] = useState(false);
   const [batchSize, setBatchSize] = useState(1);
+  const [isFormCollapsed, setIsFormCollapsed] = useState(false);
   const workflows = workflowsData as Workflow[];
   const isMobile = useIsMobile();
   const { width } = useWindowSize();
@@ -191,152 +193,166 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
 
   return (
     <div className="animate-fade-up">
-      <Card className="overflow-hidden glass border border-border/30">
-        <form onSubmit={handleSubmit} className="p-1">
-          {previewUrls.length > 0 && (
-            <div className="relative p-4 pb-2">
-              <Carousel className="w-full">
-                <CarouselContent>
-                  {previewUrls.map((url, index) => (
-                    <CarouselItem key={index} className="basis-full md:basis-1/2 lg:basis-1/3">
-                      <div className="relative rounded-lg overflow-hidden h-48 border border-border/30">
-                        <img 
-                          src={url} 
-                          alt={`Uploaded image ${index + 1}`} 
-                          className="w-full h-full object-contain"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveImage(index)}
-                          className="absolute top-2 right-2 bg-foreground/20 text-background hover:bg-foreground/30 p-1 rounded-full"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <p className="mt-2 text-xs text-muted-foreground truncate">
-                        {imageFiles[index]?.name}
-                      </p>
-                    </CarouselItem>
-                  ))}
-                </CarouselContent>
-                {previewUrls.length > 1 && (
-                  <>
-                    <CarouselPrevious className="left-1" />
-                    <CarouselNext className="right-1" />
-                  </>
-                )}
-              </Carousel>
-              {previewUrls.length > 1 && (
-                <div className="flex justify-end mt-2">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={clearAllImages}
-                    className="text-xs"
-                  >
-                    Clear All Images
-                  </Button>
+      <Collapsible open={!isFormCollapsed} onOpenChange={(open) => setIsFormCollapsed(!open)}>
+        <div className="flex justify-between items-center mb-2">
+          <h2 className="text-lg font-medium text-foreground/70">
+            Turn your words into <span className="text-primary">art</span>
+          </h2>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-8 w-8">
+              {isFormCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </CollapsibleTrigger>
+        </div>
+        
+        <CollapsibleContent>
+          <Card className="overflow-hidden glass border border-border/30">
+            <form onSubmit={handleSubmit} className="p-1">
+              {previewUrls.length > 0 && (
+                <div className="relative p-4 pb-2">
+                  <Carousel className="w-full">
+                    <CarouselContent>
+                      {previewUrls.map((url, index) => (
+                        <CarouselItem key={index} className="basis-full md:basis-1/2 lg:basis-1/3">
+                          <div className="relative rounded-lg overflow-hidden h-48 border border-border/30">
+                            <img 
+                              src={url} 
+                              alt={`Uploaded image ${index + 1}`} 
+                              className="w-full h-full object-contain"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(index)}
+                              className="absolute top-2 right-2 bg-foreground/20 text-background hover:bg-foreground/30 p-1 rounded-full"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground truncate">
+                            {imageFiles[index]?.name}
+                          </p>
+                        </CarouselItem>
+                      ))}
+                    </CarouselContent>
+                    {previewUrls.length > 1 && (
+                      <>
+                        <CarouselPrevious className="left-1" />
+                        <CarouselNext className="right-1" />
+                      </>
+                    )}
+                  </Carousel>
+                  {previewUrls.length > 1 && (
+                    <div className="flex justify-end mt-2">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={clearAllImages}
+                        className="text-xs"
+                      >
+                        Clear All Images
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
-          
-          <PromptInput
-            prompt={prompt}
-            isLoading={isLoading}
-            onPromptChange={setPrompt}
-            uploadedImages={previewUrls}
-          />
-          
-          <PromptExamples
-            prompt={prompt}
-            onExampleClick={handleExampleClick}
-            onStyleClick={handleStyleClick}
-          />
-          
-          <div className="p-3 pt-0 space-y-3">
-            <div className="flex justify-between items-center">
-              <AdvancedOptions
-                workflows={workflows}
-                selectedWorkflow={selectedWorkflow}
-                onWorkflowChange={handleWorkflowChange}
-                params={workflowParams}
-                onParamChange={handleParamChange}
-                globalParams={globalParams}
-                onGlobalParamChange={handleGlobalParamChange}
-                isOpen={isAdvancedOptionsOpen}
-                onOpenChange={setIsAdvancedOptionsOpen}
-              />
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2">
-                <WorkflowIconSelector
-                  workflows={workflows}
-                  selectedWorkflow={selectedWorkflow}
-                  onWorkflowChange={handleWorkflowChange}
-                  hideWorkflowName={true}
-                />
-                
-                <RefinerSelector
-                  selectedRefiner={selectedRefiner}
-                  onRefinerChange={handleRefinerChange}
-                />
-                
-                <Button 
-                  type="button"
-                  variant="outline" 
-                  size="icon"
-                  onClick={toggleAdvancedOptions}
-                  className="h-[36px] w-[36px] text-muted-foreground"
-                  aria-label="Settings"
-                >
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <ImageUploader
-                isLoading={isButtonDisabled}
-                onImageUpload={handleImageUpload}
-                onWorkflowChange={handleWorkflowChange}
-                hideLabel={isCompact}
+              
+              <PromptInput
+                prompt={prompt}
+                isLoading={isLoading}
+                onPromptChange={setPrompt}
+                uploadedImages={previewUrls}
               />
               
-              <div className="relative flex-1">
-                <Button 
-                  type="submit" 
-                  className="rounded-l-full pr-12 pl-4 sm:pl-6 transition-all hover:shadow-md h-[48px] text-lg font-medium w-full flex items-center gap-2 btn-shine"
-                  disabled={isButtonDisabled}
-                >
-                  <Rocket className="h-5 w-5" />
-                  {!isCompact && "Generate"}
-                  <span className="inline-flex items-center justify-center bg-primary-foreground/20 text-primary-foreground rounded-md px-1.5 py-0.5 text-xs ml-2">
-                    x{batchSize}
-                  </span>
-                </Button>
+              <PromptExamples
+                prompt={prompt}
+                onExampleClick={handleExampleClick}
+                onStyleClick={handleStyleClick}
+              />
+              
+              <div className="p-3 pt-0 space-y-3">
+                <div className="flex justify-between items-center">
+                  <AdvancedOptions
+                    workflows={workflows}
+                    selectedWorkflow={selectedWorkflow}
+                    onWorkflowChange={handleWorkflowChange}
+                    params={workflowParams}
+                    onParamChange={handleParamChange}
+                    globalParams={globalParams}
+                    onGlobalParamChange={handleGlobalParamChange}
+                    isOpen={isAdvancedOptionsOpen}
+                    onOpenChange={setIsAdvancedOptionsOpen}
+                  />
+                </div>
                 
-                <div className="absolute right-0 top-0 bottom-0 flex flex-col h-[48px] overflow-hidden rounded-r-full border-l border-primary-foreground/20">
-                  <Button 
-                    type="button"
-                    className="h-[24px] rounded-none rounded-tr-full px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
-                    onClick={incrementBatchSize}
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                  <Button 
-                    type="button"
-                    className="h-[24px] rounded-none rounded-br-full px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
-                    onClick={decrementBatchSize}
-                  >
-                    <Minus className="h-3 w-3" />
-                  </Button>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <WorkflowIconSelector
+                      workflows={workflows}
+                      selectedWorkflow={selectedWorkflow}
+                      onWorkflowChange={handleWorkflowChange}
+                      hideWorkflowName={true}
+                    />
+                    
+                    <RefinerSelector
+                      selectedRefiner={selectedRefiner}
+                      onRefinerChange={handleRefinerChange}
+                    />
+                    
+                    <Button 
+                      type="button"
+                      variant="outline" 
+                      size="icon"
+                      onClick={toggleAdvancedOptions}
+                      className="h-[36px] w-[36px] text-muted-foreground"
+                      aria-label="Settings"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <ImageUploader
+                    isLoading={isButtonDisabled}
+                    onImageUpload={handleImageUpload}
+                    onWorkflowChange={handleWorkflowChange}
+                  />
+                  
+                  <div className="relative flex-1">
+                    <Button 
+                      type="submit" 
+                      className="rounded-l-full pr-12 pl-4 sm:pl-6 transition-all hover:shadow-md h-[48px] text-lg font-medium w-full flex items-center gap-2 btn-shine"
+                      disabled={isButtonDisabled}
+                    >
+                      <Rocket className="h-5 w-5" />
+                      {!isCompact && "Generate"}
+                      <span className="inline-flex items-center justify-center bg-primary-foreground/20 text-primary-foreground rounded-md px-1.5 py-0.5 text-xs ml-2">
+                        x{batchSize}
+                      </span>
+                    </Button>
+                    
+                    <div className="absolute right-0 top-0 bottom-0 flex flex-col h-[48px] overflow-hidden rounded-r-full border-l border-primary-foreground/20">
+                      <Button 
+                        type="button"
+                        className="h-[24px] rounded-none rounded-tr-full px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
+                        onClick={incrementBatchSize}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                      <Button 
+                        type="button"
+                        className="h-[24px] rounded-none rounded-br-full px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
+                        onClick={decrementBatchSize}
+                      >
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        </form>
-      </Card>
+            </form>
+          </Card>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 };

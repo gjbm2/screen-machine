@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useRef, TouchEvent } from 'react';
 import { Card } from '@/components/ui/card';
 import { Trash2 } from 'lucide-react';
 import NewVariantPlaceholder from './NewVariantPlaceholder';
@@ -27,12 +27,41 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
   onDeleteImage,
   onCreateAgain
 }) => {
+  const touchRef = useRef<HTMLDivElement | null>(null);
+  const [startX, setStartX] = useState<number | null>(null);
+
   if (!images || images.length === 0) {
     return null;
   }
 
+  const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
+    setStartX(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = (e: TouchEvent<HTMLDivElement>) => {
+    if (startX === null) return;
+    
+    const endX = e.changedTouches[0].clientX;
+    const diff = startX - endX;
+    
+    if (Math.abs(diff) > 50) {
+      if (diff > 0 && activeIndex < images.length - 1) {
+        onThumbnailClick(activeIndex + 1);
+      } else if (diff < 0 && activeIndex > 0) {
+        onThumbnailClick(activeIndex - 1);
+      }
+    }
+    
+    setStartX(null);
+  };
+
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+    <div 
+      ref={touchRef}
+      className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       {images.map((image, index) => (
         <Card 
           key={`${batchId}-${index}`}
@@ -59,7 +88,7 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
               <Trash2 className="h-3 w-3" />
             </button>
             
-            {/* Image number indicator */}
+            {/* Image number indicator - only show if multiple images */}
             {images.length > 1 && (
               <div className="absolute bottom-1 right-1 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
                 {index + 1}

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -130,6 +131,9 @@ const Index = () => {
       
       const batchSize = globalParams?.batchSize || 1;
       
+      // Create placeholder images for all items in the batch
+      const placeholderImages: GeneratedImage[] = [];
+      
       for (let i = 0; i < batchSize; i++) {
         const placeholderImage: GeneratedImage = {
           url: '',
@@ -146,9 +150,13 @@ const Index = () => {
           referenceImageUrl
         };
         
-        setGeneratedImages(prev => [placeholderImage, ...prev]);
+        placeholderImages.push(placeholderImage);
       }
       
+      // First update placeholders
+      setGeneratedImages(prev => [...placeholderImages, ...prev]);
+      
+      // Then update active generations
       setActiveGenerations(prev => [...prev, currentBatchId]);
       
       const requestData = {
@@ -310,16 +318,10 @@ const Index = () => {
           </Tooltip>
         </div>
         
-        <div className="mt-8 text-center animate-fade-in">
-          <h1 className="text-2xl font-medium text-foreground/70">
-            Turn your words into <span className="text-primary">art</span>
-          </h1>
-        </div>
-        
-        <div className="mt-8 max-w-2xl mx-auto">
+        <div className="mt-8">
           <PromptForm 
             onSubmit={handleSubmitPrompt} 
-            isLoading={false}
+            isLoading={activeGenerations.length > 0}
             currentPrompt={currentPrompt}
           />
         </div>

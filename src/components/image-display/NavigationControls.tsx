@@ -5,27 +5,35 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 interface NavigationControlsProps {
   onPrevious: (e: React.MouseEvent) => void;
   onNext: (e: React.MouseEvent) => void;
+  size?: 'small' | 'medium' | 'large';
 }
 
 const NavigationControls: React.FC<NavigationControlsProps> = ({ 
   onPrevious, 
-  onNext 
+  onNext,
+  size = 'medium'
 }) => {
+  const sizeClasses = {
+    small: 'h-2 w-2',
+    medium: 'h-3 w-3',
+    large: 'h-4 w-4'
+  };
+
   return (
     <div className="absolute inset-0 pointer-events-none">
       <button 
-        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/20 hover:bg-black/40 rounded-full p-1 text-white/70 transition-colors pointer-events-auto z-20"
+        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/10 hover:bg-black/30 rounded-full p-1 text-white/60 transition-colors pointer-events-auto z-20"
         onClick={onPrevious}
         aria-label="Previous image"
       >
-        <ChevronLeft className="h-3 w-3" />
+        <ChevronLeft className={sizeClasses[size]} />
       </button>
       <button 
-        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/20 hover:bg-black/40 rounded-full p-1 text-white/70 transition-colors pointer-events-auto z-20"
+        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/10 hover:bg-black/30 rounded-full p-1 text-white/60 transition-colors pointer-events-auto z-20"
         onClick={onNext}
         aria-label="Next image"
       >
-        <ChevronRight className="h-3 w-3" />
+        <ChevronRight className={sizeClasses[size]} />
       </button>
     </div>
   );
