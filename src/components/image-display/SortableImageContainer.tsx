@@ -87,10 +87,10 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="font-medium cursor-help flex items-center">
-                <span className="font-normal">{batch.images[0]?.prompt || 'Generated Image'}</span>
+                {/* Reference image icon placed on the left */}
                 {referenceImageUrl && (
                   <button 
-                    className="ml-1.5 text-primary/70 hover:text-primary"
+                    className="mr-1.5 text-primary/70 hover:text-primary"
                     onClick={(e) => {
                       e.stopPropagation();
                       setShowReferenceImage(true);
@@ -99,6 +99,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
                     <Image className="h-4 w-4" />
                   </button>
                 )}
+                <span className="font-normal">{batch.images[0]?.prompt || 'Generated Image'}</span>
               </span>
             </TooltipTrigger>
             <TooltipContent className="max-w-md whitespace-normal">

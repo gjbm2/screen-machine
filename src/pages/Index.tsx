@@ -81,13 +81,47 @@ const Index = () => {
       return;
     }
     
+    // When creating another image, we need to find the original parameters
+    let originalParams = { ...currentParams };
+    let originalWorkflow = currentWorkflow;
+    let originalRefiner = currentRefiner;
+    let originalUploadedImages = [...uploadedImageUrls];
+    
+    // If a batchId is specified, find the original parameters from that batch
+    if (batchId) {
+      const batchImage = generatedImages.find(img => img.batchId === batchId);
+      if (batchImage) {
+        originalParams = batchImage.params || {};
+        originalWorkflow = batchImage.workflow;
+        originalRefiner = batchImage.refiner || null;
+        
+        // If there was a reference image, use it
+        if (batchImage.referenceImageUrl) {
+          originalUploadedImages = [batchImage.referenceImageUrl];
+        } else {
+          originalUploadedImages = [];
+        }
+      }
+    }
+    
+    // Make a proper image reference if needed
+    const imageFiles = originalUploadedImages.length > 0 ? originalUploadedImages : undefined;
+    
+    // Always set batch size to 1 for "create another" action
+    const modifiedGlobalParams = { 
+      ...currentGlobalParams, 
+      batchSize: 1 
+    };
+    
+    addConsoleLog(`Creating another image with same settings: "${currentPrompt.substring(0, 50)}${currentPrompt.length > 50 ? '...' : ''}"`);
+    
     handleSubmitPrompt(
       currentPrompt, 
-      uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
-      currentWorkflow || undefined,
-      currentParams,
-      { ...currentGlobalParams, batchSize: 1 },
-      currentRefiner || undefined,
+      imageFiles,
+      originalWorkflow || undefined,
+      originalParams,
+      modifiedGlobalParams,
+      originalRefiner || undefined,
       batchId
     );
     
@@ -200,7 +234,7 @@ const Index = () => {
               prompt: prompt,
               workflow: workflow || 'text-to-image',
               timestamp: Date.now(),
-              params: { ...params, ...globalParams },
+              params: { ...params },
               refiner: refiner,
               batchId: currentBatchId,
               batchIndex: existingBatchCount + i,

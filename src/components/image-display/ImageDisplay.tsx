@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { formatDistanceToNow } from 'date-fns';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import ImageBatchItem from './ImageBatchItem';
+import ImageActions from '@/components/ImageActions';
 
 type ViewMode = 'normal' | 'small' | 'table';
 type SortColumn = 'prompt' | 'when' | 'batch';
@@ -69,6 +70,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [focusBatchId, setFocusBatchId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [openBatchDialog, setOpenBatchDialog] = useState<string | null>(null);
+  const [openImageFullScreen, setOpenImageFullScreen] = useState<{batchId: string, imageIndex: number} | null>(null);
   const [sortColumn, setSortColumn] = useState<SortColumn>('when');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   
@@ -262,6 +264,10 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     return "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
   };
 
+  const handleFullScreenImage = (batchId: string, index: number) => {
+    setOpenImageFullScreen({ batchId, imageIndex: index });
+  };
+
   const renderAllImagesInSmallView = () => {
     const allImages: Array<{
       batchId: string;
@@ -287,7 +293,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           <div 
             key={`${batchId}-${index}`} 
             className="relative"
-            onClick={() => handleOpenBatchDialog(batchId)}
           >
             <ImageBatchItem
               image={image}
@@ -297,6 +302,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               onCreateAgain={handleCreateAnother}
               onUseAsInput={onUseGeneratedAsInput}
               onDeleteImage={handleDeleteImage}
+              onFullScreen={() => handleFullScreenImage(batchId, index)}
               viewMode="small"
             />
           </div>
@@ -410,6 +416,32 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
         </TableBody>
       </Table>
     );
+  };
+
+  // Find image for full screen display
+  const getFullScreenImage = () => {
+    if (!openImageFullScreen) return null;
+    
+    const { batchId, imageIndex } = openImageFullScreen;
+    const batch = batchedImages.find(b => b.batchId === batchId);
+    if (!batch) return null;
+    
+    return batch.images[imageIndex];
+  };
+
+  const fullScreenImage = getFullScreenImage();
+
+  const handleFullScreenCreateAgain = () => {
+    if (openImageFullScreen && onCreateAgain) {
+      handleCreateAnother(openImageFullScreen.batchId);
+    }
+  };
+
+  const handleFullScreenUseAsInput = () => {
+    const image = getFullScreenImage();
+    if (image && onUseGeneratedAsInput) {
+      onUseGeneratedAsInput(image.url);
+    }
   };
 
   return (
@@ -538,7 +570,11 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     <div className="p-6 pt-2">
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                         {batchedImages.find(b => b.batchId === openBatchDialog)?.images.map((image, index) => (
-                          <div key={index} className="relative rounded-md overflow-hidden border">
+                          <div 
+                            key={index} 
+                            className="relative rounded-md overflow-hidden border cursor-pointer"
+                            onClick={() => handleFullScreenImage(openBatchDialog, index)}
+                          >
                             <img 
                               src={image.url} 
                               alt={`Image ${index + 1}`} 
@@ -547,11 +583,83 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                             <div className="absolute bottom-2 right-2 bg-black/90 text-white px-2 py-1 rounded-full text-xs">
                               {index + 1}
                             </div>
+                            {/* Always visible delete button */}
+                            <button 
+                              className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors z-10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteImage(openBatchDialog, index);
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
+                </DialogContent>
+              </Dialog>
+            )}
+            
+            {/* Full Screen Image */}
+            {fullScreenImage && (
+              <Dialog 
+                open={!!openImageFullScreen} 
+                onOpenChange={(open) => !open && setOpenImageFullScreen(null)}
+              >
+                <DialogContent className="max-w-screen-lg p-0 overflow-hidden">
+                  <DialogHeader className="p-4 pb-0">
+                    <DialogTitle>Image Detail</DialogTitle>
+                  </DialogHeader>
+                  <div className="p-4 pt-0">
+                    <div className="flex flex-col">
+                      {/* Image with click-to-close */}
+                      <div 
+                        className="w-full overflow-hidden rounded-md cursor-pointer" 
+                        onClick={() => setOpenImageFullScreen(null)}
+                      >
+                        <img 
+                          src={fullScreenImage.url} 
+                          alt={fullScreenImage.prompt || "Generated image"}
+                          className="w-full h-auto object-contain max-h-[60vh]"
+                        />
+                      </div>
+                      
+                      {/* Image info */}
+                      <div className="mt-4 text-sm text-muted-foreground">
+                        <p className="mb-2">{fullScreenImage.prompt || "No prompt information"}</p>
+                        {fullScreenImage.workflow && (
+                          <p>Workflow: {fullScreenImage.workflow}</p>
+                        )}
+                      </div>
+                      
+                      {/* Action buttons */}
+                      <div className="mt-4 flex justify-center space-x-2">
+                        <ImageActions
+                          imageUrl={fullScreenImage.url}
+                          onCreateAgain={handleFullScreenCreateAgain}
+                          onUseAsInput={onUseGeneratedAsInput ? handleFullScreenUseAsInput : undefined}
+                          generationInfo={{
+                            prompt: fullScreenImage.prompt || '',
+                            workflow: fullScreenImage.workflow || '',
+                            params: fullScreenImage.params
+                          }}
+                          isFullScreen={true}
+                        />
+                      </div>
+                      
+                      {/* Close button */}
+                      <div className="mt-4 flex justify-center">
+                        <Button 
+                          onClick={() => setOpenImageFullScreen(null)}
+                          variant="outline"
+                        >
+                          Close
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </DialogContent>
               </Dialog>
             )}

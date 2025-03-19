@@ -14,7 +14,7 @@ const ReferenceImageIndicator: React.FC<ReferenceImageIndicatorProps> = ({ image
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <button 
-          className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors group"
+          className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors group z-10"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="relative w-6 h-6 rounded-full overflow-hidden border border-white/20">

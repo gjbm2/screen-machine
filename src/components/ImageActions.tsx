@@ -125,11 +125,13 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   // Apply transparency based on interaction type
   const opacityClass = isMouseOver 
     ? "bg-black/60 hover:bg-black/70" 
-    : "bg-black/90 hover:bg-black/100";
+    : "";
   
   const buttonSizeClass = isFullScreen 
     ? "px-3 py-2 text-sm" 
     : `${opacityClass} text-white border border-white/20`;
+
+  const buttonVariant = isFullScreen ? "default" : "secondary";
 
   return (
     <>
@@ -138,7 +140,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button 
-              variant="secondary" 
+              variant={buttonVariant} 
               size={isFullScreen ? "default" : "sm"}
               className={buttonSizeClass}
               onClick={handleShowInfo}
@@ -157,7 +159,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button 
-              variant="secondary" 
+              variant={buttonVariant} 
               size={isFullScreen ? "default" : "sm"}
               className={buttonSizeClass}
               onClick={handleSaveImage}
@@ -180,7 +182,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button 
-                    variant="secondary" 
+                    variant={buttonVariant} 
                     size={isFullScreen ? "default" : "sm"}
                     className={buttonSizeClass}
                     disabled={isPublishing}
@@ -217,7 +219,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button 
-                variant="secondary" 
+                variant={buttonVariant} 
                 size={isFullScreen ? "default" : "sm"}
                 className={buttonSizeClass}
                 onClick={onUseAsInput}
@@ -238,7 +240,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button 
-                variant="secondary" 
+                variant={buttonVariant} 
                 size={isFullScreen ? "default" : "sm"}
                 className={buttonSizeClass}
                 onClick={onCreateAgain}

@@ -53,6 +53,13 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     }
   };
 
+  const handleFullScreen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onFullScreen) {
+      onFullScreen(batchId);
+    }
+  };
+
   return (
     <div 
       className="relative rounded-md overflow-hidden group"
@@ -61,7 +68,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     >
       <div 
         className="relative aspect-square cursor-pointer"
-        onClick={() => onFullScreen && onFullScreen(batchId)}
+        onClick={handleFullScreen}
       >
         {image.url ? (
           <img
@@ -84,10 +91,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
               variant="outline" 
               size="sm" 
               className="bg-black/50 border-white/20 text-white"
-              onClick={(e) => {
-                e.stopPropagation();
-                onFullScreen && onFullScreen(batchId);
-              }}
+              onClick={handleFullScreen}
             >
               <Maximize className="h-4 w-4 mr-1" /> View
             </Button>
@@ -142,10 +146,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
             <TooltipTrigger asChild>
               <button 
                 className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors z-10"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onFullScreen(batchId);
-                }}
+                onClick={handleFullScreen}
               >
                 <Maximize className="h-3 w-3" />
               </button>

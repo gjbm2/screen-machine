@@ -173,7 +173,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
                 <img 
                   src={activeImage?.url} 
                   alt={activeImage?.prompt || "Generated image"}
-                  className="w-full h-auto object-contain"
+                  className="w-full h-auto object-contain max-h-[60vh]"
                 />
               </div>
               
