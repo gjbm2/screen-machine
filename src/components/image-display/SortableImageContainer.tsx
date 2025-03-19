@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -52,6 +53,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     position: 'relative' as 'relative',
     marginBottom: '1rem',
     width: '100%',
+    gridColumn: isExpanded && viewMode === 'normal' ? '1 / -1' : undefined,
   };
 
   return (

@@ -93,7 +93,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   };
 
   const batches = getImageBatches();
-  const hasBatches = Object.keys(batches).length > 0;
+  const hasBatches = Object.keys(batches).length > 0 || isLoading;
   
   return (
     <div className="mt-8">
@@ -102,7 +102,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       )}
       
       {/* Generated Images Section */}
-      {(hasBatches || isLoading) && (
+      {hasBatches && (
         <div className="mt-8">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">Generated Images</h2>
@@ -144,15 +144,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           </div>
           
           <ScrollArea className="h-[calc(100vh-24rem)] pr-4">
-            {/* Loading placeholder */}
-            {isLoading && (
-              <Card className="mb-4">
-                <CardContent className="pt-6 pb-4">
-                  <LoadingPlaceholder prompt={prompt} />
-                </CardContent>
-              </Card>
-            )}
-            
             <DndContext 
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -160,7 +151,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             >
               <SortableContext 
                 items={imageContainerOrder}
-                strategy={horizontalListSortingStrategy}
+                strategy={viewMode === 'small' ? horizontalListSortingStrategy : verticalListSortingStrategy}
               >
                 {viewMode === 'small' ? (
                   // Small view - grid of small thumbnails

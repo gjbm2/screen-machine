@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import ImageBatchItem from './ImageBatchItem';
 import SortableImageContainer from './SortableImageContainer';
@@ -8,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { ViewMode } from './ImageDisplay';
 import { Table, TableBody, TableRow, TableCell } from '@/components/ui/table';
 import ImageDetailView from './ImageDetailView';
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Image {
   url: string;
@@ -53,10 +55,17 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   const anyGenerating = images.some(img => img.status === 'generating');
   const completedImages = images.filter(img => img.status === 'completed');
   
-  if (images.every(img => img.status === 'generating')) {
+  // Do not display the container at all if all images are generating but have no URL
+  const allGeneratingWithoutUrl = images.every(img => img.status === 'generating' && !img.url);
+  
+  if (allGeneratingWithoutUrl && viewMode !== 'normal') {
     return null;
   }
 
+  if (viewMode === 'small' && completedImages.length === 0) {
+    return null;
+  }
+  
   if (viewMode === 'small') {
     return (
       <>
@@ -146,26 +155,31 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
             />
           ) : (
             <div className="grid gap-4 grid-cols-1">
-              <ImageBatchItem
-                key={`${batchId}-${activeImageIndex}`}
-                image={completedImages[activeImageIndex]}
-                batchId={batchId}
-                index={activeImageIndex}
-                total={completedImages.length}
-                onCreateAgain={() => onCreateAgain()}
-                onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
-                onDeleteImage={onDeleteImage}
-                onFullScreen={() => toggleExpand(batchId)}
-                onImageClick={() => toggleExpand(batchId)}
-                onNavigatePrev={completedImages.length > 1 ? handleNavigatePrev : undefined}
-                onNavigateNext={completedImages.length > 1 ? handleNavigateNext : undefined}
-                viewMode={viewMode}
-                showActions={true}
-              />
-              
-              {anyGenerating && (
-                <div className="relative aspect-square rounded-lg bg-muted animate-pulse flex items-center justify-center">
-                  <div className="text-sm text-muted-foreground">Generating...</div>
+              {completedImages.length > 0 ? (
+                <ImageBatchItem
+                  key={`${batchId}-${activeImageIndex}`}
+                  image={completedImages[activeImageIndex]}
+                  batchId={batchId}
+                  index={activeImageIndex}
+                  total={completedImages.length}
+                  onCreateAgain={() => onCreateAgain()}
+                  onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
+                  onDeleteImage={onDeleteImage}
+                  onFullScreen={() => toggleExpand(batchId)}
+                  onImageClick={() => toggleExpand(batchId)}
+                  onNavigatePrev={completedImages.length > 1 ? handleNavigatePrev : undefined}
+                  onNavigateNext={completedImages.length > 1 ? handleNavigateNext : undefined}
+                  viewMode={viewMode}
+                  showActions={true}
+                />
+              ) : anyGenerating && (
+                <div className="aspect-square flex flex-col items-center justify-center bg-secondary/10 rounded-md p-4">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4"></div>
+                  {images[0]?.prompt && (
+                    <p className="text-sm text-center text-muted-foreground px-4">
+                      Generating: {images[0].prompt}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
