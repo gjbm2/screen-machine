@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from '@/components/ui/button';
-import { Info, Download, Share2, Copy, FileInput, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Info, Download, Share2, Copy, FileInput, ChevronLeft, ChevronRight, Maximize } from 'lucide-react';
 import { toast } from 'sonner';
 import ImageActions from '@/components/ImageActions';
 
@@ -34,6 +34,7 @@ interface ImageDisplayProps {
     params?: Record<string, any>;
     batchId?: string;
     batchIndex?: number;
+    status?: 'generating' | 'completed' | 'error';
   }>;
   workflow?: string | null;
   onUseGeneratedAsInput?: (imageUrl: string) => void;
@@ -56,6 +57,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [activeImageIndices, setActiveImageIndices] = useState<Record<string, number>>({});
   // State to track which batch is currently being interacted with (for hover persistence)
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  // State to track the currently full-screen image
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
   
   // Always render the component when we have uploaded images or when we're loading
   // or when we have generated image results
@@ -127,6 +130,12 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
   };
 
+  // View image in full screen
+  const openFullScreen = (url: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setFullScreenImage(url);
+  };
+
   // Get batched images
   const batchedImages = getBatchedImages();
 
@@ -139,12 +148,31 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             <h3 className="text-lg font-semibold mb-3">Reference Images</h3>
             <div className="overflow-hidden bg-secondary/20 rounded-lg">
               {uploadedImages.length === 1 ? (
-                <div className="aspect-square overflow-hidden">
+                <div className="aspect-square overflow-hidden relative">
                   <img
                     src={uploadedImages[0]}
                     alt="Reference image"
                     className="w-full h-full object-contain"
                   />
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <button 
+                        className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Maximize className="h-4 w-4" />
+                      </button>
+                    </DialogTrigger>
+                    <DialogContent fullscreen>
+                      <div className="w-full h-full flex items-center justify-center">
+                        <img
+                          src={uploadedImages[0]}
+                          alt="Reference image full view"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               ) : (
                 <Carousel className="w-full">
@@ -159,6 +187,25 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                                 alt={`Reference image ${index + 1}`}
                                 className="w-full h-full object-cover"
                               />
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <button 
+                                    className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Maximize className="h-4 w-4" />
+                                  </button>
+                                </DialogTrigger>
+                                <DialogContent fullscreen>
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <img
+                                      src={url}
+                                      alt={`Reference image ${index + 1} full view`}
+                                      className="max-w-full max-h-full object-contain"
+                                    />
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
                             </div>
                           </Card>
                         </div>
@@ -194,10 +241,10 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             
             {/* Rendered image batches */}
             {batchedImages.map(({ batchId, images }) => {
-              const isGeneratingForThisBatch = isLoading && onCreateAgain && batchId === generatedImages[0]?.batchId;
               const activeIndex = getActiveImageIndex(batchId, images.length);
               const activeImage = images[activeIndex];
               const isActive = activeBatchId === batchId;
+              const isGenerating = activeImage.status === 'generating';
               
               return (
                 <Card 
@@ -207,12 +254,12 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                   onMouseLeave={() => setActiveBatchId(null)}
                 >
                   {/* Show loading overlay if generating new image for this batch */}
-                  {isGeneratingForThisBatch ? (
+                  {isGenerating ? (
                     <div className="aspect-square flex items-center justify-center bg-secondary/20">
                       <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-                      {prompt && (
+                      {activeImage.prompt && (
                         <p className="text-sm text-center text-muted-foreground absolute mt-20">
-                          Generating variant: {prompt}
+                          Generating: {activeImage.prompt}
                         </p>
                       )}
                     </div>
@@ -223,6 +270,27 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         alt={activeImage.prompt || 'Generated image'}
                         className="w-full h-full object-cover"
                       />
+                      
+                      {/* Full screen view button */}
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <button 
+                            className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-2 text-white transition-colors z-20"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Maximize className="h-4 w-4" />
+                          </button>
+                        </DialogTrigger>
+                        <DialogContent fullscreen>
+                          <div className="w-full h-full flex items-center justify-center">
+                            <img
+                              src={activeImage.url}
+                              alt={activeImage.prompt || 'Generated image full view'}
+                              className="max-w-full max-h-full object-contain"
+                            />
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                       
                       {/* Batch counter */}
                       {images.length > 1 && (

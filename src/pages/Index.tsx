@@ -117,12 +117,13 @@ const Index = () => {
       
       console.log('Sending request with data:', requestData);
       
+      // Simulate API call with working image URLs
       setTimeout(() => {
         const mockImageUrls = [
-          "https://images.unsplash.com/photo-1543466835-00a7907e9de1?q=80&w=1974&auto=format&fit=crop",
-          "https://images.unsplash.com/photo-1605979257913-1704eb7b6246?q=80&w=1770&auto=format&fit=crop",
-          "https://images.unsplash.com/photo-1692891873526-61e7e87ea428?q=80&w=1780&auto=format&fit=crop",
-          "https://images.unsplash.com/photo-1533134486753-c833f0ed4866?q=80&w=1770&auto=format&fit=crop"
+          "https://images.unsplash.com/photo-1543466835-00a7907e9de1",
+          "https://images.unsplash.com/photo-1605979257913-1704eb7b6246",
+          "https://images.unsplash.com/photo-1692891873526-61e7e87ea428",
+          "https://images.unsplash.com/photo-1533134486753-c833f0ed4866"
         ];
         
         const existingBatchCount = batchId ? 
