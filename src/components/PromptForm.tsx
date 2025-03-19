@@ -1,13 +1,16 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Upload, X } from 'lucide-react';
+import AdvancedOptions from '@/components/AdvancedOptions';
+import workflowsData from '@/data/workflows.json';
+import { Workflow } from '@/types/workflows';
 
 interface PromptFormProps {
-  onSubmit: (prompt: string, imageFile?: File | null) => void;
+  onSubmit: (prompt: string, imageFile?: File | null, workflow?: string, params?: Record<string, any>) => void;
   isLoading: boolean;
 }
 
@@ -22,7 +25,24 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
   const [prompt, setPrompt] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string>('text-to-image');
+  const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const workflows = workflowsData as Workflow[];
+  
+  // Initialize default workflow parameters
+  useEffect(() => {
+    const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
+    if (currentWorkflow) {
+      const defaultParams: Record<string, any> = {};
+      currentWorkflow.params.forEach(param => {
+        if (param.default !== undefined) {
+          defaultParams[param.id] = param.default;
+        }
+      });
+      setWorkflowParams(defaultParams);
+    }
+  }, [selectedWorkflow, workflows]);
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,7 +52,7 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
       return;
     }
     
-    onSubmit(prompt, imageFile);
+    onSubmit(prompt, imageFile, selectedWorkflow, workflowParams);
   };
 
   const handleExampleClick = (example: string) => {
@@ -58,6 +78,11 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
     setImageFile(file);
     const imageUrl = URL.createObjectURL(file);
     setPreviewUrl(imageUrl);
+    
+    // If uploading an image, automatically switch to image-to-image workflow
+    if (workflows.find(w => w.id === 'image-to-image')) {
+      setSelectedWorkflow('image-to-image');
+    }
   };
 
   const handleRemoveImage = () => {
@@ -69,6 +94,34 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    
+    // If removing an image, switch back to text-to-image workflow
+    if (selectedWorkflow === 'image-to-image') {
+      setSelectedWorkflow('text-to-image');
+    }
+  };
+
+  const handleWorkflowChange = (workflowId: string) => {
+    setSelectedWorkflow(workflowId);
+    
+    // Reset params when workflow changes
+    const currentWorkflow = workflows.find(w => w.id === workflowId);
+    if (currentWorkflow) {
+      const defaultParams: Record<string, any> = {};
+      currentWorkflow.params.forEach(param => {
+        if (param.default !== undefined) {
+          defaultParams[param.id] = param.default;
+        }
+      });
+      setWorkflowParams(defaultParams);
+    }
+  };
+
+  const handleParamChange = (paramId: string, value: any) => {
+    setWorkflowParams(prev => ({
+      ...prev,
+      [paramId]: value
+    }));
   };
 
   const triggerFileInput = () => {
@@ -125,33 +178,43 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
             </div>
           </div>
           
-          <div className="flex justify-between items-center p-3 pt-2">
-            <input
-              type="file"
-              ref={fileInputRef}
-              className="hidden"
-              accept="image/*"
-              onChange={handleImageUpload}
-              disabled={isLoading}
-            />
-            <Button 
-              type="button" 
-              variant="outline"
-              onClick={triggerFileInput}
-              className="text-sm flex items-center gap-2"
-              disabled={isLoading}
-            >
-              <Upload className="h-4 w-4" />
-              Upload Image
-            </Button>
+          <div className="p-3 pt-0 space-y-3">
+            <div className="flex gap-3">
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={handleImageUpload}
+                disabled={isLoading}
+              />
+              <Button 
+                type="button" 
+                variant="outline"
+                onClick={triggerFileInput}
+                className="text-sm flex items-center gap-2 flex-1"
+                disabled={isLoading}
+              >
+                <Upload className="h-4 w-4" />
+                Upload Image
+              </Button>
+              
+              <Button 
+                type="submit" 
+                className="btn-shine rounded-full px-6 transition-all hover:shadow-md flex-1"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Generating...' : 'Generate'}
+              </Button>
+            </div>
             
-            <Button 
-              type="submit" 
-              className="btn-shine rounded-full px-6 transition-all hover:shadow-md"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Generating...' : 'Generate'}
-            </Button>
+            <AdvancedOptions
+              workflows={workflows}
+              selectedWorkflow={selectedWorkflow}
+              onWorkflowChange={handleWorkflowChange}
+              params={workflowParams}
+              onParamChange={handleParamChange}
+            />
           </div>
         </form>
       </Card>

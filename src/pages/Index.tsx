@@ -10,15 +10,24 @@ const Index = () => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<string | null>(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [currentWorkflow, setCurrentWorkflow] = useState<string | null>(null);
 
-  const handleSubmitPrompt = async (prompt: string, imageFile?: File | null) => {
+  const handleSubmitPrompt = async (
+    prompt: string, 
+    imageFile?: File | null,
+    workflow?: string,
+    params?: Record<string, any>
+  ) => {
     setIsLoading(true);
     setCurrentPrompt(prompt);
+    setCurrentWorkflow(workflow || null);
     
     // If user uploaded an image, create a local URL for display
     if (imageFile) {
       const localImageUrl = URL.createObjectURL(imageFile);
       setUploadedImageUrl(localImageUrl);
+    } else {
+      setUploadedImageUrl(null);
     }
     
     try {
@@ -36,6 +45,8 @@ const Index = () => {
         },
         body: JSON.stringify({ 
           prompt,
+          workflow: workflow || 'text-to-image',
+          params: params || {},
           has_reference_image: imageFile ? true : false 
         }),
       });
@@ -79,6 +90,7 @@ const Index = () => {
             prompt={currentPrompt}
             isLoading={isLoading}
             uploadedImage={uploadedImageUrl}
+            workflow={currentWorkflow}
           />
         </div>
       </div>

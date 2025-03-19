@@ -1,107 +1,69 @@
 
 import React from 'react';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Download, Share2 } from 'lucide-react';
-import { toast } from 'sonner';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
   prompt: string | null;
   isLoading: boolean;
   uploadedImage?: string | null;
+  workflow?: string | null;
 }
 
-const ImageDisplay = ({ imageUrl, prompt, isLoading, uploadedImage }: ImageDisplayProps) => {
-  // Mock function for downloading the image
-  const handleDownload = () => {
-    if (!imageUrl) return;
-    
-    // In a real app, you would implement the actual download logic
-    window.open(imageUrl, '_blank');
-  };
-  
-  // Mock function for sharing the image
-  const handleShare = () => {
-    if (!imageUrl) return;
-    
-    // In a real app, you would implement sharing functionality
-    navigator.clipboard.writeText(imageUrl);
-    toast.success('Image URL copied to clipboard');
-  };
-
-  if (isLoading) {
-    return (
-      <div className="mt-8 min-h-[400px] rounded-xl bg-secondary/30 backdrop-blur-sm flex items-center justify-center animate-fade-in">
-        <div className="flex flex-col items-center justify-center">
-          <div className="relative w-12 h-12">
-            <span className="absolute inset-0 border-2 border-transparent border-t-primary rounded-full animate-spin"></span>
-            <span className="absolute inset-0 border-2 border-primary/20 rounded-full opacity-50"></span>
-          </div>
-          <p className="mt-4 text-sm text-foreground/70">
-            Creating your imagination...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!imageUrl && !uploadedImage) {
-    return null;
-  }
+const ImageDisplay: React.FC<ImageDisplayProps> = ({ 
+  imageUrl, 
+  prompt, 
+  isLoading,
+  uploadedImage,
+  workflow
+}) => {
+  if (!imageUrl && !isLoading && !uploadedImage) return null;
 
   return (
-    <div className="mt-8 animate-fade-in">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="mt-12 animate-fade-in">
+      <div className="flex flex-col md:flex-row gap-6">
         {uploadedImage && (
-          <Card className="overflow-hidden border border-border/30 image-container">
-            <div className="aspect-square sm:aspect-video md:aspect-[4/3] relative overflow-hidden rounded-t-lg">
-              <img 
-                src={uploadedImage} 
-                alt="Uploaded reference image" 
-                className="h-full w-full object-cover animate-blur-in"
+          <Card className="relative w-full md:w-1/2 overflow-hidden border border-border/30 rounded-lg">
+            <div className="aspect-square overflow-hidden bg-secondary/20">
+              <img
+                src={uploadedImage}
+                alt="Reference image"
+                className="w-full h-full object-contain"
               />
             </div>
-            <div className="p-4 flex justify-between items-center">
-              <p className="text-sm text-muted-foreground">Source Image</p>
+            <div className="p-3 text-center">
+              <h3 className="text-sm font-medium">Reference Image</h3>
             </div>
           </Card>
         )}
-        
-        {imageUrl && (
-          <Card className={`overflow-hidden border border-border/30 image-container ${!uploadedImage ? 'md:col-span-2' : ''}`}>
-            <div className="aspect-square sm:aspect-video md:aspect-[4/3] relative overflow-hidden rounded-t-lg">
-              <img 
-                src={imageUrl} 
-                alt={prompt || 'Generated image'} 
-                className="h-full w-full object-cover animate-blur-in"
-              />
-            </div>
-            <div className="p-4 flex justify-between items-center">
-              <p className="text-sm text-muted-foreground line-clamp-1">{prompt}</p>
-              <div className="flex gap-2">
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="rounded-full h-8 w-8 p-0" 
-                  onClick={handleDownload}
-                >
-                  <Download className="h-4 w-4" />
-                  <span className="sr-only">Download</span>
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="rounded-full h-8 w-8 p-0" 
-                  onClick={handleShare}
-                >
-                  <Share2 className="h-4 w-4" />
-                  <span className="sr-only">Share</span>
-                </Button>
+
+        <Card className="relative w-full md:w-1/2 overflow-hidden border border-border/30 rounded-lg">
+          <div className="aspect-square overflow-hidden bg-secondary/20">
+            {isLoading ? (
+              <div className="flex h-full items-center justify-center">
+                <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
               </div>
-            </div>
-          </Card>
-        )}
+            ) : imageUrl ? (
+              <img
+                src={imageUrl}
+                alt={prompt || 'Generated image'}
+                className="w-full h-full object-contain"
+              />
+            ) : null}
+          </div>
+          <div className="p-3">
+            {prompt && (
+              <p className="text-sm text-center text-muted-foreground truncate">
+                {prompt}
+              </p>
+            )}
+            {workflow && (
+              <p className="text-xs text-center text-muted-foreground mt-1">
+                Workflow: {workflow.replace(/-/g, ' ')}
+              </p>
+            )}
+          </div>
+        </Card>
       </div>
     </div>
   );

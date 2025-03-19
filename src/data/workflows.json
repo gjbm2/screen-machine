@@ -1,0 +1,65 @@
+
+[
+  {
+    "id": "text-to-image",
+    "name": "Text to Image",
+    "description": "Generate an image from a text prompt",
+    "params": [
+      {
+        "id": "style",
+        "name": "Style",
+        "type": "select",
+        "options": ["Photorealistic", "Artistic", "Cartoon", "Abstract"],
+        "default": "Photorealistic"
+      },
+      {
+        "id": "resolution",
+        "name": "Resolution",
+        "type": "select",
+        "options": ["512x512", "768x768", "1024x1024"],
+        "default": "512x512"
+      }
+    ]
+  },
+  {
+    "id": "image-to-image",
+    "name": "Image to Image",
+    "description": "Transform an uploaded image based on a text prompt",
+    "params": [
+      {
+        "id": "strength",
+        "name": "Transformation Strength",
+        "type": "select",
+        "options": ["Light", "Medium", "Strong"],
+        "default": "Medium"
+      },
+      {
+        "id": "preserve_color",
+        "name": "Preserve Colors",
+        "type": "checkbox",
+        "default": true
+      }
+    ]
+  },
+  {
+    "id": "artistic-style-transfer",
+    "name": "Artistic Style Transfer",
+    "description": "Apply artistic styles to your image",
+    "params": [
+      {
+        "id": "style_preset",
+        "name": "Style Preset",
+        "type": "select",
+        "options": ["Impressionist", "Cubist", "Pop Art", "Watercolor", "Oil Painting"],
+        "default": "Impressionist"
+      },
+      {
+        "id": "intensity",
+        "name": "Style Intensity",
+        "type": "select",
+        "options": ["Low", "Medium", "High"],
+        "default": "Medium"
+      }
+    ]
+  }
+]

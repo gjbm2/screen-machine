@@ -19,12 +19,21 @@ PLACEHOLDER_IMAGES = [
     "https://images.unsplash.com/photo-1533134486753-c833f0ed4866?q=80&w=1770&auto=format&fit=crop"
 ]
 
+# Artistic style images
+ARTISTIC_IMAGES = [
+    "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?q=80&w=1945&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1549289524-06cf8837ace5?q=80&w=1974&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1591267990532-e5bdb1b0ceb8?q=80&w=1974&auto=format&fit=crop"
+]
+
 @app.route('/generate-image', methods=['POST'])
 def generate_image():
     # Get the data from the request
     data = request.get_json()
     prompt = data.get('prompt', '')
     has_reference_image = data.get('has_reference_image', False)
+    workflow = data.get('workflow', 'text-to-image')
+    params = data.get('params', {})
     
     if not prompt and not has_reference_image:
         return jsonify({"error": "Prompt or reference image is required"}), 400
@@ -37,12 +46,17 @@ def generate_image():
     # 2. Pass both the prompt and the image to your AI model for img2img generation
     # 3. Return the generated image
     
-    # For this example, we're just returning a random placeholder image
-    image_url = random.choice(PLACEHOLDER_IMAGES)
+    # For this mock implementation, we're returning different placeholder images based on the workflow
+    if workflow == 'artistic-style-transfer':
+        image_url = random.choice(ARTISTIC_IMAGES)
+    else:
+        image_url = random.choice(PLACEHOLDER_IMAGES)
     
     return jsonify({
         "success": True,
         "prompt": prompt,
+        "workflow": workflow,
+        "params": params,
         "image_url": image_url,
         "used_reference_image": has_reference_image
     })
