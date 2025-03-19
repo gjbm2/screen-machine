@@ -16,6 +16,8 @@ import { Workflow, WorkflowParam } from '@/types/workflows';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
+import { Separator } from '@/components/ui/separator';
+import globalOptionsData from '@/data/global-options.json';
 
 interface AdvancedOptionsProps {
   workflows: Workflow[];
@@ -23,6 +25,8 @@ interface AdvancedOptionsProps {
   onWorkflowChange: (workflowId: string) => void;
   params: Record<string, any>;
   onParamChange: (paramId: string, value: any) => void;
+  globalParams?: Record<string, any>;
+  onGlobalParamChange?: (paramId: string, value: any) => void;
 }
 
 const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
@@ -31,9 +35,12 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   onWorkflowChange,
   params,
   onParamChange,
+  globalParams = {},
+  onGlobalParamChange = () => {},
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isParamsOpen, setIsParamsOpen] = useState(true);
+  const [isGlobalParamsOpen, setIsGlobalParamsOpen] = useState(true);
   
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflow) || workflows[0];
 
@@ -76,6 +83,80 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
             </p>
           </div>
 
+          {/* Global Parameters Section */}
+          <Collapsible
+            open={isGlobalParamsOpen}
+            onOpenChange={setIsGlobalParamsOpen}
+            className="border rounded-md p-2"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Global Settings</h3>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <ChevronDown className={`h-4 w-4 transition-transform ${isGlobalParamsOpen ? "transform rotate-180" : ""}`} />
+                  <span className="sr-only">Toggle global settings</span>
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+            
+            <CollapsibleContent className="space-y-4 mt-2">
+              {globalOptionsData.map((param: any) => (
+                <div key={param.id} className="space-y-1">
+                  <Label htmlFor={param.id} className="text-sm font-medium">{param.name}</Label>
+                  <p className="text-xs text-muted-foreground mb-2">{param.description}</p>
+                  
+                  {param.type === 'select' && (
+                    <Select 
+                      value={String(globalParams[param.id] !== undefined ? globalParams[param.id] : param.default)}
+                      onValueChange={(value) => onGlobalParamChange(param.id, value)}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={`Select ${param.name.toLowerCase()}`} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {param.options?.map((option: string) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  
+                  {param.type === 'checkbox' && (
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id={param.id}
+                        checked={globalParams[param.id] !== undefined ? globalParams[param.id] : Boolean(param.default)}
+                        onCheckedChange={(checked) => onGlobalParamChange(param.id, Boolean(checked))}
+                      />
+                      <Label htmlFor={param.id} className="text-sm cursor-pointer">Enable</Label>
+                    </div>
+                  )}
+
+                  {param.type === 'range' && (
+                    <div className="space-y-2">
+                      <Slider
+                        id={param.id}
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={[globalParams[param.id] !== undefined ? Number(globalParams[param.id]) : Number(param.default) || 50]}
+                        onValueChange={(value) => onGlobalParamChange(param.id, value[0])}
+                        className="mt-2"
+                      />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>0%</span>
+                        <span>Current: {globalParams[param.id] !== undefined ? globalParams[param.id] : param.default || 50}%</span>
+                        <span>100%</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+
           {currentWorkflow?.params && currentWorkflow.params.length > 0 && (
             <Collapsible
               open={isParamsOpen}
@@ -83,7 +164,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
               className="border rounded-md p-2"
             >
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium">Parameters</h3>
+                <h3 className="text-sm font-medium">Workflow Parameters</h3>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" size="sm">
                     <ChevronDown className={`h-4 w-4 transition-transform ${isParamsOpen ? "transform rotate-180" : ""}`} />

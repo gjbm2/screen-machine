@@ -1,0 +1,25 @@
+
+[
+  {
+    "id": "endpoint",
+    "name": "Select Endpoint",
+    "description": "Choose the API endpoint to use for generation",
+    "type": "select",
+    "options": ["Production", "Staging", "Development"],
+    "default": "Production"
+  },
+  {
+    "id": "debug",
+    "name": "Debug Mode",
+    "description": "Enable debug mode for additional logging",
+    "type": "checkbox",
+    "default": false
+  },
+  {
+    "id": "quality",
+    "name": "Output Quality",
+    "description": "Control the quality of the generated output",
+    "type": "range",
+    "default": 75
+  }
+]

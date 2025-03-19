@@ -16,7 +16,8 @@ const Index = () => {
     prompt: string, 
     imageFiles?: File[],
     workflow?: string,
-    params?: Record<string, any>
+    params?: Record<string, any>,
+    globalParams?: Record<string, any>
   ) => {
     setIsLoading(true);
     setCurrentPrompt(prompt);
@@ -45,6 +46,10 @@ const Index = () => {
         // Convert params object to a JSON string and append to FormData
         formData.append('params', JSON.stringify(params));
       }
+      if (globalParams) {
+        // Convert global params object to a JSON string and append to FormData
+        formData.append('global_params', JSON.stringify(globalParams));
+      }
       
       // For the mock implementation, we'll just use the existing endpoint
       const response = await fetch('http://localhost:5000/generate-image', {
@@ -56,6 +61,7 @@ const Index = () => {
           prompt,
           workflow: workflow || 'text-to-image',
           params: params || {},
+          global_params: globalParams || {},
           has_reference_images: imageFiles ? imageFiles.length > 0 : false,
           reference_image_count: imageFiles ? imageFiles.length : 0
         }),
@@ -67,6 +73,16 @@ const Index = () => {
       
       const data = await response.json();
       setImageUrl(data.image_url);
+      
+      // Log the full request for debugging purposes
+      console.log('Request params:', {
+        prompt,
+        workflow,
+        workflowParams: params,
+        globalParams,
+        imageCount: imageFiles?.length || 0
+      });
+      
       toast.success('Image generated successfully!');
     } catch (error) {
       console.error('Error generating image:', error);

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -5,6 +6,7 @@ import { toast } from 'sonner';
 import { X } from 'lucide-react';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import workflowsData from '@/data/workflows.json';
+import globalOptionsData from '@/data/global-options.json';
 import { Workflow } from '@/types/workflows';
 import PromptInput from '@/components/prompt/PromptInput';
 import PromptExamples from '@/components/prompt/PromptExamples';
@@ -19,7 +21,7 @@ import {
 } from "@/components/ui/carousel";
 
 interface PromptFormProps {
-  onSubmit: (prompt: string, imageFiles?: File[], workflow?: string, params?: Record<string, any>) => void;
+  onSubmit: (prompt: string, imageFiles?: File[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>) => void;
   isLoading: boolean;
 }
 
@@ -29,6 +31,7 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>('text-to-image');
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({});
+  const [globalParams, setGlobalParams] = useState<Record<string, any>>({});
   const workflows = workflowsData as Workflow[];
   
   useEffect(() => {
@@ -44,6 +47,17 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
     }
   }, [selectedWorkflow, workflows]);
   
+  useEffect(() => {
+    // Initialize global parameters with default values
+    const defaultGlobalParams: Record<string, any> = {};
+    globalOptionsData.forEach((param: any) => {
+      if (param.default !== undefined) {
+        defaultGlobalParams[param.id] = param.default;
+      }
+    });
+    setGlobalParams(defaultGlobalParams);
+  }, []);
+  
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -52,7 +66,7 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
       return;
     }
     
-    onSubmit(prompt, imageFiles.length > 0 ? imageFiles : undefined, selectedWorkflow, workflowParams);
+    onSubmit(prompt, imageFiles.length > 0 ? imageFiles : undefined, selectedWorkflow, workflowParams, globalParams);
   };
 
   const handleExampleClick = (example: string) => {
@@ -106,6 +120,13 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
 
   const handleParamChange = (paramId: string, value: any) => {
     setWorkflowParams(prev => ({
+      ...prev,
+      [paramId]: value
+    }));
+  };
+
+  const handleGlobalParamChange = (paramId: string, value: any) => {
+    setGlobalParams(prev => ({
       ...prev,
       [paramId]: value
     }));
@@ -207,6 +228,8 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
               onWorkflowChange={handleWorkflowChange}
               params={workflowParams}
               onParamChange={handleParamChange}
+              globalParams={globalParams}
+              onGlobalParamChange={handleGlobalParamChange}
             />
           </div>
         </form>
