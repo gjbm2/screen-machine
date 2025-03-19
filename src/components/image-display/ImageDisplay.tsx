@@ -1,9 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { Card, CardContent } from '@/components/ui/card';
-import { LayoutGrid, Grid3, List, Image, Clock, ExternalLink } from 'lucide-react';
+import { LayoutGrid, Grid, List, Image, Clock, ExternalLink } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import ImageBatch from './ImageBatch';
@@ -122,7 +121,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
   };
   
-  // Function to handle small view image click to open full screen detail view
   const handleSmallImageClick = (image: any) => {
     if (image?.url) {
       setSelectedImage({
@@ -134,17 +132,14 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
   };
 
-  // Function to handle table row click
   const handleTableRowClick = (batchId: string) => {
     setSelectedBatchId(batchId);
   };
   
-  // Get all completed images for small view
   const getAllImages = () => {
     return generatedImages
       .filter(img => img.status === 'completed')
       .sort((a, b) => {
-        // Sort by container order first, then by batch index
         const aContainerIndex = imageContainerOrder.indexOf(a.batchId);
         const bContainerIndex = imageContainerOrder.indexOf(b.batchId);
         
@@ -156,7 +151,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       });
   };
 
-  // Function to format time
   const formatTimeAgo = (timestamp: number) => {
     if (!timestamp) return "Unknown";
     return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
@@ -191,7 +185,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <TabsTrigger value="small" className="px-1.5 sm:px-2">
-                      <Grid3 className="h-4 w-4" />
+                      <Grid className="h-4 w-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
                   <TooltipContent>Small View</TooltipContent>
@@ -318,7 +312,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </DndContext>
           </div>
           
-          {/* Fullscreen detail view for small mode */}
           <Dialog open={!!selectedImage} onOpenChange={(open) => !open && setSelectedImage(null)}>
             <DialogContent className="max-w-4xl">
               {selectedImage && (
@@ -346,7 +339,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     
                     <div className="flex justify-center mt-4">
                       <div className="flex gap-2">
-                        {/* Insert action buttons from ImageDetailView here */}
                         {batches[selectedImage.batchId] && (
                           <button
                             className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2"
@@ -375,7 +367,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </DialogContent>
           </Dialog>
           
-          {/* Table view batch dialog */}
           <Dialog open={!!selectedBatchId} onOpenChange={(open) => !open && setSelectedBatchId(null)}>
             <DialogContent className="max-w-4xl">
               <DialogHeader>

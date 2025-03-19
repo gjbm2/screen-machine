@@ -31,6 +31,7 @@ interface ImageBatchItemProps {
   onNavigatePrev?: () => void;
   viewMode?: ViewMode;
   showActions?: boolean;
+  isRolledUp?: boolean;
 }
 
 const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
@@ -46,7 +47,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   onNavigateNext,
   onNavigatePrev,
   viewMode = 'normal',
-  showActions = true
+  showActions = true,
+  isRolledUp = false
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [showActionPanel, setShowActionPanel] = useState(false);
