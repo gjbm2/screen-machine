@@ -2,7 +2,7 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
+import { GripVertical, ChevronUp, ChevronDown, Maximize } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 type ViewMode = 'normal' | 'small' | 'table';
@@ -49,6 +49,22 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     return (
       <div ref={setNodeRef} style={style}>
         {children}
+        <div className="absolute top-2 right-2 z-10">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button 
+                className="bg-black/70 hover:bg-black/90 text-white rounded-full p-1.5 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleExpand(batchId);
+                }}
+              >
+                <Maximize className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Expand</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
     );
   }

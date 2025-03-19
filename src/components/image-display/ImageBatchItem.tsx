@@ -58,6 +58,12 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     setIsClicked(!isClicked);
     setActionsVisible(!actionsVisible);
   };
+
+  const handleDeleteImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Directly use the current index for this specific image
+    onDeleteImage(batchId, index);
+  };
   
   return (
     <div 
@@ -76,10 +82,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
       {!isSmallView && (
         <button 
           className="absolute top-2 left-2 bg-black/90 hover:bg-black text-white rounded-full p-2 transition-colors z-20"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteImage(batchId, index);
-          }}
+          onClick={handleDeleteImage}
         >
           <Trash2 className="h-4 w-4" />
         </button>

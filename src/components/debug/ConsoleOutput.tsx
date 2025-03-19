@@ -65,11 +65,11 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs, isVisible, onClose 
     }
   };
   
-  if (!isVisible) return null;
-  
   return (
     <div 
-      className="fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 shadow-2xl"
+      className={`fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 shadow-2xl transition-transform duration-300 ${
+        isVisible ? 'translate-y-0' : 'translate-y-full'
+      }`}
       style={{ height: `${height}px` }}
     >
       {/* Drag handle */}

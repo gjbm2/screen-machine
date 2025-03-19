@@ -1,10 +1,12 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
 import PromptForm from '@/components/PromptForm';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
 import ConsoleOutput from '@/components/debug/ConsoleOutput';
+import { Terminal } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface GeneratedImage {
   url: string;
@@ -217,7 +219,7 @@ const Index = () => {
           
           toast.error('An error occurred while processing images.');
         }
-      }, 5000); // 5 second delay for mock generation
+      }, 1000); // 1 second delay for mock generation
     } catch (error) {
       console.error('Error generating image:', error);
       addConsoleLog(`Error generating image: ${error}`);
@@ -270,10 +272,36 @@ const Index = () => {
     }));
   };
 
+  const toggleConsole = () => {
+    const newState = !isConsoleVisible;
+    setIsConsoleVisible(newState);
+    setCurrentGlobalParams(prev => ({
+      ...prev,
+      showConsoleOutput: newState
+    }));
+  };
+
   return (
     <div className="min-h-screen hero-gradient">
       <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-        <Header />
+        <div className="flex justify-between items-center">
+          <Header />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={toggleConsole}
+                className="h-10 w-10"
+              >
+                <Terminal className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Toggle Command Console</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
         
         <div className="mt-8 text-center animate-fade-in">
           <h1 className="text-2xl font-medium text-foreground/70">
@@ -284,7 +312,7 @@ const Index = () => {
         <div className="mt-8 max-w-2xl mx-auto">
           <PromptForm 
             onSubmit={handleSubmitPrompt} 
-            isLoading={false} // Always allow submissions
+            isLoading={false} // Always allow submissions after 1 second
             currentPrompt={currentPrompt}
           />
         </div>
