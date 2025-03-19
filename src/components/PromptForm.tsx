@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -270,7 +269,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                 onStyleClick={handleStyleClick}
               />
               
-              <div className="p-3 pt-0 space-y-3">
+              <div className="p-2 pt-0 space-y-2">
                 <div className="flex justify-between items-center">
                   <AdvancedOptions
                     workflows={workflows}
@@ -285,14 +284,13 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                   />
                 </div>
                 
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2">
-                    {/* Moved Image Uploader to the left side */}
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <div className="flex items-center gap-1 sm:gap-2">
                     <ImageUploader
                       isLoading={isButtonDisabled}
                       onImageUpload={handleImageUpload}
                       onWorkflowChange={handleWorkflowChange}
-                      hideLabel={isCompact}
+                      hideLabel={true}
                     />
                     
                     <WorkflowIconSelector
@@ -309,46 +307,42 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                   </div>
 
                   <div className="relative flex-1 flex items-center">
-                    {/* Minus button (left side) */}
                     <Button 
                       type="button"
-                      className="h-[48px] rounded-l-full px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground border-r border-primary-foreground/20"
+                      className="h-[48px] rounded-l-full px-1 sm:px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground border-r border-primary-foreground/20"
                       onClick={decrementBatchSize}
                       disabled={batchSize <= 1}
                     >
                       <Minus className="h-4 w-4" />
                     </Button>
                     
-                    {/* Main generate button */}
                     <Button 
                       type="submit" 
-                      className="rounded-none h-[48px] px-4 sm:px-6 transition-all hover:shadow-md text-lg font-medium flex-grow flex items-center justify-center gap-2 btn-shine"
+                      className="rounded-none h-[48px] px-2 sm:px-4 md:px-6 transition-all hover:shadow-md text-lg font-medium flex-grow flex items-center justify-center gap-1 sm:gap-2 btn-shine"
                       disabled={isButtonDisabled}
                     >
                       <Rocket className="h-5 w-5" />
                       {!isCompact && "Generate"}
-                      <span className="inline-flex items-center justify-center bg-primary-foreground/20 text-primary-foreground rounded-md px-1.5 py-0.5 text-xs ml-2">
+                      <span className="inline-flex items-center justify-center bg-primary-foreground/20 text-primary-foreground rounded-md px-1.5 py-0.5 text-xs ml-1 sm:ml-2">
                         x{batchSize}
                       </span>
                     </Button>
                     
-                    {/* Plus button (right side) */}
                     <Button 
                       type="button"
-                      className="h-[48px] rounded-r-full px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground border-l border-primary-foreground/20"
+                      className="h-[48px] rounded-r-full px-1 sm:px-2 bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground border-l border-primary-foreground/20"
                       onClick={incrementBatchSize}
                       disabled={batchSize >= 9}
                     >
                       <Plus className="h-4 w-4" />
                     </Button>
                     
-                    {/* Moved Settings button to the right side */}
                     <Button 
                       type="button"
                       variant="outline" 
                       size="icon"
                       onClick={toggleAdvancedOptions}
-                      className="h-[36px] w-[36px] text-muted-foreground ml-2"
+                      className="h-[36px] w-[36px] text-muted-foreground ml-1 sm:ml-2"
                       aria-label="Settings"
                     >
                       <Settings className="h-4 w-4" />

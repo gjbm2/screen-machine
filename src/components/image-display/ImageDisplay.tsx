@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { GridIcon, List, LayoutList, Grid2X2, Table2 } from 'lucide-react';
+import { LayoutList, GridIcon, Grid2X2, Table2 } from 'lucide-react';
 import ImageBatch from './ImageBatch';
 import ImageDetailView from './ImageDetailView';
 import ReferenceImagesSection from './ReferenceImagesSection';
@@ -95,21 +95,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     
     return batches;
   };
-  
-  const getViewModeIcon = (mode: ViewMode) => {
-    switch (mode) {
-      case 'normal':
-        return <GridIcon className="h-4 w-4" />;
-      case 'small':
-        return <Grid2X2 className="h-4 w-4" />;
-      case 'table':
-        return <Table2 className="h-4 w-4" />;
-      case 'large':
-        return <LayoutList className="h-4 w-4" />;
-      default:
-        return <GridIcon className="h-4 w-4" />;
-    }
-  };
 
   const batches = getImageBatches();
   const hasBatches = Object.keys(batches).length > 0;
@@ -120,14 +105,13 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
         <ReferenceImagesSection images={uploadedImages} />
       )}
       
-      {/* Loading placeholder should only be shown in the generated images section */}
-      
-      {hasBatches || isLoading ? (
+      {/* Generated Images Section */}
+      {(hasBatches || isLoading) && (
         <div className="mt-8">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">Generated Images</h2>
             <Tabs 
-              defaultValue={viewMode} 
+              defaultValue="normal" 
               value={viewMode} 
               onValueChange={(value) => setViewMode(value as ViewMode)}
               className="w-auto"
@@ -135,7 +119,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               <TabsList className="grid grid-cols-4 h-8 w-auto">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <TabsTrigger value="large" className="px-2">
+                    <TabsTrigger value="large" className="px-1.5 sm:px-2">
                       <LayoutList className="h-4 w-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
@@ -144,7 +128,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <TabsTrigger value="normal" className="px-2">
+                    <TabsTrigger value="normal" className="px-1.5 sm:px-2">
                       <GridIcon className="h-4 w-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
@@ -153,7 +137,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <TabsTrigger value="small" className="px-2">
+                    <TabsTrigger value="small" className="px-1.5 sm:px-2">
                       <Grid2X2 className="h-4 w-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
@@ -162,7 +146,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <TabsTrigger value="table" className="px-2">
+                    <TabsTrigger value="table" className="px-1.5 sm:px-2">
                       <Table2 className="h-4 w-4" />
                     </TabsTrigger>
                   </TooltipTrigger>
@@ -194,6 +178,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                   ${viewMode === 'large' ? 'space-y-4' : ''} 
                   ${viewMode === 'small' ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2' : ''}
                   ${viewMode === 'normal' ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : ''}
+                  ${viewMode === 'table' ? '' : ''}
                 `}>
                   {imageContainerOrder.map(batchId => {
                     if (!batches[batchId]) return null;
@@ -203,7 +188,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         key={batchId}
                         batchId={batchId}
                         images={batches[batchId]}
-                        isExpanded={!!expandedContainers[batchId]}
+                        isExpanded={!!expandedContainers[batchId] || viewMode === 'large'}
                         toggleExpand={handleToggleExpand}
                         onImageClick={(url, prompt) => {}}
                         onCreateAgain={() => onCreateAgain(batchId)}
@@ -219,7 +204,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </DndContext>
           </ScrollArea>
         </div>
-      ) : null}
+      )}
     </div>
   );
 };
