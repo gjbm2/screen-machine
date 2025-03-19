@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
@@ -5,6 +6,7 @@ import SortableImageContainer from './SortableImageContainer';
 import ImageBatchItem from './ImageBatchItem';
 import NavigationControls from './NavigationControls';
 import ImageDetailView from './ImageDetailView';
+import { DropdownMenuProvider } from '@radix-ui/react-dropdown-menu';
 
 interface ImageBatchProps {
   batchId: string;

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -6,6 +5,8 @@ import { toast } from 'sonner';
 import ImageBatch from './ImageBatch';
 import LoadingPlaceholder from './LoadingPlaceholder';
 import ReferenceImageIndicator from './ReferenceImageIndicator';
+import { DropdownMenu } from '@/components/ui/dropdown-menu';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
@@ -22,7 +23,7 @@ interface ImageDisplayProps {
     batchIndex?: number;
     status?: 'generating' | 'completed' | 'error';
     refiner?: string;
-    referenceImageUrl?: string; // Added field for reference image
+    referenceImageUrl?: string;
   }>;
   imageContainerOrder?: string[];
   workflow?: string | null;
@@ -49,18 +50,12 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onDeleteContainer,
   generationParams
 }) => {
-  // State to track the currently viewed image in each batch
   const [activeImageIndices, setActiveImageIndices] = useState<Record<string, number>>({});
-  // State to track which batch is currently being interacted with (for hover persistence)
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
-  // State to track which batches are expanded (unrolled)
   const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
-  // Track deleted image indices for each batch
   const [deletedImages, setDeletedImages] = useState<Record<string, Set<number>>>({});
-  // Track the focused batch ID for auto-scrolling to new variants
   const [focusBatchId, setFocusBatchId] = useState<string | null>(null);
   
-  // Configure DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -70,7 +65,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     useSensor(KeyboardSensor)
   );
   
-  // Scroll to newly created variant
   useEffect(() => {
     if (focusBatchId) {
       const element = document.getElementById(`batch-${focusBatchId}`);
@@ -81,13 +75,10 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
   }, [focusBatchId, generatedImages]);
   
-  // Always render the component when we're loading
-  // or when we have generated image results
   const shouldDisplay = isLoading || generatedImages.length > 0;
   
   if (!shouldDisplay) return null;
 
-  // Organize images by batch ID
   const getBatchedImages = () => {
     const batches: Record<string, typeof generatedImages> = {};
     
@@ -99,24 +90,20 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       batches[batchId].push(img);
     });
     
-    // Filter out deleted images from each batch
     Object.entries(batches).forEach(([batchId, images]) => {
       if (deletedImages[batchId]) {
         batches[batchId] = images.filter((_, index) => !deletedImages[batchId].has(index));
       }
     });
     
-    // Remove empty batches
     Object.entries(batches).forEach(([batchId, images]) => {
       if (images.length === 0) {
         delete batches[batchId];
       }
     });
     
-    // Order batches according to imageContainerOrder
     const orderedBatches = [];
     
-    // First add batches in the order specified by imageContainerOrder
     for (const batchId of imageContainerOrder) {
       if (batches[batchId]) {
         orderedBatches.push({
@@ -127,7 +114,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       }
     }
     
-    // Then add any remaining batches by timestamp (newest first)
     Object.entries(batches)
       .sort(([, imagesA], [, imagesB]) => {
         const timeA = imagesA[0]?.timestamp || 0;
@@ -144,7 +130,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     return orderedBatches;
   };
 
-  // Get active image for a batch
   const getActiveImageIndex = (batchId: string, imagesCount: number) => {
     if (activeImageIndices[batchId] === undefined) {
       return 0;
@@ -152,7 +137,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     return Math.min(activeImageIndices[batchId], imagesCount - 1);
   };
 
-  // Delete an image from a batch
   const handleDeleteImage = (batchId: string, imageIndex: number) => {
     setDeletedImages(prev => {
       const newDeletedImages = { ...prev };
@@ -161,17 +145,14 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       }
       newDeletedImages[batchId].add(imageIndex);
       
-      // If this was the last image in the batch, update the expanded state
       const batch = getBatchedImages().find(batch => batch.batchId === batchId);
       const remainingImagesCount = batch ? 
         batch.images.length - (newDeletedImages[batchId].size || 0) : 0;
       
       if (remainingImagesCount <= 1) {
-        // Remove the batch from imageContainerOrder
         if (onReorderContainers) {
           const index = imageContainerOrder.indexOf(batchId);
           if (index !== -1) {
-            // This effectively removes the batch from the order
             onReorderContainers(index, imageContainerOrder.length);
           }
         }
@@ -180,7 +161,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       return newDeletedImages;
     });
     
-    // Call the parent handler to delete the image
     if (onDeleteImage) {
       onDeleteImage(batchId, imageIndex);
     }
@@ -188,7 +168,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     toast.success('Image deleted');
   };
 
-  // Navigate to the previous image in a batch
   const navigatePrevImage = (batchId: string, imagesCount: number) => {
     setActiveImageIndices(prev => ({
       ...prev,
@@ -196,7 +175,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }));
   };
 
-  // Navigate to the next image in a batch
   const navigateNextImage = (batchId: string, imagesCount: number) => {
     setActiveImageIndices(prev => ({
       ...prev,
@@ -204,7 +182,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }));
   };
 
-  // Toggle expanded state for a batch
   const toggleExpandBatch = (batchId: string) => {
     setExpandedBatches(prev => ({
       ...prev,
@@ -212,7 +189,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }));
   };
 
-  // Handle drag end for reordering
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     
@@ -226,7 +202,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
   };
 
-  // Set active image index for a batch
   const setActiveImageIndex = (batchId: string, index: number) => {
     setActiveImageIndices(prev => ({
       ...prev,
@@ -234,21 +209,17 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }));
   };
 
-  // Create another image handler
   const handleCreateAnother = (batchId: string) => {
     if (onCreateAgain) {
-      // Set focus batch ID to auto-scroll to the new variant
       setFocusBatchId(batchId);
       onCreateAgain(batchId);
       toast.info('Creating another image...');
     }
   };
 
-  // Get batched images
   const batchedImages = getBatchedImages();
   const sortableIds = batchedImages.map(batch => batch.batchId);
 
-  // Function to render a reference image indicator if needed
   const renderReferenceImageIndicator = (image: typeof generatedImages[0]) => {
     if (image.referenceImageUrl) {
       return <ReferenceImageIndicator imageUrl={image.referenceImageUrl} />;
@@ -263,65 +234,63 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
           <h3 className="text-lg font-semibold mb-3">Generated Images</h3>
           
           <div className="space-y-4">
-            {/* If loading and no existing images, show single loading placeholder */}
             {isLoading && generatedImages.length === 0 && (
               <LoadingPlaceholder prompt={prompt} />
             )}
             
-            {/* Rendered image batches */}
-            <DndContext 
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext 
-                items={sortableIds}
-                strategy={verticalListSortingStrategy}
+            <TooltipProvider>
+              <DndContext 
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                  {batchedImages.map(({ batchId, images }) => {
-                    // Skip empty batches
-                    if (images.length === 0) return null;
-                    
-                    const filteredImages = deletedImages[batchId] 
-                      ? images.filter((_, i) => !deletedImages[batchId].has(i))
-                      : images;
-                    
-                    // Skip if all images in batch are deleted
-                    if (filteredImages.length === 0) return null;
-                    
-                    const activeIndex = getActiveImageIndex(batchId, filteredImages.length);
-                    const isExpanded = expandedBatches[batchId];
-                    const activeImage = filteredImages[activeIndex];
-                    
-                    // Add the reference image indicator component
-                    const extraComponents = activeImage?.referenceImageUrl ? 
-                      renderReferenceImageIndicator(activeImage) : 
-                      null;
-                    
-                    return (
-                      <ImageBatch
-                        key={batchId}
-                        batchId={batchId}
-                        images={filteredImages}
-                        isExpanded={isExpanded}
-                        activeIndex={activeIndex}
-                        activeBatchId={activeBatchId}
-                        onSetActiveBatchId={setActiveBatchId}
-                        onSetActiveImageIndex={setActiveImageIndex}
-                        onToggleExpandBatch={toggleExpandBatch}
-                        onNavigatePrevImage={navigatePrevImage}
-                        onNavigateNextImage={navigateNextImage}
-                        onDeleteImage={handleDeleteImage}
-                        onCreateAgain={handleCreateAnother}
-                        onUseAsInput={onUseGeneratedAsInput}
-                        extraComponents={extraComponents}
-                      />
-                    );
-                  })}
-                </div>
-              </SortableContext>
-            </DndContext>
+                <SortableContext 
+                  items={sortableIds}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    {batchedImages.map(({ batchId, images }) => {
+                      if (images.length === 0) return null;
+                      
+                      const filteredImages = deletedImages[batchId] 
+                        ? images.filter((_, i) => !deletedImages[batchId].has(i))
+                        : images;
+                      
+                      if (filteredImages.length === 0) return null;
+                      
+                      const activeIndex = getActiveImageIndex(batchId, filteredImages.length);
+                      const isExpanded = expandedBatches[batchId];
+                      const activeImage = filteredImages[activeIndex];
+                      
+                      const extraComponents = activeImage?.referenceImageUrl ? 
+                        renderReferenceImageIndicator(activeImage) : 
+                        null;
+                      
+                      return (
+                        <DropdownMenu key={batchId}>
+                          <ImageBatch
+                            batchId={batchId}
+                            images={filteredImages}
+                            isExpanded={isExpanded}
+                            activeIndex={activeIndex}
+                            activeBatchId={activeBatchId}
+                            onSetActiveBatchId={setActiveBatchId}
+                            onSetActiveImageIndex={setActiveImageIndex}
+                            onToggleExpandBatch={toggleExpandBatch}
+                            onNavigatePrevImage={navigatePrevImage}
+                            onNavigateNextImage={navigateNextImage}
+                            onDeleteImage={handleDeleteImage}
+                            onCreateAgain={handleCreateAnother}
+                            onUseAsInput={onUseGeneratedAsInput}
+                            extraComponents={extraComponents}
+                          />
+                        </DropdownMenu>
+                      );
+                    })}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </TooltipProvider>
           </div>
         </div>
       </div>

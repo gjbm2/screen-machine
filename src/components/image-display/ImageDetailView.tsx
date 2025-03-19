@@ -3,6 +3,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { ChevronUp } from 'lucide-react';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { DropdownMenu } from '@/components/ui/dropdown-menu';
 import ImageActions from '@/components/ImageActions';
 import NavigationControls from './NavigationControls';
 import ThumbnailGallery from './ThumbnailGallery';
@@ -67,17 +68,19 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       {/* Action buttons in expanded view */}
       <div className="flex flex-wrap justify-center gap-2 mt-4">
         <TooltipProvider>
-          <ImageActions 
-            imageUrl={activeImage.url} 
-            onUseAsInput={() => onUseAsInput && onUseAsInput(activeImage.url)}
-            onCreateAgain={() => onCreateAgain(batchId)}
-            generationInfo={{
-              prompt: activeImage.prompt || '',
-              workflow: activeImage.workflow,
-              params: activeImage.params
-            }}
-            isFullScreen
-          />
+          <DropdownMenu>
+            <ImageActions 
+              imageUrl={activeImage.url} 
+              onUseAsInput={() => onUseAsInput && onUseAsInput(activeImage.url)}
+              onCreateAgain={() => onCreateAgain(batchId)}
+              generationInfo={{
+                prompt: activeImage.prompt || '',
+                workflow: activeImage.workflow,
+                params: activeImage.params
+              }}
+              isFullScreen
+            />
+          </DropdownMenu>
         </TooltipProvider>
       </div>
       

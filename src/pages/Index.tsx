@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -63,6 +64,7 @@ const Index = () => {
       toast.success('Image set as input');
     } catch (error) {
       console.error('Error using image as input:', error);
+      addConsoleLog(`Error using image as input: ${error}`);
       toast.error('Failed to use image as input');
     }
   };
@@ -153,14 +155,14 @@ const Index = () => {
       addConsoleLog(`Sending request: ${JSON.stringify(requestData, null, 2)}`);
       
       setTimeout(() => {
-        const mockImageUrls = [
-          "https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9",
-          "https://images.unsplash.com/photo-1561037404-61cd46aa615b",
-          "https://images.unsplash.com/photo-1425082661705-1834bfd09dca",
-          "https://images.unsplash.com/photo-1560807707-8cc77767d783"
-        ];
-        
         try {
+          const mockImageUrls = [
+            "https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9",
+            "https://images.unsplash.com/photo-1561037404-61cd46aa615b",
+            "https://images.unsplash.com/photo-1425082661705-1834bfd09dca",
+            "https://images.unsplash.com/photo-1560807707-8cc77767d783"
+          ];
+          
           const existingBatchCount = batchId ? 
             generatedImages.filter(img => img.batchId === batchId && img.status !== 'generating').length : 0;
           
