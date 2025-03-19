@@ -126,7 +126,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   // Improve button styling for better contrast
   const buttonSizeClass = isFullScreen 
     ? "px-3 py-2 text-sm" 
-    : "text-white bg-black/60 hover:bg-black/70 border border-white/20";
+    : "text-white bg-black/60 hover:bg-black/70 border border-white/20 px-1.5 py-1";
 
   const buttonVariant = isFullScreen ? "default" : "secondary";
 
@@ -147,7 +147,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
               className={buttonSizeClass}
               onClick={handleShowInfo}
             >
-              <Info className="h-4 w-4" />
+              <Info className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">
@@ -167,7 +167,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
               onClick={handleSaveImage}
               disabled={isSaving}
             >
-              <Download className="h-4 w-4" />
+              <Download className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">
@@ -189,7 +189,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
                     className={buttonSizeClass}
                     disabled={isPublishing}
                   >
-                    <Share2 className="h-4 w-4" />
+                    <Share2 className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="center" className="bg-background/95 backdrop-blur-sm z-[100] border">
@@ -226,7 +226,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
                 className={buttonSizeClass}
                 onClick={onUseAsInput}
               >
-                <Recycle className="h-4 w-4" />
+                <Recycle className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="top">
@@ -247,7 +247,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
                 className={buttonSizeClass}
                 onClick={onCreateAgain}
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="top">

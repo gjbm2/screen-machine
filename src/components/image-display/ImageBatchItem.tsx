@@ -83,9 +83,13 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   };
 
   const handleImageClick = (e: React.MouseEvent) => {
-    // For normal view, clicking toggles the action panel
-    if (viewMode === 'normal') {
-      // Toggle the action panel visibility
+    // For normal view and rolled up, clicking goes to fullscreen directly
+    if (viewMode === 'normal' && isRolledUp) {
+      if (image.url && onFullScreen) {
+        onFullScreen(batchId, index);
+      }
+    } else if (viewMode === 'normal') {
+      // For normal view, not rolled up, clicking toggles the action panel
       setShowActionPanel(!showActionPanel);
     } else if (image.url && onFullScreen) {
       // Small and table view behavior - show fullscreen via the same mechanism
@@ -118,6 +122,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   const shouldShowActionsMenu = (isMobile ? showActionPanel : (isHovered || showActionPanel)) && 
                       image.url && 
                       viewMode === 'normal' &&
+                      !isRolledUp &&
                       showActions;
 
   return (
@@ -157,7 +162,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           <Tooltip>
             <TooltipTrigger asChild>
               <button 
-                className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors z-10"
+                className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-10"
                 onClick={handleDeleteImage}
               >
                 <Trash2 className="h-3 w-3" />
@@ -194,7 +199,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         
         {/* Action panel - show when hovered/clicked in normal view based on device */}
         {shouldShowActionsMenu && (
-          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 transition-opacity bg-black/70 rounded-md p-1">
+          <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-0.5 transition-opacity bg-black/70 rounded-md p-1">
             <ImageActions
               imageUrl={image.url}
               onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}

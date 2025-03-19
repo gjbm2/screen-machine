@@ -1,9 +1,15 @@
 
 import React, { useRef, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Upload } from 'lucide-react';
+import { Upload, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface ImageUploaderProps {
   isLoading: boolean;
@@ -19,6 +25,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   hideLabel = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
 
   // Listen for custom event triggered by "Use as input"
@@ -43,8 +50,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     };
   }, [onImageUpload, onWorkflowChange]);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  const processFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
     const validFiles: File[] = [];
@@ -75,6 +81,10 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    processFiles(e.target.files);
+  };
+
   const triggerFileInput = () => {
     // Reset the file input value before opening the file dialog
     if (fileInputRef.current) {
@@ -83,11 +93,62 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     fileInputRef.current?.click();
   };
 
-  const getButtonText = () => {
-    if (hideLabel) return null;
-    if (isMobile) return 'Upload';
-    return 'Upload Images';
+  const triggerCameraInput = () => {
+    // Reset the camera input value before opening
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = '';
+    }
+    cameraInputRef.current?.click();
   };
+
+  if (isMobile) {
+    return (
+      <>
+        <input
+          type="file"
+          ref={fileInputRef}
+          className="hidden"
+          accept="image/*"
+          onChange={handleImageUpload}
+          disabled={isLoading}
+          multiple
+        />
+        <input
+          type="file"
+          ref={cameraInputRef}
+          className="hidden"
+          accept="image/*"
+          onChange={handleImageUpload}
+          disabled={isLoading}
+          capture="environment"
+        />
+        
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button 
+              type="button" 
+              variant="outline"
+              className="rounded-full flex-shrink-0 text-sm flex items-center gap-2 px-3 h-[48px]"
+              disabled={isLoading}
+            >
+              <Upload className="h-4 w-4" />
+              {!hideLabel && "Upload"}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={triggerFileInput}>
+              <Upload className="h-4 w-4 mr-2" />
+              From Gallery
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={triggerCameraInput}>
+              <Camera className="h-4 w-4 mr-2" />
+              From Camera
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </>
+    );
+  }
 
   return (
     <>
@@ -109,7 +170,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         disabled={isLoading}
       >
         <Upload className="h-4 w-4" />
-        {getButtonText()}
+        {!hideLabel && "Upload"}
       </Button>
     </>
   );

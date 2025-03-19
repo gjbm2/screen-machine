@@ -204,10 +204,10 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   
   return (
-    <div className="mt-8">
+    <div className="mt-4">
       {hasBatches && (
-        <div className="mt-8">
-          <div className="flex justify-between items-center mb-4">
+        <div className="mt-4">
+          <div className="flex justify-between items-center mb-2">
             <h2 className="text-xl font-bold">Generated Images</h2>
             <Tabs 
               defaultValue="normal" 
@@ -246,7 +246,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </Tabs>
           </div>
           
-          <div className="pr-4">
+          <div className="pr-2">
             <DndContext 
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -257,7 +257,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 strategy={viewMode === 'small' ? horizontalListSortingStrategy : verticalListSortingStrategy}
               >
                 {viewMode === 'small' ? (
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1">
                     {getAllImages().map((image, idx) => (
                       <div 
                         key={`${image.batchId}-${image.batchIndex}`} 
@@ -364,7 +364,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     </Table>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     {imageContainerOrder.map((batchId, index) => {
                       if (!batches[batchId]) return null;
                       

@@ -37,8 +37,8 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
     onStyleClick(`${prompt.trim()} ${styleText}`.trim());
   };
 
-  const visiblePrompts = showMoreBasic ? examplePromptsData.basicPrompts : examplePromptsData.basicPrompts.slice(0, 3);
-  const visibleStyles = showMoreStyles ? examplePromptsData.stylePrompts : examplePromptsData.stylePrompts.slice(0, 3);
+  const visiblePrompts = showMoreBasic ? examplePromptsData.basicPrompts : examplePromptsData.basicPrompts.slice(0, 2);
+  const visibleStyles = showMoreStyles ? examplePromptsData.stylePrompts : examplePromptsData.stylePrompts.slice(0, 2);
 
   return (
     <div className="px-4 pb-3">
@@ -49,18 +49,18 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
             <button
               key={`basic-${index}`}
               type="button"
-              className="text-xs bg-secondary/50 hover:bg-secondary px-2 py-1 rounded-full text-foreground/70 transition-colors text-[10px]"
+              className="text-xs bg-secondary/50 hover:bg-secondary px-2 py-1 rounded-full text-foreground/70 transition-colors text-[11px]"
               onClick={() => handleBasicPromptClick(example)}
             >
               {example.length > 30 ? `${example.slice(0, 30)}...` : example}
             </button>
           ))}
           
-          {examplePromptsData.basicPrompts.length > 3 && (
+          {examplePromptsData.basicPrompts.length > 2 && (
             <Button
               variant="ghost"
               size="sm"
-              className="text-[10px] h-6 px-2 py-0 rounded-full text-muted-foreground hover:text-foreground/70"
+              className="text-[11px] h-6 px-2 py-0 rounded-full text-muted-foreground hover:text-foreground/70"
               onClick={() => setShowMoreBasic(!showMoreBasic)}
             >
               {showMoreBasic ? (
@@ -80,18 +80,18 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
             <button
               key={`style-${index}`}
               type="button"
-              className="text-[10px] bg-purple-500/20 hover:bg-purple-500/30 px-2 py-1 rounded-full text-purple-700 transition-colors"
+              className="text-[11px] bg-purple-500/20 hover:bg-purple-500/30 px-2 py-1 rounded-full text-purple-700 transition-colors"
               onClick={() => handleStyleClick(style)}
             >
               {style.length > 30 ? `${style.slice(0, 30)}...` : style}
             </button>
           ))}
           
-          {examplePromptsData.stylePrompts.length > 3 && (
+          {examplePromptsData.stylePrompts.length > 2 && (
             <Button
               variant="ghost"
               size="sm"
-              className="text-[10px] h-6 px-2 py-0 rounded-full text-muted-foreground hover:text-foreground/70"
+              className="text-[11px] h-6 px-2 py-0 rounded-full text-muted-foreground hover:text-foreground/70"
               onClick={() => setShowMoreStyles(!showMoreStyles)}
             >
               {showMoreStyles ? (

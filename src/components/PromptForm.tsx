@@ -256,12 +256,22 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                 </div>
               )}
               
-              <PromptInput
-                prompt={prompt}
-                isLoading={isLoading}
-                onPromptChange={setPrompt}
-                uploadedImages={previewUrls}
-              />
+              <div className="relative">
+                <PromptInput
+                  prompt={prompt}
+                  isLoading={isLoading}
+                  onPromptChange={setPrompt}
+                  uploadedImages={previewUrls}
+                />
+                <div className="absolute right-3 top-3">
+                  <ImageUploader
+                    isLoading={isButtonDisabled}
+                    onImageUpload={handleImageUpload}
+                    onWorkflowChange={handleWorkflowChange}
+                    hideLabel={true}
+                  />
+                </div>
+              </div>
               
               <PromptExamples
                 prompt={prompt}
@@ -286,13 +296,6 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                 
                 <div className="flex items-center gap-1 sm:gap-2">
                   <div className="flex items-center gap-1 sm:gap-2">
-                    <ImageUploader
-                      isLoading={isButtonDisabled}
-                      onImageUpload={handleImageUpload}
-                      onWorkflowChange={handleWorkflowChange}
-                      hideLabel={true}
-                    />
-                    
                     <WorkflowIconSelector
                       workflows={workflows}
                       selectedWorkflow={selectedWorkflow}
@@ -321,8 +324,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null }: PromptFormPro
                       className="rounded-none h-[48px] px-2 sm:px-4 md:px-6 transition-all hover:shadow-md text-lg font-medium flex-grow flex items-center justify-center gap-1 sm:gap-2 btn-shine"
                       disabled={isButtonDisabled}
                     >
-                      <Rocket className="h-5 w-5" />
-                      {!isCompact && "Generate"}
+                      Render
                       <span className="inline-flex items-center justify-center bg-primary-foreground/20 text-primary-foreground rounded-md px-1.5 py-0.5 text-xs ml-1 sm:ml-2">
                         x{batchSize}
                       </span>
