@@ -50,7 +50,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
   const widthClass = viewMode === 'normal' 
     ? isExpanded 
       ? 'col-span-full w-full' // Full width when expanded in normal mode
-      : 'w-full max-w-[150px] sm:max-w-[180px] md:max-w-[200px]' // Width for rolled up view - smaller on mobile to fit 2 per row
+      : 'w-full' // Full width for rolled up view to fill the grid cell
     : 'w-full'; // Default width for other view modes
 
   const style = {

@@ -7,9 +7,21 @@
     "An astronaut riding a horse on Mars"
   ],
   "stylePrompts": [
-    "+ in the style of an oil painting",
-    "+ in the style of watercolor",
-    "+ in impressionist style",
-    "+ in the style of Studio Ghibli"
+    {
+      "display": "oil painting...",
+      "prompt": "in the style of an oil painting"
+    },
+    {
+      "display": "watercolor...",
+      "prompt": "in the style of watercolor"
+    },
+    {
+      "display": "impressionist...",
+      "prompt": "in impressionist style"
+    },
+    {
+      "display": "Studio Ghibli...",
+      "prompt": "in the style of Studio Ghibli"
+    }
   ]
 }

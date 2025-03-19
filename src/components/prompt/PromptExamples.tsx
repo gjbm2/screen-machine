@@ -1,9 +1,14 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import examplePrompts from '@/data/example-prompts.json';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+
+interface StylePrompt {
+  display: string;
+  prompt: string;
+}
 
 interface PromptExamplesProps {
   prompt: string;
@@ -20,17 +25,30 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
 }) => {
   const [showAllExamples, setShowAllExamples] = useState(false);
   const [showAllStyles, setShowAllStyles] = useState(false);
+  const [randomExampleIndex, setRandomExampleIndex] = useState(0);
+  const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
   
-  // Get the initial number of examples to show based on screen size
-  const initialExamplesCount = showMore ? 4 : 2;
-  const initialStylesCount = showMore ? 6 : 4;
+  // Generate a random example on component mount
+  useEffect(() => {
+    const examplesList = examplePrompts.basicPrompts || [];
+    const randomIndex = Math.floor(Math.random() * examplesList.length);
+    setRandomExampleIndex(randomIndex);
+  }, []);
+  
+  // Get the initial number of examples and styles to show based on screen size
+  const initialExamplesCount = 1; // Just one example
+  const initialStylesCount = showMore ? 3 : 2; // 2 styles on mobile, 3 on desktop
   
   const handleExampleClick = (example: string) => {
     onExampleClick(example);
   };
   
-  const handleStyleClick = (stylePrompt: string) => {
-    const combinedPrompt = prompt ? `${prompt}, ${stylePrompt}` : stylePrompt;
+  const handleStyleClick = (stylePrompt: StylePrompt) => {
+    // Store the selected style prompt text
+    setSelectedStyles(prev => [...prev, stylePrompt.prompt]);
+    
+    // Combine current prompt with style
+    const combinedPrompt = prompt ? `${prompt}, ${stylePrompt.prompt}` : stylePrompt.prompt;
     onStyleClick(combinedPrompt);
   };
   
@@ -45,9 +63,10 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   const renderExamples = () => {
     const examplesList = examplePrompts.basicPrompts || [];
     
+    // If not showing all examples, just show the random one
     const visibleExamples = showAllExamples 
       ? examplesList 
-      : examplesList.slice(0, initialExamplesCount);
+      : [examplesList[randomExampleIndex]];
       
     return (
       <div className="mb-2">
@@ -102,10 +121,10 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
             <Badge 
               key={index}
               variant="outline"
-              className="px-3 py-1.5 text-sm cursor-pointer hover:bg-accent font-normal"
+              className="px-3 py-1.5 text-sm cursor-pointer hover:bg-accent bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 font-normal"
               onClick={() => handleStyleClick(style)}
             >
-              {style}
+              {style.display}
             </Badge>
           ))}
           
@@ -136,10 +155,10 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   
   return (
     <div className="p-2">
-      <div className="mb-1 text-xs text-muted-foreground">Try an example:</div>
+      <div className="mb-1 text-xs text-muted-foreground">Try:</div>
       {renderExamples()}
       
-      <div className="mb-1 text-xs text-muted-foreground">Add a style:</div>
+      <div className="mb-1 text-xs text-muted-foreground">Style:</div>
       {renderStyles()}
     </div>
   );

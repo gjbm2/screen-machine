@@ -69,12 +69,17 @@
   width: 1.4rem !important;
 }
 
-/* For 2 items per row in normal view */
+/* For 2 items per row in normal view, make them fill available width */
 @media (min-width: 640px) {
   .image-batches-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 0.25rem;
+  }
+  
+  /* Make containers fill available space */
+  .image-batches-grid > div {
+    width: 100%;
   }
 }
 
@@ -116,4 +121,17 @@
     left: 100%;
     opacity: 0;
   }
+}
+
+/* Make circular button for arrow button */
+.arrow-button {
+  border-radius: 9999px !important;
+  aspect-ratio: 1/1 !important;
+  width: 48px !important;
+  height: 48px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
 }

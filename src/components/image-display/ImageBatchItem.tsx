@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { ExternalLink, Trash2, Maximize, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -83,16 +82,13 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   };
 
   const handleImageClick = (e: React.MouseEvent) => {
-    // For normal view and rolled up, clicking goes to fullscreen directly
     if (viewMode === 'normal' && isRolledUp) {
       if (image.url && onFullScreen) {
         onFullScreen(batchId, index);
       }
     } else if (viewMode === 'normal') {
-      // For normal view, not rolled up, clicking toggles the action panel
       setShowActionPanel(!showActionPanel);
     } else if (image.url && onFullScreen) {
-      // Small and table view behavior - show fullscreen via the same mechanism
       onFullScreen(batchId, index);
     }
   };
@@ -111,14 +107,10 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     }
   };
 
-  // Small view has smaller images
   const sizeClasses = viewMode === 'small' 
     ? 'aspect-square w-full h-full' 
-    : 'aspect-square';
+    : 'aspect-square w-full';
 
-  // Determine if action panel should be visible
-  // For mobile: show based on showActionPanel state (toggled by click)
-  // For desktop: show on hover OR if showActionPanel is true (after click)
   const shouldShowActionsMenu = (isMobile ? showActionPanel : (isHovered || showActionPanel)) && 
                       image.url && 
                       viewMode === 'normal' &&
@@ -127,7 +119,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
 
   return (
     <div 
-      className={`relative rounded-md overflow-hidden group ${viewMode === 'small' ? 'mb-1' : ''}`}
+      className={`relative rounded-md overflow-hidden group ${viewMode === 'small' ? 'mb-1' : 'w-full'}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -150,14 +142,12 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </div>
         )}
         
-        {/* Image number indicator */}
         {total > 1 && viewMode !== 'small' && (
           <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
             {index + 1}/{total}
           </div>
         )}
         
-        {/* Delete button - show on all views */}
         {onDeleteImage && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -172,10 +162,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </Tooltip>
         )}
         
-        {/* Navigation arrows - only show if multiple images */}
         {total > 1 && (
           <>
-            {/* Previous arrow */}
             {index > 0 && onNavigatePrev && (
               <button 
                 className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 text-white transition-colors z-10"
@@ -185,7 +173,6 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
               </button>
             )}
             
-            {/* Next arrow */}
             {index < total - 1 && onNavigateNext && (
               <button 
                 className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 text-white transition-colors z-10"
@@ -197,7 +184,6 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </>
         )}
         
-        {/* Action panel - show when hovered/clicked in normal view based on device */}
         {shouldShowActionsMenu && (
           <div className="absolute bottom-2 left-2 right-2 flex justify-center space-x-0.5 transition-opacity bg-black/70 rounded-md p-1">
             <ImageActions
@@ -214,7 +200,6 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           </div>
         )}
         
-        {/* Fullscreen button */}
         {onFullScreen && viewMode !== 'small' && (
           <Tooltip>
             <TooltipTrigger asChild>
