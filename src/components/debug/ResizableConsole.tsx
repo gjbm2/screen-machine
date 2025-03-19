@@ -55,13 +55,16 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
     // Calculate the difference in mouse position
     const diff = startPosRef.current - e.clientY;
     
-    // Convert the difference to vh units
+    // Convert the difference to vh units (without any delay)
     const diffVh = (diff / window.innerHeight) * 100;
     
     // Calculate the new size (percentage of viewport height)
     const newSize = Math.max(10, Math.min(70, startSizeRef.current + diffVh));
     
-    setSize(newSize);
+    // Use requestAnimationFrame for smoother updates
+    requestAnimationFrame(() => {
+      setSize(newSize);
+    });
   };
   
   const handleMouseUp = () => {

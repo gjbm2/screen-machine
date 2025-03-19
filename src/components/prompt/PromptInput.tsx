@@ -13,7 +13,7 @@ interface PromptInputProps {
 
 const PromptInput: React.FC<PromptInputProps> = ({ 
   prompt, 
-  isLoading, 
+  isLoading,
   uploadedImages = [],
   onPromptChange 
 }) => {

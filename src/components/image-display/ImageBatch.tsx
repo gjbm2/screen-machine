@@ -49,42 +49,12 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   }
   
   const anyGenerating = images.some(img => img.status === 'generating');
-  const mostRecentImage = images[0];
-  
-  // If in small mode and not expanded, just show the first image
-  if (viewMode === 'small' && !isExpanded) {
-    return (
-      <SortableImageContainer
-        batchId={batchId}
-        batch={{ images }}
-        isExpanded={isExpanded}
-        toggleExpand={toggleExpand}
-        viewMode={viewMode}
-      >
-        <div 
-          className="cursor-pointer"
-          onClick={() => toggleExpand(batchId)}
-        >
-          <ImageBatchItem
-            key={`${batchId}-0`}
-            image={mostRecentImage}
-            batchId={batchId}
-            index={0}
-            total={images.length}
-            onImageClick={(url: string) => onImageClick(mostRecentImage.url, mostRecentImage.prompt)}
-            onDeleteImage={onDeleteImage}
-          />
-        </div>
-      </SortableImageContainer>
-    );
-  }
+  const completedImages = images.filter(img => img.status === 'completed');
   
   // Do not display the container at all if all images are generating
   if (images.every(img => img.status === 'generating')) {
     return null;
   }
-  
-  const completedImages = images.filter(img => img.status === 'completed');
   
   return (
     <SortableImageContainer 
@@ -131,8 +101,8 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                   batchId={batchId}
                   index={index}
                   total={completedImages.length}
-                  onImageClick={(url: string) => onImageClick(image.url, image.prompt)}
                   onDeleteImage={onDeleteImage}
+                  onImageClick={(url) => onImageClick(url, image.prompt)}
                 />
               ))}
               {anyGenerating && (
