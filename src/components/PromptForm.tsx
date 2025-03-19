@@ -1,6 +1,5 @@
 
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -37,11 +36,7 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.2 }}
-    >
+    <div className="animate-fade-up">
       <Card className="overflow-hidden glass border border-border/30">
         <form onSubmit={handleSubmit} className="p-1">
           <Textarea
@@ -77,7 +72,7 @@ const PromptForm = ({ onSubmit, isLoading }: PromptFormProps) => {
           </div>
         </form>
       </Card>
-    </motion.div>
+    </div>
   );
 };
 

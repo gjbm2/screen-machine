@@ -1,6 +1,5 @@
 
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
 import PromptForm from '@/components/PromptForm';
@@ -44,19 +43,14 @@ const Index = () => {
       <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <Header />
         
-        <motion.div 
-          className="mt-16 md:mt-24 text-center"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <div className="mt-16 md:mt-24 text-center animate-fade-in">
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight">
             Turn your words into <span className="text-primary">art</span>
           </h1>
           <p className="mt-6 text-lg text-foreground/70 max-w-2xl mx-auto">
             Describe anything you can imagine, and watch as AI transforms your ideas into stunning visuals in seconds.
           </p>
-        </motion.div>
+        </div>
         
         <div className="mt-12 max-w-2xl mx-auto">
           <PromptForm onSubmit={handleSubmitPrompt} isLoading={isLoading} />
