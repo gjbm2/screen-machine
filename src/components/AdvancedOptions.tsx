@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Sheet,
@@ -5,25 +6,19 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
   SheetFooter,
   SheetClose,
 } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Settings, ChevronDown, ExternalLink } from 'lucide-react';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Workflow, WorkflowParam } from '@/types/workflows';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
+import { ExternalLink } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
+import { Workflow } from '@/types/workflows';
+import ParamSection from './advanced/ParamSection';
+import ResourceLinks from './advanced/ResourceLinks';
 import globalOptionsData from '@/data/global-options.json';
 import refinersData from '@/data/refiners.json';
 import refinerParamsData from '@/data/refiner-params.json';
-import maintenanceLinks from '@/data/maintenance-links.json';
 
 interface AdvancedOptionsProps {
   workflows: Workflow[];
@@ -75,76 +70,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
         }
       });
     }
-  }, [selectedRefiner]);
-
-  const renderParamInput = (param: WorkflowParam, value: any, onChange: (paramId: string, value: any) => void) => {
-    switch (param.type) {
-      case 'select':
-        return (
-          <Select 
-            value={String(value !== undefined ? value : param.default)}
-            onValueChange={(value) => onChange(param.id, value)}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder={`Select ${param.name.toLowerCase()}`} />
-            </SelectTrigger>
-            <SelectContent>
-              {param.options?.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        );
-      
-      case 'checkbox':
-        return (
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id={param.id}
-              checked={value !== undefined ? value : Boolean(param.default)}
-              onCheckedChange={(checked) => onChange(param.id, Boolean(checked))}
-            />
-            <Label htmlFor={param.id} className="text-sm cursor-pointer">Enable</Label>
-          </div>
-        );
-      
-      case 'range':
-        return (
-          <div className="space-y-2">
-            <Slider
-              id={param.id}
-              min={0}
-              max={100}
-              step={1}
-              value={[value !== undefined ? Number(value) : Number(param.default) || 50]}
-              onValueChange={(val) => onChange(param.id, val[0])}
-              className="mt-2"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>0%</span>
-              <span>Current: {value !== undefined ? value : param.default || 50}%</span>
-              <span>100%</span>
-            </div>
-          </div>
-        );
-      
-      case 'text':
-        return (
-          <Textarea
-            id={param.id}
-            value={value !== undefined ? value : (param.default || '')}
-            onChange={(e) => onChange(param.id, e.target.value)}
-            placeholder={`Enter ${param.name.toLowerCase()}`}
-            className="resize-none min-h-[100px]"
-          />
-        );
-      
-      default:
-        return null;
-    }
-  };
+  }, [selectedRefiner, onRefinerParamChange, refinerParams]);
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -167,7 +93,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
               value={selectedWorkflow} 
               onValueChange={onWorkflowChange}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full text-left">
                 <SelectValue placeholder="Select workflow" />
               </SelectTrigger>
               <SelectContent>
@@ -184,30 +110,14 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
           </div>
 
           {currentWorkflow?.params && currentWorkflow.params.length > 0 && (
-            <Collapsible
-              open={isParamsOpen}
+            <ParamSection
+              title="Workflow Parameters"
+              params={currentWorkflow.params}
+              values={params}
+              onChange={onParamChange}
+              isOpen={isParamsOpen}
               onOpenChange={setIsParamsOpen}
-              className="border rounded-md p-2"
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium">Workflow Parameters</h3>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm">
-                    <ChevronDown className={`h-4 w-4 transition-transform ${isParamsOpen ? "transform rotate-180" : ""}`} />
-                    <span className="sr-only">Toggle parameters</span>
-                  </Button>
-                </CollapsibleTrigger>
-              </div>
-              
-              <CollapsibleContent className="space-y-4 mt-2">
-                {currentWorkflow.params.map((param: WorkflowParam) => (
-                  <div key={param.id} className="space-y-1">
-                    <Label htmlFor={param.id} className="text-sm font-medium">{param.name}</Label>
-                    {renderParamInput(param, params[param.id], onParamChange)}
-                  </div>
-                ))}
-              </CollapsibleContent>
-            </Collapsible>
+            />
           )}
 
           <div className="space-y-2">
@@ -216,7 +126,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
               value={selectedRefiner} 
               onValueChange={onRefinerChange}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full text-left">
                 <SelectValue placeholder="Select refiner" />
               </SelectTrigger>
               <SelectContent>
@@ -233,84 +143,31 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
           </div>
 
           {currentRefinerParams.length > 0 && (
-            <Collapsible
-              open={isRefinerParamsOpen}
+            <ParamSection
+              title="Refiner Parameters"
+              params={currentRefinerParams}
+              values={refinerParams}
+              onChange={onRefinerParamChange}
+              isOpen={isRefinerParamsOpen}
               onOpenChange={setIsRefinerParamsOpen}
-              className="border rounded-md p-2"
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium">Refiner Parameters</h3>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm">
-                    <ChevronDown className={`h-4 w-4 transition-transform ${isRefinerParamsOpen ? "transform rotate-180" : ""}`} />
-                    <span className="sr-only">Toggle refiner parameters</span>
-                  </Button>
-                </CollapsibleTrigger>
-              </div>
-              
-              <CollapsibleContent className="space-y-4 mt-2">
-                {currentRefinerParams.map((param: any) => (
-                  <div key={param.id} className="space-y-1">
-                    <Label htmlFor={param.id} className="text-sm font-medium">{param.name}</Label>
-                    {param.description && <p className="text-xs text-muted-foreground mb-2">{param.description}</p>}
-                    {renderParamInput(param, refinerParams[param.id], onRefinerParamChange)}
-                  </div>
-                ))}
-              </CollapsibleContent>
-            </Collapsible>
+            />
           )}
 
-          <Collapsible
-            open={isGlobalParamsOpen}
+          <ParamSection
+            title="Global Settings"
+            params={globalOptionsData}
+            values={globalParams}
+            onChange={onGlobalParamChange}
+            isOpen={isGlobalParamsOpen}
             onOpenChange={setIsGlobalParamsOpen}
-            className="border rounded-md p-2"
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">Global Settings</h3>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <ChevronDown className={`h-4 w-4 transition-transform ${isGlobalParamsOpen ? "transform rotate-180" : ""}`} />
-                  <span className="sr-only">Toggle global settings</span>
-                </Button>
-              </CollapsibleTrigger>
-            </div>
-            
-            <CollapsibleContent className="space-y-4 mt-2">
-              {globalOptionsData.map((param: any) => (
-                <div key={param.id} className="space-y-1">
-                  <Label htmlFor={param.id} className="text-sm font-medium">{param.name}</Label>
-                  <p className="text-xs text-muted-foreground mb-2">{param.description}</p>
-                  {renderParamInput(param, globalParams[param.id], onGlobalParamChange)}
-                </div>
-              ))}
-            </CollapsibleContent>
-          </Collapsible>
+          />
         </div>
         
         <Separator className="my-4" />
         
-        <div className="pb-8">
-          <h3 className="text-sm font-medium mb-4">Resources</h3>
-          <div className="space-y-3">
-            {maintenanceLinks.map((link, index) => (
-              <a 
-                key={index}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-start gap-2 text-sm hover:text-primary transition-colors"
-              >
-                <ExternalLink className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                <div>
-                  <div className="font-medium">{link.title}</div>
-                  <div className="text-xs text-muted-foreground">{link.description}</div>
-                </div>
-              </a>
-            ))}
-          </div>
-        </div>
+        <ResourceLinks />
         
-        <SheetFooter className="flex justify-end py-4 sm:py-0">
+        <SheetFooter className="flex justify-end py-4 sm:py-0 mt-4">
           <SheetClose asChild>
             <Button variant="outline">Close</Button>
           </SheetClose>
