@@ -29,7 +29,7 @@
         "id": "negative_prompt",
         "name": "Negative Prompt",
         "type": "text",
-        "default": ""
+        "default": "blurry, distorted, low quality, oversaturated"
       }
     ]
   },

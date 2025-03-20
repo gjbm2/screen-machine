@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Sheet,
@@ -64,12 +63,10 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflow) || workflows[0];
 
-  // Update refiner parameters when selected refiner changes
   useEffect(() => {
     const refinerData = refinerParamsData.find(r => r.id === selectedRefiner);
     setCurrentRefinerParams(refinerData?.params || []);
     
-    // Initialize default values for refiner params
     if (refinerData && refinerData.params) {
       const defaultParams: Record<string, any> = {};
       refinerData.params.forEach(param => {
@@ -80,7 +77,6 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
     }
   }, [selectedRefiner]);
 
-  // Render parameter inputs based on type
   const renderParamInput = (param: WorkflowParam, value: any, onChange: (paramId: string, value: any) => void) => {
     switch (param.type) {
       case 'select':
@@ -187,7 +183,6 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
             </p>
           </div>
 
-          {/* Workflow Parameters Section */}
           {currentWorkflow?.params && currentWorkflow.params.length > 0 && (
             <Collapsible
               open={isParamsOpen}
@@ -215,7 +210,6 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
             </Collapsible>
           )}
 
-          {/* Generation Refiner Section */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Generation Refiner</label>
             <Select 
@@ -238,7 +232,6 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
             </p>
           </div>
 
-          {/* Refiner Parameters Section */}
           {currentRefinerParams.length > 0 && (
             <Collapsible
               open={isRefinerParamsOpen}
@@ -267,7 +260,6 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
             </Collapsible>
           )}
 
-          {/* Global Parameters Section */}
           <Collapsible
             open={isGlobalParamsOpen}
             onOpenChange={setIsGlobalParamsOpen}
@@ -297,7 +289,6 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
         
         <Separator className="my-4" />
         
-        {/* Maintenance Links */}
         <div className="pb-8">
           <h3 className="text-sm font-medium mb-4">Resources</h3>
           <div className="space-y-3">
@@ -319,7 +310,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
           </div>
         </div>
         
-        <SheetFooter className="absolute bottom-4 right-4">
+        <SheetFooter className="flex justify-end py-4 sm:py-0">
           <SheetClose asChild>
             <Button variant="outline">Close</Button>
           </SheetClose>

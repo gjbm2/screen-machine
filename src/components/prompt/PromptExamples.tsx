@@ -27,16 +27,23 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   const [showAllStyles, setShowAllStyles] = useState(false);
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
   const [randomizedExamples, setRandomizedExamples] = useState<string[]>([]);
+  const [randomizedStyles, setRandomizedStyles] = useState<StylePrompt[]>([]);
   
   // Get the initial number of examples and styles to show based on screen size
   const initialExamplesCount = 1; // Just one example
   const initialStylesCount = showMore ? 3 : 2; // 2 styles on mobile, 3 on desktop
   
-  // Randomize examples on mount and whenever they change
+  // Randomize examples and styles on mount and whenever they change
   useEffect(() => {
+    // Randomize examples
     const examplesList = [...(examplePrompts.basicPrompts || [])];
-    const shuffled = examplesList.sort(() => Math.random() - 0.5);
-    setRandomizedExamples(shuffled);
+    const shuffledExamples = examplesList.sort(() => Math.random() - 0.5);
+    setRandomizedExamples(shuffledExamples);
+    
+    // Randomize styles
+    const stylesList = [...(examplePrompts.stylePrompts || [])];
+    const shuffledStyles = stylesList.sort(() => Math.random() - 0.5);
+    setRandomizedStyles(shuffledStyles);
   }, []);
   
   const handleExampleClick = (example: string) => {
@@ -69,7 +76,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
       return null;
     }
     
-    // Always show randomized examples
+    // Show randomized examples
     const visibleExamples = showAllExamples 
       ? randomizedExamples 
       : randomizedExamples.slice(0, initialExamplesCount);
@@ -114,11 +121,10 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   };
   
   const renderStyles = () => {
-    const stylesList = examplePrompts.stylePrompts || [];
-    
+    // Use randomized styles
     const visibleStyles = showAllStyles
-      ? stylesList
-      : stylesList.slice(0, initialStylesCount);
+      ? randomizedStyles
+      : randomizedStyles.slice(0, initialStylesCount);
       
     return (
       <div className="flex flex-wrap gap-1.5 items-center">
@@ -134,7 +140,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
           </Badge>
         ))}
         
-        {stylesList.length > initialStylesCount && (
+        {randomizedStyles.length > initialStylesCount && (
           <Button 
             variant="ghost" 
             size="sm" 

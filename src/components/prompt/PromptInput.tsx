@@ -3,6 +3,7 @@ import React from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
+import { ReferenceImageData } from '@/types/workflows';
 
 interface PromptInputProps {
   prompt: string;
@@ -12,6 +13,8 @@ interface PromptInputProps {
   onClearPrompt?: () => void;
   placeholder?: string;
   minHeight?: string;
+  multiline?: boolean;
+  maxLength?: number;
 }
 
 const PromptInput: React.FC<PromptInputProps> = ({ 
@@ -21,7 +24,9 @@ const PromptInput: React.FC<PromptInputProps> = ({
   onPromptChange,
   onClearPrompt,
   placeholder = "Describe the image you want to create...",
-  minHeight = "min-h-[120px]"
+  minHeight = "min-h-[120px]",
+  multiline = true,
+  maxLength
 }) => {
   const handleClearPrompt = () => {
     if (onClearPrompt) {
@@ -32,14 +37,35 @@ const PromptInput: React.FC<PromptInputProps> = ({
     }
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    
+    // Apply maxLength constraint if specified
+    if (maxLength && value.length > maxLength) {
+      onPromptChange(value.slice(0, maxLength));
+      return;
+    }
+    
+    onPromptChange(value);
+  };
+
+  // Handle Enter key if not multiline
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!multiline && e.key === 'Enter') {
+      e.preventDefault();
+    }
+  };
+
   return (
     <div className="relative">
       <Textarea
         placeholder={placeholder}
         className={`${minHeight} resize-none border-0 bg-transparent p-4 text-base placeholder:text-muted-foreground/50 focus-visible:ring-0`}
         value={prompt}
-        onChange={(e) => onPromptChange(e.target.value)}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
         disabled={isLoading}
+        rows={multiline ? 3 : 1}
       />
       
       {prompt && (
@@ -51,6 +77,12 @@ const PromptInput: React.FC<PromptInputProps> = ({
         >
           <X className="h-4 w-4" />
         </button>
+      )}
+      
+      {maxLength && (
+        <div className="absolute bottom-1 right-3 text-xs text-muted-foreground">
+          {prompt.length}/{maxLength}
+        </div>
       )}
     </div>
   );
