@@ -6,9 +6,16 @@ import time
 import random
 import uuid
 import json
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__, static_folder='build')
 CORS(app)  # Enable CORS for all routes
+
+# Create uploads directory if it doesn't exist
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # In-memory dictionary to store generated images
 generated_images = {}
@@ -31,8 +38,14 @@ ARTISTIC_IMAGES = [
 # Load workflow data from JSON files
 def load_json_data(file_name):
     try:
-        with open(f'src/data/{file_name}', 'r') as file:
-            return json.load(file)
+        data_path = os.path.join('data', file_name)
+        if os.path.exists(data_path):
+            with open(data_path, 'r') as file:
+                return json.load(file)
+        else:
+            # Try fallback to src/data for development
+            with open(f'src/data/{file_name}', 'r') as file:
+                return json.load(file)
     except Exception as e:
         print(f"Error loading {file_name}: {e}")
         return []
@@ -44,54 +57,90 @@ global_options_data = load_json_data('global-options.json')
 
 @app.route('/api/generate-image', methods=['POST'])
 def generate_image():
-    # Get the data from the request
-    data = request.get_json()
+    # Extract JSON data from the form
+    json_data = request.form.get('data')
+    if not json_data:
+        return jsonify({"error": "Missing data parameter"}), 400
+    
+    try:
+        data = json.loads(json_data)
+    except Exception as e:
+        return jsonify({"error": f"Invalid JSON: {str(e)}"}), 400
+    
     prompt = data.get('prompt', '')
-    has_reference_image = data.get('has_reference_image', False)
     workflow = data.get('workflow', 'text-to-image')
     params = data.get('params', {})
     global_params = data.get('global_params', {})
     refiner = data.get('refiner', 'none')
     refiner_params = data.get('refiner_params', {})
+    batch_size = data.get('batch_size', 1)
+    has_reference_image = data.get('has_reference_image', False)
     
+    # Handle uploaded files
+    uploaded_files = []
+    image_files = request.files.getlist('image')
+    
+    # Save uploaded files if any
+    for file in image_files:
+        if file.filename:
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            uploaded_files.append(filepath)
+            has_reference_image = True
+
+    # Validate input
     if not prompt and not has_reference_image:
         return jsonify({"error": "Prompt or reference image is required"}), 400
+    
+    print(f"Generating images with prompt: {prompt}")
+    print(f"Workflow: {workflow}, Batch size: {batch_size}")
+    print(f"Reference images: {uploaded_files if uploaded_files else 'None'}")
     
     # Simulate processing time
     time.sleep(2)
     
-    # For this mock implementation, we're returning different placeholder images based on the workflow
-    if workflow == 'artistic-style-transfer':
-        image_url = random.choice(ARTISTIC_IMAGES)
-    else:
-        image_url = random.choice(PLACEHOLDER_IMAGES)
+    # Generate a unique ID for this batch
+    batch_id = data.get('batch_id') or str(uuid.uuid4())
     
-    # Generate a unique ID for this image
-    image_id = str(uuid.uuid4())
+    # Generate the requested number of images (based on batch_size)
+    result_images = []
     
-    # Store the image metadata in our dictionary
-    generated_images[image_id] = {
-        "id": image_id,
-        "url": image_url,
-        "prompt": prompt,
-        "workflow": workflow,
-        "timestamp": time.time(),
-        "params": params,
-        "global_params": global_params,
-        "refiner": refiner,
-        "refiner_params": refiner_params,
-        "used_reference_image": has_reference_image
-    }
+    for i in range(int(batch_size)):
+        # For this mock implementation, we're returning different placeholder images based on the workflow
+        if workflow == 'artistic-style-transfer':
+            image_url = random.choice(ARTISTIC_IMAGES)
+        else:
+            image_url = random.choice(PLACEHOLDER_IMAGES)
+        
+        # Generate a unique ID for this image
+        image_id = str(uuid.uuid4())
+        
+        # Store the image metadata in our dictionary
+        image_data = {
+            "id": image_id,
+            "url": image_url,
+            "prompt": prompt,
+            "workflow": workflow,
+            "timestamp": time.time(),
+            "params": params,
+            "global_params": global_params,
+            "refiner": refiner,
+            "refiner_params": refiner_params,
+            "used_reference_image": has_reference_image,
+            "batch_id": batch_id,
+            "batch_index": i
+        }
+        
+        generated_images[image_id] = image_data
+        result_images.append(image_data)
     
-    # Return the generated image data
     return jsonify({
         "success": True,
-        "image_id": image_id,
+        "images": result_images,
+        "batch_id": batch_id,
         "prompt": prompt,
-        "workflow": workflow,
-        "params": params,
-        "image_url": image_url,
-        "used_reference_image": has_reference_image
+        "workflow": workflow
     })
 
 @app.route('/api/images', methods=['GET'])

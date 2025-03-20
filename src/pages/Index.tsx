@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -10,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import Footer from '@/components/Footer';
 import introTexts from '@/data/intro-texts.json';
+import apiService from '@/utils/api';
 
 interface GeneratedImage {
   url: string;
@@ -177,12 +177,24 @@ const Index = () => {
       }
       
       let referenceImageUrl: string | undefined;
+      let uploadableFiles: File[] | undefined;
+      
       if (imageFiles && imageFiles.length > 0) {
         if (typeof imageFiles[0] === 'string') {
           referenceImageUrl = imageFiles[0] as string;
+          // We need to convert the URL to a File object if it's a string
+          try {
+            const response = await fetch(imageFiles[0] as string);
+            const blob = await response.blob();
+            const file = new File([blob], `reference-${Date.now()}.png`, { type: blob.type });
+            uploadableFiles = [file];
+          } catch (error) {
+            console.error('Error converting image URL to file:', error);
+            addConsoleLog(`Error converting image URL to file: ${error}`);
+          }
         } else {
-          const file = imageFiles[0] as File;
-          referenceImageUrl = URL.createObjectURL(file);
+          uploadableFiles = imageFiles as File[];
+          referenceImageUrl = URL.createObjectURL(imageFiles[0] as File);
         }
       }
       
@@ -217,87 +229,134 @@ const Index = () => {
       
       setActiveGenerations(prev => [...prev, currentBatchId]);
       
-      const requestData = {
-        prompt,
-        workflow: workflow || 'text-to-image',
-        params: params || {},
-        global_params: globalParams || {},
-        refiner: refiner || 'none',
-        refiner_params: refinerParams || {},
-        has_reference_images: imageFiles ? imageFiles.length > 0 : false,
-        reference_image_count: imageFiles ? imageFiles.length : 0,
-        batch_id: currentBatchId,
-        batch_size: batchSize
-      };
-      
-      console.log('Sending request with data:', requestData);
-      addConsoleLog(`Sending request: ${JSON.stringify(requestData, null, 2)}`);
-      
-      setTimeout(() => {
-        try {
-          const mockImageUrls = [
-            "https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9",
-            "https://images.unsplash.com/photo-1561037404-61cd46aa615b",
-            "https://images.unsplash.com/photo-1425082661705-1834bfd09dca",
-            "https://images.unsplash.com/photo-1560807707-8cc77767d783"
-          ];
-          
-          const existingBatchCount = batchId ? 
-            generatedImages.filter(img => img.batchId === batchId && img.status !== 'generating').length : 0;
-          
-          const imageCount = batchSize;
-          const newImages: GeneratedImage[] = [];
-          
-          addConsoleLog(`Received response: ${imageCount} images generated`);
-          
-          for (let i = 0; i < imageCount; i++) {
-            const randomIndex = Math.floor(Math.random() * mockImageUrls.length);
-            const newImageUrl = mockImageUrls[randomIndex];
-            
-            const newGeneratedImage: GeneratedImage = {
-              url: newImageUrl,
-              prompt: prompt,
-              workflow: workflow || 'text-to-image',
-              timestamp: Date.now(),
-              params: { ...params },
-              refiner: refiner,
-              refinerParams: refinerParams,
-              batchId: currentBatchId,
-              batchIndex: existingBatchCount + i,
-              status: 'completed',
-              referenceImageUrl,
-              containerId: batchId ? 
-                generatedImages.find(img => img.batchId === batchId)?.containerId : 
-                currentContainerId
-            };
-            
-            newImages.push(newGeneratedImage);
-          }
-          
-          setGeneratedImages(prev => {
-            const filteredImages = prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'));
-            return [...newImages, ...filteredImages];
-          });
-          
-          setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
-          
-          if (!imageUrl) {
-            setImageUrl(newImages[0]?.url);
-          }
-          
-          toast.success(`${imageCount} image${imageCount > 1 ? 's' : ''} generated successfully!`);
-        } catch (error) {
-          console.error('Error processing response:', error);
-          addConsoleLog(`Error processing response: ${error}`);
-          
-          setGeneratedImages(prev => 
-            prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'))
-          );
-          setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
-          
-          toast.error('An error occurred while processing images.');
+      // Call the API with the FormData
+      try {
+        const requestData = {
+          prompt,
+          workflow: workflow || 'text-to-image',
+          params: params || {},
+          global_params: globalParams || {},
+          refiner: refiner || 'none',
+          refiner_params: refinerParams || {},
+          imageFiles: uploadableFiles,
+          batch_id: currentBatchId,
+          batch_size: batchSize
+        };
+        
+        console.log('Sending request with data:', requestData);
+        addConsoleLog(`Sending request to backend with batch size: ${batchSize}`);
+        
+        if (uploadableFiles && uploadableFiles.length > 0) {
+          addConsoleLog(`Uploading ${uploadableFiles.length} reference image(s)`);
         }
-      }, 5000);
+        
+        // Actually call the API
+        try {
+          const response = await apiService.generateImage(requestData);
+          
+          // Process the successful response
+          if (response.success) {
+            const newImages: GeneratedImage[] = [];
+            
+            for (const img of response.images) {
+              const newGeneratedImage: GeneratedImage = {
+                url: img.url,
+                prompt: img.prompt,
+                workflow: img.workflow,
+                timestamp: img.timestamp,
+                params: img.params || {},
+                refiner: img.refiner,
+                refinerParams: img.refiner_params,
+                batchId: img.batch_id || currentBatchId,
+                batchIndex: img.batch_index || 0,
+                status: 'completed',
+                referenceImageUrl,
+                containerId: currentContainerId
+              };
+              
+              newImages.push(newGeneratedImage);
+            }
+            
+            setGeneratedImages(prev => {
+              const filteredImages = prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'));
+              return [...newImages, ...filteredImages];
+            });
+            
+            setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
+            
+            if (!imageUrl) {
+              setImageUrl(newImages[0]?.url);
+            }
+            
+            toast.success(`${newImages.length} image${newImages.length > 1 ? 's' : ''} generated successfully!`);
+            addConsoleLog(`${newImages.length} image(s) generated successfully!`);
+          } else {
+            throw new Error(response.error || 'Unknown error');
+          }
+        } catch (error) {
+          // For development fallback to mock response
+          console.error('API Error, using fallback mock data:', error);
+          addConsoleLog(`API error, using fallback mock data: ${error}`);
+          
+          // Simulate successful response with mock data
+          setTimeout(() => {
+            const mockImageUrls = [
+              "https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9",
+              "https://images.unsplash.com/photo-1561037404-61cd46aa615b",
+              "https://images.unsplash.com/photo-1425082661705-1834bfd09dca",
+              "https://images.unsplash.com/photo-1560807707-8cc77767d783"
+            ];
+            
+            const newImages: GeneratedImage[] = [];
+            
+            for (let i = 0; i < batchSize; i++) {
+              const randomIndex = Math.floor(Math.random() * mockImageUrls.length);
+              const newImageUrl = mockImageUrls[randomIndex];
+              
+              const newGeneratedImage: GeneratedImage = {
+                url: newImageUrl,
+                prompt: prompt,
+                workflow: workflow || 'text-to-image',
+                timestamp: Date.now(),
+                params: { ...params },
+                refiner: refiner,
+                refinerParams: refinerParams,
+                batchId: currentBatchId,
+                batchIndex: i,
+                status: 'completed',
+                referenceImageUrl,
+                containerId: currentContainerId
+              };
+              
+              newImages.push(newGeneratedImage);
+            }
+            
+            setGeneratedImages(prev => {
+              const filteredImages = prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'));
+              return [...newImages, ...filteredImages];
+            });
+            
+            setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
+            
+            if (!imageUrl) {
+              setImageUrl(newImages[0]?.url);
+            }
+            
+            toast.success(`${batchSize} image${batchSize > 1 ? 's' : ''} generated successfully!`);
+            addConsoleLog(`${batchSize} image(s) generated with mock data`);
+          }, 2000);
+        }
+      } catch (error) {
+        console.error('Error calling API:', error);
+        addConsoleLog(`Error calling API: ${error}`);
+        
+        setGeneratedImages(prev => 
+          prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'))
+        );
+        setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
+        
+        toast.error('Failed to generate image. Please try again.');
+      }
     } catch (error) {
       console.error('Error generating image:', error);
       addConsoleLog(`Error generating image: ${error}`);

@@ -17,18 +17,34 @@ class ApiService {
     global_params: Record<string, any>;
     refiner?: string;
     refiner_params?: Record<string, any>;
-    has_reference_images?: boolean;
-    reference_image_count?: number;
+    imageFiles?: File[];
     batch_id?: string;
     batch_size?: number;
   }) {
     try {
+      const formData = new FormData();
+      formData.append('data', JSON.stringify({
+        prompt: data.prompt,
+        workflow: data.workflow,
+        params: data.params,
+        global_params: data.global_params,
+        refiner: data.refiner || 'none',
+        refiner_params: data.refiner_params || {},
+        has_reference_image: data.imageFiles && data.imageFiles.length > 0,
+        batch_id: data.batch_id,
+        batch_size: data.batch_size || 1
+      }));
+
+      // Append image files if present
+      if (data.imageFiles && data.imageFiles.length > 0) {
+        for (let i = 0; i < data.imageFiles.length; i++) {
+          formData.append('image', data.imageFiles[i]);
+        }
+      }
+
       const response = await fetch(`${this.baseUrl}/generate-image`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
+        body: formData,
       });
 
       if (!response.ok) {
