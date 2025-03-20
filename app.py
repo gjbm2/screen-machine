@@ -1,4 +1,3 @@
-
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
@@ -39,17 +38,15 @@ ARTISTIC_IMAGES = [
 # Load workflow data from JSON files
 def load_json_data(file_name):
     try:
-        data_path = os.path.join('data', file_name)
-        if os.path.exists(data_path):
-            with open(data_path, 'r') as file:
-                info(f"Loaded data from {data_path}")
+        # First try to load from src/data directory
+        src_data_path = os.path.join('src', 'data', file_name)
+        if os.path.exists(src_data_path):
+            with open(src_data_path, 'r') as file:
+                info(f"Loaded data from {src_data_path}")
                 return json.load(file)
         else:
-            # Try fallback to src/data for development
-            fallback_path = f'src/data/{file_name}'
-            warning(f"Attempting to load from fallback path: {fallback_path}")
-            with open(fallback_path, 'r') as file:
-                return json.load(file)
+            error(f"Data file not found in src/data: {file_name}")
+            return []
     except Exception as e:
         error(f"Error loading {file_name}: {e}")
         return []

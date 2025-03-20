@@ -22,11 +22,6 @@ This application uses a Python Flask backend with a React frontend.
    pip install -r requirements.txt
    ```
 
-3. Copy data files from src/data to the data directory:
-   ```
-   python utils/setup_data.py
-   ```
-
 ### Frontend Setup
 1. Install frontend dependencies:
    ```
@@ -70,6 +65,20 @@ This application includes enhanced logging capabilities:
 - Both frontend and backend logs are displayed in the console view
 - Python code can log messages that will appear in the frontend console
 - Logs are automatically refreshed when the console is open
+
+## Data Files
+All configuration and data files are stored in the `src/data` directory:
+
+- `workflows.json` - Available image generation workflows
+- `refiners.json` - Image refinement options
+- `refiner-params.json` - Parameters for refiners
+- `global-options.json` - Global application settings
+- `example-prompts.json` - Example prompts for the UI
+- `intro-texts.json` - Introductory text variations
+- `maintenance-links.json` - Resource and documentation links
+- `publish-destinations.json` - Publishing destination options
+
+To modify any of these configurations, edit the files directly in the `src/data` directory.
 
 ## Features
 - Text-to-image generation
