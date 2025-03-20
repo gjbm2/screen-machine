@@ -11,9 +11,8 @@ import {
 } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { ExternalLink } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import { Workflow } from '@/types/workflows';
+import { Workflow, WorkflowParam } from '@/types/workflows';
 import ParamSection from './advanced/ParamSection';
 import ResourceLinks from './advanced/ResourceLinks';
 import globalOptionsData from '@/data/global-options.json';
@@ -54,21 +53,22 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   const [isParamsOpen, setIsParamsOpen] = useState(true);
   const [isRefinerParamsOpen, setIsRefinerParamsOpen] = useState(true);
   const [isGlobalParamsOpen, setIsGlobalParamsOpen] = useState(true);
-  const [currentRefinerParams, setCurrentRefinerParams] = useState<any[]>([]);
+  const [currentRefinerParams, setCurrentRefinerParams] = useState<WorkflowParam[]>([]);
   
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflow) || workflows[0];
 
   useEffect(() => {
     const refinerData = refinerParamsData.find(r => r.id === selectedRefiner);
-    setCurrentRefinerParams(refinerData?.params || []);
-    
     if (refinerData && refinerData.params) {
-      const defaultParams: Record<string, any> = {};
+      setCurrentRefinerParams(refinerData.params as WorkflowParam[]);
+      
       refinerData.params.forEach(param => {
         if (param.default !== undefined && refinerParams[param.id] === undefined) {
           onRefinerParamChange(param.id, param.default);
         }
       });
+    } else {
+      setCurrentRefinerParams([]);
     }
   }, [selectedRefiner, onRefinerParamChange, refinerParams]);
 
@@ -155,7 +155,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
 
           <ParamSection
             title="Global Settings"
-            params={globalOptionsData}
+            params={globalOptionsData as WorkflowParam[]}
             values={globalParams}
             onChange={onGlobalParamChange}
             isOpen={isGlobalParamsOpen}
