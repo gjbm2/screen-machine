@@ -1,7 +1,7 @@
 
 # AI Image Generator App
 
-This application has been replatformed from a pure TypeScript/React application to a Python Flask backend with a React frontend.
+This application uses a Python Flask backend with a React frontend.
 
 ## Setup Instructions
 
@@ -39,6 +39,8 @@ This application has been replatformed from a pure TypeScript/React application 
    ```
 
 ### Running the Application
+The application is now launched from the Flask backend:
+
 1. Start the Flask backend:
    ```
    python app.py
@@ -60,7 +62,14 @@ If you want to run the application in development mode:
    npm run dev
    ```
 
-3. Update the API endpoints in the React code to point to `http://localhost:5000/api`
+3. The React frontend will be available at `http://localhost:8080` and will communicate with the Flask backend at `http://localhost:5000/api`
+
+## Console Logging
+This application includes enhanced logging capabilities:
+
+- Both frontend and backend logs are displayed in the console view
+- Python code can log messages that will appear in the frontend console
+- Logs are automatically refreshed when the console is open
 
 ## Features
 - Text-to-image generation

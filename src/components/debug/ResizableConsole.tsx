@@ -2,8 +2,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Button } from '@/components/ui/button';
-import { X, Maximize2, Minimize2, Copy, ChevronsDown } from 'lucide-react';
+import { X, Maximize2, Minimize2, Copy, ChevronsDown, RefreshCw } from 'lucide-react';
 import ConsoleOutput from './ConsoleOutput';
+import apiService from '@/utils/api';
+import { useQuery } from '@tanstack/react-query';
 
 interface ResizableConsoleProps {
   logs: string[];
@@ -20,19 +22,41 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
   const [isMaximized, setIsMaximized] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
+  const [combinedLogs, setCombinedLogs] = useState<string[]>(logs);
   const consoleRef = useRef<HTMLDivElement>(null);
+  
+  // Fetch backend logs using React Query
+  const { data: backendLogsData, isLoading, refetch } = useQuery({
+    queryKey: ['backendLogs'],
+    queryFn: () => apiService.getLogs(100),
+    refetchInterval: isVisible ? 5000 : false, // Refresh every 5 seconds when visible
+    enabled: isVisible,
+  });
   
   useEffect(() => {
     if (isVisible) {
       setIsExiting(false);
+      refetch();
     }
-  }, [isVisible]);
+  }, [isVisible, refetch]);
+  
+  // Combine frontend and backend logs
+  useEffect(() => {
+    if (backendLogsData?.logs) {
+      // Create a combined and sorted log array
+      const backendLogs = backendLogsData.logs;
+      const allLogs = [...logs, ...backendLogs];
+      setCombinedLogs(allLogs);
+    } else {
+      setCombinedLogs(logs);
+    }
+  }, [logs, backendLogsData]);
   
   useEffect(() => {
     if (consoleRef.current) {
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
-  }, [logs]);
+  }, [combinedLogs]);
   
   const handleToggleMaximize = () => {
     setIsMaximized(prev => !prev);
@@ -40,7 +64,7 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
   };
   
   const handleCopyLogs = () => {
-    navigator.clipboard.writeText(logs.join('\n'));
+    navigator.clipboard.writeText(combinedLogs.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -50,6 +74,10 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
     setTimeout(() => {
       onClose();
     }, 300); // Wait for animation to complete
+  };
+  
+  const handleRefreshLogs = () => {
+    refetch();
   };
   
   if (!isVisible && !isExiting) {
@@ -96,6 +124,16 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
                   variant="ghost" 
                   size="icon"
                   className="h-7 w-7"
+                  onClick={handleRefreshLogs}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                  <span className="sr-only">Refresh logs</span>
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  className="h-7 w-7"
                   onClick={handleCopyLogs}
                 >
                   <Copy className="h-4 w-4" />
@@ -127,7 +165,7 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
               </div>
             </div>
             <div ref={consoleRef} className="flex-1 overflow-auto h-full">
-              <ConsoleOutput logs={logs} />
+              <ConsoleOutput logs={combinedLogs} />
             </div>
           </div>
         </ResizablePanel>

@@ -1,4 +1,3 @@
-
 import config from '../config';
 
 // API utility class for making requests to the backend
@@ -7,6 +6,45 @@ class ApiService {
 
   constructor() {
     this.baseUrl = config.apiUrl;
+  }
+
+  // Send a log message to the backend
+  async sendLog(message: string, source: string = 'frontend') {
+    try {
+      const response = await fetch(`${this.baseUrl}/log`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message, source }),
+      });
+      
+      if (!response.ok) {
+        console.error(`API error: ${response.status}`);
+        return null;
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error sending log:', error);
+      return null;
+    }
+  }
+
+  // Get logs from the backend
+  async getLogs(limit: number = 100) {
+    try {
+      const response = await fetch(`${this.baseUrl}/logs?limit=${limit}`);
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching logs:', error);
+      throw error;
+    }
   }
 
   // Generate an image based on prompt and parameters
@@ -42,6 +80,9 @@ class ApiService {
         }
       }
 
+      // Log the request
+      await this.sendLog(`Generating image with prompt: "${data.prompt.substring(0, 50)}${data.prompt.length > 50 ? '...' : ''}"`, 'api-client');
+
       const response = await fetch(`${this.baseUrl}/generate-image`, {
         method: 'POST',
         body: formData,
@@ -54,6 +95,7 @@ class ApiService {
       return await response.json();
     } catch (error) {
       console.error('Error generating image:', error);
+      this.sendLog(`Error generating image: ${error}`, 'api-client');
       throw error;
     }
   }

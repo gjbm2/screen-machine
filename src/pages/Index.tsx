@@ -56,9 +56,13 @@ const Index = () => {
     }
   }, [currentGlobalParams.showConsoleOutput]);
 
-  const addConsoleLog = (message: string) => {
+  const addConsoleLog = async (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
-    setConsoleLogs(prev => [...prev, `[${timestamp}] ${message}`]);
+    const formattedMessage = `[${timestamp}] ${message}`;
+    
+    setConsoleLogs(prev => [...prev, formattedMessage]);
+    
+    await apiService.sendLog(message);
   };
 
   const handleUseGeneratedAsInput = async (selectedImageUrl: string) => {
@@ -82,6 +86,7 @@ const Index = () => {
       document.dispatchEvent(uploadEvent);
       
       toast.success('Image set as input');
+      addConsoleLog('Using generated image as input');
     } catch (error) {
       console.error('Error using image as input:', error);
       addConsoleLog(`Error using image as input: ${error}`);
@@ -182,7 +187,6 @@ const Index = () => {
       if (imageFiles && imageFiles.length > 0) {
         if (typeof imageFiles[0] === 'string') {
           referenceImageUrl = imageFiles[0] as string;
-          // We need to convert the URL to a File object if it's a string
           try {
             const response = await fetch(imageFiles[0] as string);
             const blob = await response.blob();
@@ -229,7 +233,6 @@ const Index = () => {
       
       setActiveGenerations(prev => [...prev, currentBatchId]);
       
-      // Call the API with the FormData
       try {
         const requestData = {
           prompt,
@@ -243,18 +246,15 @@ const Index = () => {
           batch_size: batchSize
         };
         
-        console.log('Sending request with data:', requestData);
         addConsoleLog(`Sending request to backend with batch size: ${batchSize}`);
         
         if (uploadableFiles && uploadableFiles.length > 0) {
           addConsoleLog(`Uploading ${uploadableFiles.length} reference image(s)`);
         }
         
-        // Actually call the API
         try {
           const response = await apiService.generateImage(requestData);
           
-          // Process the successful response
           if (response.success) {
             const newImages: GeneratedImage[] = [];
             
@@ -294,57 +294,13 @@ const Index = () => {
             throw new Error(response.error || 'Unknown error');
           }
         } catch (error) {
-          // For development fallback to mock response
-          console.error('API Error, using fallback mock data:', error);
-          addConsoleLog(`API error, using fallback mock data: ${error}`);
+          addConsoleLog(`API error: ${error}`);
           
-          // Simulate successful response with mock data
-          setTimeout(() => {
-            const mockImageUrls = [
-              "https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9",
-              "https://images.unsplash.com/photo-1561037404-61cd46aa615b",
-              "https://images.unsplash.com/photo-1425082661705-1834bfd09dca",
-              "https://images.unsplash.com/photo-1560807707-8cc77767d783"
-            ];
-            
-            const newImages: GeneratedImage[] = [];
-            
-            for (let i = 0; i < batchSize; i++) {
-              const randomIndex = Math.floor(Math.random() * mockImageUrls.length);
-              const newImageUrl = mockImageUrls[randomIndex];
-              
-              const newGeneratedImage: GeneratedImage = {
-                url: newImageUrl,
-                prompt: prompt,
-                workflow: workflow || 'text-to-image',
-                timestamp: Date.now(),
-                params: { ...params },
-                refiner: refiner,
-                refinerParams: refinerParams,
-                batchId: currentBatchId,
-                batchIndex: i,
-                status: 'completed',
-                referenceImageUrl,
-                containerId: currentContainerId
-              };
-              
-              newImages.push(newGeneratedImage);
-            }
-            
-            setGeneratedImages(prev => {
-              const filteredImages = prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'));
-              return [...newImages, ...filteredImages];
-            });
-            
-            setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
-            
-            if (!imageUrl) {
-              setImageUrl(newImages[0]?.url);
-            }
-            
-            toast.success(`${batchSize} image${batchSize > 1 ? 's' : ''} generated successfully!`);
-            addConsoleLog(`${batchSize} image(s) generated with mock data`);
-          }, 2000);
+          toast.error('Failed to generate image. Please try again.');
+          setGeneratedImages(prev => 
+            prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'))
+          );
+          setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
         }
       } catch (error) {
         console.error('Error calling API:', error);
