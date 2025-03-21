@@ -7,6 +7,7 @@ import ImageNavigationButtons from './ImageNavigationButtons';
 import BatchCountDisplay from './BatchCountDisplay';
 import ImageActionsPanel from './ImageActionsPanel';
 import ImageLoadingState from './ImageLoadingState';
+import { ImageGenerationStatus } from '@/types/workflows';
 
 interface ImageBatchItemProps {
   image: {
@@ -17,7 +18,7 @@ interface ImageBatchItemProps {
     params?: Record<string, any>;
     batchId?: string;
     batchIndex?: number;
-    status?: 'generating' | 'completed' | 'error';
+    status?: ImageGenerationStatus;
     refiner?: string;
     referenceImageUrl?: string;
   };

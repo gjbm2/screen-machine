@@ -11,13 +11,14 @@ import { Table, TableBody, TableRow, TableCell } from '@/components/ui/table';
 import { Skeleton } from "@/components/ui/skeleton";
 import LoadingPlaceholder from './LoadingPlaceholder';
 import GenerationFailedPlaceholder from './GenerationFailedPlaceholder';
+import { ImageGenerationStatus } from '@/types/workflows';
 
 interface Image {
   url: string;
   prompt: string;
   workflow: string;
   batchIndex: number;
-  status: 'generating' | 'completed' | 'error' | 'failed';
+  status: ImageGenerationStatus;
   referenceImageUrl?: string;
 }
 
