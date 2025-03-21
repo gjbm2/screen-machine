@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import PromptForm from '@/components/PromptForm';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
 import ResizableConsole from '@/components/debug/ResizableConsole';
@@ -7,7 +7,7 @@ import Footer from '@/components/Footer';
 import HeaderSection from '@/components/main/HeaderSection';
 import IntroSection from '@/components/main/IntroSection';
 import useConsole from '@/hooks/use-console';
-import useImageGeneration from '@/hooks/use-image-generation';
+import useImageGeneration from '@/hooks/image-generation';
 import useIntroText from '@/hooks/use-intro-text';
 
 const Index = () => {
