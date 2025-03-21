@@ -18,7 +18,7 @@ const ReferenceImagesSection: React.FC<ReferenceImagesSectionProps> = ({
   return (
     <div className="flex flex-wrap gap-3">
       {images.map((image, index) => (
-        <div key={index} className="relative w-[calc(50%-6px)] sm:w-32 h-32 rounded-md overflow-hidden border border-border/50 bg-muted/20">
+        <div key={index} className="relative w-[calc(50%-6px)] sm:w-64 sm:h-64 h-32 rounded-md overflow-hidden border border-border/50 bg-muted/20">
           <ReferenceImageIndicator 
             imageUrl={image} 
             onRemove={onRemoveImage ? () => onRemoveImage(index) : undefined}

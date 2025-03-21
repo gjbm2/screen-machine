@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -18,6 +17,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [prompt, setPrompt] = useState(currentPrompt || '');
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
+  const [localLoading, setLocalLoading] = useState(false);
 
   const {
     selectedWorkflow,
@@ -46,7 +46,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
   }, [currentPrompt]);
 
   const handleSubmit = () => {
-    // Generate even if prompt is empty but images exist
     if (prompt.trim() === '' && imageFiles.length === 0) {
       toast.error('Please enter a prompt or upload an image');
       return;
@@ -56,6 +55,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
       toast.error('Please select a workflow');
       return;
     }
+
+    setLocalLoading(true);
 
     const allImages: (File | string)[] = [...imageFiles];
 
@@ -70,6 +71,10 @@ const PromptForm: React.FC<PromptFormProps> = ({
       refinerToUse,
       refinerParams
     );
+
+    setTimeout(() => {
+      setLocalLoading(false);
+    }, 1000);
   };
 
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -109,7 +114,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
     setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
   };
 
-  // Wrap increment and decrement functions to match expected signatures
   const handleIncrementBatchSize = () => {
     incrementBatchSize();
   };
@@ -118,8 +122,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
     decrementBatchSize();
   };
 
-  // Button is disabled if both prompt is empty AND no images are uploaded
-  const isButtonDisabled = isLoading || (prompt.trim() === '' && imageFiles.length === 0);
+  const isButtonDisabled = localLoading || (prompt.trim() === '' && imageFiles.length === 0);
 
   return (
     <div className="w-full mb-8">
@@ -130,16 +133,14 @@ const PromptForm: React.FC<PromptFormProps> = ({
           onClearPrompt={handleClearPrompt}
           onClearAllImages={clearAllImages}
           onRemoveImage={handleRemoveImage}
-          isLoading={isLoading}
+          isLoading={localLoading}
           isFirstRun={isFirstRun}
           onSubmit={handleSubmit}
           uploadedImages={previewUrls}
         />
         
-        {/* Don't render ImagePreview component here - reference images are already shown in PromptInput */}
-        
         <PromptFormToolbar 
-          isLoading={isLoading}
+          isLoading={localLoading}
           batchSize={batchSize}
           selectedWorkflow={selectedWorkflow}
           selectedRefiner={selectedRefiner}
