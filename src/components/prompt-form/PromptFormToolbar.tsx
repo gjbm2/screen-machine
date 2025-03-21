@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Settings, ArrowUp, Image, Plus, Minus } from 'lucide-react';
@@ -32,10 +31,10 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
     <div className="flex items-center justify-between">
       <div className="flex flex-wrap items-center gap-1 sm:gap-2">
         <ImageUploader
-          isLoading={isButtonDisabled}
+          isLoading={isLoading}
           onImageUpload={onImageUpload}
           onWorkflowChange={onWorkflowChange}
-          hideLabel={isMobile} // Only hide label on mobile
+          hideLabel={isMobile}
         />
         
         <WorkflowIconSelector
@@ -54,7 +53,7 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
           batchSize={batchSize}
           incrementBatchSize={incrementBatchSize}
           decrementBatchSize={decrementBatchSize}
-          isCompact={true} // Make batch control more compact
+          isCompact={true}
         />
 
         <Button 

@@ -5,6 +5,7 @@ import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { ReferenceImageData } from '@/types/workflows';
 import PromptExamples from './PromptExamples';
+import ReferenceImagesSection from '@/components/image-display/ReferenceImagesSection';
 
 interface PromptInputProps {
   prompt: string;
@@ -97,6 +98,13 @@ const PromptInput: React.FC<PromptInputProps> = ({
 
   return (
     <div className="relative">
+      {/* Reference Images Section - Moved to the top */}
+      {uploadedImages && uploadedImages.length > 0 && (
+        <div className="mb-3">
+          <ReferenceImagesSection images={uploadedImages} />
+        </div>
+      )}
+      
       <Textarea
         placeholder={placeholder}
         className={`${minHeight} resize-none border-0 bg-transparent p-4 text-base placeholder:text-muted-foreground/50 focus-visible:ring-0`}
@@ -107,7 +115,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
         rows={multiline ? 3 : 1}
       />
       
-      {prompt && (
+      {(prompt || (uploadedImages && uploadedImages.length > 0)) && (
         <button
           type="button"
           onClick={handleClearPrompt}

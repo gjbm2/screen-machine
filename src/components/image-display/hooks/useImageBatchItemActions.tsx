@@ -4,15 +4,8 @@ import React from 'react';
 interface UseImageBatchItemActionsProps {
   image: {
     url: string;
-    prompt?: string;
-    workflow?: string;
-    timestamp?: number;
-    params?: Record<string, any>;
     batchId?: string;
     batchIndex?: number;
-    status?: string;
-    refiner?: string;
-    referenceImageUrl?: string;
   };
   batchId: string;
   index: number;
@@ -31,7 +24,6 @@ export const useImageBatchItemActions = ({
   onDeleteImage,
   onFullScreen
 }: UseImageBatchItemActionsProps) => {
-  
   const handleCreateAgain = () => {
     if (onCreateAgain) {
       onCreateAgain(batchId);
@@ -50,18 +42,21 @@ export const useImageBatchItemActions = ({
       onFullScreen(batchId, index);
     }
   };
-  
+
   const handleDeleteImage = (e: React.MouseEvent) => {
     e.stopPropagation();
-    e.preventDefault();
     if (onDeleteImage) {
-      onDeleteImage(batchId, index);
+      if (window.confirm('Are you sure you want to delete this image?')) {
+        onDeleteImage(batchId, index);
+      }
     }
   };
-  
+
   const handleDeleteFromPanel = () => {
     if (onDeleteImage) {
-      onDeleteImage(batchId, index);
+      if (window.confirm('Are you sure you want to delete this image?')) {
+        onDeleteImage(batchId, index);
+      }
     }
   };
 
@@ -73,3 +68,5 @@ export const useImageBatchItemActions = ({
     handleDeleteFromPanel
   };
 };
+
+export default useImageBatchItemActions;
