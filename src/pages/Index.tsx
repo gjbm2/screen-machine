@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
 import PromptForm from '@/components/PromptForm';
@@ -43,37 +43,6 @@ const Index = () => {
   const [nextContainerId, setNextContainerId] = useState<number>(1);
   const [isFirstRun, setIsFirstRun] = useState(true);
   const [randomIntroText, setRandomIntroText] = useState('');
-  const [showFullScreenView, setShowFullScreenView] = useState(false);
-  const [fullScreenBatchId, setFullScreenBatchId] = useState<string | null>(null);
-  const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
-  const [allImagesFlat, setAllImagesFlat] = useState<any[]>([]);
-  const [currentGlobalIndex, setCurrentGlobalIndex] = useState<number | null>(null);
-
-  // Add keyboard event handler for left and right arrow navigation
-  const handleKeyNavigation = useCallback((e: KeyboardEvent) => {
-    if (!generatedImages.length) return;
-    
-    // Only navigate if we have a detail view open
-    if (showFullScreenView && fullScreenBatchId && currentGlobalIndex !== null) {
-      if (e.key === 'ArrowLeft' && currentGlobalIndex > 0) {
-        e.preventDefault();
-        handleNavigateGlobal(currentGlobalIndex - 1);
-      } else if (e.key === 'ArrowRight' && currentGlobalIndex < allImagesFlat.length - 1) {
-        e.preventDefault();
-        handleNavigateGlobal(currentGlobalIndex + 1);
-      }
-    }
-  }, [showFullScreenView, fullScreenBatchId, currentGlobalIndex, allImagesFlat, handleNavigateGlobal]);
-
-  useEffect(() => {
-    // Add event listener for arrow key navigation
-    window.addEventListener('keydown', handleKeyNavigation);
-    
-    // Clean up the event listener
-    return () => {
-      window.removeEventListener('keydown', handleKeyNavigation);
-    };
-  }, [handleKeyNavigation]);
 
   useEffect(() => {
     const introsList = introTexts.intros || [];
@@ -126,79 +95,54 @@ const Index = () => {
   };
 
   const handleCreateAgain = (batchId?: string) => {
-    // If no batchId is provided, use the current settings
-    if (!batchId) {
-      if (!currentPrompt) {
-        toast.error('No prompt available to regenerate');
-        return;
-      }
-      
-      addConsoleLog(`Creating another image with same settings: "${currentPrompt.substring(0, 50)}${currentPrompt.length > 50 ? '...' : ''}"`);
-      
-      const modifiedGlobalParams = { 
-        ...currentGlobalParams, 
-        batchSize: 1 
-      };
-      
-      handleSubmitPrompt(
-        currentPrompt, 
-        uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
-        currentWorkflow || undefined,
-        currentParams,
-        modifiedGlobalParams,
-        currentRefiner || undefined,
-        currentRefinerParams
-      );
-      
-      toast.info('Creating another image...');
+    if (!currentPrompt) {
+      toast.error('No prompt available to regenerate');
       return;
     }
     
-    // When a specific batchId is provided, use that image's settings
-    const batchImage = generatedImages.find(img => img.batchId === batchId);
-    if (!batchImage) {
-      toast.error('Image information not found');
-      return;
+    let originalParams = { ...currentParams };
+    let originalWorkflow = currentWorkflow;
+    let originalRefiner = currentRefiner;
+    let originalRefinerParams = { ...currentRefinerParams };
+    let originalUploadedImages = [...uploadedImageUrls];
+    
+    if (batchId) {
+      const batchImage = generatedImages.find(img => img.batchId === batchId);
+      if (batchImage) {
+        originalParams = batchImage.params || {};
+        originalWorkflow = batchImage.workflow;
+        originalRefiner = batchImage.refiner || null;
+        originalRefinerParams = batchImage.refinerParams || {};
+        
+        if (batchImage.referenceImageUrl) {
+          originalUploadedImages = [batchImage.referenceImageUrl];
+        } else {
+          originalUploadedImages = [];
+        }
+      }
     }
     
-    const imagePrompt = batchImage.prompt || '';
-    const originalParams = batchImage.params || {};
-    const originalWorkflow = batchImage.workflow;
-    const originalRefiner = batchImage.refiner || null;
-    const originalRefinerParams = batchImage.refinerParams || {};
+    const imageFiles = originalUploadedImages.length > 0 ? originalUploadedImages : undefined;
     
-    // Use the reference image if available
-    const imageFiles = batchImage.referenceImageUrl ? [batchImage.referenceImageUrl] : undefined;
+    const modifiedGlobalParams = { 
+      ...currentGlobalParams, 
+      batchSize: 1 
+    };
     
-    // Separate global params from workflow params
-    const workflowSpecificParams: Record<string, any> = {};
-    const globalSpecificParams: Record<string, any> = {};
-    
-    // Assume batchSize, seed are global params, others are workflow specific
-    Object.entries(originalParams).forEach(([key, value]) => {
-      if (key === 'batchSize' || key === 'seed' || key === 'showConsoleOutput') {
-        globalSpecificParams[key] = value;
-      } else {
-        workflowSpecificParams[key] = value;
-      }
-    });
-    
-    // Ensure we only generate 1 image at a time for recreations
-    globalSpecificParams.batchSize = 1;
-    
-    addConsoleLog(`Creating another image with settings from batch ${batchId}: "${imagePrompt.substring(0, 50)}${imagePrompt.length > 50 ? '...' : ''}"`);
+    addConsoleLog(`Creating another image with same settings: "${currentPrompt.substring(0, 50)}${currentPrompt.length > 50 ? '...' : ''}"`);
     
     handleSubmitPrompt(
-      imagePrompt,
+      currentPrompt, 
       imageFiles,
-      originalWorkflow,
-      workflowSpecificParams,
-      globalSpecificParams,
-      originalRefiner,
-      originalRefinerParams
+      originalWorkflow || undefined,
+      originalParams,
+      modifiedGlobalParams,
+      originalRefiner || undefined,
+      originalRefinerParams,
+      batchId
     );
     
-    toast.info('Creating another image with same settings...');
+    toast.info('Creating another image...');
   };
 
   const handleSubmitPrompt = async (
@@ -422,15 +366,6 @@ const Index = () => {
       ...prev,
       showConsoleOutput: newState
     }));
-  };
-
-  const handleNavigateGlobal = (index: number) => {
-    if (index >= 0 && index < allImagesFlat.length) {
-      const targetImage = allImagesFlat[index];
-      setFullScreenBatchId(targetImage.batchId);
-      setFullScreenImageIndex(targetImage.batchIndex);
-      setCurrentGlobalIndex(index);
-    }
   };
 
   return (

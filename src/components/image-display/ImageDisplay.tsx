@@ -248,7 +248,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   
   return (
-    <div className="mt-4 w-full">
+    <div className="mt-4">
       {hasBatches && (
         <div className="mt-2">
           <div className="flex justify-between items-center mb-1">
@@ -301,7 +301,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 strategy={viewMode === 'small' ? horizontalListSortingStrategy : verticalListSortingStrategy}
               >
                 {viewMode === 'small' ? (
-                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-0.5">
+                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-0.5">
                     {getAllImages().map((image, idx) => (
                       <div 
                         key={`${image.batchId}-${image.batchIndex}`} 
@@ -408,7 +408,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     </Table>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1">
+                  <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1">
                     {imageContainerOrder.map((batchId, index) => {
                       if (!batches[batchId]) return null;
                       
@@ -450,14 +450,14 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               onOpenChange={(open) => setShowFullScreenView(open)}
             >
               <DialogContent 
-                className="max-w-[90vw] w-[90vw] h-[90vh]" 
+                className="max-w-4xl" 
                 noPadding
                 description="Detailed view of generated image"
               >
                 <DialogHeader className="p-4 pb-0">
                   <DialogTitle>Image Detail</DialogTitle>
                 </DialogHeader>
-                <div className="p-4 pt-0 w-full h-full">
+                <div className="p-4 pt-0">
                   {batches[fullScreenBatchId] && (
                     <ImageDetailView
                       batchId={fullScreenBatchId}
