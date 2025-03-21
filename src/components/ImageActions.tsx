@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { CopyPlus, SquareArrowInUpRight, Trash2, Download } from 'lucide-react';
+import { CopyPlus, SquareArrowUpRight, Trash2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { saveAs } from 'file-saver';
 
@@ -29,10 +28,8 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   isFullScreen = false
 }) => {
   const handleDownload = () => {
-    // Extract filename from URL or generate a timestamped name
     const filename = imageUrl.split('/').pop() || `generated-image-${Date.now()}.png`;
     
-    // Try to download using fetch API
     fetch(imageUrl)
       .then(response => response.blob())
       .then(blob => {
@@ -43,17 +40,14 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         console.error('Error downloading image:', error);
         toast.error('Failed to download image');
         
-        // Fallback: Open image in new tab
         window.open(imageUrl, '_blank');
       });
   };
 
-  // Define button classes
   const baseButtonClass = "px-3 py-1.5 text-xs rounded-full flex items-center gap-1.5";
   const actionButtonClass = `${baseButtonClass} bg-white/90 hover:bg-white text-black shadow-sm`;
   const deleteButtonClass = `${baseButtonClass} bg-destructive/90 hover:bg-destructive text-white shadow-sm`;
   
-  // For non-fullscreen view
   if (!isFullScreen) {
     return (
       <div className={`flex flex-wrap gap-2 justify-center ${alwaysVisible ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity duration-200'}`}>
@@ -75,7 +69,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
             className={actionButtonClass}
             onClick={onUseAsInput}
           >
-            <SquareArrowInUpRight className="h-3.5 w-3.5" /> Use as Input
+            <SquareArrowUpRight className="h-3.5 w-3.5" /> Use as Input
           </Button>
         )}
         
@@ -102,7 +96,6 @@ const ImageActions: React.FC<ImageActionsProps> = ({
     );
   }
   
-  // For fullscreen view, separate the delete button
   return (
     <>
       <div className={`flex flex-wrap gap-2 justify-center ${alwaysVisible ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity duration-200'}`}>
@@ -124,7 +117,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
             className={actionButtonClass}
             onClick={onUseAsInput}
           >
-            <SquareArrowInUpRight className="h-3.5 w-3.5" /> Use as Input
+            <SquareArrowUpRight className="h-3.5 w-3.5" /> Use as Input
           </Button>
         )}
         
@@ -138,7 +131,6 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         </Button>
       </div>
       
-      {/* Separate delete button for fullscreen view */}
       {isFullScreen && onDeleteImage && (
         <div className="mt-4 flex justify-center">
           <Button 
