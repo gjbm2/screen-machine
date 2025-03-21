@@ -120,7 +120,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       onSwipeLeft={handleSwipeLeft}
       onSwipeRight={handleSwipeRight}
     >
-      <div className="p-4 space-y-4 w-full">
+      <div className="w-full h-full flex flex-col p-2">
         <TooltipProvider>
           {/* Keyboard navigation */}
           <ImageKeyboardNavigation 
@@ -135,51 +135,61 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
 
           {/* Selected image view - maximize image display */}
           {activeImage && (
-            <MainImageView
-              imageUrl={activeImage.url}
-              altText={activeImage.prompt || "Generated image"}
-              onImageLoad={handleImageLoad}
-              onOpenInNewTab={handleOpenInNewTab}
-              allImages={allImages}
-              isNavigatingAllImages={isNavigatingAllImages}
-              onNavigateGlobal={onNavigateGlobal}
-              currentGlobalIndex={currentGlobalIndex}
-              handleTouchStart={() => {}}  // Touch handling moved to DetailViewTouchHandler
-              handleTouchEnd={() => {}}    // Touch handling moved to DetailViewTouchHandler
-              onImageClick={onImageClick}  // Pass the onImageClick prop
-            />
+            <div className="flex-grow flex items-center justify-center">
+              <MainImageView
+                imageUrl={activeImage.url}
+                altText={activeImage.prompt || "Generated image"}
+                onImageLoad={handleImageLoad}
+                onOpenInNewTab={handleOpenInNewTab}
+                allImages={allImages}
+                isNavigatingAllImages={isNavigatingAllImages}
+                onNavigateGlobal={onNavigateGlobal}
+                currentGlobalIndex={currentGlobalIndex}
+                handleTouchStart={() => {}}  // Touch handling moved to DetailViewTouchHandler
+                handleTouchEnd={() => {}}    // Touch handling moved to DetailViewTouchHandler
+                onImageClick={onImageClick}  // Pass the onImageClick prop
+              />
+            </div>
           )}
           
-          {/* Image metadata */}
-          <ImageMetadata
-            dimensions={imageDimensions}
-            timestamp={activeImage?.timestamp}
-          />
-          
-          {/* Image Actions Bar - always visible in fullscreen mode */}
-          {activeImage?.url && (
-            <DetailViewActionBar 
-              imageUrl={activeImage.url}
-              onCreateAgain={handleCreateAgain}
-              onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
-              onDeleteImage={handleDeleteImage}
-              generationInfo={{
-                prompt: activeImage.prompt || '',
-                workflow: activeImage.workflow || '',
-                params: activeImage.params
-              }}
+          {/* Image metadata - showing in smaller size */}
+          <div className="mt-2">
+            <ImageMetadata
+              dimensions={imageDimensions}
+              timestamp={activeImage?.timestamp}
             />
+          </div>
+          
+          {/* Image Actions Bar - all buttons in a single row */}
+          {activeImage?.url && (
+            <div className="mt-2">
+              <DetailViewActionBar 
+                imageUrl={activeImage.url}
+                onCreateAgain={handleCreateAgain}
+                onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
+                onDeleteImage={handleDeleteImage}
+                generationInfo={{
+                  prompt: activeImage.prompt || '',
+                  workflow: activeImage.workflow || '',
+                  params: activeImage.params
+                }}
+              />
+            </div>
           )}
           
           {/* Prompt info */}
-          <ImagePrompt prompt={activeImage?.prompt} />
+          <div className="mt-2">
+            <ImagePrompt prompt={activeImage?.prompt} />
+          </div>
 
           {/* Reference image at the bottom */}
           {referenceImageUrl && (
-            <ReferenceImageSection
-              referenceImageUrl={referenceImageUrl}
-              onReferenceImageClick={() => setShowReferenceImage(true)}
-            />
+            <div className="mt-2">
+              <ReferenceImageSection
+                referenceImageUrl={referenceImageUrl}
+                onReferenceImageClick={() => setShowReferenceImage(true)}
+              />
+            </div>
           )}
 
           {/* Reference image popup (full size view) */}

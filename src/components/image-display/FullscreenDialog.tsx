@@ -45,14 +45,14 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       onOpenChange={(open) => setShowFullScreenView(open)}
     >
       <DialogContent 
-        className="max-w-[98vw] w-auto max-h-[96vh] p-0 h-auto overflow-hidden" 
+        className="max-w-[100vw] w-[100vw] max-h-[100vh] h-[100vh] p-0 overflow-hidden" 
         noPadding
         description="Detailed view of generated image"
       >
         <DialogHeader className="p-4 pb-0">
           <DialogTitle>Image Detail</DialogTitle>
         </DialogHeader>
-        <div className="pt-0 overflow-hidden">
+        <div className="pt-0 h-[calc(100vh-4rem)] overflow-hidden">
           {batches[fullScreenBatchId] && (
             <ImageDetailView
               batchId={fullScreenBatchId}

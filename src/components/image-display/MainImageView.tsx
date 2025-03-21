@@ -50,20 +50,19 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   return (
     <div 
       ref={imageContainerRef}
-      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group"
+      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-full h-full"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onClick={onImageClick}
-      style={{ minHeight: '200px' }} // Minimum height to ensure visibility
     >
       <div className="relative flex justify-center items-center w-full h-full">
         <img 
           src={imageUrl}
           alt={altText}
-          className="object-contain max-w-full max-h-[calc(95vh-120px)]"
+          className="object-contain"
           style={{ 
-            maxWidth: '100%',
-            maxHeight: '85vh',
+            maxWidth: '95vw',
+            maxHeight: '80vh',
             width: 'auto',
             height: 'auto',
           }}
