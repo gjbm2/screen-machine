@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -46,8 +47,9 @@ const PromptForm: React.FC<PromptFormProps> = ({
   }, [currentPrompt]);
 
   const handleSubmit = () => {
-    if (prompt.trim() === '') {
-      toast.error('Please enter a prompt');
+    // Generate even if prompt is empty but images exist
+    if (prompt.trim() === '' && imageFiles.length === 0) {
+      toast.error('Please enter a prompt or upload an image');
       return;
     }
 
@@ -106,7 +108,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
     setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
   };
 
-  const isButtonDisabled = isLoading || prompt.trim() === '';
+  // Button is disabled if both prompt is empty AND no images are uploaded
+  const isButtonDisabled = isLoading || (prompt.trim() === '' && imageFiles.length === 0);
 
   return (
     <div className="w-full mb-8">
@@ -119,6 +122,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           isLoading={isLoading}
           isFirstRun={isFirstRun}
           onSubmit={handleSubmit}
+          uploadedImages={previewUrls}
         />
         
         <ImagePreview 
@@ -143,6 +147,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           isButtonDisabled={isButtonDisabled}
           workflows={workflows}
           isCompact={false}
+          hasUploadedImages={imageFiles.length > 0}
         />
         
         {isAdvancedOptionsOpen && (

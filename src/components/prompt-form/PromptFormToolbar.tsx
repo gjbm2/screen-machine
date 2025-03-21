@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Settings, ArrowUp, Image, Plus, Minus } from 'lucide-react';
@@ -23,9 +24,13 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   prompt,
   isButtonDisabled,
   workflows,
-  isCompact
+  isCompact,
+  hasUploadedImages = false
 }) => {
   const isMobile = useIsMobile();
+  
+  // The button should be enabled if there's a prompt OR uploaded images
+  const shouldDisableButton = isLoading || (!prompt.trim() && !hasUploadedImages);
   
   return (
     <div className="flex items-center justify-between">
@@ -72,9 +77,9 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
         <Button 
           type="submit" 
           className={`h-12 w-12 rounded-full transition-all hover:shadow-md flex items-center justify-center btn-shine ${
-            !prompt.trim() && isCompact ? 'bg-gray-300 text-gray-600' : 'bg-primary text-primary-foreground'
+            shouldDisableButton && isCompact ? 'bg-gray-300 text-gray-600' : 'bg-primary text-primary-foreground'
           }`}
-          disabled={isButtonDisabled || (!prompt.trim() && isCompact)}
+          disabled={shouldDisableButton}
           onClick={() => handleSubmit()}
         >
           <ArrowUp className="h-6 w-6" />

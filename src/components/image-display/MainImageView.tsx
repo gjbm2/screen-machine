@@ -51,15 +51,16 @@ const MainImageView: React.FC<MainImageViewProps> = ({
       onTouchEnd={handleTouchEnd}
       style={{ minHeight: '200px' }} // Minimum height to ensure visibility
     >
-      <div className="relative flex justify-center items-center w-full h-full">
+      <div className="relative flex justify-center items-center w-full h-full p-1">
         <img 
           src={imageUrl}
           alt={altText}
-          className="max-w-full max-h-full object-contain"
+          className="object-contain"
           style={{ 
-            objectFit: 'contain',
             maxWidth: '100%',
-            maxHeight: `calc(${viewportHeight * 0.7}px)` // Dynamically calculate height
+            maxHeight: `calc(${viewportHeight * 0.8}px)`, // Increased from 0.7 to 0.8
+            width: 'auto',
+            height: 'auto'
           }}
           onLoad={onImageLoad}
         />

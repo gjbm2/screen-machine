@@ -46,17 +46,15 @@ export const useImageBatchItemActions = ({
   const handleDeleteImage = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onDeleteImage) {
-      if (window.confirm('Are you sure you want to delete this image?')) {
-        onDeleteImage(batchId, index);
-      }
+      // Removed confirmation dialog
+      onDeleteImage(batchId, index);
     }
   };
 
   const handleDeleteFromPanel = () => {
     if (onDeleteImage) {
-      if (window.confirm('Are you sure you want to delete this image?')) {
-        onDeleteImage(batchId, index);
-      }
+      // Removed confirmation dialog
+      onDeleteImage(batchId, index);
     }
   };
 

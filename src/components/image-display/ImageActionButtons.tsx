@@ -54,7 +54,7 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
       
       {/* Delete button - now in the bottom left, separated from other actions */}
       {onDeleteImage && (
-        <div className={`absolute bottom-1 left-1 z-10 ${visibilityClass}`}>
+        <div className={`absolute top-1 left-1 z-10 ${visibilityClass}`}>
           <Button
             type="button"
             size="icon"
