@@ -162,6 +162,32 @@
 
 @media (min-width: 1024px) {
   .image-batches-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
+}
+
+@media (min-width: 1280px) {
+  .image-batches-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 1536px) {
+  .image-batches-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+/* Full width container on large screens */
+.container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Full-screen detail view */
+.dialog-fullscreen .dialog-content {
+  max-width: 95vw !important;
+  height: 90vh !important;
+  width: 95vw !important;
 }

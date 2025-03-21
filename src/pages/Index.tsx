@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
 import PromptForm from '@/components/PromptForm';
@@ -43,6 +44,59 @@ const Index = () => {
   const [nextContainerId, setNextContainerId] = useState<number>(1);
   const [isFirstRun, setIsFirstRun] = useState(true);
   const [randomIntroText, setRandomIntroText] = useState('');
+  const [activeDetailBatchId, setActiveDetailBatchId] = useState<string | null>(null);
+  const [activeDetailIndex, setActiveDetailIndex] = useState<number>(0);
+  const [isDetailViewOpen, setIsDetailViewOpen] = useState(false);
+
+  // Navigation functions for keyboard support
+  const handleNavigateGlobal = useCallback((index: number) => {
+    if (!allFlattenedImages || allFlattenedImages.length === 0) return;
+    
+    const image = allFlattenedImages[index];
+    if (image) {
+      setActiveDetailBatchId(image.batchId);
+      setActiveDetailIndex(image.batchIndex || 0);
+    }
+  }, []);
+
+  const handleKeyNavigation = useCallback((e: KeyboardEvent) => {
+    // Only handle arrow keys when in detail view
+    if (isDetailViewOpen) {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const currentIndex = allFlattenedImages.findIndex(
+          img => img.batchId === activeDetailBatchId && img.batchIndex === activeDetailIndex
+        );
+        
+        if (currentIndex > 0) {
+          handleNavigateGlobal(currentIndex - 1);
+        }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        const currentIndex = allFlattenedImages.findIndex(
+          img => img.batchId === activeDetailBatchId && img.batchIndex === activeDetailIndex
+        );
+        
+        if (currentIndex < allFlattenedImages.length - 1) {
+          handleNavigateGlobal(currentIndex + 1);
+        }
+      } else if (e.key === 'Escape') {
+        setIsDetailViewOpen(false);
+      }
+    }
+  }, [isDetailViewOpen, activeDetailBatchId, activeDetailIndex, handleNavigateGlobal]);
+
+  // Compute all images flattened into a single array for navigation
+  const allFlattenedImages = generatedImages
+    .filter(img => img.status === 'completed')
+    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyNavigation);
+    return () => {
+      window.removeEventListener('keydown', handleKeyNavigation);
+    };
+  }, [handleKeyNavigation]);
 
   useEffect(() => {
     const introsList = introTexts.intros || [];
@@ -95,54 +149,49 @@ const Index = () => {
   };
 
   const handleCreateAgain = (batchId?: string) => {
-    if (!currentPrompt) {
-      toast.error('No prompt available to regenerate');
+    // Find the image with the given batchId
+    const batchImage = generatedImages.find(img => img.batchId === batchId);
+    
+    if (!batchImage) {
+      toast.error('No image information available to regenerate');
       return;
     }
     
-    let originalParams = { ...currentParams };
-    let originalWorkflow = currentWorkflow;
-    let originalRefiner = currentRefiner;
-    let originalRefinerParams = { ...currentRefinerParams };
-    let originalUploadedImages = [...uploadedImageUrls];
+    // Use the selected image's prompt, not the current prompt
+    const imagePrompt = batchImage.prompt;
+    const imageWorkflow = batchImage.workflow;
+    const imageParams = batchImage.params || {};
+    const imageRefiner = batchImage.refiner || null;
+    const imageRefinerParams = batchImage.refinerParams || {};
     
-    if (batchId) {
-      const batchImage = generatedImages.find(img => img.batchId === batchId);
-      if (batchImage) {
-        originalParams = batchImage.params || {};
-        originalWorkflow = batchImage.workflow;
-        originalRefiner = batchImage.refiner || null;
-        originalRefinerParams = batchImage.refinerParams || {};
-        
-        if (batchImage.referenceImageUrl) {
-          originalUploadedImages = [batchImage.referenceImageUrl];
-        } else {
-          originalUploadedImages = [];
-        }
-      }
+    let imageFiles;
+    if (batchImage.referenceImageUrl) {
+      imageFiles = [batchImage.referenceImageUrl];
     }
     
-    const imageFiles = originalUploadedImages.length > 0 ? originalUploadedImages : undefined;
+    // Set current prompt to the image's prompt temporarily for UI feedback
+    setCurrentPrompt(imagePrompt);
     
+    // Use a batch size of 1 for recreations
     const modifiedGlobalParams = { 
       ...currentGlobalParams, 
       batchSize: 1 
     };
     
-    addConsoleLog(`Creating another image with same settings: "${currentPrompt.substring(0, 50)}${currentPrompt.length > 50 ? '...' : ''}"`);
+    addConsoleLog(`Creating another image with same settings: "${imagePrompt.substring(0, 50)}${imagePrompt.length > 50 ? '...' : ''}"`);
     
     handleSubmitPrompt(
-      currentPrompt, 
+      imagePrompt, 
       imageFiles,
-      originalWorkflow || undefined,
-      originalParams,
+      imageWorkflow,
+      imageParams,
       modifiedGlobalParams,
-      originalRefiner || undefined,
-      originalRefinerParams,
+      imageRefiner || undefined,
+      imageRefinerParams,
       batchId
     );
     
-    toast.info('Creating another image...');
+    toast.info('Creating another image with the same settings...');
   };
 
   const handleSubmitPrompt = async (
@@ -367,10 +416,21 @@ const Index = () => {
       showConsoleOutput: newState
     }));
   };
+  
+  // Add handler for detail view to track state
+  const handleOpenDetailView = (batchId: string, index: number) => {
+    setActiveDetailBatchId(batchId);
+    setActiveDetailIndex(index);
+    setIsDetailViewOpen(true);
+  };
+  
+  const handleCloseDetailView = () => {
+    setIsDetailViewOpen(false);
+  };
 
   return (
     <div className="min-h-screen hero-gradient flex flex-col">
-      <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 flex-grow">
+      <div className="container max-w-full mx-auto px-4 sm:px-6 lg:px-8 flex-grow">
         <div className="flex justify-between items-center">
           <Header />
           <div className="flex items-center space-x-1">
@@ -424,6 +484,13 @@ const Index = () => {
             onDeleteImage={handleDeleteImage}
             onDeleteContainer={handleDeleteContainer}
             generationParams={{...currentParams, ...currentGlobalParams}}
+            onOpenDetailView={handleOpenDetailView}
+            onCloseDetailView={handleCloseDetailView}
+            activeDetailBatchId={activeDetailBatchId}
+            activeDetailIndex={activeDetailIndex}
+            isDetailViewOpen={isDetailViewOpen}
+            allFlattenedImages={allFlattenedImages}
+            onNavigateGlobal={handleNavigateGlobal}
           />
         </div>
       </div>

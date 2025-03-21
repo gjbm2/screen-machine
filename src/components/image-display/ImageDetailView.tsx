@@ -137,11 +137,11 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   };
   
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 space-y-4 w-full">
       {/* Selected image view - maximize image display */}
       <div 
         ref={touchRef}
-        className="relative flex justify-center items-center min-h-[50vh] max-h-[70vh] bg-secondary/10 rounded-md overflow-hidden group"
+        className="relative flex justify-center items-center min-h-[70vh] max-h-[80vh] bg-secondary/10 rounded-md overflow-hidden group w-full"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
@@ -222,7 +222,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       
       {/* Prompt info */}
       {activeImage?.prompt && (
-        <div className="text-sm text-muted-foreground text-center max-w-lg mx-auto">
+        <div className="text-sm text-muted-foreground text-center max-w-3xl mx-auto">
           <p>{activeImage.prompt}</p>
         </div>
       )}

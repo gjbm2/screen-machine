@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -84,7 +85,10 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+    submitPrompt();
+  };
+  
+  const submitPrompt = () => {
     if (!prompt.trim() && imageFiles.length === 0) {
       toast.error('Please enter a prompt or upload at least one image');
       return;
@@ -309,6 +313,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                   onPromptChange={setPrompt}
                   uploadedImages={previewUrls}
                   onClearPrompt={handleClearPrompt}
+                  onSubmit={submitPrompt}
                 />
               </div>
               
