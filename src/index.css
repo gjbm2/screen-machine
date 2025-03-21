@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -104,14 +105,6 @@
   body {
     @apply bg-background text-foreground;
   }
-  
-  #root {
-    width: 100%;
-    max-width: 100%;
-    margin: 0 auto;
-    padding: 1rem;
-    overflow-x: hidden;
-  }
 }
 
 /* Console specific styles */
@@ -170,21 +163,5 @@
 @media (min-width: 1024px) {
   .image-batches-grid {
     grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-/* Fullscreen dialog styling */
-.fullscreen-detail-dialog {
-  width: 95vw;
-  max-width: 95vw !important;
-  height: 90vh;
-  max-height: 90vh;
-}
-
-/* Container sizing for wider layout */
-@media (min-width: 1400px) {
-  .container {
-    max-width: 98% !important;
-    width: 98%;
   }
 }

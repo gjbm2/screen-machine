@@ -82,10 +82,8 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
     setGlobalParams(defaultGlobalParams);
   }, []);
   
-  const handleSubmit = (e?: React.FormEvent) => {
-    if (e) {
-      e.preventDefault();
-    }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     
     if (!prompt.trim() && imageFiles.length === 0) {
       toast.error('Please enter a prompt or upload at least one image');
@@ -257,7 +255,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
       <Collapsible open={true}>
         <CollapsibleContent>
           <Card className="overflow-hidden glass border border-border/30">
-            <form onSubmit={(e) => handleSubmit(e)} className="p-1">
+            <form onSubmit={handleSubmit} className="p-1">
               {previewUrls.length > 0 && (
                 <div className="relative p-4 pb-2">
                   <Carousel className="w-full">
@@ -311,7 +309,6 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                   onPromptChange={setPrompt}
                   uploadedImages={previewUrls}
                   onClearPrompt={handleClearPrompt}
-                  onSubmit={() => handleSubmit()}
                 />
               </div>
               
@@ -323,8 +320,8 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
               />
               
               <div className="p-2 pt-0 space-y-2">
-                <div className="flex flex-wrap items-center gap-1 sm:gap-2 justify-between">
-                  <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                <div className="flex items-center gap-1 sm:gap-2 justify-between">
+                  <div className="flex items-center gap-1 sm:gap-2">
                     <ImageUploader
                       isLoading={isButtonDisabled}
                       onImageUpload={handleImageUpload}
@@ -382,7 +379,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                     </Button>
                   </div>
 
-                  <div className="mt-2 sm:mt-0 w-full sm:w-auto flex justify-center sm:block">
+                  <div className="ml-4">
                     <Button 
                       type="submit" 
                       className={`h-12 w-12 rounded-full transition-all hover:shadow-md flex items-center justify-center btn-shine ${

@@ -6,15 +6,11 @@ import { Maximize } from 'lucide-react';
 import NavigationControls from './NavigationControls';
 
 interface ReferenceImagesSectionProps {
-  images?: string[];
-  referenceImageUrl?: string;
+  images: string[];
 }
 
-const ReferenceImagesSection: React.FC<ReferenceImagesSectionProps> = ({ images = [], referenceImageUrl }) => {
-  // Convert single referenceImageUrl to images array if provided
-  const imageArray = referenceImageUrl ? [referenceImageUrl] : images;
-  
-  if (!imageArray || imageArray.length === 0) return null;
+const ReferenceImagesSection: React.FC<ReferenceImagesSectionProps> = ({ images }) => {
+  if (!images || images.length === 0) return null;
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const [startX, setStartX] = useState<number | null>(null);
@@ -22,11 +18,11 @@ const ReferenceImagesSection: React.FC<ReferenceImagesSectionProps> = ({ images 
   const touchRef = useRef<HTMLDivElement>(null);
 
   const handlePrevious = () => {
-    setCurrentIndex(prev => (prev > 0 ? prev - 1 : imageArray.length - 1));
+    setCurrentIndex(prev => (prev > 0 ? prev - 1 : images.length - 1));
   };
 
   const handleNext = () => {
-    setCurrentIndex(prev => (prev < imageArray.length - 1 ? prev + 1 : 0));
+    setCurrentIndex(prev => (prev < images.length - 1 ? prev + 1 : 0));
   };
 
   const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
@@ -53,12 +49,12 @@ const ReferenceImagesSection: React.FC<ReferenceImagesSectionProps> = ({ images 
   return (
     <div>
       <h3 className="text-lg font-semibold mb-3">Reference Images</h3>
-      {imageArray.length === 1 ? (
+      {images.length === 1 ? (
         <div className="flex items-center justify-start overflow-x-auto pb-2">
           <Card className="flex-shrink-0 overflow-hidden">
             <div className="w-32 h-32 relative flex items-center justify-center">
               <img
-                src={imageArray[0]}
+                src={images[0]}
                 alt="Reference image"
                 className="max-w-full max-h-full object-contain"
               />
@@ -77,7 +73,7 @@ const ReferenceImagesSection: React.FC<ReferenceImagesSectionProps> = ({ images 
                   </DialogHeader>
                   <div className="w-full h-full flex items-center justify-center">
                     <img
-                      src={imageArray[0]}
+                      src={images[0]}
                       alt="Reference image full view"
                       className="max-w-full max-h-full object-contain"
                     />
@@ -89,7 +85,7 @@ const ReferenceImagesSection: React.FC<ReferenceImagesSectionProps> = ({ images 
         </div>
       ) : (
         <div className="flex items-start space-x-2 overflow-x-auto pb-2">
-          {imageArray.map((image, idx) => (
+          {images.map((image, idx) => (
             <Card key={idx} className="flex-shrink-0 overflow-hidden">
               <div 
                 className="w-32 h-32 relative flex items-center justify-center"

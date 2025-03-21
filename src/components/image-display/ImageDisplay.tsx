@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { Card, CardContent } from '@/components/ui/card';
@@ -69,12 +69,10 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
   useEffect(() => {
     if (imageContainerOrder.length > 0 && isLoading) {
-      setTimeout(() => {
-        const container = document.getElementById(imageContainerOrder[0]);
-        if (container) {
-          container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-      }, 100);
+      const container = document.getElementById(imageContainerOrder[0]);
+      if (container) {
+        container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
     }
   }, [imageContainerOrder, isLoading]);
   
@@ -250,9 +248,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   
   return (
-    <div className="mt-4 w-full max-w-full">
+    <div className="mt-4">
       {hasBatches && (
-        <div className="mt-2 w-full">
+        <div className="mt-2">
           <div className="flex justify-between items-center mb-1">
             <h2 className="text-xl font-bold">Generated Images</h2>
             <Tabs 
@@ -292,7 +290,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </Tabs>
           </div>
           
-          <div className="w-full overflow-x-hidden">
+          <div className="pr-2">
             <DndContext 
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -303,7 +301,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                 strategy={viewMode === 'small' ? horizontalListSortingStrategy : verticalListSortingStrategy}
               >
                 {viewMode === 'small' ? (
-                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-0.5 w-full">
+                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-0.5">
                     {getAllImages().map((image, idx) => (
                       <div 
                         key={`${image.batchId}-${image.batchIndex}`} 
@@ -410,7 +408,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                     </Table>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 w-full">
+                  <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1">
                     {imageContainerOrder.map((batchId, index) => {
                       if (!batches[batchId]) return null;
                       
@@ -452,7 +450,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               onOpenChange={(open) => setShowFullScreenView(open)}
             >
               <DialogContent 
-                className="max-w-[95vw] w-[95vw] max-h-[90vh]" 
+                className="max-w-4xl" 
                 noPadding
                 description="Detailed view of generated image"
               >
