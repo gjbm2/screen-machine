@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -46,7 +47,7 @@ const ImageDetailView = ({
   isNavigatingAllImages = false,
   onNavigateGlobal,
   currentGlobalIndex
-}) => {
+}: ImageDetailViewProps) => {
   const [currentIndex, setCurrentIndex] = useState(activeIndex);
   
   useEffect(() => {
