@@ -8,25 +8,20 @@ interface ImageActionButtonsProps {
   onDeleteImage?: (e: React.MouseEvent) => void;
   onFullScreen?: (e: React.MouseEvent) => void;
   viewMode: ViewMode;
-  isVisible?: boolean;
 }
 
 const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
   onDeleteImage,
   onFullScreen,
-  viewMode,
-  isVisible = false
+  viewMode
 }) => {
   if (viewMode !== 'normal') return null;
-  
-  // Add opacity classes based on visibility
-  const visibilityClass = isVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100';
   
   return (
     <>
       {/* Delete button moved to top left */}
       {onDeleteImage && (
-        <div className={`absolute top-2 left-2 ${visibilityClass} transition-opacity image-action-button`}>
+        <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity image-action-button">
           <Button 
             size="icon" 
             variant="destructive" 
@@ -40,7 +35,7 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
       
       {/* Fullscreen button remains top right */}
       {onFullScreen && (
-        <div className={`absolute top-2 right-2 ${visibilityClass} transition-opacity image-action-button`}>
+        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity image-action-button">
           <Button 
             size="icon" 
             variant="secondary" 

@@ -97,22 +97,12 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
       return;
     }
     
-    if (viewMode === 'normal') {
-      // On mobile in unrolled mode, toggle action panel
-      if (isMobile && !isRolledUp) {
-        setShowActionPanel(!showActionPanel);
-        setIsHovered(!isHovered); // Toggle hover state too to show corner buttons
-      } 
-      // In rolled up mode, go to fullscreen
-      else if (isRolledUp) {
-        if (image.url && onFullScreen) {
-          onFullScreen(batchId, index);
-        }
-      } 
-      // Desktop behavior - toggle action panel
-      else {
-        setShowActionPanel(!showActionPanel);
+    if (viewMode === 'normal' && isRolledUp) {
+      if (image.url && onFullScreen) {
+        onFullScreen(batchId, index);
       }
+    } else if (viewMode === 'normal') {
+      setShowActionPanel(!showActionPanel);
     } else if (image.url && onFullScreen) {
       onFullScreen(batchId, index);
     }
@@ -136,19 +126,11 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     ? 'aspect-square w-full h-full' 
     : 'aspect-square w-full';
 
-  // Updated logic for showing action controls
-  // 1. On mobile in unrolled view: show when showActionPanel is true (toggled by click)
-  // 2. On desktop: show on hover OR when showActionPanel is true
-  const shouldShowActionsMenu = ((isMobile && !isRolledUp && showActionPanel) || 
-                      (!isMobile && (isHovered || showActionPanel))) && 
+  // Mobile users need to tap to toggle the action panel in unrolled mode
+  const shouldShowActionsMenu = ((isMobile && showActionPanel) || (!isMobile && (isHovered || showActionPanel))) && 
                       image.url && 
                       viewMode === 'normal' &&
                       showActions;
-
-  // For corner buttons (delete and fullscreen), show them:
-  // 1. On mobile in unrolled view: when showActionPanel is true
-  // 2. On desktop: on hover
-  const shouldShowCornerButtons = isMobile && !isRolledUp ? isHovered : isHovered;
 
   return (
     <div 
@@ -180,7 +162,6 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
           onFullScreen={onFullScreen ? handleFullScreen : undefined}
           viewMode={viewMode}
-          isVisible={shouldShowCornerButtons}
         />
         
         <ImageNavigationButtons 
