@@ -28,7 +28,19 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     handleDeleteContainer: internalHandleDeleteContainer
   } = useImageContainer();
 
-  // Submit prompt handler - defined before it's used in useImageActions
+  const {
+    activeGenerations,
+    lastBatchId,
+    generateImages,
+  } = useImageGenerationApi(
+    addConsoleLog,
+    setGeneratedImages,
+    setImageContainerOrder,
+    nextContainerId,
+    setNextContainerId
+  );
+
+  // Submit prompt handler - defined after generateImages is available
   const handleSubmitPrompt = useCallback(async (
     prompt: string, 
     imageFiles?: File[] | string[]
@@ -50,18 +62,6 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     currentGlobalParams, 
     generateImages
   ]);
-
-  const {
-    activeGenerations,
-    lastBatchId,
-    generateImages,
-  } = useImageGenerationApi(
-    addConsoleLog,
-    setGeneratedImages,
-    setImageContainerOrder,
-    nextContainerId,
-    setNextContainerId
-  );
   
   const {
     imageUrl,
