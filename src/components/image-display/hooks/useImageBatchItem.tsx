@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ViewMode } from '../ImageDisplay';
+import { useImageBatchItemActions } from './useImageBatchItemActions';
 
 interface UseImageBatchItemProps {
   image: {
@@ -44,38 +45,22 @@ export const useImageBatchItem = ({
   const [showActionButtons, setShowActionButtons] = useState(false);
   const isMobile = useIsMobile();
 
-  const handleCreateAgain = () => {
-    if (onCreateAgain) {
-      onCreateAgain(batchId);
-    }
-  };
-
-  const handleUseAsInput = () => {
-    if (onUseAsInput && image.url) {
-      onUseAsInput(image.url);
-    }
-  };
-
-  const handleFullScreen = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onFullScreen) {
-      onFullScreen(batchId, index);
-    }
-  };
-  
-  const handleDeleteImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (onDeleteImage) {
-      onDeleteImage(batchId, index);
-    }
-  };
-  
-  const handleDeleteFromPanel = () => {
-    if (onDeleteImage) {
-      onDeleteImage(batchId, index);
-    }
-  };
+  // Import action handlers from separate hook
+  const { 
+    handleCreateAgain,
+    handleUseAsInput,
+    handleFullScreen,
+    handleDeleteImage,
+    handleDeleteFromPanel
+  } = useImageBatchItemActions({
+    image,
+    batchId,
+    index,
+    onCreateAgain,
+    onUseAsInput,
+    onDeleteImage,
+    onFullScreen
+  });
 
   const handleImageClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.image-action-button') ||
