@@ -31,13 +31,6 @@ interface ImageDisplayProps {
   onReorderContainers: (sourceIndex: number, destinationIndex: number) => void;
   onDeleteImage: (batchId: string, index: number) => void;
   onDeleteContainer: (batchId: string) => void;
-  onOpenDetailView?: (batchId: string, index: number) => void;
-  onCloseDetailView?: () => void;
-  activeDetailBatchId?: string | null;
-  activeDetailIndex?: number;
-  isDetailViewOpen?: boolean;
-  allFlattenedImages?: any[];
-  onNavigateGlobal?: (index: number) => void;
 }
 
 const ImageDisplay: React.FC<ImageDisplayProps> = ({
@@ -53,14 +46,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onCreateAgain,
   onReorderContainers,
   onDeleteImage,
-  onDeleteContainer,
-  onOpenDetailView,
-  onCloseDetailView,
-  activeDetailBatchId,
-  activeDetailIndex = 0,
-  isDetailViewOpen = false,
-  allFlattenedImages = [],
-  onNavigateGlobal
+  onDeleteContainer
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
@@ -159,39 +145,31 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   };
   
   const openFullScreenView = (batchId: string, imageIndex: number = 0) => {
-    if (onOpenDetailView) {
-      onOpenDetailView(batchId, imageIndex);
-    } else {
-      setFullScreenBatchId(batchId);
-      setFullScreenImageIndex(imageIndex);
-      setShowFullScreenView(true);
-      
-      const selectedImage = generatedImages.find(
-        img => img.batchId === batchId && img.batchIndex === imageIndex && img.status === 'completed'
+    setFullScreenBatchId(batchId);
+    setFullScreenImageIndex(imageIndex);
+    setShowFullScreenView(true);
+    
+    const selectedImage = generatedImages.find(
+      img => img.batchId === batchId && img.batchIndex === imageIndex && img.status === 'completed'
+    );
+    
+    if (selectedImage) {
+      const globalIndex = allImagesFlat.findIndex(
+        img => img.batchId === batchId && img.batchIndex === imageIndex
       );
       
-      if (selectedImage) {
-        const globalIndex = allImagesFlat.findIndex(
-          img => img.batchId === batchId && img.batchIndex === imageIndex
-        );
-        
-        if (globalIndex !== -1) {
-          setCurrentGlobalIndex(globalIndex);
-        }
+      if (globalIndex !== -1) {
+        setCurrentGlobalIndex(globalIndex);
       }
     }
   };
   
   const handleNavigateGlobal = (index: number) => {
-    if (onNavigateGlobal) {
-      onNavigateGlobal(index);
-    } else {
-      if (index >= 0 && index < allImagesFlat.length) {
-        const targetImage = allImagesFlat[index];
-        setFullScreenBatchId(targetImage.batchId);
-        setFullScreenImageIndex(targetImage.batchIndex);
-        setCurrentGlobalIndex(index);
-      }
+    if (index >= 0 && index < allImagesFlat.length) {
+      const targetImage = allImagesFlat[index];
+      setFullScreenBatchId(targetImage.batchId);
+      setFullScreenImageIndex(targetImage.batchIndex);
+      setCurrentGlobalIndex(index);
     }
   };
   
@@ -466,19 +444,13 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </DndContext>
           </div>
           
-          {((fullScreenBatchId && showFullScreenView) || (activeDetailBatchId && isDetailViewOpen)) && (
+          {fullScreenBatchId && (
             <Dialog 
-              open={isDetailViewOpen !== undefined ? isDetailViewOpen : showFullScreenView} 
-              onOpenChange={(open) => {
-                if (onCloseDetailView && !open) {
-                  onCloseDetailView();
-                } else {
-                  setShowFullScreenView(open);
-                }
-              }}
+              open={showFullScreenView} 
+              onOpenChange={(open) => setShowFullScreenView(open)}
             >
               <DialogContent 
-                className="max-w-4xl w-[90vw]" 
+                className="max-w-4xl" 
                 noPadding
                 description="Detailed view of generated image"
               >
@@ -486,45 +458,10 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                   <DialogTitle>Image Detail</DialogTitle>
                 </DialogHeader>
                 <div className="p-4 pt-0">
-                  {(activeDetailBatchId && batches[activeDetailBatchId]) ? (
+                  {batches[fullScreenBatchId] && (
                     <ImageDetailView
-                      batchId={activeDetailBatchId}
-                      images={batches[activeDetailBatchId].filter(img => img.status === 'completed')}
-                      activeIndex={activeDetailIndex}
-                      onSetActiveIndex={(idx) => onOpenDetailView?.(activeDetailBatchId, idx)}
-                      onNavigatePrev={(e) => {
-                        e.stopPropagation();
-                        if (activeDetailIndex > 0) {
-                          onOpenDetailView?.(activeDetailBatchId, activeDetailIndex - 1);
-                        }
-                      }}
-                      onNavigateNext={(e) => {
-                        e.stopPropagation();
-                        const completedImages = batches[activeDetailBatchId].filter(img => img.status === 'completed');
-                        if (activeDetailIndex < completedImages.length - 1) {
-                          onOpenDetailView?.(activeDetailBatchId, activeDetailIndex + 1);
-                        }
-                      }}
-                      onToggleExpand={() => {}}
-                      onDeleteImage={onDeleteImage}
-                      onCreateAgain={onCreateAgain}
-                      onUseAsInput={(url) => {
-                        onUseGeneratedAsInput(url);
-                        if (onCloseDetailView) {
-                          onCloseDetailView();
-                        } else {
-                          setShowFullScreenView(false);
-                        }
-                      }}
-                      allImages={allFlattenedImages}
-                      isNavigatingAllImages={true}
-                      onNavigateGlobal={onNavigateGlobal}
-                      currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
-                    />
-                  ) : batches[fullScreenBatchId!] && (
-                    <ImageDetailView
-                      batchId={fullScreenBatchId!}
-                      images={batches[fullScreenBatchId!].filter(img => img.status === 'completed')}
+                      batchId={fullScreenBatchId}
+                      images={batches[fullScreenBatchId].filter(img => img.status === 'completed')}
                       activeIndex={fullScreenImageIndex}
                       onSetActiveIndex={setFullScreenImageIndex}
                       onNavigatePrev={(e) => {
@@ -535,7 +472,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                       }}
                       onNavigateNext={(e) => {
                         e.stopPropagation();
-                        const completedImages = batches[fullScreenBatchId!].filter(img => img.status === 'completed');
+                        const completedImages = batches[fullScreenBatchId].filter(img => img.status === 'completed');
                         if (fullScreenImageIndex < completedImages.length - 1) {
                           setFullScreenImageIndex(fullScreenImageIndex + 1);
                         }
