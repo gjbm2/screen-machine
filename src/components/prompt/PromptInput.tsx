@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { X } from 'lucide-react';
@@ -85,7 +84,8 @@ const PromptInput: React.FC<PromptInputProps> = ({
   };
 
   const handleStyleClick = (stylePrompt: string) => {
-    const combinedPrompt = prompt ? `${prompt}, ${stylePrompt}` : stylePrompt;
+    // If there's already text, append the style with a comma separator
+    const combinedPrompt = prompt.trim() ? `${prompt.trim()}, ${stylePrompt}` : stylePrompt;
     
     const event = {
       target: { value: combinedPrompt },

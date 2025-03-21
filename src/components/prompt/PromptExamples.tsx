@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import examplePrompts from '@/data/example-prompts.json';
 import { Button } from '@/components/ui/button';
@@ -33,52 +32,42 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   const [initialStylesCount, setInitialStylesCount] = useState(2);
   const { width } = useWindowSize();
   
-  // Determine how many examples and styles to show based on screen width
   useEffect(() => {
     if (!width) return;
     
-    // Calculate how many example prompts we can fit based on width
-    // Assuming average example is ~18 characters at ~9px per character in 'text-sm'
-    // Plus badge padding, margins, and some buffer space
-    const avgExampleWidth = 180; // Approximate width in pixels for average example
-    const labelWidth = 40; // Width for "Try:" label
-    const moreButtonWidth = 70; // Width for "More" button
-    const availableWidth = width - 40; // Subtract container padding
+    const avgExampleWidth = 180;
+    const labelWidth = 40;
+    const moreButtonWidth = 70;
+    const availableWidth = width - 40;
     
-    // Calculate how many examples would fit in the available width
     const examplesCapacity = Math.max(1, Math.floor((availableWidth - labelWidth - moreButtonWidth) / avgExampleWidth));
-    setInitialExamplesCount(Math.min(3, examplesCapacity)); // Cap at 3 examples max
+    setInitialExamplesCount(Math.min(3, examplesCapacity));
     
-    // Calculate style prompts similarly but with smaller average width
-    const avgStyleWidth = 150; // Styles are usually shorter
-    const styleLabelWidth = 50; // Width for "Style:" label
+    const avgStyleWidth = 150;
+    const styleLabelWidth = 50;
     
     const stylesCapacity = Math.max(1, Math.floor((availableWidth - styleLabelWidth - moreButtonWidth) / avgStyleWidth));
     
-    // Set styles count based on screen size with fine-tuned values
     if (width < 375) {
-      setInitialStylesCount(1); // Smallest screens show at least 1
+      setInitialStylesCount(1);
     } else if (width < 500) {
-      setInitialStylesCount(Math.min(2, stylesCapacity)); // Small mobile screens
+      setInitialStylesCount(Math.min(2, stylesCapacity));
     } else if (width < 640) {
-      setInitialStylesCount(Math.min(3, stylesCapacity)); // Regular mobile screens
+      setInitialStylesCount(Math.min(3, stylesCapacity));
     } else if (width < 768) {
-      setInitialStylesCount(Math.min(4, stylesCapacity)); // Larger mobile screens
+      setInitialStylesCount(Math.min(4, stylesCapacity));
     } else if (width < 1024) {
-      setInitialStylesCount(Math.min(5, stylesCapacity)); // Tablet screens
+      setInitialStylesCount(Math.min(5, stylesCapacity));
     } else {
-      setInitialStylesCount(showMore ? Math.min(8, stylesCapacity) : Math.min(6, stylesCapacity)); // Desktop screens
+      setInitialStylesCount(showMore ? Math.min(8, stylesCapacity) : Math.min(6, stylesCapacity));
     }
   }, [width, showMore]);
   
-  // Randomize examples and styles on mount and whenever they change
   useEffect(() => {
-    // Randomize examples
     const examplesList = [...(examplePrompts.basicPrompts || [])];
     const shuffledExamples = examplesList.sort(() => Math.random() - 0.5);
     setRandomizedExamples(shuffledExamples);
     
-    // Randomize styles
     const stylesList = [...(examplePrompts.stylePrompts || [])];
     const shuffledStyles = stylesList.sort(() => Math.random() - 0.5);
     setRandomizedStyles(shuffledStyles);
@@ -89,12 +78,8 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   };
   
   const handleStyleClick = (stylePrompt: StylePrompt) => {
-    // Store the selected style prompt text
     setSelectedStyles(prev => [...prev, stylePrompt.prompt]);
-    
-    // Combine current prompt with style
-    const combinedPrompt = prompt ? `${prompt}, ${stylePrompt.prompt}` : stylePrompt.prompt;
-    onStyleClick(combinedPrompt);
+    onStyleClick(stylePrompt.prompt);
   };
   
   const toggleExamples = (e: React.MouseEvent) => {
@@ -114,7 +99,6 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
       return null;
     }
     
-    // Show randomized examples up to the calculated initial count
     const visibleExamples = showAllExamples 
       ? randomizedExamples 
       : randomizedExamples.slice(0, initialExamplesCount);
@@ -159,7 +143,6 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   };
   
   const renderStyles = () => {
-    // Use randomized styles
     const visibleStyles = showAllStyles
       ? randomizedStyles
       : randomizedStyles.slice(0, initialStylesCount);
