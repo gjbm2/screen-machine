@@ -33,20 +33,20 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   const shouldDisableButton = isLoading || (!prompt.trim() && !hasUploadedImages);
   
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+    <div className="flex items-center justify-between overflow-x-auto py-1">
+      <div className="flex flex-nowrap items-center gap-1 sm:gap-2">
         <ImageUploader
           isLoading={isLoading}
           onImageUpload={onImageUpload}
           onWorkflowChange={onWorkflowChange}
-          hideLabel={isMobile}
+          hideLabel={true}
         />
         
         <WorkflowIconSelector
           workflows={workflows}
           selectedWorkflow={selectedWorkflow}
           onWorkflowChange={onWorkflowChange}
-          hideWorkflowName={isCompact}
+          hideWorkflowName={true}
         />
         
         <RefinerSelector
@@ -66,10 +66,10 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
           variant="outline" 
           size="icon"
           onClick={toggleAdvancedOptions}
-          className="h-[36px] w-[36px] text-muted-foreground hover:bg-purple-500/10 text-purple-700"
+          className="h-[28px] w-[28px] text-muted-foreground hover:bg-purple-500/10 text-purple-700 shrink-0"
           aria-label="Settings"
         >
-          <Settings className="h-4 w-4" />
+          <Settings className="h-3.5 w-3.5" />
         </Button>
       </div>
 

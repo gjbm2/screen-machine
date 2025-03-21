@@ -11,8 +11,8 @@ const BatchControl: React.FC<BatchControlProps> = ({
   isCompact = false
 }) => {
   return (
-    <div className="flex items-center gap-1">
-      {!isCompact && <span className="text-xs text-muted-foreground mr-1">Batch Size</span>}
+    <div className="flex items-center gap-1 shrink-0">
+      {!isCompact && <span className="text-xs text-muted-foreground mr-1">Batch</span>}
       <div className="flex items-center border rounded-md overflow-hidden">
         <Button
           type="button"
@@ -20,12 +20,12 @@ const BatchControl: React.FC<BatchControlProps> = ({
           size="icon"
           onClick={decrementBatchSize}
           disabled={batchSize <= 1}
-          className="h-[36px] w-[36px] rounded-none border-r"
+          className={`${isCompact ? 'h-[28px] w-[28px]' : 'h-[36px] w-[36px]'} rounded-none border-r`}
         >
-          <Minus className="h-3 w-3" />
+          <Minus className={`${isCompact ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
         </Button>
-        <div className="px-2 flex items-center justify-center min-w-[25px]">
-          <span className="text-sm font-medium">{batchSize}</span>
+        <div className={`px-1 flex items-center justify-center ${isCompact ? 'min-w-[18px]' : 'min-w-[25px]'}`}>
+          <span className={`${isCompact ? 'text-xs' : 'text-sm'} font-medium`}>{batchSize}</span>
         </div>
         <Button
           type="button"
@@ -33,9 +33,9 @@ const BatchControl: React.FC<BatchControlProps> = ({
           size="icon"
           onClick={incrementBatchSize}
           disabled={batchSize >= 9}
-          className="h-[36px] w-[36px] rounded-none border-l"
+          className={`${isCompact ? 'h-[28px] w-[28px]' : 'h-[36px] w-[36px]'} rounded-none border-l`}
         >
-          <Plus className="h-3 w-3" />
+          <Plus className={`${isCompact ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
         </Button>
       </div>
     </div>
