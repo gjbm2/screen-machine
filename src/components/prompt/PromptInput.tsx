@@ -4,6 +4,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { ReferenceImageData } from '@/types/workflows';
+import PromptExamples from './PromptExamples';
 
 interface PromptInputProps {
   prompt: string;
@@ -54,6 +55,28 @@ const PromptInput: React.FC<PromptInputProps> = ({
     }
   };
 
+  const handleExampleClick = (example: string) => {
+    const event = {
+      target: { value: example },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as React.ChangeEvent<HTMLTextAreaElement>;
+    
+    onPromptChange(event);
+  };
+
+  const handleStyleClick = (stylePrompt: string) => {
+    const combinedPrompt = prompt ? `${prompt}, ${stylePrompt}` : stylePrompt;
+    
+    const event = {
+      target: { value: combinedPrompt },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as React.ChangeEvent<HTMLTextAreaElement>;
+    
+    onPromptChange(event);
+  };
+
   return (
     <div className="relative">
       <Textarea
@@ -82,6 +105,14 @@ const PromptInput: React.FC<PromptInputProps> = ({
           {prompt.length}/{maxLength}
         </div>
       )}
+
+      {/* Add back the prompt examples */}
+      <PromptExamples 
+        prompt={prompt}
+        onExampleClick={handleExampleClick}
+        onStyleClick={handleStyleClick}
+        showMore={!isLoading}
+      />
     </div>
   );
 };
