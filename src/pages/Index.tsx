@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import PromptForm from '@/components/PromptForm';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
 import ResizableConsole from '@/components/debug/ResizableConsole';

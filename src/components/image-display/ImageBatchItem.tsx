@@ -55,6 +55,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [showActionPanel, setShowActionPanel] = useState(false);
+  const [showActionButtons, setShowActionButtons] = useState(false);
   const isMobile = useIsMobile();
 
   const handleCreateAgain = () => {
@@ -102,7 +103,13 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         onFullScreen(batchId, index);
       }
     } else if (viewMode === 'normal') {
-      setShowActionPanel(!showActionPanel);
+      if (isMobile) {
+        // Toggle both action panel and buttons on mobile
+        setShowActionPanel(!showActionPanel);
+        setShowActionButtons(!showActionButtons);
+      } else {
+        setShowActionPanel(!showActionPanel);
+      }
     } else if (image.url && onFullScreen) {
       onFullScreen(batchId, index);
     }
@@ -126,7 +133,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     ? 'aspect-square w-full h-full' 
     : 'aspect-square w-full';
 
-  // Mobile users need to tap to toggle the action panel in unrolled mode
+  // Mobile users can now toggle the action panel and buttons in unrolled mode
   const shouldShowActionsMenu = ((isMobile && showActionPanel) || (!isMobile && (isHovered || showActionPanel))) && 
                       image.url && 
                       viewMode === 'normal' &&
@@ -162,6 +169,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
           onFullScreen={onFullScreen ? handleFullScreen : undefined}
           viewMode={viewMode}
+          forceShow={isMobile && showActionButtons}
         />
         
         <ImageNavigationButtons 

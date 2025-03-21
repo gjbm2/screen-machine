@@ -69,10 +69,22 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   );
 
   useEffect(() => {
-    if (imageContainerOrder.length > 0 && isLoading) {
-      const container = document.getElementById(imageContainerOrder[0]);
-      if (container) {
-        container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (imageContainerOrder.length > 0) {
+      if (isLoading) {
+        const updatedExpandedState: Record<string, boolean> = {};
+        
+        imageContainerOrder.forEach(id => {
+          updatedExpandedState[id] = false;
+        });
+        
+        updatedExpandedState[imageContainerOrder[0]] = true;
+        
+        setExpandedContainers(updatedExpandedState);
+        
+        const container = document.getElementById(imageContainerOrder[0]);
+        if (container) {
+          container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
       }
     }
   }, [imageContainerOrder, isLoading]);
