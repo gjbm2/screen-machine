@@ -5,7 +5,7 @@ import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrate
 import SmallGridView from './view-modes/SmallGridView';
 import TableView from './view-modes/TableView';
 import NormalGridView from './view-modes/NormalGridView';
-import { ViewMode } from './ImageDisplay';
+import { ViewMode, SortField, SortDirection } from './ImageDisplay';
 
 interface ViewModeContentProps {
   viewMode: ViewMode;
@@ -21,9 +21,9 @@ interface ViewModeContentProps {
   imageUrl: string | null;
   getAllImages: () => any[];
   handleSmallImageClick: (image: any) => void;
-  sortField: string;
-  sortDirection: 'asc' | 'desc';
-  handleSortClick: (field: any) => void;
+  sortField: SortField;
+  sortDirection: SortDirection;
+  handleSortClick: (field: SortField) => void;
   getSortedContainers: () => string[];
   handleTableRowClick: (batchId: string) => void;
   isLoading: boolean;
