@@ -1,10 +1,12 @@
+
 import React, { useState } from 'react';
-import { ExternalLink, Trash2, Maximize, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import ImageActions from '@/components/ImageActions';
 import { ViewMode } from './ImageDisplay';
 import { useIsMobile } from '@/hooks/use-mobile';
+import ImageActionButtons from './ImageActionButtons';
+import ImageNavigationButtons from './ImageNavigationButtons';
+import BatchCountDisplay from './BatchCountDisplay';
+import ImageActionsPanel from './ImageActionsPanel';
+import ImageLoadingState from './ImageLoadingState';
 
 interface ImageBatchItemProps {
   image: {
@@ -139,87 +141,40 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-muted">
-            <div className="animate-pulse flex flex-col items-center">
-              <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-              <div className="h-2 w-24 bg-muted-foreground/20 rounded mt-2"></div>
-            </div>
-          </div>
+          <ImageLoadingState />
         )}
         
-        {total > 1 && viewMode !== 'small' && (
-          <div className="absolute bottom-2 right-2 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
-            {index + 1}/{total}
-          </div>
-        )}
+        <BatchCountDisplay 
+          index={index} 
+          total={total} 
+          viewMode={viewMode} 
+        />
         
-        {onDeleteImage && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button 
-                className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-10"
-                onClick={handleDeleteImage}
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Delete this image</TooltipContent>
-          </Tooltip>
-        )}
+        <ImageActionButtons 
+          onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
+          onFullScreen={onFullScreen ? handleFullScreen : undefined}
+          viewMode={viewMode || 'normal'}
+        />
         
-        {total > 1 && (
-          <>
-            {index > 0 && onNavigatePrev && (
-              <button 
-                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 text-white transition-colors z-10"
-                onClick={handleNavigatePrev}
-              >
-                <ChevronLeft className="h-3 w-3" />
-              </button>
-            )}
-            
-            {index < total - 1 && onNavigateNext && (
-              <button 
-                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 text-white transition-colors z-10"
-                onClick={handleNavigateNext}
-              >
-                <ChevronRight className="h-3 w-3" />
-              </button>
-            )}
-          </>
-        )}
+        <ImageNavigationButtons 
+          index={index}
+          total={total}
+          onNavigatePrev={onNavigatePrev ? handleNavigatePrev : undefined}
+          onNavigateNext={onNavigateNext ? handleNavigateNext : undefined}
+        />
         
         {shouldShowActionsMenu && (
-          <div 
-            className="absolute bottom-2 left-2 right-2 flex justify-center space-x-0.5 transition-opacity bg-black/70 rounded-md p-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <ImageActions
-              imageUrl={image.url}
-              onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
-              onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
-              generationInfo={{
-                prompt: image.prompt || '',
-                workflow: image.workflow || '',
-                params: image.params
-              }}
-              isMouseOver={isHovered || showActionPanel}
-            />
-          </div>
-        )}
-        
-        {onFullScreen && viewMode !== 'small' && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button 
-                className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors z-10"
-                onClick={handleFullScreen}
-              >
-                <Maximize className="h-3 w-3" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Full screen</TooltipContent>
-          </Tooltip>
+          <ImageActionsPanel
+            show={shouldShowActionsMenu}
+            imageUrl={image.url}
+            onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
+            onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
+            generationInfo={{
+              prompt: image.prompt || '',
+              workflow: image.workflow || '',
+              params: image.params
+            }}
+          />
         )}
       </div>
     </div>
