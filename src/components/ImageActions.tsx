@@ -158,73 +158,69 @@ const ImageActions: React.FC<ImageActionsProps> = ({
     );
   }
   
-  // For fullscreen view (icon + text)
+  // For fullscreen view - all buttons (including delete) in a single row
   return (
-    <>
-      <div className={`flex flex-wrap gap-2 justify-center ${alwaysVisible ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity duration-200'}`}>
-        <Button 
-          type="button" 
-          variant="outline" 
-          className={actionButtonClass}
-          onClick={handleShowInfo}
-        >
-          <Info className="h-3.5 w-3.5" /> Info
-        </Button>
-        
-        {onCreateAgain && (
-          <Button 
-            type="button" 
-            variant="outline" 
-            className={actionButtonClass}
-            onClick={onCreateAgain}
-          >
-            <CopyPlus className="h-3.5 w-3.5" /> Create Again
-          </Button>
-        )}
-        
-        {onUseAsInput && (
-          <Button 
-            type="button" 
-            variant="outline" 
-            className={actionButtonClass}
-            onClick={onUseAsInput}
-          >
-            <SquareArrowUpRight className="h-3.5 w-3.5" /> Use as Input
-          </Button>
-        )}
-        
-        <Button 
-          type="button" 
-          variant="outline" 
-          className={actionButtonClass}
-          onClick={handleDownload}
-        >
-          <Download className="h-3.5 w-3.5" /> Download
-        </Button>
-        
-        <Button 
-          type="button" 
-          variant="outline" 
-          className={actionButtonClass}
-          onClick={handleShare}
-        >
-          <Share className="h-3.5 w-3.5" /> Share
-        </Button>
-      </div>
+    <div className={`flex flex-wrap gap-2 justify-center ${alwaysVisible ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity duration-200'}`}>
+      <Button 
+        type="button" 
+        variant="outline" 
+        className={actionButtonClass}
+        onClick={handleShowInfo}
+      >
+        <Info className="h-3.5 w-3.5" /> Info
+      </Button>
       
-      {isFullScreen && onDeleteImage && (
-        <div className="mt-4 flex justify-center">
-          <Button 
-            type="button" 
-            variant="outline" 
-            className={deleteButtonClass}
-            onClick={onDeleteImage}
-          >
-            <Trash2 className="h-3.5 w-3.5" /> Delete
-          </Button>
-        </div>
+      {onCreateAgain && (
+        <Button 
+          type="button" 
+          variant="outline" 
+          className={actionButtonClass}
+          onClick={onCreateAgain}
+        >
+          <CopyPlus className="h-3.5 w-3.5" /> Create Again
+        </Button>
       )}
-    </>
+      
+      {onUseAsInput && (
+        <Button 
+          type="button" 
+          variant="outline" 
+          className={actionButtonClass}
+          onClick={onUseAsInput}
+        >
+          <SquareArrowUpRight className="h-3.5 w-3.5" /> Use as Input
+        </Button>
+      )}
+      
+      <Button 
+        type="button" 
+        variant="outline" 
+        className={actionButtonClass}
+        onClick={handleDownload}
+      >
+        <Download className="h-3.5 w-3.5" /> Download
+      </Button>
+      
+      <Button 
+        type="button" 
+        variant="outline" 
+        className={actionButtonClass}
+        onClick={handleShare}
+      >
+        <Share className="h-3.5 w-3.5" /> Share
+      </Button>
+      
+      {onDeleteImage && (
+        <Button 
+          type="button" 
+          variant="outline" 
+          className={deleteButtonClass}
+          onClick={onDeleteImage}
+        >
+          <Trash2 className="h-3.5 w-3.5" /> Delete
+        </Button>
+      )}
+    </div>
   );
 };
 

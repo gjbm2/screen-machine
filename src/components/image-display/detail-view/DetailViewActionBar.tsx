@@ -22,7 +22,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
   generationInfo
 }) => {
   return (
-    <div className="flex justify-center space-x-3 py-2">
+    <div className="flex justify-center py-3 bg-background/80 backdrop-blur-sm">
       <ImageActions
         imageUrl={imageUrl}
         onCreateAgain={onCreateAgain}

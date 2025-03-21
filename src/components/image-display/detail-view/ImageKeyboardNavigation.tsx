@@ -27,20 +27,27 @@ const ImageKeyboardNavigation: React.FC<ImageKeyboardNavigationProps> = ({
         // Navigate to previous image
         if (onNavigateGlobal && allImages && currentGlobalIndex !== undefined) {
           if (currentGlobalIndex > 0) {
+            e.preventDefault();
             onNavigateGlobal(currentGlobalIndex - 1);
           }
         } else if (activeIndex > 0) {
+          e.preventDefault();
           onNavigatePrev(e as unknown as React.MouseEvent);
         }
       } else if (e.key === 'ArrowRight') {
         // Navigate to next image
         if (onNavigateGlobal && allImages && currentGlobalIndex !== undefined) {
           if (currentGlobalIndex < allImages.length - 1) {
+            e.preventDefault();
             onNavigateGlobal(currentGlobalIndex + 1);
           }
         } else if (activeIndex < imagesLength - 1) {
+          e.preventDefault();
           onNavigateNext(e as unknown as React.MouseEvent);
         }
+      } else if (e.key === 'Escape') {
+        // Let the Dialog handle this
+        return;
       }
     };
 

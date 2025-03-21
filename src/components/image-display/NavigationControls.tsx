@@ -30,24 +30,34 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
   const sizeClasses = {
     small: 'h-2 w-2',
     medium: 'h-3 w-3',
-    large: 'h-4 w-4'
+    large: 'h-5 w-5'
+  };
+
+  const buttonSizeClasses = {
+    small: 'p-1.5',
+    medium: 'p-2',
+    large: 'p-4'
   };
 
   return (
     <div className="absolute inset-0 pointer-events-none">
       <button 
-        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/20 hover:bg-black/50 rounded-full p-1.5 text-white/70 hover:text-white transition-colors pointer-events-auto z-20"
+        className={`absolute left-0 top-0 bottom-0 w-1/5 flex items-center justify-start pl-4 bg-transparent hover:bg-black/10 transition-colors pointer-events-auto z-20`}
         onClick={onPrevious}
         aria-label="Previous image"
       >
-        <ChevronLeft className={sizeClasses[size]} />
+        <div className={`bg-black/40 hover:bg-black/60 rounded-full ${buttonSizeClasses[size]} text-white/90 hover:text-white transition-colors`}>
+          <ChevronLeft className={sizeClasses[size]} />
+        </div>
       </button>
       <button 
-        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/20 hover:bg-black/50 rounded-full p-1.5 text-white/70 hover:text-white transition-colors pointer-events-auto z-20"
+        className={`absolute right-0 top-0 bottom-0 w-1/5 flex items-center justify-end pr-4 bg-transparent hover:bg-black/10 transition-colors pointer-events-auto z-20`}
         onClick={onNext}
         aria-label="Next image"
       >
-        <ChevronRight className={sizeClasses[size]} />
+        <div className={`bg-black/40 hover:bg-black/60 rounded-full ${buttonSizeClasses[size]} text-white/90 hover:text-white transition-colors`}>
+          <ChevronRight className={sizeClasses[size]} />
+        </div>
       </button>
     </div>
   );

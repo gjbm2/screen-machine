@@ -34,20 +34,25 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
 }) => {
   if (!fullScreenBatchId) return null;
   
+  const handleImageClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowFullScreenView(false);
+  };
+  
   return (
     <Dialog 
       open={showFullScreenView} 
       onOpenChange={(open) => setShowFullScreenView(open)}
     >
       <DialogContent 
-        className="max-w-[90vw] w-auto max-h-[90vh] h-auto overflow-auto" 
+        className="max-w-[98vw] w-auto max-h-[96vh] p-0 h-auto overflow-hidden" 
         noPadding
         description="Detailed view of generated image"
       >
         <DialogHeader className="p-4 pb-0">
           <DialogTitle>Image Detail</DialogTitle>
         </DialogHeader>
-        <div className="p-4 pt-0 overflow-auto">
+        <div className="pt-0 overflow-hidden">
           {batches[fullScreenBatchId] && (
             <ImageDetailView
               batchId={fullScreenBatchId}
@@ -56,15 +61,14 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
               onSetActiveIndex={setFullScreenImageIndex}
               onNavigatePrev={(e) => {
                 e.stopPropagation();
-                if (fullScreenImageIndex > 0) {
-                  setFullScreenImageIndex(fullScreenImageIndex - 1);
+                if (currentGlobalIndex !== null && currentGlobalIndex > 0) {
+                  handleNavigateGlobal(currentGlobalIndex - 1);
                 }
               }}
               onNavigateNext={(e) => {
                 e.stopPropagation();
-                const completedImages = batches[fullScreenBatchId].filter(img => img.status === 'completed');
-                if (fullScreenImageIndex < completedImages.length - 1) {
-                  setFullScreenImageIndex(fullScreenImageIndex + 1);
+                if (currentGlobalIndex !== null && currentGlobalIndex < allImagesFlat.length - 1) {
+                  handleNavigateGlobal(currentGlobalIndex + 1);
                 }
               }}
               onToggleExpand={() => {}}
@@ -78,6 +82,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
               isNavigatingAllImages={true}
               onNavigateGlobal={handleNavigateGlobal}
               currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
+              onImageClick={handleImageClick}
             />
           )}
         </div>
