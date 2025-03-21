@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Workflow } from '@/types/workflows';
 
@@ -53,7 +54,7 @@ export interface AdvancedOptionsProps {
 
 export interface BatchControlProps {
   batchSize: number;
-  incrementBatchSize: (e: React.MouseEvent) => void;
-  decrementBatchSize: (e: React.MouseEvent) => void;
+  incrementBatchSize: () => void;
+  decrementBatchSize: () => void;
   isCompact?: boolean;
 }

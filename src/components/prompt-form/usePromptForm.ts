@@ -102,15 +102,13 @@ const usePromptForm = () => {
     setRefinerParams({});
   };
   
-  const incrementBatchSize = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const incrementBatchSize = () => {
     if (batchSize < 9) {
       setBatchSize(prev => prev + 1);
     }
   };
   
-  const decrementBatchSize = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const decrementBatchSize = () => {
     if (batchSize > 1) {
       setBatchSize(prev => prev - 1);
     }

@@ -10,35 +10,34 @@ const BatchControl: React.FC<BatchControlProps> = ({
   decrementBatchSize,
   isCompact = false
 }) => {
-  const height = isCompact ? "h-[32px]" : "h-[36px]";
-  const iconSize = isCompact ? "h-2.5 w-2.5" : "h-3 w-3";
-  const buttonWidth = isCompact ? "w-5" : "w-6 sm:w-7";
-  
   return (
-    <div className={`flex items-center ${isCompact ? "h-[32px]" : "h-[48px]"}`}>
-      <Button 
-        type="button"
-        className={`${height} rounded-l-md px-0.5 hover:bg-purple-500/10 text-purple-700 border border-r-0 border-input`}
-        onClick={decrementBatchSize}
-        disabled={batchSize <= 1}
-        variant="outline"
-      >
-        <Minus className={iconSize} />
-      </Button>
-      
-      <div className={`flex justify-center items-center ${height} bg-background border-y border-input text-foreground ${buttonWidth}`}>
-        <span className={`${isCompact ? 'text-xs' : 'text-sm'} font-medium`}>{batchSize}</span>
+    <div className="flex items-center gap-1">
+      {!isCompact && <span className="text-xs text-muted-foreground mr-1">Batch Size</span>}
+      <div className="flex items-center border rounded-md overflow-hidden">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={decrementBatchSize}
+          disabled={batchSize <= 1}
+          className="h-[36px] w-[36px] rounded-none border-r"
+        >
+          <Minus className="h-3 w-3" />
+        </Button>
+        <div className="px-2 flex items-center justify-center min-w-[25px]">
+          <span className="text-sm font-medium">{batchSize}</span>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={incrementBatchSize}
+          disabled={batchSize >= 9}
+          className="h-[36px] w-[36px] rounded-none border-l"
+        >
+          <Plus className="h-3 w-3" />
+        </Button>
       </div>
-      
-      <Button 
-        type="button"
-        className={`${height} rounded-r-md px-0.5 hover:bg-purple-500/10 text-purple-700 border border-l-0 border-input`}
-        onClick={incrementBatchSize}
-        disabled={batchSize >= 9}
-        variant="outline"
-      >
-        <Plus className={iconSize} />
-      </Button>
     </div>
   );
 };

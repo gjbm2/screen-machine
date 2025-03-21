@@ -40,7 +40,7 @@ class ApiService {
       const formData = new FormData();
       
       // Create a data object to serialize as JSON
-      const jsonData = {
+      const jsonData: any = {
         prompt,
         workflow,
         params: workflowParams || {},
@@ -87,6 +87,65 @@ class ApiService {
     } catch (error) {
       console.error('Error generating image:', error);
       throw error;
+    }
+  }
+  
+  // Send logs to the API
+  async sendLog(message: string) {
+    // In mock mode, just log to console
+    if (this.mockMode) {
+      console.info('[MOCK LOG]', message);
+      return { success: true };
+    }
+    
+    try {
+      const response = await fetch(`${this.apiUrl}/log`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message }),
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to send log');
+        return { success: false };
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error sending log:', error);
+      return { success: false };
+    }
+  }
+  
+  // Get logs from the API
+  async getLogs(limit: number = 100) {
+    if (this.mockMode) {
+      // In mock mode, return mock logs
+      return {
+        success: true,
+        logs: [
+          '[MOCK BACKEND] Log system initialized',
+          '[MOCK BACKEND] Ready to generate images'
+        ]
+      };
+    }
+    
+    try {
+      const response = await fetch(`${this.apiUrl}/logs?limit=${limit}`, {
+        method: 'GET',
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to get logs');
+        return { success: false, logs: [] };
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting logs:', error);
+      return { success: false, logs: [] };
     }
   }
   

@@ -80,7 +80,7 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
             shouldDisableButton && isCompact ? 'bg-gray-300 text-gray-600' : 'bg-primary text-primary-foreground'
           }`}
           disabled={shouldDisableButton}
-          onClick={() => handleSubmit()}
+          onClick={handleSubmit}
         >
           <ArrowUp className="h-6 w-6" />
         </Button>

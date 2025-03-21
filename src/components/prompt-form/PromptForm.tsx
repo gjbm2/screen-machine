@@ -108,6 +108,15 @@ const PromptForm: React.FC<PromptFormProps> = ({
     setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
   };
 
+  // Wrap increment and decrement functions to match expected signatures
+  const handleIncrementBatchSize = () => {
+    incrementBatchSize();
+  };
+
+  const handleDecrementBatchSize = () => {
+    decrementBatchSize();
+  };
+
   // Button is disabled if both prompt is empty AND no images are uploaded
   const isButtonDisabled = isLoading || (prompt.trim() === '' && imageFiles.length === 0);
 
@@ -139,8 +148,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
           onImageUpload={handleImageUpload}
           onWorkflowChange={handleWorkflowChange}
           onRefinerChange={handleRefinerChange}
-          incrementBatchSize={incrementBatchSize}
-          decrementBatchSize={decrementBatchSize}
+          incrementBatchSize={handleIncrementBatchSize}
+          decrementBatchSize={handleDecrementBatchSize}
           toggleAdvancedOptions={toggleAdvancedOptions}
           handleSubmit={handleSubmit}
           prompt={prompt}
