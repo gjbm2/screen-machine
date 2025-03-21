@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -249,6 +249,25 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
       toast.error("Could not access camera");
     }
   };
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey && !isButtonDisabled && 
+        !(e.target instanceof HTMLTextAreaElement) && 
+        (prompt.trim() || imageFiles.length > 0)) {
+      e.preventDefault();
+      
+      const submitEvent = new Event('submit', { cancelable: true, bubbles: true });
+      document.querySelector('form')?.dispatchEvent(submitEvent);
+    }
+  }, [prompt, imageFiles, isButtonDisabled]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleKeyDown]);
 
   return (
     <div className={`animate-fade-up transition-all duration-500 ${isFirstRun ? 'mb-12' : 'mb-4'}`}>
