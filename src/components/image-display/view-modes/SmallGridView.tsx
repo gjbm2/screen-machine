@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { GenerationFailedPlaceholder } from '../GenerationFailedPlaceholder';
+import GenerationFailedPlaceholder from '../GenerationFailedPlaceholder';
 
 interface SmallGridViewProps {
   images: any[];
