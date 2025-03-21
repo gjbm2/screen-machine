@@ -2,11 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Settings, X, Plus, Minus, ChevronUp, ChevronDown, Camera, ArrowUp } from 'lucide-react';
+import { Settings, X, Plus, Minus, Camera, ArrowUp } from 'lucide-react';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import workflowsData from '@/data/workflows.json';
 import globalOptionsData from '@/data/global-options.json';
-import refinersData from '@/data/refiners.json';
 import { Workflow } from '@/types/workflows';
 import PromptInput from '@/components/prompt/PromptInput';
 import PromptExamples from '@/components/prompt/PromptExamples';
@@ -22,12 +21,6 @@ import {
 } from "@/components/ui/carousel";
 import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 interface PromptFormProps {
   onSubmit: (prompt: string, imageFiles?: File[] | string[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string, refinerParams?: Record<string, any>) => void;
@@ -82,8 +75,10 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
     setGlobalParams(defaultGlobalParams);
   }, []);
   
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault();
+    }
     
     if (!prompt.trim() && imageFiles.length === 0) {
       toast.error('Please enter a prompt or upload at least one image');
@@ -309,6 +304,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                   onPromptChange={setPrompt}
                   uploadedImages={previewUrls}
                   onClearPrompt={handleClearPrompt}
+                  onSubmit={handleSubmit}
                 />
               </div>
               
@@ -320,8 +316,8 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
               />
               
               <div className="p-2 pt-0 space-y-2">
-                <div className="flex items-center gap-1 sm:gap-2 justify-between">
-                  <div className="flex items-center gap-1 sm:gap-2">
+                <div className="flex flex-wrap items-center gap-1 sm:gap-2 justify-between">
+                  <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                     <ImageUploader
                       isLoading={isButtonDisabled}
                       onImageUpload={handleImageUpload}
@@ -379,7 +375,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                     </Button>
                   </div>
 
-                  <div className="ml-4">
+                  <div className="ml-auto mt-2 sm:mt-0">
                     <Button 
                       type="submit" 
                       className={`h-12 w-12 rounded-full transition-all hover:shadow-md flex items-center justify-center btn-shine ${

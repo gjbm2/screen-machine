@@ -95,11 +95,7 @@ const Index = () => {
   };
 
   const handleCreateAgain = (batchId?: string) => {
-    if (!currentPrompt) {
-      toast.error('No prompt available to regenerate');
-      return;
-    }
-    
+    let prompt = currentPrompt;
     let originalParams = { ...currentParams };
     let originalWorkflow = currentWorkflow;
     let originalRefiner = currentRefiner;
@@ -109,6 +105,7 @@ const Index = () => {
     if (batchId) {
       const batchImage = generatedImages.find(img => img.batchId === batchId);
       if (batchImage) {
+        prompt = batchImage.prompt || '';
         originalParams = batchImage.params || {};
         originalWorkflow = batchImage.workflow;
         originalRefiner = batchImage.refiner || null;
@@ -122,6 +119,11 @@ const Index = () => {
       }
     }
     
+    if (!prompt) {
+      toast.error('No prompt available to regenerate');
+      return;
+    }
+    
     const imageFiles = originalUploadedImages.length > 0 ? originalUploadedImages : undefined;
     
     const modifiedGlobalParams = { 
@@ -129,10 +131,10 @@ const Index = () => {
       batchSize: 1 
     };
     
-    addConsoleLog(`Creating another image with same settings: "${currentPrompt.substring(0, 50)}${currentPrompt.length > 50 ? '...' : ''}"`);
+    addConsoleLog(`Creating another image with same settings: "${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}"`);
     
     handleSubmitPrompt(
-      currentPrompt, 
+      prompt, 
       imageFiles,
       originalWorkflow || undefined,
       originalParams,

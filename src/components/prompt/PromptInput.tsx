@@ -15,6 +15,7 @@ interface PromptInputProps {
   minHeight?: string;
   multiline?: boolean;
   maxLength?: number;
+  onSubmit?: () => void;
 }
 
 const PromptInput: React.FC<PromptInputProps> = ({ 
@@ -26,7 +27,8 @@ const PromptInput: React.FC<PromptInputProps> = ({
   placeholder = "Describe the image you want to create...",
   minHeight = "min-h-[120px]",
   multiline = true,
-  maxLength
+  maxLength,
+  onSubmit
 }) => {
   const handleClearPrompt = () => {
     if (onClearPrompt) {
@@ -51,8 +53,13 @@ const PromptInput: React.FC<PromptInputProps> = ({
 
   // Handle Enter key if not multiline
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!multiline && e.key === 'Enter') {
-      e.preventDefault();
+    if (e.key === 'Enter') {
+      if (!multiline || e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        if (onSubmit && !isLoading && prompt.trim().length > 0) {
+          onSubmit();
+        }
+      }
     }
   };
 
