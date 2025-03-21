@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useMemo } from 'react';
 
 interface ConsoleOutputProps {
@@ -22,7 +23,15 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs }) => {
       const timeB = b.match(timeRegex)?.[1];
       
       if (timeA && timeB) {
-        return timeA.localeCompare(timeB);
+        const [hoursA, minutesA, secondsA] = timeA.split(':').map(Number);
+        const [hoursB, minutesB, secondsB] = timeB.split(':').map(Number);
+        
+        // Compare hours
+        if (hoursA !== hoursB) return hoursA - hoursB;
+        // Compare minutes
+        if (minutesA !== minutesB) return minutesA - minutesB;
+        // Compare seconds
+        return secondsA - secondsB;
       }
       
       // If we can't parse timestamps, keep original order

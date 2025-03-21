@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -83,8 +82,10 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
     setGlobalParams(defaultGlobalParams);
   }, []);
   
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault();
+    }
     
     if (!prompt.trim() && imageFiles.length === 0) {
       toast.error('Please enter a prompt or upload at least one image');
@@ -256,7 +257,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
       <Collapsible open={true}>
         <CollapsibleContent>
           <Card className="overflow-hidden glass border border-border/30">
-            <form onSubmit={handleSubmit} className="p-1">
+            <form onSubmit={(e) => handleSubmit(e)} className="p-1">
               {previewUrls.length > 0 && (
                 <div className="relative p-4 pb-2">
                   <Carousel className="w-full">
@@ -310,7 +311,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                   onPromptChange={setPrompt}
                   uploadedImages={previewUrls}
                   onClearPrompt={handleClearPrompt}
-                  onSubmit={handleSubmit}
+                  onSubmit={() => handleSubmit()}
                 />
               </div>
               

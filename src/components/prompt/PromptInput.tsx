@@ -55,6 +55,9 @@ const PromptInput: React.FC<PromptInputProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (!multiline && e.key === 'Enter') {
       e.preventDefault();
+      if (onSubmit) {
+        onSubmit();
+      }
     }
     
     // Submit on Enter key if onSubmit handler is provided
