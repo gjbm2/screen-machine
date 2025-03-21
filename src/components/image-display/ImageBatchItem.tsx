@@ -83,6 +83,12 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
       onDeleteImage(batchId, index);
     }
   };
+  
+  const handleDeleteFromPanel = () => {
+    if (onDeleteImage) {
+      onDeleteImage(batchId, index);
+    }
+  };
 
   const handleImageClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.image-action-button') ||
@@ -120,7 +126,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     ? 'aspect-square w-full h-full' 
     : 'aspect-square w-full';
 
-  const shouldShowActionsMenu = (isMobile ? showActionPanel : (isHovered || showActionPanel)) && 
+  // Mobile users need to tap to toggle the action panel in unrolled mode
+  const shouldShowActionsMenu = ((isMobile && showActionPanel) || (!isMobile && (isHovered || showActionPanel))) && 
                       image.url && 
                       viewMode === 'normal' &&
                       showActions;
@@ -170,6 +177,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
             imageUrl={image.url}
             onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
             onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
+            onDeleteImage={onDeleteImage ? handleDeleteFromPanel : undefined}
             generationInfo={{
               prompt: image.prompt || '',
               workflow: image.workflow || '',

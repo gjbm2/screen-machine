@@ -7,6 +7,7 @@ interface ImageActionsPanelProps {
   imageUrl: string;
   onCreateAgain?: () => void;
   onUseAsInput?: (url: string) => void;
+  onDeleteImage?: () => void;
   generationInfo: {
     prompt: string;
     workflow: string;
@@ -19,6 +20,7 @@ const ImageActionsPanel: React.FC<ImageActionsPanelProps> = ({
   imageUrl,
   onCreateAgain,
   onUseAsInput,
+  onDeleteImage,
   generationInfo
 }) => {
   if (!show) return null;
@@ -28,13 +30,14 @@ const ImageActionsPanel: React.FC<ImageActionsPanelProps> = ({
   
   return (
     <div 
-      className="absolute bottom-2 left-2 right-2 flex justify-center space-x-0.5 transition-opacity bg-black/70 rounded-md p-1"
+      className="absolute bottom-2 left-2 right-2 flex justify-center space-x-1 transition-opacity bg-black/70 rounded-md p-1.5"
       onClick={(e) => e.stopPropagation()}
     >
       <ImageActions
         imageUrl={imageUrl}
         onCreateAgain={onCreateAgain}
         onUseAsInput={handleUseAsInput}
+        onDeleteImage={onDeleteImage}
         generationInfo={generationInfo}
         isMouseOver={true}
       />

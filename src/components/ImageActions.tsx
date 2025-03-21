@@ -11,7 +11,8 @@ import {
   MessageCircle,
   PinIcon,
   Info,
-  Recycle
+  Recycle,
+  Trash2
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -35,6 +36,7 @@ interface ImageActionsProps {
   imageUrl: string;
   onCreateAgain?: () => void;
   onUseAsInput?: () => void;
+  onDeleteImage?: () => void;
   generationInfo?: {
     prompt: string;
     workflow: string;
@@ -49,6 +51,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   imageUrl, 
   onCreateAgain,
   onUseAsInput,
+  onDeleteImage,
   generationInfo,
   isFullScreen = false,
   isMouseOver = false,
@@ -152,10 +155,17 @@ const ImageActions: React.FC<ImageActionsProps> = ({
     setShowInfoDialog(true);
   };
   
-  // Improve button styling for better contrast and make them smaller
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDeleteImage) {
+      onDeleteImage();
+    }
+  };
+  
+  // Improve button styling for better contrast and make them larger
   const buttonSizeClass = isFullScreen 
-    ? "px-3 py-2 text-sm" 
-    : "text-white bg-black/60 hover:bg-black/70 border border-white/20 px-1 py-0.5 h-6 w-6 image-action-button";
+    ? "h-10 w-10 px-3 py-2"
+    : "h-8 w-8 text-white bg-black/60 hover:bg-black/70 border border-white/20 image-action-button";
 
   const buttonVariant = isFullScreen ? "default" : "secondary";
 
@@ -166,17 +176,17 @@ const ImageActions: React.FC<ImageActionsProps> = ({
 
   return (
     <>
-      {/* Info button - First in order */}
+      {/* Info button */}
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button 
               variant={buttonVariant} 
-              size={isFullScreen ? "default" : "sm"}
+              size={isFullScreen ? "default" : "icon"}
               className={buttonSizeClass}
               onClick={handleShowInfo}
             >
-              <Info className="h-3 w-3" />
+              <Info className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">
@@ -191,12 +201,12 @@ const ImageActions: React.FC<ImageActionsProps> = ({
           <TooltipTrigger asChild>
             <Button 
               variant={buttonVariant} 
-              size={isFullScreen ? "default" : "sm"}
+              size={isFullScreen ? "default" : "icon"}
               className={buttonSizeClass}
               onClick={handleSaveImage}
               disabled={isSaving}
             >
-              <Download className="h-3 w-3" />
+              <Download className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">
@@ -214,11 +224,11 @@ const ImageActions: React.FC<ImageActionsProps> = ({
                 <DropdownMenuTrigger asChild>
                   <Button 
                     variant={buttonVariant} 
-                    size={isFullScreen ? "default" : "sm"}
+                    size={isFullScreen ? "default" : "icon"}
                     className={buttonSizeClass}
                     disabled={isPublishing}
                   >
-                    <Share2 className="h-3 w-3" />
+                    <Share2 className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="center" className="bg-background/95 backdrop-blur-sm z-[100] border">
@@ -251,11 +261,11 @@ const ImageActions: React.FC<ImageActionsProps> = ({
             <TooltipTrigger asChild>
               <Button 
                 variant={buttonVariant} 
-                size={isFullScreen ? "default" : "sm"}
+                size={isFullScreen ? "default" : "icon"}
                 className={buttonSizeClass}
                 onClick={onUseAsInput}
               >
-                <Recycle className="h-3 w-3" />
+                <Recycle className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="top">
@@ -272,15 +282,36 @@ const ImageActions: React.FC<ImageActionsProps> = ({
             <TooltipTrigger asChild>
               <Button 
                 variant={buttonVariant} 
-                size={isFullScreen ? "default" : "sm"}
+                size={isFullScreen ? "default" : "icon"}
                 className={buttonSizeClass}
                 onClick={onCreateAgain}
               >
-                <Plus className="h-3 w-3" />
+                <Plus className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="top">
               <p>Create another</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      
+      {/* Delete button */}
+      {onDeleteImage && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="destructive" 
+                size={isFullScreen ? "default" : "icon"}
+                className={`${buttonSizeClass} ${isFullScreen ? "" : "bg-destructive/90 hover:bg-destructive text-white"}`}
+                onClick={handleDelete}
+              >
+                <Trash2 className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p>Delete image</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

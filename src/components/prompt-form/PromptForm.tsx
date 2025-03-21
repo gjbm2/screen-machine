@@ -1,126 +1,175 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
-import AdvancedOptions from '@/components/AdvancedOptions';
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
-import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
-import PromptInput from '@/components/prompt/PromptInput';
-import PromptExamples from '@/components/prompt/PromptExamples';
-import ImagePreview from './ImagePreview';
-import PromptFormToolbar from './PromptFormToolbar';
+import { toast } from 'sonner';
 import usePromptForm from './usePromptForm';
+import PromptInput from '@/components/prompt/PromptInput';
+import PromptFormToolbar from './PromptFormToolbar';
+import AdvancedOptions from '@/components/AdvancedOptions';
+import ImagePreview from './ImagePreview';
 import { PromptFormProps } from './types';
 
-const PromptForm: React.FC<PromptFormProps> = ({ 
-  onSubmit, 
-  isLoading, 
-  currentPrompt = null, 
-  isFirstRun = true 
+const PromptForm: React.FC<PromptFormProps> = ({
+  onSubmit,
+  isLoading = false,
+  currentPrompt = '',
+  isFirstRun = true,
 }) => {
-  const isMobile = useIsMobile();
-  const { width } = useWindowSize();
-  const isCompact = width && width < 640;
-  
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [prompt, setPrompt] = useState(currentPrompt || '');
+  const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
+
   const {
-    prompt,
-    imageFiles,
-    previewUrls,
     selectedWorkflow,
     selectedRefiner,
-    workflowParams,
-    refinerParams,
-    globalParams,
-    isAdvancedOptionsOpen,
-    isButtonDisabled,
     batchSize,
+    workflowParams,
+    globalParams,
+    refinerParams,
     workflows,
-    setPrompt,
-    handleSubmit,
-    handleExampleClick,
-    handleStyleClick,
-    handleImageUpload,
-    clearAllImages,
-    handleRemoveImage,
-    handleClearPrompt,
+    refiners,
+    incrementBatchSize,
+    decrementBatchSize,
     handleWorkflowChange,
     handleRefinerChange,
-    handleParamChange,
-    handleRefinerParamChange,
-    handleGlobalParamChange,
-    toggleAdvancedOptions,
-    incrementBatchSize,
-    decrementBatchSize
-  } = usePromptForm(onSubmit, currentPrompt, isLoading);
+    resetWorkflowParams,
+    resetRefinerParams,
+    updateWorkflowParam,
+    updateRefinerParam,
+    updateGlobalParam,
+  } = usePromptForm();
+
+  // Update the prompt if currentPrompt changes (e.g. when duplicating an existing image)
+  useEffect(() => {
+    if (currentPrompt && currentPrompt !== prompt) {
+      setPrompt(currentPrompt);
+    }
+  }, [currentPrompt]);
+
+  const handleSubmit = () => {
+    if (prompt.trim() === '') {
+      toast.error('Please enter a prompt');
+      return;
+    }
+
+    // Check if the workflow is valid
+    if (!selectedWorkflow) {
+      toast.error('Please select a workflow');
+      return;
+    }
+
+    // Collect all images (files and URLs from the preview)
+    const allImages: (File | string)[] = [...imageFiles];
+
+    const refinerToUse = selectedRefiner === "none" ? undefined : selectedRefiner;
+
+    // Send the data to the parent component
+    onSubmit(
+      prompt,
+      allImages.length > 0 ? allImages : undefined,
+      selectedWorkflow,
+      workflowParams,
+      globalParams,
+      refinerToUse,
+      refinerParams
+    );
+  };
+
+  const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setPrompt(e.target.value);
+  };
+
+  const handleImageUpload = (files: File[]) => {
+    if (files.length === 0) return;
+
+    // Create previews
+    const newPreviewUrls = files.map(file => URL.createObjectURL(file));
+    
+    // Update state
+    setImageFiles(prevFiles => [...prevFiles, ...files]);
+    setPreviewUrls(prevUrls => [...prevUrls, ...newPreviewUrls]);
+  };
+
+  const handleRemoveImage = (index: number) => {
+    // Clean up URL object to prevent memory leaks
+    URL.revokeObjectURL(previewUrls[index]);
+    
+    // Remove the image from both arrays
+    setImageFiles(prevFiles => prevFiles.filter((_, i) => i !== index));
+    setPreviewUrls(prevUrls => prevUrls.filter((_, i) => i !== index));
+  };
+
+  const clearAllImages = () => {
+    // Clean up all URL objects
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
+    
+    // Clear both arrays
+    setImageFiles([]);
+    setPreviewUrls([]);
+  };
+
+  const toggleAdvancedOptions = () => {
+    setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
+  };
+
+  // Determine if the submit button should be disabled
+  const isButtonDisabled = isLoading || prompt.trim() === '';
 
   return (
-    <div className={`animate-fade-up transition-all duration-500 ${isFirstRun ? 'mb-12' : 'mb-4'}`}>
-      <Collapsible open={true}>
-        <CollapsibleContent>
-          <Card className="overflow-hidden glass border border-border/30">
-            <form onSubmit={handleSubmit} className="p-1">
-              <ImagePreview 
-                previewUrls={previewUrls}
-                handleRemoveImage={handleRemoveImage}
-                clearAllImages={clearAllImages}
-              />
-              
-              <div className="relative">
-                <PromptInput
-                  prompt={prompt}
-                  isLoading={isLoading}
-                  onPromptChange={setPrompt}
-                  uploadedImages={previewUrls}
-                  onClearPrompt={handleClearPrompt}
-                  onSubmit={handleSubmit}
-                />
-              </div>
-              
-              <PromptExamples
-                prompt={prompt}
-                onExampleClick={handleExampleClick}
-                onStyleClick={handleStyleClick}
-                showMore={!isCompact}
-              />
-              
-              <div className="p-2 pt-0 space-y-2">
-                <PromptFormToolbar 
-                  isLoading={isLoading}
-                  batchSize={batchSize}
-                  selectedWorkflow={selectedWorkflow}
-                  selectedRefiner={selectedRefiner}
-                  onImageUpload={handleImageUpload}
-                  onWorkflowChange={handleWorkflowChange}
-                  onRefinerChange={handleRefinerChange}
-                  incrementBatchSize={incrementBatchSize}
-                  decrementBatchSize={decrementBatchSize}
-                  toggleAdvancedOptions={toggleAdvancedOptions}
-                  handleSubmit={handleSubmit}
-                  prompt={prompt}
-                  isButtonDisabled={isButtonDisabled}
-                  workflows={workflows}
-                  isCompact={isCompact}
-                />
-              </div>
-            </form>
-          </Card>
-        </CollapsibleContent>
-      </Collapsible>
-
-      <AdvancedOptions
-        workflows={workflows}
-        selectedWorkflow={selectedWorkflow}
-        onWorkflowChange={handleWorkflowChange}
-        params={workflowParams}
-        onParamChange={handleParamChange}
-        globalParams={globalParams}
-        onGlobalParamChange={handleGlobalParamChange}
-        selectedRefiner={selectedRefiner}
-        onRefinerChange={handleRefinerChange}
-        refinerParams={refinerParams}
-        onRefinerParamChange={handleRefinerParamChange}
-        isOpen={isAdvancedOptionsOpen}
-        onOpenChange={setIsAdvancedOptionsOpen}
-      />
+    <div className="w-full mb-8">
+      <Card className="p-4 relative">
+        {/* Prompt Input */}
+        <PromptInput 
+          value={prompt} 
+          onChange={handlePromptChange} 
+          isLoading={isLoading}
+          isFirstRun={isFirstRun}
+        />
+        
+        {/* Image Preview Section */}
+        <ImagePreview 
+          previewUrls={previewUrls} 
+          handleRemoveImage={handleRemoveImage}
+          clearAllImages={clearAllImages}
+        />
+        
+        {/* Toolbar (Workflow selector, batch size controls, etc.) */}
+        <PromptFormToolbar 
+          isLoading={isLoading}
+          batchSize={batchSize}
+          selectedWorkflow={selectedWorkflow}
+          selectedRefiner={selectedRefiner}
+          onImageUpload={handleImageUpload}
+          onWorkflowChange={handleWorkflowChange}
+          onRefinerChange={handleRefinerChange}
+          incrementBatchSize={incrementBatchSize}
+          decrementBatchSize={decrementBatchSize}
+          toggleAdvancedOptions={toggleAdvancedOptions}
+          handleSubmit={handleSubmit}
+          prompt={prompt}
+          isButtonDisabled={isButtonDisabled}
+          workflows={workflows}
+          isCompact={false}
+        />
+        
+        {/* Advanced Options Panel */}
+        {isAdvancedOptionsOpen && (
+          <AdvancedOptions
+            workflowParams={workflowParams}
+            globalParams={globalParams}
+            refinerParams={refinerParams}
+            selectedWorkflow={selectedWorkflow}
+            selectedRefiner={selectedRefiner}
+            resetWorkflowParams={resetWorkflowParams}
+            resetRefinerParams={resetRefinerParams}
+            updateWorkflowParam={updateWorkflowParam}
+            updateRefinerParam={updateRefinerParam}
+            updateGlobalParam={updateGlobalParam}
+            closePanel={() => setIsAdvancedOptionsOpen(false)}
+          />
+        )}
+      </Card>
     </div>
   );
 };

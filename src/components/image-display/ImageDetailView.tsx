@@ -98,6 +98,10 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
     }
   };
   
+  const handleDeleteImage = () => {
+    onDeleteImage(batchId, activeIndex);
+  };
+  
   // Get image dimensions when loaded
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   
@@ -182,11 +186,12 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
         
         {/* Image Actions Bar - always visible in fullscreen mode */}
         {activeImage?.url && (
-          <div className="flex justify-center space-x-2 py-2">
+          <div className="flex justify-center space-x-3 py-2">
             <ImageActions
               imageUrl={activeImage.url}
               onCreateAgain={handleCreateAgain}
               onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
+              onDeleteImage={handleDeleteImage}
               generationInfo={{
                 prompt: activeImage.prompt || '',
                 workflow: activeImage.workflow || '',

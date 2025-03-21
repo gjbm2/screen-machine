@@ -18,29 +18,35 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
   if (viewMode !== 'normal') return null;
   
   return (
-    <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity image-action-button">
-      {onFullScreen && (
-        <Button 
-          size="icon" 
-          variant="secondary" 
-          className="h-7 w-7 bg-black/70 border-none shadow-lg hover:bg-black/90"
-          onClick={onFullScreen}
-        >
-          <Maximize2 className="h-4 w-4 text-white" />
-        </Button>
+    <>
+      {/* Delete button moved to top left */}
+      {onDeleteImage && (
+        <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity image-action-button">
+          <Button 
+            size="icon" 
+            variant="destructive" 
+            className="h-8 w-8 bg-destructive/90 border-none shadow-lg hover:bg-destructive"
+            onClick={onDeleteImage}
+          >
+            <Trash2 className="h-5 w-5 text-white" />
+          </Button>
+        </div>
       )}
       
-      {onDeleteImage && (
-        <Button 
-          size="icon" 
-          variant="secondary" 
-          className="h-7 w-7 bg-black/70 border-none shadow-lg hover:bg-black/90"
-          onClick={onDeleteImage}
-        >
-          <Trash2 className="h-4 w-4 text-white" />
-        </Button>
+      {/* Fullscreen button remains top right */}
+      {onFullScreen && (
+        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity image-action-button">
+          <Button 
+            size="icon" 
+            variant="secondary" 
+            className="h-8 w-8 bg-black/70 border-none shadow-lg hover:bg-black/90"
+            onClick={onFullScreen}
+          >
+            <Maximize2 className="h-5 w-5 text-white" />
+          </Button>
+        </div>
       )}
-    </div>
+    </>
   );
 };
 
