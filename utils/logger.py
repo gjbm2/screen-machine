@@ -39,7 +39,8 @@ def log_to_console(message: str, source: Optional[str] = None, metadata: Optiona
         if not source:
             source = "unknown"
     
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    #timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    timestamp = time.strftime("%H:%M:%S", time.localtime())
     formatted_message = f"[{timestamp}] [{source}] {message}"
     
     # Print to server console

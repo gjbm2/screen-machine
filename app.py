@@ -5,11 +5,16 @@ import time
 import random
 import uuid
 import json
+import sys
 from werkzeug.utils import secure_filename
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
+import routes.generate
 
 app = Flask(__name__, static_folder='build')
 CORS(app)  # Enable CORS for all routes
+
+# Make sure we can find python packages
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 # Create uploads directory if it doesn't exist
 UPLOAD_FOLDER = 'uploads'
@@ -121,9 +126,11 @@ def generate_image():
     info(f"Generating images with prompt: {prompt}")
     info(f"Workflow: {workflow}, Batch size: {batch_size}")
     info(f"Reference images: {uploaded_files if uploaded_files else 'None'}")
-    
-    # Simulate processing time
-    time.sleep(2)
+       
+    # Generate
+    response = routes.generate.main(
+        prompt=prompt
+    )
     
     # Generate a unique ID for this batch
     batch_id = data.get('batch_id') or str(uuid.uuid4())
@@ -133,10 +140,11 @@ def generate_image():
     
     for i in range(int(batch_size)):
         # For this mock implementation, we're returning different placeholder images based on the workflow
-        if workflow == 'artistic-style-transfer':
-            image_url = random.choice(ARTISTIC_IMAGES)
-        else:
-            image_url = random.choice(PLACEHOLDER_IMAGES)
+        #if workflow == 'artistic-style-transfer':
+        #    image_url = random.choice(ARTISTIC_IMAGES)
+        #else:
+        #    image_url = random.choice(PLACEHOLDER_IMAGES)
+        image_url = response
         
         # Generate a unique ID for this image
         image_id = str(uuid.uuid4())
@@ -224,4 +232,4 @@ def serve(path):
 
 if __name__ == '__main__':
     info("Starting Flask server on port 5000")
-    app.run(debug=True, port=5000)
+    app.run(host="0.0.0.0", debug=True, port=5000, use_reloader=False)
