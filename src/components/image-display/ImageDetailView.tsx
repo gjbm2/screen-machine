@@ -29,7 +29,7 @@ interface ImageDetailViewProps {
   onDeleteImage: (batchId: string, index: number) => void;
   onCreateAgain: (batchId: string) => void;
   onUseAsInput?: ((imageUrl: string) => void) | null;
-  onImageClick?: (e: React.MouseEvent) => void; // Added this prop
+  onImageClick?: (e: React.MouseEvent) => void;
   allImages?: Array<{
     url: string;
     batchId: string;
@@ -51,7 +51,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   onDeleteImage,
   onCreateAgain,
   onUseAsInput,
-  onImageClick, // Added this prop
+  onImageClick,
   allImages,
   isNavigatingAllImages,
   onNavigateGlobal,
@@ -120,7 +120,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
       onSwipeLeft={handleSwipeLeft}
       onSwipeRight={handleSwipeRight}
     >
-      <div className="w-full h-full flex flex-col p-2">
+      <div className="w-full h-full flex flex-col">
         <TooltipProvider>
           {/* Keyboard navigation */}
           <ImageKeyboardNavigation 
@@ -135,7 +135,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
 
           {/* Selected image view - maximize image display */}
           {activeImage && (
-            <div className="flex-grow flex items-center justify-center">
+            <div className="flex-grow flex items-center justify-center overflow-hidden">
               <MainImageView
                 imageUrl={activeImage.url}
                 altText={activeImage.prompt || "Generated image"}
@@ -152,17 +152,16 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
             </div>
           )}
           
-          {/* Image metadata - showing in smaller size */}
-          <div className="mt-2">
+          {/* Bottom panel with metadata and controls */}
+          <div className="flex-shrink-0 p-2 space-y-2 bg-background">
+            {/* Image metadata */}
             <ImageMetadata
               dimensions={imageDimensions}
               timestamp={activeImage?.timestamp}
             />
-          </div>
-          
-          {/* Image Actions Bar - all buttons in a single row */}
-          {activeImage?.url && (
-            <div className="mt-2">
+            
+            {/* Image Actions Bar - all buttons in a single row */}
+            {activeImage?.url && (
               <DetailViewActionBar 
                 imageUrl={activeImage.url}
                 onCreateAgain={handleCreateAgain}
@@ -174,32 +173,28 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
                   params: activeImage.params
                 }}
               />
-            </div>
-          )}
-          
-          {/* Prompt info */}
-          <div className="mt-2">
+            )}
+            
+            {/* Prompt info */}
             <ImagePrompt prompt={activeImage?.prompt} />
-          </div>
 
-          {/* Reference image at the bottom */}
-          {referenceImageUrl && (
-            <div className="mt-2">
+            {/* Reference image at the bottom */}
+            {referenceImageUrl && (
               <ReferenceImageSection
                 referenceImageUrl={referenceImageUrl}
                 onReferenceImageClick={() => setShowReferenceImage(true)}
               />
-            </div>
-          )}
+            )}
 
-          {/* Reference image popup (full size view) */}
-          {referenceImageUrl && (
-            <ReferenceImageDialog
-              isOpen={showReferenceImage}
-              onOpenChange={setShowReferenceImage}
-              imageUrl={referenceImageUrl}
-            />
-          )}
+            {/* Reference image popup (full size view) */}
+            {referenceImageUrl && (
+              <ReferenceImageDialog
+                isOpen={showReferenceImage}
+                onOpenChange={setShowReferenceImage}
+                imageUrl={referenceImageUrl}
+              />
+            )}
+          </div>
         </TooltipProvider>
       </div>
     </DetailViewTouchHandler>

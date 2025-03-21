@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import NavigationControls from './NavigationControls';
+import { AspectRatio } from '@/components/ui/aspect-ratio';
 
 interface MainImageViewProps {
   imageUrl: string;
@@ -34,6 +35,7 @@ const MainImageView: React.FC<MainImageViewProps> = ({
 }) => {
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
   const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
+  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
   
   // Update viewport dimensions on resize
@@ -47,6 +49,42 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const handleImageLoadInternal = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    setImageDimensions({
+      width: img.naturalWidth,
+      height: img.naturalHeight
+    });
+    onImageLoad(e);
+  };
+
+  // Calculate optimal image size
+  const calculateOptimalSize = () => {
+    if (imageDimensions.width === 0 || imageDimensions.height === 0) {
+      return { width: 'auto', height: 'auto', maxWidth: '90%', maxHeight: '70vh' };
+    }
+
+    // Available space (accounting for controls and padding)
+    const availableWidth = viewportWidth * 0.9; // 90% of viewport width
+    const availableHeight = viewportHeight * 0.7; // 70% of viewport height (leaving room for controls)
+    
+    // Calculate scale factors
+    const widthRatio = availableWidth / imageDimensions.width;
+    const heightRatio = availableHeight / imageDimensions.height;
+    
+    // Use the smaller ratio to ensure image fits in both dimensions
+    const ratio = Math.min(widthRatio, heightRatio, 1); // Cap at 100% (ratio = 1)
+    
+    return { 
+      width: 'auto', 
+      height: 'auto', 
+      maxWidth: `${Math.min(imageDimensions.width * ratio, availableWidth)}px`, 
+      maxHeight: `${Math.min(imageDimensions.height * ratio, availableHeight)}px` 
+    };
+  };
+
+  const optimalSize = calculateOptimalSize();
+
   return (
     <div 
       ref={imageContainerRef}
@@ -55,18 +93,13 @@ const MainImageView: React.FC<MainImageViewProps> = ({
       onTouchEnd={handleTouchEnd}
       onClick={onImageClick}
     >
-      <div className="relative flex justify-center items-center w-full h-full">
+      <div className="relative flex justify-center items-center w-full h-full py-2">
         <img 
           src={imageUrl}
           alt={altText}
           className="object-contain"
-          style={{ 
-            maxWidth: '95vw',
-            maxHeight: '80vh',
-            width: 'auto',
-            height: 'auto',
-          }}
-          onLoad={onImageLoad}
+          style={optimalSize}
+          onLoad={handleImageLoadInternal}
         />
         <Tooltip>
           <TooltipTrigger asChild>

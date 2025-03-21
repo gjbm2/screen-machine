@@ -39,10 +39,17 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
     large: 'p-4'
   };
 
+  // Wider clickable areas for fullscreen view
+  const widthClasses = {
+    small: 'w-1/6',
+    medium: 'w-1/5',
+    large: 'w-1/4'  // Larger clickable area for large size
+  };
+
   return (
     <div className="absolute inset-0 pointer-events-none">
       <button 
-        className={`absolute left-0 top-0 bottom-0 w-1/5 flex items-center justify-start pl-4 bg-transparent hover:bg-black/10 transition-colors pointer-events-auto z-20`}
+        className={`absolute left-0 top-0 bottom-0 ${widthClasses[size]} flex items-center justify-start pl-4 bg-transparent hover:bg-black/10 transition-colors pointer-events-auto z-20`}
         onClick={onPrevious}
         aria-label="Previous image"
       >
@@ -51,7 +58,7 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
         </div>
       </button>
       <button 
-        className={`absolute right-0 top-0 bottom-0 w-1/5 flex items-center justify-end pr-4 bg-transparent hover:bg-black/10 transition-colors pointer-events-auto z-20`}
+        className={`absolute right-0 top-0 bottom-0 ${widthClasses[size]} flex items-center justify-end pr-4 bg-transparent hover:bg-black/10 transition-colors pointer-events-auto z-20`}
         onClick={onNext}
         aria-label="Next image"
       >
