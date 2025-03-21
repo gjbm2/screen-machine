@@ -69,25 +69,18 @@ export const useImageBatchItem = ({
       return;
     }
     
+    // Always go to fullscreen when clicked, regardless of view mode
+    if (image.url && onFullScreen) {
+      onFullScreen(batchId, index);
+      return;
+    }
+    
     if (viewMode === 'normal') {
-      // On mobile:
-      // - When rolled up: toggleExpand (handled by parent)
-      // - When unrolled: toggle action panel and buttons
-      // On desktop:
-      // - Always go to fullscreen view (both rolled up and unrolled)
       if (isMobile) {
-        // Toggle both action panel and buttons on mobile
+        // Toggle action panel and buttons on mobile
         setShowActionPanel(!showActionPanel);
         setShowActionButtons(!showActionButtons);
-      } else {
-        // On desktop, go to fullscreen
-        if (image.url && onFullScreen) {
-          onFullScreen(batchId, index);
-        }
       }
-    } else if (image.url && onFullScreen) {
-      // For small and table view, always go to fullscreen
-      onFullScreen(batchId, index);
     }
 
     // Only call onImageClick for unrolled view in mobile

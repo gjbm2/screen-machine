@@ -82,7 +82,7 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
             ) : null}
           </div>
 
-          <div className="flex flex-wrap gap-1 justify-center pt-1">
+          <div className="flex flex-wrap gap-1 justify-start pt-1">
             {completedImages.map((image, idx) => (
               <div 
                 key={`thumb-${batchId}-${idx}`}

@@ -98,7 +98,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
 
   return (
     <div className="relative">
-      {/* Reference Images Section - Moved to the top */}
+      {/* Reference Images Section - At the top above the text input */}
       {uploadedImages && uploadedImages.length > 0 && (
         <div className="mb-3">
           <ReferenceImagesSection images={uploadedImages} />

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -30,12 +30,26 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   handleTouchStart,
   handleTouchEnd,
 }) => {
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+  const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
+  
+  // Update viewport dimensions on resize
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth);
+      setViewportHeight(window.innerHeight);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
     <div 
-      className="relative flex justify-center items-center min-h-[60vh] max-h-[90vh] w-full bg-secondary/10 rounded-md overflow-hidden group"
+      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      style={{ height: 'calc(90vh - 200px)' }} // Ensure more vertical space
+      style={{ minHeight: '200px' }} // Minimum height to ensure visibility
     >
       <div className="relative flex justify-center items-center w-full h-full">
         <img 
@@ -44,7 +58,8 @@ const MainImageView: React.FC<MainImageViewProps> = ({
           className="max-w-full max-h-full object-contain"
           style={{ 
             objectFit: 'contain',
-            maxHeight: 'calc(90vh - 200px)'
+            maxWidth: '100%',
+            maxHeight: `calc(${viewportHeight * 0.7}px)` // Dynamically calculate height
           }}
           onLoad={onImageLoad}
         />
