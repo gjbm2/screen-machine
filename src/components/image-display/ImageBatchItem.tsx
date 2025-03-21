@@ -153,7 +153,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         <ImageActionButtons 
           onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
           onFullScreen={onFullScreen ? handleFullScreen : undefined}
-          viewMode={viewMode || 'normal'}
+          viewMode={viewMode}
         />
         
         <ImageNavigationButtons 

@@ -1,51 +1,46 @@
 
 import React from 'react';
-import { ExternalLink, Trash2, Maximize } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
+import { Trash2, Maximize2 } from 'lucide-react';
+import { ViewMode } from './ImageDisplay';
 
 interface ImageActionButtonsProps {
   onDeleteImage?: (e: React.MouseEvent) => void;
   onFullScreen?: (e: React.MouseEvent) => void;
-  showFullScreenButton?: boolean;
-  viewMode: 'normal' | 'small';
+  viewMode: ViewMode;
 }
 
 const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
   onDeleteImage,
   onFullScreen,
-  showFullScreenButton = true,
   viewMode
 }) => {
+  if (viewMode !== 'normal') return null;
+  
   return (
-    <>
-      {onDeleteImage && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button 
-              className="absolute top-2 left-2 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-10"
-              onClick={onDeleteImage}
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Delete this image</TooltipContent>
-        </Tooltip>
+    <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity image-action-button">
+      {onFullScreen && (
+        <Button 
+          size="icon" 
+          variant="secondary" 
+          className="h-7 w-7 bg-black/70 border-none shadow-lg hover:bg-black/90"
+          onClick={onFullScreen}
+        >
+          <Maximize2 className="h-4 w-4 text-white" />
+        </Button>
       )}
       
-      {onFullScreen && viewMode !== 'small' && showFullScreenButton && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button 
-              className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors z-10"
-              onClick={onFullScreen}
-            >
-              <Maximize className="h-3 w-3" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Full screen</TooltipContent>
-        </Tooltip>
+      {onDeleteImage && (
+        <Button 
+          size="icon" 
+          variant="secondary" 
+          className="h-7 w-7 bg-black/70 border-none shadow-lg hover:bg-black/90"
+          onClick={onDeleteImage}
+        >
+          <Trash2 className="h-4 w-4 text-white" />
+        </Button>
       )}
-    </>
+    </div>
   );
 };
 
