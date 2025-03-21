@@ -101,7 +101,10 @@ const PromptInput: React.FC<PromptInputProps> = ({
       {/* Reference Images Section - Only show at the top above the text input */}
       {uploadedImages && uploadedImages.length > 0 && (
         <div className="mb-3">
-          <ReferenceImagesSection images={uploadedImages} />
+          <ReferenceImagesSection images={uploadedImages} onRemoveImage={onClearAllImages ? (index) => {
+            // Single image removal not implemented, so we clear all for now
+            onClearAllImages();
+          } : undefined} />
         </div>
       )}
       

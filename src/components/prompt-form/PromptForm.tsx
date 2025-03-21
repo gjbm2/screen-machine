@@ -6,7 +6,6 @@ import usePromptForm from './usePromptForm';
 import PromptInput from '@/components/prompt/PromptInput';
 import PromptFormToolbar from './PromptFormToolbar';
 import AdvancedOptions from '@/components/AdvancedOptions';
-import ImagePreview from './ImagePreview';
 import { PromptFormProps } from './types';
 
 const PromptForm: React.FC<PromptFormProps> = ({
@@ -134,11 +133,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           uploadedImages={previewUrls}
         />
         
-        <ImagePreview 
-          previewUrls={previewUrls} 
-          handleRemoveImage={handleRemoveImage}
-          clearAllImages={clearAllImages}
-        />
+        {/* Don't render ImagePreview component here - reference images are already shown in PromptInput */}
         
         <PromptFormToolbar 
           isLoading={isLoading}
