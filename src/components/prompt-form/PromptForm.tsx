@@ -67,7 +67,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
     // Send the data to the parent component
     onSubmit(
       prompt,
-      allImages.length > 0 ? allImages : undefined,
+      allImages.length > 0 ? allImages as (File[] | string[]) : undefined,
       selectedWorkflow,
       workflowParams,
       globalParams,
@@ -121,8 +121,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
       <Card className="p-4 relative">
         {/* Prompt Input */}
         <PromptInput 
-          value={prompt} 
-          onChange={handlePromptChange} 
+          prompt={prompt} 
+          onPromptChange={handlePromptChange} 
           isLoading={isLoading}
           isFirstRun={isFirstRun}
         />
@@ -156,17 +156,19 @@ const PromptForm: React.FC<PromptFormProps> = ({
         {/* Advanced Options Panel */}
         {isAdvancedOptionsOpen && (
           <AdvancedOptions
-            workflowParams={workflowParams}
-            globalParams={globalParams}
-            refinerParams={refinerParams}
+            workflows={workflows}
             selectedWorkflow={selectedWorkflow}
+            onWorkflowChange={handleWorkflowChange}
+            params={workflowParams}
+            onParamChange={updateWorkflowParam}
+            globalParams={globalParams}
+            onGlobalParamChange={updateGlobalParam}
             selectedRefiner={selectedRefiner}
-            resetWorkflowParams={resetWorkflowParams}
-            resetRefinerParams={resetRefinerParams}
-            updateWorkflowParam={updateWorkflowParam}
-            updateRefinerParam={updateRefinerParam}
-            updateGlobalParam={updateGlobalParam}
-            closePanel={() => setIsAdvancedOptionsOpen(false)}
+            onRefinerChange={handleRefinerChange}
+            refinerParams={refinerParams}
+            onRefinerParamChange={updateRefinerParam}
+            isOpen={isAdvancedOptionsOpen}
+            onOpenChange={setIsAdvancedOptionsOpen}
           />
         )}
       </Card>

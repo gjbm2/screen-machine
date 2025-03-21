@@ -9,13 +9,14 @@ interface PromptInputProps {
   prompt: string;
   isLoading: boolean;
   uploadedImages?: string[];
-  onPromptChange: (prompt: string) => void;
+  onPromptChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onClearPrompt?: () => void;
   placeholder?: string;
   minHeight?: string;
   multiline?: boolean;
   maxLength?: number;
   onSubmit?: () => void;
+  isFirstRun?: boolean;
 }
 
 const PromptInput: React.FC<PromptInputProps> = ({ 
@@ -28,27 +29,17 @@ const PromptInput: React.FC<PromptInputProps> = ({
   minHeight = "min-h-[120px]",
   multiline = true,
   maxLength,
-  onSubmit
+  onSubmit,
+  isFirstRun
 }) => {
   const handleClearPrompt = () => {
     if (onClearPrompt) {
       onClearPrompt();
     } else {
-      onPromptChange('');
+      // This will need to be updated if you want to clear the prompt
+      // through the parent component's state
       toast.info('Prompt cleared');
     }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    
-    // Apply maxLength constraint if specified
-    if (maxLength && value.length > maxLength) {
-      onPromptChange(value.slice(0, maxLength));
-      return;
-    }
-    
-    onPromptChange(value);
   };
 
   // Handle Enter key if not multiline
@@ -69,7 +60,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
         placeholder={placeholder}
         className={`${minHeight} resize-none border-0 bg-transparent p-4 text-base placeholder:text-muted-foreground/50 focus-visible:ring-0`}
         value={prompt}
-        onChange={handleChange}
+        onChange={onPromptChange}
         onKeyDown={handleKeyDown}
         disabled={isLoading}
         rows={multiline ? 3 : 1}

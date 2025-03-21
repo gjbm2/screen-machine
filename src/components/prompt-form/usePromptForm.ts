@@ -4,12 +4,9 @@ import { toast } from 'sonner';
 import { Workflow } from '@/types/workflows';
 import workflowsData from '@/data/workflows.json';
 import globalOptionsData from '@/data/global-options.json';
+import refinersData from '@/data/refiners.json';
 
-export const usePromptForm = (
-  onSubmit: (prompt: string, imageFiles?: File[] | string[], workflow?: string, params?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string, refinerParams?: Record<string, any>) => void,
-  currentPrompt: string | null = null,
-  isLoading: boolean = false
-) => {
+const usePromptForm = () => {
   const [prompt, setPrompt] = useState('');
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -22,12 +19,7 @@ export const usePromptForm = (
   const [isButtonDisabled, setIsButtonDisabled] = useState(false);
   const [batchSize, setBatchSize] = useState(1);
   const workflows = workflowsData as Workflow[];
-  
-  useEffect(() => {
-    if (currentPrompt !== null) {
-      setPrompt(currentPrompt);
-    }
-  }, [currentPrompt]);
+  const refiners = refinersData;
   
   useEffect(() => {
     const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
@@ -52,75 +44,6 @@ export const usePromptForm = (
     setGlobalParams(defaultGlobalParams);
   }, []);
   
-  const handleSubmit = (e?: React.FormEvent) => {
-    if (e) {
-      e.preventDefault();
-    }
-    
-    if (!prompt.trim() && imageFiles.length === 0) {
-      toast.error('Please enter a prompt or upload at least one image');
-      return;
-    }
-    
-    setIsButtonDisabled(true);
-    setTimeout(() => {
-      setIsButtonDisabled(false);
-    }, 1000);
-    
-    const updatedGlobalParams = {
-      ...globalParams,
-      batchSize
-    };
-    
-    onSubmit(
-      prompt, 
-      imageFiles.length > 0 ? imageFiles : undefined, 
-      selectedWorkflow, 
-      workflowParams, 
-      updatedGlobalParams,
-      selectedRefiner !== 'none' ? selectedRefiner : undefined,
-      refinerParams
-    );
-  };
-
-  const handleExampleClick = (example: string) => {
-    setPrompt(example);
-  };
-  
-  const handleStyleClick = (newPrompt: string) => {
-    setPrompt(newPrompt);
-  };
-
-  const handleImageUpload = (files: File[]) => {
-    if (files.length > 0) {
-      const newUrls = files.map(file => URL.createObjectURL(file));
-      
-      setImageFiles(prev => [...prev, ...files]);
-      setPreviewUrls(prev => [...prev, ...newUrls]);
-    }
-  };
-
-  const clearAllImages = () => {
-    previewUrls.forEach(url => URL.revokeObjectURL(url));
-    setImageFiles([]);
-    setPreviewUrls([]);
-  };
-
-  const handleRemoveImage = (index: number) => {
-    URL.revokeObjectURL(previewUrls[index]);
-    
-    setImageFiles(prev => prev.filter((_, i) => i !== index));
-    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
-    
-    if (imageFiles.length === 1) {
-      handleWorkflowChange('text-to-image');
-    }
-  };
-
-  const handleClearPrompt = () => {
-    setPrompt('');
-  };
-
   const handleWorkflowChange = (workflowId: string) => {
     setSelectedWorkflow(workflowId);
     
@@ -141,29 +64,42 @@ export const usePromptForm = (
     setRefinerParams({});
   };
 
-  const handleParamChange = (paramId: string, value: any) => {
+  const updateWorkflowParam = (paramId: string, value: any) => {
     setWorkflowParams(prev => ({
       ...prev,
       [paramId]: value
     }));
   };
 
-  const handleRefinerParamChange = (paramId: string, value: any) => {
+  const updateRefinerParam = (paramId: string, value: any) => {
     setRefinerParams(prev => ({
       ...prev,
       [paramId]: value
     }));
   };
 
-  const handleGlobalParamChange = (paramId: string, value: any) => {
+  const updateGlobalParam = (paramId: string, value: any) => {
     setGlobalParams(prev => ({
       ...prev,
       [paramId]: value
     }));
   };
 
-  const toggleAdvancedOptions = () => {
-    setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
+  const resetWorkflowParams = () => {
+    const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
+    if (currentWorkflow) {
+      const defaultParams: Record<string, any> = {};
+      currentWorkflow.params.forEach(param => {
+        if (param.default !== undefined) {
+          defaultParams[param.id] = param.default;
+        }
+      });
+      setWorkflowParams(defaultParams);
+    }
+  };
+
+  const resetRefinerParams = () => {
+    setRefinerParams({});
   };
   
   const incrementBatchSize = (e: React.MouseEvent) => {
@@ -193,6 +129,7 @@ export const usePromptForm = (
     isButtonDisabled,
     batchSize,
     workflows,
+    refiners,
     setPrompt,
     setImageFiles,
     setPreviewUrls,
@@ -204,19 +141,13 @@ export const usePromptForm = (
     setIsAdvancedOptionsOpen,
     setIsButtonDisabled,
     setBatchSize,
-    handleSubmit,
-    handleExampleClick,
-    handleStyleClick,
-    handleImageUpload,
-    clearAllImages,
-    handleRemoveImage,
-    handleClearPrompt,
     handleWorkflowChange,
     handleRefinerChange,
-    handleParamChange,
-    handleRefinerParamChange,
-    handleGlobalParamChange,
-    toggleAdvancedOptions,
+    updateWorkflowParam,
+    updateRefinerParam,
+    updateGlobalParam,
+    resetWorkflowParams,
+    resetRefinerParams,
     incrementBatchSize,
     decrementBatchSize
   };
