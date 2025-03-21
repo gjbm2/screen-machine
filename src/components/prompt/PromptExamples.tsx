@@ -4,6 +4,7 @@ import examplePrompts from '@/data/example-prompts.json';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+import { useWindowSize } from '@/hooks/use-mobile';
 
 interface StylePrompt {
   display: string;
@@ -28,10 +29,28 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
   const [randomizedExamples, setRandomizedExamples] = useState<string[]>([]);
   const [randomizedStyles, setRandomizedStyles] = useState<StylePrompt[]>([]);
+  const [initialStylesCount, setInitialStylesCount] = useState(2);
+  const { width } = useWindowSize();
   
-  // Get the initial number of examples and styles to show based on screen size
-  const initialExamplesCount = 1; // Just one example
-  const initialStylesCount = showMore ? 3 : 2; // 2 styles on mobile, 3 on desktop
+  // Determine how many styles to show based on screen width
+  useEffect(() => {
+    if (!width) return;
+    
+    // Adjust the number of visible styles based on window width
+    if (width < 375) {
+      setInitialStylesCount(1); // Smallest screens show at least 1
+    } else if (width < 500) {
+      setInitialStylesCount(2); // Small mobile screens
+    } else if (width < 640) {
+      setInitialStylesCount(3); // Regular mobile screens
+    } else if (width < 768) {
+      setInitialStylesCount(4); // Larger mobile screens
+    } else if (width < 1024) {
+      setInitialStylesCount(5); // Tablet screens
+    } else {
+      setInitialStylesCount(showMore ? 8 : 6); // Desktop screens
+    }
+  }, [width, showMore]);
   
   // Randomize examples and styles on mount and whenever they change
   useEffect(() => {
@@ -76,19 +95,22 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
       return null;
     }
     
+    // Show just 1 example by default to save space
+    const initialExamplesCount = 1;
+    
     // Show randomized examples
     const visibleExamples = showAllExamples 
       ? randomizedExamples 
       : randomizedExamples.slice(0, initialExamplesCount);
       
     return (
-      <div className="flex flex-wrap gap-1.5 items-center">
+      <div className="flex flex-wrap gap-1 items-center">
         <span className="text-xs text-muted-foreground">Try:</span>
         {visibleExamples.map((example, index) => (
           <Badge 
             key={index}
             variant="secondary"
-            className="px-3 py-1.5 text-sm cursor-pointer hover:bg-secondary/80 font-normal"
+            className="px-2 py-1 text-sm cursor-pointer hover:bg-secondary/80 font-normal prompt-badge"
             onClick={() => handleExampleClick(example)}
           >
             {example}
@@ -100,7 +122,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
             variant="ghost" 
             size="sm" 
             onClick={toggleExamples}
-            className="h-8 text-xs"
+            className="h-7 text-xs px-1.5"
             type="button"
           >
             {showAllExamples ? (
@@ -127,13 +149,13 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
       : randomizedStyles.slice(0, initialStylesCount);
       
     return (
-      <div className="flex flex-wrap gap-1.5 items-center">
+      <div className="flex flex-wrap gap-1 items-center">
         <span className="text-xs text-muted-foreground">Style:</span>
         {visibleStyles.map((style, index) => (
           <Badge 
             key={index}
             variant="outline"
-            className="px-3 py-1.5 text-sm cursor-pointer hover:bg-purple-100 bg-purple-50 text-purple-700 border-purple-200 font-normal"
+            className="px-2 py-1 text-sm cursor-pointer hover:bg-purple-100 bg-purple-50 text-purple-700 border-purple-200 font-normal prompt-badge"
             onClick={() => handleStyleClick(style)}
           >
             {style.display}
@@ -145,7 +167,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
             variant="ghost" 
             size="sm" 
             onClick={toggleStyles}
-            className="h-8 text-xs"
+            className="h-7 text-xs px-1.5"
             type="button"
           >
             {showAllStyles ? (
@@ -166,7 +188,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   };
   
   return (
-    <div className="p-2 space-y-2">
+    <div className="p-1 space-y-1.5">
       {renderExamples()}
       {renderStyles()}
     </div>

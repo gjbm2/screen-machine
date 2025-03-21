@@ -1,4 +1,3 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -105,6 +104,11 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Prompt examples custom styles */
+.prompt-badge {
+  @apply inline-flex items-center px-2 py-0.5 text-xs min-h-7;
 }
 
 /* Console specific styles */
