@@ -99,29 +99,28 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     }
     
     if (viewMode === 'normal') {
-      // On desktop, when not rolled up, show action panel
-      // On desktop, when rolled up, go to fullscreen
-      // On mobile, toggle action panel and buttons
+      // On mobile:
+      // - When rolled up: toggleExpand (handled by parent)
+      // - When unrolled: toggle action panel and buttons
+      // On desktop:
+      // - Always go to fullscreen view (both rolled up and unrolled)
       if (isMobile) {
         // Toggle both action panel and buttons on mobile
         setShowActionPanel(!showActionPanel);
         setShowActionButtons(!showActionButtons);
-      } else if (isRolledUp) {
-        // On desktop in rolled up mode, go to fullscreen
+      } else {
+        // On desktop, go to fullscreen
         if (image.url && onFullScreen) {
           onFullScreen(batchId, index);
         }
-      } else {
-        // On desktop in normal mode, toggle action panel
-        setShowActionPanel(!showActionPanel);
       }
     } else if (image.url && onFullScreen) {
       // For small and table view, always go to fullscreen
       onFullScreen(batchId, index);
     }
 
-    // Only call onImageClick for unrolled view to use as input
-    if (!isRolledUp && viewMode === 'normal' && image.url) {
+    // Only call onImageClick for unrolled view in mobile
+    if (isMobile && !isRolledUp && viewMode === 'normal' && image.url) {
       onImageClick(image.url);
     }
   };
@@ -203,6 +202,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
               workflow: image.workflow || '',
               params: image.params
             }}
+            referenceImageUrl={image.referenceImageUrl}
           />
         )}
       </div>
