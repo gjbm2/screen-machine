@@ -29,6 +29,7 @@ interface ImageDetailViewProps {
   onDeleteImage: (batchId: string, index: number) => void;
   onCreateAgain: (batchId: string) => void;
   onUseAsInput?: ((imageUrl: string) => void) | null;
+  onImageClick?: (e: React.MouseEvent) => void; // Added this prop
   allImages?: Array<{
     url: string;
     batchId: string;
@@ -50,6 +51,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   onDeleteImage,
   onCreateAgain,
   onUseAsInput,
+  onImageClick, // Added this prop
   allImages,
   isNavigatingAllImages,
   onNavigateGlobal,
@@ -144,6 +146,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
               currentGlobalIndex={currentGlobalIndex}
               handleTouchStart={() => {}}  // Touch handling moved to DetailViewTouchHandler
               handleTouchEnd={() => {}}    // Touch handling moved to DetailViewTouchHandler
+              onImageClick={onImageClick}  // Pass the onImageClick prop
             />
           )}
           
