@@ -24,19 +24,19 @@ const ReferenceImageIndicator: React.FC<ReferenceImageIndicatorProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <div className="relative w-full h-full cursor-pointer">
+        <div className="relative w-full h-full cursor-pointer flex items-center justify-center">
           <img 
             src={imageUrl} 
             alt="Reference" 
-            className="w-full h-full object-cover rounded-md"
+            className="max-w-full max-h-full object-contain"
             onClick={() => setIsOpen(true)}
           />
           {onRemove && (
             <button 
-              className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 rounded-full p-1.5 text-white transition-colors z-10"
+              className="absolute top-0.5 right-0.5 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-10"
               onClick={handleRemove}
             >
-              <X className="h-4 w-4" />
+              <X className="h-3 w-3" />
             </button>
           )}
         </div>
