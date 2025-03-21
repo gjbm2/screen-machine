@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -19,7 +20,7 @@ interface GeneratedImage {
   params?: Record<string, any>;
   batchId?: string;
   batchIndex?: number;
-  status?: 'generating' | 'completed' | 'error';
+  status?: 'generating' | 'completed' | 'error' | 'failed';
   refiner?: string;
   refinerParams?: Record<string, any>;
   referenceImageUrl?: string;

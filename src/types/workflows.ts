@@ -21,3 +21,6 @@ export interface ReferenceImageData {
   size?: number;
   type?: string;
 }
+
+// Add status type for image generation
+export type ImageGenerationStatus = 'generating' | 'completed' | 'error' | 'failed';
