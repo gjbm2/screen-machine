@@ -1,13 +1,12 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { ViewMode } from './ImageDisplay';
-import { useIsMobile } from '@/hooks/use-mobile';
 import ImageActionButtons from './ImageActionButtons';
 import ImageNavigationButtons from './ImageNavigationButtons';
 import BatchCountDisplay from './BatchCountDisplay';
 import ImageActionsPanel from './ImageActionsPanel';
-import ImageLoadingState from './ImageLoadingState';
-import { ImageGenerationStatus } from '@/types/workflows';
+import ImageBatchItemContent from './ImageBatchItemContent';
+import { useImageBatchItem } from './hooks/useImageBatchItem';
 
 interface ImageBatchItemProps {
   image: {
@@ -18,7 +17,7 @@ interface ImageBatchItemProps {
     params?: Record<string, any>;
     batchId?: string;
     batchIndex?: number;
-    status?: ImageGenerationStatus;
+    status?: string;
     refiner?: string;
     referenceImageUrl?: string;
   };
@@ -53,101 +52,30 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   showActions = true,
   isRolledUp = false
 }) => {
-  const [isHovered, setIsHovered] = useState(false);
-  const [showActionPanel, setShowActionPanel] = useState(false);
-  const [showActionButtons, setShowActionButtons] = useState(false);
-  const isMobile = useIsMobile();
-
-  const handleCreateAgain = () => {
-    if (onCreateAgain) {
-      onCreateAgain(batchId);
-    }
-  };
-
-  const handleUseAsInput = () => {
-    if (onUseAsInput && image.url) {
-      onUseAsInput(image.url);
-    }
-  };
-
-  const handleFullScreen = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onFullScreen) {
-      onFullScreen(batchId, index);
-    }
-  };
-  
-  const handleDeleteImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (onDeleteImage) {
-      onDeleteImage(batchId, index);
-    }
-  };
-  
-  const handleDeleteFromPanel = () => {
-    if (onDeleteImage) {
-      onDeleteImage(batchId, index);
-    }
-  };
-
-  const handleImageClick = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('.image-action-button') ||
-        (e.target as HTMLElement).closest('button')) {
-      e.stopPropagation();
-      return;
-    }
-    
-    if (viewMode === 'normal') {
-      // On mobile:
-      // - When rolled up: toggleExpand (handled by parent)
-      // - When unrolled: toggle action panel and buttons
-      // On desktop:
-      // - Always go to fullscreen view (both rolled up and unrolled)
-      if (isMobile) {
-        // Toggle both action panel and buttons on mobile
-        setShowActionPanel(!showActionPanel);
-        setShowActionButtons(!showActionButtons);
-      } else {
-        // On desktop, go to fullscreen
-        if (image.url && onFullScreen) {
-          onFullScreen(batchId, index);
-        }
-      }
-    } else if (image.url && onFullScreen) {
-      // For small and table view, always go to fullscreen
-      onFullScreen(batchId, index);
-    }
-
-    // Only call onImageClick for unrolled view in mobile
-    if (isMobile && !isRolledUp && viewMode === 'normal' && image.url) {
-      onImageClick(image.url);
-    }
-  };
-  
-  const handleNavigatePrev = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onNavigatePrev) {
-      onNavigatePrev();
-    }
-  };
-  
-  const handleNavigateNext = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onNavigateNext) {
-      onNavigateNext();
-    }
-  };
-
-  const sizeClasses = viewMode === 'small' 
-    ? 'aspect-square w-full h-full' 
-    : 'aspect-square w-full';
-
-  // Mobile users can now toggle the action panel and buttons in unrolled mode
-  const shouldShowActionsMenu = ((isMobile && showActionPanel) || (!isMobile && (isHovered || showActionPanel))) && 
-                      image.url && 
-                      viewMode === 'normal' &&
-                      showActions;
+  const {
+    isHovered,
+    setIsHovered,
+    showActionButtons,
+    handleCreateAgain,
+    handleUseAsInput,
+    handleFullScreen,
+    handleDeleteImage,
+    handleDeleteFromPanel,
+    handleImageClick,
+    shouldShowActionsMenu,
+    isMobile
+  } = useImageBatchItem({
+    image,
+    batchId,
+    index,
+    onCreateAgain,
+    onUseAsInput,
+    onDeleteImage,
+    onFullScreen,
+    onImageClick,
+    viewMode,
+    isRolledUp
+  });
 
   return (
     <div 
@@ -155,57 +83,50 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div 
-        className={`relative ${sizeClasses} cursor-pointer`}
+      <ImageBatchItemContent 
+        imageUrl={image.url}
+        prompt={image.prompt}
+        index={index}
         onClick={handleImageClick}
-      >
-        {image.url ? (
-          <img
-            src={image.url}
-            alt={image.prompt || `Generated image ${index + 1}`}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <ImageLoadingState />
-        )}
-        
-        <BatchCountDisplay 
-          index={index} 
-          total={total} 
-          viewMode={viewMode} 
+        viewMode={viewMode}
+      />
+      
+      <BatchCountDisplay 
+        index={index} 
+        total={total} 
+        viewMode={viewMode} 
+      />
+      
+      <ImageActionButtons 
+        onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
+        onFullScreen={onFullScreen ? handleFullScreen : undefined}
+        viewMode={viewMode}
+        forceShow={isMobile && showActionButtons}
+        isRolledUp={isRolledUp}
+      />
+      
+      <ImageNavigationButtons 
+        index={index}
+        total={total}
+        onNavigatePrev={onNavigatePrev}
+        onNavigateNext={onNavigateNext}
+      />
+      
+      {shouldShowActionsMenu && showActions && (
+        <ImageActionsPanel
+          show={shouldShowActionsMenu}
+          imageUrl={image.url}
+          onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
+          onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
+          onDeleteImage={onDeleteImage ? handleDeleteFromPanel : undefined}
+          generationInfo={{
+            prompt: image.prompt || '',
+            workflow: image.workflow || '',
+            params: image.params
+          }}
+          referenceImageUrl={image.referenceImageUrl}
         />
-        
-        <ImageActionButtons 
-          onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
-          onFullScreen={onFullScreen ? handleFullScreen : undefined}
-          viewMode={viewMode}
-          forceShow={isMobile && showActionButtons}
-          isRolledUp={isRolledUp}
-        />
-        
-        <ImageNavigationButtons 
-          index={index}
-          total={total}
-          onNavigatePrev={onNavigatePrev ? handleNavigatePrev : undefined}
-          onNavigateNext={onNavigateNext ? handleNavigateNext : undefined}
-        />
-        
-        {shouldShowActionsMenu && (
-          <ImageActionsPanel
-            show={shouldShowActionsMenu}
-            imageUrl={image.url}
-            onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
-            onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
-            onDeleteImage={onDeleteImage ? handleDeleteFromPanel : undefined}
-            generationInfo={{
-              prompt: image.prompt || '',
-              workflow: image.workflow || '',
-              params: image.params
-            }}
-            referenceImageUrl={image.referenceImageUrl}
-          />
-        )}
-      </div>
+      )}
     </div>
   );
 };
