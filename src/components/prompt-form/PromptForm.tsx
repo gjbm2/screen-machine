@@ -67,7 +67,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
     // Send the data to the parent component
     onSubmit(
       prompt,
-      allImages.length > 0 ? allImages as (File[] | string[]) : undefined,
+      allImages.length > 0 ? (allImages as File[] | string[]) : undefined,
       selectedWorkflow,
       workflowParams,
       globalParams,
@@ -125,6 +125,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           onPromptChange={handlePromptChange} 
           isLoading={isLoading}
           isFirstRun={isFirstRun}
+          onSubmit={handleSubmit}
         />
         
         {/* Image Preview Section */}

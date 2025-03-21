@@ -83,21 +83,15 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     processFiles(e.target.files);
+    // Reset input value so the same file can be selected again if needed
+    e.target.value = '';
   };
 
   const triggerFileInput = () => {
-    // Reset the file input value before opening the file dialog
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
     fileInputRef.current?.click();
   };
 
   const triggerCameraInput = () => {
-    // Reset the camera input value before opening
-    if (cameraInputRef.current) {
-      cameraInputRef.current.value = '';
-    }
     cameraInputRef.current?.click();
   };
 
@@ -128,11 +122,11 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
             <Button 
               type="button" 
               variant="outline"
-              className="h-[48px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 border border-input"
+              className="h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 border border-input"
               disabled={isLoading}
             >
               <Upload className="h-4 w-4" />
-              {!hideLabel && "Upload"}
+              {/* Always hide label on mobile view */}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -166,7 +160,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         type="button" 
         variant="outline"
         onClick={triggerFileInput}
-        className="h-[48px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 border border-input"
+        className="h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 border border-input"
         disabled={isLoading}
       >
         <Upload className="h-4 w-4" />

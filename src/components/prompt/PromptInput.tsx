@@ -43,14 +43,19 @@ const PromptInput: React.FC<PromptInputProps> = ({
     }
   };
 
-  // Handle Enter key if not multiline
+  // Handle Enter key
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter') {
+      // If not multiline mode or if Ctrl/Cmd+Enter is pressed
       if (!multiline || e.ctrlKey || e.metaKey) {
         e.preventDefault();
         if (onSubmit && !isLoading && prompt.trim().length > 0) {
           onSubmit();
         }
+      }
+      // If multiline is false, always prevent default to avoid newlines
+      else if (!multiline) {
+        e.preventDefault();
       }
     }
   };

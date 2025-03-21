@@ -7,6 +7,7 @@ import WorkflowIconSelector from '@/components/prompt/WorkflowIconSelector';
 import RefinerSelector from '@/components/prompt/RefinerSelector';
 import BatchControl from './BatchControl';
 import { ToolbarProps } from './types';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const PromptFormToolbar: React.FC<ToolbarProps> = ({
   isLoading,
@@ -25,6 +26,8 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   workflows,
   isCompact
 }) => {
+  const isMobile = useIsMobile();
+  
   return (
     <div className="flex items-center justify-between">
       <div className="flex flex-wrap items-center gap-1 sm:gap-2">
@@ -32,7 +35,7 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
           isLoading={isButtonDisabled}
           onImageUpload={onImageUpload}
           onWorkflowChange={onWorkflowChange}
-          hideLabel={true} // Always hide label for better mobile layout
+          hideLabel={isMobile} // Only hide label on mobile
         />
         
         <WorkflowIconSelector

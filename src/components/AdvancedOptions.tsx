@@ -18,6 +18,7 @@ import ResourceLinks from './advanced/ResourceLinks';
 import globalOptionsData from '@/data/global-options.json';
 import refinersData from '@/data/refiners.json';
 import refinerParamsData from '@/data/refiner-params.json';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface AdvancedOptionsProps {
   workflows: Workflow[];
@@ -54,6 +55,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   const [isRefinerParamsOpen, setIsRefinerParamsOpen] = useState(true);
   const [isGlobalParamsOpen, setIsGlobalParamsOpen] = useState(true);
   const [currentRefinerParams, setCurrentRefinerParams] = useState<WorkflowParam[]>([]);
+  const isMobile = useIsMobile();
   
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflow) || workflows[0];
 
@@ -72,9 +74,11 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
     }
   }, [selectedRefiner, onRefinerParamChange, refinerParams]);
 
+  const sheetWidth = isMobile ? "w-[85%]" : "sm:max-w-md";
+
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-md overflow-y-auto">
+      <SheetContent className={`${sheetWidth} overflow-y-auto`}>
         <SheetHeader className="text-left p-0">
           <div className="flex justify-between items-center mb-4">
             <div>
