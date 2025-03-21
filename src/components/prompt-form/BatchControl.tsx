@@ -7,32 +7,37 @@ import { BatchControlProps } from './types';
 const BatchControl: React.FC<BatchControlProps> = ({
   batchSize,
   incrementBatchSize,
-  decrementBatchSize
+  decrementBatchSize,
+  isCompact = false
 }) => {
+  const height = isCompact ? "h-[32px]" : "h-[36px]";
+  const iconSize = isCompact ? "h-2.5 w-2.5" : "h-3 w-3";
+  const buttonWidth = isCompact ? "w-5" : "w-6 sm:w-7";
+  
   return (
-    <div className="flex items-center h-[48px]">
+    <div className={`flex items-center ${isCompact ? "h-[32px]" : "h-[48px]"}`}>
       <Button 
         type="button"
-        className="h-[36px] rounded-l-md px-1 sm:px-1.5 hover:bg-purple-500/10 text-purple-700 border border-r-0 border-input"
+        className={`${height} rounded-l-md px-0.5 hover:bg-purple-500/10 text-purple-700 border border-r-0 border-input`}
         onClick={decrementBatchSize}
         disabled={batchSize <= 1}
         variant="outline"
       >
-        <Minus className="h-3 w-3" />
+        <Minus className={iconSize} />
       </Button>
       
-      <div className="flex justify-center items-center h-[36px] bg-background border-y border-input text-foreground w-6 sm:w-7">
-        <span className="text-sm font-medium">{batchSize}</span>
+      <div className={`flex justify-center items-center ${height} bg-background border-y border-input text-foreground ${buttonWidth}`}>
+        <span className={`${isCompact ? 'text-xs' : 'text-sm'} font-medium`}>{batchSize}</span>
       </div>
       
       <Button 
         type="button"
-        className="h-[36px] rounded-r-md px-1 sm:px-1.5 hover:bg-purple-500/10 text-purple-700 border border-l-0 border-input"
+        className={`${height} rounded-r-md px-0.5 hover:bg-purple-500/10 text-purple-700 border border-l-0 border-input`}
         onClick={incrementBatchSize}
         disabled={batchSize >= 9}
         variant="outline"
       >
-        <Plus className="h-3 w-3" />
+        <Plus className={iconSize} />
       </Button>
     </div>
   );

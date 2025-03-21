@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Settings, ArrowUp } from 'lucide-react';
+import { Settings, ArrowUp, Image, Plus, Minus } from 'lucide-react';
 import ImageUploader from '@/components/prompt/ImageUploader';
 import WorkflowIconSelector from '@/components/prompt/WorkflowIconSelector';
 import RefinerSelector from '@/components/prompt/RefinerSelector';
@@ -26,13 +26,13 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   isCompact
 }) => {
   return (
-    <div className="flex flex-wrap items-center gap-1 sm:gap-2 justify-between">
+    <div className="flex items-center justify-between">
       <div className="flex flex-wrap items-center gap-1 sm:gap-2">
         <ImageUploader
           isLoading={isButtonDisabled}
           onImageUpload={onImageUpload}
           onWorkflowChange={onWorkflowChange}
-          hideLabel={isCompact}
+          hideLabel={true} // Always hide label for better mobile layout
         />
         
         <WorkflowIconSelector
@@ -51,6 +51,7 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
           batchSize={batchSize}
           incrementBatchSize={incrementBatchSize}
           decrementBatchSize={decrementBatchSize}
+          isCompact={true} // Make batch control more compact
         />
 
         <Button 
@@ -58,14 +59,14 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
           variant="outline" 
           size="icon"
           onClick={toggleAdvancedOptions}
-          className="h-[48px] w-[48px] text-muted-foreground hover:bg-purple-500/10 text-purple-700"
+          className="h-[36px] w-[36px] text-muted-foreground hover:bg-purple-500/10 text-purple-700"
           aria-label="Settings"
         >
-          <Settings className="h-5 w-5" />
+          <Settings className="h-4 w-4" />
         </Button>
       </div>
 
-      <div className="ml-auto mt-2 sm:mt-0">
+      <div className="ml-auto">
         <Button 
           type="submit" 
           className={`h-12 w-12 rounded-full transition-all hover:shadow-md flex items-center justify-center btn-shine ${

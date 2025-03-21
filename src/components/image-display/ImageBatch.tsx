@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import ImageBatchItem from './ImageBatchItem';
 import SortableImageContainer from './SortableImageContainer';
@@ -52,7 +51,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   
-  // Reset active image index when images change
   useEffect(() => {
     if (images.length > 0 && activeImageIndex >= images.length) {
       setActiveImageIndex(0);
@@ -67,10 +65,8 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   const completedImages = images.filter(img => img.status === 'completed');
   const failedImages = images.filter(img => img.status === 'failed' || img.status === 'error');
   
-  // Always show containers regardless of generation status
   const allGeneratingWithoutUrl = images.every(img => img.status === 'generating' && !img.url);
 
-  // Show all images in grid view for small mode
   if (viewMode === 'small' && completedImages.length === 0 && !anyGenerating && failedImages.length === 0) {
     return null;
   }
@@ -103,11 +99,17 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
         batchIndex: completedImages[activeImageIndex].batchIndex || activeImageIndex
       });
     } else if (!isExpanded) {
-      // If not expanded and no fullscreen handler provided, expand
       toggleExpand(batchId);
     }
   };
-  
+
+  const handleRemoveFailedImage = () => {
+    if (failedImages.length > 0) {
+      const firstFailedImage = failedImages[0];
+      onDeleteImage(batchId, firstFailedImage.batchIndex);
+    }
+  };
+
   return (
     <SortableImageContainer 
       batchId={batchId}
@@ -155,9 +157,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
       ) : isExpanded ? (
         <Card className="rounded-t-none">
           <CardContent className="p-2">
-            {/* Replace with image detail content but use full screen trigger for any full screen actions */}
             <div className="space-y-2">
-              {/* Main image display */}
               <div className="aspect-square relative bg-secondary/10 rounded-md overflow-hidden max-w-full mx-auto">
                 {completedImages.length > 0 ? (
                   <ImageBatchItem
@@ -181,34 +181,29 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                   <GenerationFailedPlaceholder 
                     prompt={failedImages[0]?.prompt || null} 
                     onRetry={handleRetry}
+                    onRemove={handleRemoveFailedImage}
                   />
                 ) : null}
               </div>
 
-              {/* Navigation controls for expanded view are handled by ImageBatchItem */}
+              <div className="flex flex-wrap gap-1 justify-center pt-1">
+                {completedImages.map((image, idx) => (
+                  <div 
+                    key={`thumb-${batchId}-${idx}`}
+                    className={`w-14 h-14 rounded-md overflow-hidden cursor-pointer border-2 ${
+                      idx === activeImageIndex ? 'border-primary' : 'border-transparent'
+                    }`}
+                    onClick={() => setActiveImageIndex(idx)}
+                  >
+                    <img 
+                      src={image.url} 
+                      alt={`Thumbnail ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
               
-              {/* Thumbnail gallery */}
-              {completedImages.length > 1 && (
-                <div className="flex flex-wrap gap-1 justify-center pt-1">
-                  {completedImages.map((image, idx) => (
-                    <div 
-                      key={`thumb-${batchId}-${idx}`}
-                      className={`w-14 h-14 rounded-md overflow-hidden cursor-pointer border-2 ${
-                        idx === activeImageIndex ? 'border-primary' : 'border-transparent'
-                      }`}
-                      onClick={() => setActiveImageIndex(idx)}
-                    >
-                      <img 
-                        src={image.url} 
-                        alt={`Thumbnail ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {/* Compact roll-up button */}
               <div className="flex justify-center">
                 <Button 
                   variant="ghost" 
@@ -250,6 +245,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                 <GenerationFailedPlaceholder 
                   prompt={failedImages[0]?.prompt || null} 
                   onRetry={handleRetry}
+                  onRemove={handleRemoveFailedImage}
                 />
               ) : null}
             </div>

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import ImageDetailView from './ImageDetailView';
 import { formatDistanceToNow } from 'date-fns';
 import SortableTableRow from './SortableTableRow';
+import GenerationFailedPlaceholder from './GenerationFailedPlaceholder';
 
 export type ViewMode = 'normal' | 'small' | 'table';
 export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
@@ -78,7 +79,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   
   useEffect(() => {
     const allImages = generatedImages
-      .filter(img => img.status === 'completed')
+      .filter(img => img.status === 'completed' || img.status === 'failed' || img.status === 'error')
       .map(img => ({
         url: img.url,
         prompt: img.prompt,
@@ -193,7 +194,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   
   const getAllImages = () => {
     return generatedImages
-      .filter(img => img.status === 'completed')
+      .filter(img => img.status === 'completed' || img.status === 'failed' || img.status === 'error')
       .sort((a, b) => {
         return b.timestamp - a.timestamp;
       });
@@ -308,11 +309,20 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
                         className="aspect-square rounded-md overflow-hidden cursor-pointer"
                         onClick={() => handleSmallImageClick(image)}
                       >
-                        <img 
-                          src={image.url}
-                          alt={image.prompt || `Generated image ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                        />
+                        {image.status === 'completed' ? (
+                          <img 
+                            src={image.url}
+                            alt={image.prompt || `Generated image ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <GenerationFailedPlaceholder 
+                            prompt={null} 
+                            onRetry={() => onCreateAgain(image.batchId)}
+                            onRemove={() => onDeleteImage(image.batchId || '', image.batchIndex || 0)}
+                            isCompact={true}
+                          />
+                        )}
                       </div>
                     ))}
                     {isLoading && (
