@@ -90,6 +90,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
   };
 
   const handleRemoveImage = (index: number) => {
+    if (index < 0 || index >= previewUrls.length) return;
+    
     URL.revokeObjectURL(previewUrls[index]);
     
     setImageFiles(prevFiles => prevFiles.filter((_, i) => i !== index));
@@ -127,6 +129,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           onPromptChange={handlePromptChange} 
           onClearPrompt={handleClearPrompt}
           onClearAllImages={clearAllImages}
+          onRemoveImage={handleRemoveImage}
           isLoading={isLoading}
           isFirstRun={isFirstRun}
           onSubmit={handleSubmit}

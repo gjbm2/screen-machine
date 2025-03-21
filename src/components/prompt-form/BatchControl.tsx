@@ -12,7 +12,7 @@ const BatchControl: React.FC<BatchControlProps> = ({
 }) => {
   return (
     <div className="flex items-center gap-1 shrink-0">
-      {!isCompact && <span className="text-xs text-muted-foreground mr-1">Batch</span>}
+      {!isCompact && <span className="text-xs text-muted-foreground mr-1">Images</span>}
       <div className="flex items-center border rounded-md overflow-hidden">
         <Button
           type="button"

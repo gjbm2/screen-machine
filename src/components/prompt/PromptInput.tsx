@@ -13,6 +13,7 @@ interface PromptInputProps {
   onPromptChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onClearPrompt?: () => void;
   onClearAllImages?: () => void;
+  onRemoveImage?: (index: number) => void;
   placeholder?: string;
   minHeight?: string;
   multiline?: boolean;
@@ -28,6 +29,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
   onPromptChange,
   onClearPrompt,
   onClearAllImages,
+  onRemoveImage,
   placeholder = "Describe the image you want to create...",
   minHeight = "min-h-[120px]",
   multiline = true,
@@ -101,10 +103,19 @@ const PromptInput: React.FC<PromptInputProps> = ({
       {/* Reference Images Section - Only show at the top above the text input */}
       {uploadedImages && uploadedImages.length > 0 && (
         <div className="mb-3">
-          <ReferenceImagesSection images={uploadedImages} onRemoveImage={onClearAllImages ? (index) => {
-            // Single image removal not implemented, so we clear all for now
-            onClearAllImages();
-          } : undefined} />
+          <ReferenceImagesSection 
+            images={uploadedImages} 
+            onRemoveImage={onRemoveImage || onClearAllImages ? (index) => {
+              // If we have a specific handler for single image removal, use it
+              if (onRemoveImage) {
+                onRemoveImage(index);
+              } 
+              // Otherwise fallback to clearing all images
+              else if (onClearAllImages) {
+                onClearAllImages();
+              }
+            } : undefined} 
+          />
         </div>
       )}
       
