@@ -49,11 +49,18 @@ const Index = () => {
   const [allImagesFlat, setAllImagesFlat] = useState<any[]>([]);
   const [currentGlobalIndex, setCurrentGlobalIndex] = useState<number | null>(null);
 
-  // Add keyboard event handler for left and right arrow navigation
+  const handleNavigateGlobal = useCallback((index: number) => {
+    if (index >= 0 && index < allImagesFlat.length) {
+      const targetImage = allImagesFlat[index];
+      setFullScreenBatchId(targetImage.batchId);
+      setFullScreenImageIndex(targetImage.batchIndex);
+      setCurrentGlobalIndex(index);
+    }
+  }, [allImagesFlat]);
+
   const handleKeyNavigation = useCallback((e: KeyboardEvent) => {
     if (!generatedImages.length) return;
     
-    // Only navigate if we have a detail view open
     if (showFullScreenView && fullScreenBatchId && currentGlobalIndex !== null) {
       if (e.key === 'ArrowLeft' && currentGlobalIndex > 0) {
         e.preventDefault();
@@ -66,10 +73,7 @@ const Index = () => {
   }, [showFullScreenView, fullScreenBatchId, currentGlobalIndex, allImagesFlat, handleNavigateGlobal]);
 
   useEffect(() => {
-    // Add event listener for arrow key navigation
     window.addEventListener('keydown', handleKeyNavigation);
-    
-    // Clean up the event listener
     return () => {
       window.removeEventListener('keydown', handleKeyNavigation);
     };
@@ -126,7 +130,6 @@ const Index = () => {
   };
 
   const handleCreateAgain = (batchId?: string) => {
-    // If no batchId is provided, use the current settings
     if (!batchId) {
       if (!currentPrompt) {
         toast.error('No prompt available to regenerate');
@@ -154,7 +157,6 @@ const Index = () => {
       return;
     }
     
-    // When a specific batchId is provided, use that image's settings
     const batchImage = generatedImages.find(img => img.batchId === batchId);
     if (!batchImage) {
       toast.error('Image information not found');
@@ -167,14 +169,11 @@ const Index = () => {
     const originalRefiner = batchImage.refiner || null;
     const originalRefinerParams = batchImage.refinerParams || {};
     
-    // Use the reference image if available
     const imageFiles = batchImage.referenceImageUrl ? [batchImage.referenceImageUrl] : undefined;
     
-    // Separate global params from workflow params
     const workflowSpecificParams: Record<string, any> = {};
     const globalSpecificParams: Record<string, any> = {};
     
-    // Assume batchSize, seed are global params, others are workflow specific
     Object.entries(originalParams).forEach(([key, value]) => {
       if (key === 'batchSize' || key === 'seed' || key === 'showConsoleOutput') {
         globalSpecificParams[key] = value;
@@ -183,7 +182,6 @@ const Index = () => {
       }
     });
     
-    // Ensure we only generate 1 image at a time for recreations
     globalSpecificParams.batchSize = 1;
     
     addConsoleLog(`Creating another image with settings from batch ${batchId}: "${imagePrompt.substring(0, 50)}${imagePrompt.length > 50 ? '...' : ''}"`);
@@ -363,11 +361,9 @@ const Index = () => {
         addConsoleLog(`Error calling API: ${error}`);
         
         setGeneratedImages(prev => 
-          prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'))
+          prev.filter(img => !(img.batchId === batchId && img.status === 'generating'))
         );
-        setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
-        
-        toast.error('Failed to generate image. Please try again.');
+        setActiveGenerations(prev => prev.filter(id => id !== batchId));
       }
     } catch (error) {
       console.error('Error generating image:', error);
@@ -422,15 +418,6 @@ const Index = () => {
       ...prev,
       showConsoleOutput: newState
     }));
-  };
-
-  const handleNavigateGlobal = (index: number) => {
-    if (index >= 0 && index < allImagesFlat.length) {
-      const targetImage = allImagesFlat[index];
-      setFullScreenBatchId(targetImage.batchId);
-      setFullScreenImageIndex(targetImage.batchIndex);
-      setCurrentGlobalIndex(index);
-    }
   };
 
   return (
