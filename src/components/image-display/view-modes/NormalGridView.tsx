@@ -40,7 +40,15 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
               isExpanded={!!expandedContainers[batchId]}
               toggleExpand={toggleExpand}
               onImageClick={(url, prompt) => {
-                if (url) {
+                // When not expanded (rolled up), clicking should go to full screen
+                if (!expandedContainers[batchId]) {
+                  // Find the first image and send it to fullscreen
+                  const image = batches[batchId].find(img => img.status === 'completed');
+                  if (image) {
+                    onFullScreenClick(image);
+                  }
+                } else if (url) {
+                  // When expanded, use as input
                   onUseGeneratedAsInput(url);
                 }
               }}

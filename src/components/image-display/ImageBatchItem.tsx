@@ -98,20 +98,31 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
       return;
     }
     
-    if (viewMode === 'normal' && isRolledUp) {
-      if (image.url && onFullScreen) {
-        onFullScreen(batchId, index);
-      }
-    } else if (viewMode === 'normal') {
+    if (viewMode === 'normal') {
+      // On desktop, when not rolled up, show action panel
+      // On desktop, when rolled up, go to fullscreen
+      // On mobile, toggle action panel and buttons
       if (isMobile) {
         // Toggle both action panel and buttons on mobile
         setShowActionPanel(!showActionPanel);
         setShowActionButtons(!showActionButtons);
+      } else if (isRolledUp) {
+        // On desktop in rolled up mode, go to fullscreen
+        if (image.url && onFullScreen) {
+          onFullScreen(batchId, index);
+        }
       } else {
+        // On desktop in normal mode, toggle action panel
         setShowActionPanel(!showActionPanel);
       }
     } else if (image.url && onFullScreen) {
+      // For small and table view, always go to fullscreen
       onFullScreen(batchId, index);
+    }
+
+    // Only call onImageClick for unrolled view to use as input
+    if (!isRolledUp && viewMode === 'normal' && image.url) {
+      onImageClick(image.url);
     }
   };
   
@@ -170,6 +181,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           onFullScreen={onFullScreen ? handleFullScreen : undefined}
           viewMode={viewMode}
           forceShow={isMobile && showActionButtons}
+          isRolledUp={isRolledUp}
         />
         
         <ImageNavigationButtons 

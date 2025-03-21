@@ -48,7 +48,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
     if (e.key === 'Enter') {
       // If not multiline mode or if Ctrl/Cmd+Enter is pressed
       if (!multiline || e.ctrlKey || e.metaKey) {
-        e.preventDefault();
+        e.preventDefault(); // Prevent newline
         if (onSubmit && !isLoading && prompt.trim().length > 0) {
           onSubmit();
         }
@@ -56,6 +56,16 @@ const PromptInput: React.FC<PromptInputProps> = ({
       // If multiline is false, always prevent default to avoid newlines
       else if (!multiline) {
         e.preventDefault();
+      }
+      // If just Enter is pressed in multiline mode with Shift key, allow newline
+      else if (e.shiftKey) {
+        // Allow default behavior (new line)
+        return;
+      }
+      // If just plain Enter is pressed in multiline mode, submit the form
+      else if (onSubmit && !isLoading && prompt.trim().length > 0) {
+        e.preventDefault(); // Prevent newline
+        onSubmit();
       }
     }
   };

@@ -29,26 +29,45 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
   const [randomizedExamples, setRandomizedExamples] = useState<string[]>([]);
   const [randomizedStyles, setRandomizedStyles] = useState<StylePrompt[]>([]);
+  const [initialExamplesCount, setInitialExamplesCount] = useState(1);
   const [initialStylesCount, setInitialStylesCount] = useState(2);
   const { width } = useWindowSize();
   
-  // Determine how many styles to show based on screen width
+  // Determine how many examples and styles to show based on screen width
   useEffect(() => {
     if (!width) return;
     
-    // Adjust the number of visible styles based on window width
+    // Calculate how many example prompts we can fit based on width
+    // Assuming average example is ~18 characters at ~9px per character in 'text-sm'
+    // Plus badge padding, margins, and some buffer space
+    const avgExampleWidth = 180; // Approximate width in pixels for average example
+    const labelWidth = 40; // Width for "Try:" label
+    const moreButtonWidth = 70; // Width for "More" button
+    const availableWidth = width - 40; // Subtract container padding
+    
+    // Calculate how many examples would fit in the available width
+    const examplesCapacity = Math.max(1, Math.floor((availableWidth - labelWidth - moreButtonWidth) / avgExampleWidth));
+    setInitialExamplesCount(Math.min(3, examplesCapacity)); // Cap at 3 examples max
+    
+    // Calculate style prompts similarly but with smaller average width
+    const avgStyleWidth = 150; // Styles are usually shorter
+    const styleLabelWidth = 50; // Width for "Style:" label
+    
+    const stylesCapacity = Math.max(1, Math.floor((availableWidth - styleLabelWidth - moreButtonWidth) / avgStyleWidth));
+    
+    // Set styles count based on screen size with fine-tuned values
     if (width < 375) {
       setInitialStylesCount(1); // Smallest screens show at least 1
     } else if (width < 500) {
-      setInitialStylesCount(2); // Small mobile screens
+      setInitialStylesCount(Math.min(2, stylesCapacity)); // Small mobile screens
     } else if (width < 640) {
-      setInitialStylesCount(3); // Regular mobile screens
+      setInitialStylesCount(Math.min(3, stylesCapacity)); // Regular mobile screens
     } else if (width < 768) {
-      setInitialStylesCount(4); // Larger mobile screens
+      setInitialStylesCount(Math.min(4, stylesCapacity)); // Larger mobile screens
     } else if (width < 1024) {
-      setInitialStylesCount(5); // Tablet screens
+      setInitialStylesCount(Math.min(5, stylesCapacity)); // Tablet screens
     } else {
-      setInitialStylesCount(showMore ? 8 : 6); // Desktop screens
+      setInitialStylesCount(showMore ? Math.min(8, stylesCapacity) : Math.min(6, stylesCapacity)); // Desktop screens
     }
   }, [width, showMore]);
   
@@ -95,10 +114,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
       return null;
     }
     
-    // Show just 1 example by default to save space
-    const initialExamplesCount = 1;
-    
-    // Show randomized examples
+    // Show randomized examples up to the calculated initial count
     const visibleExamples = showAllExamples 
       ? randomizedExamples 
       : randomizedExamples.slice(0, initialExamplesCount);
