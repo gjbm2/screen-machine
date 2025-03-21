@@ -1,4 +1,3 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -105,6 +104,14 @@
   body {
     @apply bg-background text-foreground;
   }
+  
+  #root {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 1rem;
+    overflow-x: hidden;
+  }
 }
 
 /* Console specific styles */
@@ -176,7 +183,8 @@
 
 /* Container sizing for wider layout */
 @media (min-width: 1400px) {
-  .container.max-w-7xl {
-    max-width: 90%;
+  .container {
+    max-width: 98% !important;
+    width: 98%;
   }
 }

@@ -51,8 +51,9 @@ const PromptInput: React.FC<PromptInputProps> = ({
     onPromptChange(value);
   };
 
-  // Handle Enter key if not multiline
+  // Handle Enter key for submission
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // For single line mode, always prevent newlines and submit on Enter
     if (!multiline && e.key === 'Enter') {
       e.preventDefault();
       if (onSubmit) {
@@ -60,7 +61,8 @@ const PromptInput: React.FC<PromptInputProps> = ({
       }
     }
     
-    // Submit on Enter key if onSubmit handler is provided
+    // Submit on Enter key if onSubmit handler is provided and not pressing Shift
+    // (Shift+Enter is still allowed for line breaks in multiline mode)
     if (e.key === 'Enter' && !e.shiftKey && onSubmit) {
       e.preventDefault();
       onSubmit();

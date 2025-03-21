@@ -323,8 +323,8 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
               />
               
               <div className="p-2 pt-0 space-y-2">
-                <div className="flex items-center gap-1 sm:gap-2 justify-between">
-                  <div className="flex items-center gap-1 sm:gap-2">
+                <div className="flex flex-wrap items-center gap-1 sm:gap-2 justify-between">
+                  <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                     <ImageUploader
                       isLoading={isButtonDisabled}
                       onImageUpload={handleImageUpload}
@@ -382,7 +382,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                     </Button>
                   </div>
 
-                  <div className="ml-4">
+                  <div className="mt-2 sm:mt-0 w-full sm:w-auto flex justify-center sm:block">
                     <Button 
                       type="submit" 
                       className={`h-12 w-12 rounded-full transition-all hover:shadow-md flex items-center justify-center btn-shine ${
