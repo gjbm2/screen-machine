@@ -12,6 +12,7 @@ interface PromptInputProps {
   uploadedImages?: string[];
   onPromptChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onClearPrompt?: () => void;
+  onClearAllImages?: () => void;
   placeholder?: string;
   minHeight?: string;
   multiline?: boolean;
@@ -26,6 +27,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
   uploadedImages = [],
   onPromptChange,
   onClearPrompt,
+  onClearAllImages,
   placeholder = "Describe the image you want to create...",
   minHeight = "min-h-[120px]",
   multiline = true,
@@ -36,10 +38,11 @@ const PromptInput: React.FC<PromptInputProps> = ({
   const handleClearPrompt = () => {
     if (onClearPrompt) {
       onClearPrompt();
-    } else {
-      // This will need to be updated if you want to clear the prompt
-      // through the parent component's state
-      toast.info('Prompt cleared');
+    }
+    
+    // Also clear images if there's a handler for it
+    if (onClearAllImages) {
+      onClearAllImages();
     }
   };
 
@@ -109,7 +112,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
           type="button"
           onClick={handleClearPrompt}
           className="absolute top-3 right-3 text-muted-foreground hover:text-foreground p-1 rounded-full transition-colors"
-          aria-label="Clear prompt"
+          aria-label="Clear prompt and images"
         >
           <X className="h-4 w-4" />
         </button>
@@ -121,7 +124,6 @@ const PromptInput: React.FC<PromptInputProps> = ({
         </div>
       )}
 
-      {/* Add back the prompt examples */}
       <PromptExamples 
         prompt={prompt}
         onExampleClick={handleExampleClick}

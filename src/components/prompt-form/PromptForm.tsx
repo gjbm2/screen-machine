@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -40,7 +39,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
     updateGlobalParam,
   } = usePromptForm();
 
-  // Update the prompt if currentPrompt changes (e.g. when duplicating an existing image)
   useEffect(() => {
     if (currentPrompt && currentPrompt !== prompt) {
       setPrompt(currentPrompt);
@@ -53,18 +51,15 @@ const PromptForm: React.FC<PromptFormProps> = ({
       return;
     }
 
-    // Check if the workflow is valid
     if (!selectedWorkflow) {
       toast.error('Please select a workflow');
       return;
     }
 
-    // Collect all images (files and URLs from the preview)
     const allImages: (File | string)[] = [...imageFiles];
 
     const refinerToUse = selectedRefiner === "none" ? undefined : selectedRefiner;
 
-    // Send the data to the parent component
     onSubmit(
       prompt,
       allImages.length > 0 ? (allImages as File[] | string[]) : undefined,
@@ -80,31 +75,29 @@ const PromptForm: React.FC<PromptFormProps> = ({
     setPrompt(e.target.value);
   };
 
+  const handleClearPrompt = () => {
+    setPrompt('');
+  };
+
   const handleImageUpload = (files: File[]) => {
     if (files.length === 0) return;
 
-    // Create previews
     const newPreviewUrls = files.map(file => URL.createObjectURL(file));
     
-    // Update state
     setImageFiles(prevFiles => [...prevFiles, ...files]);
     setPreviewUrls(prevUrls => [...prevUrls, ...newPreviewUrls]);
   };
 
   const handleRemoveImage = (index: number) => {
-    // Clean up URL object to prevent memory leaks
     URL.revokeObjectURL(previewUrls[index]);
     
-    // Remove the image from both arrays
     setImageFiles(prevFiles => prevFiles.filter((_, i) => i !== index));
     setPreviewUrls(prevUrls => prevUrls.filter((_, i) => i !== index));
   };
 
   const clearAllImages = () => {
-    // Clean up all URL objects
     previewUrls.forEach(url => URL.revokeObjectURL(url));
     
-    // Clear both arrays
     setImageFiles([]);
     setPreviewUrls([]);
   };
@@ -113,29 +106,27 @@ const PromptForm: React.FC<PromptFormProps> = ({
     setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
   };
 
-  // Determine if the submit button should be disabled
   const isButtonDisabled = isLoading || prompt.trim() === '';
 
   return (
     <div className="w-full mb-8">
       <Card className="p-4 relative">
-        {/* Prompt Input */}
         <PromptInput 
           prompt={prompt} 
           onPromptChange={handlePromptChange} 
+          onClearPrompt={handleClearPrompt}
+          onClearAllImages={clearAllImages}
           isLoading={isLoading}
           isFirstRun={isFirstRun}
           onSubmit={handleSubmit}
         />
         
-        {/* Image Preview Section */}
         <ImagePreview 
           previewUrls={previewUrls} 
           handleRemoveImage={handleRemoveImage}
           clearAllImages={clearAllImages}
         />
         
-        {/* Toolbar (Workflow selector, batch size controls, etc.) */}
         <PromptFormToolbar 
           isLoading={isLoading}
           batchSize={batchSize}
@@ -154,7 +145,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
           isCompact={false}
         />
         
-        {/* Advanced Options Panel */}
         {isAdvancedOptionsOpen && (
           <AdvancedOptions
             workflows={workflows}

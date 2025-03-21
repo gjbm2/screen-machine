@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { 
@@ -176,145 +175,149 @@ const ImageActions: React.FC<ImageActionsProps> = ({
 
   return (
     <>
-      {/* Info button */}
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              variant={buttonVariant} 
-              size={isFullScreen ? "default" : "icon"}
-              className={buttonSizeClass}
-              onClick={handleShowInfo}
-            >
-              <Info className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <p>Image info</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      
-      {/* Save button */}
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              variant={buttonVariant} 
-              size={isFullScreen ? "default" : "icon"}
-              className={buttonSizeClass}
-              onClick={handleSaveImage}
-              disabled={isSaving}
-            >
-              <Download className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <p>Save image</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      
-      {/* Publish dropdown button */}
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button 
-                    variant={buttonVariant} 
-                    size={isFullScreen ? "default" : "icon"}
-                    className={buttonSizeClass}
-                    disabled={isPublishing}
-                  >
-                    <Share2 className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="center" className="bg-background/95 backdrop-blur-sm z-[100] border">
-                  <DropdownMenuLabel>Share to</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {publishDestinations.map((destination) => (
-                    <DropdownMenuItem 
-                      key={destination.id}
-                      onClick={() => handlePublish(destination.id)}
-                      className="cursor-pointer"
+      <div className="flex gap-2">
+        {/* Info button */}
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant={buttonVariant} 
+                size={isFullScreen ? "default" : "icon"}
+                className={buttonSizeClass}
+                onClick={handleShowInfo}
+              >
+                <Info className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p>Image info</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        
+        {/* Save button */}
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant={buttonVariant} 
+                size={isFullScreen ? "default" : "icon"}
+                className={buttonSizeClass}
+                onClick={handleSaveImage}
+                disabled={isSaving}
+              >
+                <Download className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p>Save image</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        
+        {/* Publish dropdown button */}
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button 
+                      variant={buttonVariant} 
+                      size={isFullScreen ? "default" : "icon"}
+                      className={buttonSizeClass}
+                      disabled={isPublishing}
                     >
-                      {getIconComponent(destination.icon)}
-                      <span className="ml-2">{destination.name}</span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <p>Publish/Share</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-
-      {/* Use as input button */}
-      {onUseAsInput && (
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant={buttonVariant} 
-                size={isFullScreen ? "default" : "icon"}
-                className={buttonSizeClass}
-                onClick={onUseAsInput}
-              >
-                <Recycle className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
-              </Button>
+                      <Share2 className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="center" className="bg-background/95 backdrop-blur-sm z-[100] border">
+                    <DropdownMenuLabel>Share to</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {publishDestinations.map((destination) => (
+                      <DropdownMenuItem 
+                        key={destination.id}
+                        onClick={() => handlePublish(destination.id)}
+                        className="cursor-pointer"
+                      >
+                        {getIconComponent(destination.icon)}
+                        <span className="ml-2">{destination.name}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </span>
             </TooltipTrigger>
             <TooltipContent side="top">
-              <p>Use as input</p>
+              <p>Publish/Share</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
-      )}
 
-      {/* Create Again button */}
-      {onCreateAgain && (
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant={buttonVariant} 
-                size={isFullScreen ? "default" : "icon"}
-                className={buttonSizeClass}
-                onClick={onCreateAgain}
-              >
-                <Plus className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              <p>Create another</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
+        {/* Use as input button */}
+        {onUseAsInput && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant={buttonVariant} 
+                  size={isFullScreen ? "default" : "icon"}
+                  className={buttonSizeClass}
+                  onClick={onUseAsInput}
+                >
+                  <Recycle className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>Use as input</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
+        {/* Create Again button */}
+        {onCreateAgain && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant={buttonVariant} 
+                  size={isFullScreen ? "default" : "icon"}
+                  className={buttonSizeClass}
+                  onClick={onCreateAgain}
+                >
+                  <Plus className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>Create another</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
       
-      {/* Delete button */}
+      {/* Delete button - Separated from other buttons */}
       {onDeleteImage && (
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="destructive" 
-                size={isFullScreen ? "default" : "icon"}
-                className={`${buttonSizeClass} ${isFullScreen ? "" : "bg-destructive/90 hover:bg-destructive text-white"}`}
-                onClick={handleDelete}
-              >
-                <Trash2 className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              <p>Delete image</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <div className={isFullScreen ? "ml-4" : "ml-2"}>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="destructive" 
+                  size={isFullScreen ? "default" : "icon"}
+                  className={`${buttonSizeClass} ${isFullScreen ? "" : "bg-destructive/90 hover:bg-destructive text-white"}`}
+                  onClick={handleDelete}
+                >
+                  <Trash2 className={isFullScreen ? "h-4 w-4" : "h-4 w-4"} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>Delete image</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       )}
       
       {/* Image Info Dialog */}

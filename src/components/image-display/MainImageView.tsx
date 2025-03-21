@@ -32,15 +32,16 @@ const MainImageView: React.FC<MainImageViewProps> = ({
 }) => {
   return (
     <div 
-      className="relative flex justify-center items-center min-h-[50vh] max-h-[80vh] w-full bg-secondary/10 rounded-md overflow-hidden group"
+      className="relative flex justify-center items-center min-h-[50vh] max-h-[90vh] w-full bg-secondary/10 rounded-md overflow-hidden group"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      <div className="relative flex justify-center items-center w-full h-full">
+      <div className="relative flex justify-center items-center w-full h-full max-w-none">
         <img 
           src={imageUrl}
           alt={altText}
           className="max-w-full max-h-full object-contain w-auto h-auto"
+          style={{ objectFit: 'contain' }}
           onLoad={onImageLoad}
         />
         <Tooltip>
