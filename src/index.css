@@ -165,3 +165,18 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* Fullscreen dialog styling */
+.fullscreen-detail-dialog {
+  width: 95vw;
+  max-width: 95vw !important;
+  height: 90vh;
+  max-height: 90vh;
+}
+
+/* Container sizing for wider layout */
+@media (min-width: 1400px) {
+  .container.max-w-7xl {
+    max-width: 90%;
+  }
+}

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
@@ -80,6 +81,12 @@ const Index = () => {
       
       setCurrentWorkflow('image-to-image');
       
+      // Find the image in generatedImages and use its prompt
+      const selectedImage = generatedImages.find(img => img.url === selectedImageUrl);
+      if (selectedImage && selectedImage.prompt) {
+        setCurrentPrompt(selectedImage.prompt);
+      }
+      
       const uploadEvent = new CustomEvent('image-selected', { 
         detail: { files: imageFiles, urls: [newUrl] } 
       });
@@ -95,50 +102,50 @@ const Index = () => {
   };
 
   const handleCreateAgain = (batchId?: string) => {
-    if (!currentPrompt) {
-      toast.error('No prompt available to regenerate');
-      return;
-    }
-    
-    let originalParams = { ...currentParams };
-    let originalWorkflow = currentWorkflow;
-    let originalRefiner = currentRefiner;
-    let originalRefinerParams = { ...currentRefinerParams };
-    let originalUploadedImages = [...uploadedImageUrls];
+    // Find the batch image to use its settings
+    let usePrompt = currentPrompt;
+    let useWorkflow = currentWorkflow;
+    let useParams = { ...currentParams };
+    let useGlobalParams = { ...currentGlobalParams, batchSize: 1 };
+    let useRefiner = currentRefiner;
+    let useRefinerParams = { ...currentRefinerParams };
+    let useUploadedImages: string[] = [...uploadedImageUrls];
     
     if (batchId) {
       const batchImage = generatedImages.find(img => img.batchId === batchId);
       if (batchImage) {
-        originalParams = batchImage.params || {};
-        originalWorkflow = batchImage.workflow;
-        originalRefiner = batchImage.refiner || null;
-        originalRefinerParams = batchImage.refinerParams || {};
+        // Use the batch image's settings instead of current form settings
+        usePrompt = batchImage.prompt;
+        useWorkflow = batchImage.workflow;
+        useParams = batchImage.params || {};
+        useRefiner = batchImage.refiner || null;
+        useRefinerParams = batchImage.refinerParams || {};
         
         if (batchImage.referenceImageUrl) {
-          originalUploadedImages = [batchImage.referenceImageUrl];
+          useUploadedImages = [batchImage.referenceImageUrl];
         } else {
-          originalUploadedImages = [];
+          useUploadedImages = [];
         }
       }
     }
     
-    const imageFiles = originalUploadedImages.length > 0 ? originalUploadedImages : undefined;
+    if (!usePrompt) {
+      toast.error('No prompt available to regenerate');
+      return;
+    }
     
-    const modifiedGlobalParams = { 
-      ...currentGlobalParams, 
-      batchSize: 1 
-    };
+    const imageFiles = useUploadedImages.length > 0 ? useUploadedImages : undefined;
     
-    addConsoleLog(`Creating another image with same settings: "${currentPrompt.substring(0, 50)}${currentPrompt.length > 50 ? '...' : ''}"`);
+    addConsoleLog(`Creating another image with same settings: "${usePrompt.substring(0, 50)}${usePrompt.length > 50 ? '...' : ''}"`);
     
     handleSubmitPrompt(
-      currentPrompt, 
+      usePrompt, 
       imageFiles,
-      originalWorkflow || undefined,
-      originalParams,
-      modifiedGlobalParams,
-      originalRefiner || undefined,
-      originalRefinerParams,
+      useWorkflow || undefined,
+      useParams,
+      useGlobalParams,
+      useRefiner || undefined,
+      useRefinerParams,
       batchId
     );
     
@@ -370,7 +377,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen hero-gradient flex flex-col">
-      <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 flex-grow">
+      <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex-grow">
         <div className="flex justify-between items-center">
           <Header />
           <div className="flex items-center space-x-1">

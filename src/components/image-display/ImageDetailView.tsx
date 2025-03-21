@@ -1,5 +1,5 @@
 
-import React, { TouchEvent, useRef, useState } from 'react';
+import React, { TouchEvent, useRef, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Clock, Ruler, ExternalLink } from 'lucide-react';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -135,13 +135,40 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
     
     setStartX(null);
   };
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle keyboard events when fullscreen view is active
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        if (onNavigateGlobal && allImages && currentGlobalIndex !== undefined && currentGlobalIndex > 0) {
+          onNavigateGlobal(currentGlobalIndex - 1);
+        } else if (activeIndex > 0) {
+          onNavigatePrev({} as React.MouseEvent);
+        }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        if (onNavigateGlobal && allImages && currentGlobalIndex !== undefined && currentGlobalIndex < allImages.length - 1) {
+          onNavigateGlobal(currentGlobalIndex + 1);
+        } else if (activeIndex < images.length - 1) {
+          onNavigateNext({} as React.MouseEvent);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeIndex, images.length, onNavigateNext, onNavigatePrev, onNavigateGlobal, allImages, currentGlobalIndex]);
   
   return (
     <div className="p-4 space-y-4">
       {/* Selected image view - maximize image display */}
       <div 
         ref={touchRef}
-        className="relative flex justify-center items-center min-h-[50vh] max-h-[70vh] bg-secondary/10 rounded-md overflow-hidden group"
+        className="relative flex justify-center items-center min-h-[60vh] max-h-[80vh] bg-secondary/10 rounded-md overflow-hidden group"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >

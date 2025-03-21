@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -309,6 +310,7 @@ const PromptForm = ({ onSubmit, isLoading, currentPrompt = null, isFirstRun = tr
                   onPromptChange={setPrompt}
                   uploadedImages={previewUrls}
                   onClearPrompt={handleClearPrompt}
+                  onSubmit={handleSubmit}
                 />
               </div>
               
