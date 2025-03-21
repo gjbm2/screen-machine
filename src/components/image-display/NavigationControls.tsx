@@ -6,12 +6,26 @@ interface NavigationControlsProps {
   onPrevious: (e: React.MouseEvent) => void;
   onNext: (e: React.MouseEvent) => void;
   size?: 'small' | 'medium' | 'large';
+  activeIndex?: number;
+  totalImages?: number;
+  isNavigatingAllImages?: boolean;
+  onNavigateGlobal?: (imageIndex: number) => void;
+  currentGlobalIndex?: number;
+  allImages?: Array<any>;
 }
 
 const NavigationControls: React.FC<NavigationControlsProps> = ({ 
   onPrevious, 
   onNext,
-  size = 'medium'
+  size = 'medium',
+  // The following props are not used directly in this component,
+  // but are included in the type definition for compatibility
+  activeIndex,
+  totalImages,
+  isNavigatingAllImages,
+  onNavigateGlobal,
+  currentGlobalIndex,
+  allImages
 }) => {
   const sizeClasses = {
     small: 'h-2 w-2',

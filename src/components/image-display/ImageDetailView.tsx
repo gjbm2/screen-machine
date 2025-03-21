@@ -1,12 +1,11 @@
 
-import React, { TouchEvent, useRef, useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Clock, Ruler, ExternalLink } from 'lucide-react';
-import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import NavigationControls from './NavigationControls';
+import React, { useRef, useState, useEffect } from 'react';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import ImageActions from '@/components/ImageActions';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { formatDistanceToNow } from 'date-fns';
+import MainImageView from './MainImageView';
+import ImageMetadata from './ImageMetadata';
+import ReferenceImageSection from './ReferenceImageSection';
+import ReferenceImageDialog from './ReferenceImageDialog';
 
 interface ImageDetailViewProps {
   batchId: string;
@@ -54,7 +53,7 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   currentGlobalIndex
 }) => {
   const activeImage = images[activeIndex];
-  const [showReferenceImage, setShowReferenceImage] = React.useState(false);
+  const [showReferenceImage, setShowReferenceImage] = useState(false);
   const referenceImageUrl = activeImage?.referenceImageUrl;
   const touchRef = useRef<HTMLDivElement>(null);
   const [startX, setStartX] = useState<number | null>(null);
@@ -99,13 +98,8 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
     }
   };
   
-  const formatTimeAgo = (timestamp?: number) => {
-    if (!timestamp) return "Unknown time";
-    return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
-  };
-  
   // Get image dimensions when loaded
-  const [imageDimensions, setImageDimensions] = React.useState({ width: 0, height: 0 });
+  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
@@ -116,11 +110,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   };
 
   // Open image in new tab - now only happens when clicking the external link button
-  const handleImageClick = () => {
-    // No action on image click in fullscreen view
-    return;
-  };
-  
   const handleOpenInNewTab = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (activeImage?.url) {
@@ -129,11 +118,11 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   };
   
   // Touch event handlers for swipe navigation
-  const handleTouchStart = (e: TouchEvent) => {
+  const handleTouchStart = (e: React.TouchEvent) => {
     setStartX(e.touches[0].clientX);
   };
 
-  const handleTouchEnd = (e: TouchEvent) => {
+  const handleTouchEnd = (e: React.TouchEvent) => {
     if (startX === null) return;
     
     const endX = e.changedTouches[0].clientX;
@@ -167,133 +156,72 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   };
   
   return (
-    <div className="p-4 space-y-4 w-full">
-      {/* Selected image view - maximize image display */}
-      <div 
-        ref={touchRef}
-        className="relative flex justify-center items-center min-h-[50vh] max-h-[80vh] w-full bg-secondary/10 rounded-md overflow-hidden group"
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
+    <div className="p-4 space-y-4 w-full" ref={touchRef}>
+      <TooltipProvider>
+        {/* Selected image view - maximize image display */}
         {activeImage && (
-          <div className="relative flex justify-center items-center w-full h-full">
-            <img 
-              src={activeImage.url}
-              alt={activeImage.prompt || "Generated image"}
-              className="max-w-full max-h-full object-contain w-auto h-auto"
-              onLoad={handleImageLoad}
-              onClick={handleImageClick}
+          <MainImageView
+            imageUrl={activeImage.url}
+            altText={activeImage.prompt || "Generated image"}
+            onImageLoad={handleImageLoad}
+            onOpenInNewTab={handleOpenInNewTab}
+            allImages={allImages}
+            isNavigatingAllImages={isNavigatingAllImages}
+            onNavigateGlobal={onNavigateGlobal}
+            currentGlobalIndex={currentGlobalIndex}
+            handleTouchStart={handleTouchStart}
+            handleTouchEnd={handleTouchEnd}
+          />
+        )}
+        
+        {/* Image metadata */}
+        <ImageMetadata
+          dimensions={imageDimensions}
+          timestamp={activeImage?.timestamp}
+        />
+        
+        {/* Image Actions Bar - always visible in fullscreen mode */}
+        {activeImage?.url && (
+          <div className="flex justify-center space-x-2 py-2">
+            <ImageActions
+              imageUrl={activeImage.url}
+              onCreateAgain={handleCreateAgain}
+              onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
+              generationInfo={{
+                prompt: activeImage.prompt || '',
+                workflow: activeImage.workflow || '',
+                params: activeImage.params
+              }}
+              alwaysVisible={true}
+              isFullScreen={true}
             />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm"
-                  onClick={handleOpenInNewTab}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Open image in new tab</TooltipContent>
-            </Tooltip>
           </div>
         )}
         
-        {/* Navigation controls - Always use global navigation in fullscreen */}
-        {allImages && allImages.length > 1 && onNavigateGlobal && (
-          <NavigationControls 
-            onPrevious={(e) => {
-              e.stopPropagation();
-              if ((currentGlobalIndex as number) > 0) {
-                onNavigateGlobal((currentGlobalIndex as number) - 1);
-              }
-            }}
-            onNext={(e) => {
-              e.stopPropagation();
-              if ((currentGlobalIndex as number) < allImages.length - 1) {
-                onNavigateGlobal((currentGlobalIndex as number) + 1);
-              }
-            }}
-            size="large"
+        {/* Prompt info */}
+        {activeImage?.prompt && (
+          <div className="text-sm text-muted-foreground text-center max-w-lg mx-auto">
+            <p>{activeImage.prompt}</p>
+          </div>
+        )}
+
+        {/* Reference image at the bottom */}
+        {referenceImageUrl && (
+          <ReferenceImageSection
+            referenceImageUrl={referenceImageUrl}
+            onReferenceImageClick={() => setShowReferenceImage(true)}
           />
         )}
-      </div>
-      
-      {/* Image metadata */}
-      <div className="flex justify-between items-center text-sm text-muted-foreground">
-        <div className="flex items-center">
-          <Ruler className="h-4 w-4 mr-1" />
-          <span>{imageDimensions.width} × {imageDimensions.height} px</span>
-        </div>
-        <div className="flex items-center">
-          <Clock className="h-4 w-4 mr-1" />
-          <span>{formatTimeAgo(activeImage?.timestamp)}</span>
-        </div>
-      </div>
-      
-      {/* Image Actions Bar - always visible in fullscreen mode */}
-      {activeImage?.url && (
-        <div className="flex justify-center space-x-2 py-2">
-          <ImageActions
-            imageUrl={activeImage.url}
-            onCreateAgain={handleCreateAgain}
-            onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
-            generationInfo={{
-              prompt: activeImage.prompt || '',
-              workflow: activeImage.workflow || '',
-              params: activeImage.params
-            }}
-            alwaysVisible={true}
-            isFullScreen={true}
+
+        {/* Reference image popup (full size view) */}
+        {referenceImageUrl && (
+          <ReferenceImageDialog
+            isOpen={showReferenceImage}
+            onOpenChange={setShowReferenceImage}
+            imageUrl={referenceImageUrl}
           />
-        </div>
-      )}
-      
-      {/* Prompt info */}
-      {activeImage?.prompt && (
-        <div className="text-sm text-muted-foreground text-center max-w-lg mx-auto">
-          <p>{activeImage.prompt}</p>
-        </div>
-      )}
-
-      {/* Reference image at the bottom */}
-      {referenceImageUrl && (
-        <div className="mt-4 border-t pt-4">
-          <p className="text-sm text-muted-foreground mb-2">Reference image:</p>
-          <div className="flex justify-center">
-            <div className="border rounded-md overflow-hidden w-24 h-24">
-              <img 
-                src={referenceImageUrl} 
-                alt="Reference image"
-                className="w-full h-full object-cover cursor-pointer"
-                onClick={() => setShowReferenceImage(true)}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Reference image popup (full size view) */}
-      {referenceImageUrl && (
-        <Dialog open={showReferenceImage} onOpenChange={setShowReferenceImage}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Reference Image</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col items-center">
-              <p className="text-sm mb-2 text-muted-foreground">Reference image used for generation</p>
-              <div className="border rounded-md overflow-hidden">
-                <img 
-                  src={referenceImageUrl} 
-                  alt="Reference image"
-                  className="w-full h-auto object-contain"
-                />
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+        )}
+      </TooltipProvider>
     </div>
   );
 };
