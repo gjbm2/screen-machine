@@ -299,9 +299,15 @@ const Index = () => {
           addConsoleLog(`API error: ${error}`);
           
           toast.error('Failed to generate image. Please try again.');
+          
           setGeneratedImages(prev => 
-            prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'))
+            prev.map(img => 
+              (img.batchId === currentBatchId && img.status === 'generating') 
+                ? { ...img, status: 'failed' } 
+                : img
+            )
           );
+          
           setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
         }
       } catch (error) {
@@ -309,8 +315,13 @@ const Index = () => {
         addConsoleLog(`Error calling API: ${error}`);
         
         setGeneratedImages(prev => 
-          prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'))
+          prev.map(img => 
+            (img.batchId === currentBatchId && img.status === 'generating') 
+              ? { ...img, status: 'failed' } 
+              : img
+          )
         );
+        
         setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
         
         toast.error('Failed to generate image. Please try again.');
@@ -321,8 +332,13 @@ const Index = () => {
       toast.error('Failed to generate image. Please try again.');
       
       setGeneratedImages(prev => 
-        prev.filter(img => !(img.batchId === batchId && img.status === 'generating'))
+        prev.map(img => 
+          (img.batchId === batchId && img.status === 'generating') 
+            ? { ...img, status: 'failed' } 
+            : img
+        )
       );
+      
       setActiveGenerations(prev => prev.filter(id => id !== batchId));
     }
   };

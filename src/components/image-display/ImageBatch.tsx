@@ -10,13 +10,14 @@ import { ViewMode } from './ImageDisplay';
 import { Table, TableBody, TableRow, TableCell } from '@/components/ui/table';
 import { Skeleton } from "@/components/ui/skeleton";
 import LoadingPlaceholder from './LoadingPlaceholder';
+import GenerationFailedPlaceholder from './GenerationFailedPlaceholder';
 
 interface Image {
   url: string;
   prompt: string;
   workflow: string;
   batchIndex: number;
-  status: 'generating' | 'completed' | 'error';
+  status: 'generating' | 'completed' | 'error' | 'failed';
   referenceImageUrl?: string;
 }
 
@@ -63,12 +64,13 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   
   const anyGenerating = images.some(img => img.status === 'generating');
   const completedImages = images.filter(img => img.status === 'completed');
+  const failedImages = images.filter(img => img.status === 'failed' || img.status === 'error');
   
   // Always show containers regardless of generation status
   const allGeneratingWithoutUrl = images.every(img => img.status === 'generating' && !img.url);
 
   // Show all images in grid view for small mode
-  if (viewMode === 'small' && completedImages.length === 0 && !anyGenerating) {
+  if (viewMode === 'small' && completedImages.length === 0 && !anyGenerating && failedImages.length === 0) {
     return null;
   }
   
@@ -85,6 +87,10 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   };
 
   const handleCreateAgain = () => {
+    onCreateAgain();
+  };
+
+  const handleRetry = () => {
     onCreateAgain();
   };
 
@@ -170,6 +176,11 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                   />
                 ) : anyGenerating ? (
                   <LoadingPlaceholder prompt={images[0]?.prompt || null} />
+                ) : failedImages.length > 0 ? (
+                  <GenerationFailedPlaceholder 
+                    prompt={failedImages[0]?.prompt || null} 
+                    onRetry={handleRetry}
+                  />
                 ) : null}
               </div>
 
@@ -234,6 +245,11 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
                 />
               ) : anyGenerating ? (
                 <LoadingPlaceholder prompt={images[0]?.prompt || null} />
+              ) : failedImages.length > 0 ? (
+                <GenerationFailedPlaceholder 
+                  prompt={failedImages[0]?.prompt || null} 
+                  onRetry={handleRetry}
+                />
               ) : null}
             </div>
           </CardContent>
