@@ -39,14 +39,14 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
           isLoading={isLoading}
           onImageUpload={onImageUpload}
           onWorkflowChange={onWorkflowChange}
-          hideLabel={true}
+          hideLabel={isMobile}
         />
         
         <WorkflowIconSelector
           workflows={workflows}
           selectedWorkflow={selectedWorkflow}
           onWorkflowChange={onWorkflowChange}
-          hideWorkflowName={true}
+          hideWorkflowName={isMobile}
         />
         
         <RefinerSelector
@@ -58,18 +58,19 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
           batchSize={batchSize}
           incrementBatchSize={incrementBatchSize}
           decrementBatchSize={decrementBatchSize}
-          isCompact={true}
+          isCompact={isMobile}
         />
 
         <Button 
           type="button"
           variant="outline" 
-          size="icon"
+          size={isMobile ? "icon" : "sm"}
           onClick={toggleAdvancedOptions}
-          className="h-[28px] w-[28px] text-muted-foreground hover:bg-purple-500/10 text-purple-700 shrink-0"
-          aria-label="Settings"
+          className={`${isMobile ? "h-[28px] w-[28px]" : "h-[28px] px-2"} text-muted-foreground hover:bg-purple-500/10 text-purple-700 shrink-0`}
+          aria-label="Advanced Settings"
         >
           <Settings className="h-3.5 w-3.5" />
+          {!isMobile && <span className="ml-1.5 text-xs">Advanced</span>}
         </Button>
       </div>
 
