@@ -25,8 +25,31 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     nextContainerId,
     setNextContainerId,
     handleReorderContainers: containerReorder,
-    handleDeleteContainer
+    handleDeleteContainer: internalHandleDeleteContainer
   } = useImageContainer();
+
+  // Submit prompt handler - defined before it's used in useImageActions
+  const handleSubmitPrompt = useCallback(async (
+    prompt: string, 
+    imageFiles?: File[] | string[]
+  ) => {
+    setIsFirstRun(false);
+    
+    const config: ImageGenerationConfig = {
+      prompt,
+      imageFiles,
+      workflow: currentWorkflow,
+      params: currentParams,
+      globalParams: currentGlobalParams,
+    };
+    
+    generateImages(config);
+  }, [
+    currentWorkflow, 
+    currentParams, 
+    currentGlobalParams, 
+    generateImages
+  ]);
 
   const {
     activeGenerations,
@@ -58,28 +81,10 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     generatedImages
   );
 
-  // Submit prompt handler
-  const handleSubmitPrompt = useCallback(async (
-    prompt: string, 
-    imageFiles?: File[] | string[]
-  ) => {
-    setIsFirstRun(false);
-    
-    const config: ImageGenerationConfig = {
-      prompt,
-      imageFiles,
-      workflow: currentWorkflow,
-      params: currentParams,
-      globalParams: currentGlobalParams,
-    };
-    
-    generateImages(config);
-  }, [
-    currentWorkflow, 
-    currentParams, 
-    currentGlobalParams, 
-    generateImages
-  ]);
+  // Wrapper for handleDeleteContainer to match the expected signature
+  const handleDeleteContainer = useCallback((batchId: string) => {
+    internalHandleDeleteContainer(batchId, setGeneratedImages);
+  }, [internalHandleDeleteContainer, setGeneratedImages]);
 
   return {
     generatedImages,

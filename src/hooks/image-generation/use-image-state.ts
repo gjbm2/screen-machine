@@ -1,20 +1,6 @@
 
 import { useState } from 'react';
-
-export interface GeneratedImage {
-  url: string;
-  prompt: string;
-  workflow: string;
-  timestamp: number;
-  params?: Record<string, any>;
-  batchId?: string;
-  batchIndex?: number;
-  status?: string;
-  refiner?: string;
-  refinerParams?: Record<string, any>;
-  referenceImageUrl?: string;
-  containerId?: number;
-}
+import { GeneratedImage } from './types';
 
 export const useImageState = () => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);

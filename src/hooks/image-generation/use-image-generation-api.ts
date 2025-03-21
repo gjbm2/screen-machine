@@ -1,9 +1,10 @@
+
 import { useState, useCallback } from 'react';
 import { GeneratedImage } from './types';
 import { toast } from 'sonner';
 import { nanoid } from '@/lib/utils';
 import { ImageGenerationConfig } from './types';
-import { httpPost } from '@/utils/api';
+import apiService from '@/utils/api';
 
 export const useImageGenerationApi = (
   addConsoleLog: (log: any) => void,
@@ -148,7 +149,16 @@ export const useImageGenerationApi = (
       setTimeout(async () => {
         try {
           // Make the API call
-          const response = await httpPost('/generate', formData);
+          const response = await apiService.generateImage({
+            prompt,
+            workflow,
+            params,
+            global_params: globalParams,
+            refiner,
+            refiner_params: refinerParams,
+            imageFiles: uploadedFiles,
+            batch_id: currentBatchId
+          });
           
           if (!response || !response.images) {
             throw new Error('No images were returned');

@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { GeneratedImage } from './use-image-state';
+import { GeneratedImage } from './types';
 
 export const useImageContainer = () => {
   const [imageContainerOrder, setImageContainerOrder] = useState<string[]>([]);
