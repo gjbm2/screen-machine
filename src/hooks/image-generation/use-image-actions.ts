@@ -1,121 +1,131 @@
 
 import { useState } from 'react';
+import { GeneratedImage } from './types';
 import { toast } from 'sonner';
-import { GeneratedImage } from './use-image-state';
+import { saveAs } from 'file-saver';
 
 export const useImageActions = (
-  addConsoleLog: (message: string) => Promise<void>,
-  setUploadedImageUrls: React.Dispatch<React.SetStateAction<string[]>>,
-  setCurrentWorkflow: React.Dispatch<React.SetStateAction<string | null>>,
   setGeneratedImages: React.Dispatch<React.SetStateAction<GeneratedImage[]>>,
   imageContainerOrder: string[],
-  generatedImages: GeneratedImage[],
-  currentPrompt: string | null,
-  currentParams: Record<string, any>,
-  currentGlobalParams: Record<string, any>,
-  currentRefiner: string | null,
-  currentRefinerParams: Record<string, any>,
-  uploadedImageUrls: string[]
+  setImageContainerOrder: React.Dispatch<React.SetStateAction<string[]>>,
+  setCurrentPrompt: React.Dispatch<React.SetStateAction<string>>,
+  setCurrentWorkflow: React.Dispatch<React.SetStateAction<string>>,
+  setUploadedImageUrls: React.Dispatch<React.SetStateAction<string[]>>,
+  handleSubmitPrompt: (
+    prompt: string, 
+    imageFiles?: File[] | string[] | undefined
+  ) => void,
+  generatedImages: GeneratedImage[]
 ) => {
-  const handleCreateAgain = (batchId?: string) => {
-    let prompt = currentPrompt;
-    let originalParams = { ...currentParams };
-    let originalWorkflow = currentWorkflow;
-    let originalRefiner = currentRefiner;
-    let originalRefinerParams = { ...currentRefinerParams };
-    let originalUploadedImages = [...uploadedImageUrls];
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+
+  const handleUseGeneratedAsInput = (url: string) => {
+    // Find the image in our collection
+    const image = generatedImages.find(img => img.url === url);
+    if (!image) {
+      console.error('Image not found:', url);
+      return;
+    }
+
+    // Set the reference image
+    setUploadedImageUrls([url]);
     
+    // Set the prompt and workflow to match the generated image
+    if (image.prompt) {
+      setCurrentPrompt(image.prompt);
+    }
+    
+    if (image.workflow) {
+      setCurrentWorkflow(image.workflow);
+    }
+    
+    // Set the image URL
+    setImageUrl(url);
+
+    toast.success('Image set as input reference');
+  };
+
+  const handleCreateAgain = (batchId?: string) => {
     if (batchId) {
+      // Find the first image in the batch
       const batchImage = generatedImages.find(img => img.batchId === batchId);
       if (batchImage) {
-        prompt = batchImage.prompt || '';
-        originalParams = batchImage.params || {};
-        originalWorkflow = batchImage.workflow;
-        originalRefiner = batchImage.refiner || null;
-        originalRefinerParams = batchImage.refinerParams || {};
+        console.log('Creating again from batch:', batchId);
         
+        // Set the prompt to the one used to generate this image
+        if (batchImage.prompt) {
+          setCurrentPrompt(batchImage.prompt);
+        }
+        
+        // Set the workflow to the one used to generate this image
+        if (batchImage.workflow) {
+          setCurrentWorkflow(batchImage.workflow);
+        }
+
+        // If it has a reference image, use that
         if (batchImage.referenceImageUrl) {
-          originalUploadedImages = [batchImage.referenceImageUrl];
+          setUploadedImageUrls([batchImage.referenceImageUrl]);
         } else {
-          originalUploadedImages = [];
+          setUploadedImageUrls([]);
+        }
+        
+        // Submit the prompt
+        if (batchImage.prompt) {
+          const referenceImages = batchImage.referenceImageUrl ? [batchImage.referenceImageUrl] : undefined;
+          handleSubmitPrompt(batchImage.prompt, referenceImages);
         }
       }
     }
-    
-    if (!prompt) {
-      toast.error('No prompt available to regenerate');
-      return null;
-    }
-    
-    const imageFiles = originalUploadedImages.length > 0 ? originalUploadedImages : undefined;
-    
-    const modifiedGlobalParams = { 
-      ...currentGlobalParams, 
-      batchSize: 1 
-    };
-    
-    addConsoleLog(`Creating another image with same settings: "${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}"`);
-    
-    return {
-      prompt,
-      imageFiles,
-      workflow: originalWorkflow || undefined,
-      params: originalParams,
-      globalParams: modifiedGlobalParams,
-      refiner: originalRefiner || undefined,
-      refinerParams: originalRefinerParams,
-      batchId
-    };
   };
 
-  const handleUseGeneratedAsInput = async (selectedImageUrl: string) => {
-    try {
-      const response = await fetch(selectedImageUrl);
-      const blob = await response.blob();
-      
-      const fileName = `input-image-${Date.now()}.png`;
-      const file = new File([blob], fileName, { type: 'image/png' });
-      
-      const imageFiles = [file];
-      
-      const newUrl = URL.createObjectURL(blob);
-      setUploadedImageUrls([newUrl]);
-      
-      setCurrentWorkflow('image-to-image');
-      
-      const uploadEvent = new CustomEvent('image-selected', { 
-        detail: { files: imageFiles, urls: [newUrl] } 
-      });
-      document.dispatchEvent(uploadEvent);
-      
-      toast.success('Image set as input');
-      addConsoleLog('Using generated image as input');
-      
-      return true;
-    } catch (error) {
-      console.error('Error using image as input:', error);
-      addConsoleLog(`Error using image as input: ${error}`);
-      toast.error('Failed to use image as input');
-      return false;
+  const handleDownloadImage = (url: string) => {
+    // Get the filename from the URL
+    const image = generatedImages.find(img => img.url === url);
+    if (!image) {
+      console.error('Image not found:', url);
+      return;
     }
+    
+    // Create a filename based on the prompt or fallback to the timestamp
+    const filenameBase = image.prompt 
+      ? image.prompt.substring(0, 30).replace(/[^a-zA-Z0-9]/g, '_') 
+      : `generated_${new Date().getTime()}`;
+      
+    // Save the file
+    saveAs(url, `${filenameBase}.png`);
+    toast.success('Image downloaded');
   };
 
   const handleDeleteImage = (batchId: string, imageIndex: number) => {
     setGeneratedImages(prev => {
-      const batchImages = prev.filter(img => img.batchId === batchId);
+      const newImages = [...prev];
+      const imageToDelete = newImages.find(img => img.batchId === batchId && img.batchIndex === imageIndex);
       
-      if (batchImages.length === 1) {
-        setImageContainerOrder(order => order.filter(id => id !== batchId));
+      if (!imageToDelete) {
+        console.error(`Image not found with batchId ${batchId} and index ${imageIndex}`);
+        return prev;
       }
       
-      return prev.filter(img => !(img.batchId === batchId && img.batchIndex === imageIndex));
+      return newImages.filter(img => !(img.batchId === batchId && img.batchIndex === imageIndex));
     });
+    
+    toast.success('Image deleted');
+  };
+
+  const handleReorderContainers = (sourceIndex: number, destinationIndex: number) => {
+    const newImageContainerOrder = [...imageContainerOrder];
+    const [removed] = newImageContainerOrder.splice(sourceIndex, 1);
+    newImageContainerOrder.splice(destinationIndex, 0, removed);
+    setImageContainerOrder(newImageContainerOrder);
   };
 
   return {
-    handleCreateAgain,
+    imageUrl,
     handleUseGeneratedAsInput,
-    handleDeleteImage
+    handleCreateAgain,
+    handleDownloadImage,
+    handleDeleteImage,
+    handleReorderContainers,
   };
 };
 

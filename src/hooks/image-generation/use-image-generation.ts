@@ -1,189 +1,88 @@
 
+import { useState, useCallback, useEffect } from 'react';
+import { nanoid } from '@/lib/utils';
 import { useImageState } from './use-image-state';
 import { useImageContainer } from './use-image-container';
 import { useImageActions } from './use-image-actions';
 import { useImageGenerationApi } from './use-image-generation-api';
-import { toast } from 'sonner';
+import { ImageGenerationConfig } from './types';
 
-export const useImageGeneration = (
-  addConsoleLog: (message: string) => Promise<void>
-) => {
-  // Image state management
-  const {
-    imageUrl,
-    setImageUrl,
-    currentPrompt,
-    setCurrentPrompt,
-    uploadedImageUrls,
-    setUploadedImageUrls,
-    currentWorkflow,
-    setCurrentWorkflow,
-    currentParams,
-    setCurrentParams,
-    currentGlobalParams,
-    setCurrentGlobalParams,
-    currentRefiner,
-    setCurrentRefiner,
-    currentRefinerParams,
-    setCurrentRefinerParams,
-    generatedImages,
-    setGeneratedImages,
-    isFirstRun,
-    setIsFirstRun
-  } = useImageState();
+export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
+  // State for current prompts and workflows
+  const [currentPrompt, setCurrentPrompt] = useState<string>('');
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
+  const [currentWorkflow, setCurrentWorkflow] = useState<string>('flux1');
+  const [currentParams, setCurrentParams] = useState<Record<string, any>>({});
+  const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
+  const [isFirstRun, setIsFirstRun] = useState(true);
 
-  // Container management
-  const {
-    imageContainerOrder,
+  // Use our custom hooks
+  const { generatedImages, setGeneratedImages } = useImageState();
+  
+  const { 
+    imageContainerOrder, 
     setImageContainerOrder,
     nextContainerId,
     setNextContainerId,
-    handleReorderContainers,
-    handleDeleteContainer: deleteContainerFunc
+    handleReorderContainers: containerReorder,
+    handleDeleteContainer
   } = useImageContainer();
 
-  // API calls for image generation
   const {
     activeGenerations,
-    generateImage
+    lastBatchId,
+    generateImages,
   } = useImageGenerationApi(
     addConsoleLog,
     setGeneratedImages,
-    setImageUrl,
-    imageUrl
+    setImageContainerOrder,
+    nextContainerId,
+    setNextContainerId
   );
-
-  // Image action handlers
+  
   const {
-    handleCreateAgain: createAgainConfig,
+    imageUrl,
     handleUseGeneratedAsInput,
-    handleDeleteImage
+    handleCreateAgain,
+    handleDownloadImage,
+    handleDeleteImage,
+    handleReorderContainers,
   } = useImageActions(
-    addConsoleLog,
-    setUploadedImageUrls,
-    setCurrentWorkflow,
     setGeneratedImages,
     imageContainerOrder,
-    generatedImages,
-    currentPrompt,
-    currentParams,
-    currentGlobalParams,
-    currentRefiner,
-    currentRefinerParams,
-    uploadedImageUrls
+    setImageContainerOrder,
+    setCurrentPrompt,
+    setCurrentWorkflow,
+    setUploadedImageUrls,
+    handleSubmitPrompt,
+    generatedImages
   );
 
-  const handleCreateAgain = (batchId?: string) => {
-    const config = createAgainConfig(batchId);
-    if (config) {
-      handleSubmitPrompt(
-        config.prompt, 
-        config.imageFiles,
-        config.workflow,
-        config.params,
-        config.globalParams,
-        config.refiner,
-        config.refinerParams,
-        config.batchId
-      );
-      
-      toast.info('Creating another image...');
-    }
-  };
-
-  const handleSubmitPrompt = async (
+  // Submit prompt handler
+  const handleSubmitPrompt = useCallback(async (
     prompt: string, 
-    imageFiles?: File[] | string[],
-    workflow?: string,
-    params?: Record<string, any>,
-    globalParams?: Record<string, any>,
-    refiner?: string,
-    refinerParams?: Record<string, any>,
-    batchId?: string
+    imageFiles?: File[] | string[]
   ) => {
-    if (isFirstRun) {
-      setIsFirstRun(false);
-    }
+    setIsFirstRun(false);
     
-    setCurrentPrompt(prompt);
-    setCurrentWorkflow(workflow || null);
-    setCurrentParams(params || {});
-    setCurrentGlobalParams(globalParams || {});
-    setCurrentRefiner(refiner || null);
-    setCurrentRefinerParams(refinerParams || {});
+    const config: ImageGenerationConfig = {
+      prompt,
+      imageFiles,
+      workflow: currentWorkflow,
+      params: currentParams,
+      globalParams: currentGlobalParams,
+    };
     
-    try {
-      addConsoleLog(`Starting image generation: "${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}"`);
-      addConsoleLog(`Workflow: ${workflow || 'text-to-image'}, Refiner: ${refiner || 'none'}`);
-      
-      const currentBatchId = batchId || `batch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      
-      const currentContainerId = nextContainerId;
-      if (!batchId) {
-        setNextContainerId(prev => prev + 1);
-      }
-      
-      if (!batchId || !imageContainerOrder.includes(batchId)) {
-        setImageContainerOrder(prev => [currentBatchId, ...prev]);
-      }
-      
-      let referenceImageUrl: string | undefined;
-      let uploadableFiles: File[] | undefined;
-      
-      if (imageFiles && imageFiles.length > 0) {
-        if (typeof imageFiles[0] === 'string') {
-          referenceImageUrl = imageFiles[0] as string;
-          try {
-            const response = await fetch(imageFiles[0] as string);
-            const blob = await response.blob();
-            const file = new File([blob], `reference-${Date.now()}.png`, { type: blob.type });
-            uploadableFiles = [file];
-          } catch (error) {
-            console.error('Error converting image URL to file:', error);
-            addConsoleLog(`Error converting image URL to file: ${error}`);
-          }
-        } else {
-          uploadableFiles = imageFiles as File[];
-          referenceImageUrl = URL.createObjectURL(imageFiles[0] as File);
-        }
-      }
-      
-      const batchSize = globalParams?.batchSize || 1;
-      
-      const requestData = {
-        prompt,
-        workflow: workflow || 'text-to-image',
-        params: params || {},
-        global_params: globalParams || {},
-        refiner: refiner || 'none',
-        refiner_params: refinerParams || {},
-        imageFiles: uploadableFiles,
-        batch_id: currentBatchId,
-        batch_size: batchSize
-      };
-      
-      generateImage(
-        prompt,
-        currentBatchId,
-        currentContainerId,
-        referenceImageUrl,
-        requestData,
-        uploadableFiles,
-        batchSize
-      );
-      
-    } catch (error) {
-      console.error('Error generating image:', error);
-      addConsoleLog(`Error generating image: ${error}`);
-      toast.error('Failed to generate image. Please try again.');
-    }
-  };
-
-  const handleDeleteContainer = (batchId: string) => {
-    deleteContainerFunc(batchId, setGeneratedImages);
-  };
+    generateImages(config);
+  }, [
+    currentWorkflow, 
+    currentParams, 
+    currentGlobalParams, 
+    generateImages
+  ]);
 
   return {
+    generatedImages,
     activeGenerations,
     imageUrl,
     currentPrompt,
@@ -191,19 +90,21 @@ export const useImageGeneration = (
     currentWorkflow,
     currentParams,
     currentGlobalParams,
-    currentRefiner,
-    currentRefinerParams,
-    generatedImages,
     imageContainerOrder,
+    lastBatchId,
     isFirstRun,
+    setCurrentPrompt,
+    setUploadedImageUrls,
+    setCurrentWorkflow,
+    setCurrentParams,
     setCurrentGlobalParams,
+    setImageContainerOrder,
     handleSubmitPrompt,
     handleUseGeneratedAsInput,
     handleCreateAgain,
-    handleReorderContainers,
+    handleDownloadImage,
     handleDeleteImage,
+    handleReorderContainers,
     handleDeleteContainer
   };
 };
-
-export default useImageGeneration;

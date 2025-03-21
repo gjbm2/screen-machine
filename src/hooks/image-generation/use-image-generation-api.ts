@@ -1,136 +1,279 @@
-
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { GeneratedImage } from './types';
 import { toast } from 'sonner';
-import apiService from '@/utils/api';
-import { GeneratedImage } from './use-image-state';
+import { nanoid } from '@/lib/utils';
+import { ImageGenerationConfig } from './types';
+import { httpPost } from '@/utils/api';
 
 export const useImageGenerationApi = (
-  addConsoleLog: (message: string) => Promise<void>,
+  addConsoleLog: (log: any) => void,
   setGeneratedImages: React.Dispatch<React.SetStateAction<GeneratedImage[]>>,
-  setImageUrl: React.Dispatch<React.SetStateAction<string | null>>,
-  imageUrl: string | null
+  setImageContainerOrder: React.Dispatch<React.SetStateAction<string[]>>,
+  nextContainerId: number,
+  setNextContainerId: React.Dispatch<React.SetStateAction<number>>
 ) => {
   const [activeGenerations, setActiveGenerations] = useState<string[]>([]);
+  const [lastBatchId, setLastBatchId] = useState<string | null>(null);
 
-  const generateImage = async (
-    prompt: string,
-    currentBatchId: string,
-    currentContainerId: number,
-    referenceImageUrl: string | undefined,
-    requestData: any,
-    uploadableFiles: File[] | undefined,
-    batchSize: number
-  ) => {
-    try {
-      const placeholderImages: GeneratedImage[] = [];
+  const generateImages = useCallback(async (config: ImageGenerationConfig) => {
+    const {
+      prompt,
+      imageFiles,
+      workflow = 'flux1',
+      params = {},
+      globalParams = {},
+      refiner,
+      refinerParams,
+      batchId
+    } = config;
+
+    // Create or use the provided batch ID
+    const currentBatchId = batchId || nanoid();
+    if (!batchId) {
+      addConsoleLog({
+        type: 'info',
+        message: `Starting new batch with ID: ${currentBatchId}`
+      });
       
-      for (let i = 0; i < batchSize; i++) {
+      // Add this batch to the container order
+      setImageContainerOrder(prev => [currentBatchId, ...prev]);
+      
+      // Increment container ID
+      setNextContainerId(prevId => prevId + 1);
+    }
+
+    // Keep track of this generation
+    setActiveGenerations(prev => [...prev, currentBatchId]);
+    
+    // Save the last batch ID
+    setLastBatchId(currentBatchId);
+    
+    let uploadedFiles: File[] = [];
+    let uploadedImageUrls: string[] = [];
+    
+    if (imageFiles && imageFiles.length > 0) {
+      for (const file of imageFiles) {
+        if (typeof file === 'string') {
+          uploadedImageUrls.push(file);
+        } else {
+          uploadedFiles.push(file);
+        }
+      }
+    }
+
+    addConsoleLog({
+      type: 'info',
+      message: `Generating image with prompt: "${prompt}"`,
+      details: {
+        workflow,
+        params,
+        globalParams,
+        hasReferenceImage: uploadedFiles.length > 0 || uploadedImageUrls.length > 0
+      }
+    });
+
+    try {
+      // Pre-create placeholder records for the images
+      // First, let's see how many exist already in this batch
+      const existingBatchIndexes = new Set<number>();
+      setGeneratedImages(prevImages => {
+        prevImages.forEach(img => {
+          if (img.batchId === currentBatchId && typeof img.batchIndex === 'number') {
+            existingBatchIndexes.add(img.batchIndex);
+          }
+        });
+        
+        // Create a placeholder entry - we'll assume 1 image for now
+        // Will be replaced with actual results once generation is complete
+        const nextIndex = existingBatchIndexes.size;
+        
         const placeholderImage: GeneratedImage = {
-          url: '',
-          prompt: prompt,
-          workflow: requestData.workflow || 'text-to-image',
+          url: '', // Will be filled in later
+          prompt,
+          workflow,
           timestamp: Date.now(),
-          params: { ...requestData.params, ...requestData.global_params },
-          refiner: requestData.refiner,
-          refinerParams: requestData.refiner_params,
           batchId: currentBatchId,
-          batchIndex: requestData.batch_id ? 
-            (prev: GeneratedImage[]) => prev.filter(img => img.batchId === requestData.batch_id).length + i : 
-            i,
+          batchIndex: nextIndex,
           status: 'generating',
-          referenceImageUrl,
-          containerId: currentContainerId
+          params,
+          refiner,
+          refinerParams
         };
         
-        placeholderImages.push(placeholderImage);
+        // If there's a reference image
+        if (uploadedImageUrls.length > 0) {
+          placeholderImage.referenceImageUrl = uploadedImageUrls[0];
+        }
+        
+        // Add containerId if this is a new batch
+        if (!batchId) {
+          placeholderImage.containerId = nextContainerId;
+        }
+        
+        return [...prevImages, placeholderImage];
+      });
+
+      const formData = new FormData();
+      formData.append('prompt', prompt);
+      formData.append('workflow', workflow);
+      
+      // Add parameters as JSON
+      formData.append('params', JSON.stringify(params));
+      formData.append('global_params', JSON.stringify(globalParams));
+      
+      // Add refiner info if present
+      if (refiner) {
+        formData.append('refiner', refiner);
+        if (refinerParams) {
+          formData.append('refiner_params', JSON.stringify(refinerParams));
+        }
       }
       
-      setGeneratedImages(prev => [...placeholderImages, ...prev]);
-      setActiveGenerations(prev => [...prev, currentBatchId]);
+      // Add batch ID
+      formData.append('batch_id', currentBatchId);
       
-      addConsoleLog(`Sending request to backend with batch size: ${batchSize}`);
-      
-      if (uploadableFiles && uploadableFiles.length > 0) {
-        addConsoleLog(`Uploading ${uploadableFiles.length} reference image(s)`);
+      // Add uploaded files
+      if (uploadedFiles.length > 0) {
+        uploadedFiles.forEach(file => {
+          formData.append('file', file);
+        });
       }
       
-      // Non-blocking approach with setTimeout
-      setTimeout(() => {
-        apiService.generateImage(requestData)
-          .then(response => {
-            if (response.success) {
-              const newImages: GeneratedImage[] = [];
+      // Add urls
+      if (uploadedImageUrls.length > 0) {
+        formData.append('image_urls', JSON.stringify(uploadedImageUrls));
+      }
+
+      // Use setTimeout to allow the UI to update before starting the API call
+      setTimeout(async () => {
+        try {
+          // Make the API call
+          const response = await httpPost('/generate', formData);
+          
+          if (!response || !response.images) {
+            throw new Error('No images were returned');
+          }
+          
+          const images = response.images;
+          
+          addConsoleLog({
+            type: 'success',
+            message: `Generated ${images.length} images successfully`,
+            details: { batchId: currentBatchId }
+          });
+          
+          // Update the images with the actual URLs
+          setGeneratedImages(prevImages => {
+            const newImages = [...prevImages];
+            
+            images.forEach((img: any, index: number) => {
+              // Find the placeholder for this image
+              const placeholderIndex = newImages.findIndex(
+                pi => pi.batchId === currentBatchId && pi.batchIndex === index && pi.status === 'generating'
+              );
               
-              for (const img of response.images) {
-                const newGeneratedImage: GeneratedImage = {
+              if (placeholderIndex >= 0) {
+                // Replace the placeholder with actual data
+                newImages[placeholderIndex] = {
+                  ...newImages[placeholderIndex],
                   url: img.url,
-                  prompt: img.prompt,
-                  workflow: img.workflow,
-                  timestamp: img.timestamp,
-                  params: img.params || {},
-                  refiner: img.refiner,
-                  refinerParams: img.refiner_params,
-                  batchId: img.batch_id || currentBatchId,
-                  batchIndex: img.batch_index || 0,
                   status: 'completed',
-                  referenceImageUrl,
-                  containerId: currentContainerId
+                  timestamp: Date.now(),
+                };
+              } else {
+                // No placeholder found, this is an additional image
+                const newImage: GeneratedImage = {
+                  url: img.url,
+                  prompt,
+                  workflow,
+                  timestamp: Date.now(),
+                  batchId: currentBatchId,
+                  batchIndex: index,
+                  status: 'completed',
+                  params,
+                  refiner,
+                  refinerParams
                 };
                 
-                newImages.push(newGeneratedImage);
+                // If there's a reference image
+                if (uploadedImageUrls.length > 0) {
+                  newImage.referenceImageUrl = uploadedImageUrls[0];
+                }
+                
+                // Add containerId if this is a new batch
+                if (!batchId) {
+                  newImage.containerId = nextContainerId;
+                }
+                
+                newImages.push(newImage);
               }
-              
-              setGeneratedImages(prev => {
-                const filteredImages = prev.filter(img => !(img.batchId === currentBatchId && img.status === 'generating'));
-                return [...newImages, ...filteredImages];
-              });
-              
-              setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
-              
-              if (!imageUrl) {
-                setImageUrl(newImages[0]?.url);
-              }
-              
-              toast.success(`${newImages.length} image${newImages.length > 1 ? 's' : ''} generated successfully!`);
-              addConsoleLog(`${newImages.length} image(s) generated successfully!`);
-            } else {
-              throw new Error(response.error || 'Unknown error');
-            }
-          })
-          .catch(error => {
-            handleGenerationError(error, currentBatchId);
+            });
+            
+            return newImages;
           });
-      }, 0);
-      
-      return true;
-    } catch (error) {
-      handleGenerationError(error, currentBatchId);
-      return false;
-    }
-  };
 
-  const handleGenerationError = (error: any, batchId: string) => {
-    console.error('Error generating image:', error);
-    addConsoleLog(`API error: ${error}`);
-    
-    toast.error('Failed to generate image. Please try again.');
-    
-    setGeneratedImages(prev => 
-      prev.map(img => 
-        (img.batchId === batchId && img.status === 'generating') 
-          ? { ...img, status: 'failed' } 
-          : img
-      )
-    );
-    
-    setActiveGenerations(prev => prev.filter(id => id !== batchId));
-  };
+          // Success message
+          if (images.length > 0) {
+            toast.success(`Generated ${images.length} image${images.length > 1 ? 's' : ''} successfully`);
+          }
+        } catch (error: any) {
+          console.error('Image generation error:', error);
+          
+          addConsoleLog({
+            type: 'error',
+            message: `Failed to generate image: ${error.message || 'Unknown error'}`,
+            details: error
+          });
+          
+          // Update image placeholders to show error
+          setGeneratedImages(prevImages => {
+            return prevImages.map(img => {
+              if (img.batchId === currentBatchId && img.status === 'generating') {
+                return {
+                  ...img,
+                  status: 'error',
+                  timestamp: Date.now()
+                };
+              }
+              return img;
+            });
+          });
+          
+          toast.error(`Failed to generate image: ${error.message || 'Unknown error'}`);
+        } finally {
+          // Remove from active generations
+          setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
+        }
+      }, 100); // Minimal delay to unblock the UI
+
+      return currentBatchId;
+    } catch (error: any) {
+      console.error('Error setting up image generation:', error);
+      
+      addConsoleLog({
+        type: 'error',
+        message: `Failed to set up image generation: ${error.message || 'Unknown error'}`,
+        details: error
+      });
+      
+      // Remove from active generations
+      setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
+      
+      toast.error(`Failed to generate image: ${error.message || 'Unknown error'}`);
+      return null;
+    }
+  }, [
+    addConsoleLog, 
+    setGeneratedImages, 
+    setImageContainerOrder, 
+    nextContainerId,
+    setNextContainerId
+  ]);
 
   return {
     activeGenerations,
-    setActiveGenerations,
-    generateImage,
-    handleGenerationError
+    lastBatchId,
+    generateImages,
   };
 };
 
