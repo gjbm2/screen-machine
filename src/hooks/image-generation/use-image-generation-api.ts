@@ -61,6 +61,18 @@ export const useImageGenerationApi = (
         }
       }
     }
+    
+    // Log information about reference images for debugging
+    if (uploadedFiles.length > 0 || uploadedImageUrls.length > 0) {
+      addConsoleLog({
+        type: 'info',
+        message: `Using ${uploadedFiles.length + uploadedImageUrls.length} reference images`,
+        details: {
+          fileCount: uploadedFiles.length,
+          urlCount: uploadedImageUrls.length
+        }
+      });
+    }
 
     addConsoleLog({
       type: 'info',
@@ -101,9 +113,10 @@ export const useImageGenerationApi = (
           refinerParams
         };
         
-        // If there's a reference image
+        // Store reference image URLs if there are any
+        // Convert the array of URLs to a comma-separated string
         if (uploadedImageUrls.length > 0) {
-          placeholderImage.referenceImageUrl = uploadedImageUrls[0];
+          placeholderImage.referenceImageUrl = uploadedImageUrls.join(',');
         }
         
         // Add containerId if this is a new batch
@@ -205,9 +218,9 @@ export const useImageGenerationApi = (
                   refinerParams
                 };
                 
-                // If there's a reference image
+                // If there's a reference image, make sure to include it
                 if (uploadedImageUrls.length > 0) {
-                  newImage.referenceImageUrl = uploadedImageUrls[0];
+                  newImage.referenceImageUrl = uploadedImageUrls.join(',');
                 }
                 
                 // Add containerId if this is a new batch

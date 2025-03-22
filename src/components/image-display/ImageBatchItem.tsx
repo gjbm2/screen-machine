@@ -77,6 +77,9 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     isRolledUp
   });
 
+  // Parse reference images if they exist
+  const hasReferenceImages = Boolean(image.referenceImageUrl && image.referenceImageUrl.trim() !== '');
+
   return (
     <div 
       className={`relative rounded-md overflow-hidden group ${viewMode === 'small' ? 'mb-1' : 'w-full'}`}
@@ -89,6 +92,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         index={index}
         onClick={handleImageClick}
         viewMode={viewMode}
+        hasReferenceImages={hasReferenceImages}
       />
       
       <BatchCountDisplay 
