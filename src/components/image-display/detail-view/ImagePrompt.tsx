@@ -25,8 +25,13 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
   
   // Get a truncated display of the workflow name if available
   const workflowDisplay = workflowName ? 
-    (workflowName.length > 10 ? `${workflowName.substring(0, 10)}...` : workflowName) : 
+    (workflowName.length > 15 ? `${workflowName.substring(0, 15)}...` : workflowName) : 
     null;
+  
+  // Get the global image counter if it exists
+  const globalCounter = typeof window !== 'undefined' && window.imageCounter !== undefined 
+    ? window.imageCounter 
+    : null;
   
   // Debug log for reference images
   console.log(`ImagePrompt has reference images: ${hasReferenceImages}`);
@@ -51,10 +56,19 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
           {prompt}
         </div>
       ) : (
-        /* If we don't have a prompt but have reference images, show a generic message */
+        /* If we don't have a prompt, show a generic title with global counter and workflow */
         <div className="truncate text-sm flex items-center gap-1">
-          {imageNumber && <span>Image {imageNumber}</span>}
-          {workflowDisplay && <span className="text-gray-500">({workflowDisplay})</span>}
+          {globalCounter !== null ? (
+            <span>
+              {globalCounter}. {workflowDisplay || 'Generated Image'}
+            </span>
+          ) : (
+            /* Fallback if global counter not available */
+            <span>
+              {imageNumber && `Image ${imageNumber}`}
+              {workflowDisplay && ` (${workflowDisplay})`}
+            </span>
+          )}
         </div>
       )}
       
