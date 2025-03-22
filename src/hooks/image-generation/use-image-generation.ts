@@ -123,9 +123,11 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
       batchId: lastBatchIdUsed
     };
     
+    // Call generateImages and get the new batch ID
     const newBatchId = await generateImages(config);
-    // Fix: Only set lastBatchIdUsed if newBatchId is not null or undefined
-    if (newBatchId) {
+    
+    // Update lastBatchIdUsed if newBatchId is a non-empty string
+    if (newBatchId && typeof newBatchId === 'string') {
       setLastBatchIdUsed(newBatchId);
     }
   }, [
