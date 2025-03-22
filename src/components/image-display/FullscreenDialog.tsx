@@ -36,6 +36,11 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   
   const currentBatch = batches[fullScreenBatchId];
   
+  const handleImageClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowFullScreenView(false);
+  };
+  
   return (
     <Dialog 
       open={showFullScreenView} 
@@ -44,6 +49,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       <DialogContent 
         className="max-w-[100vw] w-[95vw] md:w-[90vw] max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col select-none" 
         noPadding
+        title="Image Details"
         description="Detailed view of generated image"
       >
         <div className="flex-grow overflow-hidden flex flex-col">
@@ -76,8 +82,8 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
               isNavigatingAllImages={true}
               onNavigateGlobal={handleNavigateGlobal}
               currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
-              onImageClick={(e) => e.stopPropagation()}
-              hidePrompt={false} // Show the prompt in the detail view since we've removed it from the header
+              onImageClick={handleImageClick}
+              hidePrompt={false}
             />
           )}
         </div>

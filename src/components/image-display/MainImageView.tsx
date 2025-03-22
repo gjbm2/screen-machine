@@ -79,13 +79,25 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   const showPrevButton = currentGlobalIndex !== undefined && currentGlobalIndex > 0 && allImages && allImages.length > 1;
   const showNextButton = currentGlobalIndex !== undefined && allImages && currentGlobalIndex < allImages.length - 1;
 
+  // Handle image click - forward to parent component handler
+  const handleImageContainerClick = (e: React.MouseEvent) => {
+    // Only handle clicks that are directly on the container or the image
+    // Don't trigger for navigation buttons
+    if (e.target === imageContainerRef.current || 
+        (e.target as HTMLElement).tagName === 'IMG') {
+      if (onImageClick) {
+        onImageClick(e);
+      }
+    }
+  };
+
   return (
     <div 
       ref={imageContainerRef}
-      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-full h-full select-none" /* Added select-none to prevent text selection */
+      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-full h-full select-none cursor-pointer" /* Added cursor-pointer to indicate clickability */
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      onClick={onImageClick}
+      onClick={handleImageContainerClick}
       tabIndex={-1}
       style={{ outline: 'none' }}
       onMouseDown={(e) => e.preventDefault()} // Prevent text selection on mouse down
