@@ -15,7 +15,6 @@ export interface GeneratedImage {
   refinerParams?: Record<string, any>;
   referenceImageUrl?: string;
   containerId?: number;
-  title?: string;
 }
 
 export interface ImageGenerationConfig {

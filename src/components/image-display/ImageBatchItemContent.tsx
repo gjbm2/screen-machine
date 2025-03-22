@@ -10,7 +10,6 @@ interface ImageBatchItemContentProps {
   onClick: (e: React.MouseEvent) => void; // Updated to accept a MouseEvent parameter
   viewMode?: ViewMode;
   hasReferenceImages?: boolean;
-  title?: string; // Added title prop
 }
 
 const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
@@ -19,17 +18,13 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
   index,
   onClick,
   viewMode = 'normal',
-  hasReferenceImages = false,
-  title
+  hasReferenceImages = false
 }) => {
   // Simple truncate function
   const truncateText = (text: string, maxLength: number) => {
     if (!text) return '';
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
   };
-
-  // Display title if available, otherwise use prompt
-  const displayText = title || prompt || '';
 
   // Log for debugging
   if (hasReferenceImages) {
@@ -43,7 +38,7 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
     >
       <img
         src={imageUrl}
-        alt={displayText || `Generated image ${index + 1}`}
+        alt={prompt || `Generated image ${index + 1}`}
         className="w-full h-full object-cover"
       />
       
@@ -53,9 +48,9 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
         </div>
       )}
       
-      {viewMode === 'small' && displayText && (
+      {viewMode === 'small' && prompt && (
         <div className="absolute bottom-0 left-0 right-0 p-1 text-[10px] leading-tight bg-black/60 text-white truncate">
-          {truncateText(displayText, 30)}
+          {truncateText(prompt, 30)}
         </div>
       )}
     </div>
