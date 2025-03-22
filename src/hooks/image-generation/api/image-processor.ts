@@ -20,7 +20,7 @@ export const createPlaceholderImages = (
   const nextIndex = existingBatchIndexes.size;
   
   // Create a placeholder entry
-  const placeholderImage = {
+  const placeholderImage: GeneratedImage = {
     url: '', 
     prompt,
     workflow,
@@ -108,7 +108,7 @@ export const processGenerationResponse = (
       // If there's a reference image, make sure to include it
       if (referenceImageUrl) {
         newImage.referenceImageUrl = referenceImageUrl;
-        console.log('[image-processor] Adding reference images to new image:', newImage.referenceImageUrl);
+        console.log('[image-processor] Adding reference images to new image:', referenceImageUrl);
       }
       
       // Add containerId if this is a new batch
