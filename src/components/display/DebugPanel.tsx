@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from './types';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -13,9 +13,14 @@ import { useForm } from "react-hook-form";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useNavigate } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Info, RefreshCw } from "lucide-react";
+import { Info, RefreshCw, ChevronDown, ChevronUp, Copy, Eye, EyeOff, Code } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
-import { createUrlWithParams } from './utils';
+import { createUrlWithParams, extractImageMetadata } from './utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 interface DebugPanelProps {
   params: DisplayParams;
@@ -83,6 +88,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
 }) => {
   const navigate = useNavigate();
   const [selectedColor, setSelectedColor] = useState(params.backgroundColor);
+  const [helpCollapsed, setHelpCollapsed] = useState(true);
+  const [metadataPreview, setMetadataPreview] = useState<Record<string, string>>({});
+  const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("settings");
   
   const form = useForm<DebugFormValues>({
     defaultValues: {
@@ -134,10 +143,14 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     navigate(`/display?${queryParams.toString()}`);
   };
 
-  const applyUrlChange = (url: string) => {
+  const applyUrlChange = async (url: string) => {
     if (!url) {
+      toast.error("Please enter a URL");
       return;
     }
+    
+    // Show loading state
+    setIsLoadingMetadata(true);
     
     // Handle URL encoding for parameters in custom URLs
     let processedUrl = url;
@@ -154,6 +167,22 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       }
     }
     
+    // Attempt to fetch metadata from the image URL
+    try {
+      const metadata = await extractImageMetadata(url, '');
+      setMetadataPreview(metadata);
+      toast.success("Metadata loaded successfully");
+      
+      // Switch to the metadata tab
+      setActiveTab("metadata");
+    } catch (error) {
+      console.error("Error fetching metadata:", error);
+      toast.error("Could not load metadata from image");
+    } finally {
+      setIsLoadingMetadata(false);
+    }
+    
+    // Update the URL regardless of metadata success
     const queryParams = new URLSearchParams();
     queryParams.set('output', processedUrl);
     queryParams.set('show', params.showMode);
@@ -230,309 +259,257 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     });
   };
 
+  const copyMetadataTag = (tag: string) => {
+    // Get current caption value
+    const currentCaption = form.getValues('caption');
+    
+    // Insert {tag} at the current end of the caption
+    const newCaption = currentCaption ? `${currentCaption} {${tag}}` : `{${tag}}`;
+    form.setValue('caption', newCaption);
+    
+    toast.success(`Added {${tag}} to caption`);
+  };
+
+  const useAllMetadata = () => {
+    form.setValue('caption', '{all}');
+    toast.success("Set caption to show all metadata");
+  };
+
   return (
-    <Card className="absolute top-4 left-4 z-10 w-auto min-w-96 max-w-[90vw] max-h-[90vh] overflow-auto bg-white/90 dark:bg-gray-800/90 shadow-lg">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg">Debug Configuration</CardTitle>
+    <Card className="absolute top-4 left-4 z-10 w-auto min-w-96 max-w-[90vw] max-h-[90vh] overflow-auto bg-white/95 dark:bg-gray-800/95 shadow-lg border-slate-200">
+      <CardHeader className="pb-2 flex flex-row justify-between items-center">
+        <CardTitle className="text-lg">Display Configuration</CardTitle>
+        <div className="flex items-center space-x-2">
+          {onCheckNow && (
+            <Button 
+              type="button" 
+              onClick={onCheckNow}
+              size="sm"
+              variant="outline"
+              className="flex items-center gap-1"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Check Now
+            </Button>
+          )}
+          <Button 
+            type="button" 
+            size="sm"
+            variant="outline"
+            onClick={endDebugMode}
+            disabled={!params.output}
+          >
+            <Eye className="h-3 w-3 mr-1" />
+            Exit Debug
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent className="text-sm">
-        {(!params.output || outputFiles.length === 0) && (
-          <Alert className="mb-4">
-            <Info className="h-4 w-4" />
-            <AlertTitle>Display Page Configuration</AlertTitle>
-            <AlertDescription>
-              <p className="mb-2">This debug view helps you configure the display page. Set your preferences and generate a shareable URL.</p>
-              <ul className="list-disc list-inside space-y-1 text-xs">
-                <li><strong>output</strong>: (required) Image to display from /output/ directory or full URL</li>
-                <li><strong>show</strong>: Display mode - 'fit', 'fill', 'actual', or 'stretch'</li>
-                <li><strong>position</strong>: Image position - e.g., 'center', 'top-left', 'bottom-right'</li>
-                <li><strong>refresh</strong>: Check for image updates every X seconds</li>
-                <li><strong>background</strong>: Background color hexcode</li>
-                <li><strong>caption</strong>: Text to display over the image (use {"{key}"} to insert metadata values or {"{all}"} for all metadata)</li>
-                <li><strong>caption-position</strong>: Where to display the caption</li>
-                <li><strong>data</strong>: Extract and display image metadata (use empty value for all metadata)</li>
-                <li><strong>transition</strong>: How to transition between image updates - 'cut', 'fade-fast', or 'fade-slow'</li>
-              </ul>
-            </AlertDescription>
-          </Alert>
-        )}
+      <CardContent className="text-sm p-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="px-4 border-b">
+            <TabsList className="w-full justify-start">
+              <TabsTrigger value="settings" className="flex-1">Settings</TabsTrigger>
+              <TabsTrigger value="files" className="flex-1">
+                Files
+                <Badge variant="outline" className="ml-2 text-xs">
+                  {outputFiles.length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="metadata" className="flex-1">
+                Metadata
+                <Badge variant="outline" className="ml-2 text-xs">
+                  {Object.keys(metadataPreview).length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="info" className="flex-1">Info</TabsTrigger>
+            </TabsList>
+          </div>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(applySettings)} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="showMode"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Display Mode</FormLabel>
-                      <FormControl>
-                        <Select 
-                          value={field.value} 
-                          onValueChange={(value: ShowMode) => {
-                            field.onChange(value);
-                            form.handleSubmit(applySettings)();
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select display mode" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="fit">Fit</SelectItem>
-                            <SelectItem value="fill">Fill</SelectItem>
-                            <SelectItem value="actual">Actual Size</SelectItem>
-                            <SelectItem value="stretch">Stretch</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="position"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Position</FormLabel>
-                      <FormControl>
-                        <Select 
-                          value={field.value} 
-                          onValueChange={(value: PositionMode) => {
-                            field.onChange(value);
-                            form.handleSubmit(applySettings)();
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select position" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="center">Center</SelectItem>
-                            <SelectItem value="top-left">Top Left</SelectItem>
-                            <SelectItem value="top-center">Top Center</SelectItem>
-                            <SelectItem value="top-right">Top Right</SelectItem>
-                            <SelectItem value="center-left">Center Left</SelectItem>
-                            <SelectItem value="center-right">Center Right</SelectItem>
-                            <SelectItem value="bottom-left">Bottom Left</SelectItem>
-                            <SelectItem value="bottom-center">Bottom Center</SelectItem>
-                            <SelectItem value="bottom-right">Bottom Right</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="refreshInterval"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Refresh Interval: {field.value}s</FormLabel>
-                      <FormControl>
-                        <Slider 
-                          value={[field.value]} 
-                          min={1} 
-                          max={30} 
-                          step={1}
-                          onValueChange={(values) => {
-                            field.onChange(values[0]);
-                            form.handleSubmit(applySettings)();
-                          }}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="backgroundColor"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Background Color</FormLabel>
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <div 
-                            className="w-8 h-8 border border-gray-300 rounded"
-                            style={{ backgroundColor: `#${field.value}` }}
-                          />
-                          <FormControl>
-                            <Input 
-                              placeholder="Hex color (without #)" 
-                              value={field.value}
-                              onChange={(e) => {
-                                field.onChange(e.target.value);
-                              }}
-                              onBlur={() => form.handleSubmit(applySettings)()}
-                              maxLength={6}
-                              className="w-32"
-                            />
-                          </FormControl>
-                        </div>
-                        <div className="flex flex-wrap gap-2 pt-2">
-                          {PRESET_COLORS.map(color => (
-                            <div
-                              key={color}
-                              className="w-6 h-6 rounded cursor-pointer border border-gray-300"
-                              style={{ backgroundColor: `#${color}` }}
-                              onClick={() => {
-                                field.onChange(color);
-                                form.handleSubmit(applySettings)();
-                              }}
-                              title={`#${color}`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="transition"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Transition Effect</FormLabel>
-                      <FormControl>
-                        <Select 
-                          value={field.value} 
-                          onValueChange={(value: TransitionType) => {
-                            field.onChange(value);
-                            form.handleSubmit(applySettings)();
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select transition effect" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cut">Cut (Immediate)</SelectItem>
-                            <SelectItem value="fade-fast">Fade (1 second)</SelectItem>
-                            <SelectItem value="fade-slow">Fade (10 seconds)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <div className="pt-2">
-                  <FormLabel>Set Custom URL</FormLabel>
-                  <div className="flex space-x-2 mt-1">
-                    <Input 
-                      placeholder="Enter full URL" 
-                      value={form.watch('customUrl')}
-                      onChange={(e) => form.setValue('customUrl', e.target.value)}
-                    />
-                    <Button 
-                      type="button" 
-                      onClick={() => applyUrlChange(form.watch('customUrl'))}
-                      size="sm"
-                    >
-                      Apply
-                    </Button>
+          <ScrollArea className="h-[70vh]">
+            <TabsContent value="settings" className="pt-2 px-4 space-y-4 m-0">
+              {(!params.output || outputFiles.length === 0) && (
+                <Collapsible open={!helpCollapsed} onOpenChange={setHelpCollapsed}>
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-sm font-medium">Display Page Configuration Help</h3>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm">
+                        {helpCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                      </Button>
+                    </CollapsibleTrigger>
                   </div>
-                </div>
+                  <CollapsibleContent>
+                    <Alert className="my-2">
+                      <Info className="h-4 w-4" />
+                      <AlertTitle>Display Page Configuration</AlertTitle>
+                      <AlertDescription>
+                        <p className="mb-2">This debug view helps you configure the display page. Set your preferences and generate a shareable URL.</p>
+                        <ul className="list-disc list-inside space-y-1 text-xs">
+                          <li><strong>output</strong>: (required) Image to display from /output/ directory or full URL</li>
+                          <li><strong>show</strong>: Display mode - 'fit', 'fill', 'actual', or 'stretch'</li>
+                          <li><strong>position</strong>: Image position - e.g., 'center', 'top-left', 'bottom-right'</li>
+                          <li><strong>refresh</strong>: Check for image updates every X seconds</li>
+                          <li><strong>background</strong>: Background color hexcode</li>
+                          <li><strong>caption</strong>: Text to display over the image (use {"{key}"} to insert metadata values or {"{all}"} for all metadata)</li>
+                          <li><strong>caption-position</strong>: Where to display the caption</li>
+                          <li><strong>data</strong>: Extract and display image metadata (use empty value for all metadata)</li>
+                          <li><strong>transition</strong>: How to transition between image updates - 'cut', 'fade-fast', or 'fade-slow'</li>
+                        </ul>
+                      </AlertDescription>
+                    </Alert>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
 
-                <Separator className="my-2" />
-
-                <FormField
-                  control={form.control}
-                  name="data"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Metadata Display</FormLabel>
-                      <FormControl>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(applySettings)} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+                    <div className="pt-2">
+                      <FormLabel className="font-medium">Set Image URL</FormLabel>
+                      <div className="flex space-x-2 mt-1">
                         <Input 
-                          placeholder="Leave empty for all metadata or enter tag name" 
-                          value={field.value || ''}
-                          onChange={(e) => field.onChange(e.target.value)}
-                          onBlur={() => form.handleSubmit(applySettings)()}
+                          placeholder="Enter full URL or image path" 
+                          value={form.watch('customUrl')}
+                          onChange={(e) => form.setValue('customUrl', e.target.value)}
                         />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
+                        <Button 
+                          type="button" 
+                          onClick={() => applyUrlChange(form.watch('customUrl'))}
+                          size="sm"
+                          disabled={isLoadingMetadata}
+                        >
+                          {isLoadingMetadata ? (
+                            <RefreshCw className="h-4 w-4 animate-spin mr-1" />
+                          ) : (
+                            <Eye className="h-4 w-4 mr-1" />
+                          )}
+                          Apply
+                        </Button>
+                      </div>
+                    </div>
 
-                <Separator className="my-2" />
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="showMode"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Display Mode</FormLabel>
+                            <FormControl>
+                              <Select 
+                                value={field.value} 
+                                onValueChange={(value: ShowMode) => {
+                                  field.onChange(value);
+                                  form.handleSubmit(applySettings)();
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select display mode" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="fit">Fit</SelectItem>
+                                  <SelectItem value="fill">Fill</SelectItem>
+                                  <SelectItem value="actual">Actual Size</SelectItem>
+                                  <SelectItem value="stretch">Stretch</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
 
-                <FormField
-                  control={form.control}
-                  name="caption"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Caption Text</FormLabel>
-                      <FormControl>
-                        <Input 
-                          placeholder="Enter caption text (use {key} for metadata or {all} for all)" 
-                          value={field.value || ''}
-                          onChange={(e) => field.onChange(e.target.value)}
-                          onBlur={() => form.handleSubmit(applySettings)()}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
+                      <FormField
+                        control={form.control}
+                        name="position"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Position</FormLabel>
+                            <FormControl>
+                              <Select 
+                                value={field.value} 
+                                onValueChange={(value: PositionMode) => {
+                                  field.onChange(value);
+                                  form.handleSubmit(applySettings)();
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select position" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="center">Center</SelectItem>
+                                  <SelectItem value="top-left">Top Left</SelectItem>
+                                  <SelectItem value="top-center">Top Center</SelectItem>
+                                  <SelectItem value="top-right">Top Right</SelectItem>
+                                  <SelectItem value="center-left">Center Left</SelectItem>
+                                  <SelectItem value="center-right">Center Right</SelectItem>
+                                  <SelectItem value="bottom-left">Bottom Left</SelectItem>
+                                  <SelectItem value="bottom-center">Bottom Center</SelectItem>
+                                  <SelectItem value="bottom-right">Bottom Right</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-                {form.watch('caption') && (
-                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="refreshInterval"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Refresh Interval: {field.value}s</FormLabel>
+                            <FormControl>
+                              <Slider 
+                                value={[field.value]} 
+                                min={1} 
+                                max={30} 
+                                step={1}
+                                onValueChange={(values) => {
+                                  field.onChange(values[0]);
+                                  form.handleSubmit(applySettings)();
+                                }}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="transition"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Transition Effect</FormLabel>
+                            <FormControl>
+                              <Select 
+                                value={field.value} 
+                                onValueChange={(value: TransitionType) => {
+                                  field.onChange(value);
+                                  form.handleSubmit(applySettings)();
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select transition effect" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="cut">Cut (Immediate)</SelectItem>
+                                  <SelectItem value="fade-fast">Fade (1 second)</SelectItem>
+                                  <SelectItem value="fade-slow">Fade (10 seconds)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
                     <FormField
                       control={form.control}
-                      name="captionPosition"
+                      name="backgroundColor"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Caption Position</FormLabel>
-                          <FormControl>
-                            <Select 
-                              value={field.value} 
-                              onValueChange={(value: CaptionPosition) => {
-                                field.onChange(value);
-                                form.handleSubmit(applySettings)();
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select position" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="top-left">Top Left</SelectItem>
-                                <SelectItem value="top-center">Top Center</SelectItem>
-                                <SelectItem value="top-right">Top Right</SelectItem>
-                                <SelectItem value="bottom-left">Bottom Left</SelectItem>
-                                <SelectItem value="bottom-center">Bottom Center</SelectItem>
-                                <SelectItem value="bottom-right">Bottom Right</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="captionSize"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Caption Size</FormLabel>
-                          <FormControl>
-                            <Input 
-                              placeholder="Font size (e.g., 16px)" 
-                              value={field.value}
-                              onChange={(e) => field.onChange(e.target.value)}
-                              onBlur={() => form.handleSubmit(applySettings)()}
-                            />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="captionColor"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Caption Color</FormLabel>
+                          <FormLabel>Background Color</FormLabel>
                           <div className="space-y-2">
                             <div className="flex items-center space-x-2">
                               <div 
@@ -543,7 +520,9 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                                 <Input 
                                   placeholder="Hex color (without #)" 
                                   value={field.value}
-                                  onChange={(e) => field.onChange(e.target.value)}
+                                  onChange={(e) => {
+                                    field.onChange(e.target.value);
+                                  }}
                                   onBlur={() => form.handleSubmit(applySettings)()}
                                   maxLength={6}
                                   className="w-32"
@@ -569,137 +548,373 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                       )}
                     />
 
-                    <FormField
-                      control={form.control}
-                      name="captionFont"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Caption Font</FormLabel>
-                          <FormControl>
-                            <Select 
-                              value={field.value} 
-                              onValueChange={(value: string) => {
-                                field.onChange(value);
-                                form.handleSubmit(applySettings)();
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select font" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {CAPTION_FONTS.map(font => (
-                                  <SelectItem key={font} value={font}>
-                                    <span style={{ fontFamily: font }}>{font.split(',')[0]}</span>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </FormControl>
-                        </FormItem>
+                    <Separator className="my-1" />
+                    
+                    <div className="grid grid-cols-1 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="data"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Metadata Display</FormLabel>
+                            <FormControl>
+                              <Input 
+                                placeholder="Leave empty for all metadata or enter tag name" 
+                                value={field.value || ''}
+                                onChange={(e) => field.onChange(e.target.value)}
+                                onBlur={() => form.handleSubmit(applySettings)()}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <Separator className="my-1" />
+
+                    <div className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="caption"
+                        render={({ field }) => (
+                          <FormItem>
+                            <div className="flex justify-between">
+                              <FormLabel>Caption Text</FormLabel>
+                              <Button 
+                                type="button" 
+                                variant="outline" 
+                                size="xs" 
+                                onClick={useAllMetadata}
+                                className="h-6 text-xs"
+                              >
+                                Use All Metadata
+                              </Button>
+                            </div>
+                            <FormControl>
+                              <Input 
+                                placeholder="Enter caption text (use {key} for metadata or {all} for all)" 
+                                value={field.value || ''}
+                                onChange={(e) => field.onChange(e.target.value)}
+                                onBlur={() => form.handleSubmit(applySettings)()}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      {form.watch('caption') && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="captionPosition"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Caption Position</FormLabel>
+                                <FormControl>
+                                  <Select 
+                                    value={field.value} 
+                                    onValueChange={(value: CaptionPosition) => {
+                                      field.onChange(value);
+                                      form.handleSubmit(applySettings)();
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select position" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="top-left">Top Left</SelectItem>
+                                      <SelectItem value="top-center">Top Center</SelectItem>
+                                      <SelectItem value="top-right">Top Right</SelectItem>
+                                      <SelectItem value="bottom-left">Bottom Left</SelectItem>
+                                      <SelectItem value="bottom-center">Bottom Center</SelectItem>
+                                      <SelectItem value="bottom-right">Bottom Right</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="captionSize"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Caption Size</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    placeholder="Font size (e.g., 16px)" 
+                                    value={field.value}
+                                    onChange={(e) => field.onChange(e.target.value)}
+                                    onBlur={() => form.handleSubmit(applySettings)()}
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+                        </div>
                       )}
-                    />
-                  </>
+
+                      {form.watch('caption') && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="captionColor"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Caption Color</FormLabel>
+                                <div className="space-y-2">
+                                  <div className="flex items-center space-x-2">
+                                    <div 
+                                      className="w-8 h-8 border border-gray-300 rounded"
+                                      style={{ backgroundColor: `#${field.value}` }}
+                                    />
+                                    <FormControl>
+                                      <Input 
+                                        placeholder="Hex color (without #)" 
+                                        value={field.value}
+                                        onChange={(e) => field.onChange(e.target.value)}
+                                        onBlur={() => form.handleSubmit(applySettings)()}
+                                        maxLength={6}
+                                        className="w-32"
+                                      />
+                                    </FormControl>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2 pt-2">
+                                    {PRESET_COLORS.map(color => (
+                                      <div
+                                        key={color}
+                                        className="w-6 h-6 rounded cursor-pointer border border-gray-300"
+                                        style={{ backgroundColor: `#${color}` }}
+                                        onClick={() => {
+                                          field.onChange(color);
+                                          form.handleSubmit(applySettings)();
+                                        }}
+                                        title={`#${color}`}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="captionFont"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Caption Font</FormLabel>
+                                <FormControl>
+                                  <Select 
+                                    value={field.value} 
+                                    onValueChange={(value: string) => {
+                                      field.onChange(value);
+                                      form.handleSubmit(applySettings)();
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select font" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {CAPTION_FONTS.map(font => (
+                                        <SelectItem key={font} value={font}>
+                                          <span style={{ fontFamily: font }}>{font.split(',')[0]}</span>
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </form>
+              </Form>
+
+              {/* URL Parameters box */}
+              <div className="mt-4">
+                <h3 className="text-sm font-medium mb-1">URL Parameters</h3>
+                <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded-md text-xs font-mono overflow-x-auto">
+                  {params.output ? createUrlWithParams(params).replace('/display?', '') : 'Configure display settings to generate URL parameters'}
+                </div>
+                {params.output && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-2"
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.origin + createUrlWithParams(params));
+                      toast.success("URL copied to clipboard");
+                    }}
+                  >
+                    <Copy className="h-3 w-3 mr-1" />
+                    Copy Full URL
+                  </Button>
                 )}
               </div>
+            </TabsContent>
 
-              <div className="space-y-4">
-                <div className="flex justify-between items-start">
-                  <h3 className="font-bold mb-1">Current Settings:</h3>
-                  {onCheckNow && (
-                    <Button 
-                      type="button" 
-                      onClick={onCheckNow}
-                      size="sm"
-                      variant="outline"
-                      className="flex items-center gap-1"
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                      Check Now
-                    </Button>
-                  )}
-                </div>
-                <ul className="space-y-1 mb-3">
-                  <li><strong>Output:</strong> {params.output || 'Not set'}</li>
-                  <li><strong>Display Mode:</strong> {params.showMode}</li>
-                  <li><strong>Position:</strong> {params.position}</li>
-                  <li><strong>Refresh:</strong> {params.refreshInterval}s</li>
-                  <li><strong>Background:</strong> #{params.backgroundColor}</li>
-                  <li><strong>Transition:</strong> {params.transition}</li>
-                  {params.caption && (
-                    <>
-                      <li><strong>Caption:</strong> {params.caption}</li>
-                      <li><strong>Caption Position:</strong> {params.captionPosition}</li>
-                      <li><strong>Caption Size:</strong> {params.captionSize}</li>
-                      <li><strong>Caption Color:</strong> #{params.captionColor}</li>
-                      <li><strong>Caption Font:</strong> {params.captionFont?.split(',')[0]}</li>
-                    </>
-                  )}
-                  {params.data !== undefined && (
-                    <li><strong>Metadata:</strong> {params.data || 'All metadata'}</li>
-                  )}
-                  <li><strong>Image Key:</strong> {imageKey}</li>
-                  <li><strong>Last Modified:</strong> {lastModified || 'Unknown'}</li>
-                  <li><strong>Last Checked:</strong> {formatDateTime(lastChecked)}</li>
-                  <li><strong>Next Check At:</strong> {nextCheckTime}</li>
-                  <li>
-                    <strong>Status:</strong> 
-                    {imageChanged ? (
-                      <span className="text-amber-600 font-medium"> Image has changed since last load</span>
-                    ) : (
-                      <span className="text-green-600"> Up to date</span>
-                    )}
-                  </li>
-                </ul>
-                
-                <Separator className="my-2" />
-                
-                <h3 className="font-bold mb-1">Available Images:</h3>
-                <div className="max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded p-2">
-                  {outputFiles.length > 0 ? (
-                    <ul className="space-y-1">
-                      {outputFiles.map((file, index) => (
-                        <li key={index} className="hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded">
-                          <button 
-                            className="text-blue-500 dark:text-blue-400 hover:underline text-left w-full"
-                            onClick={() => selectOutputFile(file)}
-                          >
-                            {file}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-gray-500">Loading available files...</p>
-                  )}
-                </div>
-
-                <div className="flex justify-between items-center mt-4">
-                  {params.output ? (
-                    <Button
-                      type="button"
-                      onClick={endDebugMode}
-                      className="block text-center"
-                    >
-                      End Debug Mode
-                    </Button>
-                  ) : (
-                    <div className="text-gray-500 text-sm italic">
-                      Select an image to enable production mode
-                    </div>
-                  )}
-                  
-                  <div className="text-xs text-gray-500 mt-2">
-                    {params.output && (
-                      <div className="rounded bg-gray-100 p-2 text-gray-700 dark:bg-gray-700 dark:text-gray-300 font-mono text-[10px] break-all">
-                        {createUrlWithParams(params).replace('/display?', '')}
+            <TabsContent value="files" className="pt-2 px-4 m-0">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="font-medium">Available Images</h3>
+                <Badge variant="outline">{outputFiles.length} files</Badge>
+              </div>
+              
+              <div className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
+                {outputFiles.length > 0 ? (
+                  <div className="grid grid-cols-1 divide-y divide-gray-200 dark:divide-gray-700">
+                    {outputFiles.map((file, index) => (
+                      <div key={index} className="hover:bg-gray-50 dark:hover:bg-gray-800 p-2">
+                        <button 
+                          className="text-blue-500 dark:text-blue-400 hover:underline text-left w-full flex items-center"
+                          onClick={() => selectOutputFile(file)}
+                        >
+                          <span className="truncate">{file}</span>
+                        </button>
                       </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-gray-500">
+                    <p>No output files found</p>
+                    <p className="text-xs mt-1">Files should be in the /output directory</p>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="metadata" className="pt-2 px-4 m-0">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="font-medium">Image Metadata</h3>
+                <div className="flex items-center space-x-2">
+                  <Badge variant="outline">{Object.keys(metadataPreview).length} fields</Badge>
+                </div>
+              </div>
+              
+              {Object.keys(metadataPreview).length > 0 ? (
+                <div className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
+                  <div className="grid grid-cols-1 divide-y divide-gray-200 dark:divide-gray-700">
+                    {Object.entries(metadataPreview).map(([key, value], index) => (
+                      <div key={index} className="p-2 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <div className="flex-1 mr-2">
+                          <div className="font-medium text-gray-700 dark:text-gray-300">{key}</div>
+                          <div className="text-gray-600 dark:text-gray-400 text-xs truncate max-w-72">{value}</div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => copyMetadataTag(key)}
+                          title={`Add {${key}} to caption`}
+                        >
+                          <Code className="h-3 w-3 mr-1" />
+                          Use
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>No Metadata Available</AlertTitle>
+                  <AlertDescription>
+                    Apply a URL to load its metadata, or enter an image path and click Apply.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              <div className="mt-4 flex space-x-2">
+                <Button 
+                  onClick={useAllMetadata} 
+                  variant="outline"
+                  disabled={Object.keys(metadataPreview).length === 0}
+                >
+                  <Code className="h-4 w-4 mr-1" />
+                  Use All Metadata
+                </Button>
+                
+                {imageUrl && (
+                  <Button 
+                    onClick={async () => {
+                      setIsLoadingMetadata(true);
+                      try {
+                        const metadata = await extractImageMetadata(imageUrl, '');
+                        setMetadataPreview(metadata);
+                        toast.success("Metadata refreshed");
+                      } catch (error) {
+                        toast.error("Failed to refresh metadata");
+                      } finally {
+                        setIsLoadingMetadata(false);
+                      }
+                    }}
+                    variant="outline"
+                    disabled={isLoadingMetadata}
+                  >
+                    {isLoadingMetadata ? (
+                      <RefreshCw className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-1" />
+                    )}
+                    Refresh
+                  </Button>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="info" className="pt-2 px-4 m-0">
+              <div className="mb-2">
+                <h3 className="font-medium">Image Status Information</h3>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-1 text-sm">
+                  <div className="font-medium">Output Source:</div>
+                  <div className="truncate">{params.output || 'Not set'}</div>
+                  
+                  <div className="font-medium">Last Modified:</div>
+                  <div>{lastModified || 'Unknown'}</div>
+                  
+                  <div className="font-medium">Last Checked:</div>
+                  <div>{formatDateTime(lastChecked)}</div>
+                  
+                  <div className="font-medium">Next Check At:</div>
+                  <div>{nextCheckTime}</div>
+                  
+                  <div className="font-medium">Status:</div>
+                  <div>
+                    {imageChanged ? (
+                      <span className="text-amber-600 font-medium flex items-center">
+                        <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                        Image has changed since last load
+                      </span>
+                    ) : (
+                      <span className="text-green-600 flex items-center">
+                        <span className="h-2 w-2 bg-green-500 rounded-full mr-1"></span>
+                        Up to date
+                      </span>
                     )}
                   </div>
                 </div>
+                
+                <div className="mt-4">
+                  <Button 
+                    onClick={onCheckNow} 
+                    variant="outline" 
+                    disabled={!imageUrl}
+                    className="w-full"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Check for Updates Now
+                  </Button>
+                </div>
               </div>
-            </div>
-          </form>
-        </Form>
+            </TabsContent>
+          </ScrollArea>
+        </Tabs>
       </CardContent>
     </Card>
   );

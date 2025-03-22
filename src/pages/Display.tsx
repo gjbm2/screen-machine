@@ -8,6 +8,7 @@ import { processOutputParam, fetchOutputFiles, extractImageMetadata, processCapt
 import { DisplayParams } from '@/components/display/types';
 import { ImageDisplay } from '@/components/display/ImageDisplay';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
+import { toast } from 'sonner';
 
 const Display = () => {
   const [searchParams] = useSearchParams();
@@ -108,7 +109,7 @@ const Display = () => {
         window.clearInterval(intervalId);
       };
     }
-  }, [params.output, params.refreshInterval, params.debugMode, params.data, params.caption]);
+  }, [params.output, params.refreshInterval, params.debugMode, params.data, params.caption, isLoading, isTransitioning, loadNewImage, checkImageModified, setProcessedCaption]);
 
   // Fetch available output files for debug mode
   useEffect(() => {
@@ -119,6 +120,7 @@ const Display = () => {
 
   const handleImageError = () => {
     console.error('Failed to load image:', imageUrl);
+    toast.error("Failed to load image");
   };
 
   const imageStyle = getImagePositionStyle(params.position, params.showMode);
@@ -135,6 +137,10 @@ const Display = () => {
     alignItems: 'center',
     position: 'relative',
   };
+
+  if (error) {
+    return <ErrorMessage message={error} />;
+  }
 
   return (
     <div style={containerStyle}>
