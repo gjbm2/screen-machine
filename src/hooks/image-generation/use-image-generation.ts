@@ -23,6 +23,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
   const [isFirstRun, setIsFirstRun] = useState(true);
   const [fullscreenRefreshTrigger, setFullscreenRefreshTrigger] = useState(0);
+  const [lastGeneratedBatchId, setLastGeneratedBatchId] = useState<string | null>(null);
 
   // Use our custom hooks
   const { generatedImages, setGeneratedImages } = useImageState();
@@ -46,8 +47,20 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     setImageContainerOrder,
     nextContainerId,
     setNextContainerId,
-    // Add a callback for when a generation completes
-    () => setFullscreenRefreshTrigger(prev => prev + 1)
+    // Enhanced callback for when a generation completes
+    () => {
+      // Increment refresh trigger to force component updates
+      setFullscreenRefreshTrigger(prev => prev + 1);
+      // Log the completion for debugging purposes
+      console.log("Image generation complete, incrementing refresh trigger:", fullscreenRefreshTrigger + 1);
+      
+      // If we have a lastGeneratedBatchId, we want to force a refresh on that
+      if (lastGeneratedBatchId) {
+        console.log("Last generated batch ID:", lastGeneratedBatchId);
+        // Clear the last generated batch ID after handling
+        setLastGeneratedBatchId(null);
+      }
+    }
   );
 
   // When uploadedImageUrls changes, store them in a global variable
@@ -109,7 +122,11 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
       globalParams: currentGlobalParams,
     };
     
-    generateImages(config);
+    // Track the last generated batch ID
+    const newBatchId = await generateImages(config);
+    if (newBatchId) {
+      setLastGeneratedBatchId(newBatchId);
+    }
   }, [
     currentWorkflow, 
     currentParams, 
@@ -120,7 +137,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   const {
     imageUrl,
     handleUseGeneratedAsInput,
-    handleCreateAgain,
+    handleCreateAgain: baseHandleCreateAgain,
     handleDownloadImage,
     handleDeleteImage,
     handleReorderContainers,
@@ -134,6 +151,23 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     handleSubmitPrompt,
     generatedImages
   );
+
+  // Wrapper for handleCreateAgain to properly handle fullscreen refresh
+  const handleCreateAgain = useCallback((batchId?: string) => {
+    if (batchId) {
+      // Find the batch data
+      const batchImages = generatedImages.filter(img => img.batchId === batchId);
+      if (batchImages.length > 0) {
+        console.log("Creating again from batch:", batchId);
+        // Track this batch ID for fullscreen refresh handling
+        setLastGeneratedBatchId(batchId);
+      }
+    }
+    
+    // Call the base handler
+    baseHandleCreateAgain(batchId);
+    
+  }, [baseHandleCreateAgain, generatedImages]);
 
   // Wrapper for handleDeleteContainer to match the expected signature
   const handleDeleteContainer = useCallback((batchId: string) => {

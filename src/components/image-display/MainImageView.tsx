@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import NavigationControls from './NavigationControls';
+import ZoomableImage from './ZoomableImage';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface MainImageViewProps {
   imageUrl: string;
@@ -25,14 +27,13 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   isNavigatingAllImages,
   onNavigateGlobal,
   currentGlobalIndex,
-  handleTouchStart,
-  handleTouchEnd,
   onImageClick,
 }) => {
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
   const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
   
   useEffect(() => {
     const handleResize = () => {
@@ -95,35 +96,27 @@ const MainImageView: React.FC<MainImageViewProps> = ({
 
   // Handle image click - forward to parent component handler
   const handleImageContainerClick = (e: React.MouseEvent) => {
-    // Only handle clicks that are directly on the container or the image
-    // Don't trigger for navigation buttons
-    if (e.target === imageContainerRef.current || 
-        (e.target as HTMLElement).tagName === 'IMG') {
-      if (onImageClick) {
-        onImageClick(e);
-      }
+    // Forward click to parent handler if provided
+    if (onImageClick) {
+      onImageClick(e);
     }
   };
 
+  // Use our ZoomableImage component for the image display
   return (
     <div 
       ref={imageContainerRef}
       className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-auto min-w-0 h-full select-none cursor-pointer" 
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onClick={handleImageContainerClick}
       tabIndex={-1}
       style={{ outline: 'none', margin: '0 auto' }}
       onMouseDown={(e) => e.preventDefault()}
     >
       <div className="relative flex justify-center items-center h-full py-2 w-auto min-w-0">
-        <img 
+        <ZoomableImage
           src={imageUrl}
           alt={altText}
-          className="object-contain select-none"
-          style={optimalSize}
           onLoad={handleImageLoadInternal}
-          draggable={false}
+          onClick={isMobile ? undefined : handleImageContainerClick}
         />
       </div>
       
