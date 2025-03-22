@@ -11,6 +11,7 @@ interface DetailViewActionBarProps {
     prompt: string;
     workflow: string;
     params?: Record<string, any>;
+    referenceImageUrl?: string;
   };
 }
 

@@ -14,6 +14,7 @@ interface ImageActionsProps {
     prompt?: string;
     workflow?: string;
     params?: Record<string, any>;
+    referenceImageUrl?: string;
   };
   alwaysVisible?: boolean;
   isFullScreen?: boolean;

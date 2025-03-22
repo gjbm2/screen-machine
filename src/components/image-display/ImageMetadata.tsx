@@ -13,6 +13,7 @@ interface ImageMetadataProps {
   imageUrl?: string;
   onOpenInNewTab?: (e: React.MouseEvent) => void;
   onInfoClick?: () => void;
+  hasReferenceImages?: boolean;
 }
 
 const ImageMetadata: React.FC<ImageMetadataProps> = ({ 
@@ -20,7 +21,8 @@ const ImageMetadata: React.FC<ImageMetadataProps> = ({
   timestamp, 
   imageUrl, 
   onOpenInNewTab,
-  onInfoClick
+  onInfoClick,
+  hasReferenceImages
 }) => {
   const formatTimeAgo = (timestamp?: number) => {
     if (!timestamp) return "Unknown time";
