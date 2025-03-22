@@ -1,5 +1,6 @@
 
 import { GeneratedImage } from '../types';
+import { ImageGenerationStatus } from '@/types/workflows';
 
 /**
  * Processes the results of a generation and updates the images array
@@ -43,7 +44,7 @@ export const processGenerationResults = (
     if (img.batchId === batchId && img.status === 'generating') {
       updatedImages[index] = {
         ...img,
-        status: 'to_update'
+        status: 'to_update' as ImageGenerationStatus
       };
     }
   });

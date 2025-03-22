@@ -33,6 +33,7 @@ export const createPlaceholderBatch = (
     }
     
     const placeholder: GeneratedImage = {
+      url: '', // Adding empty url to satisfy the GeneratedImage type
       batchId,
       status: 'generating',
       prompt,
