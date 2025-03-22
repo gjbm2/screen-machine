@@ -13,7 +13,7 @@ import { useForm } from "react-hook-form";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useNavigate } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { InfoCircledIcon, RefreshCw } from "@radix-ui/react-icons";
+import { Info, RefreshCw } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
 interface DebugPanelProps {
@@ -129,7 +129,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       <CardContent className="text-sm">
         {(!params.output || outputFiles.length === 0) && (
           <Alert className="mb-4">
-            <InfoCircledIcon className="h-4 w-4" />
+            <Info className="h-4 w-4" />
             <AlertTitle>Display Page Configuration</AlertTitle>
             <AlertDescription>
               <p className="mb-2">This debug view helps you configure the display page. Set your preferences and generate a shareable URL.</p>

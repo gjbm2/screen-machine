@@ -33,7 +33,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       <CardHeader className="pb-2 flex flex-row justify-between items-center">
         <CardTitle className="text-lg">Image Preview ({showMode} mode)</CardTitle>
         {imageChanged && (
-          <Alert variant="outline" className="py-2 border-amber-500 bg-amber-50">
+          <Alert variant="default" className="py-2 border-amber-500 bg-amber-50">
             <RefreshCw className="h-4 w-4 text-amber-500 mr-2 animate-spin" />
             <AlertDescription className="text-amber-600">
               Image has been updated on the server
