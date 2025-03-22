@@ -123,9 +123,14 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     };
     
     // Generate images and track the batch ID, but don't check the return value directly
-    const newBatchId = await generateImages(config);
-    if (newBatchId !== null && newBatchId !== undefined) {
-      setLastGeneratedBatchId(newBatchId);
+    try {
+      const newBatchId = await generateImages(config);
+      // Only set the batch ID if we got a valid string back
+      if (typeof newBatchId === 'string') {
+        setLastGeneratedBatchId(newBatchId);
+      }
+    } catch (error) {
+      console.error("Error generating images:", error);
     }
   }, [
     currentWorkflow, 
