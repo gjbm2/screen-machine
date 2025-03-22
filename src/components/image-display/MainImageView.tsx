@@ -59,11 +59,16 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     }
 
     // Calculate space needed for controls - adaptive based on viewport size
-    const controlsSpace = Math.min(Math.max(120, viewportHeight * 0.15), 160);
+    // For larger screens, we'll use a smaller percentage of the screen for controls
+    const controlsSpacePercentage = viewportHeight > 900 ? 0.12 : 0.15;
+    const controlsSpace = Math.min(Math.max(120, viewportHeight * controlsSpacePercentage), 160);
     
     // Reserve space for the bottom panels
     const availableWidth = viewportWidth * 0.9;
-    const availableHeight = viewportHeight * 0.75 - controlsSpace;
+    
+    // Allow images to take up more vertical space on larger screens
+    const heightPercentage = viewportHeight > 900 ? 0.8 : 0.75;
+    const availableHeight = viewportHeight * heightPercentage - controlsSpace;
     
     const widthRatio = availableWidth / imageDimensions.width;
     const heightRatio = availableHeight / imageDimensions.height;
