@@ -1,3 +1,4 @@
+
 import React, { useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { DebugPanel } from '@/components/display/DebugPanel';
@@ -54,6 +55,7 @@ const Display = () => {
     getImagePositionStyle
   } = useDisplayState(params);
 
+  // Redirect to debug mode if no output is specified
   useEffect(() => {
     if (!params.output && !params.debugMode) {
       const queryParams = new URLSearchParams();
@@ -66,6 +68,7 @@ const Display = () => {
     }
   }, [params.output, params.debugMode, navigate, params.showMode, params.position, params.refreshInterval, params.backgroundColor]);
 
+  // Handle image loading and refresh checking
   useEffect(() => {
     if (!params.output && !params.debugMode) {
       return;
@@ -73,35 +76,45 @@ const Display = () => {
 
     const processedUrl = processOutputParam(params.output);
     if (processedUrl) {
+      // Only load the image if it's not already loading or transitioning
       if (!isTransitioning) {
         loadNewImage(processedUrl);
       }
       
+      // Set up periodic checks for image modifications
       const intervalId = window.setInterval(() => {
         if (processedUrl && !isLoading && !isTransitioning) {
           checkImageModified(processedUrl);
         }
       }, params.refreshInterval * 1000);
 
-      if (params.data !== undefined) {
-        extractImageMetadata(processedUrl, params.data || undefined)
-          .then(data => {
-            if (params.caption) {
-              const newCaption = processCaptionWithMetadata(params.caption, data);
-              setProcessedCaption(newCaption);
-            }
-          })
-          .catch(err => console.error('Error extracting metadata:', err));
-      } else if (params.caption) {
-        setProcessedCaption(params.caption);
-      }
-
+      // Setup cleanup to clear the interval
       return () => {
         window.clearInterval(intervalId);
       };
     }
-  }, [params.output, params.refreshInterval, params.debugMode, params.data, params.caption, isLoading, isTransitioning, loadNewImage, checkImageModified, setProcessedCaption]);
+  }, [params.output, params.refreshInterval, params.debugMode, isLoading, isTransitioning, loadNewImage, checkImageModified]);
 
+  // Process captions separately to avoid unnecessary metadata extraction
+  useEffect(() => {
+    if (!imageUrl) return;
+
+    if (params.caption) {
+      if (params.data !== undefined) {
+        // Ensure this is called only when metadata is already available
+        if (Object.keys(metadata).length > 0) {
+          const newCaption = processCaptionWithMetadata(params.caption, metadata);
+          setProcessedCaption(newCaption);
+        }
+      } else {
+        setProcessedCaption(params.caption);
+      }
+    } else {
+      setProcessedCaption(null);
+    }
+  }, [params.caption, params.data, metadata, imageUrl, setProcessedCaption]);
+
+  // Fetch output files for debug mode
   useEffect(() => {
     if (params.debugMode) {
       fetchOutputFiles().then(files => setOutputFiles(files));

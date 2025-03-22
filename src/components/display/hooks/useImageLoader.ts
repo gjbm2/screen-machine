@@ -23,22 +23,31 @@ export const useImageLoader = (
     currentImageUrl: string | null,
     params: DisplayParams
   ) => {
+    // Skip if the URL is the same as the current one and hasn't changed
+    if (url === currentImageUrl) {
+      console.log('Image URL unchanged, skipping load');
+      return;
+    }
+
     // Direct cut transition or no current image
     if (params.transition === 'cut' || !currentImageUrl) {
       setImageUrl(url);
       setImageKey(prev => prev + 1);
       setImageChanged(false);
       
-      // Extract metadata
-      try {
-        const newMetadata = await extractMetadataFromImage(url, params.data || undefined);
-        
-        // Process caption with new metadata if caption exists
-        if (params.caption) {
-          updateCaption(params.caption, newMetadata);
+      // Extract metadata only if needed
+      if (params.data !== undefined || params.caption) {
+        try {
+          console.log('Extracting metadata for new image (cut transition)');
+          const newMetadata = await extractMetadataFromImage(url, params.data || undefined);
+          
+          // Process caption with new metadata if caption exists
+          if (params.caption) {
+            updateCaption(params.caption, newMetadata);
+          }
+        } catch (err) {
+          console.error('Error extracting metadata:', err);
         }
-      } catch (err) {
-        console.error('Error extracting metadata:', err);
       }
     } else {
       // Fade transition
@@ -50,16 +59,19 @@ export const useImageLoader = (
         setImageUrl(url);
         setImageKey(prev => prev + 1);
         
-        // Extract metadata for the new image
-        try {
-          const newMetadata = await extractMetadataFromImage(url, params.data || undefined);
-          
-          // Process caption with new metadata if caption exists
-          if (params.caption) {
-            updateCaption(params.caption, newMetadata);
+        // Extract metadata for the new image only if needed
+        if (params.data !== undefined || params.caption) {
+          try {
+            console.log('Extracting metadata for new image (fade transition)');
+            const newMetadata = await extractMetadataFromImage(url, params.data || undefined);
+            
+            // Process caption with new metadata if caption exists
+            if (params.caption) {
+              updateCaption(params.caption, newMetadata);
+            }
+          } catch (err) {
+            console.error('Error extracting metadata:', err);
           }
-        } catch (err) {
-          console.error('Error extracting metadata:', err);
         }
         
         const duration = params.transition === 'fade-fast' ? 1 : 2;
