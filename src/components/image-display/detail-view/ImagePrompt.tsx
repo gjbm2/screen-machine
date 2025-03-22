@@ -11,6 +11,7 @@ interface ImagePromptProps {
   imageNumber?: number;
   workflowName?: string;
   onInfoClick?: () => void;
+  title?: string; // Add title field
 }
 
 const ImagePrompt: React.FC<ImagePromptProps> = ({
@@ -19,19 +20,21 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
   onReferenceImageClick,
   imageNumber,
   workflowName,
-  onInfoClick
+  onInfoClick,
+  title // Add title to component params
 }) => {
   // Log whether this component has reference images
   console.log("ImagePrompt has reference images:", hasReferenceImages);
   console.log("ImagePrompt received prompt:", prompt);
   console.log("ImagePrompt received workflowName:", workflowName);
+  console.log("ImagePrompt received title:", title);
   
-  // If no prompt, use a numbered title with the workflow name
-  const displayText = prompt 
+  // Use title if available, otherwise construct from components
+  const displayText = title || (prompt 
     ? prompt 
     : typeof window.imageCounter !== 'undefined' 
       ? `${window.imageCounter}. ${workflowName || 'Generated image'}`
-      : workflowName || 'Generated image';
+      : workflowName || 'Generated image');
   
   return (
     <div className="flex items-center gap-1 text-gray-700 min-w-0 w-full overflow-hidden">

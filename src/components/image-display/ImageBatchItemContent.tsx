@@ -10,6 +10,7 @@ interface ImageBatchItemContentProps {
   onClick: (e: React.MouseEvent) => void; // Updated to accept a MouseEvent parameter
   viewMode?: ViewMode;
   hasReferenceImages?: boolean;
+  title?: string; // Add title field
 }
 
 const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
@@ -18,7 +19,8 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
   index,
   onClick,
   viewMode = 'normal',
-  hasReferenceImages = false
+  hasReferenceImages = false,
+  title // Add to component props
 }) => {
   // Simple truncate function
   const truncateText = (text: string, maxLength: number) => {
@@ -31,6 +33,9 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
     console.log(`Image ${index} has reference images: ${hasReferenceImages}`);
   }
 
+  // Use title if available, otherwise use prompt or default
+  const displayText = title || prompt || `Generated image ${index + 1}`;
+
   return (
     <div 
       className={`w-full relative cursor-pointer ${viewMode === 'normal' ? 'aspect-square' : 'h-20'}`}
@@ -38,7 +43,7 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
     >
       <img
         src={imageUrl}
-        alt={prompt || `Generated image ${index + 1}`}
+        alt={displayText}
         className="w-full h-full object-cover"
       />
       
@@ -48,9 +53,9 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
         </div>
       )}
       
-      {viewMode === 'small' && prompt && (
+      {viewMode === 'small' && (
         <div className="absolute bottom-0 left-0 right-0 p-1 text-[10px] leading-tight bg-black/60 text-white truncate">
-          {truncateText(prompt, 30)}
+          {truncateText(displayText, 30)}
         </div>
       )}
     </div>

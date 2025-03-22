@@ -40,11 +40,12 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
   const containerId = batch.images[0]?.containerId || '';
   const promptText = batch.images[0]?.prompt || '';
   const workflowName = batch.images[0]?.workflow || 'Generated Image';
+  const imageTitle = batch.images[0]?.title;
 
-  // Changed format: no leading #, now with trailing dot
-  const titleText = promptText ? 
-    `${containerId}. ${promptText}` : 
-    `${containerId}. ${workflowName}`;
+  // Use title if available, otherwise generate a title
+  const titleText = imageTitle || (promptText ? 
+    `${containerId}. ${promptText} (${workflowName})` : 
+    `${containerId}. ${workflowName}`);
 
   // Create width class based on viewMode and isExpanded state
   const widthClass = viewMode === 'normal' 

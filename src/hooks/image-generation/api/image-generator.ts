@@ -1,3 +1,4 @@
+
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -30,6 +31,24 @@ export interface ImageGenerationActions {
   setNextContainerId: React.Dispatch<React.SetStateAction<number>>;
   setActiveGenerations: React.Dispatch<React.SetStateAction<string[]>>;
 }
+
+// Get or initialize counter for image titles
+const getNextImageNumber = (): number => {
+  // Initialize counter if it doesn't exist yet
+  if (typeof window.imageCounter === 'undefined') {
+    window.imageCounter = 0;
+  }
+  
+  // Increment counter and return new value
+  window.imageCounter += 1;
+  return window.imageCounter;
+};
+
+// Generate a formatted title with the current counter, prompt, and workflow
+const generateImageTitle = (prompt: string, workflow: string): string => {
+  const imageNumber = getNextImageNumber();
+  return `${imageNumber}. ${prompt} (${workflow})`;
+};
 
 /**
  * Handles the entire image generation process
@@ -78,6 +97,9 @@ export const generateImage = async (
   setActiveGenerations(prev => [...prev, currentBatchId]);
   
   const { uploadedFiles, uploadedImageUrls } = processUploadedFiles(imageFiles);
+  
+  // Generate title for this image generation
+  const imageTitle = generateImageTitle(prompt, workflow);
   
   // Log information about reference images for debugging
   if (uploadedFiles.length > 0 || uploadedImageUrls.length > 0) {
@@ -140,6 +162,9 @@ export const generateImage = async (
         nextContainerId && !batchId ? nextContainerId : undefined
       );
       
+      // Add the title to the placeholder image
+      placeholderImage.title = imageTitle;
+      
       // Additional debug for placeholder
       if (placeholderImage.referenceImageUrl) {
         console.log("[image-generator] Placeholder created with reference images:", placeholderImage.referenceImageUrl);
@@ -194,11 +219,16 @@ export const generateImage = async (
             );
             
             if (placeholderIndex >= 0) {
-              // Update the placeholder with actual data - preserve reference image URL
-              newImages[placeholderIndex] = updateImageWithResult(
+              // Update the placeholder with actual data - preserve reference image URL and title
+              const updatedImage = updateImageWithResult(
                 newImages[placeholderIndex], 
                 img.url
               );
+              
+              // Make sure the title is preserved
+              updatedImage.title = newImages[placeholderIndex].title || imageTitle;
+              
+              newImages[placeholderIndex] = updatedImage;
               
               // Log the updated image for debugging
               if (newImages[placeholderIndex].referenceImageUrl) {
@@ -216,7 +246,8 @@ export const generateImage = async (
                 status: 'completed' as ImageGenerationStatus,
                 params,
                 refiner,
-                refinerParams
+                refinerParams,
+                title: imageTitle // Add title to new image
               };
               
               // If there's a reference image, make sure to include it
@@ -254,7 +285,10 @@ export const generateImage = async (
         setGeneratedImages(prevImages => {
           return prevImages.map(img => {
             if (img.batchId === currentBatchId && img.status === 'generating') {
-              return updateImageWithError(img);
+              const errorImage = updateImageWithError(img);
+              // Preserve the title even when we have an error
+              errorImage.title = img.title;
+              return errorImage;
             }
             return img;
           });

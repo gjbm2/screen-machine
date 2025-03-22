@@ -16,6 +16,7 @@ interface ImageActionsPanelProps {
     params?: Record<string, any>;
   };
   referenceImageUrl?: string;
+  title?: string; // Add title field
 }
 
 const ImageActionsPanel: React.FC<ImageActionsPanelProps> = ({ 
@@ -25,7 +26,8 @@ const ImageActionsPanel: React.FC<ImageActionsPanelProps> = ({
   onUseAsInput,
   onDeleteImage,
   generationInfo,
-  referenceImageUrl
+  referenceImageUrl,
+  title // Add to component props
 }) => {
   const [isReferenceDialogOpen, setIsReferenceDialogOpen] = useState(false);
 
@@ -46,6 +48,7 @@ const ImageActionsPanel: React.FC<ImageActionsPanelProps> = ({
           onDeleteImage={onDeleteImage}
           generationInfo={generationInfo}
           alwaysVisible={true}
+          title={title} // Pass the title through
         />
       </div>
     </div>
