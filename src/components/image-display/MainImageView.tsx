@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import NavigationControls from './NavigationControls';
@@ -59,10 +60,9 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     const heightPercentage = isVeryLargeScreen ? 0.9 : (isLargeScreen ? 0.85 : 0.75);
     const availableHeight = viewportHeight * heightPercentage - controlsSpace;
     
-    // Improved dynamic horizontal sizing - allow it to adapt better to available space
-    // Calculate available width based on container size and viewport
-    const containerWidth = imageContainerRef.current?.offsetWidth || viewportWidth;
-    const containerPadding = 24; // account for padding/margins
+    // Calculate available width based on actual container dimensions
+    const containerWidth = imageContainerRef.current?.clientWidth || viewportWidth;
+    const containerPadding = 32; // padding/margins safety margin
     const availableWidth = Math.min(containerWidth - containerPadding, viewportWidth * 0.95);
     
     // Calculate scaling ratios
@@ -70,8 +70,9 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     const heightRatio = availableHeight / imageDimensions.height;
     
     // Use the smaller ratio to maintain aspect ratio
-    const ratio = Math.min(widthRatio, heightRatio, isVeryLargeScreen ? 1.5 : (isLargeScreen ? 1.2 : 1));
+    const ratio = Math.min(widthRatio, heightRatio);
     
+    // Calculate actual dimensions
     const calculatedWidth = Math.min(imageDimensions.width * ratio, availableWidth);
     const calculatedHeight = Math.min(imageDimensions.height * ratio, availableHeight);
     
@@ -81,6 +82,20 @@ const MainImageView: React.FC<MainImageViewProps> = ({
       maxWidth: '100%'
     };
   };
+
+  // Add useEffect to recalculate when container dimensions change
+  useEffect(() => {
+    const resizeObserver = new ResizeObserver(() => {
+      // Force re-render to recalculate optimal size
+      setImageDimensions(prev => ({...prev}));
+    });
+    
+    if (imageContainerRef.current) {
+      resizeObserver.observe(imageContainerRef.current);
+    }
+    
+    return () => resizeObserver.disconnect();
+  }, []);
 
   const optimalSize = calculateOptimalSize();
 
