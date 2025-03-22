@@ -65,25 +65,27 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         {currentBatch && (
           <div className="flex justify-between items-start px-4 py-3 border-b">
             <div 
-              className={`flex-1 pr-4 overflow-hidden ${isPromptExpanded ? '' : 'max-h-6'}`}
+              className={`flex-1 pr-4 overflow-hidden`}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center">
                 <button 
                   onClick={togglePromptExpand}
-                  className="inline-flex items-center justify-center p-1 mr-2 hover:bg-gray-100 rounded-md"
+                  className="inline-flex items-center justify-center p-1 mr-2 hover:bg-gray-100 rounded-md flex-shrink-0"
                 >
                   {isPromptExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                 </button>
-                <p className={`text-sm text-muted-foreground ${isPromptExpanded ? 'whitespace-normal' : 'truncate'}`}>
-                  {prompt}
-                </p>
+                <div className={`text-sm text-muted-foreground ${isPromptExpanded ? 'max-h-none' : 'max-h-6 overflow-hidden'}`}>
+                  <p className={isPromptExpanded ? 'whitespace-normal' : 'truncate'}>
+                    {prompt}
+                  </p>
+                </div>
               </div>
             </div>
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 p-1"
+              className="h-7 w-7 p-0 flex-shrink-0 -mt-0.5"
               onClick={() => setShowFullScreenView(false)}
             >
               <X className="h-4 w-4" />

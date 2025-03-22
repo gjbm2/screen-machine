@@ -49,14 +49,14 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
       {/* Previous button - conditionally rendered */}
       {showPrevButton && (
         <div 
-          className={`absolute left-5 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-start cursor-pointer`}
+          className={`absolute left-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-start cursor-pointer`}
           onClick={onPrevious} // Apply the click handler to the entire hotspot div
           onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
           <Button
             size="icon"
             variant="ghost"
-            className={`${button} rounded-r-md rounded-l-none bg-background/70 hover:bg-background/90 transition-opacity opacity-70 group-hover:opacity-100 pointer-events-none text-gray-800`}
+            className={`${button} rounded-r-md rounded-l-none bg-black/50 hover:bg-black/70 transition-opacity opacity-80 group-hover:opacity-100 pointer-events-none text-white`}
             tabIndex={-1}
           >
             <ChevronLeft className={icon} />
@@ -67,14 +67,14 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
       {/* Next button - conditionally rendered */}
       {showNextButton && (
         <div 
-          className={`absolute right-5 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-end cursor-pointer`} 
+          className={`absolute right-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-end cursor-pointer`} 
           onClick={onNext} // Apply the click handler to the entire hotspot div
           onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
           <Button
             size="icon"
             variant="ghost"
-            className={`${button} rounded-l-md rounded-r-none bg-background/70 hover:bg-background/90 transition-opacity opacity-70 group-hover:opacity-100 pointer-events-none text-gray-800`}
+            className={`${button} rounded-l-md rounded-r-none bg-black/50 hover:bg-black/70 transition-opacity opacity-80 group-hover:opacity-100 pointer-events-none text-white`}
             tabIndex={-1}
           >
             <ChevronRight className={icon} />
