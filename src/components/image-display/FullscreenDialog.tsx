@@ -70,14 +70,6 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         } else {
           setPrompt('');
         }
-        
-        // Debug log for reference images
-        console.log('Current image in fullscreen:', image);
-        if (image?.referenceImageUrl) {
-          console.log('Reference image URL in fullscreen:', image.referenceImageUrl);
-        } else {
-          console.log('No reference image URL in fullscreen image');
-        }
       }
     } else {
       setCurrentBatch(null);
@@ -85,6 +77,31 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       setPrompt('');
     }
   }, [fullScreenBatchId, batches, fullScreenImageIndex, fullscreenRefreshTrigger, showFullScreenView]);
+
+  // Log refresh trigger changes for debugging - Moving this useEffect up to maintain consistent hook order
+  useEffect(() => {
+    console.log("FullscreenDialog - refresh trigger changed:", fullscreenRefreshTrigger);
+    
+    // If dialog is open and there's a recent generation, update to display it
+    if (showFullScreenView && lastBatchId && batches[lastBatchId]) {
+      const completedImages = batches[lastBatchId].filter(img => img.status === 'completed');
+      if (completedImages.length > 0) {
+        // If there are completed images in the batch, force update to that batch
+        if (lastBatchId !== fullScreenBatchId || fullScreenImageIndex >= completedImages.length) {
+          console.log("FullscreenDialog - updating to newly completed image at index:", 0);
+          
+          // Find the global index of the first completed image in this batch
+          const globalIndex = allImagesFlat.findIndex(
+            img => img.batchId === lastBatchId && img.batchIndex === 0
+          );
+          
+          if (globalIndex !== -1) {
+            handleNavigateGlobal(globalIndex);
+          }
+        }
+      }
+    }
+  }, [fullscreenRefreshTrigger, showFullScreenView, lastBatchId, batches, fullScreenBatchId, fullScreenImageIndex, allImagesFlat, handleNavigateGlobal]);
 
   // Only render dialog if we need to show it
   if (!showFullScreenView) {
@@ -103,12 +120,6 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
 
   const handleShowInfoPanel = () => {
     console.log("Showing info dialog in fullscreen mode");
-    // Log reference image information for debugging
-    if (currentImage?.referenceImageUrl) {
-      console.log("Reference image URLs for info dialog:", currentImage.referenceImageUrl);
-    } else {
-      console.log("No reference image URLs available for info dialog");
-    }
     setShowInfoDialog(true);
   };
 
@@ -151,31 +162,6 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     // Close the fullscreen view after applying input
     setShowFullScreenView(false);
   };
-  
-  // Log refresh trigger changes for debugging
-  useEffect(() => {
-    console.log("FullscreenDialog - refresh trigger changed:", fullscreenRefreshTrigger);
-    
-    // If dialog is open and there's a recent generation, update to display it
-    if (showFullScreenView && lastBatchId && batches[lastBatchId]) {
-      const completedImages = batches[lastBatchId].filter(img => img.status === 'completed');
-      if (completedImages.length > 0) {
-        // If there are completed images in the batch, force update to that batch
-        if (lastBatchId !== fullScreenBatchId || fullScreenImageIndex >= completedImages.length) {
-          console.log("FullscreenDialog - updating to newly completed image at index:", 0);
-          
-          // Find the global index of the first completed image in this batch
-          const globalIndex = allImagesFlat.findIndex(
-            img => img.batchId === lastBatchId && img.batchIndex === 0
-          );
-          
-          if (globalIndex !== -1) {
-            handleNavigateGlobal(globalIndex);
-          }
-        }
-      }
-    }
-  }, [fullscreenRefreshTrigger, showFullScreenView, lastBatchId, batches, fullScreenBatchId, fullScreenImageIndex, allImagesFlat, handleNavigateGlobal]);
   
   return (
     <Dialog 
