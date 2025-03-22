@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import MainImageView from '../MainImageView';
 
 interface DetailViewImageSectionProps {
@@ -34,21 +34,19 @@ const DetailViewImageSection: React.FC<DetailViewImageSectionProps> = ({
   onImageClick
 }) => {
   return (
-    <div className="flex-grow flex items-center justify-center overflow-hidden min-h-0 min-w-0 relative">
-      <div className="w-auto min-w-0 h-full flex items-center justify-center">
-        <MainImageView
-          imageUrl={activeImage.url}
-          altText={activeImage.prompt || "Generated image"}
-          onImageLoad={onImageLoad}
-          allImages={allImages}
-          isNavigatingAllImages={isNavigatingAllImages}
-          onNavigateGlobal={onNavigateGlobal}
-          currentGlobalIndex={currentGlobalIndex}
-          handleTouchStart={() => {}}  // Touch handling moved to DetailViewTouchHandler
-          handleTouchEnd={() => {}}    // Touch handling moved to DetailViewTouchHandler
-          onImageClick={onImageClick}  // Pass the onImageClick prop
-        />
-      </div>
+    <div className="flex-grow flex items-center justify-center overflow-hidden min-h-0 min-w-0">
+      <MainImageView
+        imageUrl={activeImage.url}
+        altText={activeImage.prompt || "Generated image"}
+        onImageLoad={onImageLoad}
+        allImages={allImages}
+        isNavigatingAllImages={isNavigatingAllImages}
+        onNavigateGlobal={onNavigateGlobal}
+        currentGlobalIndex={currentGlobalIndex}
+        handleTouchStart={() => {}}  // Touch handling moved to DetailViewTouchHandler
+        handleTouchEnd={() => {}}    // Touch handling moved to DetailViewTouchHandler
+        onImageClick={onImageClick}  // Pass the onImageClick prop
+      />
     </div>
   );
 };

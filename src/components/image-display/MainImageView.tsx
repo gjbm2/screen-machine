@@ -1,18 +1,14 @@
 
-import React, { useState } from 'react';
-import ImageLoadingState from './ImageLoadingState';
+import React, { useState, useEffect, useRef } from 'react';
+import { Button } from '@/components/ui/button';
 import NavigationControls from './NavigationControls';
 
 interface MainImageViewProps {
   imageUrl: string;
   altText: string;
-  onImageLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void;
-  allImages?: Array<{
-    url: string;
-    batchId: string;
-    batchIndex: number;
-    prompt?: string;
-  }>;
+  onImageLoad: (e: React.SyntheticEvent<HTMLImageElement>) => void;
+  onOpenInNewTab?: (e: React.MouseEvent) => void;
+  allImages?: Array<{ url: string; batchId: string; batchIndex: number; prompt?: string; }>;
   isNavigatingAllImages?: boolean;
   onNavigateGlobal?: (imageIndex: number) => void;
   currentGlobalIndex?: number;
@@ -33,65 +29,123 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   handleTouchEnd,
   onImageClick,
 }) => {
-  const [isLoading, setIsLoading] = useState(true);
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+  const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
+  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth);
+      setViewportHeight(window.innerHeight);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
-  const handleImageLoaded = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    setIsLoading(false);
-    if (onImageLoad) {
-      onImageLoad(e);
-    }
+  const handleImageLoadInternal = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    setImageDimensions({
+      width: img.naturalWidth,
+      height: img.naturalHeight
+    });
+    onImageLoad(e);
   };
 
-  // Navigation handlers
-  const handleNavigatePrev = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isNavigatingAllImages && onNavigateGlobal && currentGlobalIndex !== undefined && currentGlobalIndex > 0) {
-      onNavigateGlobal(currentGlobalIndex - 1);
+  const calculateOptimalSize = () => {
+    if (imageDimensions.width === 0 || imageDimensions.height === 0) {
+      return { width: 'auto', height: 'auto', maxWidth: '90%', maxHeight: 'calc(75vh - 120px)' };
     }
+
+    // Adaptive sizing based on screen size
+    const isLargeScreen = viewportHeight > 900;
+    const isVeryLargeScreen = viewportHeight > 1200;
+    
+    // Scale control space down on larger screens
+    const controlsSpacePercentage = isVeryLargeScreen ? 0.08 : (isLargeScreen ? 0.1 : 0.15);
+    const controlsSpace = Math.min(Math.max(100, viewportHeight * controlsSpacePercentage), 160);
+    
+    // Allow content to use more of the screen on larger displays
+    const widthPercentage = isVeryLargeScreen ? 0.95 : (isLargeScreen ? 0.92 : 0.9);
+    const availableWidth = viewportWidth * widthPercentage;
+    
+    // Allow images to take up more vertical space on larger screens
+    const heightPercentage = isVeryLargeScreen ? 0.9 : (isLargeScreen ? 0.85 : 0.75);
+    const availableHeight = viewportHeight * heightPercentage - controlsSpace;
+    
+    const widthRatio = availableWidth / imageDimensions.width;
+    const heightRatio = availableHeight / imageDimensions.height;
+    
+    // Use a more generous ratio on larger screens, but still respect aspect ratio
+    const ratio = Math.min(widthRatio, heightRatio, isVeryLargeScreen ? 1.5 : (isLargeScreen ? 1.2 : 1));
+    
+    return { 
+      width: 'auto', 
+      height: 'auto', 
+      maxWidth: `${Math.min(imageDimensions.width * ratio, availableWidth)}px`, 
+      maxHeight: `${Math.min(imageDimensions.height * ratio, availableHeight)}px` 
+    };
   };
 
-  const handleNavigateNext = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isNavigatingAllImages && onNavigateGlobal && currentGlobalIndex !== undefined && allImages && currentGlobalIndex < allImages.length - 1) {
-      onNavigateGlobal(currentGlobalIndex + 1);
+  const optimalSize = calculateOptimalSize();
+
+  const showPrevButton = currentGlobalIndex !== undefined && currentGlobalIndex > 0 && allImages && allImages.length > 1;
+  const showNextButton = currentGlobalIndex !== undefined && allImages && currentGlobalIndex < allImages.length - 1;
+
+  // Handle image click - forward to parent component handler
+  const handleImageContainerClick = (e: React.MouseEvent) => {
+    // Only handle clicks that are directly on the container or the image
+    // Don't trigger for navigation buttons
+    if (e.target === imageContainerRef.current || 
+        (e.target as HTMLElement).tagName === 'IMG') {
+      if (onImageClick) {
+        onImageClick(e);
+      }
     }
   };
 
   return (
     <div 
-      className="w-auto h-full flex items-center justify-center relative"
-      style={{ margin: '0 auto' }}
+      ref={imageContainerRef}
+      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-auto min-w-0 h-full select-none cursor-pointer" 
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      onClick={onImageClick}
+      onClick={handleImageContainerClick}
+      tabIndex={-1}
+      style={{ outline: 'none', margin: '0 auto' }}
+      onMouseDown={(e) => e.preventDefault()}
     >
-      <div className="relative w-auto h-full flex items-center justify-center">
-        {isLoading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center">
-            <ImageLoadingState />
-          </div>
-        )}
-        
-        <img
+      <div className="relative flex justify-center items-center h-full py-2 w-auto min-w-0">
+        <img 
           src={imageUrl}
           alt={altText}
-          className={`max-h-full object-contain ${isLoading ? 'opacity-0' : 'opacity-100'}`}
-          style={{ 
-            transition: 'opacity 0.2s ease-in-out',
-            maxWidth: '100%',
-          }}
-          onLoad={handleImageLoaded}
+          className="object-contain select-none"
+          style={optimalSize}
+          onLoad={handleImageLoadInternal}
+          draggable={false}
         />
       </div>
-
-      {/* Navigation Controls */}
-      {isNavigatingAllImages && onNavigateGlobal && currentGlobalIndex !== undefined && allImages && (
-        <NavigationControls
-          onPrevious={handleNavigatePrev}
-          onNext={handleNavigateNext}
-          size="medium"
-          showPrevButton={currentGlobalIndex > 0}
-          showNextButton={currentGlobalIndex < allImages.length - 1}
+      
+      {allImages && allImages.length > 1 && onNavigateGlobal && (
+        <NavigationControls 
+          onPrevious={(e) => {
+            e.stopPropagation();
+            if (showPrevButton) {
+              onNavigateGlobal((currentGlobalIndex as number) - 1);
+            }
+          }}
+          onNext={(e) => {
+            e.stopPropagation();
+            if (showNextButton) {
+              onNavigateGlobal((currentGlobalIndex as number) + 1);
+            }
+          }}
+          size="large"
+          currentGlobalIndex={currentGlobalIndex}
+          allImages={allImages}
+          showPrevButton={showPrevButton}
+          showNextButton={showNextButton}
         />
       )}
     </div>
