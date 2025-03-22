@@ -4,33 +4,19 @@ import * as React from "react"
 const MOBILE_BREAKPOINT = 768
 
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean>(() => {
-    // Initial detection based on both screen size and user agent
-    return typeof window !== 'undefined' && (
-      window.innerWidth < MOBILE_BREAKPOINT || 
-      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-    );
-  });
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
 
   React.useEffect(() => {
     const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    
     const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
     }
-    
-    // Use the newer addEventListener API with a fallback
-    if (mql.addEventListener) {
-      mql.addEventListener("change", onChange);
-      return () => mql.removeEventListener("change", onChange);
-    } else {
-      // Fallback for older browsers
-      mql.addListener(onChange);
-      return () => mql.removeListener(onChange);
-    }
-  }, []);
+    mql.addEventListener("change", onChange)
+    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+    return () => mql.removeEventListener("change", onChange)
+  }, [])
 
-  return isMobile;
+  return !!isMobile
 }
 
 export function useWindowSize() {
@@ -38,8 +24,8 @@ export function useWindowSize() {
     width: number | undefined
     height: number | undefined
   }>({
-    width: typeof window !== 'undefined' ? window.innerWidth : undefined,
-    height: typeof window !== 'undefined' ? window.innerHeight : undefined,
+    width: undefined,
+    height: undefined,
   })
 
   React.useEffect(() => {
@@ -57,18 +43,4 @@ export function useWindowSize() {
   }, [])
 
   return windowSize
-}
-
-// Helper to detect touch devices
-export function useIsTouchDevice() {
-  const [isTouch, setIsTouch] = React.useState<boolean>(() => {
-    // Initial detection based on browser features
-    return typeof window !== 'undefined' && (
-      'ontouchstart' in window || 
-      navigator.maxTouchPoints > 0 ||
-      (navigator as any).msMaxTouchPoints > 0
-    );
-  });
-
-  return isTouch;
 }

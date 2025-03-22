@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { X } from 'lucide-react';
 import ImageDetailView from './ImageDetailView';
@@ -20,7 +19,7 @@ interface FullscreenDialogProps {
   allImagesFlat: any[];
   currentGlobalIndex: number | null;
   handleNavigateGlobal: (index: number) => void;
-  fullscreenRefreshTrigger?: number; // Refresh trigger
+  fullscreenRefreshTrigger?: number; // Add optional refresh trigger
 }
 
 const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
@@ -36,7 +35,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   allImagesFlat,
   currentGlobalIndex,
   handleNavigateGlobal,
-  fullscreenRefreshTrigger = 0
+  fullscreenRefreshTrigger = 0 // Default to 0
 }) => {
   const [prompt, setPrompt] = useState('');
   const [currentBatch, setCurrentBatch] = useState<any[] | null>(null);
@@ -45,7 +44,6 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   const [showInfoDialog, setShowInfoDialog] = useState(false);
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const [lastBatchId, setLastBatchId] = useState<string | null>(null);
-  const [pendingBatchGeneration, setPendingBatchGeneration] = useState<string | null>(null);
   
   // Update state based on props - now also listen to the refresh trigger
   useEffect(() => {
@@ -71,56 +69,11 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         console.log('No reference image URL in fullscreen image');
       }
     } else {
-      // If we have a pending generation and the refresh trigger was updated,
-      // try to find and display the newly generated image
-      if (pendingBatchGeneration && fullscreenRefreshTrigger > 0) {
-        // First check if we can find the new batch
-        const targetPrompt = prompt; // Store the prompt we're looking for
-        
-        // Look for matching batch with the same prompt (newest first)
-        const batchesWithPrompt = Object.entries(batches)
-          .filter(([_, images]) => 
-            images.some(img => img.prompt === targetPrompt && img.status === 'completed')
-          )
-          .sort(([_, a], [__, b]) => {
-            // Sort by timestamp (newest first)
-            const timestampA = a[0]?.timestamp || 0;
-            const timestampB = b[0]?.timestamp || 0;
-            return timestampB - timestampA;
-          });
-        
-        if (batchesWithPrompt.length > 0) {
-          const [newBatchId, newBatch] = batchesWithPrompt[0];
-          
-          // Find the newest completed image in this batch
-          const completedImages = newBatch.filter(img => img.status === 'completed')
-            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-          
-          if (completedImages.length > 0) {
-            // Find the index of this image in its batch
-            const newImageIndex = newBatch.findIndex(img => img === completedImages[0]);
-            
-            if (newImageIndex !== -1) {
-              // Find this image in the flat array to get its global index
-              const globalIndex = allImagesFlat.findIndex(
-                img => img.batchId === newBatchId && img.batchIndex === completedImages[0].batchIndex
-              );
-              
-              if (globalIndex !== -1) {
-                // Update the view to show this new image
-                handleNavigateGlobal(globalIndex);
-                
-                // Clear the pending generation flag
-                setPendingBatchGeneration(null);
-                
-                console.log(`Fullscreen view updated to show newly generated image in batch ${newBatchId}`);
-              }
-            }
-          }
-        }
-      }
+      setCurrentBatch(null);
+      setCurrentImage(null);
+      setPrompt('');
     }
-  }, [fullScreenBatchId, batches, fullScreenImageIndex, fullscreenRefreshTrigger, pendingBatchGeneration, prompt, allImagesFlat, handleNavigateGlobal]);
+  }, [fullScreenBatchId, batches, fullScreenImageIndex, fullscreenRefreshTrigger]);
 
   // Only render dialog if we need to show it
   if (!showFullScreenView) {
@@ -169,19 +122,12 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   };
 
   const handleCreateAgain = (batchId: string) => {
-    // Store the prompt before triggering generation
-    const currentPrompt = currentImage?.prompt || '';
-    console.log("Creating again from batch:", batchId);
-    console.log("Batch image:", currentImage);
-    
-    // Mark that we're expecting a new generation with this prompt
-    setPendingBatchGeneration(batchId);
-    
-    // Store the last batch ID to navigate to the new image later
+    // Store the current batch ID to navigate to the new image later
     setLastBatchId(batchId);
-    
-    // Call the parent's onCreateAgain
     onCreateAgain(batchId);
+    
+    // We don't need to close here - we'll wait until the new image is generated
+    // The parent components will update the batches and allImagesFlat
   };
 
   const handleDeleteImage = (batchId: string, index: number) => {
@@ -265,7 +211,6 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
               currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
               onImageClick={handleImageClick}
               hidePrompt={true} // Hide the prompt since we now show it in the header
-              onClose={() => setShowFullScreenView(false)}
             />
           )}
         </div>
