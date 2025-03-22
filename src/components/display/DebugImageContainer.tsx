@@ -87,6 +87,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
                       height: 'auto',
                       objectFit: 'none',
                     }),
+                    // Fixed position logic to handle all position types including 'center'
                     ...(position !== 'center' && {
                       position: 'absolute',
                       ...(position.includes('top') ? { top: 0 } : 
