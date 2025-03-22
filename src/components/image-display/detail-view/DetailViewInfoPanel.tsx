@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import ImageMetadata from '../ImageMetadata';
 import DetailViewActionBar from './DetailViewActionBar';
 import ReferenceImageSection from '../ReferenceImageSection';
@@ -11,6 +11,7 @@ interface DetailViewInfoPanelProps {
     workflow: string;
     params?: Record<string, any>;
     timestamp?: number;
+    referenceImageUrl?: string;
   };
   dimensions: { width: number; height: number };
   referenceImageUrl?: string;
@@ -37,10 +38,15 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
   hidePrompt = false,
   onInfoClick
 }) => {
-  // Debug log for reference image URL
-  if (referenceImageUrl) {
-    console.log('DetailViewInfoPanel received referenceImageUrl:', referenceImageUrl);
-  }
+  // Use the referenceImageUrl from props first, then from activeImage as fallback
+  const effectiveReferenceImageUrl = referenceImageUrl || activeImage?.referenceImageUrl;
+  
+  useEffect(() => {
+    // Log reference image information for debugging
+    if (effectiveReferenceImageUrl) {
+      console.log('DetailViewInfoPanel received referenceImageUrl:', effectiveReferenceImageUrl);
+    }
+  }, [effectiveReferenceImageUrl]);
   
   return (
     <div className="flex-shrink-0 p-2 space-y-1 bg-background select-none border-t min-h-[100px]">
@@ -69,9 +75,9 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
       )}
       
       {/* Reference image at the bottom */}
-      {referenceImageUrl && (
+      {effectiveReferenceImageUrl && (
         <ReferenceImageSection
-          referenceImageUrl={referenceImageUrl}
+          referenceImageUrl={effectiveReferenceImageUrl}
           onReferenceImageClick={() => setShowReferenceImage(true)}
         />
       )}
