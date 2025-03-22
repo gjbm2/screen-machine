@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { CopyPlus, SquareArrowUpRight, Trash2, Download } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import PublishMenu from '../PublishMenu';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface DetailViewActionBarProps {
   imageUrl: string;
@@ -27,6 +28,8 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
   onClose,
   generationInfo
 }) => {
+  const isMobile = useIsMobile();
+
   const handleDownload = () => {
     const filename = imageUrl.split('/').pop() || `generated-image-${Date.now()}.png`;
     
@@ -67,8 +70,10 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
             variant="outline" 
             className="bg-white/90 hover:bg-white text-black shadow-sm p-2 text-xs rounded-full flex items-center gap-1.5"
             onClick={onCreateAgain}
+            title="Go again"
           >
-            <CopyPlus className="h-3.5 w-3.5" /> Go again
+            <CopyPlus className="h-3.5 w-3.5" />
+            {!isMobile && <span>Go again</span>}
           </Button>
         )}
         
@@ -78,8 +83,10 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
             variant="outline" 
             className="bg-white/90 hover:bg-white text-black shadow-sm p-2 text-xs rounded-full flex items-center gap-1.5"
             onClick={onUseAsInput}
+            title="Use as input"
           >
-            <SquareArrowUpRight className="h-3.5 w-3.5" /> Use as input
+            <SquareArrowUpRight className="h-3.5 w-3.5" />
+            <span>{isMobile ? "Input" : "Use as input"}</span>
           </Button>
         )}
         
@@ -88,8 +95,10 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
           variant="outline" 
           className="bg-white/90 hover:bg-white text-black shadow-sm p-2 text-xs rounded-full flex items-center gap-1.5"
           onClick={handleDownload}
+          title="Download"
         >
-          <Download className="h-3.5 w-3.5" /> Download
+          <Download className="h-3.5 w-3.5" />
+          {!isMobile && <span>Download</span>}
         </Button>
         
         <PublishMenu 
@@ -108,8 +117,10 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
             variant="outline" 
             className="bg-destructive/90 hover:bg-destructive text-white shadow-sm p-2 text-xs rounded-full flex items-center gap-1.5"
             onClick={handleDelete}
+            title="Delete"
           >
-            <Trash2 className="h-3.5 w-3.5" /> Delete
+            <Trash2 className="h-3.5 w-3.5" />
+            {!isMobile && <span>Delete</span>}
           </Button>
         )}
       </div>
