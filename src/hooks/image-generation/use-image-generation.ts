@@ -11,6 +11,7 @@ import { ImageGenerationConfig } from './types';
 declare global {
   interface Window {
     externalImageUrls?: string[];
+    imageCounter?: number; // Add a global counter for image numbering
   }
 }
 
@@ -23,6 +24,13 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
   const [isFirstRun, setIsFirstRun] = useState(true);
   const [fullscreenRefreshTrigger, setFullscreenRefreshTrigger] = useState(0);
+
+  // Initialize global image counter if it doesn't exist
+  useEffect(() => {
+    if (typeof window.imageCounter === 'undefined') {
+      window.imageCounter = 0;
+    }
+  }, []);
 
   // Use our custom hooks
   const { generatedImages, setGeneratedImages } = useImageState();
@@ -99,6 +107,11 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
         const allUrls = [...urlStrings];
         uniqueImageFiles = [...new Set(allUrls)];
       }
+    }
+    
+    // Increment image counter for each generation
+    if (typeof window.imageCounter !== 'undefined') {
+      window.imageCounter += 1;
     }
     
     const config: ImageGenerationConfig = {

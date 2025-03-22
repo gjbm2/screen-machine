@@ -1,5 +1,6 @@
 
 import React, { useRef, useState, useEffect } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface DetailViewTouchHandlerProps {
   children: React.ReactNode;
@@ -14,6 +15,7 @@ const DetailViewTouchHandler: React.FC<DetailViewTouchHandlerProps> = ({
 }) => {
   const touchRef = useRef<HTMLDivElement>(null);
   const [startX, setStartX] = useState<number | null>(null);
+  const isMobile = useIsMobile();
   
   const handleTouchStart = (e: React.TouchEvent) => {
     setStartX(e.touches[0].clientX);
@@ -39,8 +41,10 @@ const DetailViewTouchHandler: React.FC<DetailViewTouchHandlerProps> = ({
     setStartX(null);
   };
 
-  // Prevent scrolling when in this view
+  // Prevent scrolling when in this view on mobile devices
   useEffect(() => {
+    if (!isMobile) return;
+    
     const preventScroll = (e: Event) => {
       e.preventDefault();
     };
@@ -55,7 +59,7 @@ const DetailViewTouchHandler: React.FC<DetailViewTouchHandlerProps> = ({
         element.removeEventListener('touchmove', preventScroll);
       }
     };
-  }, []);
+  }, [isMobile]);
 
   return (
     <div 

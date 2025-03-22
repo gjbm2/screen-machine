@@ -5,6 +5,7 @@ import { CopyPlus, SquareArrowUpRight, Trash2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { saveAs } from 'file-saver';
 import PublishMenu from './image-display/PublishMenu';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ImageActionsProps {
   imageUrl: string;
@@ -30,6 +31,8 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   alwaysVisible = false,
   isFullScreen = false
 }) => {
+  const isMobile = useIsMobile();
+  
   const handleDownload = () => {
     const filename = imageUrl.split('/').pop() || `generated-image-${Date.now()}.png`;
     
@@ -89,13 +92,11 @@ const ImageActions: React.FC<ImageActionsProps> = ({
           <Download className="h-3.5 w-3.5" />
         </Button>
         
-        {/* Replace Share with Publish menu */}
         <PublishMenu 
           imageUrl={imageUrl}
           generationInfo={generationInfo}
         />
         
-        {/* Add separator for delete button */}
         <div className="h-6 flex items-center mx-0.5">
           <div className="h-full w-px bg-gray-300"></div>
         </div>
@@ -115,7 +116,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
     );
   }
   
-  // For fullscreen view - all buttons (including delete) in a single row
+  // For fullscreen view - responsive buttons
   return (
     <div className={`flex flex-wrap gap-2 justify-center ${alwaysVisible ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity duration-200'}`}>
       {onCreateAgain && (
@@ -124,8 +125,10 @@ const ImageActions: React.FC<ImageActionsProps> = ({
           variant="outline" 
           className={actionButtonClass}
           onClick={onCreateAgain}
+          title="Go again"
         >
-          <CopyPlus className="h-3.5 w-3.5" /> Go again
+          <CopyPlus className="h-3.5 w-3.5" />
+          {!isMobile && <span>Go again</span>}
         </Button>
       )}
       
@@ -135,8 +138,10 @@ const ImageActions: React.FC<ImageActionsProps> = ({
           variant="outline" 
           className={actionButtonClass}
           onClick={onUseAsInput}
+          title="Use as Input"
         >
-          <SquareArrowUpRight className="h-3.5 w-3.5" /> Use as Input
+          <SquareArrowUpRight className="h-3.5 w-3.5" />
+          {isMobile ? <span>Input</span> : <span>Use as Input</span>}
         </Button>
       )}
       
@@ -145,17 +150,17 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         variant="outline" 
         className={actionButtonClass}
         onClick={handleDownload}
+        title="Download"
       >
-        <Download className="h-3.5 w-3.5" /> Download
+        <Download className="h-3.5 w-3.5" />
+        {!isMobile && <span>Download</span>}
       </Button>
       
-      {/* Replace Share with Publish menu */}
       <PublishMenu 
         imageUrl={imageUrl}
         generationInfo={generationInfo}
       />
       
-      {/* Add separator for delete button */}
       <div className="h-8 flex items-center mx-1">
         <div className="h-full w-px bg-gray-300"></div>
       </div>
@@ -166,8 +171,10 @@ const ImageActions: React.FC<ImageActionsProps> = ({
           variant="outline" 
           className={deleteButtonClass}
           onClick={onDeleteImage}
+          title="Delete"
         >
-          <Trash2 className="h-3.5 w-3.5" /> Delete
+          <Trash2 className="h-3.5 w-3.5" />
+          {!isMobile && <span>Delete</span>}
         </Button>
       )}
     </div>

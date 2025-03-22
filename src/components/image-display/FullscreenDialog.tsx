@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { X } from 'lucide-react';
@@ -211,6 +212,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
               currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
               onImageClick={handleImageClick}
               hidePrompt={true} // Hide the prompt since we now show it in the header
+              onClose={() => setShowFullScreenView(false)} // Add handler to close
             />
           )}
         </div>
