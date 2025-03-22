@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import NavigationControls from './NavigationControls';
@@ -32,36 +31,7 @@ const MainImageView: React.FC<MainImageViewProps> = ({
 }) => {
   const { width: viewportWidth, height: viewportHeight } = useWindowSize();
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [calculatedImageSize, setCalculatedImageSize] = useState({ width: 0, height: 0 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
-  
-  // Use ResizeObserver to track container size changes
-  useEffect(() => {
-    if (!imageContainerRef.current) return;
-    
-    const container = imageContainerRef.current;
-    const resizeObserver = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        setContainerSize({
-          width: entry.contentRect.width,
-          height: entry.contentRect.height
-        });
-      }
-    });
-    
-    resizeObserver.observe(container);
-    
-    // Initial size measurement
-    setContainerSize({
-      width: container.clientWidth,
-      height: container.clientHeight
-    });
-    
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, []);
   
   const handleImageLoadInternal = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
@@ -72,10 +42,11 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     onImageLoad(e);
   };
 
-  // Calculate the optimal image size whenever relevant dependencies change
-  useEffect(() => {
-    if (imageDimensions.width === 0 || imageDimensions.height === 0 || !viewportWidth || !viewportHeight) return;
-    
+  const calculateOptimalSize = () => {
+    if (imageDimensions.width === 0 || imageDimensions.height === 0 || !viewportWidth || !viewportHeight) {
+      return { width: 'auto', height: 'auto', maxWidth: '90%', maxHeight: 'calc(75vh - 120px)' };
+    }
+
     // Adaptive sizing based on screen size
     const isLargeScreen = viewportHeight > 900;
     const isVeryLargeScreen = viewportHeight > 1200;
@@ -88,35 +59,30 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     const heightPercentage = isVeryLargeScreen ? 0.9 : (isLargeScreen ? 0.85 : 0.75);
     const availableHeight = viewportHeight * heightPercentage - controlsSpace;
     
-    // Use the actual container width from ResizeObserver for more accurate horizontal sizing
-    const actualContainerWidth = containerSize.width || 
-                                (imageContainerRef.current?.clientWidth || viewportWidth);
-    
-    // Account for container padding/margins
-    const containerPadding = 24;
-    const availableWidth = Math.max(actualContainerWidth - containerPadding, 100);
+    // Improved dynamic horizontal sizing - allow it to adapt better to available space
+    // Calculate available width based on container size and viewport
+    const containerWidth = imageContainerRef.current?.offsetWidth || viewportWidth;
+    const containerPadding = 24; // account for padding/margins
+    const availableWidth = Math.min(containerWidth - containerPadding, viewportWidth * 0.95);
     
     // Calculate scaling ratios
     const widthRatio = availableWidth / imageDimensions.width;
     const heightRatio = availableHeight / imageDimensions.height;
     
     // Use the smaller ratio to maintain aspect ratio
-    const ratio = Math.min(widthRatio, heightRatio);
+    const ratio = Math.min(widthRatio, heightRatio, isVeryLargeScreen ? 1.5 : (isLargeScreen ? 1.2 : 1));
     
-    const calculatedWidth = Math.floor(imageDimensions.width * ratio);
-    const calculatedHeight = Math.floor(imageDimensions.height * ratio);
+    const calculatedWidth = Math.min(imageDimensions.width * ratio, availableWidth);
+    const calculatedHeight = Math.min(imageDimensions.height * ratio, availableHeight);
     
-    setCalculatedImageSize({
-      width: calculatedWidth,
-      height: calculatedHeight
-    });
-  }, [imageDimensions, containerSize, viewportWidth, viewportHeight]);
-
-  const optimalSize = {
-    width: calculatedImageSize.width ? `${calculatedImageSize.width}px` : 'auto',
-    height: calculatedImageSize.height ? `${calculatedImageSize.height}px` : 'auto',
-    maxWidth: '100%'
+    return { 
+      width: `${calculatedWidth}px`, 
+      height: `${calculatedHeight}px`,
+      maxWidth: '100%'
+    };
   };
+
+  const optimalSize = calculateOptimalSize();
 
   const showPrevButton = currentGlobalIndex !== undefined && currentGlobalIndex > 0 && allImages && allImages.length > 1;
   const showNextButton = currentGlobalIndex !== undefined && allImages && currentGlobalIndex < allImages.length - 1;
@@ -136,20 +102,15 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   return (
     <div 
       ref={imageContainerRef}
-      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-auto h-full select-none cursor-pointer" 
+      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-full h-full select-none cursor-pointer" 
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onClick={handleImageContainerClick}
       tabIndex={-1}
-      style={{ outline: 'none', maxWidth: '100%' }}
+      style={{ outline: 'none' }}
       onMouseDown={(e) => e.preventDefault()} 
     >
-      <div className="relative flex justify-center items-center py-2" 
-           style={{
-             width: 'fit-content', // Allow container to shrink to fit content
-             margin: '0 auto',     // Center horizontally
-             maxWidth: '100%'      // Ensure it doesn't overflow parent
-           }}>
+      <div className="relative flex justify-center items-center w-full h-full py-2">
         <img 
           src={imageUrl}
           alt={altText}
