@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { DebugPanel } from '@/components/display/DebugPanel';
@@ -5,6 +6,8 @@ import { DebugImageContainer } from '@/components/display/DebugImageContainer';
 import { ErrorMessage } from '@/components/display/ErrorMessage';
 import { processOutputParam, fetchOutputFiles, getNextCheckTime } from '@/components/display/utils';
 import { DisplayParams, ShowMode } from '@/components/display/types';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 
 const Display = () => {
   const [searchParams] = useSearchParams();
@@ -14,9 +17,11 @@ const Display = () => {
   const [lastModified, setLastModified] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [outputFiles, setOutputFiles] = useState<string[]>([]);
+  const [imageChanged, setImageChanged] = useState<boolean>(false);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const lastModifiedRef = useRef<string | null>(null);
   const intervalRef = useRef<number | null>(null);
+  const navigate = useNavigate();
 
   // Parse URL parameters
   const params: DisplayParams = {
@@ -42,6 +47,15 @@ const Display = () => {
       // Only update the image if the last-modified header has changed
       if (lastModified && lastModified !== lastModifiedRef.current) {
         console.log('Image modified, updating from:', lastModifiedRef.current, 'to:', lastModified);
+        
+        // Set the flag that image has changed
+        if (lastModifiedRef.current !== null) {
+          setImageChanged(true);
+          if (params.debugMode) {
+            toast.info("Image has been updated on the server");
+          }
+        }
+        
         lastModifiedRef.current = lastModified;
         setImageKey(prev => prev + 1);
       }
@@ -51,10 +65,32 @@ const Display = () => {
     }
   };
 
+  const handleManualCheck = async () => {
+    if (imageUrl) {
+      setImageChanged(false);
+      await checkImageModified(imageUrl);
+      if (!imageChanged) {
+        toast.info("Image has not changed since last check");
+      }
+    } else {
+      toast.error("No image URL to check");
+    }
+  };
+
+  // If no parameters provided, enter debug mode by default
+  useEffect(() => {
+    if (!params.output && !params.debugMode) {
+      // Redirect to debug mode
+      const queryParams = new URLSearchParams();
+      queryParams.set('debug', 'true');
+      navigate(`/display?${queryParams.toString()}`);
+    }
+  }, [params.output, params.debugMode, navigate]);
+
   // Initialize on first render
   useEffect(() => {
-    if (!params.output) {
-      setError('Error: "output" parameter is required. Usage: /display?output=image.jpg&show=fit&refresh=5&background=000000&debug=false');
+    // Skip this effect if we're redirecting to debug mode
+    if (!params.output && !params.debugMode) {
       return;
     }
 
@@ -73,7 +109,7 @@ const Display = () => {
       }, params.refreshInterval * 1000);
     }
 
-    // Fetch available output files if in debug mode
+    // Fetch available output files 
     if (params.debugMode) {
       fetchOutputFiles().then(files => setOutputFiles(files));
     }
@@ -136,9 +172,9 @@ const Display = () => {
     }
   })();
 
-  // If there's no output parameter, show error message
-  if (error) {
-    return <ErrorMessage error={error} backgroundColor={params.backgroundColor} />;
+  // Show an error message if not in debug mode and missing output parameter
+  if (!params.debugMode && !params.output) {
+    return <ErrorMessage error="Error: 'output' parameter is required." backgroundColor={params.backgroundColor} />;
   }
 
   // Calculate next check time for debug display
@@ -157,6 +193,8 @@ const Display = () => {
             nextCheckTime={nextCheckTime}
             imageKey={imageKey}
             outputFiles={outputFiles}
+            imageChanged={imageChanged}
+            onCheckNow={handleManualCheck}
           />
           <DebugImageContainer 
             imageUrl={imageUrl}
@@ -165,6 +203,7 @@ const Display = () => {
             backgroundColor={params.backgroundColor}
             onImageError={handleImageError}
             imageRef={imageRef}
+            imageChanged={imageChanged}
           />
         </>
       ) : (

@@ -32,6 +32,11 @@ export const ErrorMessage: React.FC<ErrorMessageProps> = ({ error, backgroundCol
         <li><strong>background</strong>: (optional) Background color hexcode (default: 000000)</li>
         <li><strong>debug</strong>: (optional) Show debug information (true or false, default: false)</li>
       </ul>
+      <p style={{ marginTop: '20px' }}>
+        <a href="/display?debug=true" style={{ color: '#4da6ff', textDecoration: 'underline' }}>
+          Enter Debug Mode
+        </a>
+      </p>
     </div>
   );
 };
