@@ -67,6 +67,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   useEffect(() => {
     if (activeImage) {
       console.log("Active image in DetailViewContent:", activeImage);
+      console.log("Active image reference image URL:", activeImage.referenceImageUrl);
       if (activeImage.referenceImageUrl) {
         console.log("Active image has reference image URL:", activeImage.referenceImageUrl);
       } else {

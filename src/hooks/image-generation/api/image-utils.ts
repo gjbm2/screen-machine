@@ -52,6 +52,13 @@ export const updateImageWithResult = (
   imageUrl: string
 ): GeneratedImage => {
   // Ensure we preserve the referenceImageUrl when updating the image
+  // Log what's being preserved for debugging
+  if (placeholder.referenceImageUrl) {
+    console.log('[image-utils] Preserving reference image URL during update:', placeholder.referenceImageUrl);
+  } else {
+    console.log('[image-utils] No reference image URL to preserve during update');
+  }
+  
   return {
     ...placeholder,
     url: imageUrl,
@@ -67,6 +74,11 @@ export const updateImageWithResult = (
 export const updateImageWithError = (
   placeholder: GeneratedImage
 ): GeneratedImage => {
+  // Log reference image information for debugging
+  if (placeholder.referenceImageUrl) {
+    console.log('[image-utils] Preserving reference image URL during error update:', placeholder.referenceImageUrl);
+  }
+  
   // Ensure we preserve the referenceImageUrl for error images too
   return {
     ...placeholder,
@@ -90,7 +102,11 @@ export const processUploadedFiles = (
       if (typeof file === 'string') {
         uploadedImageUrls.push(file);
       } else {
+        // For File objects, create an object URL
+        const objectUrl = URL.createObjectURL(file);
+        uploadedImageUrls.push(objectUrl);
         uploadedFiles.push(file);
+        console.log('[image-utils] Created object URL for file:', objectUrl);
       }
     }
   }
