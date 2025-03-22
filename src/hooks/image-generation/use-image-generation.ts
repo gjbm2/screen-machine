@@ -122,9 +122,9 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
       globalParams: currentGlobalParams,
     };
     
-    // Track the last generated batch ID
+    // Generate images and track the batch ID, but don't check the return value directly
     const newBatchId = await generateImages(config);
-    if (newBatchId) {
+    if (newBatchId !== null && newBatchId !== undefined) {
       setLastGeneratedBatchId(newBatchId);
     }
   }, [
