@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { DebugPanel } from '@/components/display/DebugPanel';
@@ -23,7 +22,6 @@ const Display = () => {
   const intervalRef = useRef<number | null>(null);
   const navigate = useNavigate();
 
-  // Parse URL parameters
   const params: DisplayParams = {
     output: searchParams.get('output'),
     showMode: (searchParams.get('show') || 'fit') as ShowMode,
@@ -32,23 +30,18 @@ const Display = () => {
     debugMode: searchParams.get('debug') === 'true',
   };
 
-  // Function to check if the image has been modified
   const checkImageModified = async (url: string) => {
     try {
-      // Record the check time
       setLastChecked(new Date());
       
       const response = await fetch(url, { method: 'HEAD' });
       const lastModified = response.headers.get('last-modified');
       
-      // Update the last modified timestamp for debugging
       setLastModified(lastModified);
       
-      // Only update the image if the last-modified header has changed
       if (lastModified && lastModified !== lastModifiedRef.current) {
         console.log('Image modified, updating from:', lastModifiedRef.current, 'to:', lastModified);
         
-        // Set the flag that image has changed
         if (lastModifiedRef.current !== null) {
           setImageChanged(true);
           if (params.debugMode) {
@@ -60,7 +53,6 @@ const Display = () => {
         setImageKey(prev => prev + 1);
       }
     } catch (err) {
-      // Silent fail - continue showing the current image
       console.error('Error checking image modification:', err);
     }
   };
@@ -77,19 +69,18 @@ const Display = () => {
     }
   };
 
-  // If no parameters provided, enter debug mode by default
   useEffect(() => {
     if (!params.output && !params.debugMode) {
-      // Redirect to debug mode
       const queryParams = new URLSearchParams();
       queryParams.set('debug', 'true');
+      if (params.showMode) queryParams.set('show', params.showMode);
+      if (params.refreshInterval) queryParams.set('refresh', params.refreshInterval.toString());
+      if (params.backgroundColor) queryParams.set('background', params.backgroundColor);
       navigate(`/display?${queryParams.toString()}`);
     }
-  }, [params.output, params.debugMode, navigate]);
+  }, [params.output, params.debugMode, navigate, params.showMode, params.refreshInterval, params.backgroundColor]);
 
-  // Initialize on first render
   useEffect(() => {
-    // Skip this effect if we're redirecting to debug mode
     if (!params.output && !params.debugMode) {
       return;
     }
@@ -98,10 +89,8 @@ const Display = () => {
     if (processedUrl) {
       setImageUrl(processedUrl);
       
-      // Initial check for last-modified
       checkImageModified(processedUrl);
       
-      // Set up periodic checking for image changes
       intervalRef.current = window.setInterval(() => {
         if (processedUrl) {
           checkImageModified(processedUrl);
@@ -109,7 +98,6 @@ const Display = () => {
       }, params.refreshInterval * 1000);
     }
 
-    // Fetch available output files 
     if (params.debugMode) {
       fetchOutputFiles().then(files => setOutputFiles(files));
     }
@@ -121,13 +109,10 @@ const Display = () => {
     };
   }, [params.output, params.refreshInterval, params.debugMode]);
 
-  // Helper to handle image errors
   const handleImageError = () => {
-    // Don't set error state, just log - we want to keep showing the last successful image
     console.error('Failed to load image:', imageUrl);
   };
 
-  // Generate styles based on parameters
   const containerStyle: React.CSSProperties = {
     backgroundColor: `#${params.backgroundColor}`,
     width: '100vw',
@@ -172,17 +157,10 @@ const Display = () => {
     }
   })();
 
-  // Show an error message if not in debug mode and missing output parameter
-  if (!params.debugMode && !params.output) {
-    return <ErrorMessage error="Error: 'output' parameter is required." backgroundColor={params.backgroundColor} />;
-  }
-
-  // Calculate next check time for debug display
   const nextCheckTime = getNextCheckTime(lastChecked, params.refreshInterval);
 
   return (
     <div style={containerStyle}>
-      {/* Debug mode */}
       {params.debugMode ? (
         <>
           <DebugPanel 
