@@ -4,16 +4,28 @@ import { Card } from '@/components/ui/card';
 
 interface LoadingPlaceholderProps {
   prompt: string | null;
+  imageNumber?: number;
+  workflowName?: string;
 }
 
-const LoadingPlaceholder: React.FC<LoadingPlaceholderProps> = ({ prompt }) => {
+const LoadingPlaceholder: React.FC<LoadingPlaceholderProps> = ({ 
+  prompt, 
+  imageNumber, 
+  workflowName 
+}) => {
+  // Determine what text to display
+  let displayText = prompt;
+  if (!displayText && (imageNumber !== undefined || workflowName)) {
+    displayText = `${imageNumber !== undefined ? `Image ${imageNumber}` : ''} ${workflowName ? `- ${workflowName}` : ''}`.trim();
+  }
+
   return (
     <Card className="overflow-hidden w-full rounded-b-lg rounded-t-none">
       <div className="aspect-square flex flex-col items-center justify-center bg-secondary/10">
         <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4"></div>
-        {prompt && (
+        {displayText && (
           <p className="text-sm text-center text-muted-foreground px-4 max-w-full overflow-hidden">
-            <span className="truncate inline-block max-w-xs">Generating: {prompt}</span>
+            <span className="truncate inline-block max-w-xs">Generating: {displayText}</span>
           </p>
         )}
       </div>

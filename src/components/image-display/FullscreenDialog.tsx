@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { X } from 'lucide-react';
 import ImageDetailView from './ImageDetailView';
 import ImagePrompt from './detail-view/ImagePrompt';
+import ReferenceImageDialog from './ReferenceImageDialog';
 
 interface FullscreenDialogProps {
   showFullScreenView: boolean;
@@ -37,6 +38,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   const [prompt, setPrompt] = useState('');
   const [currentBatch, setCurrentBatch] = useState<any[] | null>(null);
   const [currentImage, setCurrentImage] = useState<any | null>(null);
+  const [showReferenceImagesDialog, setShowReferenceImagesDialog] = useState(false);
   
   // Update state based on props
   useEffect(() => {
@@ -73,6 +75,17 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     e.stopPropagation();
     setShowFullScreenView(false);
   };
+
+  const handleShowInfoPanel = () => {
+    // This will be passed to the ImagePrompt to trigger the same action as the Info button
+    // For now, we'll just do nothing since the ImageDetailView already has an info panel
+  };
+
+  const hasReferenceImages = Boolean(currentImage?.referenceImageUrl);
+  
+  const handleShowReferenceImages = () => {
+    setShowReferenceImagesDialog(true);
+  };
   
   return (
     <Dialog 
@@ -88,26 +101,29 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         <DialogTitle className="sr-only">Image Detail View</DialogTitle>
         
         {/* Header with prompt - fixed height */}
-        {prompt && (
-          <div className="px-4 py-2 border-b h-10 flex-shrink-0 flex items-center">
-            <div className="flex items-center justify-between w-full min-w-0 overflow-hidden">
-              <div className="flex-grow min-w-0 overflow-hidden">
-                <div className="text-sm text-muted-foreground min-w-0">
-                  <ImagePrompt prompt={prompt} />
-                </div>
-              </div>
-              
-              {/* Close button */}
-              <button 
-                onClick={handleClose}
-                className="inline-flex items-center justify-center p-1 hover:bg-gray-100 rounded-md flex-shrink-0 ml-2"
-                aria-label="Close dialog"
-              >
-                <X size={16} />
-              </button>
+        <div className="px-4 py-2 border-b h-10 flex-shrink-0 flex items-center">
+          <div className="flex items-center justify-between w-full min-w-0 overflow-hidden">
+            <div className="flex-grow min-w-0 overflow-hidden">
+              <ImagePrompt 
+                prompt={prompt}
+                hasReferenceImages={hasReferenceImages}
+                onReferenceImageClick={handleShowReferenceImages}
+                imageNumber={fullScreenImageIndex + 1}
+                workflowName={currentImage?.workflow}
+                onInfoClick={handleShowInfoPanel}
+              />
             </div>
+            
+            {/* Close button */}
+            <button 
+              onClick={handleClose}
+              className="inline-flex items-center justify-center p-1 hover:bg-gray-100 rounded-md flex-shrink-0 ml-2"
+              aria-label="Close dialog"
+            >
+              <X size={16} />
+            </button>
           </div>
-        )}
+        </div>
 
         <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0 w-auto">
           {currentBatch && (
@@ -144,6 +160,15 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
             />
           )}
         </div>
+        
+        {/* Reference images dialog */}
+        {currentImage?.referenceImageUrl && (
+          <ReferenceImageDialog
+            isOpen={showReferenceImagesDialog}
+            onOpenChange={setShowReferenceImagesDialog}
+            imageUrl={currentImage.referenceImageUrl}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
