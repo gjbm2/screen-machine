@@ -103,7 +103,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
               className="overflow-hidden flex items-start justify-between"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-start flex-grow">
+              <div className="flex items-start flex-grow overflow-hidden">
                 {isMultiline && (
                   <button 
                     onClick={togglePromptExpand}
@@ -112,14 +112,14 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
                     {isPromptExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
                 )}
-                <div className={`text-base text-muted-foreground ${isPromptExpanded ? 'max-h-none' : 'max-h-6 overflow-hidden'}`}>
+                <div className={`text-base text-muted-foreground overflow-hidden ${isPromptExpanded ? 'max-h-none' : 'max-h-6'}`}>
                   <p className={isPromptExpanded ? 'whitespace-normal' : 'truncate'}>
                     {prompt}
                   </p>
                 </div>
               </div>
               
-              {/* Close button */}
+              {/* Close button - positioned with flex-shrink-0 to ensure it doesn't shrink */}
               <button 
                 onClick={handleClose}
                 className="inline-flex items-center justify-center p-1 hover:bg-gray-100 rounded-md flex-shrink-0 ml-2"
