@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { 
@@ -17,11 +18,12 @@ interface ImageActionsProps {
     prompt: string;
     workflow: string;
     params?: Record<string, any>;
+    title?: string;  // Add title to generationInfo
   };
   alwaysVisible?: boolean;
   showThumbnail?: boolean;
   small?: boolean;
-  title?: string; // Add title prop
+  title?: string; // Direct title prop
 }
 
 const ImageActions: React.FC<ImageActionsProps> = ({
@@ -29,17 +31,19 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   onCreateAgain,
   onUseAsInput,
   onDeleteImage,
+  generationInfo,
   alwaysVisible = false,
   showThumbnail = false,
   small = false,
-  title // Add title to component props
+  title // Direct title prop
 }) => {
   const handleDownload = () => {
     if (!imageUrl) return;
     
-    // Use title as filename if available, or fallback to timestamp
-    const filename = title 
-      ? `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.png`
+    // First check direct title prop, then generationInfo.title, then use timestamp
+    const titleToUse = title || (generationInfo?.title) || null;
+    const filename = titleToUse 
+      ? `${titleToUse.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.png`
       : `image_${Date.now()}.png`;
     
     saveAs(imageUrl, filename);
