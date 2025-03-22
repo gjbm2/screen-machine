@@ -104,7 +104,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
 
       {/* Selected image view - adaptive sizing to ensure control visibility */}
       {activeImage && (
-        <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0 w-auto">
+        <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0 max-w-full">
           <DetailViewImageSection
             activeImage={activeImage}
             onImageLoad={handleImageLoad}

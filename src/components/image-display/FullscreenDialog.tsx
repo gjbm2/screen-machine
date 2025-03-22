@@ -97,11 +97,11 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       >
         <DialogTitle className="sr-only">Image Detail View</DialogTitle>
         
-        {/* Header with expandable prompt - with fixed minimum height */}
+        {/* Header with expandable prompt - with fixed minimum height and text-overflow handling */}
         {prompt && (
-          <div className="px-4 py-2 border-b min-h-[40px] flex-shrink-0 w-auto min-w-0">
+          <div className="px-4 py-2 border-b min-h-[40px] flex-shrink-0 w-full">
             <div 
-              className="overflow-hidden flex items-start justify-between w-auto min-w-0"
+              className="overflow-hidden flex items-start justify-between w-full"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start flex-grow overflow-hidden min-w-0">
@@ -114,7 +114,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
                   </button>
                 )}
                 <div className={`text-base text-muted-foreground overflow-hidden ${isPromptExpanded ? 'max-h-none' : 'max-h-6'} min-w-0`}>
-                  <p className={isPromptExpanded ? 'whitespace-normal' : 'truncate'}>
+                  <p className={isPromptExpanded ? 'whitespace-normal break-words' : 'truncate'}>
                     {prompt}
                   </p>
                 </div>

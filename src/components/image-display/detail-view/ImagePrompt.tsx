@@ -9,8 +9,8 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({ prompt }) => {
   if (!prompt) return null;
   
   return (
-    <div className="text-sm text-muted-foreground text-center max-w-lg mx-auto">
-      <p>{prompt}</p>
+    <div className="text-sm text-muted-foreground text-center mx-auto max-w-full px-4 overflow-hidden text-ellipsis">
+      <p className="truncate">{prompt}</p>
     </div>
   );
 };
