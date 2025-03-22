@@ -90,7 +90,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       onOpenChange={(open) => setShowFullScreenView(open)}
     >
       <DialogContent 
-        className="max-w-[100vw] w-[95vw] md:w-[90vw] max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col select-none" 
+        className="max-w-[100vw] w-[95vw] md:w-[90vw] max-h-[95vh] h-[95vh] p-0 overflow-hidden flex flex-col select-none" 
         noPadding
         hideCloseButton
       >
@@ -98,7 +98,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         
         {/* Header with expandable prompt */}
         {prompt && (
-          <div className="px-4 py-2 border-b">
+          <div className="px-4 py-2 border-b flex-shrink-0">
             <div 
               className="overflow-hidden flex items-start justify-between"
               onClick={(e) => e.stopPropagation()}
@@ -131,7 +131,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           </div>
         )}
 
-        <div className="flex-grow overflow-hidden flex flex-col">
+        <div className="flex-grow overflow-hidden flex flex-col min-h-0">
           {currentBatch && (
             <ImageDetailView
               batchId={fullScreenBatchId as string}

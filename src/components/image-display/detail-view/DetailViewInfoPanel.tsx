@@ -61,12 +61,14 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
         />
       )}
       
-      {/* Reference image at the bottom */}
+      {/* Reference image at the bottom - only show if space permits */}
       {referenceImageUrl && (
-        <ReferenceImageSection
-          referenceImageUrl={referenceImageUrl}
-          onReferenceImageClick={() => setShowReferenceImage(true)}
-        />
+        <div className="hidden sm:block">
+          <ReferenceImageSection
+            referenceImageUrl={referenceImageUrl}
+            onReferenceImageClick={() => setShowReferenceImage(true)}
+          />
+        </div>
       )}
 
       {/* Reference image popup (full size view) */}

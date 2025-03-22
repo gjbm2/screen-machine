@@ -90,7 +90,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   };
 
   return (
-    <>
+    <div className="flex flex-col h-full min-h-0">
       {/* Keyboard navigation */}
       <ImageKeyboardNavigation 
         activeIndex={activeIndex}
@@ -104,16 +104,18 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
 
       {/* Selected image view - maximize image display */}
       {activeImage && (
-        <DetailViewImageSection
-          activeImage={activeImage}
-          onImageLoad={handleImageLoad}
-          onOpenInNewTab={handleOpenInNewTab}
-          allImages={allImages}
-          isNavigatingAllImages={isNavigatingAllImages}
-          onNavigateGlobal={onNavigateGlobal}
-          currentGlobalIndex={currentGlobalIndex}
-          onImageClick={onImageClick}
-        />
+        <div className="flex-grow overflow-hidden flex items-center justify-center min-h-0">
+          <DetailViewImageSection
+            activeImage={activeImage}
+            onImageLoad={handleImageLoad}
+            onOpenInNewTab={handleOpenInNewTab}
+            allImages={allImages}
+            isNavigatingAllImages={isNavigatingAllImages}
+            onNavigateGlobal={onNavigateGlobal}
+            currentGlobalIndex={currentGlobalIndex}
+            onImageClick={onImageClick}
+          />
+        </div>
       )}
       
       {/* Bottom panel with metadata and controls */}
@@ -129,7 +131,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onOpenInNewTab={handleOpenInNewTab}
         hidePrompt={hidePrompt}
       />
-    </>
+    </div>
   );
 };
 
