@@ -1,8 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { X, ChevronDown, ChevronUp } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import ImageDetailView from './ImageDetailView';
 
 interface FullscreenDialogProps {
@@ -35,6 +34,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   handleNavigateGlobal
 }) => {
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  const [isMultiline, setIsMultiline] = useState(false);
   
   if (!fullScreenBatchId) return null;
   
@@ -42,6 +42,11 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   const currentImage = currentBatch?.[fullScreenImageIndex];
   const prompt = currentImage?.prompt || '';
   
+  // Detect if prompt is likely to be multiline (more than ~100 characters)
+  useEffect(() => {
+    setIsMultiline(prompt.length > 100);
+  }, [prompt]);
+
   const handleImageClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowFullScreenView(false);
@@ -61,20 +66,22 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         className="max-w-[100vw] w-[95vw] md:w-[90vw] max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col select-none" 
         noPadding
       >
-        {/* Custom header with expandable prompt and close button */}
-        {currentBatch && (
-          <div className="flex justify-between items-start px-4 py-3 border-b">
+        {/* Header with expandable prompt, no close button */}
+        {currentBatch && prompt && (
+          <div className="px-4 py-2 border-b">
             <div 
-              className={`flex-1 pr-4 overflow-hidden`}
+              className="overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center">
-                <button 
-                  onClick={togglePromptExpand}
-                  className="inline-flex items-center justify-center p-1 mr-2 hover:bg-gray-100 rounded-md flex-shrink-0"
-                >
-                  {isPromptExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
+              <div className="flex items-start">
+                {isMultiline && (
+                  <button 
+                    onClick={togglePromptExpand}
+                    className="inline-flex items-center justify-center p-1 mr-2 hover:bg-gray-100 rounded-md flex-shrink-0 mt-0.5"
+                  >
+                    {isPromptExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </button>
+                )}
                 <div className={`text-sm text-muted-foreground ${isPromptExpanded ? 'max-h-none' : 'max-h-6 overflow-hidden'}`}>
                   <p className={isPromptExpanded ? 'whitespace-normal' : 'truncate'}>
                     {prompt}
@@ -82,14 +89,6 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
                 </div>
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 p-0 flex-shrink-0 -mt-0.5"
-              onClick={() => setShowFullScreenView(false)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
           </div>
         )}
 
