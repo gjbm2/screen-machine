@@ -1,3 +1,6 @@
+
+import { DisplayParams } from './types';
+
 // Function to validate and process the output parameter
 export const processOutputParam = (outputParam: string | null): string | null => {
   if (!outputParam) return null;
