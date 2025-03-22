@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ImageKeyboardNavigation from './ImageKeyboardNavigation';
 import DetailViewImageSection from './DetailViewImageSection';
 import DetailViewInfoPanel from './DetailViewInfoPanel';
@@ -63,6 +63,13 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   
+  // Debug log when activeImage changes
+  useEffect(() => {
+    if (activeImage?.referenceImageUrl) {
+      console.log("Active image has reference image URL:", activeImage.referenceImageUrl);
+    }
+  }, [activeImage]);
+  
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     setImageDimensions({
@@ -94,6 +101,14 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
 
   const handleInfoClick = () => {
     console.log("Info button clicked"); // Debug log
+    
+    // Log reference image status
+    if (activeImage?.referenceImageUrl) {
+      console.log("Opening info dialog with reference images:", activeImage.referenceImageUrl);
+    } else {
+      console.log("Opening info dialog without reference images");
+    }
+    
     setShowImageInfo(true);
   };
 
@@ -146,7 +161,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         <ReferenceImageDialog
           isOpen={showReferenceImage}
           onOpenChange={setShowReferenceImage}
-          imageUrl={referenceImageUrl}
+          imageUrl={referenceImageUrl.split(',')[0]} // Use the first URL if multiple
         />
       )}
 

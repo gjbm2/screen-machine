@@ -37,6 +37,11 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
   hidePrompt = false,
   onInfoClick
 }) => {
+  // Debug log for reference image URL
+  if (referenceImageUrl) {
+    console.log('DetailViewInfoPanel received referenceImageUrl:', referenceImageUrl);
+  }
+  
   return (
     <div className="flex-shrink-0 p-2 space-y-1 bg-background select-none border-t min-h-[100px]">
       {/* Image metadata - now includes the "open in new tab" button */}

@@ -109,18 +109,17 @@ export const useImageGenerationApi = (
           timestamp: Date.now(),
           batchId: currentBatchId,
           batchIndex: nextIndex,
-          status: 'generating',
+          status: 'generating' as ImageGenerationStatus,
           params,
           refiner,
           refinerParams
         };
         
         // Store reference image URLs if there are any
-        // Convert the array of URLs to a comma-separated string
         if (uploadedImageUrls.length > 0) {
+          // Always store reference images as a comma-separated string
           placeholderImage.referenceImageUrl = uploadedImageUrls.join(',');
           
-          // Debug log the reference image URL being stored
           console.log('Storing reference images in placeholder:', placeholderImage.referenceImageUrl);
         }
         
@@ -168,6 +167,19 @@ export const useImageGenerationApi = (
           setGeneratedImages(prevImages => {
             const newImages = [...prevImages];
             
+            // Debug: Check if any images in this batch have reference image URLs
+            const hasReferenceImagesBefore = newImages.some(img => 
+              img.batchId === currentBatchId && img.referenceImageUrl
+            );
+            console.log(`Before update: Batch ${currentBatchId} has reference images: ${hasReferenceImagesBefore}`);
+            
+            if (hasReferenceImagesBefore) {
+              console.log('Reference image URLs before update:', 
+                newImages.filter(img => img.batchId === currentBatchId && img.referenceImageUrl)
+                  .map(img => img.referenceImageUrl)
+              );
+            }
+            
             images.forEach((img: any, index: number) => {
               // Find the placeholder for this image
               const placeholderIndex = newImages.findIndex(
@@ -175,17 +187,26 @@ export const useImageGenerationApi = (
               );
               
               if (placeholderIndex >= 0) {
+                // Store the reference image URL before replacing
+                const existingReferenceImageUrl = newImages[placeholderIndex].referenceImageUrl;
+                
+                if (existingReferenceImageUrl) {
+                  console.log(`Found existing reference image URL for batch ${currentBatchId}, image ${index}:`, existingReferenceImageUrl);
+                }
+                
                 // Replace the placeholder with actual data
                 // IMPORTANT: Make sure to preserve the referenceImageUrl
                 const updatedImage: GeneratedImage = {
                   ...newImages[placeholderIndex],
                   url: img.url,
-                  status: 'completed' as ImageGenerationStatus, // Explicitly cast to ImageGenerationStatus
+                  status: 'completed' as ImageGenerationStatus,
                   timestamp: Date.now(),
                 };
                 
                 // Debug log the reference images being preserved
-                console.log('Updating image, reference images:', updatedImage.referenceImageUrl);
+                if (updatedImage.referenceImageUrl) {
+                  console.log('Updating image, reference images:', updatedImage.referenceImageUrl);
+                }
                 
                 newImages[placeholderIndex] = updatedImage;
               } else {
@@ -197,7 +218,7 @@ export const useImageGenerationApi = (
                   timestamp: Date.now(),
                   batchId: currentBatchId,
                   batchIndex: index,
-                  status: 'completed' as ImageGenerationStatus, // Explicitly cast to ImageGenerationStatus
+                  status: 'completed' as ImageGenerationStatus,
                   params,
                   refiner,
                   refinerParams
@@ -217,6 +238,19 @@ export const useImageGenerationApi = (
                 newImages.push(newImage);
               }
             });
+            
+            // Debug: Check if any images in this batch have reference image URLs after the update
+            const hasReferenceImagesAfter = newImages.some(img => 
+              img.batchId === currentBatchId && img.referenceImageUrl
+            );
+            console.log(`After update: Batch ${currentBatchId} has reference images: ${hasReferenceImagesAfter}`);
+            
+            if (hasReferenceImagesAfter) {
+              console.log('Reference image URLs after update:', 
+                newImages.filter(img => img.batchId === currentBatchId && img.referenceImageUrl)
+                  .map(img => img.referenceImageUrl)
+              );
+            }
             
             return newImages;
           });
@@ -240,7 +274,7 @@ export const useImageGenerationApi = (
               if (img.batchId === currentBatchId && img.status === 'generating') {
                 return {
                   ...img,
-                  status: 'error' as ImageGenerationStatus, // Explicitly cast to ImageGenerationStatus
+                  status: 'error' as ImageGenerationStatus,
                   timestamp: Date.now()
                 };
               }
