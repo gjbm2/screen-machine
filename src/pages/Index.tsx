@@ -32,6 +32,7 @@ const Index = () => {
     generatedImages,
     imageContainerOrder,
     isFirstRun,
+    fullscreenRefreshTrigger,
     setCurrentGlobalParams,
     handleSubmitPrompt,
     handleUseGeneratedAsInput,
@@ -98,6 +99,7 @@ const Index = () => {
             onDeleteImage={handleDeleteImage}
             onDeleteContainer={handleDeleteContainer}
             generationParams={{...currentParams, ...currentGlobalParams}}
+            fullscreenRefreshTrigger={fullscreenRefreshTrigger}
           />
         </div>
       </div>
