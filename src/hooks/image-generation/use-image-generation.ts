@@ -52,7 +52,10 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   useEffect(() => {
     if (uploadedImageUrls.length > 0) {
       console.log('Setting global externalImageUrls:', uploadedImageUrls);
-      window.externalImageUrls = uploadedImageUrls;
+      window.externalImageUrls = [...uploadedImageUrls]; // Make a copy to ensure it's a new array
+    } else {
+      // Clear the global variable if there are no uploaded images
+      window.externalImageUrls = [];
     }
   }, [uploadedImageUrls]);
 

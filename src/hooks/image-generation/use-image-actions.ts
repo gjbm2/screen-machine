@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { GeneratedImage } from './types';
 import { toast } from 'sonner';
@@ -62,10 +61,6 @@ export const useImageActions = (
       
       console.log('Setting reference images:', refImages);
       setUploadedImageUrls(refImages);
-      
-      // Also set the current image as a reference image
-      // This isn't needed if you don't want the current image as a reference
-      // setUploadedImageUrls(prev => [...prev, url]);
     } else {
       // If no reference images, use the current image as a reference
       setUploadedImageUrls([url]);
