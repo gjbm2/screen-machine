@@ -90,7 +90,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       onOpenChange={(open) => setShowFullScreenView(open)}
     >
       <DialogContent 
-        className="max-w-[100vw] w-[95vw] md:w-[90vw] max-h-[95vh] h-[95vh] p-0 overflow-hidden flex flex-col select-none" 
+        className="max-w-[100vw] w-[95vw] md:w-[90vw] max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col select-none" 
         noPadding
         hideCloseButton
       >

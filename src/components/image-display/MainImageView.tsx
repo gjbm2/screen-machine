@@ -55,12 +55,11 @@ const MainImageView: React.FC<MainImageViewProps> = ({
 
   const calculateOptimalSize = () => {
     if (imageDimensions.width === 0 || imageDimensions.height === 0) {
-      return { width: 'auto', height: 'auto', maxWidth: '90%', maxHeight: '65vh' }; // Reduced from 70vh
+      return { width: 'auto', height: 'auto', maxWidth: '90%', maxHeight: '70vh' };
     }
 
     const availableWidth = viewportWidth * 0.9;
-    // Reserve more space for action buttons and other UI elements
-    const availableHeight = viewportHeight * 0.65; // Reduced from 0.7
+    const availableHeight = viewportHeight * 0.7;
     
     const widthRatio = availableWidth / imageDimensions.width;
     const heightRatio = availableHeight / imageDimensions.height;
