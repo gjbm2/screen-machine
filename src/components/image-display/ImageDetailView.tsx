@@ -12,6 +12,7 @@ interface ImageDetailViewProps {
     params?: Record<string, any>;
     referenceImageUrl?: string;
     timestamp?: number;
+    title?: string;
   }>;
   activeIndex: number;
   onSetActiveIndex: (index: number) => void;
@@ -27,6 +28,7 @@ interface ImageDetailViewProps {
     batchId: string;
     batchIndex: number;
     prompt?: string;
+    title?: string;
   }>;
   isNavigatingAllImages?: boolean;
   onNavigateGlobal?: (imageIndex: number) => void;

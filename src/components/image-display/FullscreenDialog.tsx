@@ -3,22 +3,23 @@ import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import ReferenceImageDialog from './ReferenceImageDialog';
 import ImageInfoDialog from './ImageInfoDialog';
-import FullscreenHeader from './fullscreen/FullscreenHeader';
+import { useFullscreenDialog } from './fullscreen/useFullscreenDialog';
 import FullscreenContent from './fullscreen/FullscreenContent';
-import useFullscreenDialog from './fullscreen/useFullscreenDialog';
+import FullscreenHeader from './fullscreen/FullscreenHeader';
+import { GeneratedImage } from '@/hooks/image-generation/types';
 
 interface FullscreenDialogProps {
   showFullScreenView: boolean;
   setShowFullScreenView: (show: boolean) => void;
   fullScreenBatchId: string | null;
-  batches: Record<string, any[]>;
+  batches: Record<string, GeneratedImage[]>;
   fullScreenImageIndex: number;
   setFullScreenImageIndex: (index: number) => void;
-  onDeleteImage: (batchId: string, index: number) => void;
-  onCreateAgain: (batchId: string) => void;
-  onUseGeneratedAsInput: (url: string) => void;
-  allImagesFlat: any[];
-  currentGlobalIndex: number | null;
+  onDeleteImage?: (batchId: string, index: number) => void;
+  onCreateAgain?: (batchId: string) => void;
+  onUseGeneratedAsInput?: (url: string) => void;
+  allImagesFlat: GeneratedImage[];
+  currentGlobalIndex: number;
   handleNavigateGlobal: (index: number) => void;
   fullscreenRefreshTrigger?: number;
 }
@@ -36,33 +37,33 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   allImagesFlat,
   currentGlobalIndex,
   handleNavigateGlobal,
-  fullscreenRefreshTrigger = 0
+  fullscreenRefreshTrigger
 }) => {
-  const [lastBatchId, setLastBatchId] = useState<string | null>(null);
-
   const {
-    prompt,
-    currentBatch,
     currentImage,
-    showReferenceImagesDialog,
-    setShowReferenceImagesDialog,
+    images,
+    prompt,
+    isNavigating,
+    showReferenceImages,
     showInfoDialog,
-    setShowInfoDialog,
-    imageDimensions,
-    handleImageLoad,
-    handleShowInfoPanel,
-    handleShowReferenceImages,
-    hasReferenceImages
+    handleNavigateImages,
+    handleCloseFullScreen,
+    handleReferenceImageClick,
+    handleToggleReferenceImages,
+    handleToggleInfoDialog,
   } = useFullscreenDialog({
+    showFullScreenView,
+    setShowFullScreenView,
     fullScreenBatchId,
     batches,
     fullScreenImageIndex,
-    fullscreenRefreshTrigger,
-    lastBatchId,
-    setLastBatchId
+    setFullScreenImageIndex,
+    allImagesFlat,
+    currentGlobalIndex,
+    handleNavigateGlobal,
+    fullscreenRefreshTrigger
   });
 
-  // Only render dialog if we need to show it
   if (!showFullScreenView) {
     return null;
   }
@@ -79,112 +80,90 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
 
   const handleImageClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setShowFullScreenView(false);
+    // Toggle visibility of the header and footer
   };
 
-  const handleClose = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setShowFullScreenView(false);
+  const handleDeleteImage = () => {
+    if (currentImage && currentImage.batchId && onDeleteImage) {
+      onDeleteImage(currentImage.batchId, currentImage.batchIndex || 0);
+      
+      // Navigate to the next image if there are any left
+      if (images && images.length > 1) {
+        const nextIndex = (fullScreenImageIndex + 1) % images.length;
+        setFullScreenImageIndex(nextIndex);
+      } else {
+        // Close the fullscreen view if there are no images left
+        setShowFullScreenView(false);
+      }
+    }
   };
 
-  const handleCreateAgain = (batchId: string) => {
-    // Store the current batch ID to navigate to the new image later
-    setLastBatchId(batchId);
-    onCreateAgain(batchId);
+  const handleCreateAgain = () => {
+    if (currentImage && currentImage.batchId && onCreateAgain) {
+      onCreateAgain(currentImage.batchId);
+      setShowFullScreenView(false);
+    }
   };
 
-  const handleDeleteImage = (batchId: string, index: number) => {
-    onDeleteImage(batchId, index);
-    // Close the fullscreen view after deleting
-    setShowFullScreenView(false);
-  };
-
-  const handleUseAsInput = (url: string) => {
-    onUseGeneratedAsInput(url);
-    // Close the fullscreen view after applying input
-    setShowFullScreenView(false);
+  const handleUseAsInput = () => {
+    if (currentImage && onUseGeneratedAsInput) {
+      onUseGeneratedAsInput(currentImage.url);
+      setShowFullScreenView(false);
+    }
   };
   
+  // Construct number for display
+  const imageNumber = currentImage && currentImage.containerId !== undefined 
+    ? currentImage.containerId 
+    : 0;
+    
+  // Use title if available, or construct from components
+  const title = currentImage?.title;
+
   return (
-    <Dialog 
-      open={showFullScreenView} 
-      onOpenChange={(open) => setShowFullScreenView(open)}
-    >
+    <Dialog open={showFullScreenView} onOpenChange={setShowFullScreenView}>
       <DialogContent 
-        className="max-w-[95vw] w-auto min-w-0 md:w-auto max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col select-none" 
-        noPadding
-        hideCloseButton
-        style={{ width: 'fit-content', minWidth: '50vw' }}
+        className="w-full max-w-6xl h-[90vh] p-0 flex flex-col"
+        onInteractOutside={(e) => e.preventDefault()}
       >
-        <DialogTitle className="sr-only">Image Detail View</DialogTitle>
-        
-        {/* Header component */}
-        <FullscreenHeader
-          prompt={prompt}
-          hasReferenceImages={hasReferenceImages}
-          onReferenceImageClick={handleShowReferenceImages}
+        <FullscreenHeader 
+          prompt={prompt || ''}
+          hasReferenceImages={Boolean(currentImage?.referenceImageUrl)}
+          onReferenceImageClick={handleToggleReferenceImages}
           workflowName={currentImage?.workflow}
-          onInfoClick={handleShowInfoPanel}
-          onClose={handleClose}
-          imageNumber={fullScreenImageIndex + 1}
+          onInfoClick={handleToggleInfoDialog}
+          onClose={handleCloseFullScreen}
+          imageNumber={imageNumber}
+          title={title}
         />
-
-        {/* Content component */}
-        {currentBatch && (
-          <FullscreenContent
-            batchId={fullScreenBatchId as string}
-            currentBatch={currentBatch}
-            fullScreenImageIndex={fullScreenImageIndex}
-            setFullScreenImageIndex={setFullScreenImageIndex}
-            onNavigatePrev={(e) => {
-              e.stopPropagation();
-              if (currentGlobalIndex !== null && currentGlobalIndex > 0) {
-                handleNavigateGlobal(currentGlobalIndex - 1);
-              }
-            }}
-            onNavigateNext={(e) => {
-              e.stopPropagation();
-              if (currentGlobalIndex !== null && currentGlobalIndex < allImagesFlat.length - 1) {
-                handleNavigateGlobal(currentGlobalIndex + 1);
-              }
-            }}
-            onDeleteImage={handleDeleteImage}
-            onCreateAgain={handleCreateAgain}
-            onUseAsInput={handleUseAsInput}
-            allImagesFlat={allImagesFlat}
-            currentGlobalIndex={currentGlobalIndex}
-            handleNavigateGlobal={handleNavigateGlobal}
-            onImageClick={handleImageClick}
-            onClose={() => setShowFullScreenView(false)}
+        
+        <FullscreenContent 
+          currentImage={currentImage}
+          imageCount={images?.length || 0}
+          currentImageIndex={fullScreenImageIndex}
+          onNavigate={handleNavigateImages}
+          onImageClick={handleImageClick}
+          onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
+          onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
+          onUseAsInput={onUseGeneratedAsInput ? handleUseAsInput : undefined}
+          isNavigating={isNavigating}
+        />
+        
+        {/* Show reference images */}
+        {currentImage?.referenceImageUrl && (
+          <ReferenceImageDialog 
+            isOpen={showReferenceImages} 
+            onClose={handleToggleReferenceImages}
+            referenceImageUrl={currentImage.referenceImageUrl}
           />
         )}
         
-        {/* Reference images dialog */}
-        {currentImage?.referenceImageUrl && (
-          <ReferenceImageDialog
-            isOpen={showReferenceImagesDialog}
-            onOpenChange={setShowReferenceImagesDialog}
-            imageUrl={currentImage.referenceImageUrl}
-          />
-        )}
-
         {/* Image info dialog */}
         {currentImage && (
           <ImageInfoDialog
             isOpen={showInfoDialog}
-            onOpenChange={setShowInfoDialog}
+            onClose={handleToggleInfoDialog}
             image={currentImage}
-            dimensions={imageDimensions}
-          />
-        )}
-
-        {/* Hidden image element to load the image and get dimensions */}
-        {currentImage?.url && (
-          <img 
-            src={currentImage.url} 
-            onLoad={handleImageLoad} 
-            alt="Preload for dimensions" 
-            className="hidden" 
           />
         )}
       </DialogContent>

@@ -1,3 +1,4 @@
+
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -128,6 +129,13 @@ export const generateImage = async (
       // Create a placeholder entry
       const nextIndex = existingBatchIndexes.size;
       
+      // Get current counter for image generation and increment
+      const currentImageNumber = typeof window.imageCounter !== 'undefined' ? window.imageCounter + 1 : 1;
+      window.imageCounter = currentImageNumber;
+      
+      // Create title in the format: "[number]. [prompt] ([workflow])"
+      const title = `${currentImageNumber}. ${prompt || 'Untitled'} (${workflow})`;
+      
       const placeholderImage = createPlaceholderImage(
         prompt,
         workflow,
@@ -137,7 +145,8 @@ export const generateImage = async (
         refiner,
         refinerParams,
         referenceImageUrl,
-        nextContainerId && !batchId ? nextContainerId : undefined
+        nextContainerId && !batchId ? nextContainerId : undefined,
+        title
       );
       
       // Additional debug for placeholder
@@ -194,7 +203,7 @@ export const generateImage = async (
             );
             
             if (placeholderIndex >= 0) {
-              // Update the placeholder with actual data - preserve reference image URL
+              // Update the placeholder with actual data - preserve reference image URL and title
               newImages[placeholderIndex] = updateImageWithResult(
                 newImages[placeholderIndex], 
                 img.url
@@ -206,6 +215,13 @@ export const generateImage = async (
               }
             } else {
               // No placeholder found, this is an additional image
+              // Get current counter for image generation and increment
+              const currentImageNumber = typeof window.imageCounter !== 'undefined' ? window.imageCounter + 1 : 1;
+              window.imageCounter = currentImageNumber;
+              
+              // Create title in the format: "[number]. [prompt] ([workflow])"
+              const title = `${currentImageNumber}. ${prompt || 'Untitled'} (${workflow})`;
+              
               const newImage: GeneratedImage = {
                 url: img.url,
                 prompt,
@@ -216,7 +232,8 @@ export const generateImage = async (
                 status: 'completed' as ImageGenerationStatus,
                 params,
                 refiner,
-                refinerParams
+                refinerParams,
+                title
               };
               
               // If there's a reference image, make sure to include it
