@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -39,8 +40,10 @@ const PromptForm: React.FC<PromptFormProps> = ({
     updateGlobalParam,
   } = usePromptForm();
 
+  // Update prompt when currentPrompt prop changes
   useEffect(() => {
     if (currentPrompt && currentPrompt !== prompt) {
+      console.log('PromptForm: Updating prompt from prop:', currentPrompt);
       setPrompt(currentPrompt);
     }
   }, [currentPrompt]);
@@ -58,7 +61,18 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
     setLocalLoading(true);
 
+    // Combine local image files with any external URLs that need to be fetched
     const allImages: (File | string)[] = [...imageFiles];
+
+    // If we have preview URLs that aren't from local files, include them too
+    const externalUrls = previewUrls.filter(url => 
+      !imageFiles.some(file => url === URL.createObjectURL(file))
+    );
+    
+    // Add external URLs to the images array
+    if (externalUrls.length > 0) {
+      allImages.push(...externalUrls);
+    }
 
     const refinerToUse = selectedRefiner === "none" ? undefined : selectedRefiner;
 
@@ -94,17 +108,54 @@ const PromptForm: React.FC<PromptFormProps> = ({
     setPreviewUrls(prevUrls => [...prevUrls, ...newPreviewUrls]);
   };
 
+  // Handle external image URLs added from "Use as input"
+  useEffect(() => {
+    const urlsFromProps = window.externalImageUrls || [];
+    if (urlsFromProps && urlsFromProps.length > 0) {
+      console.log('PromptForm: External image URLs detected:', urlsFromProps);
+      // Clear the global variable after using it
+      window.externalImageUrls = [];
+      
+      // Add these URLs to our preview URLs if they're not already there
+      setPreviewUrls(prev => {
+        const newUrls = [...prev];
+        for (const url of urlsFromProps) {
+          if (!newUrls.includes(url)) {
+            newUrls.push(url);
+          }
+        }
+        return newUrls;
+      });
+    }
+  }, []);
+
   const handleRemoveImage = (index: number) => {
     if (index < 0 || index >= previewUrls.length) return;
     
-    URL.revokeObjectURL(previewUrls[index]);
+    // If this URL is from a File, revoke it
+    const url = previewUrls[index];
+    const isFileUrl = imageFiles.some(file => URL.createObjectURL(file) === url);
+    if (isFileUrl) {
+      URL.revokeObjectURL(url);
+    }
     
-    setImageFiles(prevFiles => prevFiles.filter((_, i) => i !== index));
+    // Filter out the file if it exists
+    setImageFiles(prevFiles => prevFiles.filter((_, i) => 
+      URL.createObjectURL(prevFiles[i]) !== url
+    ));
+    
+    // Remove from preview URLs
     setPreviewUrls(prevUrls => prevUrls.filter((_, i) => i !== index));
   };
 
   const clearAllImages = () => {
-    previewUrls.forEach(url => URL.revokeObjectURL(url));
+    // Revoke any object URLs we created
+    previewUrls.forEach(url => {
+      const isFileUrl = imageFiles.some(file => URL.createObjectURL(file) === url);
+      if (isFileUrl) {
+        URL.revokeObjectURL(url);
+      }
+    });
     
     setImageFiles([]);
     setPreviewUrls([]);
@@ -155,7 +206,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           isButtonDisabled={isButtonDisabled}
           workflows={workflows}
           isCompact={false}
-          hasUploadedImages={imageFiles.length > 0}
+          hasUploadedImages={previewUrls.length > 0}
         />
         
         {isAdvancedOptionsOpen && (

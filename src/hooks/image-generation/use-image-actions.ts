@@ -19,7 +19,7 @@ export const useImageActions = (
 ) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
-  const handleUseGeneratedAsInput = (url: string) => {
+  const handleUseGeneratedAsInput = async (url: string) => {
     // Find the image in our collection
     const image = generatedImages.find(img => img.url === url);
     if (!image) {
@@ -32,20 +32,44 @@ export const useImageActions = (
     // Set the prompt and workflow to match the generated image
     if (image.prompt) {
       setCurrentPrompt(image.prompt);
+      console.log('Setting prompt to:', image.prompt);
     }
     
     if (image.workflow) {
       setCurrentWorkflow(image.workflow);
+      console.log('Setting workflow to:', image.workflow);
     }
     
     // Set reference images if any
     if (image.referenceImageUrl) {
-      const refImages = image.referenceImageUrl.split(',').map(url => url.trim()).filter(url => url !== '');
+      let refImages: string[] = [];
+      
+      // Handle different formats of referenceImageUrl
+      if (typeof image.referenceImageUrl === 'string') {
+        // If it's a comma-separated string, split it
+        if (image.referenceImageUrl.includes(',')) {
+          refImages = image.referenceImageUrl.split(',')
+            .map(url => url.trim())
+            .filter(url => url !== '');
+        } else {
+          // Single URL
+          refImages = [image.referenceImageUrl];
+        }
+      } else if (Array.isArray(image.referenceImageUrl)) {
+        // If it's already an array
+        refImages = image.referenceImageUrl;
+      }
+      
       console.log('Setting reference images:', refImages);
       setUploadedImageUrls(refImages);
+      
+      // Also set the current image as a reference image
+      // This isn't needed if you don't want the current image as a reference
+      // setUploadedImageUrls(prev => [...prev, url]);
     } else {
-      console.log('No reference images to set');
-      setUploadedImageUrls([]);
+      // If no reference images, use the current image as a reference
+      setUploadedImageUrls([url]);
+      console.log('Setting current image as reference:', url);
     }
     
     // Set the image URL
@@ -65,9 +89,17 @@ export const useImageActions = (
         // Prepare reference images if any
         let referenceImages: string[] | undefined = undefined;
         if (batchImage.referenceImageUrl) {
-          referenceImages = batchImage.referenceImageUrl.split(',')
-            .map(url => url.trim())
-            .filter(url => url !== '');
+          if (typeof batchImage.referenceImageUrl === 'string') {
+            if (batchImage.referenceImageUrl.includes(',')) {
+              referenceImages = batchImage.referenceImageUrl.split(',')
+                .map(url => url.trim())
+                .filter(url => url !== '');
+            } else {
+              referenceImages = [batchImage.referenceImageUrl];
+            }
+          } else if (Array.isArray(batchImage.referenceImageUrl)) {
+            referenceImages = batchImage.referenceImageUrl;
+          }
           console.log('Using reference images for regeneration:', referenceImages);
         }
         
