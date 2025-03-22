@@ -7,6 +7,7 @@ import PromptInput from '@/components/prompt/PromptInput';
 import PromptFormToolbar from './PromptFormToolbar';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import { PromptFormProps } from './types';
+import useExternalImageUrls from '@/hooks/use-external-images';
 
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
@@ -47,6 +48,9 @@ const PromptForm: React.FC<PromptFormProps> = ({
       setPrompt(currentPrompt);
     }
   }, [currentPrompt, prompt]);
+
+  // Handle external image URLs and updates
+  useExternalImageUrls(setPreviewUrls);
 
   const handleSubmit = () => {
     if (prompt.trim() === '' && imageFiles.length === 0 && previewUrls.length === 0) {
@@ -108,61 +112,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
     setPreviewUrls(prevUrls => [...prevUrls, ...newPreviewUrls]);
   };
 
-  // Handle external image URLs added from "Use as input"
-  useEffect(() => {
-    const urlsFromProps = window.externalImageUrls || [];
-    if (urlsFromProps && urlsFromProps.length > 0) {
-      console.log('PromptForm: External image URLs detected:', urlsFromProps);
-      
-      // Add these URLs to our preview URLs if they're not already there
-      setPreviewUrls(prev => {
-        const newUrls = [...prev];
-        for (const url of urlsFromProps) {
-          if (!newUrls.includes(url)) {
-            newUrls.push(url);
-          }
-        }
-        return newUrls;
-      });
-      
-      // Clear the global variable after using it to prevent duplicates
-      window.externalImageUrls = [];
-    }
-  }, [window.externalImageUrls]);
-
-  // Check for external images on component mount and when the component updates
-  useEffect(() => {
-    const checkForExternalImages = () => {
-      const externalUrls = window.externalImageUrls || [];
-      if (externalUrls.length > 0) {
-        console.log('PromptForm: External image URLs detected on update check:', externalUrls);
-        
-        setPreviewUrls(prev => {
-          const newUrls = [...prev];
-          for (const url of externalUrls) {
-            if (!newUrls.includes(url)) {
-              newUrls.push(url);
-            }
-          }
-          return newUrls;
-        });
-        
-        // Clear the global variable after using it
-        window.externalImageUrls = [];
-      }
-    };
-    
-    // Check immediately on mount/update
-    checkForExternalImages();
-    
-    // Also set up an interval to periodically check for external images
-    const intervalId = setInterval(checkForExternalImages, 1000);
-    
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, []);
-
   const handleRemoveImage = (index: number) => {
     if (index < 0 || index >= previewUrls.length) return;
     
@@ -199,10 +148,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
     setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
   };
 
-  const handleIncrementBatchSize = () => {
-    incrementBatchSize();
-  };
-
   const handleDecrementBatchSize = () => {
     decrementBatchSize();
   };
@@ -232,7 +177,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           onImageUpload={handleImageUpload}
           onWorkflowChange={handleWorkflowChange}
           onRefinerChange={handleRefinerChange}
-          incrementBatchSize={handleIncrementBatchSize}
+          incrementBatchSize={incrementBatchSize}
           decrementBatchSize={handleDecrementBatchSize}
           toggleAdvancedOptions={toggleAdvancedOptions}
           handleSubmit={handleSubmit}
