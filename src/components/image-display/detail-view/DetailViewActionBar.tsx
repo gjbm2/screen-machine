@@ -1,7 +1,8 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { CopyPlus, SquareArrowUpRight, Trash2, Download, Separator } from 'lucide-react';
+import { CopyPlus, SquareArrowUpRight, Trash2, Download } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 import PublishMenu from '../PublishMenu';
 
 interface DetailViewActionBarProps {
