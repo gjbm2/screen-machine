@@ -20,6 +20,7 @@ interface ImageBatchItemProps {
     status?: string;
     refiner?: string;
     referenceImageUrl?: string;
+    title?: string;
   };
   batchId: string;
   index: number;
@@ -93,6 +94,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         onClick={handleImageClick}
         viewMode={viewMode}
         hasReferenceImages={hasReferenceImages}
+        title={image.title}
       />
       
       <BatchCountDisplay 
@@ -129,6 +131,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
             params: image.params
           }}
           referenceImageUrl={image.referenceImageUrl}
+          title={image.title}
         />
       )}
     </div>
