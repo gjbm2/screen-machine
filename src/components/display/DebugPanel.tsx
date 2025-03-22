@@ -1,18 +1,18 @@
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { RefreshCw, Clock, Info, Copy, Check, Clipboard, FileImage, Settings, Image as ImageIcon, Eye, EyeOff, Palette, Type, Database } from "lucide-react";
+import { RefreshCw, Clock, Info, Copy, Check, Clipboard, FileImage, Settings, Image as ImageIcon, Eye, Tag, Database, Type, PanelLeft } from "lucide-react";
 import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from './types';
 import { createUrlWithParams } from './utils';
 import { useNavigate } from 'react-router-dom';
@@ -22,12 +22,14 @@ interface DebugPanelProps {
   params: DisplayParams;
   imageUrl: string | null;
   lastModified: string | null;
-  lastChecked: string | null;
+  lastChecked: Date | null;
   nextCheckTime: string | null;
   imageKey: number;
   outputFiles: string[];
   imageChanged?: boolean;
   onCheckNow: () => void;
+  metadata: Record<string, string>;
+  onApplyCaption: (caption: string | null) => void;
 }
 
 export const DebugPanel: React.FC<DebugPanelProps> = ({
@@ -39,7 +41,9 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   imageKey,
   outputFiles,
   imageChanged,
-  onCheckNow
+  onCheckNow,
+  metadata,
+  onApplyCaption
 }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("files");
@@ -53,10 +57,48 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   const [captionSize, setCaptionSize] = useState(params.captionSize || "16px");
   const [captionColor, setCaptionColor] = useState(params.captionColor || "ffffff");
   const [captionFont, setCaptionFont] = useState(params.captionFont || "Arial, sans-serif");
-  const [dataTag, setDataTag] = useState(params.data === undefined ? "" : (params.data || ""));
   const [transition, setTransition] = useState<TransitionType>(params.transition || "cut");
   const [copied, setCopied] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [metadataEntries, setMetadataEntries] = useState<Array<{key: string, value: string}>>([]);
+  const [previewCaption, setPreviewCaption] = useState<string | null>(null);
+
+  // Update metadata entries when metadata changes
+  useEffect(() => {
+    const entries = Object.entries(metadata).map(([key, value]) => ({
+      key,
+      value
+    }));
+    setMetadataEntries(entries);
+  }, [metadata]);
+
+  // Parse caption with metadata for preview
+  useEffect(() => {
+    if (caption === '{all}') {
+      const allMetadata = metadataEntries
+        .map(entry => `${entry.key}: ${entry.value}`)
+        .join('\n');
+      setPreviewCaption(allMetadata);
+      onApplyCaption(allMetadata);
+    } else if (caption) {
+      const processed = caption.replace(/\{([^}]+)\}/g, (match, key) => {
+        const entry = metadataEntries.find(e => e.key === key);
+        return entry ? entry.value : match;
+      });
+      setPreviewCaption(processed);
+      onApplyCaption(processed);
+    } else {
+      setPreviewCaption(null);
+      onApplyCaption(null);
+    }
+  }, [caption, metadataEntries, onApplyCaption]);
+
+  // Apply settings to preview image
+  useEffect(() => {
+    // Only update preview in debug mode, don't navigate
+    if (imageUrl) {
+      // This is just for live preview without navigation
+    }
+  }, [showMode, position, backgroundColor, captionPosition, captionSize, captionColor, captionFont]);
 
   // Generate the URL for the current settings
   const generateUrl = () => {
@@ -72,17 +114,41 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       captionSize,
       captionColor,
       captionFont,
-      data: dataTag === "" ? undefined : dataTag,
+      data: params.data,
       transition,
     };
     
     return createUrlWithParams(newParams);
   };
 
-  // Apply the current settings
+  // Apply the current settings and stay in debug mode
   const applySettings = () => {
+    const newParams: DisplayParams = {
+      output: customUrl || null,
+      showMode,
+      position,
+      refreshInterval,
+      backgroundColor,
+      debugMode: true,
+      caption: caption || null,
+      captionPosition,
+      captionSize,
+      captionColor,
+      captionFont,
+      data: params.data,
+      transition,
+    };
+    
+    const url = createUrlWithParams(newParams);
+    navigate(url);
+    toast.success("Settings applied");
+  };
+
+  // Commit settings and exit debug mode
+  const commitSettings = () => {
     const url = generateUrl();
     navigate(url);
+    toast.success("Settings committed");
   };
 
   // Copy the URL to clipboard
@@ -131,8 +197,31 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     setCaptionSize('16px');
     setCaptionColor('ffffff');
     setCaptionFont('Arial, sans-serif');
-    setDataTag('');
     setTransition('cut');
+  };
+
+  // Insert metadata tag into caption
+  const insertMetadataTag = (key: string) => {
+    setCaption(prevCaption => {
+      const textArea = document.getElementById('caption-textarea') as HTMLTextAreaElement;
+      if (textArea) {
+        const selectionStart = textArea.selectionStart;
+        const selectionEnd = textArea.selectionEnd;
+        const textBefore = prevCaption.substring(0, selectionStart);
+        const textAfter = prevCaption.substring(selectionEnd);
+        const newCaption = `${textBefore}{${key}}${textAfter}`;
+        
+        // Focus back on textarea and set cursor position after the inserted tag
+        setTimeout(() => {
+          textArea.focus();
+          const newPosition = selectionStart + key.length + 2; // +2 for the {} brackets
+          textArea.setSelectionRange(newPosition, newPosition);
+        }, 50);
+        
+        return newCaption;
+      }
+      return `${prevCaption}{${key}}`;
+    });
   };
 
   // Determine if the current file is selected
@@ -151,22 +240,27 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   };
 
   // Format the time for display
-  const formatTime = (timeString: string | null) => {
-    if (!timeString) return 'Never';
+  const formatTime = (timeValue: Date | string | null) => {
+    if (!timeValue) return 'Never';
     
     try {
-      const date = new Date(timeString);
+      const date = timeValue instanceof Date ? timeValue : new Date(timeValue);
       return date.toLocaleTimeString();
     } catch (e) {
-      return timeString;
+      return String(timeValue);
     }
+  };
+
+  // Insert all metadata placeholder
+  const insertAllMetadata = () => {
+    setCaption('{all}');
   };
 
   return (
     <Card className="w-1/3 max-w-md absolute left-4 top-4 z-10 opacity-90 hover:opacity-100 transition-opacity">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg flex justify-between items-center">
-          <span>Display Debug Panel</span>
+          <span>Display Configuration</span>
           <div className="flex space-x-2">
             <TooltipProvider>
               <Tooltip>
@@ -205,20 +299,25 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
             </TooltipProvider>
           </div>
         </CardTitle>
-        <CardDescription>
-          Configure display settings and preview images
-        </CardDescription>
       </CardHeader>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-2 mx-4">
+        <TabsList className="grid grid-cols-4 mx-4">
           <TabsTrigger value="files" className="flex items-center">
-            <FileImage className="mr-2 h-4 w-4" />
+            <FileImage className="mr-1 h-4 w-4" />
             Files
           </TabsTrigger>
           <TabsTrigger value="settings" className="flex items-center">
-            <Settings className="mr-2 h-4 w-4" />
-            Settings
+            <Settings className="mr-1 h-4 w-4" />
+            Config
+          </TabsTrigger>
+          <TabsTrigger value="metadata" className="flex items-center">
+            <Tag className="mr-1 h-4 w-4" />
+            Metadata
+          </TabsTrigger>
+          <TabsTrigger value="caption" className="flex items-center">
+            <Type className="mr-1 h-4 w-4" />
+            Caption
           </TabsTrigger>
         </TabsList>
         
@@ -300,27 +399,12 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         <TabsContent value="settings" className="mt-0">
           <CardContent className="pt-4 pb-2">
             <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="image-url" className="text-sm">Image URL/Path</Label>
-                  <Badge variant={imageUrl ? "outline" : "secondary"} className="text-xs font-normal">
-                    {imageKey > 0 ? `Key: ${imageKey}` : 'No Image'}
-                  </Badge>
-                </div>
-                <Input 
-                  id="image-url" 
-                  value={customUrl} 
-                  onChange={(e) => setCustomUrl(e.target.value)}
-                  placeholder="Enter URL or path..."
-                />
-              </div>
-              
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="show-mode" className="text-sm">Display Mode</Label>
                   <Select 
                     value={showMode} 
-                    onValueChange={(value: ShowMode) => setShowMode(value)}
+                    onValueChange={(value) => setShowMode(value as ShowMode)}
                   >
                     <SelectTrigger id="show-mode">
                       <SelectValue placeholder="Select mode" />
@@ -338,7 +422,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                   <Label htmlFor="position" className="text-sm">Position</Label>
                   <Select 
                     value={position} 
-                    onValueChange={(value: PositionMode) => setPosition(value)}
+                    onValueChange={(value) => setPosition(value as PositionMode)}
                   >
                     <SelectTrigger id="position">
                       <SelectValue placeholder="Select position" />
@@ -393,172 +477,196 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                 />
               </div>
               
-              <div className="flex items-center space-x-2">
+              <div className="space-y-2">
+                <Label htmlFor="transition" className="text-sm">Transition Effect</Label>
+                <Select 
+                  value={transition} 
+                  onValueChange={(value) => setTransition(value as TransitionType)}
+                >
+                  <SelectTrigger id="transition">
+                    <SelectValue placeholder="Select transition" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cut">Cut (No Transition)</SelectItem>
+                    <SelectItem value="fade-fast">Fast Fade</SelectItem>
+                    <SelectItem value="fade-slow">Slow Fade</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={resetSettings}
+                className="text-xs"
+              >
+                Reset to Defaults
+              </Button>
+            </div>
+          </CardContent>
+        </TabsContent>
+        
+        <TabsContent value="metadata" className="mt-0">
+          <CardContent className="pt-4 pb-2">
+            <ScrollArea className="h-[300px] rounded-md border p-2">
+              {metadataEntries.length > 0 ? (
+                <div className="space-y-2">
+                  {metadataEntries.map((entry, index) => (
+                    <div 
+                      key={index}
+                      className="flex items-center justify-between p-2 rounded-md hover:bg-gray-100"
+                    >
+                      <div className="flex-1">
+                        <div className="font-medium text-sm">{entry.key}</div>
+                        <div className="text-xs text-gray-500 truncate">{entry.value}</div>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-7 px-2"
+                        onClick={() => {
+                          insertMetadataTag(entry.key);
+                          setActiveTab("caption");
+                        }}
+                      >
+                        Use
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                  <Database className="h-8 w-8 mb-2" />
+                  <p className="text-sm">No metadata available</p>
+                  <p className="text-xs mt-1">Select an image to view its metadata</p>
+                </div>
+              )}
+            </ScrollArea>
+          </CardContent>
+        </TabsContent>
+        
+        <TabsContent value="caption" className="mt-0">
+          <CardContent className="pt-4 pb-2">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
                 <Button 
                   variant="outline" 
-                  size="sm"
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="text-xs"
+                  size="sm" 
+                  onClick={insertAllMetadata}
+                  className="text-xs h-7"
                 >
-                  {showAdvanced ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
-                  {showAdvanced ? "Hide Advanced" : "Show Advanced"}
-                </Button>
-                
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={resetSettings}
-                  className="text-xs ml-auto"
-                >
-                  Reset to Defaults
+                  <PanelLeft className="h-3 w-3 mr-1" />
+                  Insert All Metadata
                 </Button>
               </div>
               
-              {showAdvanced && (
-                <>
-                  <Separator />
-                  
-                  <div className="space-y-4">
-                    <div className="flex items-center">
-                      <Type className="h-4 w-4 mr-2 text-gray-500" />
-                      <h3 className="text-sm font-medium">Caption Settings</h3>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="caption" className="text-sm">Caption Text</Label>
-                      <Input 
-                        id="caption"
-                        value={caption}
-                        onChange={(e) => setCaption(e.target.value)}
-                        placeholder="Enter caption text..."
+              <div className="space-y-2">
+                <Label htmlFor="caption-textarea" className="text-sm">Caption Text</Label>
+                <Textarea 
+                  id="caption-textarea"
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  placeholder="Enter caption text or use {tag} for metadata..."
+                  className="min-h-[100px]"
+                />
+                <div className="text-xs text-gray-500">
+                  Use {"{tagname}"} to insert metadata values or {"{all}"} for all metadata.
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-sm font-medium mb-2">Caption Preview</h3>
+                <div className="bg-gray-100 p-3 rounded-md min-h-[60px] text-sm whitespace-pre-line">
+                  {previewCaption || <span className="text-gray-400">No caption</span>}
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="caption-position" className="text-sm">Caption Position</Label>
+                  <Select 
+                    value={captionPosition} 
+                    onValueChange={(value) => setCaptionPosition(value as CaptionPosition)}
+                  >
+                    <SelectTrigger id="caption-position">
+                      <SelectValue placeholder="Select position" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="top-left">Top Left</SelectItem>
+                      <SelectItem value="top-center">Top Center</SelectItem>
+                      <SelectItem value="top-right">Top Right</SelectItem>
+                      <SelectItem value="bottom-left">Bottom Left</SelectItem>
+                      <SelectItem value="bottom-center">Bottom Center</SelectItem>
+                      <SelectItem value="bottom-right">Bottom Right</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="caption-size" className="text-sm">Font Size</Label>
+                  <Input 
+                    id="caption-size"
+                    value={captionSize}
+                    onChange={(e) => setCaptionSize(e.target.value)}
+                    placeholder="16px"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="caption-color" className="text-sm">Text Color</Label>
+                    <div className="flex items-center space-x-2">
+                      <div 
+                        className="w-3 h-3 rounded-full border" 
+                        style={{ backgroundColor: `#${captionColor}` }}
                       />
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="caption-position" className="text-sm">Caption Position</Label>
-                        <Select 
-                          value={captionPosition} 
-                          onValueChange={(value: CaptionPosition) => setCaptionPosition(value)}
-                        >
-                          <SelectTrigger id="caption-position">
-                            <SelectValue placeholder="Select position" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="top-left">Top Left</SelectItem>
-                            <SelectItem value="top-center">Top Center</SelectItem>
-                            <SelectItem value="top-right">Top Right</SelectItem>
-                            <SelectItem value="bottom-left">Bottom Left</SelectItem>
-                            <SelectItem value="bottom-center">Bottom Center</SelectItem>
-                            <SelectItem value="bottom-right">Bottom Right</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="caption-size" className="text-sm">Font Size</Label>
-                        <Input 
-                          id="caption-size"
-                          value={captionSize}
-                          onChange={(e) => setCaptionSize(e.target.value)}
-                          placeholder="16px"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="caption-color" className="text-sm">Text Color</Label>
-                          <div className="flex items-center space-x-2">
-                            <div 
-                              className="w-3 h-3 rounded-full border" 
-                              style={{ backgroundColor: `#${captionColor}` }}
-                            />
-                          </div>
-                        </div>
-                        <Input 
-                          id="caption-color"
-                          value={captionColor}
-                          onChange={(e) => setCaptionColor(e.target.value.replace(/[^0-9a-fA-F]/g, '').substring(0, 6))}
-                          placeholder="Hex color (without #)"
-                          maxLength={6}
-                        />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="caption-font" className="text-sm">Font Family</Label>
-                        <Input 
-                          id="caption-font"
-                          value={captionFont}
-                          onChange={(e) => setCaptionFont(e.target.value)}
-                          placeholder="Arial, sans-serif"
-                        />
-                      </div>
-                    </div>
-                    
-                    <Separator />
-                    
-                    <div className="space-y-4">
-                      <div className="flex items-center">
-                        <Database className="h-4 w-4 mr-2 text-gray-500" />
-                        <h3 className="text-sm font-medium">Metadata & Transitions</h3>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="data-tag" className="text-sm">Metadata Tag</Label>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Info className="h-4 w-4 text-gray-400" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="max-w-xs">Leave empty to show all metadata, or specify a tag name</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </div>
-                        <Input 
-                          id="data-tag"
-                          value={dataTag}
-                          onChange={(e) => setDataTag(e.target.value)}
-                          placeholder="Leave empty for all metadata"
-                        />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="transition" className="text-sm">Transition Effect</Label>
-                        <Select 
-                          value={transition} 
-                          onValueChange={(value: TransitionType) => setTransition(value)}
-                        >
-                          <SelectTrigger id="transition">
-                            <SelectValue placeholder="Select transition" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cut">Cut (No Transition)</SelectItem>
-                            <SelectItem value="fade-fast">Fast Fade</SelectItem>
-                            <SelectItem value="fade-slow">Slow Fade</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
                   </div>
-                </>
-              )}
+                  <Input 
+                    id="caption-color"
+                    value={captionColor}
+                    onChange={(e) => setCaptionColor(e.target.value.replace(/[^0-9a-fA-F]/g, '').substring(0, 6))}
+                    placeholder="Hex color (without #)"
+                    maxLength={6}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="caption-font" className="text-sm">Font Family</Label>
+                  <Input 
+                    id="caption-font"
+                    value={captionFont}
+                    onChange={(e) => setCaptionFont(e.target.value)}
+                    placeholder="Arial, sans-serif"
+                  />
+                </div>
+              </div>
             </div>
           </CardContent>
-          
-          <CardFooter className="flex justify-between pt-0">
-            <div className="text-xs text-gray-500 flex items-center">
-              <Clock className="h-3 w-3 mr-1" />
-              <span>Last checked: {formatTime(lastChecked)}</span>
-            </div>
-            <Button onClick={applySettings}>Apply Settings</Button>
-          </CardFooter>
         </TabsContent>
       </Tabs>
+      
+      <CardFooter className="flex justify-between pt-4 pb-4">
+        <div className="text-xs text-gray-500 flex items-center">
+          <Clock className="h-3 w-3 mr-1" />
+          <span>Last checked: {formatTime(lastChecked)}</span>
+        </div>
+        <div className="flex space-x-2">
+          <Button 
+            variant="outline" 
+            onClick={applySettings}
+          >
+            Apply Changes
+          </Button>
+          <Button 
+            onClick={commitSettings}
+          >
+            Commit
+          </Button>
+        </div>
+      </CardFooter>
     </Card>
   );
 };

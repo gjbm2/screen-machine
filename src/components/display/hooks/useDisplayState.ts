@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -32,21 +33,50 @@ export const useDisplayState = (params: DisplayParams) => {
   const preloadImageRef = useRef<HTMLImageElement | null>(null);
   const navigate = useNavigate();
 
-  const loadNewImage = (url: string) => {
+  const loadNewImage = async (url: string) => {
     if (params.transition === 'cut' || !imageUrl) {
       setImageUrl(url);
       setImageKey(prev => prev + 1);
       setImageChanged(false);
+      
+      // Extract metadata whenever a new image is loaded
+      try {
+        const newMetadata = await extractImageMetadata(url);
+        setMetadata(newMetadata);
+        
+        // Process caption with new metadata if caption exists
+        if (params.caption) {
+          const newCaption = processCaptionWithMetadata(params.caption, newMetadata);
+          setProcessedCaption(newCaption);
+        }
+      } catch (err) {
+        console.error('Error extracting metadata:', err);
+        toast.error("Failed to extract metadata");
+      }
     } else {
       setIsLoading(true);
       setOldImageUrl(imageUrl);
       
       const preloadImg = new Image();
-      preloadImg.onload = () => {
+      preloadImg.onload = async () => {
         setImageUrl(url);
         setImageKey(prev => prev + 1);
         
-        const duration = params.transition === 'fade-fast' ? 1 : 10;
+        // Extract metadata for the new image
+        try {
+          const newMetadata = await extractImageMetadata(url);
+          setMetadata(newMetadata);
+          
+          // Process caption with new metadata if caption exists
+          if (params.caption) {
+            const newCaption = processCaptionWithMetadata(params.caption, newMetadata);
+            setProcessedCaption(newCaption);
+          }
+        } catch (err) {
+          console.error('Error extracting metadata:', err);
+        }
+        
+        const duration = params.transition === 'fade-fast' ? 1 : 2;
         setOldImageStyle({
           position: 'absolute',
           transition: `opacity ${duration}s ease`,
@@ -90,6 +120,7 @@ export const useDisplayState = (params: DisplayParams) => {
         setImageKey(prev => prev + 1);
         setIsLoading(false);
         setImageChanged(false);
+        toast.error("Failed to preload image for transition");
       };
       
       preloadImg.src = url;
@@ -113,16 +144,6 @@ export const useDisplayState = (params: DisplayParams) => {
           setImageChanged(true);
           if (params.debugMode) {
             toast.info("Image has been updated on the server");
-          }
-          
-          if (params.data !== undefined && url) {
-            const newMetadata = await extractImageMetadata(url, params.data || undefined);
-            setMetadata(newMetadata);
-            
-            if (params.caption) {
-              const newCaption = processCaptionWithMetadata(params.caption, newMetadata);
-              setProcessedCaption(newCaption);
-            }
           }
           
           loadNewImage(url);

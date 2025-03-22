@@ -19,3 +19,8 @@ export interface DisplayParams {
   captionFont?: string;
   transition?: TransitionType;
 }
+
+export interface MetadataEntry {
+  key: string;
+  value: string;
+}
