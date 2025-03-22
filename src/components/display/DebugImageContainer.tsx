@@ -92,23 +92,15 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
                       objectFit: 'none',
                     }),
                     // Fixed position logic to handle all position types including 'center'
-                    ...(position !== 'center' && {
-                      position: 'absolute',
-                      ...(position.includes('top') ? { top: 0 } : 
-                         position.includes('bottom') ? { bottom: 0 } : 
-                         { top: '50%', transform: 'translateY(-50%)' }),
-                      ...(position.includes('left') ? { left: 0 } : 
-                         position.includes('right') ? { right: 0 } : 
-                         { left: '50%', transform: position.includes('center-') ? 
-                           'translateY(-50%)' : position === 'center' ? 
-                           'translate(-50%, -50%)' : 'translateX(-50%)' }),
-                    }),
-                    ...(position === 'center' && {
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)'
-                    })
+                    position: 'absolute',
+                    ...(position.includes('top') ? { top: 0 } : 
+                       position.includes('bottom') ? { bottom: 0 } : 
+                       { top: '50%', transform: 'translateY(-50%)' }),
+                    ...(position.includes('left') ? { left: 0 } : 
+                       position.includes('right') ? { right: 0 } : 
+                       { left: '50%', transform: position.includes('center-') ? 
+                         'translateY(-50%)' : position === 'center' ? 
+                         'translate(-50%, -50%)' : 'translateX(-50%)' }),
                   }}
                   onError={onImageError}
                 />

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -12,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { RefreshCw, Clock, Info, Copy, Check, Clipboard, FileImage, Settings, Image as ImageIcon, Eye, EyeOff, Palette, Type, Database } from "lucide-react";
-import { DisplayParams } from './types';
+import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from './types';
 import { createUrlWithParams } from './utils';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -43,17 +44,17 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("files");
   const [customUrl, setCustomUrl] = useState(params.output || "");
-  const [showMode, setShowMode] = useState(params.showMode);
-  const [position, setPosition] = useState(params.position);
+  const [showMode, setShowMode] = useState<ShowMode>(params.showMode);
+  const [position, setPosition] = useState<PositionMode>(params.position);
   const [refreshInterval, setRefreshInterval] = useState(params.refreshInterval);
   const [backgroundColor, setBackgroundColor] = useState(params.backgroundColor);
   const [caption, setCaption] = useState(params.caption || "");
-  const [captionPosition, setCaptionPosition] = useState(params.captionPosition || "bottom-center");
+  const [captionPosition, setCaptionPosition] = useState<CaptionPosition>(params.captionPosition || "bottom-center");
   const [captionSize, setCaptionSize] = useState(params.captionSize || "16px");
   const [captionColor, setCaptionColor] = useState(params.captionColor || "ffffff");
   const [captionFont, setCaptionFont] = useState(params.captionFont || "Arial, sans-serif");
   const [dataTag, setDataTag] = useState(params.data === undefined ? "" : (params.data || ""));
-  const [transition, setTransition] = useState(params.transition || "cut");
+  const [transition, setTransition] = useState<TransitionType>(params.transition || "cut");
   const [copied, setCopied] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -248,7 +249,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                           <span className="text-sm truncate max-w-[180px]">{formatFileName(file)}</span>
                         </div>
                         {isCurrentFile(file) && (
-                          <Badge variant="secondary" size="sm">
+                          <Badge variant="secondary">
                             Current
                           </Badge>
                         )}
@@ -317,7 +318,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="show-mode" className="text-sm">Display Mode</Label>
-                  <Select value={showMode} onValueChange={setShowMode}>
+                  <Select 
+                    value={showMode} 
+                    onValueChange={(value: ShowMode) => setShowMode(value)}
+                  >
                     <SelectTrigger id="show-mode">
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
@@ -332,7 +336,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                 
                 <div className="space-y-2">
                   <Label htmlFor="position" className="text-sm">Position</Label>
-                  <Select value={position} onValueChange={setPosition}>
+                  <Select 
+                    value={position} 
+                    onValueChange={(value: PositionMode) => setPosition(value)}
+                  >
                     <SelectTrigger id="position">
                       <SelectValue placeholder="Select position" />
                     </SelectTrigger>
@@ -430,7 +437,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="caption-position" className="text-sm">Caption Position</Label>
-                        <Select value={captionPosition} onValueChange={setCaptionPosition}>
+                        <Select 
+                          value={captionPosition} 
+                          onValueChange={(value: CaptionPosition) => setCaptionPosition(value)}
+                        >
                           <SelectTrigger id="caption-position">
                             <SelectValue placeholder="Select position" />
                           </SelectTrigger>
@@ -519,7 +529,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                       
                       <div className="space-y-2">
                         <Label htmlFor="transition" className="text-sm">Transition Effect</Label>
-                        <Select value={transition} onValueChange={setTransition}>
+                        <Select 
+                          value={transition} 
+                          onValueChange={(value: TransitionType) => setTransition(value)}
+                        >
                           <SelectTrigger id="transition">
                             <SelectValue placeholder="Select transition" />
                           </SelectTrigger>
