@@ -33,6 +33,7 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   const { width: viewportWidth, height: viewportHeight } = useWindowSize();
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [calculatedImageSize, setCalculatedImageSize] = useState({ width: 0, height: 0 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
   
   // Use ResizeObserver to track container size changes
@@ -71,11 +72,10 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     onImageLoad(e);
   };
 
-  const calculateOptimalSize = () => {
-    if (imageDimensions.width === 0 || imageDimensions.height === 0 || !viewportWidth || !viewportHeight) {
-      return { width: 'auto', height: 'auto', maxWidth: '90%', maxHeight: 'calc(75vh - 120px)' };
-    }
-
+  // Calculate the optimal image size whenever relevant dependencies change
+  useEffect(() => {
+    if (imageDimensions.width === 0 || imageDimensions.height === 0 || !viewportWidth || !viewportHeight) return;
+    
     // Adaptive sizing based on screen size
     const isLargeScreen = viewportHeight > 900;
     const isVeryLargeScreen = viewportHeight > 1200;
@@ -92,7 +92,7 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     const actualContainerWidth = containerSize.width || 
                                 (imageContainerRef.current?.clientWidth || viewportWidth);
     
-    // Account for container padding/margins - more conservative to ensure fitting
+    // Account for container padding/margins
     const containerPadding = 24;
     const availableWidth = Math.max(actualContainerWidth - containerPadding, 100);
     
@@ -106,14 +106,17 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     const calculatedWidth = Math.floor(imageDimensions.width * ratio);
     const calculatedHeight = Math.floor(imageDimensions.height * ratio);
     
-    return { 
-      width: `${calculatedWidth}px`, 
-      height: `${calculatedHeight}px`,
-      maxWidth: '100%'
-    };
-  };
+    setCalculatedImageSize({
+      width: calculatedWidth,
+      height: calculatedHeight
+    });
+  }, [imageDimensions, containerSize, viewportWidth, viewportHeight]);
 
-  const optimalSize = calculateOptimalSize();
+  const optimalSize = {
+    width: calculatedImageSize.width ? `${calculatedImageSize.width}px` : 'auto',
+    height: calculatedImageSize.height ? `${calculatedImageSize.height}px` : 'auto',
+    maxWidth: '100%'
+  };
 
   const showPrevButton = currentGlobalIndex !== undefined && currentGlobalIndex > 0 && allImages && allImages.length > 1;
   const showNextButton = currentGlobalIndex !== undefined && allImages && currentGlobalIndex < allImages.length - 1;
@@ -141,7 +144,11 @@ const MainImageView: React.FC<MainImageViewProps> = ({
       style={{ outline: 'none' }}
       onMouseDown={(e) => e.preventDefault()} 
     >
-      <div className="relative flex justify-center items-center w-full h-full py-2">
+      <div className="relative flex justify-center items-center py-2" 
+           style={{
+             width: 'fit-content', // Allow container to shrink to fit content
+             margin: '0 auto'      // Center horizontally
+           }}>
         <img 
           src={imageUrl}
           alt={altText}
