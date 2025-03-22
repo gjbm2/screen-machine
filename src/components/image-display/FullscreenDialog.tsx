@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import ImageDetailView from './ImageDetailView';
+import ImagePrompt from './detail-view/ImagePrompt';
 
 interface FullscreenDialogProps {
   showFullScreenView: boolean;
@@ -34,11 +35,9 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   handleNavigateGlobal
 }) => {
   // Always declare hooks at the top level
-  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
-  const [isMultiline, setIsMultiline] = useState(false);
-  const [prompt, setPrompt] = useState('');
   const [currentBatch, setCurrentBatch] = useState<any[] | null>(null);
   const [currentImage, setCurrentImage] = useState<any | null>(null);
+  const [prompt, setPrompt] = useState('');
   
   // Update state based on props
   useEffect(() => {
@@ -51,16 +50,13 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       
       if (image?.prompt) {
         setPrompt(image.prompt);
-        setIsMultiline(image.prompt.length > 100);
       } else {
         setPrompt('');
-        setIsMultiline(false);
       }
     } else {
       setCurrentBatch(null);
       setCurrentImage(null);
       setPrompt('');
-      setIsMultiline(false);
     }
   }, [fullScreenBatchId, batches, fullScreenImageIndex]);
 
@@ -74,11 +70,6 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     setShowFullScreenView(false);
   };
 
-  const togglePromptExpand = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsPromptExpanded(!isPromptExpanded);
-  };
-
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowFullScreenView(false);
@@ -90,49 +81,30 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       onOpenChange={(open) => setShowFullScreenView(open)}
     >
       <DialogContent 
-        className="max-w-[95vw] w-auto min-w-0 md:w-auto max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col select-none" 
+        className="max-w-[95vw] w-auto h-auto p-0 overflow-hidden flex flex-col select-none" 
         noPadding
         hideCloseButton
-        style={{ width: 'auto', minWidth: '50vw' }}
+        style={{ width: 'fit-content', maxWidth: '95vw' }}
       >
         <DialogTitle className="sr-only">Image Detail View</DialogTitle>
         
-        {/* Header with expandable prompt - with fixed minimum height */}
-        {prompt && (
-          <div className="px-4 py-2 border-b min-h-[40px] flex-shrink-0 w-auto min-w-0">
-            <div 
-              className="overflow-hidden flex items-start justify-between w-auto min-w-0"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start flex-grow overflow-hidden min-w-0">
-                {isMultiline && (
-                  <button 
-                    onClick={togglePromptExpand}
-                    className="inline-flex items-center justify-center p-1 mr-2 hover:bg-gray-100 rounded-md flex-shrink-0 mt-0.5"
-                  >
-                    {isPromptExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </button>
-                )}
-                <div className={`text-base text-muted-foreground overflow-hidden ${isPromptExpanded ? 'max-h-none' : 'max-h-6'} min-w-0`}>
-                  <p className={isPromptExpanded ? 'whitespace-normal' : 'truncate'}>
-                    {prompt}
-                  </p>
-                </div>
-              </div>
-              
-              {/* Close button - positioned with flex-shrink-0 to ensure it doesn't shrink */}
-              <button 
-                onClick={handleClose}
-                className="inline-flex items-center justify-center p-1 hover:bg-gray-100 rounded-md flex-shrink-0 ml-2"
-                aria-label="Close dialog"
-              >
-                <X size={16} />
-              </button>
-            </div>
+        {/* Header with prompt - fixed height, single line */}
+        <div className="px-4 py-2 border-b flex-shrink-0 flex items-center justify-between min-h-[40px] w-full">
+          <div className="flex-grow overflow-hidden">
+            <ImagePrompt prompt={prompt} />
           </div>
-        )}
+          
+          {/* Close button */}
+          <button 
+            onClick={handleClose}
+            className="inline-flex items-center justify-center p-1 hover:bg-gray-100 rounded-md flex-shrink-0 ml-2"
+            aria-label="Close dialog"
+          >
+            <X size={16} />
+          </button>
+        </div>
 
-        <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0 w-auto">
+        <div className="overflow-hidden flex-grow">
           {currentBatch && (
             <ImageDetailView
               batchId={fullScreenBatchId as string}
