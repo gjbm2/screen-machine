@@ -36,22 +36,18 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
 }) => {
   if (!fullScreenBatchId) return null;
   
-  const handleImageClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setShowFullScreenView(false);
-  };
-  
   const currentBatch = batches[fullScreenBatchId];
   const currentImage = currentBatch?.filter(img => img.status === 'completed')[fullScreenImageIndex];
   const imagePrompt = currentImage?.prompt || '';
+  
+  // State for prompt expansion
+  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   
   // Function to check if a string contains multiple lines or is very long
   const hasMultipleLines = (text: string) => {
     return text.includes('\n') || text.length > 120;
   };
   
-  // State for prompt expansion
-  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   const showCollapsibleTrigger = hasMultipleLines(imagePrompt);
   
   return (
@@ -64,16 +60,18 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         noPadding
         description="Detailed view of generated image"
       >
-        <div className="flex justify-between items-start p-3 pb-0 flex-shrink-0 border-b border-border/30">
-          <div className="flex items-start flex-grow max-w-[calc(100%-40px)]">
+        {/* Completely rebuilt header section for proper alignment */}
+        <div className="flex items-center border-b border-border/30 p-3 pb-2 flex-shrink-0">
+          {/* Left: Expand trigger (only shown for multi-line prompts) */}
+          <div className="flex items-center flex-grow">
             {showCollapsibleTrigger ? (
               <Collapsible 
                 open={isPromptExpanded}
                 onOpenChange={setIsPromptExpanded}
                 className="w-full"
               >
-                <div className="flex items-start">
-                  <CollapsibleTrigger className="h-6 mt-0.5 flex-shrink-0 flex items-center justify-center mr-1">
+                <div className="flex items-center">
+                  <CollapsibleTrigger className="flex items-center justify-center mr-1.5">
                     {isPromptExpanded ? (
                       <ChevronDown className="h-4 w-4 text-foreground" />
                     ) : (
@@ -86,23 +84,23 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
                   </div>
                 </div>
                 
-                <CollapsibleContent>
+                <CollapsibleContent className="mt-1">
                   <div className="text-sm font-medium text-foreground pl-5 pr-2 py-1">
-                    {/* Skip the first line since we already show it above */}
                     {imagePrompt.split('\n').slice(1).join('\n')}
                   </div>
                 </CollapsibleContent>
               </Collapsible>
             ) : (
-              <div className="text-sm font-medium text-foreground truncate pl-6">
+              <div className="text-sm font-medium text-foreground pl-6">
                 {imagePrompt || "No prompt available"}
               </div>
             )}
           </div>
           
+          {/* Right: Close button */}
           <button 
             onClick={() => setShowFullScreenView(false)}
-            className="p-2 rounded-full hover:bg-muted transition-colors flex-shrink-0 h-6 mt-0.5"
+            className="ml-3 p-1 rounded-full hover:bg-muted transition-colors flex-shrink-0"
             aria-label="Close dialog"
             onMouseDown={(e) => e.preventDefault()} // Prevent text selection
           >
@@ -140,8 +138,8 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
               isNavigatingAllImages={true}
               onNavigateGlobal={handleNavigateGlobal}
               currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
-              onImageClick={handleImageClick}
-              hidePrompt={true} // Always hide the prompt in the detail view since we're showing it in the dialog header
+              onImageClick={(e) => e.stopPropagation()}
+              hidePrompt={true} // Hide the prompt in the detail view since we're showing it in the dialog header
             />
           )}
         </div>

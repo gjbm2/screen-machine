@@ -1,5 +1,4 @@
 
-// Update the NavigationControls component to support conditionally showing buttons
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -26,18 +25,18 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
   // Size mappings for hotspot areas and navigation buttons
   const sizeClasses = {
     small: {
-      hotspot: 'w-6 h-full',
-      button: 'h-full w-6',
+      hotspot: 'w-5 h-[200px]',
+      button: 'h-full w-5',
       icon: 'h-3 w-3'
     },
     medium: {
-      hotspot: 'w-8 h-full',
-      button: 'h-full w-8',
+      hotspot: 'w-5 h-[200px]',
+      button: 'h-full w-5',
       icon: 'h-4 w-4'
     },
     large: {
-      hotspot: 'w-10 md:w-12 h-full',
-      button: 'h-full w-7',
+      hotspot: 'w-5 h-[200px]',
+      button: 'h-full w-5',
       icon: 'h-4 w-4'
     }
   };
@@ -50,7 +49,7 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
       {/* Previous button - conditionally rendered */}
       {showPrevButton && (
         <div 
-          className={`absolute left-0 top-0 ${hotspot} flex items-center justify-center group`}
+          className={`absolute left-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-center group`}
           onClick={onPrevious}
           onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
@@ -68,7 +67,7 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
       {/* Next button - conditionally rendered */}
       {showNextButton && (
         <div 
-          className={`absolute right-0 top-0 ${hotspot} flex items-center justify-center group`} 
+          className={`absolute right-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-center group`} 
           onClick={onNext}
           onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >

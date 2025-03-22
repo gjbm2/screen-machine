@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -104,6 +105,12 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Text size utility for very small text */
+.text-2xs {
+  font-size: 0.65rem;
+  line-height: 1rem;
 }
 
 /* Prompt examples custom styles */
