@@ -14,22 +14,17 @@ export const processOutputParam = (outputParam: string | null): string | null =>
 // Function to fetch available output files
 export const fetchOutputFiles = async (): Promise<string[]> => {
   try {
-    // This endpoint would need to be implemented on the server
+    // Real API endpoint to fetch actual files from the server
     const response = await fetch('/api/output-files');
-    if (response.ok) {
-      return await response.json();
-    } else {
-      console.error('Failed to fetch output files');
-      // Fallback to demo values if endpoint isn't available
-      return [
-        'sample.jpg',
-        'image.png',
-        'result.jpg'
-      ];
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch output files');
     }
+    
+    return await response.json();
   } catch (err) {
     console.error('Error fetching output files:', err);
-    // Use demo values for now
+    // Fallback to demo values if endpoint isn't available
     return [
       'sample.jpg',
       'image.png',
