@@ -2,6 +2,7 @@
 export type ShowMode = 'fit' | 'fill' | 'actual' | 'stretch';
 export type PositionMode = 'top-left' | 'top-center' | 'top-right' | 'center-left' | 'center' | 'center-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
 export type CaptionPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
+export type TransitionType = 'cut' | 'fade-fast' | 'fade-slow';
 
 export interface DisplayParams {
   output: string | null;
@@ -16,4 +17,5 @@ export interface DisplayParams {
   captionSize?: string;
   captionColor?: string;
   captionFont?: string;
+  transition?: TransitionType;
 }

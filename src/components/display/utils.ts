@@ -83,6 +83,23 @@ export const extractImageMetadata = async (imageUrl: string, specificTag?: strin
   }
 };
 
+// Process caption with metadata substitutions
+export const processCaptionWithMetadata = (caption: string | null, metadata: Record<string, string>): string | null => {
+  if (!caption) return null;
+  
+  // Handle special {all} case
+  if (caption.trim() === '{all}') {
+    return Object.entries(metadata)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join('\n');
+  }
+  
+  // Replace all metadata placeholders {key} with their values
+  return caption.replace(/\{([^}]+)\}/g, (match, key) => {
+    return metadata[key] !== undefined ? metadata[key] : match;
+  });
+};
+
 // Format date for display
 export const formatDateTime = (date: Date | null) => {
   if (!date) return 'N/A';
@@ -122,6 +139,7 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   if (params.captionSize) queryParams.set('caption-size', params.captionSize);
   if (params.captionColor) queryParams.set('caption-color', params.captionColor);
   if (params.captionFont) queryParams.set('caption-font', params.captionFont);
+  if (params.transition) queryParams.set('transition', params.transition);
   
   return `/display?${queryParams.toString()}`;
 };
