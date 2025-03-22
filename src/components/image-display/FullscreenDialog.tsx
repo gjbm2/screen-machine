@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import ImageDetailView from './ImageDetailView';
 
@@ -33,19 +33,41 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   currentGlobalIndex,
   handleNavigateGlobal
 }) => {
+  // Always declare hooks at the top level, never conditionally
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   const [isMultiline, setIsMultiline] = useState(false);
+  const [prompt, setPrompt] = useState('');
+  const [currentBatch, setCurrentBatch] = useState<any[] | null>(null);
+  const [currentImage, setCurrentImage] = useState<any | null>(null);
   
-  if (!fullScreenBatchId) return null;
-  
-  const currentBatch = batches[fullScreenBatchId];
-  const currentImage = currentBatch?.[fullScreenImageIndex];
-  const prompt = currentImage?.prompt || '';
-  
-  // Detect if prompt is likely to be multiline (more than ~100 characters)
+  // Update state based on props
   useEffect(() => {
-    setIsMultiline(prompt.length > 100);
-  }, [prompt]);
+    if (fullScreenBatchId && batches[fullScreenBatchId]) {
+      const batch = batches[fullScreenBatchId];
+      setCurrentBatch(batch);
+      
+      const image = batch[fullScreenImageIndex];
+      setCurrentImage(image);
+      
+      if (image?.prompt) {
+        setPrompt(image.prompt);
+        setIsMultiline(image.prompt.length > 100);
+      } else {
+        setPrompt('');
+        setIsMultiline(false);
+      }
+    } else {
+      setCurrentBatch(null);
+      setCurrentImage(null);
+      setPrompt('');
+      setIsMultiline(false);
+    }
+  }, [fullScreenBatchId, batches, fullScreenImageIndex]);
+
+  // Only render dialog if we need to show it
+  if (!showFullScreenView) {
+    return null;
+  }
 
   const handleImageClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -66,8 +88,10 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         className="max-w-[100vw] w-[95vw] md:w-[90vw] max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col select-none" 
         noPadding
       >
-        {/* Header with expandable prompt, no close button */}
-        {currentBatch && prompt && (
+        <DialogTitle className="sr-only">Image Detail View</DialogTitle>
+        
+        {/* Header with expandable prompt */}
+        {prompt && (
           <div className="px-4 py-2 border-b">
             <div 
               className="overflow-hidden"
@@ -93,10 +117,10 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         )}
 
         <div className="flex-grow overflow-hidden flex flex-col">
-          {batches[fullScreenBatchId] && (
+          {currentBatch && (
             <ImageDetailView
-              batchId={fullScreenBatchId}
-              images={batches[fullScreenBatchId].filter(img => img.status === 'completed')}
+              batchId={fullScreenBatchId as string}
+              images={currentBatch.filter(img => img.status === 'completed')}
               activeIndex={fullScreenImageIndex}
               onSetActiveIndex={setFullScreenImageIndex}
               onNavigatePrev={(e) => {
