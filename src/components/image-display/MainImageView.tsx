@@ -100,21 +100,22 @@ const MainImageView: React.FC<MainImageViewProps> = ({
           style={optimalSize}
           onLoad={handleImageLoadInternal}
         />
-        
-        {/* Open in new tab button - moved to bottom left */}
-        <Button 
-          variant="outline" 
-          size="icon" 
-          className="absolute bottom-2 left-2 bg-background/80 backdrop-blur-sm z-30"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenInNewTab(e);
-          }}
-          aria-label="Open image in new tab"
-        >
-          <ExternalLink className="h-4 w-4" />
-        </Button>
       </div>
+      
+      {/* Open in new tab button - moved to bottom right, will be in line with metadata */}
+      <Button 
+        variant="outline" 
+        size="icon" 
+        className="absolute bottom-2 right-2 bg-background/80 backdrop-blur-sm z-30"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenInNewTab(e);
+        }}
+        aria-label="Open image in new tab"
+        title="" // Empty title to suppress the tooltip
+      >
+        <ExternalLink className="h-4 w-4" />
+      </Button>
       
       {/* Navigation controls - Always use global navigation in fullscreen */}
       {allImages && allImages.length > 1 && onNavigateGlobal && (
@@ -132,6 +133,8 @@ const MainImageView: React.FC<MainImageViewProps> = ({
             }
           }}
           size="large"
+          currentGlobalIndex={currentGlobalIndex}
+          allImages={allImages}
         />
       )}
     </div>

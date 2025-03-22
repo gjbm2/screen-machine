@@ -1,9 +1,9 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import ImageDetailView from './ImageDetailView';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 
 interface FullscreenDialogProps {
   showFullScreenView: boolean;
@@ -47,6 +47,15 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   
   // Determine if the prompt is long and might need collapsing
   const isLongPrompt = imagePrompt.length > 80;
+  const [isLongPromptExpanded, setIsLongPromptExpanded] = useState(false);
+  
+  // Function to check if a string contains multiple lines
+  const hasMultipleLines = (text: string) => {
+    return text.includes('\n') || text.length > 120;
+  };
+  
+  // Only show the collapsible trigger if the prompt has multiple lines
+  const showCollapsibleTrigger = hasMultipleLines(imagePrompt);
   
   return (
     <Dialog 
@@ -58,20 +67,27 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         noPadding
         description="Detailed view of generated image"
       >
-        <div className="p-3 pb-0 flex-shrink-0">
+        <div className="flex justify-between items-start p-3 pb-0 flex-shrink-0">
           {imagePrompt ? (
-            <Collapsible defaultOpen={!isLongPrompt} className="text-left">
+            <Collapsible 
+              defaultOpen={!showCollapsibleTrigger} 
+              className="text-left flex-grow"
+              open={isLongPromptExpanded}
+              onOpenChange={setIsLongPromptExpanded}
+            >
               <div className="flex items-start">
-                <CollapsibleTrigger className="h-6 w-6 flex items-center justify-center mr-1">
-                  <ChevronRight className="h-4 w-4 transform transition-transform duration-200 data-[state=open]:rotate-90" />
-                </CollapsibleTrigger>
+                {showCollapsibleTrigger && (
+                  <CollapsibleTrigger className="h-6 w-6 flex items-center justify-center mr-1">
+                    <ChevronRight className="h-4 w-4 transform transition-transform duration-200 data-[state=open]:rotate-90" />
+                  </CollapsibleTrigger>
+                )}
                 <div className="text-sm font-normal text-muted-foreground truncate">
-                  {imagePrompt.substring(0, isLongPrompt ? 80 : undefined)}
-                  {isLongPrompt && '...'}
+                  {imagePrompt.substring(0, showCollapsibleTrigger ? 80 : undefined)}
+                  {showCollapsibleTrigger && isLongPromptExpanded === false && '...'}
                 </div>
               </div>
               <CollapsibleContent>
-                <div className="text-sm font-normal text-muted-foreground pl-7 pr-2 pt-1">
+                <div className="text-sm font-normal text-foreground pl-7 pr-2 pt-1">
                   {imagePrompt}
                 </div>
               </CollapsibleContent>
@@ -79,6 +95,14 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           ) : (
             <div className="text-sm font-normal text-muted-foreground">No prompt available</div>
           )}
+          
+          <button 
+            onClick={() => setShowFullScreenView(false)}
+            className="p-2 rounded-full hover:bg-muted transition-colors ml-2"
+            aria-label="Close dialog"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
         <div className="flex-grow overflow-hidden flex flex-col">
           {batches[fullScreenBatchId] && (
