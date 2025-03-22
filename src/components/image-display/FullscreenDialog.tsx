@@ -1,7 +1,9 @@
 
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import ImageDetailView from './ImageDetailView';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 interface FullscreenDialogProps {
   showFullScreenView: boolean;
@@ -39,19 +41,38 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     setShowFullScreenView(false);
   };
   
+  const activeImage = batches[fullScreenBatchId]?.filter(img => img.status === 'completed')[fullScreenImageIndex];
+  const promptText = activeImage?.prompt || "No prompt available";
+  const [isCollapsed, setIsCollapsed] = React.useState(promptText.length > 80);
+  
   return (
     <Dialog 
       open={showFullScreenView} 
       onOpenChange={(open) => setShowFullScreenView(open)}
     >
       <DialogContent 
-        className="max-w-[100vw] w-[95vw] md:w-[90vw] max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col" 
-        noPadding
+        className="w-[100vw] h-[100vh] p-0 overflow-hidden flex flex-col" 
         description="Detailed view of generated image"
       >
-        <DialogHeader className="p-4 pb-0 flex-shrink-0">
-          <DialogTitle>Image Detail</DialogTitle>
-        </DialogHeader>
+        <div className="p-3 pb-1 flex-shrink-0 border-b">
+          <Collapsible 
+            open={!isCollapsed} 
+            onOpenChange={(open) => setIsCollapsed(!open)}
+            className="w-full"
+          >
+            <div className="flex items-start gap-2">
+              <CollapsibleTrigger className="flex-shrink-0 mt-0.5 p-1 rounded-sm hover:bg-secondary">
+                {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </CollapsibleTrigger>
+              <span className="text-sm text-muted-foreground truncate">
+                {isCollapsed ? promptText.substring(0, 80) + "..." : promptText.substring(0, 80)}
+              </span>
+            </div>
+            <CollapsibleContent className="pl-6 pr-4 pt-1 text-sm text-muted-foreground">
+              {promptText.length > 80 ? promptText : null}
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
         <div className="flex-grow overflow-hidden flex flex-col">
           {batches[fullScreenBatchId] && (
             <ImageDetailView
@@ -83,6 +104,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
               onNavigateGlobal={handleNavigateGlobal}
               currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
               onImageClick={handleImageClick}
+              hidePrompt={true} // Add this to hide the prompt in the ImageDetailView
             />
           )}
         </div>

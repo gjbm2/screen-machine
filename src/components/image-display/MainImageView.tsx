@@ -2,9 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import NavigationControls from './NavigationControls';
-import { AspectRatio } from '@/components/ui/aspect-ratio';
 
 interface MainImageViewProps {
   imageUrl: string;
@@ -61,12 +59,12 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   // Calculate optimal image size
   const calculateOptimalSize = () => {
     if (imageDimensions.width === 0 || imageDimensions.height === 0) {
-      return { width: 'auto', height: 'auto', maxWidth: '90%', maxHeight: '70vh' };
+      return { width: 'auto', height: 'auto', maxWidth: '95%', maxHeight: '75vh' };
     }
 
     // Available space (accounting for controls and padding)
-    const availableWidth = viewportWidth * 0.9; // 90% of viewport width
-    const availableHeight = viewportHeight * 0.7; // 70% of viewport height (leaving room for controls)
+    const availableWidth = viewportWidth * 0.95; // 95% of viewport width
+    const availableHeight = viewportHeight * 0.75; // 75% of viewport height (leaving room for controls)
     
     // Calculate scale factors
     const widthRatio = availableWidth / imageDimensions.width;
@@ -88,7 +86,7 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   return (
     <div 
       ref={imageContainerRef}
-      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-full h-full"
+      className="relative flex justify-center items-center bg-secondary/5 rounded-md overflow-hidden group w-full h-full"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onClick={onImageClick}
@@ -101,22 +99,19 @@ const MainImageView: React.FC<MainImageViewProps> = ({
           style={optimalSize}
           onLoad={handleImageLoadInternal}
         />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              variant="outline" 
-              size="icon" 
-              className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm z-30"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenInNewTab(e);
-              }}
-            >
-              <ExternalLink className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Open image in new tab</TooltipContent>
-        </Tooltip>
+        
+        {/* Removed Tooltip component to suppress the tooltip */}
+        <Button 
+          variant="outline" 
+          size="icon" 
+          className="absolute bottom-2 left-2 bg-background/80 backdrop-blur-sm z-30 opacity-60 hover:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenInNewTab(e);
+          }}
+        >
+          <ExternalLink className="h-3 w-3" />
+        </Button>
       </div>
       
       {/* Navigation controls - Always use global navigation in fullscreen */}

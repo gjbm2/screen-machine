@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import MainImageView from './MainImageView';
@@ -39,6 +38,7 @@ interface ImageDetailViewProps {
   isNavigatingAllImages?: boolean;
   onNavigateGlobal?: (imageIndex: number) => void;
   currentGlobalIndex?: number;
+  hidePrompt?: boolean;
 }
 
 const ImageDetailView: React.FC<ImageDetailViewProps> = ({
@@ -55,7 +55,8 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   allImages,
   isNavigatingAllImages,
   onNavigateGlobal,
-  currentGlobalIndex
+  currentGlobalIndex,
+  hidePrompt = false
 }) => {
   const activeImage = images[activeIndex];
   const [showReferenceImage, setShowReferenceImage] = useState(false);
@@ -75,7 +76,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
     onDeleteImage(batchId, activeIndex);
   };
   
-  // Get image dimensions when loaded
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -86,7 +86,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
     });
   };
 
-  // Open image in new tab - now only happens when clicking the external link button
   const handleOpenInNewTab = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (activeImage?.url) {
@@ -94,7 +93,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
     }
   };
   
-  // Define swipe handlers for touch navigation
   const handleSwipeLeft = () => {
     if (onNavigateGlobal && allImages && currentGlobalIndex !== undefined) {
       if (currentGlobalIndex < allImages.length - 1) {
@@ -122,7 +120,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
     >
       <div className="w-full h-full flex flex-col">
         <TooltipProvider>
-          {/* Keyboard navigation */}
           <ImageKeyboardNavigation 
             activeIndex={activeIndex}
             imagesLength={images.length}
@@ -133,7 +130,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
             onNavigateGlobal={onNavigateGlobal}
           />
 
-          {/* Selected image view - maximize image display */}
           {activeImage && (
             <div className="flex-grow flex items-center justify-center overflow-hidden">
               <MainImageView
@@ -152,15 +148,12 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
             </div>
           )}
           
-          {/* Bottom panel with metadata and controls */}
           <div className="flex-shrink-0 p-2 space-y-2 bg-background">
-            {/* Image metadata */}
             <ImageMetadata
               dimensions={imageDimensions}
               timestamp={activeImage?.timestamp}
             />
             
-            {/* Image Actions Bar - all buttons in a single row */}
             {activeImage?.url && (
               <DetailViewActionBar 
                 imageUrl={activeImage.url}
@@ -175,10 +168,8 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
               />
             )}
             
-            {/* Prompt info */}
-            <ImagePrompt prompt={activeImage?.prompt} />
+            {!hidePrompt && <ImagePrompt prompt={activeImage?.prompt} />}
 
-            {/* Reference image at the bottom */}
             {referenceImageUrl && (
               <ReferenceImageSection
                 referenceImageUrl={referenceImageUrl}
@@ -186,7 +177,6 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
               />
             )}
 
-            {/* Reference image popup (full size view) */}
             {referenceImageUrl && (
               <ReferenceImageDialog
                 isOpen={showReferenceImage}
