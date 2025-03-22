@@ -96,6 +96,13 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
   };
   
+  // Log when fullscreenRefreshTrigger changes
+  React.useEffect(() => {
+    if (fullscreenRefreshTrigger !== undefined) {
+      console.log("FullscreenDialog - refresh trigger changed:", fullscreenRefreshTrigger);
+    }
+  }, [fullscreenRefreshTrigger]);
+  
   return (
     <div className="mt-4">
       {hasBatches && (
