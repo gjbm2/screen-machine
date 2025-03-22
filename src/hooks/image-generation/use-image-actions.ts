@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { GeneratedImage } from './types';
 import { toast } from 'sonner';
@@ -39,33 +40,10 @@ export const useImageActions = (
       console.log('Setting workflow to:', image.workflow);
     }
     
-    // Set reference images if any
-    if (image.referenceImageUrl) {
-      let refImages: string[] = [];
-      
-      // Handle different formats of referenceImageUrl
-      if (typeof image.referenceImageUrl === 'string') {
-        // If it's a comma-separated string, split it
-        if (image.referenceImageUrl.includes(',')) {
-          refImages = image.referenceImageUrl.split(',')
-            .map(url => url.trim())
-            .filter(url => url !== '');
-        } else {
-          // Single URL
-          refImages = [image.referenceImageUrl];
-        }
-      } else if (Array.isArray(image.referenceImageUrl)) {
-        // If it's already an array
-        refImages = image.referenceImageUrl;
-      }
-      
-      console.log('Setting reference images:', refImages);
-      setUploadedImageUrls(refImages);
-    } else {
-      // If no reference images, use the current image as a reference
-      setUploadedImageUrls([url]);
-      console.log('Setting current image as reference:', url);
-    }
+    // FIXED: Always use the generated image as input
+    // Regardless of whether it was created from a reference image
+    setUploadedImageUrls([url]);
+    console.log('Setting current image as reference:', url);
     
     // Set the image URL
     setImageUrl(url);
@@ -99,13 +77,13 @@ export const useImageActions = (
         }
         
         // Submit the prompt
-        if (batchImage.prompt) {
-          handleSubmitPrompt(batchImage.prompt, referenceImages);
-          toast.success('Generating new image with same settings');
-          
-          // Return the batch ID so caller can know which batch was regenerated
-          return batchId;
-        }
+        // FIXED: Use an empty string prompt if no prompt exists
+        const promptToUse = batchImage.prompt || '';
+        handleSubmitPrompt(promptToUse, referenceImages);
+        toast.success('Generating new image with same settings');
+        
+        // Return the batch ID so caller can know which batch was regenerated
+        return batchId;
       }
     }
     return null;
