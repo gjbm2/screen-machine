@@ -140,13 +140,15 @@ const Display = () => {
           <DebugPanel 
             params={params}
             imageUrl={imageUrl}
-            lastModified={lastModified}
+            lastModified={lastModified ? lastModified : null}
             lastChecked={lastChecked}
             nextCheckTime={nextCheckTime}
             imageKey={imageKey}
             outputFiles={outputFiles}
             imageChanged={imageChanged}
             onCheckNow={handleManualCheck}
+            metadata={metadata}
+            onApplyCaption={(caption) => setProcessedCaption(caption)}
           />
           <DebugImageContainer 
             imageUrl={imageUrl}
@@ -157,12 +159,12 @@ const Display = () => {
             onImageError={handleImageError}
             imageRef={imageRef}
             imageChanged={imageChanged}
-            caption={params.caption}
+            caption={processedCaption}
             captionPosition={params.captionPosition}
             captionSize={params.captionSize}
             captionColor={params.captionColor}
             captionFont={params.captionFont}
-            metadata={params.data !== undefined ? metadata : undefined}
+            metadata={metadata}
           />
         </>
       ) : (

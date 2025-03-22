@@ -43,9 +43,6 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   // Get the viewport dimensions to simulate the correct aspect ratio
   const viewportRatio = window.innerWidth / window.innerHeight;
   
-  // Process caption with metadata substitutions
-  const processedCaption = metadata && caption ? processCaptionWithMetadata(caption, metadata) : caption;
-  
   return (
     <Card className="w-2/3 max-w-3xl mx-auto">
       <CardHeader className="pb-2 flex flex-row justify-between items-center">
@@ -98,14 +95,14 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
                        { top: '50%', transform: 'translateY(-50%)' }),
                     ...(position.includes('left') ? { left: 0 } : 
                        position.includes('right') ? { right: 0 } : 
-                       { left: '50%', transform: position.includes('center-') ? 
-                         'translateY(-50%)' : position === 'center' ? 
-                         'translate(-50%, -50%)' : 'translateX(-50%)' }),
+                       { left: '50%', transform: position === 'center' ? 
+                         'translate(-50%, -50%)' : position.includes('center-') ? 
+                         'translateY(-50%)' : 'translateX(-50%)' }),
                   }}
                   onError={onImageError}
                 />
                 
-                {processedCaption && (
+                {caption && (
                   <div style={{
                     position: 'absolute',
                     padding: '8px 16px',
@@ -117,7 +114,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
                     textAlign: 'center',
                     borderRadius: '4px',
                     zIndex: 10,
-                    whiteSpace: processedCaption.includes('\n') ? 'pre-line' : 'normal',
+                    whiteSpace: caption.includes('\n') ? 'pre-line' : 'normal',
                     ...(captionPosition?.includes('top') ? { top: '10px' } : 
                        captionPosition?.includes('bottom') ? { bottom: '10px' } : 
                        { top: '50%', transform: 'translateY(-50%)' }),
@@ -126,30 +123,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
                        { left: '50%', transform: captionPosition === 'bottom-center' || captionPosition === 'top-center' ? 
                          'translateX(-50%)' : 'none' }),
                   }}>
-                    {processedCaption}
-                  </div>
-                )}
-                
-                {metadata && Object.keys(metadata).length > 0 && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '10px',
-                    left: '10px',
-                    padding: '10px',
-                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                    color: '#ffffff',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    maxWidth: '90%',
-                    maxHeight: '70%',
-                    overflowY: 'auto',
-                    zIndex: 10,
-                  }}>
-                    {Object.entries(metadata).map(([key, value]) => (
-                      <div key={key} className="mb-1">
-                        <strong>{key}:</strong> {value}
-                      </div>
-                    ))}
+                    {caption}
                   </div>
                 )}
               </>

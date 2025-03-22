@@ -55,7 +55,7 @@ export const fetchOutputFiles = async (): Promise<string[]> => {
   }
 };
 
-// Extract image metadata
+// Extract image metadata from image file - enhanced version that loads all available metadata
 export const extractImageMetadata = async (imageUrl: string, specificTag?: string): Promise<Record<string, string>> => {
   try {
     // Fetch metadata from server
@@ -69,17 +69,79 @@ export const extractImageMetadata = async (imageUrl: string, specificTag?: strin
   } catch (err) {
     console.error('Error fetching image metadata:', err);
     
-    // For demo purposes or if API is unavailable
-    if (specificTag) {
-      return { [specificTag]: 'Sample metadata value for ' + specificTag };
+    // For demo or fallback purposes, try to extract basic metadata from the image
+    try {
+      // Create a temporary image to get basic metadata
+      const img = new Image();
+      img.src = imageUrl;
+      
+      // Wait for image to load
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+      
+      const metadata: Record<string, string> = {
+        'Width': `${img.naturalWidth}px`,
+        'Height': `${img.naturalHeight}px`,
+        'URL': imageUrl,
+        'Filename': imageUrl.split('/').pop() || 'Unknown',
+        'Date': new Date().toISOString(),
+      };
+      
+      // If it's a JSON workflow file, try to parse more info
+      if (imageUrl.endsWith('.json')) {
+        try {
+          const jsonResponse = await fetch(imageUrl);
+          const data = await jsonResponse.json();
+          
+          // Extract some info from the workflow if available
+          if (data) {
+            Object.entries(data).forEach(([key, value]) => {
+              if (typeof value === 'object' && value !== null) {
+                if ('_meta' in value && typeof value._meta === 'object' && value._meta !== null) {
+                  if ('title' in value._meta) {
+                    metadata[`Node ${key}`] = value._meta.title as string;
+                  }
+                }
+                if ('inputs' in value && typeof value.inputs === 'object' && value.inputs !== null) {
+                  Object.entries(value.inputs).forEach(([inputKey, inputValue]) => {
+                    if (typeof inputValue === 'string' || typeof inputValue === 'number') {
+                      metadata[`${key}.${inputKey}`] = String(inputValue);
+                    }
+                  });
+                }
+              }
+            });
+          }
+        } catch (e) {
+          console.error('Error parsing JSON workflow:', e);
+        }
+      }
+      
+      // If specific tag was requested, filter to just that tag
+      if (specificTag && specificTag !== '') {
+        return specificTag in metadata 
+          ? { [specificTag]: metadata[specificTag] } 
+          : {};
+      }
+      
+      return metadata;
+    } catch (e) {
+      console.error('Error extracting basic metadata:', e);
+      
+      // Last resort fallback
+      if (specificTag) {
+        return { [specificTag]: 'Sample metadata value for ' + specificTag };
+      }
+      
+      return {
+        'Date': new Date().toISOString(),
+        'Camera': 'Sample Camera',
+        'Software': 'Sample Software',
+        'Resolution': '1920x1080',
+      };
     }
-    
-    return {
-      'Date': new Date().toISOString(),
-      'Camera': 'Sample Camera',
-      'Software': 'Sample Software',
-      'Resolution': '1920x1080',
-    };
   }
 };
 
