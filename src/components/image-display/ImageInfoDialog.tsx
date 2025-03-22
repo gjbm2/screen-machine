@@ -15,6 +15,7 @@ interface ImageInfoDialogProps {
     params?: Record<string, any>;
     referenceImageUrl?: string;
     timestamp?: number;
+    title?: string;
   };
   dimensions?: { width: number; height: number };
 }
@@ -67,6 +68,16 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
           <DialogTitle>Image Information</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {/* Title Section - if available */}
+          {image.title && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-bold">Title</h3>
+              <div className="text-sm whitespace-pre-wrap">
+                {image.title}
+              </div>
+            </div>
+          )}
+          
           {/* Prompt Section */}
           <div className="space-y-2">
             <h3 className="text-sm font-bold">Prompt</h3>
