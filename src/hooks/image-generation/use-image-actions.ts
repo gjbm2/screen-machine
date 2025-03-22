@@ -27,9 +27,6 @@ export const useImageActions = (
       return;
     }
 
-    // Set the reference image
-    setUploadedImageUrls([url]);
-    
     // Set the prompt and workflow to match the generated image
     if (image.prompt) {
       setCurrentPrompt(image.prompt);
@@ -39,10 +36,18 @@ export const useImageActions = (
       setCurrentWorkflow(image.workflow);
     }
     
+    // Set reference images if any
+    if (image.referenceImageUrl) {
+      const refImages = image.referenceImageUrl.split(',').map(url => url.trim()).filter(url => url !== '');
+      setUploadedImageUrls(refImages);
+    } else {
+      setUploadedImageUrls([]);
+    }
+    
     // Set the image URL
     setImageUrl(url);
 
-    toast.success('Image set as input reference');
+    toast.success('Image settings applied to prompt');
   };
 
   const handleCreateAgain = (batchId?: string) => {
@@ -52,27 +57,16 @@ export const useImageActions = (
       if (batchImage) {
         console.log('Creating again from batch:', batchId);
         
-        // Set the prompt to the one used to generate this image
-        if (batchImage.prompt) {
-          setCurrentPrompt(batchImage.prompt);
-        }
-        
-        // Set the workflow to the one used to generate this image
-        if (batchImage.workflow) {
-          setCurrentWorkflow(batchImage.workflow);
-        }
-
-        // If it has a reference image, use that
+        // Prepare reference images if any
+        let referenceImages: string[] | undefined = undefined;
         if (batchImage.referenceImageUrl) {
-          setUploadedImageUrls([batchImage.referenceImageUrl]);
-        } else {
-          setUploadedImageUrls([]);
+          referenceImages = batchImage.referenceImageUrl.split(',').map(url => url.trim()).filter(url => url !== '');
         }
         
         // Submit the prompt
         if (batchImage.prompt) {
-          const referenceImages = batchImage.referenceImageUrl ? [batchImage.referenceImageUrl] : undefined;
           handleSubmitPrompt(batchImage.prompt, referenceImages);
+          toast.success('Generating new image with same settings');
         }
       }
     }

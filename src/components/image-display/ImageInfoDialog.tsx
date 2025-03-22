@@ -80,6 +80,28 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
             </div>
           </div>
           
+          {/* Reference Images - Moved above Details */}
+          {referenceImages.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-bold">Reference Images</h3>
+              <div className="flex flex-wrap gap-2">
+                {referenceImages.map((imgUrl, index) => (
+                  <div key={index} className="border rounded-md overflow-hidden w-24 h-24 cursor-pointer" onClick={() => handleReferenceImageClick(imgUrl)}>
+                    <img 
+                      src={imgUrl} 
+                      alt={`Reference ${index + 1}`}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        console.error("Error loading reference image:", imgUrl);
+                        (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
           {/* Image Details */}
           <div className="space-y-2">
             <h3 className="text-sm font-bold">Details</h3>
@@ -116,28 +138,6 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
                     <div className="font-medium">{key}:</div>
                     <div>{String(value)}</div>
                   </React.Fragment>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {/* Reference Images */}
-          {referenceImages.length > 0 && (
-            <div className="space-y-2">
-              <h3 className="text-sm font-bold">Reference Images</h3>
-              <div className="flex flex-wrap gap-2">
-                {referenceImages.map((imgUrl, index) => (
-                  <div key={index} className="border rounded-md overflow-hidden w-24 h-24 cursor-pointer" onClick={() => handleReferenceImageClick(imgUrl)}>
-                    <img 
-                      src={imgUrl} 
-                      alt={`Reference ${index + 1}`}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        console.error("Error loading reference image:", imgUrl);
-                        (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
-                      }}
-                    />
-                  </div>
                 ))}
               </div>
             </div>

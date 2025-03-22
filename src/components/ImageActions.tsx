@@ -1,9 +1,10 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { CopyPlus, SquareArrowUpRight, Trash2, Download, Info, Share } from 'lucide-react';
+import { CopyPlus, SquareArrowUpRight, Trash2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { saveAs } from 'file-saver';
+import PublishMenu from './image-display/PublishMenu';
 
 interface ImageActionsProps {
   imageUrl: string;
@@ -46,42 +47,6 @@ const ImageActions: React.FC<ImageActionsProps> = ({
       });
   };
 
-  const handleShare = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: 'Share generated image',
-        text: generationInfo?.prompt || 'Check out this generated image!',
-        url: imageUrl,
-      })
-      .then(() => toast.success('Shared successfully'))
-      .catch((error) => {
-        console.error('Error sharing:', error);
-        // Fallback to copying URL
-        handleCopyImageUrl();
-      });
-    } else {
-      // If Web Share API is not available, copy URL to clipboard
-      handleCopyImageUrl();
-    }
-  };
-
-  const handleCopyImageUrl = () => {
-    navigator.clipboard.writeText(imageUrl)
-      .then(() => toast.success('Image URL copied to clipboard'))
-      .catch(() => toast.error('Failed to copy URL'));
-  };
-
-  const handleShowInfo = () => {
-    const details = [
-      `Prompt: ${generationInfo?.prompt || 'Not available'}`,
-      `Workflow: ${generationInfo?.workflow || 'Not available'}`
-    ].join('\n');
-    
-    toast.info(details, {
-      duration: 5000,
-    });
-  };
-
   const baseButtonClass = "p-2 text-xs rounded-full flex items-center gap-1.5";
   const actionButtonClass = `${baseButtonClass} bg-white/90 hover:bg-white text-black shadow-sm`;
   const deleteButtonClass = `${baseButtonClass} bg-destructive/90 hover:bg-destructive text-white shadow-sm`;
@@ -90,23 +55,13 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   if (!isFullScreen) {
     return (
       <div className={`flex flex-wrap gap-1 justify-center ${alwaysVisible ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity duration-200'}`}>
-        <Button 
-          type="button" 
-          variant="outline" 
-          className={actionButtonClass}
-          onClick={handleShowInfo}
-          title="Image Info"
-        >
-          <Info className="h-3.5 w-3.5" />
-        </Button>
-        
         {onCreateAgain && (
           <Button 
             type="button" 
             variant="outline" 
             className={actionButtonClass}
             onClick={onCreateAgain}
-            title="Create Again"
+            title="Go again"
           >
             <CopyPlus className="h-3.5 w-3.5" />
           </Button>
@@ -134,21 +89,22 @@ const ImageActions: React.FC<ImageActionsProps> = ({
           <Download className="h-3.5 w-3.5" />
         </Button>
         
-        <Button 
-          type="button" 
-          variant="outline" 
-          className={actionButtonClass}
-          onClick={handleShare}
-          title="Share"
-        >
-          <Share className="h-3.5 w-3.5" />
-        </Button>
+        {/* Replace Share with Publish menu */}
+        <PublishMenu 
+          imageUrl={imageUrl}
+          generationInfo={generationInfo}
+        />
+        
+        {/* Add separator for delete button */}
+        <div className="h-6 flex items-center mx-0.5">
+          <div className="h-full w-px bg-gray-300"></div>
+        </div>
         
         {onDeleteImage && (
           <Button 
             type="button" 
             variant="outline" 
-            className={`${deleteButtonClass} ml-1`}
+            className={deleteButtonClass}
             onClick={onDeleteImage}
             title="Delete"
           >
@@ -162,15 +118,6 @@ const ImageActions: React.FC<ImageActionsProps> = ({
   // For fullscreen view - all buttons (including delete) in a single row
   return (
     <div className={`flex flex-wrap gap-2 justify-center ${alwaysVisible ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity duration-200'}`}>
-      <Button 
-        type="button" 
-        variant="outline" 
-        className={actionButtonClass}
-        onClick={handleShowInfo}
-      >
-        <Info className="h-3.5 w-3.5" /> Info
-      </Button>
-      
       {onCreateAgain && (
         <Button 
           type="button" 
@@ -178,7 +125,7 @@ const ImageActions: React.FC<ImageActionsProps> = ({
           className={actionButtonClass}
           onClick={onCreateAgain}
         >
-          <CopyPlus className="h-3.5 w-3.5" /> Create Again
+          <CopyPlus className="h-3.5 w-3.5" /> Go again
         </Button>
       )}
       
@@ -202,14 +149,16 @@ const ImageActions: React.FC<ImageActionsProps> = ({
         <Download className="h-3.5 w-3.5" /> Download
       </Button>
       
-      <Button 
-        type="button" 
-        variant="outline" 
-        className={actionButtonClass}
-        onClick={handleShare}
-      >
-        <Share className="h-3.5 w-3.5" /> Share
-      </Button>
+      {/* Replace Share with Publish menu */}
+      <PublishMenu 
+        imageUrl={imageUrl}
+        generationInfo={generationInfo}
+      />
+      
+      {/* Add separator for delete button */}
+      <div className="h-8 flex items-center mx-1">
+        <div className="h-full w-px bg-gray-300"></div>
+      </div>
       
       {onDeleteImage && (
         <Button 
