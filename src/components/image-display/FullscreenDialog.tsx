@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { X } from 'lucide-react';
 import ImageDetailView from './ImageDetailView';
+import ImagePrompt from './detail-view/ImagePrompt';
 
 interface FullscreenDialogProps {
   showFullScreenView: boolean;
