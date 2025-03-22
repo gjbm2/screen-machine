@@ -26,19 +26,19 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
   // Size mappings for hotspot areas and navigation buttons
   const sizeClasses = {
     small: {
-      hotspot: 'w-8 h-full',
-      button: 'h-full w-8',
+      hotspot: 'w-6 h-full',
+      button: 'h-full w-6',
       icon: 'h-3 w-3'
     },
     medium: {
-      hotspot: 'w-12 h-full',
-      button: 'h-full w-10',
+      hotspot: 'w-8 h-full',
+      button: 'h-full w-8',
       icon: 'h-4 w-4'
     },
     large: {
-      hotspot: 'w-16 md:w-16 h-full',
-      button: 'h-full w-10',
-      icon: 'h-5 w-5'
+      hotspot: 'w-10 md:w-12 h-full',
+      button: 'h-full w-7',
+      icon: 'h-4 w-4'
     }
   };
 
@@ -52,6 +52,7 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
         <div 
           className={`absolute left-0 top-0 ${hotspot} flex items-center justify-center group`}
           onClick={onPrevious}
+          onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
           <Button
             size="icon"
@@ -69,6 +70,7 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
         <div 
           className={`absolute right-0 top-0 ${hotspot} flex items-center justify-center group`} 
           onClick={onNext}
+          onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
           <Button
             size="icon"

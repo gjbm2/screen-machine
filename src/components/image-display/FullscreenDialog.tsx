@@ -60,13 +60,13 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       onOpenChange={(open) => setShowFullScreenView(open)}
     >
       <DialogContent 
-        className="max-w-[100vw] w-[95vw] md:w-[90vw] max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col" 
+        className="max-w-[100vw] w-[95vw] md:w-[90vw] max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col select-none" 
         noPadding
         description="Detailed view of generated image"
       >
         <div className="flex justify-between items-start p-3 pb-0 flex-shrink-0 border-b border-border/30">
-          <div className="flex items-start flex-grow pr-8 max-w-[calc(100%-40px)]">
-            {showCollapsibleTrigger && (
+          <div className="flex items-start flex-grow max-w-[calc(100%-40px)]">
+            {showCollapsibleTrigger ? (
               <Collapsible 
                 open={isPromptExpanded}
                 onOpenChange={setIsPromptExpanded}
@@ -82,20 +82,19 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
                   </CollapsibleTrigger>
                   
                   <div className="text-sm font-medium text-foreground truncate">
-                    {!isPromptExpanded ? imagePrompt.substring(0, 100) + (imagePrompt.length > 100 ? '...' : '') : null}
+                    {imagePrompt.split('\n')[0] || "No prompt available"}
                   </div>
                 </div>
                 
                 <CollapsibleContent>
                   <div className="text-sm font-medium text-foreground pl-5 pr-2 py-1">
-                    {imagePrompt}
+                    {/* Skip the first line since we already show it above */}
+                    {imagePrompt.split('\n').slice(1).join('\n')}
                   </div>
                 </CollapsibleContent>
               </Collapsible>
-            )}
-            
-            {!showCollapsibleTrigger && (
-              <div className="text-sm font-medium text-foreground truncate">
+            ) : (
+              <div className="text-sm font-medium text-foreground truncate pl-6">
                 {imagePrompt || "No prompt available"}
               </div>
             )}
@@ -103,8 +102,9 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           
           <button 
             onClick={() => setShowFullScreenView(false)}
-            className="p-2 rounded-full hover:bg-muted transition-colors flex-shrink-0"
+            className="p-2 rounded-full hover:bg-muted transition-colors flex-shrink-0 h-6 mt-0.5"
             aria-label="Close dialog"
+            onMouseDown={(e) => e.preventDefault()} // Prevent text selection
           >
             <X className="h-4 w-4" />
           </button>
