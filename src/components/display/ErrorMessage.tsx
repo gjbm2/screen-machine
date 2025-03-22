@@ -2,11 +2,11 @@
 import React from 'react';
 
 interface ErrorMessageProps {
-  error: string;
-  backgroundColor: string;
+  message: string;
+  backgroundColor?: string;
 }
 
-export const ErrorMessage: React.FC<ErrorMessageProps> = ({ error, backgroundColor }) => {
+export const ErrorMessage: React.FC<ErrorMessageProps> = ({ message, backgroundColor = '000000' }) => {
   return (
     <div style={{
       backgroundColor: `#${backgroundColor}`,
@@ -23,7 +23,7 @@ export const ErrorMessage: React.FC<ErrorMessageProps> = ({ error, backgroundCol
       fontSize: '16px',
       textAlign: 'center',
     }}>
-      <h1 style={{ marginBottom: '20px' }}>{error}</h1>
+      <h1 style={{ marginBottom: '20px' }}>{message}</h1>
       <p>Parameters:</p>
       <ul style={{ listStyleType: 'none', padding: 0 }}>
         <li><strong>output</strong>: (required) Image to display (e.g., image.jpg or full URL)</li>

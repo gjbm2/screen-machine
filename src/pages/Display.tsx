@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { DebugPanel } from '@/components/display/DebugPanel';
@@ -14,7 +13,6 @@ const Display = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  // Parse URL parameters
   const params: DisplayParams = {
     output: searchParams.get('output'),
     showMode: (searchParams.get('show') || 'fit') as DisplayParams['showMode'],
@@ -31,7 +29,6 @@ const Display = () => {
     transition: searchParams.get('transition') as DisplayParams['transition'] || 'cut',
   };
 
-  // Use our custom hook for state management
   const {
     imageUrl,
     error,
@@ -57,7 +54,6 @@ const Display = () => {
     getImagePositionStyle
   } = useDisplayState(params);
 
-  // Redirect to debug mode if no output parameter is provided
   useEffect(() => {
     if (!params.output && !params.debugMode) {
       const queryParams = new URLSearchParams();
@@ -70,7 +66,6 @@ const Display = () => {
     }
   }, [params.output, params.debugMode, navigate, params.showMode, params.position, params.refreshInterval, params.backgroundColor]);
 
-  // Handle image loading and metadata extraction
   useEffect(() => {
     if (!params.output && !params.debugMode) {
       return;
@@ -82,18 +77,15 @@ const Display = () => {
         loadNewImage(processedUrl);
       }
       
-      // Set up periodic checking for image changes
       const intervalId = window.setInterval(() => {
         if (processedUrl && !isLoading && !isTransitioning) {
           checkImageModified(processedUrl);
         }
       }, params.refreshInterval * 1000);
 
-      // Extract metadata if data parameter is provided
       if (params.data !== undefined) {
         extractImageMetadata(processedUrl, params.data || undefined)
           .then(data => {
-            // Update processed caption with metadata
             if (params.caption) {
               const newCaption = processCaptionWithMetadata(params.caption, data);
               setProcessedCaption(newCaption);
@@ -101,7 +93,6 @@ const Display = () => {
           })
           .catch(err => console.error('Error extracting metadata:', err));
       } else if (params.caption) {
-        // If there's a caption but no metadata, just use the caption as is
         setProcessedCaption(params.caption);
       }
 
@@ -111,7 +102,6 @@ const Display = () => {
     }
   }, [params.output, params.refreshInterval, params.debugMode, params.data, params.caption, isLoading, isTransitioning, loadNewImage, checkImageModified, setProcessedCaption]);
 
-  // Fetch available output files for debug mode
   useEffect(() => {
     if (params.debugMode) {
       fetchOutputFiles().then(files => setOutputFiles(files));
@@ -139,7 +129,7 @@ const Display = () => {
   };
 
   if (error) {
-    return <ErrorMessage message={error} />;
+    return <ErrorMessage message={error} backgroundColor={params.backgroundColor} />;
   }
 
   return (
