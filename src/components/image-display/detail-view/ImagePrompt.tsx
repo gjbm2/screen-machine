@@ -33,10 +33,10 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
     displayText = `${imageNumber !== undefined ? `Image ${imageNumber}` : ''} ${workflowName ? `- ${workflowName}` : ''}`.trim();
   }
   
-  if (!displayText) return null;
+  if (!displayText && !hasReferenceImages) return null;
   
-  const isLongPrompt = displayText.length > 70;
-  const truncatedPrompt = isLongPrompt ? `${displayText.substring(0, 67)}...` : displayText;
+  const isLongPrompt = displayText && displayText.length > 70;
+  const truncatedPrompt = isLongPrompt ? `${displayText?.substring(0, 67)}...` : displayText;
   
   const handleExpandClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -68,7 +68,13 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
               <Image size={14} />
             </button>
           )}
-          <p className="truncate">{truncatedPrompt}</p>
+          {truncatedPrompt && <p className="truncate">{truncatedPrompt}</p>}
+          {!truncatedPrompt && hasReferenceImages && (
+            <p className="truncate">
+              {imageNumber !== undefined ? `Image ${imageNumber}` : ''} 
+              {workflowName ? ` - ${workflowName}` : ''}
+            </p>
+          )}
         </div>
         
         {isLongPrompt && (

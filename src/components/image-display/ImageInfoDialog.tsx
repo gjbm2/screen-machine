@@ -35,6 +35,11 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
     });
   };
 
+  // Handle multiple reference images if they exist (they could be in a comma-separated string)
+  const referenceImages = image.referenceImageUrl ? 
+    image.referenceImageUrl.split(',').map(url => url.trim()) : 
+    [];
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
@@ -46,7 +51,7 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
           <div className="space-y-2">
             <h3 className="text-sm font-bold">Prompt</h3>
             <div className="text-sm whitespace-pre-wrap flex">
-              {image.referenceImageUrl && (
+              {referenceImages.length > 0 && (
                 <span className="mr-2 flex-shrink-0">
                   <Image size={16} />
                 </span>
@@ -89,16 +94,20 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
             </div>
           )}
           
-          {/* Reference Image */}
-          {image.referenceImageUrl && (
+          {/* Reference Images */}
+          {referenceImages.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-sm font-bold">Reference Image</h3>
-              <div className="border rounded-md overflow-hidden max-w-[200px]">
-                <img 
-                  src={image.referenceImageUrl} 
-                  alt="Reference"
-                  className="w-full h-auto object-contain"
-                />
+              <h3 className="text-sm font-bold">Reference Images</h3>
+              <div className="flex flex-wrap gap-2">
+                {referenceImages.map((imageUrl, index) => (
+                  <div key={index} className="border rounded-md overflow-hidden w-24 h-24">
+                    <img 
+                      src={imageUrl} 
+                      alt={`Reference ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           )}

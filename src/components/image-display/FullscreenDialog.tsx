@@ -80,10 +80,11 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   };
 
   const handleShowInfoPanel = () => {
-    console.log("Showing info dialog in fullscreen mode"); // Debug log
+    console.log("Showing info dialog in fullscreen mode");
     setShowInfoDialog(true);
   };
 
+  // Determine if there are reference images based on the currentImage
   const hasReferenceImages = Boolean(currentImage?.referenceImageUrl);
   
   const handleShowReferenceImages = () => {
@@ -172,7 +173,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           )}
         </div>
         
-        {/* Reference images dialog */}
+        {/* Reference images dialog - for single reference view */}
         {currentImage?.referenceImageUrl && (
           <ReferenceImageDialog
             isOpen={showReferenceImagesDialog}
@@ -181,7 +182,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           />
         )}
 
-        {/* Image info dialog */}
+        {/* Image info dialog - includes all reference images */}
         {currentImage && (
           <ImageInfoDialog
             isOpen={showInfoDialog}
