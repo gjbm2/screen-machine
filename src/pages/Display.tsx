@@ -1,6 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AspectRatio } from '@/components/ui/aspect-ratio';
 
 type ShowMode = 'fit' | 'fill' | 'actual';
 
@@ -38,6 +38,7 @@ const Display = () => {
       const response = await fetch(url, { method: 'HEAD' });
       const lastModified = response.headers.get('last-modified');
       
+      // Only update the image if the last-modified header has changed
       if (lastModified && lastModified !== lastModifiedRef.current) {
         lastModifiedRef.current = lastModified;
         setImageKey(prev => prev + 1);
@@ -100,6 +101,9 @@ const Display = () => {
           width: '100%',
           height: '100%',
           objectFit: 'cover',
+          position: 'absolute',
+          top: 0,
+          left: 0,
         };
       case 'fit':
         return {
