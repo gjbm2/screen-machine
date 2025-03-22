@@ -108,22 +108,22 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   return (
     <div 
       ref={imageContainerRef}
-      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-full h-full select-none cursor-pointer" /* Added cursor-pointer to indicate clickability */
+      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-auto min-w-0 h-full select-none cursor-pointer" 
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onClick={handleImageContainerClick}
       tabIndex={-1}
-      style={{ outline: 'none' }}
-      onMouseDown={(e) => e.preventDefault()} // Prevent text selection on mouse down
+      style={{ outline: 'none', margin: '0 auto' }}
+      onMouseDown={(e) => e.preventDefault()}
     >
-      <div className="relative flex justify-center items-center w-full h-full py-2">
+      <div className="relative flex justify-center items-center h-full py-2 w-auto min-w-0">
         <img 
           src={imageUrl}
           alt={altText}
-          className="object-contain select-none" /* Added select-none to prevent image selection */
+          className="object-contain select-none"
           style={optimalSize}
           onLoad={handleImageLoadInternal}
-          draggable={false} /* Prevent dragging the image */
+          draggable={false}
         />
       </div>
       
