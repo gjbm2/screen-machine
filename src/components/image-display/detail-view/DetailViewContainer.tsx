@@ -34,6 +34,7 @@ interface DetailViewContainerProps {
   onNavigateGlobal?: (imageIndex: number) => void;
   currentGlobalIndex?: number;
   hidePrompt?: boolean;
+  onClose?: () => void; // Added for closing fullscreen view
 }
 
 const DetailViewContainer: React.FC<DetailViewContainerProps> = ({
@@ -52,7 +53,8 @@ const DetailViewContainer: React.FC<DetailViewContainerProps> = ({
   isNavigatingAllImages,
   onNavigateGlobal,
   currentGlobalIndex,
-  hidePrompt = false
+  hidePrompt = false,
+  onClose // New prop for closing
 }) => {
   const handleSwipeLeft = () => {
     if (onNavigateGlobal && allImages && currentGlobalIndex !== undefined) {
@@ -98,6 +100,7 @@ const DetailViewContainer: React.FC<DetailViewContainerProps> = ({
             onNavigateGlobal={onNavigateGlobal}
             currentGlobalIndex={currentGlobalIndex}
             hidePrompt={hidePrompt}
+            onClose={onClose} // Pass the onClose handler
           />
         </TooltipProvider>
       </div>

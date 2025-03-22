@@ -27,6 +27,8 @@ export const useImageActions = (
       return;
     }
 
+    console.log('Using image as input:', image);
+
     // Set the prompt and workflow to match the generated image
     if (image.prompt) {
       setCurrentPrompt(image.prompt);
@@ -39,8 +41,10 @@ export const useImageActions = (
     // Set reference images if any
     if (image.referenceImageUrl) {
       const refImages = image.referenceImageUrl.split(',').map(url => url.trim()).filter(url => url !== '');
+      console.log('Setting reference images:', refImages);
       setUploadedImageUrls(refImages);
     } else {
+      console.log('No reference images to set');
       setUploadedImageUrls([]);
     }
     
@@ -56,20 +60,28 @@ export const useImageActions = (
       const batchImage = generatedImages.find(img => img.batchId === batchId);
       if (batchImage) {
         console.log('Creating again from batch:', batchId);
+        console.log('Batch image:', batchImage);
         
         // Prepare reference images if any
         let referenceImages: string[] | undefined = undefined;
         if (batchImage.referenceImageUrl) {
-          referenceImages = batchImage.referenceImageUrl.split(',').map(url => url.trim()).filter(url => url !== '');
+          referenceImages = batchImage.referenceImageUrl.split(',')
+            .map(url => url.trim())
+            .filter(url => url !== '');
+          console.log('Using reference images for regeneration:', referenceImages);
         }
         
         // Submit the prompt
         if (batchImage.prompt) {
           handleSubmitPrompt(batchImage.prompt, referenceImages);
           toast.success('Generating new image with same settings');
+          
+          // Return the batch ID so caller can know which batch was regenerated
+          return batchId;
         }
       }
     }
+    return null;
   };
 
   const handleDownloadImage = (url: string) => {

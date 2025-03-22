@@ -10,6 +10,7 @@ interface DetailViewActionBarProps {
   onCreateAgain: () => void;
   onUseAsInput?: () => void;
   onDeleteImage: () => void;
+  onClose?: () => void; // Added for closing fullscreen view
   generationInfo: {
     prompt: string;
     workflow: string;
@@ -23,6 +24,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
   onCreateAgain,
   onUseAsInput,
   onDeleteImage,
+  onClose,
   generationInfo
 }) => {
   const handleDownload = () => {
@@ -46,6 +48,14 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
         // Fallback to opening in new tab
         window.open(imageUrl, '_blank');
       });
+  };
+
+  const handleDelete = () => {
+    onDeleteImage();
+    // Also close the fullscreen view if provided
+    if (onClose) {
+      onClose();
+    }
   };
 
   return (
@@ -97,7 +107,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
             type="button" 
             variant="outline" 
             className="bg-destructive/90 hover:bg-destructive text-white shadow-sm p-2 text-xs rounded-full flex items-center gap-1.5"
-            onClick={onDeleteImage}
+            onClick={handleDelete}
           >
             <Trash2 className="h-3.5 w-3.5" /> Delete
           </Button>

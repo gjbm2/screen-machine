@@ -32,6 +32,7 @@ interface ImageDetailViewProps {
   onNavigateGlobal?: (imageIndex: number) => void;
   currentGlobalIndex?: number;
   hidePrompt?: boolean;
+  onClose?: () => void; // Added for closing fullscreen view
 }
 
 const ImageDetailView: React.FC<ImageDetailViewProps> = (props) => {

@@ -36,6 +36,7 @@ interface DetailViewContentProps {
   onNavigateGlobal?: (imageIndex: number) => void;
   currentGlobalIndex?: number;
   hidePrompt?: boolean;
+  onClose?: () => void; // Added for closing fullscreen view
 }
 
 const DetailViewContent: React.FC<DetailViewContentProps> = ({
@@ -54,7 +55,8 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   isNavigatingAllImages,
   onNavigateGlobal,
   currentGlobalIndex,
-  hidePrompt
+  hidePrompt,
+  onClose // New prop for closing
 }) => {
   const activeImage = images[activeIndex];
   const [showReferenceImage, setShowReferenceImage] = useState(false);
@@ -103,6 +105,10 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   
   const handleDeleteImage = () => {
     onDeleteImage(batchId, activeIndex);
+    // Close fullscreen if requested
+    if (onClose) {
+      onClose();
+    }
   };
 
   const handleInfoClick = () => {
@@ -163,6 +169,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onOpenInNewTab={handleOpenInNewTab}
         hidePrompt={hidePrompt}
         onInfoClick={handleInfoClick}
+        onClose={onClose} // Pass the onClose handler
       />
 
       {/* Reference image dialog - supports multiple images */}
