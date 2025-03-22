@@ -58,3 +58,9 @@ export interface BatchControlProps {
   decrementBatchSize: () => void;
   isCompact?: boolean;
 }
+
+export interface ImagePreviewSectionProps {
+  previewUrls: string[];
+  handleRemoveImage: (index: number) => void;
+  clearAllImages: () => void;
+}
