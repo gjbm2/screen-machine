@@ -2,7 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Image } from 'lucide-react';
-import { ReferenceImagesSection } from './ReferenceImagesSection';
+import ReferenceImagesSection from './ReferenceImagesSection';
+import ReferenceImageDialog from './ReferenceImageDialog';
 
 interface ImageInfoDialogProps {
   isOpen: boolean;
