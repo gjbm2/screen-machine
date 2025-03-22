@@ -16,12 +16,17 @@ export const useExternalImageUrls = (
       
       // Add these URLs to our preview URLs if they're not already there
       setPreviewUrls(prev => {
+        // First create a set of existing URLs for faster lookup
+        const existingUrls = new Set(prev);
+        
+        // Only add URLs that don't already exist
         const newUrls = [...prev];
         for (const url of urlsFromProps) {
-          if (!newUrls.includes(url)) {
+          if (!existingUrls.has(url)) {
             newUrls.push(url);
           }
         }
+        
         return newUrls;
       });
       
@@ -38,12 +43,17 @@ export const useExternalImageUrls = (
         console.log('External image URLs detected on periodic check:', externalUrls);
         
         setPreviewUrls(prev => {
+          // Create a set of existing URLs for faster lookup
+          const existingUrls = new Set(prev);
+          
+          // Only add URLs that don't already exist
           const newUrls = [...prev];
           for (const url of externalUrls) {
-            if (!newUrls.includes(url)) {
+            if (!existingUrls.has(url)) {
               newUrls.push(url);
             }
           }
+          
           return newUrls;
         });
         

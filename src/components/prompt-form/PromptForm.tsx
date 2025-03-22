@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
 import usePromptForm from './usePromptForm';
@@ -8,6 +8,7 @@ import PromptFormToolbar from './PromptFormToolbar';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import { PromptFormProps } from './types';
 import useExternalImageUrls from '@/hooks/use-external-images';
+import ImagePreviewSection from './ImagePreviewSection';
 
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
@@ -20,6 +21,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
   const [prompt, setPrompt] = useState(currentPrompt || '');
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
+  const lastReceivedPrompt = useRef(currentPrompt);
 
   const {
     selectedWorkflow,
@@ -43,11 +45,12 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
   // Update prompt when currentPrompt prop changes
   useEffect(() => {
-    if (currentPrompt && currentPrompt !== prompt) {
+    if (currentPrompt && currentPrompt !== lastReceivedPrompt.current) {
       console.log('PromptForm: Updating prompt from prop:', currentPrompt);
       setPrompt(currentPrompt);
+      lastReceivedPrompt.current = currentPrompt;
     }
-  }, [currentPrompt, prompt]);
+  }, [currentPrompt]);
 
   // Handle external image URLs and updates
   useExternalImageUrls(setPreviewUrls);
@@ -73,9 +76,12 @@ const PromptForm: React.FC<PromptFormProps> = ({
       !imageFiles.some(file => url === URL.createObjectURL(file))
     );
     
-    // Add external URLs to the images array
+    // Add external URLs to the images array (avoid duplicates)
     if (externalUrls.length > 0) {
-      allImages.push(...externalUrls);
+      // Use a Set to ensure uniqueness
+      const uniqueUrls = new Set([...allImages, ...externalUrls]);
+      allImages.length = 0; // Clear the array
+      allImages.push(...uniqueUrls); // Add unique values
     }
 
     const refinerToUse = selectedRefiner === "none" ? undefined : selectedRefiner;
@@ -97,10 +103,13 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setPrompt(e.target.value);
+    // Update the ref to prevent overwriting user changes with stale props
+    lastReceivedPrompt.current = e.target.value;
   };
 
   const handleClearPrompt = () => {
     setPrompt('');
+    lastReceivedPrompt.current = '';
   };
 
   const handleImageUpload = (files: File[]) => {
@@ -109,7 +118,13 @@ const PromptForm: React.FC<PromptFormProps> = ({
     const newPreviewUrls = files.map(file => URL.createObjectURL(file));
     
     setImageFiles(prevFiles => [...prevFiles, ...files]);
-    setPreviewUrls(prevUrls => [...prevUrls, ...newPreviewUrls]);
+    setPreviewUrls(prevUrls => {
+      // Create a set of existing URLs for deduplication
+      const existingUrls = new Set(prevUrls);
+      const uniqueNewUrls = newPreviewUrls.filter(url => !existingUrls.has(url));
+      
+      return [...prevUrls, ...uniqueNewUrls];
+    });
   };
 
   const handleRemoveImage = (index: number) => {

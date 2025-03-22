@@ -20,12 +20,15 @@ const ImagePreviewSection: React.FC<ImagePreviewSectionProps> = ({
     return null;
   }
 
+  // Remove duplicate URLs if any exist
+  const uniqueUrls = [...new Set(previewUrls)];
+  
   return (
     <div className="relative p-4 pb-2">
       <Carousel className="w-full">
         <CarouselContent>
-          {previewUrls.map((url, index) => (
-            <CarouselItem key={index} className="basis-full md:basis-1/2 lg:basis-1/3">
+          {uniqueUrls.map((url, index) => (
+            <CarouselItem key={`preview-${index}-${url.slice(-8)}`} className="basis-full md:basis-1/2 lg:basis-1/3">
               <div className="relative rounded-lg overflow-hidden h-48 border border-border/30">
                 <img 
                   src={url} 
@@ -43,14 +46,14 @@ const ImagePreviewSection: React.FC<ImagePreviewSectionProps> = ({
             </CarouselItem>
           ))}
         </CarouselContent>
-        {previewUrls.length > 1 && (
+        {uniqueUrls.length > 1 && (
           <>
             <CarouselPrevious className="left-1" />
             <CarouselNext className="right-1" />
           </>
         )}
       </Carousel>
-      {previewUrls.length > 1 && (
+      {uniqueUrls.length > 1 && (
         <div className="flex justify-end mt-2">
           <Button 
             type="button" 
