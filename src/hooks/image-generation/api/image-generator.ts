@@ -1,16 +1,13 @@
-
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
 import { GeneratedImage } from '../types';
-import { ImageGenerationStatus } from '@/types/workflows';
 import { ApiResponse, GenerateImagePayload } from './types';
-import { 
-  createPlaceholderImage, 
-  updateImageWithResult, 
-  updateImageWithError,
-  processUploadedFiles
-} from './image-utils';
+import { processUploadedFiles } from './reference-image-utils';
+import { createPlaceholderBatch } from './placeholder-utils';
+import { processGenerationResults, markBatchAsError } from './result-handler';
+import { findExistingContainerId, getContainerIdForBatch } from './batch-utils';
+import { generateImageTitle } from './title-util';
 
 export interface ImageGenerationParams {
   prompt: string;
@@ -31,24 +28,6 @@ export interface ImageGenerationActions {
   setNextContainerId: React.Dispatch<React.SetStateAction<number>>;
   setActiveGenerations: React.Dispatch<React.SetStateAction<string[]>>;
 }
-
-// Get or initialize counter for image titles
-const getNextImageNumber = (): number => {
-  // Initialize counter if it doesn't exist yet
-  if (typeof window.imageCounter === 'undefined') {
-    window.imageCounter = 0;
-  }
-  
-  // Increment counter and return new value
-  window.imageCounter += 1;
-  return window.imageCounter;
-};
-
-// Generate a formatted title with the current counter, prompt, and workflow
-const generateImageTitle = (prompt: string, workflow: string): string => {
-  const imageNumber = getNextImageNumber();
-  return `${imageNumber}. ${prompt} (${workflow})`;
-};
 
 /**
  * Handles the entire image generation process
@@ -86,11 +65,7 @@ export const generateImage = async (
   if (batchId) {
     // If we're reusing a batch ID, find out if it already has a containerId
     setGeneratedImages(prevImages => {
-      // Look for any existing image with this batch ID that has a containerId
-      const existingImage = prevImages.find(img => img.batchId === batchId && img.containerId);
-      if (existingImage && existingImage.containerId) {
-        existingContainerId = existingImage.containerId;
-      }
+      existingContainerId = findExistingContainerId(batchId, prevImages);
       return prevImages;
     });
     
@@ -150,55 +125,32 @@ export const generateImage = async (
     // Prepare reference image URL string - make sure it's not empty
     const referenceImageUrl = uploadedImageUrls.length > 0 ? uploadedImageUrls.join(',') : undefined;
     
-    // Add additional debug log for reference images
+    // Additional debug log for reference images
     if (referenceImageUrl) {
       console.log("[image-generator] Reference images being used for generation:", referenceImageUrl);
     }
     
-    // Pre-create placeholder records for the images
-    // First, let's see how many exist already in this batch
-    const existingBatchIndexes = new Set<number>();
+    // Get batch size from global params, default to 1
     const batchSize = globalParams?.batch_size || 1;
-    
-    // Log batch size to debug
     console.log(`[image-generator] Creating ${batchSize} placeholder(s) for batch ${currentBatchId}`);
     
+    // Determine which container ID to use
+    const containerIdToUse = getContainerIdForBatch(batchId, existingContainerId, nextContainerId);
+    
+    // Create placeholders for the batch
     setGeneratedImages(prevImages => {
-      prevImages.forEach(img => {
-        if (img.batchId === currentBatchId && typeof img.batchIndex === 'number') {
-          existingBatchIndexes.add(img.batchIndex);
-        }
-      });
-      
-      // Create a placeholder entry for each image in the batch
-      const newPlaceholders: GeneratedImage[] = [];
-      
-      for (let i = 0; i < batchSize; i++) {
-        const nextIndex = existingBatchIndexes.size + i;
-        
-        const placeholderImage = createPlaceholderImage(
-          prompt,
-          workflow,
-          currentBatchId,
-          nextIndex,
-          params,
-          refiner,
-          refinerParams,
-          referenceImageUrl,
-          // Use existing containerId if available, otherwise use the provided one
-          existingContainerId || (nextContainerId && !batchId ? nextContainerId : undefined)
-        );
-        
-        // Add the title to the placeholder image
-        placeholderImage.title = imageTitle;
-        
-        // Additional debug for placeholder
-        if (placeholderImage.referenceImageUrl) {
-          console.log("[image-generator] Placeholder created with reference images:", placeholderImage.referenceImageUrl);
-        }
-        
-        newPlaceholders.push(placeholderImage);
-      }
+      const newPlaceholders = createPlaceholderBatch(
+        prompt,
+        workflow,
+        currentBatchId,
+        batchSize,
+        prevImages,
+        params,
+        refiner,
+        refinerParams,
+        referenceImageUrl,
+        containerIdToUse
+      );
       
       return [...prevImages, ...newPlaceholders];
     });
@@ -229,15 +181,9 @@ export const generateImage = async (
         
         const response = await apiService.generateImage(payload);
         
-        if (!response || !response.images) {
-          throw new Error('No images were returned');
-        }
-        
-        const images = response.images;
-        
         addConsoleLog({
           type: 'success',
-          message: `Generated ${images.length} images successfully`,
+          message: `Generated ${response.images?.length || 0} images successfully`,
           details: { 
             batchId: currentBatchId,
             hasReferenceImages: uploadedImageUrls.length > 0,
@@ -245,73 +191,15 @@ export const generateImage = async (
           }
         });
         
-        console.log("[image-generator] Generation successful, updating images with reference URLs:", referenceImageUrl);
-        
         // Update the images with the actual URLs
         setGeneratedImages(prevImages => {
-          const newImages = [...prevImages];
-          
-          images.forEach((img: any, index: number) => {
-            // Find the placeholder for this image
-            const placeholderIndex = newImages.findIndex(
-              pi => pi.batchId === currentBatchId && pi.batchIndex === index && pi.status === 'generating'
-            );
-            
-            if (placeholderIndex >= 0) {
-              // Update the placeholder with actual data - preserve reference image URL and title
-              const updatedImage = updateImageWithResult(
-                newImages[placeholderIndex], 
-                img.url
-              );
-              
-              // Make sure the title is preserved
-              updatedImage.title = newImages[placeholderIndex].title || imageTitle;
-              
-              newImages[placeholderIndex] = updatedImage;
-              
-              // Log the updated image for debugging
-              if (newImages[placeholderIndex].referenceImageUrl) {
-                console.log("[image-generator] Updated image with reference image URL:", newImages[placeholderIndex].referenceImageUrl);
-              }
-            } else {
-              // No placeholder found, this is an additional image
-              const newImage: GeneratedImage = {
-                url: img.url,
-                prompt,
-                workflow,
-                timestamp: Date.now(),
-                batchId: currentBatchId,
-                batchIndex: index,
-                status: 'completed' as ImageGenerationStatus,
-                params,
-                refiner,
-                refinerParams,
-                title: imageTitle // Add title to new image
-              };
-              
-              // If there's a reference image, make sure to include it
-              if (referenceImageUrl) {
-                newImage.referenceImageUrl = referenceImageUrl;
-                console.log('[image-generator] Adding reference images to new image:', referenceImageUrl);
-              }
-              
-              // Add containerId - use existing if available, otherwise use the provided one
-              if (existingContainerId) {
-                newImage.containerId = existingContainerId;
-              } else if (nextContainerId && !batchId) {
-                newImage.containerId = nextContainerId;
-              }
-              
-              newImages.push(newImage);
-            }
-          });
-          
-          return newImages;
+          const updatedImages = processGenerationResults(response, currentBatchId, prevImages);
+          return updatedImages;
         });
 
         // Success message
-        if (images.length > 0) {
-          toast.success(`Generated ${images.length} image${images.length > 1 ? 's' : ''} successfully`);
+        if (response.images?.length > 0) {
+          toast.success(`Generated ${response.images.length} image${response.images.length > 1 ? 's' : ''} successfully`);
         }
       } catch (error: any) {
         console.error('Image generation error:', error);
@@ -324,15 +212,7 @@ export const generateImage = async (
         
         // Update image placeholders to show error
         setGeneratedImages(prevImages => {
-          return prevImages.map(img => {
-            if (img.batchId === currentBatchId && img.status === 'generating') {
-              const errorImage = updateImageWithError(img);
-              // Preserve the title even when we have an error
-              errorImage.title = img.title;
-              return errorImage;
-            }
-            return img;
-          });
+          return markBatchAsError(currentBatchId, prevImages);
         });
         
         toast.error(`Failed to generate image: ${error.message || 'Unknown error'}`);
