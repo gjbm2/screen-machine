@@ -7,6 +7,13 @@ import { useImageActions } from './use-image-actions';
 import { useImageGenerationApi } from './use-image-generation-api';
 import { ImageGenerationConfig } from './types';
 
+// Declare global window type to include our custom property
+declare global {
+  interface Window {
+    externalImageUrls?: string[];
+  }
+}
+
 export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   // State for current prompts and workflows
   const [currentPrompt, setCurrentPrompt] = useState<string>('');
@@ -39,6 +46,15 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     nextContainerId,
     setNextContainerId
   );
+
+  // When uploadedImageUrls changes, store them in a global variable
+  // for access in other components
+  useEffect(() => {
+    if (uploadedImageUrls.length > 0) {
+      console.log('Setting global externalImageUrls:', uploadedImageUrls);
+      window.externalImageUrls = uploadedImageUrls;
+    }
+  }, [uploadedImageUrls]);
 
   // Submit prompt handler - defined after generateImages is available
   const handleSubmitPrompt = useCallback(async (
