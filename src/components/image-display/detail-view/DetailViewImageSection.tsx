@@ -1,7 +1,6 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import MainImageView from '../MainImageView';
-import NavigationControls from '../NavigationControls';
 
 interface DetailViewImageSectionProps {
   activeImage: {
@@ -34,48 +33,22 @@ const DetailViewImageSection: React.FC<DetailViewImageSectionProps> = ({
   currentGlobalIndex,
   onImageClick
 }) => {
-  const showPrev = isNavigatingAllImages && currentGlobalIndex !== undefined && currentGlobalIndex > 0;
-  const showNext = isNavigatingAllImages && currentGlobalIndex !== undefined && allImages && currentGlobalIndex < allImages.length - 1;
-  
-  const handlePrevImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onNavigateGlobal && currentGlobalIndex !== undefined && currentGlobalIndex > 0) {
-      onNavigateGlobal(currentGlobalIndex - 1);
-    }
-  };
-
-  const handleNextImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onNavigateGlobal && currentGlobalIndex !== undefined && allImages && currentGlobalIndex < allImages.length - 1) {
-      onNavigateGlobal(currentGlobalIndex + 1);
-    }
-  };
-
   return (
-    <div className="flex-grow flex items-center justify-center overflow-hidden min-h-0 w-full relative">
-      {/* Navigation controls - positioned at panel edges */}
-      {(showPrev || showNext) && (
-        <NavigationControls
-          onPrevious={handlePrevImage}
-          onNext={handleNextImage}
-          size="medium"
-          showPrevButton={showPrev}
-          showNextButton={showNext}
+    <div className="flex-grow flex items-center justify-center overflow-hidden min-h-0 min-w-0 relative">
+      <div className="w-auto min-w-0 h-full flex items-center justify-center">
+        <MainImageView
+          imageUrl={activeImage.url}
+          altText={activeImage.prompt || "Generated image"}
+          onImageLoad={onImageLoad}
+          allImages={allImages}
+          isNavigatingAllImages={isNavigatingAllImages}
+          onNavigateGlobal={onNavigateGlobal}
+          currentGlobalIndex={currentGlobalIndex}
+          handleTouchStart={() => {}}  // Touch handling moved to DetailViewTouchHandler
+          handleTouchEnd={() => {}}    // Touch handling moved to DetailViewTouchHandler
+          onImageClick={onImageClick}  // Pass the onImageClick prop
         />
-      )}
-      
-      <MainImageView
-        imageUrl={activeImage.url}
-        altText={activeImage.prompt || "Generated image"}
-        onImageLoad={onImageLoad}
-        allImages={allImages}
-        isNavigatingAllImages={isNavigatingAllImages}
-        onNavigateGlobal={onNavigateGlobal}
-        currentGlobalIndex={currentGlobalIndex}
-        handleTouchStart={() => {}}  // Touch handling moved to DetailViewTouchHandler
-        handleTouchEnd={() => {}}    // Touch handling moved to DetailViewTouchHandler
-        onImageClick={onImageClick}  // Pass the onImageClick prop
-      />
+      </div>
     </div>
   );
 };

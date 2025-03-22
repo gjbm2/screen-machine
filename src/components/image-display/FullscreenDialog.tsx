@@ -90,17 +90,18 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       onOpenChange={(open) => setShowFullScreenView(open)}
     >
       <DialogContent 
-        className="max-w-[95vw] w-auto min-w-[50vw] max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col select-none" 
+        className="max-w-[95vw] w-auto min-w-0 md:w-auto max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col select-none" 
         noPadding
         hideCloseButton
+        style={{ width: 'auto', minWidth: '50vw' }}
       >
         <DialogTitle className="sr-only">Image Detail View</DialogTitle>
         
-        {/* Header with expandable prompt - fixed width with text truncation */}
+        {/* Header with expandable prompt - with fixed minimum height */}
         {prompt && (
-          <div className="px-4 py-2 border-b min-h-[40px] flex-shrink-0 w-full">
+          <div className="px-4 py-2 border-b min-h-[40px] flex-shrink-0 w-auto min-w-0">
             <div 
-              className="overflow-hidden flex items-start justify-between w-full"
+              className="overflow-hidden flex items-start justify-between w-auto min-w-0"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start flex-grow overflow-hidden min-w-0">
@@ -112,14 +113,14 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
                     {isPromptExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
                 )}
-                <div className={`text-base text-muted-foreground overflow-hidden ${isPromptExpanded ? '' : 'max-h-6'} min-w-0`}>
-                  <p className={isPromptExpanded ? 'whitespace-normal break-words' : 'truncate'}>
+                <div className={`text-base text-muted-foreground overflow-hidden ${isPromptExpanded ? 'max-h-none' : 'max-h-6'} min-w-0`}>
+                  <p className={isPromptExpanded ? 'whitespace-normal' : 'truncate'}>
                     {prompt}
                   </p>
                 </div>
               </div>
               
-              {/* Close button */}
+              {/* Close button - positioned with flex-shrink-0 to ensure it doesn't shrink */}
               <button 
                 onClick={handleClose}
                 className="inline-flex items-center justify-center p-1 hover:bg-gray-100 rounded-md flex-shrink-0 ml-2"
@@ -131,7 +132,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           </div>
         )}
 
-        <div className="flex-grow overflow-hidden flex flex-col min-h-0 w-full relative">
+        <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0 w-auto">
           {currentBatch && (
             <ImageDetailView
               batchId={fullScreenBatchId as string}

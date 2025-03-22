@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,6 +9,7 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import ImageLoadingState from '../image-display/ImageLoadingState';
 
 interface ImagePreviewProps {
   previewUrls: string[];
@@ -21,9 +22,18 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({
   handleRemoveImage,
   clearAllImages
 }) => {
+  const [loadedImages, setLoadedImages] = useState<Record<number, boolean>>({});
+  
   if (previewUrls.length === 0) {
     return null;
   }
+
+  const handleImageLoad = (index: number) => {
+    setLoadedImages(prev => ({
+      ...prev,
+      [index]: true
+    }));
+  };
 
   return (
     <div className="relative p-4 pb-2">
@@ -32,10 +42,18 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({
           {previewUrls.map((url, index) => (
             <CarouselItem key={index} className="basis-full md:basis-1/2 lg:basis-1/3">
               <div className="relative rounded-lg overflow-hidden h-48 border border-border/30">
+                {!loadedImages[index] && (
+                  <div className="absolute inset-0 z-10">
+                    <ImageLoadingState />
+                  </div>
+                )}
+                
                 <img 
                   src={url} 
                   alt={`Uploaded image ${index + 1}`} 
-                  className="w-full h-full object-contain"
+                  className={`w-full h-full object-contain ${!loadedImages[index] ? 'opacity-0' : 'opacity-100'}`}
+                  style={{ transition: 'opacity 0.2s ease-in-out' }}
+                  onLoad={() => handleImageLoad(index)}
                 />
                 <button
                   type="button"

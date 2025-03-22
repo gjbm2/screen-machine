@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import ImageKeyboardNavigation from './ImageKeyboardNavigation';
 import DetailViewImageSection from './DetailViewImageSection';
 import DetailViewInfoPanel from './DetailViewInfoPanel';
@@ -59,7 +59,6 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   const referenceImageUrl = activeImage?.referenceImageUrl;
   
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
-  const containerRef = useRef<HTMLDivElement>(null);
   
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
@@ -91,7 +90,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden min-h-0 w-full relative" ref={containerRef}>
+    <div className="flex flex-col h-full overflow-hidden min-h-0 min-w-0">
       {/* Keyboard navigation */}
       <ImageKeyboardNavigation 
         activeIndex={activeIndex}
@@ -103,9 +102,9 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onNavigateGlobal={onNavigateGlobal}
       />
 
-      {/* Selected image view - takes available space */}
+      {/* Selected image view - adaptive sizing to ensure control visibility */}
       {activeImage && (
-        <div className="flex-grow overflow-hidden flex flex-col min-h-0 w-full relative">
+        <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0 w-auto">
           <DetailViewImageSection
             activeImage={activeImage}
             onImageLoad={handleImageLoad}
