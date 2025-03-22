@@ -16,6 +16,8 @@ export const useImageState = () => {
   const lastModifiedRef = useRef<string | null>(null);
   const intervalRef = useRef<number | null>(null);
   const preloadImageRef = useRef<HTMLImageElement | null>(null);
+  // Add a ref to track the last URL we extracted metadata from
+  const lastMetadataUrlRef = useRef<string | null>(null);
 
   const checkImageModified = async (url: string) => {
     try {
@@ -33,6 +35,8 @@ export const useImageState = () => {
           setImageChanged(true);
           toast.info("Image has been updated on the server");
           lastModifiedRef.current = lastModified;
+          // Reset the last metadata URL to force metadata extraction for the changed image
+          lastMetadataUrlRef.current = null;
           return true;
         }
         
@@ -61,9 +65,19 @@ export const useImageState = () => {
 
   const extractMetadataFromImage = async (url: string, dataTag?: string) => {
     try {
-      const newMetadata = await extractImageMetadata(url, dataTag);
-      setMetadata(newMetadata);
-      return newMetadata;
+      // Only extract metadata if we haven't already extracted it for this URL
+      // or if the URL has changed
+      if (url !== lastMetadataUrlRef.current) {
+        console.log('Extracting metadata for new URL:', url);
+        const newMetadata = await extractImageMetadata(url, dataTag);
+        setMetadata(newMetadata);
+        // Update the last metadata URL
+        lastMetadataUrlRef.current = url;
+        return newMetadata;
+      } else {
+        console.log('Using cached metadata for URL:', url);
+        return metadata;
+      }
     } catch (err) {
       console.error('Error extracting metadata:', err);
       toast.error("Failed to extract metadata");
@@ -90,6 +104,7 @@ export const useImageState = () => {
     lastModifiedRef,
     intervalRef,
     preloadImageRef,
+    lastMetadataUrlRef,
     checkImageModified,
     handleManualCheck,
     extractMetadataFromImage
