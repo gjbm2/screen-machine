@@ -1,7 +1,9 @@
+
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
 import { GeneratedImage } from '../types';
+import { ImageGenerationStatus } from '@/types/workflows';
 import { ApiResponse, GenerateImagePayload } from './types';
 import { 
   createPlaceholderImage, 
