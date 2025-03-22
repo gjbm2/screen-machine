@@ -44,6 +44,11 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     handleDeleteContainer: internalHandleDeleteContainer
   } = useImageContainer();
 
+  // When generation completes, increment the fullscreenRefreshTrigger
+  const handleGenerationComplete = useCallback(() => {
+    setFullscreenRefreshTrigger(prev => prev + 1);
+  }, []);
+
   const {
     activeGenerations,
     lastBatchId,
@@ -54,8 +59,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     setImageContainerOrder,
     nextContainerId,
     setNextContainerId,
-    // Add a callback for when a generation completes
-    () => setFullscreenRefreshTrigger(prev => prev + 1)
+    handleGenerationComplete // Pass the callback to refresh the fullscreen view
   );
 
   // When uploadedImageUrls changes, store them in a global variable

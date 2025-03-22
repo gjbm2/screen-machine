@@ -83,17 +83,11 @@ export const useImageGenerationApi = (
       // Actually generate the image
       const result = await generateImage(generationConfig, generationActions);
       
-      if (result) {
-        // Call the onGenerationComplete callback if provided
-        if (onGenerationComplete) {
-          onGenerationComplete();
-        }
-      } else {
-        // Also trigger refresh callback on error
-        if (onGenerationComplete) {
-          onGenerationComplete();
-        }
+      // Always call the completion callback whether successful or not
+      if (onGenerationComplete) {
+        onGenerationComplete();
       }
+      
     } catch (error) {
       console.error('Error generating image:', error);
       addConsoleLog({
@@ -102,7 +96,7 @@ export const useImageGenerationApi = (
         data: error
       });
       
-      // If we have a completion callback, call it even on error
+      // Always call the completion callback even on error
       if (onGenerationComplete) {
         onGenerationComplete();
       }
