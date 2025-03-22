@@ -34,7 +34,7 @@ const DetailViewImageSection: React.FC<DetailViewImageSectionProps> = ({
   onImageClick
 }) => {
   return (
-    <div className="flex-grow flex items-center justify-center overflow-hidden min-h-0 w-auto">
+    <div className="flex-grow flex items-center justify-center overflow-hidden min-h-0" style={{ minWidth: 0 }}>
       <MainImageView
         imageUrl={activeImage.url}
         altText={activeImage.prompt || "Generated image"}

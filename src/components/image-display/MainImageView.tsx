@@ -136,18 +136,19 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   return (
     <div 
       ref={imageContainerRef}
-      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-full h-full select-none cursor-pointer" 
+      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-auto h-full select-none cursor-pointer" 
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onClick={handleImageContainerClick}
       tabIndex={-1}
-      style={{ outline: 'none' }}
+      style={{ outline: 'none', maxWidth: '100%' }}
       onMouseDown={(e) => e.preventDefault()} 
     >
       <div className="relative flex justify-center items-center py-2" 
            style={{
              width: 'fit-content', // Allow container to shrink to fit content
-             margin: '0 auto'      // Center horizontally
+             margin: '0 auto',     // Center horizontally
+             maxWidth: '100%'      // Ensure it doesn't overflow parent
            }}>
         <img 
           src={imageUrl}
