@@ -81,6 +81,10 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
 
   const handleShowInfoPanel = () => {
     console.log("Showing info dialog in fullscreen mode");
+    // Log reference image information for debugging
+    if (currentImage?.referenceImageUrl) {
+      console.log("Reference image URLs:", currentImage.referenceImageUrl);
+    }
     setShowInfoDialog(true);
   };
 
@@ -189,6 +193,16 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
             onOpenChange={setShowInfoDialog}
             image={currentImage}
             dimensions={imageDimensions}
+          />
+        )}
+
+        {/* Hidden image element to load the image and get dimensions */}
+        {currentImage?.url && (
+          <img 
+            src={currentImage.url} 
+            onLoad={handleImageLoad} 
+            alt="Preload for dimensions" 
+            className="hidden" 
           />
         )}
       </DialogContent>

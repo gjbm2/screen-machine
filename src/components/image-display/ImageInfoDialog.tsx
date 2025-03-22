@@ -37,8 +37,10 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
 
   // Handle multiple reference images if they exist (they could be in a comma-separated string)
   const referenceImages = image.referenceImageUrl ? 
-    image.referenceImageUrl.split(',').map(url => url.trim()) : 
+    image.referenceImageUrl.split(',').map(url => url.trim()).filter(url => url !== '') : 
     [];
+
+  console.log("Reference images in dialog:", referenceImages);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
