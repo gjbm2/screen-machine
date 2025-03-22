@@ -27,7 +27,7 @@ const ImageMetadata: React.FC<ImageMetadataProps> = ({
 
   return (
     <div className="flex justify-between items-center text-xs md:text-sm text-muted-foreground">
-      <div className="flex flex-col xs:flex-row xs:items-center gap-1 xs:gap-3">
+      <div className="flex items-center gap-3">
         <div className="flex items-center">
           <Ruler className="h-3 w-3 md:h-4 md:w-4 mr-1" />
           <span className="whitespace-nowrap">{dimensions.width} × {dimensions.height} px</span>

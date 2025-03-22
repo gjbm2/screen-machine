@@ -68,10 +68,10 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
               className={`flex-1 pr-4 overflow-hidden ${isPromptExpanded ? '' : 'max-h-6'}`}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-start">
+              <div className="flex items-center">
                 <button 
                   onClick={togglePromptExpand}
-                  className="inline-flex items-center justify-center p-1 mr-2 mt-0.5 hover:bg-gray-100 rounded-md"
+                  className="inline-flex items-center justify-center p-1 mr-2 hover:bg-gray-100 rounded-md"
                 >
                   {isPromptExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                 </button>
@@ -83,7 +83,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
             <Button
               variant="ghost"
               size="icon"
-              className="shrink-0 h-8 w-8"
+              className="h-8 w-8 p-1"
               onClick={() => setShowFullScreenView(false)}
             >
               <X className="h-4 w-4" />
