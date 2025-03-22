@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +12,8 @@ const Display = () => {
   const [error, setError] = useState<string | null>(null);
   const [imageKey, setImageKey] = useState<number>(0);
   const [lastModified, setLastModified] = useState<string | null>(null);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [outputFiles, setOutputFiles] = useState<string[]>([]);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const lastModifiedRef = useRef<string | null>(null);
   const intervalRef = useRef<number | null>(null);
@@ -35,9 +38,39 @@ const Display = () => {
     return `/output/${outputParam}`;
   };
 
+  // Function to fetch available output files
+  const fetchOutputFiles = async () => {
+    try {
+      // This endpoint would need to be implemented on the server
+      const response = await fetch('/api/output-files');
+      if (response.ok) {
+        const files = await response.json();
+        setOutputFiles(files);
+      } else {
+        console.error('Failed to fetch output files');
+        setOutputFiles([
+          'sample.jpg',
+          'image.png',
+          'result.jpg'
+        ]); // Fallback to demo values if endpoint isn't available
+      }
+    } catch (err) {
+      console.error('Error fetching output files:', err);
+      // Use demo values for now
+      setOutputFiles([
+        'sample.jpg',
+        'image.png',
+        'result.jpg'
+      ]);
+    }
+  };
+
   // Function to check if the image has been modified
   const checkImageModified = async (url: string) => {
     try {
+      // Record the check time
+      setLastChecked(new Date());
+      
       const response = await fetch(url, { method: 'HEAD' });
       const lastModified = response.headers.get('last-modified');
       
@@ -78,12 +111,17 @@ const Display = () => {
       }, refreshInterval * 1000);
     }
 
+    // Fetch available output files if in debug mode
+    if (debugMode) {
+      fetchOutputFiles();
+    }
+
     return () => {
       if (intervalRef.current) {
         window.clearInterval(intervalRef.current);
       }
     };
-  }, [output, refreshInterval]);
+  }, [output, refreshInterval, debugMode]);
 
   // Helper to handle image errors
   const handleImageError = () => {
@@ -136,6 +174,19 @@ const Display = () => {
     }
   })();
 
+  // Format date for display
+  const formatDateTime = (date: Date | null) => {
+    if (!date) return 'N/A';
+    return date.toLocaleTimeString();
+  };
+
+  // Calculate next check time
+  const getNextCheckTime = () => {
+    if (!lastChecked) return 'N/A';
+    const nextCheck = new Date(lastChecked.getTime() + refreshInterval * 1000);
+    return formatDateTime(nextCheck);
+  };
+
   // Debug panel with all parameters and timestamp
   const DebugPanel = () => (
     <Card className="absolute top-4 left-4 z-10 w-96 bg-white/90 dark:bg-gray-800/90 shadow-lg">
@@ -151,44 +202,86 @@ const Display = () => {
           <li><strong>background:</strong> #{backgroundColor}</li>
         </ul>
         <h3 className="font-bold mb-1">Image Info:</h3>
-        <ul className="space-y-1">
+        <ul className="space-y-1 mb-3">
           <li><strong>URL:</strong> {imageUrl}</li>
           <li><strong>Last-Modified:</strong> {lastModified || 'Unknown'}</li>
-          <li><strong>Image Key:</strong> {imageKey} (changes on update)</li>
+          <li><strong>Last Checked:</strong> {formatDateTime(lastChecked)}</li>
+          <li><strong>Next Check At:</strong> {getNextCheckTime()}</li>
+          <li><strong>Image Key:</strong> {imageKey}</li>
         </ul>
+        <h3 className="font-bold mb-1">Available Output Files:</h3>
+        <div className="max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded p-2">
+          {outputFiles.length > 0 ? (
+            <ul className="space-y-1">
+              {outputFiles.map((file, index) => (
+                <li key={index} className="hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded">
+                  <a 
+                    href={`/display?output=${file}&show=${showMode}&refresh=${refreshInterval}&background=${backgroundColor}&debug=true`}
+                    className="block text-blue-500 dark:text-blue-400 hover:underline"
+                  >
+                    {file}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-gray-500">No files found</p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
 
   // Debug mode image container
-  const DebugImageContainer = () => (
-    <Card className="w-2/3 max-w-3xl mx-auto">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg">Image Preview ({showMode} mode)</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {/* Maintain aspect ratio of viewport */}
-        <AspectRatio ratio={16/9} className="overflow-hidden bg-gray-100 dark:bg-gray-800">
-          <div className="w-full h-full relative flex items-center justify-center">
-            {imageUrl && (
-              <img
-                key={imageKey}
-                ref={imageRef}
-                src={imageUrl}
-                alt=""
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  objectFit: showMode === 'fill' ? 'cover' : 'contain',
-                }}
-                onError={handleImageError}
-              />
-            )}
-          </div>
-        </AspectRatio>
-      </CardContent>
-    </Card>
-  );
+  const DebugImageContainer = () => {
+    // Get the viewport dimensions to simulate the correct aspect ratio
+    const viewportRatio = window.innerWidth / window.innerHeight;
+    
+    return (
+      <Card className="w-2/3 max-w-3xl mx-auto">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">Image Preview ({showMode} mode)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Maintain aspect ratio of viewport */}
+          <AspectRatio ratio={viewportRatio} className="overflow-hidden">
+            <div 
+              className="w-full h-full relative flex items-center justify-center"
+              style={{ backgroundColor: `#${backgroundColor}` }}
+            >
+              {imageUrl && (
+                <img
+                  key={imageKey}
+                  ref={imageRef}
+                  src={imageUrl}
+                  alt=""
+                  style={{
+                    ...(showMode === 'fill' ? {
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                    } : showMode === 'fit' ? {
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      objectFit: 'contain',
+                    } : {
+                      width: 'auto',
+                      height: 'auto',
+                      objectFit: 'none',
+                    })
+                  }}
+                  onError={handleImageError}
+                />
+              )}
+            </div>
+          </AspectRatio>
+        </CardContent>
+      </Card>
+    );
+  };
 
   // If there's no output parameter, show error message
   if (error) {
