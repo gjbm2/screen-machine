@@ -1,4 +1,3 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -169,15 +168,4 @@
   .image-batches-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-}
-
-/* Custom height for navigation controls */
-.h-200px {
-  height: 200px;
-}
-
-/* Additional text size for very small screens */
-.text-2xs {
-  font-size: 0.625rem;
-  line-height: 0.875rem;
 }

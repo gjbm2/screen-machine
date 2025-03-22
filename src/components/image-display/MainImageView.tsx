@@ -82,7 +82,7 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   return (
     <div 
       ref={imageContainerRef}
-      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-full h-full select-none" 
+      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-full h-full select-none" /* Added select-none to prevent text selection */
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onClick={onImageClick}
@@ -94,10 +94,10 @@ const MainImageView: React.FC<MainImageViewProps> = ({
         <img 
           src={imageUrl}
           alt={altText}
-          className="object-contain select-none" 
+          className="object-contain select-none" /* Added select-none to prevent image selection */
           style={optimalSize}
           onLoad={handleImageLoadInternal}
-          draggable={false} 
+          draggable={false} /* Prevent dragging the image */
         />
       </div>
       
@@ -105,14 +105,12 @@ const MainImageView: React.FC<MainImageViewProps> = ({
         <NavigationControls 
           onPrevious={(e) => {
             e.stopPropagation();
-            e.preventDefault();
             if (showPrevButton) {
               onNavigateGlobal((currentGlobalIndex as number) - 1);
             }
           }}
           onNext={(e) => {
             e.stopPropagation();
-            e.preventDefault();
             if (showNextButton) {
               onNavigateGlobal((currentGlobalIndex as number) + 1);
             }

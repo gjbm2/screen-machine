@@ -64,16 +64,16 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         noPadding
         description="Detailed view of generated image"
       >
-        <div className="flex justify-between items-center p-3 pb-0 flex-shrink-0 border-b border-border/30">
-          <div className="flex items-center flex-grow max-w-[calc(100%-40px)]">
+        <div className="flex justify-between items-start p-3 pb-0 flex-shrink-0 border-b border-border/30">
+          <div className="flex items-start flex-grow max-w-[calc(100%-40px)]">
             {showCollapsibleTrigger ? (
               <Collapsible 
                 open={isPromptExpanded}
                 onOpenChange={setIsPromptExpanded}
                 className="w-full"
               >
-                <div className="flex items-center">
-                  <CollapsibleTrigger className="h-6 flex-shrink-0 flex items-center justify-center mr-1">
+                <div className="flex items-start">
+                  <CollapsibleTrigger className="h-6 mt-0.5 flex-shrink-0 flex items-center justify-center mr-1">
                     {isPromptExpanded ? (
                       <ChevronDown className="h-4 w-4 text-foreground" />
                     ) : (
@@ -88,6 +88,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
                 
                 <CollapsibleContent>
                   <div className="text-sm font-medium text-foreground pl-5 pr-2 py-1">
+                    {/* Skip the first line since we already show it above */}
                     {imagePrompt.split('\n').slice(1).join('\n')}
                   </div>
                 </CollapsibleContent>
@@ -101,7 +102,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           
           <button 
             onClick={() => setShowFullScreenView(false)}
-            className="p-2 rounded-full hover:bg-muted transition-colors flex-shrink-0 h-6 w-6 flex items-center justify-center"
+            className="p-2 rounded-full hover:bg-muted transition-colors flex-shrink-0 h-6 mt-0.5"
             aria-label="Close dialog"
             onMouseDown={(e) => e.preventDefault()} // Prevent text selection
           >
