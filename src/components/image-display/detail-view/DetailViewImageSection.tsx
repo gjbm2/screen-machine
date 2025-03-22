@@ -34,7 +34,7 @@ const DetailViewImageSection: React.FC<DetailViewImageSectionProps> = ({
   onImageClick
 }) => {
   return (
-    <div className="w-full h-full min-h-0 overflow-hidden">
+    <div className="flex-grow flex items-center justify-center overflow-hidden">
       <MainImageView
         imageUrl={activeImage.url}
         altText={activeImage.prompt || "Generated image"}
