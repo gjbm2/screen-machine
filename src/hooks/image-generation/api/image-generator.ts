@@ -1,3 +1,4 @@
+
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -79,16 +80,34 @@ export const generateImage = async (
   // Create or use the provided batch ID
   const currentBatchId = batchId || nanoid();
   
-  if (!batchId) {
+  // Find if there's an existing containerId for this batch
+  let existingContainerId: number | undefined;
+  
+  if (batchId) {
+    // If we're reusing a batch ID, find out if it already has a containerId
+    setGeneratedImages(prevImages => {
+      // Look for any existing image with this batch ID that has a containerId
+      const existingImage = prevImages.find(img => img.batchId === batchId && img.containerId);
+      if (existingImage && existingImage.containerId) {
+        existingContainerId = existingImage.containerId;
+      }
+      return prevImages;
+    });
+    
+    addConsoleLog({
+      type: 'info',
+      message: `Reusing existing batch with ID: ${currentBatchId}${existingContainerId ? `, containerId: ${existingContainerId}` : ''}`
+    });
+  } else {
     addConsoleLog({
       type: 'info',
       message: `Starting new batch with ID: ${currentBatchId}`
     });
     
-    // Add this batch to the container order
+    // Only add to the container order if this is a new batch
     setImageContainerOrder(prev => [currentBatchId, ...prev]);
     
-    // Increment container ID
+    // Only increment container ID for new batches
     setNextContainerId(prevId => prevId + 1);
   }
 
@@ -122,7 +141,8 @@ export const generateImage = async (
       params,
       globalParams,
       hasReferenceImage: uploadedFiles.length > 0 || uploadedImageUrls.length > 0,
-      referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined
+      referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
+      batchSize: globalParams?.batch_size // Log the batch size
     }
   });
 
@@ -138,6 +158,10 @@ export const generateImage = async (
     // Pre-create placeholder records for the images
     // First, let's see how many exist already in this batch
     const existingBatchIndexes = new Set<number>();
+    const batchSize = globalParams?.batch_size || 1;
+    
+    // Log batch size to debug
+    console.log(`[image-generator] Creating ${batchSize} placeholder(s) for batch ${currentBatchId}`);
     
     setGeneratedImages(prevImages => {
       prevImages.forEach(img => {
@@ -146,30 +170,37 @@ export const generateImage = async (
         }
       });
       
-      // Create a placeholder entry
-      const nextIndex = existingBatchIndexes.size;
+      // Create a placeholder entry for each image in the batch
+      const newPlaceholders: GeneratedImage[] = [];
       
-      const placeholderImage = createPlaceholderImage(
-        prompt,
-        workflow,
-        currentBatchId,
-        nextIndex,
-        params,
-        refiner,
-        refinerParams,
-        referenceImageUrl,
-        nextContainerId && !batchId ? nextContainerId : undefined
-      );
-      
-      // Add the title to the placeholder image
-      placeholderImage.title = imageTitle;
-      
-      // Additional debug for placeholder
-      if (placeholderImage.referenceImageUrl) {
-        console.log("[image-generator] Placeholder created with reference images:", placeholderImage.referenceImageUrl);
+      for (let i = 0; i < batchSize; i++) {
+        const nextIndex = existingBatchIndexes.size + i;
+        
+        const placeholderImage = createPlaceholderImage(
+          prompt,
+          workflow,
+          currentBatchId,
+          nextIndex,
+          params,
+          refiner,
+          refinerParams,
+          referenceImageUrl,
+          // Use existing containerId if available, otherwise use the provided one
+          existingContainerId || (nextContainerId && !batchId ? nextContainerId : undefined)
+        );
+        
+        // Add the title to the placeholder image
+        placeholderImage.title = imageTitle;
+        
+        // Additional debug for placeholder
+        if (placeholderImage.referenceImageUrl) {
+          console.log("[image-generator] Placeholder created with reference images:", placeholderImage.referenceImageUrl);
+        }
+        
+        newPlaceholders.push(placeholderImage);
       }
       
-      return [...prevImages, placeholderImage];
+      return [...prevImages, ...newPlaceholders];
     });
 
     // Use setTimeout to allow the UI to update before starting the API call
@@ -180,12 +211,21 @@ export const generateImage = async (
           prompt,
           workflow,
           params,
-          global_params: globalParams,
+          global_params: {
+            ...globalParams,
+            batch_size: globalParams?.batch_size || 1, // Ensure batch_size is passed
+          },
           refiner,
           refiner_params: refinerParams,
           imageFiles: uploadedFiles,
           batch_id: currentBatchId
         };
+        
+        // Log the payload to debug batch size issues
+        console.log("[image-generator] API payload:", {
+          ...payload,
+          global_params: payload.global_params
+        });
         
         const response = await apiService.generateImage(payload);
         
@@ -252,11 +292,13 @@ export const generateImage = async (
               // If there's a reference image, make sure to include it
               if (referenceImageUrl) {
                 newImage.referenceImageUrl = referenceImageUrl;
-                console.log('[image-generator] Adding reference images to new image:', newImage.referenceImageUrl);
+                console.log('[image-generator] Adding reference images to new image:', referenceImageUrl);
               }
               
-              // Add containerId if this is a new batch
-              if (nextContainerId && !batchId) {
+              // Add containerId - use existing if available, otherwise use the provided one
+              if (existingContainerId) {
+                newImage.containerId = existingContainerId;
+              } else if (nextContainerId && !batchId) {
                 newImage.containerId = nextContainerId;
               }
               

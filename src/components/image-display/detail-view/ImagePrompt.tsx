@@ -11,7 +11,8 @@ interface ImagePromptProps {
   imageNumber?: number;
   workflowName?: string;
   onInfoClick?: () => void;
-  title?: string; // Add title field
+  title?: string;
+  useTitle?: boolean; // Add flag to prioritize title over prompt
 }
 
 const ImagePrompt: React.FC<ImagePromptProps> = ({
@@ -21,7 +22,8 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
   imageNumber,
   workflowName,
   onInfoClick,
-  title // Add title to component params
+  title,
+  useTitle = false // Default to false for backward compatibility
 }) => {
   // Log whether this component has reference images
   console.log("ImagePrompt has reference images:", hasReferenceImages);
@@ -29,12 +31,12 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
   console.log("ImagePrompt received workflowName:", workflowName);
   console.log("ImagePrompt received title:", title);
   
-  // Use title if available, otherwise construct from components
-  const displayText = title || (prompt 
-    ? prompt 
-    : typeof window.imageCounter !== 'undefined' 
-      ? `${window.imageCounter}. ${workflowName || 'Generated image'}`
-      : workflowName || 'Generated image');
+  // Use title with high priority if useTitle flag is set
+  const displayText = useTitle && title 
+    ? title 
+    : (title || prompt || (typeof window.imageCounter !== 'undefined' 
+        ? `${window.imageCounter}. ${workflowName || 'Generated image'}`
+        : workflowName || 'Generated image'));
   
   return (
     <div className="flex items-center gap-1 text-gray-700 min-w-0 w-full overflow-hidden">
