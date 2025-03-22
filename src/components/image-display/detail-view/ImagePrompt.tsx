@@ -1,11 +1,12 @@
 
 import React from 'react';
-import { Image, Info } from 'lucide-react';
+import { Info, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface ImagePromptProps {
-  prompt: string;
-  hasReferenceImages: boolean;
+  prompt?: string;
+  hasReferenceImages?: boolean;
   onReferenceImageClick?: () => void;
   imageNumber?: number;
   workflowName?: string;
@@ -14,78 +15,75 @@ interface ImagePromptProps {
 
 const ImagePrompt: React.FC<ImagePromptProps> = ({
   prompt,
-  hasReferenceImages,
+  hasReferenceImages = false,
   onReferenceImageClick,
   imageNumber,
   workflowName,
   onInfoClick
 }) => {
-  // Determine what to display based on whether we have a prompt, reference images, or both
-  const hasPrompt = prompt && prompt.trim() !== '';
+  // Log whether this component has reference images
+  console.log("ImagePrompt has reference images:", hasReferenceImages);
   
-  // Get a truncated display of the workflow name if available
-  const workflowDisplay = workflowName ? 
-    (workflowName.length > 15 ? `${workflowName.substring(0, 15)}...` : workflowName) : 
-    null;
-  
-  // Get the global image counter if it exists
-  const globalCounter = typeof window !== 'undefined' && window.imageCounter !== undefined 
-    ? window.imageCounter 
-    : null;
-  
-  // Debug log for reference images
-  console.log(`ImagePrompt has reference images: ${hasReferenceImages}`);
+  // If no prompt, use a numbered title with the workflow name
+  const displayText = prompt 
+    ? prompt 
+    : typeof window.imageCounter !== 'undefined' 
+      ? `${window.imageCounter}. ${workflowName || 'Generated image'}`
+      : workflowName || 'Generated image';
   
   return (
-    <div className="flex items-center gap-1 overflow-hidden">
-      {/* Always show the image icon if we have reference images */}
-      {hasReferenceImages && (
-        <button 
-          onClick={onReferenceImageClick} 
-          className="shrink-0 text-blue-500 hover:text-blue-600 transition-colors"
-          aria-label="View reference image"
-          type="button"
-        >
-          <Image size={14} />
-        </button>
+    <div className="flex items-center gap-1 text-gray-700 min-w-0 w-full overflow-hidden">
+      <span 
+        className="text-sm font-medium truncate flex-1"
+        title={displayText}
+      >
+        {displayText}
+      </span>
+      
+      {hasReferenceImages && onReferenceImageClick && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              type="button" 
+              variant="ghost" 
+              size="sm" 
+              className="h-6 w-6 p-0 rounded-full" 
+              onClick={(e) => {
+                e.stopPropagation();
+                onReferenceImageClick();
+              }}
+            >
+              <ImageIcon className="h-3.5 w-3.5 text-blue-500" />
+              <span className="sr-only">View reference images</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>View reference image</p>
+          </TooltipContent>
+        </Tooltip>
       )}
       
-      {/* If we have a prompt, show it */}
-      {hasPrompt ? (
-        <div className="truncate text-sm">
-          {prompt}
-        </div>
-      ) : (
-        /* If we don't have a prompt, show a generic title with global counter and workflow */
-        <div className="truncate text-sm flex items-center gap-1">
-          {globalCounter !== null ? (
-            <span>
-              {globalCounter}. {workflowDisplay || 'Generated Image'}
-            </span>
-          ) : (
-            /* Fallback if global counter not available */
-            <span>
-              {imageNumber && `Image ${imageNumber}`}
-              {workflowDisplay && ` (${workflowDisplay})`}
-            </span>
-          )}
-        </div>
-      )}
-      
-      {/* Info button */}
       {onInfoClick && (
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onInfoClick();
-          }}
-          className="ml-auto shrink-0 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
-          aria-label="View image info"
-          type="button"
-        >
-          <Info size={14} />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              type="button" 
+              variant="ghost" 
+              size="sm" 
+              className="h-6 w-6 p-0 rounded-full" 
+              onClick={(e) => {
+                e.stopPropagation();
+                onInfoClick();
+              }}
+            >
+              <Info className="h-3.5 w-3.5 text-gray-500" />
+              <span className="sr-only">Image info</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Show image info</p>
+          </TooltipContent>
+        </Tooltip>
       )}
     </div>
   );
