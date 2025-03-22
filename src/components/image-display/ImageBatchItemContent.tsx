@@ -7,7 +7,7 @@ interface ImageBatchItemContentProps {
   imageUrl: string;
   prompt?: string;
   index: number;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent) => void; // Updated to accept a MouseEvent parameter
   viewMode?: ViewMode;
   hasReferenceImages?: boolean;
 }

@@ -62,6 +62,7 @@ export const useImageBatchItem = ({
     onFullScreen
   });
 
+  // Updated to accept a React.MouseEvent parameter
   const handleImageClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.image-action-button') ||
         (e.target as HTMLElement).closest('button')) {
