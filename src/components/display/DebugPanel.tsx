@@ -248,7 +248,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                 <li><strong>position</strong>: Image position - e.g., 'center', 'top-left', 'bottom-right'</li>
                 <li><strong>refresh</strong>: Check for image updates every X seconds</li>
                 <li><strong>background</strong>: Background color hexcode</li>
-                <li><strong>caption</strong>: Text to display over the image (use {key} to insert metadata values or {all} for all metadata)</li>
+                <li><strong>caption</strong>: Text to display over the image (use {"{key}"} to insert metadata values or {"{all}"} for all metadata)</li>
                 <li><strong>caption-position</strong>: Where to display the caption</li>
                 <li><strong>data</strong>: Extract and display image metadata (use empty value for all metadata)</li>
                 <li><strong>transition</strong>: How to transition between image updates - 'cut', 'fade-fast', or 'fade-slow'</li>
