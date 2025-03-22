@@ -27,7 +27,7 @@ const DetailViewTouchHandler: React.FC<DetailViewTouchHandlerProps> = ({
     const endX = e.changedTouches[0].clientX;
     const diff = startX - endX;
     
-    // Reduce threshold to make swiping more responsive (from 30px to 20px)
+    // Reduce threshold to make swiping more responsive (from 50px to 20px)
     if (Math.abs(diff) > 20) {
       if (diff > 0) {
         // Swipe left, go to next image
