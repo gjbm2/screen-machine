@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { nanoid } from '@/lib/utils';
 import { useImageState } from './use-image-state';
 import { useImageContainer } from './use-image-container';
@@ -24,6 +24,9 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
   const [isFirstRun, setIsFirstRun] = useState(true);
   const [fullscreenRefreshTrigger, setFullscreenRefreshTrigger] = useState(0);
+  
+  // Track the latest batch ID for fullscreen updates
+  const lastGeneratedBatchIdRef = useRef<string | null>(null);
 
   // Initialize global image counter if it doesn't exist
   useEffect(() => {
@@ -44,6 +47,15 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     handleDeleteContainer: internalHandleDeleteContainer
   } = useImageContainer();
 
+  // Handle generation completion - update fullscreen view if needed
+  const handleGenerationComplete = useCallback((batchId: string) => {
+    console.log(`Generation completed for batch: ${batchId}`);
+    lastGeneratedBatchIdRef.current = batchId;
+    
+    // Increment the trigger to force fullscreen view to refresh
+    setFullscreenRefreshTrigger(prev => prev + 1);
+  }, []);
+
   const {
     activeGenerations,
     lastBatchId,
@@ -54,8 +66,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     setImageContainerOrder,
     nextContainerId,
     setNextContainerId,
-    // Add a callback for when a generation completes
-    () => setFullscreenRefreshTrigger(prev => prev + 1)
+    handleGenerationComplete
   );
 
   // When uploadedImageUrls changes, store them in a global variable
@@ -166,6 +177,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     lastBatchId,
     isFirstRun,
     fullscreenRefreshTrigger,
+    lastGeneratedBatchId: lastGeneratedBatchIdRef.current,
     setCurrentPrompt,
     setUploadedImageUrls,
     setCurrentWorkflow,

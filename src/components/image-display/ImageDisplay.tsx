@@ -23,7 +23,7 @@ interface ImageDisplayProps {
   onReorderContainers: (sourceIndex: number, destinationIndex: number) => void;
   onDeleteImage: (batchId: string, index: number) => void;
   onDeleteContainer: (batchId: string) => void;
-  fullscreenRefreshTrigger?: number; // Add the refresh trigger
+  fullscreenRefreshTrigger?: number;
 }
 
 const ImageDisplay: React.FC<ImageDisplayProps> = ({

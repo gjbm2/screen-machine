@@ -1,17 +1,13 @@
 
-import React, { useEffect } from 'react';
-import ImageMetadata from '../ImageMetadata';
-import DetailViewActionBar from './DetailViewActionBar';
+import React from 'react';
+import { Button } from '@/components/ui/button';
+import { Copy, Download, Trash, Repeat, Upload, Info, ExternalLink } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import ImagePrompt from './ImagePrompt';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface DetailViewInfoPanelProps {
-  activeImage: {
-    url: string;
-    prompt?: string;
-    workflow: string;
-    params?: Record<string, any>;
-    timestamp?: number;
-    referenceImageUrl?: string;
-  };
+  activeImage: any;
   dimensions: { width: number; height: number };
   referenceImageUrl?: string;
   showReferenceImage: boolean;
@@ -22,7 +18,7 @@ interface DetailViewInfoPanelProps {
   onOpenInNewTab: (e: React.MouseEvent) => void;
   hidePrompt?: boolean;
   onInfoClick?: () => void;
-  onClose?: () => void; // Added for closing fullscreen view
+  onClose?: () => void;
 }
 
 const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
@@ -37,52 +33,108 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
   onOpenInNewTab,
   hidePrompt = false,
   onInfoClick,
-  onClose // New prop for closing
+  onClose
 }) => {
-  // Use the referenceImageUrl from props first, then from activeImage as fallback
-  const effectiveReferenceImageUrl = referenceImageUrl || activeImage?.referenceImageUrl;
+  const isMobile = useIsMobile();
   
-  useEffect(() => {
-    // Log reference image information for debugging
-    console.log('DetailViewInfoPanel - activeImage:', activeImage);
-    if (effectiveReferenceImageUrl) {
-      console.log('DetailViewInfoPanel: Reference image URL:', effectiveReferenceImageUrl);
-    } else {
-      console.log('DetailViewInfoPanel has no referenceImageUrl');
-    }
-  }, [effectiveReferenceImageUrl, activeImage]);
+  // Debug log the active image properties
+  console.log("DetailViewInfoPanel - activeImage:", activeImage);
+  if (referenceImageUrl) {
+    console.log("DetailViewInfoPanel has referenceImageUrl:", referenceImageUrl);
+  } else {
+    console.log("DetailViewInfoPanel has no referenceImageUrl");
+  }
   
-  // Determine if this image has reference images
-  const hasReferenceImages = Boolean(effectiveReferenceImageUrl);
+  // We'll show text labels on desktop but icons only on mobile
+  const buttonVariant = "outline";
+  const buttonSize = isMobile ? "sm" : "default";
   
   return (
-    <div className="flex-shrink-0 p-2 space-y-1 bg-background select-none border-t min-h-[100px]">
-      {/* Image metadata - now includes the "open in new tab" button */}
-      <ImageMetadata
-        dimensions={dimensions}
-        timestamp={activeImage?.timestamp}
-        imageUrl={activeImage?.url}
-        onOpenInNewTab={onOpenInNewTab}
-        onInfoClick={onInfoClick}
-        hasReferenceImages={hasReferenceImages}
-      />
-      
-      {/* Image Actions Bar - all buttons in a single row */}
-      {activeImage?.url && (
-        <DetailViewActionBar 
-          imageUrl={activeImage.url}
-          onCreateAgain={handleCreateAgain}
-          onUseAsInput={handleUseAsInput}
-          onDeleteImage={handleDeleteImage}
-          onClose={onClose} // Pass the onClose handler
-          generationInfo={{
-            prompt: activeImage.prompt || '',
-            workflow: activeImage.workflow || '',
-            params: activeImage.params,
-            referenceImageUrl: effectiveReferenceImageUrl
-          }}
-        />
+    <div className="flex-shrink-0 border-t">
+      {/* Prompt (optional) */}
+      {!hidePrompt && activeImage?.prompt && (
+        <div className="px-4 py-2 border-b">
+          <ImagePrompt 
+            prompt={activeImage.prompt} 
+            hasReferenceImages={Boolean(referenceImageUrl)}
+            onReferenceImageClick={() => setShowReferenceImage(true)}
+            onInfoClick={onInfoClick}
+          />
+        </div>
       )}
+      
+      {/* Action buttons */}
+      <div className="p-2 bg-gray-50 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              onClick={handleCreateAgain}
+              variant={buttonVariant}
+              size={buttonSize}
+              className="whitespace-nowrap"
+            >
+              <Repeat className="h-4 w-4 mr-1 sm:mr-2" />
+              {!isMobile && "Go again"}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Generate another image like this one</p>
+          </TooltipContent>
+        </Tooltip>
+        
+        {handleUseAsInput && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={handleUseAsInput}
+                variant={buttonVariant}
+                size={buttonSize}
+                className="whitespace-nowrap"
+              >
+                <Upload className="h-4 w-4 mr-1 sm:mr-2" />
+                {!isMobile ? "Use as input" : "Input"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Use this image as input for a new generation</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              onClick={onOpenInNewTab}
+              variant={buttonVariant}
+              size={buttonSize}
+              className="whitespace-nowrap"
+            >
+              <ExternalLink className="h-4 w-4 mr-1 sm:mr-2" />
+              {!isMobile && "Open"}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Open image in new tab</p>
+          </TooltipContent>
+        </Tooltip>
+        
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              onClick={handleDeleteImage}
+              variant="outline"
+              size={buttonSize}
+              className="whitespace-nowrap text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <Trash className="h-4 w-4 mr-1 sm:mr-2" />
+              {!isMobile && "Delete"}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Delete this image</p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   );
 };

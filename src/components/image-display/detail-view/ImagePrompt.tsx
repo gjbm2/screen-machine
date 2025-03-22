@@ -27,7 +27,7 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
   // If no prompt, use a numbered title with the workflow name
   const displayText = prompt 
     ? prompt 
-    : typeof window.imageCounter !== 'undefined' 
+    : (typeof window !== 'undefined' && typeof window.imageCounter !== 'undefined')
       ? `${window.imageCounter}. ${workflowName || 'Generated image'}`
       : workflowName || 'Generated image';
   
