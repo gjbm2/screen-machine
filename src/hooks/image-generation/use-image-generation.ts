@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { nanoid } from '@/lib/utils';
 import { useImageState } from './use-image-state';
@@ -124,13 +123,12 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     };
     
     // Call generateImages and store the returned batchId
-    // Don't check the return value directly since it might be void
     try {
       // Generate images and possibly get a batch ID
       const result = await generateImages(config);
       
       // Only update lastBatchIdUsed if we got a valid string back
-      if (result !== null && typeof result === 'string' && result.length > 0) {
+      if (result !== null && typeof result === 'string') {
         setLastBatchIdUsed(result);
       }
     } catch (error) {
