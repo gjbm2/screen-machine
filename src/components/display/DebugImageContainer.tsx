@@ -5,6 +5,7 @@ import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { ShowMode, PositionMode, CaptionPosition } from './types';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { RefreshCw } from "lucide-react";
+import { processCaptionWithMetadata } from './utils';
 
 interface DebugImageContainerProps {
   imageUrl: string | null;
@@ -37,10 +38,13 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   captionSize = '16px',
   captionColor = 'ffffff',
   captionFont = 'Arial, sans-serif',
-  metadata
+  metadata = {}
 }) => {
   // Get the viewport dimensions to simulate the correct aspect ratio
   const viewportRatio = window.innerWidth / window.innerHeight;
+  
+  // Process caption with metadata substitutions
+  const processedCaption = metadata && caption ? processCaptionWithMetadata(caption, metadata) : caption;
   
   return (
     <Card className="w-2/3 max-w-3xl mx-auto">
@@ -98,12 +102,18 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
                          { left: '50%', transform: position.includes('center-') ? 
                            'translateY(-50%)' : position === 'center' ? 
                            'translate(-50%, -50%)' : 'translateX(-50%)' }),
+                    }),
+                    ...(position === 'center' && {
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)'
                     })
                   }}
                   onError={onImageError}
                 />
                 
-                {caption && (
+                {processedCaption && (
                   <div style={{
                     position: 'absolute',
                     padding: '8px 16px',
@@ -115,6 +125,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
                     textAlign: 'center',
                     borderRadius: '4px',
                     zIndex: 10,
+                    whiteSpace: processedCaption.includes('\n') ? 'pre-line' : 'normal',
                     ...(captionPosition?.includes('top') ? { top: '10px' } : 
                        captionPosition?.includes('bottom') ? { bottom: '10px' } : 
                        { top: '50%', transform: 'translateY(-50%)' }),
@@ -123,7 +134,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
                        { left: '50%', transform: captionPosition === 'bottom-center' || captionPosition === 'top-center' ? 
                          'translateX(-50%)' : 'none' }),
                   }}>
-                    {caption}
+                    {processedCaption}
                   </div>
                 )}
                 

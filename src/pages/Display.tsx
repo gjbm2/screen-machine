@@ -4,8 +4,8 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { DebugPanel } from '@/components/display/DebugPanel';
 import { DebugImageContainer } from '@/components/display/DebugImageContainer';
 import { ErrorMessage } from '@/components/display/ErrorMessage';
-import { processOutputParam, fetchOutputFiles, getNextCheckTime, extractImageMetadata } from '@/components/display/utils';
-import { DisplayParams, ShowMode, PositionMode, CaptionPosition } from '@/components/display/types';
+import { processOutputParam, fetchOutputFiles, getNextCheckTime, extractImageMetadata, processCaptionWithMetadata } from '@/components/display/utils';
+import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from '@/components/display/types';
 import { toast } from 'sonner';
 
 const Display = () => {
@@ -18,9 +18,17 @@ const Display = () => {
   const [outputFiles, setOutputFiles] = useState<string[]>([]);
   const [imageChanged, setImageChanged] = useState<boolean>(false);
   const [metadata, setMetadata] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [processedCaption, setProcessedCaption] = useState<string | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState<boolean>(false);
+  const [oldImageUrl, setOldImageUrl] = useState<string | null>(null);
+  const [oldImageStyle, setOldImageStyle] = useState<React.CSSProperties>({});
+  const [newImageStyle, setNewImageStyle] = useState<React.CSSProperties>({});
+  
   const imageRef = useRef<HTMLImageElement | null>(null);
   const lastModifiedRef = useRef<string | null>(null);
   const intervalRef = useRef<number | null>(null);
+  const preloadImageRef = useRef<HTMLImageElement | null>(null);
   const navigate = useNavigate();
 
   const params: DisplayParams = {
@@ -36,6 +44,81 @@ const Display = () => {
     captionSize: searchParams.get('caption-size') || '16px',
     captionColor: searchParams.get('caption-color') || 'ffffff',
     captionFont: searchParams.get('caption-font') || 'Arial, sans-serif',
+    transition: searchParams.get('transition') as TransitionType || 'cut',
+  };
+
+  const loadNewImage = (url: string) => {
+    if (params.transition === 'cut' || !imageUrl) {
+      // For immediate transitions or first load
+      setImageUrl(url);
+      setImageKey(prev => prev + 1);
+      setImageChanged(false);
+    } else {
+      // For fade transitions, preload the image first
+      setIsLoading(true);
+      setOldImageUrl(imageUrl);
+      
+      // Create a new image element to preload
+      const preloadImg = new Image();
+      preloadImg.onload = () => {
+        // Once loaded, start transition
+        setImageUrl(url);
+        setImageKey(prev => prev + 1);
+        
+        // Set transition styles
+        const duration = params.transition === 'fade-fast' ? 1 : 10;
+        setOldImageStyle({
+          position: 'absolute',
+          transition: `opacity ${duration}s ease`,
+          opacity: 1,
+          zIndex: 2,
+          ...getImagePositionStyle(params.position, params.showMode)
+        });
+        
+        setNewImageStyle({
+          ...getImagePositionStyle(params.position, params.showMode),
+          opacity: 0,
+          zIndex: 1
+        });
+        
+        // Start transition
+        setIsTransitioning(true);
+        
+        // After a small delay to ensure new image is rendered
+        setTimeout(() => {
+          setOldImageStyle(prev => ({
+            ...prev,
+            opacity: 0
+          }));
+          
+          setNewImageStyle(prev => ({
+            ...prev,
+            opacity: 1,
+            transition: `opacity ${duration}s ease`
+          }));
+          
+          // End transition after duration
+          setTimeout(() => {
+            setIsTransitioning(false);
+            setOldImageUrl(null);
+            setImageChanged(false);
+          }, duration * 1000);
+        }, 50);
+        
+        setIsLoading(false);
+      };
+      
+      preloadImg.onerror = () => {
+        // If preload fails, fall back to immediate transition
+        setImageUrl(url);
+        setImageKey(prev => prev + 1);
+        setIsLoading(false);
+        setImageChanged(false);
+      };
+      
+      preloadImg.src = url;
+      preloadImageRef.current = preloadImg;
+    }
   };
 
   const checkImageModified = async (url: string) => {
@@ -55,10 +138,24 @@ const Display = () => {
           if (params.debugMode) {
             toast.info("Image has been updated on the server");
           }
+          
+          // If image has changed, load new metadata first and then load the new image
+          if (params.data !== undefined && url) {
+            const newMetadata = await extractImageMetadata(url, params.data || undefined);
+            setMetadata(newMetadata);
+            
+            // Update processed caption with new metadata
+            if (params.caption) {
+              const newCaption = processCaptionWithMetadata(params.caption, newMetadata);
+              setProcessedCaption(newCaption);
+            }
+          }
+          
+          // Load the new image
+          loadNewImage(url);
         }
         
         lastModifiedRef.current = lastModified;
-        setImageKey(prev => prev + 1);
       }
     } catch (err) {
       console.error('Error checking image modification:', err);
@@ -98,13 +195,13 @@ const Display = () => {
 
     const processedUrl = processOutputParam(params.output);
     if (processedUrl) {
-      setImageUrl(processedUrl);
-      
-      checkImageModified(processedUrl);
+      if (!isTransitioning) {
+        loadNewImage(processedUrl);
+      }
       
       // Set up periodic checking for image changes
       intervalRef.current = window.setInterval(() => {
-        if (processedUrl) {
+        if (processedUrl && !isLoading && !isTransitioning) {
           checkImageModified(processedUrl);
         }
       }, params.refreshInterval * 1000);
@@ -112,8 +209,19 @@ const Display = () => {
       // Extract metadata if data parameter is provided
       if (params.data !== undefined) {
         extractImageMetadata(processedUrl, params.data || undefined)
-          .then(data => setMetadata(data))
+          .then(data => {
+            setMetadata(data);
+            
+            // Update processed caption with metadata
+            if (params.caption) {
+              const newCaption = processCaptionWithMetadata(params.caption, data);
+              setProcessedCaption(newCaption);
+            }
+          })
           .catch(err => console.error('Error extracting metadata:', err));
+      } else if (params.caption) {
+        // If there's a caption but no metadata, just use the caption as is
+        setProcessedCaption(params.caption);
       }
     }
 
@@ -126,10 +234,74 @@ const Display = () => {
         window.clearInterval(intervalRef.current);
       }
     };
-  }, [params.output, params.refreshInterval, params.debugMode, params.data]);
+  }, [params.output, params.refreshInterval, params.debugMode, params.data, params.caption]);
 
   const handleImageError = () => {
     console.error('Failed to load image:', imageUrl);
+  };
+
+  const getImagePositionStyle = (position: PositionMode, showMode: ShowMode): React.CSSProperties => {
+    // Base styles based on show mode
+    const baseStyle: React.CSSProperties = (() => {
+      switch (showMode) {
+        case 'fill':
+          return {
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          };
+        case 'fit':
+          return {
+            maxWidth: '100%',
+            maxHeight: '100%',
+            objectFit: 'contain',
+          };
+        case 'stretch':
+          return {
+            width: '100%',
+            height: '100%',
+            objectFit: 'fill',
+          };
+        case 'actual':
+          return {
+            width: 'auto',
+            height: 'auto',
+            objectFit: 'none',
+          };
+        default:
+          return {
+            maxWidth: '100%',
+            maxHeight: '100%',
+            objectFit: 'contain',
+          };
+      }
+    })();
+    
+    // Add position styles
+    const positionStyle: React.CSSProperties = { position: 'absolute' };
+    
+    switch (position) {
+      case 'top-left':
+        return { ...baseStyle, ...positionStyle, top: 0, left: 0 };
+      case 'top-center':
+        return { ...baseStyle, ...positionStyle, top: 0, left: '50%', transform: 'translateX(-50%)' };
+      case 'top-right':
+        return { ...baseStyle, ...positionStyle, top: 0, right: 0 };
+      case 'center-left':
+        return { ...baseStyle, ...positionStyle, top: '50%', left: 0, transform: 'translateY(-50%)' };
+      case 'center':
+        return { ...baseStyle, ...positionStyle, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+      case 'center-right':
+        return { ...baseStyle, ...positionStyle, top: '50%', right: 0, transform: 'translateY(-50%)' };
+      case 'bottom-left':
+        return { ...baseStyle, ...positionStyle, bottom: 0, left: 0 };
+      case 'bottom-center':
+        return { ...baseStyle, ...positionStyle, bottom: 0, left: '50%', transform: 'translateX(-50%)' };
+      case 'bottom-right':
+        return { ...baseStyle, ...positionStyle, bottom: 0, right: 0 };
+      default:
+        return { ...baseStyle, ...positionStyle, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+    }
   };
 
   const containerStyle: React.CSSProperties = {
@@ -145,95 +317,11 @@ const Display = () => {
     position: 'relative',
   };
 
-  const imageStyle: React.CSSProperties = (() => {
-    // Base styles
-    const styles: React.CSSProperties = {
-      position: 'absolute', 
-    };
-
-    // Position styles
-    switch (params.position) {
-      case 'top-left':
-        styles.top = 0;
-        styles.left = 0;
-        break;
-      case 'top-center':
-        styles.top = 0;
-        styles.left = '50%';
-        styles.transform = 'translateX(-50%)';
-        break;
-      case 'top-right':
-        styles.top = 0;
-        styles.right = 0;
-        break;
-      case 'center-left':
-        styles.top = '50%';
-        styles.left = 0;
-        styles.transform = 'translateY(-50%)';
-        break;
-      case 'center':
-        styles.top = '50%';
-        styles.left = '50%';
-        styles.transform = 'translate(-50%, -50%)';
-        break;
-      case 'center-right':
-        styles.top = '50%';
-        styles.right = 0;
-        styles.transform = 'translateY(-50%)';
-        break;
-      case 'bottom-left':
-        styles.bottom = 0;
-        styles.left = 0;
-        break;
-      case 'bottom-center':
-        styles.bottom = 0;
-        styles.left = '50%';
-        styles.transform = 'translateX(-50%)';
-        break;
-      case 'bottom-right':
-        styles.bottom = 0;
-        styles.right = 0;
-        break;
-      default:
-        styles.top = '50%';
-        styles.left = '50%';
-        styles.transform = 'translate(-50%, -50%)';
-    }
-
-    // Show mode styles
-    switch (params.showMode) {
-      case 'fill':
-        styles.width = '100%';
-        styles.height = '100%';
-        styles.objectFit = 'cover';
-        break;
-      case 'fit':
-        styles.maxWidth = '100%';
-        styles.maxHeight = '100%';
-        styles.objectFit = 'contain';
-        break;
-      case 'stretch':
-        styles.width = '100%';
-        styles.height = '100%';
-        styles.objectFit = 'fill';
-        break;
-      case 'actual':
-        styles.width = 'auto';
-        styles.height = 'auto';
-        styles.objectFit = 'none';
-        break;
-      default:
-        styles.maxWidth = '100%';
-        styles.maxHeight = '100%';
-        styles.objectFit = 'contain';
-    }
-
-    return styles;
-  })();
+  const imageStyle = getImagePositionStyle(params.position, params.showMode);
 
   // Caption styles
   const captionStyle: React.CSSProperties = (() => {
-    if (!params.caption) return {};
+    if (!processedCaption) return {};
 
     const styles: React.CSSProperties = {
       position: 'absolute',
@@ -246,6 +334,7 @@ const Display = () => {
       textAlign: 'center',
       borderRadius: '4px',
       zIndex: 10,
+      whiteSpace: processedCaption.includes('\n') ? 'pre-line' : 'normal',
     };
 
     switch (params.captionPosition) {
@@ -337,6 +426,7 @@ const Display = () => {
         </>
       ) : (
         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+          {/* Current image */}
           {imageUrl && (
             <>
               <img
@@ -344,13 +434,22 @@ const Display = () => {
                 ref={imageRef}
                 src={imageUrl}
                 alt=""
-                style={imageStyle}
+                style={isTransitioning ? newImageStyle : imageStyle}
                 onError={handleImageError}
               />
               
-              {params.caption && (
+              {/* Transitioning old image (for fades) */}
+              {isTransitioning && oldImageUrl && (
+                <img
+                  src={oldImageUrl}
+                  alt=""
+                  style={oldImageStyle}
+                />
+              )}
+              
+              {processedCaption && (
                 <div style={captionStyle}>
-                  {params.caption}
+                  {processedCaption}
                 </div>
               )}
               

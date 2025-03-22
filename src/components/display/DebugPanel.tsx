@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DisplayParams, ShowMode, PositionMode, CaptionPosition } from './types';
+import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from './types';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -47,6 +47,7 @@ interface DebugFormValues {
   captionSize: string;
   captionColor: string;
   captionFont: string;
+  transition: TransitionType;
 }
 
 const PRESET_COLORS = [
@@ -96,7 +97,8 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       captionPosition: params.captionPosition || 'bottom-center',
       captionSize: params.captionSize || '16px',
       captionColor: params.captionColor || 'ffffff',
-      captionFont: params.captionFont || 'Arial, sans-serif'
+      captionFont: params.captionFont || 'Arial, sans-serif',
+      transition: params.transition || 'cut'
     }
   });
 
@@ -125,6 +127,9 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       queryParams.set('caption-color', values.captionColor);
       queryParams.set('caption-font', values.captionFont);
     }
+    
+    // Add transition parameter
+    queryParams.set('transition', values.transition);
     
     navigate(`/display?${queryParams.toString()}`);
   };
@@ -175,6 +180,11 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       }
     }
     
+    // Preserve transition parameter
+    if (params.transition) {
+      queryParams.set('transition', params.transition);
+    }
+    
     navigate(`/display?${queryParams.toString()}`);
   };
 
@@ -202,6 +212,11 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       } else {
         queryParams.set('data', '');
       }
+    }
+    
+    // Pass through transition parameter
+    if (params.transition) {
+      queryParams.set('transition', params.transition);
     }
     
     navigate(`/display?${queryParams.toString()}`);
@@ -233,9 +248,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                 <li><strong>position</strong>: Image position - e.g., 'center', 'top-left', 'bottom-right'</li>
                 <li><strong>refresh</strong>: Check for image updates every X seconds</li>
                 <li><strong>background</strong>: Background color hexcode</li>
-                <li><strong>caption</strong>: Text to display over the image</li>
+                <li><strong>caption</strong>: Text to display over the image (use {key} to insert metadata values or {all} for all metadata)</li>
                 <li><strong>caption-position</strong>: Where to display the caption</li>
                 <li><strong>data</strong>: Extract and display image metadata (use empty value for all metadata)</li>
+                <li><strong>transition</strong>: How to transition between image updates - 'cut', 'fade-fast', or 'fade-slow'</li>
               </ul>
             </AlertDescription>
           </Alert>
@@ -374,6 +390,34 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                   )}
                 />
 
+                <FormField
+                  control={form.control}
+                  name="transition"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Transition Effect</FormLabel>
+                      <FormControl>
+                        <Select 
+                          value={field.value} 
+                          onValueChange={(value: TransitionType) => {
+                            field.onChange(value);
+                            form.handleSubmit(applySettings)();
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select transition effect" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cut">Cut (Immediate)</SelectItem>
+                            <SelectItem value="fade-fast">Fade (1 second)</SelectItem>
+                            <SelectItem value="fade-slow">Fade (10 seconds)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
                 <div className="pt-2">
                   <FormLabel>Set Custom URL</FormLabel>
                   <div className="flex space-x-2 mt-1">
@@ -422,7 +466,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                       <FormLabel>Caption Text</FormLabel>
                       <FormControl>
                         <Input 
-                          placeholder="Enter caption text" 
+                          placeholder="Enter caption text (use {key} for metadata or {all} for all)" 
                           value={field.value || ''}
                           onChange={(e) => field.onChange(e.target.value)}
                           onBlur={() => form.handleSubmit(applySettings)()}
@@ -580,6 +624,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                   <li><strong>Position:</strong> {params.position}</li>
                   <li><strong>Refresh:</strong> {params.refreshInterval}s</li>
                   <li><strong>Background:</strong> #{params.backgroundColor}</li>
+                  <li><strong>Transition:</strong> {params.transition}</li>
                   {params.caption && (
                     <>
                       <li><strong>Caption:</strong> {params.caption}</li>
