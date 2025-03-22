@@ -1,6 +1,8 @@
 
 import React from 'react';
 import { DisplayParams } from './types';
+import { useNavigate } from 'react-router-dom';
+import { createUrlWithParams } from './utils';
 
 interface ImageDisplayProps {
   params: DisplayParams;
@@ -31,6 +33,15 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   imageRef,
   onImageError
 }) => {
+  const navigate = useNavigate();
+
+  const handleDoubleClick = () => {
+    // Create URL with existing params plus debug mode
+    const newParams = { ...params, debugMode: true };
+    const debugUrl = createUrlWithParams(newParams);
+    navigate(debugUrl);
+  };
+
   // Caption styles
   const captionStyle: React.CSSProperties = (() => {
     if (!processedCaption) return {};
@@ -103,7 +114,10 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div 
+      style={{ position: 'relative', width: '100%', height: '100%' }}
+      onDoubleClick={handleDoubleClick}
+    >
       {imageUrl && (
         <>
           <img
