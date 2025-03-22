@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Image } from 'lucide-react';
 
@@ -35,12 +35,19 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
     });
   };
 
-  // Handle multiple reference images if they exist (they could be in a comma-separated string)
+  // Process reference images if they exist
   const referenceImages = image.referenceImageUrl ? 
     image.referenceImageUrl.split(',').map(url => url.trim()).filter(url => url !== '') : 
     [];
 
-  console.log("Reference images in InfoDialog:", referenceImages, "from:", image.referenceImageUrl);
+  // Add useEffect for debugging
+  useEffect(() => {
+    if (isOpen) {
+      console.log("ImageInfoDialog opened with image:", image);
+      console.log("Reference image URL from image:", image.referenceImageUrl);
+      console.log("Processed reference images:", referenceImages);
+    }
+  }, [isOpen, image, referenceImages]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>

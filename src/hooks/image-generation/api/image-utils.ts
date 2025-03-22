@@ -32,7 +32,7 @@ export const createPlaceholderImage = (
   // Store reference image URLs if there are any
   if (referenceImageUrl) {
     placeholderImage.referenceImageUrl = referenceImageUrl;
-    console.log('Storing reference images in placeholder:', placeholderImage.referenceImageUrl);
+    console.log('[image-utils] Storing reference images in placeholder:', referenceImageUrl);
   }
   
   // Add containerId if this is a new batch
@@ -45,16 +45,19 @@ export const createPlaceholderImage = (
 
 /**
  * Updates a placeholder image with actual generation results
+ * while preserving important metadata like reference images
  */
 export const updateImageWithResult = (
   placeholder: GeneratedImage,
   imageUrl: string
 ): GeneratedImage => {
+  // Ensure we preserve the referenceImageUrl when updating the image
   return {
     ...placeholder,
     url: imageUrl,
     status: 'completed' as ImageGenerationStatus,
     timestamp: Date.now(),
+    // Reference image URL is automatically preserved via spread operator
   };
 };
 
@@ -64,10 +67,12 @@ export const updateImageWithResult = (
 export const updateImageWithError = (
   placeholder: GeneratedImage
 ): GeneratedImage => {
+  // Ensure we preserve the referenceImageUrl for error images too
   return {
     ...placeholder,
     status: 'error' as ImageGenerationStatus,
     timestamp: Date.now()
+    // Reference image URL is automatically preserved via spread operator
   };
 };
 
@@ -89,6 +94,8 @@ export const processUploadedFiles = (
       }
     }
   }
+  
+  console.log('[image-utils] Processed files:', uploadedFiles.length, 'and URLs:', uploadedImageUrls);
   
   return { uploadedFiles, uploadedImageUrls };
 };

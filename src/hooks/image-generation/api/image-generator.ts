@@ -91,6 +91,7 @@ export const generateImage = async (
         imageUrls: uploadedImageUrls
       }
     });
+    console.log(`[image-generator] Using reference images: ${uploadedImageUrls.join(', ')}`);
   }
 
   addConsoleLog({
@@ -106,12 +107,12 @@ export const generateImage = async (
   });
 
   try {
-    // Prepare reference image URL string
+    // Prepare reference image URL string - make sure it's not empty
     const referenceImageUrl = uploadedImageUrls.length > 0 ? uploadedImageUrls.join(',') : undefined;
     
     // Add additional debug log for reference images
     if (referenceImageUrl) {
-      console.log("Reference images being used for generation:", referenceImageUrl);
+      console.log("[image-generator] Reference images being used for generation:", referenceImageUrl);
     }
     
     // Pre-create placeholder records for the images
@@ -142,7 +143,7 @@ export const generateImage = async (
       
       // Additional debug for placeholder
       if (placeholderImage.referenceImageUrl) {
-        console.log("Placeholder created with reference images:", placeholderImage.referenceImageUrl);
+        console.log("[image-generator] Placeholder created with reference images:", placeholderImage.referenceImageUrl);
       }
       
       return [...prevImages, placeholderImage];
@@ -181,6 +182,8 @@ export const generateImage = async (
           }
         });
         
+        console.log("[image-generator] Generation successful, updating images with reference URLs:", referenceImageUrl);
+        
         // Update the images with the actual URLs
         setGeneratedImages(prevImages => {
           const newImages = [...prevImages];
@@ -192,7 +195,7 @@ export const generateImage = async (
             );
             
             if (placeholderIndex >= 0) {
-              // Update the placeholder with actual data
+              // Update the placeholder with actual data - preserve reference image URL
               newImages[placeholderIndex] = updateImageWithResult(
                 newImages[placeholderIndex], 
                 img.url
@@ -200,7 +203,7 @@ export const generateImage = async (
               
               // Log the updated image for debugging
               if (newImages[placeholderIndex].referenceImageUrl) {
-                console.log("Updated image with reference image URL:", newImages[placeholderIndex].referenceImageUrl);
+                console.log("[image-generator] Updated image with reference image URL:", newImages[placeholderIndex].referenceImageUrl);
               }
             } else {
               // No placeholder found, this is an additional image
@@ -220,7 +223,7 @@ export const generateImage = async (
               // If there's a reference image, make sure to include it
               if (referenceImageUrl) {
                 newImage.referenceImageUrl = referenceImageUrl;
-                console.log('Adding reference images to new image:', newImage.referenceImageUrl);
+                console.log('[image-generator] Adding reference images to new image:', newImage.referenceImageUrl);
               }
               
               // Add containerId if this is a new batch

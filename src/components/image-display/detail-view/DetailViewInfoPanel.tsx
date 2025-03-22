@@ -44,7 +44,7 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
   useEffect(() => {
     // Log reference image information for debugging
     if (effectiveReferenceImageUrl) {
-      console.log('DetailViewInfoPanel received referenceImageUrl:', effectiveReferenceImageUrl);
+      console.log('DetailViewInfoPanel: Reference image URL:', effectiveReferenceImageUrl);
     } else {
       console.log('DetailViewInfoPanel has no referenceImageUrl');
     }
