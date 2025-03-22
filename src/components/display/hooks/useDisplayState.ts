@@ -242,6 +242,7 @@ export const useDisplayState = (params: DisplayParams) => {
     metadata,
     isLoading,
     processedCaption,
+    setProcessedCaption,
     isTransitioning,
     oldImageUrl,
     oldImageStyle,
