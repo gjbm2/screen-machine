@@ -102,9 +102,9 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onNavigateGlobal={onNavigateGlobal}
       />
 
-      {/* Selected image view - maximize image display but leave room for bottom panel */}
+      {/* Selected image view - adaptive sizing to ensure control visibility */}
       {activeImage && (
-        <div className="flex-grow overflow-hidden flex flex-col min-h-0 max-h-[calc(100%-120px)]">
+        <div className="flex-grow overflow-hidden flex flex-col min-h-0">
           <DetailViewImageSection
             activeImage={activeImage}
             onImageLoad={handleImageLoad}
