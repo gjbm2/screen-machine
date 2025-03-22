@@ -1,7 +1,7 @@
 
 import { useState, useCallback } from 'react';
 import { nanoid } from '@/lib/utils';
-import { generateImage, checkImageStatus } from './api/image-generator';
+import { generateImage } from './api/image-generator';
 import { ImageGenerationConfig } from './types';
 
 export const useImageGenerationApi = (
@@ -60,29 +60,35 @@ export const useImageGenerationApi = (
         }
       });
       
+      // Create the payload for the image generator
+      const generationConfig = {
+        prompt: config.prompt,
+        imageFiles: config.imageFiles,
+        workflow: config.workflow,
+        params: config.params,
+        globalParams: config.globalParams,
+        batchId: batchId,
+        nextContainerId
+      };
+      
+      // Set up the actions needed by the image generator
+      const generationActions = {
+        addConsoleLog,
+        setGeneratedImages,
+        setImageContainerOrder,
+        setNextContainerId,
+        setActiveGenerations
+      };
+      
       // Actually generate the image
-      const result = await generateImage(
-        config.prompt,
-        config.workflow,
-        config.params,
-        config.globalParams,
-        config.imageFiles,
-        batchId,
-        addConsoleLog
-      );
+      const result = await generateImage(generationConfig, generationActions);
       
       if (result) {
-        // Handle successful generation
-        updateGeneratedImage(batchId, result.imageUrl, config.prompt, config.workflow);
-        
         // Call the onGenerationComplete callback if provided
         if (onGenerationComplete) {
           onGenerationComplete();
         }
       } else {
-        // Handle failed generation
-        markGenerationAsFailed(batchId);
-        
         // Also trigger refresh callback on error
         if (onGenerationComplete) {
           onGenerationComplete();
@@ -107,48 +113,9 @@ export const useImageGenerationApi = (
     setImageContainerOrder, 
     nextContainerId, 
     setNextContainerId,
-    onGenerationComplete
+    onGenerationComplete,
+    setActiveGenerations
   ]);
-
-  // Helper to update an image from generating to completed
-  const updateGeneratedImage = useCallback((batchId: string, imageUrl: string, prompt: string, workflow: string) => {
-    setGeneratedImages(prev => {
-      return prev.map(image => {
-        if (image.batchId === batchId) {
-          return {
-            ...image,
-            url: imageUrl,
-            prompt,
-            workflow,
-            status: 'completed',
-            batchIndex: 0
-          };
-        }
-        return image;
-      });
-    });
-    
-    // Remove this batch from active generations
-    setActiveGenerations(prev => prev.filter(id => id !== batchId));
-  }, [setGeneratedImages]);
-  
-  // Helper to mark a generation as failed
-  const markGenerationAsFailed = useCallback((batchId: string) => {
-    setGeneratedImages(prev => {
-      return prev.map(image => {
-        if (image.batchId === batchId) {
-          return {
-            ...image,
-            status: 'failed'
-          };
-        }
-        return image;
-      });
-    });
-    
-    // Remove this batch from active generations
-    setActiveGenerations(prev => prev.filter(id => id !== batchId));
-  }, [setGeneratedImages]);
 
   return {
     activeGenerations,
