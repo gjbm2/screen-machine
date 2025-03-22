@@ -22,6 +22,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   const [currentParams, setCurrentParams] = useState<Record<string, any>>({});
   const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
   const [isFirstRun, setIsFirstRun] = useState(true);
+  const [fullscreenRefreshTrigger, setFullscreenRefreshTrigger] = useState(0);
 
   // Use our custom hooks
   const { generatedImages, setGeneratedImages } = useImageState();
@@ -44,7 +45,9 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     setGeneratedImages,
     setImageContainerOrder,
     nextContainerId,
-    setNextContainerId
+    setNextContainerId,
+    // Add a callback for when a generation completes
+    () => setFullscreenRefreshTrigger(prev => prev + 1)
   );
 
   // When uploadedImageUrls changes, store them in a global variable
@@ -149,6 +152,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     imageContainerOrder,
     lastBatchId,
     isFirstRun,
+    fullscreenRefreshTrigger,
     setCurrentPrompt,
     setUploadedImageUrls,
     setCurrentWorkflow,

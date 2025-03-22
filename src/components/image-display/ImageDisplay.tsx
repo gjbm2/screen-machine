@@ -23,6 +23,7 @@ interface ImageDisplayProps {
   onReorderContainers: (sourceIndex: number, destinationIndex: number) => void;
   onDeleteImage: (batchId: string, index: number) => void;
   onDeleteContainer: (batchId: string) => void;
+  fullscreenRefreshTrigger?: number; // Add the refresh trigger
 }
 
 const ImageDisplay: React.FC<ImageDisplayProps> = ({
@@ -38,7 +39,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onCreateAgain,
   onReorderContainers,
   onDeleteImage,
-  onDeleteContainer
+  onDeleteContainer,
+  fullscreenRefreshTrigger
 }) => {
   // Use the new custom hook for state management
   const {
@@ -141,6 +143,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             allImagesFlat={allImagesFlat}
             currentGlobalIndex={currentGlobalIndex}
             handleNavigateGlobal={handleNavigateGlobal}
+            fullscreenRefreshTrigger={fullscreenRefreshTrigger}
           />
         </div>
       )}

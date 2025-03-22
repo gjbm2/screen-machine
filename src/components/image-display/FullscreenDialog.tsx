@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { X } from 'lucide-react';
@@ -20,6 +19,7 @@ interface FullscreenDialogProps {
   allImagesFlat: any[];
   currentGlobalIndex: number | null;
   handleNavigateGlobal: (index: number) => void;
+  fullscreenRefreshTrigger?: number; // Add optional refresh trigger
 }
 
 const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
@@ -34,7 +34,8 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   onUseGeneratedAsInput,
   allImagesFlat,
   currentGlobalIndex,
-  handleNavigateGlobal
+  handleNavigateGlobal,
+  fullscreenRefreshTrigger = 0 // Default to 0
 }) => {
   const [prompt, setPrompt] = useState('');
   const [currentBatch, setCurrentBatch] = useState<any[] | null>(null);
@@ -44,7 +45,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const [lastBatchId, setLastBatchId] = useState<string | null>(null);
   
-  // Update state based on props
+  // Update state based on props - now also listen to the refresh trigger
   useEffect(() => {
     if (fullScreenBatchId && batches[fullScreenBatchId]) {
       const batch = batches[fullScreenBatchId];
@@ -72,7 +73,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       setCurrentImage(null);
       setPrompt('');
     }
-  }, [fullScreenBatchId, batches, fullScreenImageIndex]);
+  }, [fullScreenBatchId, batches, fullScreenImageIndex, fullscreenRefreshTrigger]);
 
   // Only render dialog if we need to show it
   if (!showFullScreenView) {
