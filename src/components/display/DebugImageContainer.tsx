@@ -119,9 +119,8 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
                        { top: '50%', transform: 'translateY(-50%)' }),
                     ...(captionPosition?.includes('left') ? { left: '10px' } : 
                        captionPosition?.includes('right') ? { right: '10px' } : 
-                       { left: '50%', transform: captionPosition?.includes('center-') ? 
-                         'translateY(-50%)' : captionPosition === 'center' ? 
-                         'translate(-50%, -50%)' : 'translateX(-50%)' }),
+                       { left: '50%', transform: captionPosition === 'bottom-center' || captionPosition === 'top-center' ? 
+                         'translateX(-50%)' : 'none' }),
                   }}>
                     {caption}
                   </div>
