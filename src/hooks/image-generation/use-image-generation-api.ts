@@ -16,7 +16,7 @@ export const useImageGenerationApi = (
   const [lastBatchId, setLastBatchId] = useState<string | null>(null);
 
   // Function to generate new images based on config
-  const generateImages = useCallback(async (config: ImageGenerationConfig) => {
+  const generateImages = useCallback(async (config: ImageGenerationConfig): Promise<string | null> => {
     try {
       // Generate a unique batch ID for this generation
       const batchId = nanoid();
@@ -88,6 +88,9 @@ export const useImageGenerationApi = (
         onGenerationComplete();
       }
       
+      // Return the batch ID for reference
+      return batchId;
+      
     } catch (error) {
       console.error('Error generating image:', error);
       addConsoleLog({
@@ -100,6 +103,9 @@ export const useImageGenerationApi = (
       if (onGenerationComplete) {
         onGenerationComplete();
       }
+      
+      // Return null on error
+      return null;
     }
   }, [
     addConsoleLog, 
