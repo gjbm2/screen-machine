@@ -1,94 +1,55 @@
 
 import { GeneratedImage } from '../types';
-import { ImageGenerationStatus } from '@/types/workflows';
-import { generateImageTitle } from './title-util';
+import { getExistingBatchIndexes } from './batch-utils';
 
 /**
- * Creates a placeholder image entry for the generation process
- */
-export const createPlaceholderImage = (
-  prompt: string,
-  workflow: string,
-  currentBatchId: string,
-  nextIndex: number,
-  params?: Record<string, any>,
-  refiner?: string,
-  refinerParams?: Record<string, any>,
-  referenceImageUrl?: string,
-  nextContainerId?: number
-): GeneratedImage => {
-  const placeholderImage: GeneratedImage = {
-    url: '', 
-    prompt,
-    workflow,
-    timestamp: Date.now(),
-    batchId: currentBatchId,
-    batchIndex: nextIndex,
-    status: 'generating' as ImageGenerationStatus,
-    params,
-    refiner,
-    refinerParams,
-    title: generateImageTitle(prompt, workflow)
-  };
-  
-  // Store reference image URLs if there are any
-  if (referenceImageUrl) {
-    placeholderImage.referenceImageUrl = referenceImageUrl;
-    console.log('[placeholder-utils] Storing reference images in placeholder:', referenceImageUrl);
-  }
-  
-  // Add containerId if this is a new batch
-  if (nextContainerId) {
-    placeholderImage.containerId = nextContainerId;
-  }
-  
-  return placeholderImage;
-};
-
-/**
- * Creates multiple placeholder images for a batch
+ * Creates a batch of placeholder images for a generation
  */
 export const createPlaceholderBatch = (
   prompt: string,
   workflow: string,
-  currentBatchId: string,
+  batchId: string,
   batchSize: number,
-  images: GeneratedImage[],
+  existingImages: GeneratedImage[],
   params?: Record<string, any>,
-  refiner?: string,
+  refiner?: string | undefined,
   refinerParams?: Record<string, any>,
   referenceImageUrl?: string,
   containerId?: number
 ): GeneratedImage[] => {
-  // Get existing indexes to avoid duplicates
-  const existingBatchIndexes = new Set<number>();
+  // Find existing batch indexes to avoid duplicates
+  const existingBatchIndexes = getExistingBatchIndexes(batchId, existingImages);
   
-  images.forEach(img => {
-    if (img.batchId === currentBatchId && typeof img.batchIndex === 'number') {
-      existingBatchIndexes.add(img.batchIndex);
-    }
-  });
+  // Create the specified number of placeholder images
+  const placeholders: GeneratedImage[] = [];
   
-  // Create a placeholder for each image in the batch
-  const newPlaceholders: GeneratedImage[] = [];
+  console.log('[placeholder-utils] Creating', batchSize, 'placeholders for batch', batchId, 'with containerId', containerId);
   
   for (let i = 0; i < batchSize; i++) {
-    const nextIndex = existingBatchIndexes.size + i;
+    // If this index already exists in the batch, skip it
+    if (existingBatchIndexes.has(i)) {
+      console.log('[placeholder-utils] Skipping existing batch index', i);
+      continue;
+    }
     
-    const placeholderImage = createPlaceholderImage(
+    const placeholder: GeneratedImage = {
+      batchId,
+      status: 'generating',
       prompt,
       workflow,
-      currentBatchId,
-      nextIndex,
+      timestamp: Date.now(),
+      batchIndex: i,
       params,
       refiner,
       refinerParams,
       referenceImageUrl,
       containerId
-    );
+    };
     
-    newPlaceholders.push(placeholderImage);
+    placeholders.push(placeholder);
   }
   
-  return newPlaceholders;
+  console.log('[placeholder-utils] Created', placeholders.length, 'placeholders');
+  
+  return placeholders;
 };

@@ -2,7 +2,6 @@
 import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Image } from 'lucide-react';
-import ReferenceImagesSection from './ReferenceImagesSection';
 import ReferenceImageDialog from './ReferenceImageDialog';
 
 interface ImageInfoDialogProps {
@@ -45,7 +44,9 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
 
   // Process reference images if they exist
   const referenceImages = image.referenceImageUrl ? 
-    image.referenceImageUrl.split(',').map(url => url.trim()).filter(url => url !== '') : 
+    (typeof image.referenceImageUrl === 'string' ? 
+      image.referenceImageUrl.split(',').map(url => url.trim()).filter(url => url !== '') : 
+      []) : 
     [];
 
   // Handle reference image click
@@ -60,9 +61,83 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
       console.log("ImageInfoDialog opened with image:", image);
       console.log("Reference image URL from image:", image.referenceImageUrl);
       console.log("Processed reference images:", referenceImages);
+      
+      // Log workflow params and refiner params for debugging
+      if (image.params) {
+        console.log("Workflow parameters:", image.params);
+      }
+      if (image.refiner) {
+        console.log("Refiner:", image.refiner);
+      }
+      if (image.refinerParams) {
+        console.log("Refiner parameters:", image.refinerParams);
+      }
     }
   }, [isOpen, image, referenceImages]);
-
+  
+  // Process params - ensure we handle different formats
+  const getWorkflowParams = () => {
+    if (!image.params) return {};
+    
+    // Handle case when params is stored as a string (serialized object)
+    if (typeof image.params === 'string') {
+      try {
+        return JSON.parse(image.params);
+      } catch (e) {
+        return { raw: image.params };
+      }
+    }
+    
+    // Handle case when params is an object with _type property (from JSON serialization)
+    if (image.params._type === 'object') {
+      return image.params.value || {};
+    }
+    
+    return image.params;
+  };
+  
+  // Process refiner params - same logic as workflow params
+  const getRefinerParams = () => {
+    if (!image.refinerParams) return {};
+    
+    if (typeof image.refinerParams === 'string') {
+      try {
+        return JSON.parse(image.refinerParams);
+      } catch (e) {
+        return { raw: image.refinerParams };
+      }
+    }
+    
+    if (image.refinerParams._type === 'object') {
+      return image.refinerParams.value || {};
+    }
+    
+    return image.refinerParams;
+  };
+  
+  // Get refiner name safely
+  const getRefiner = () => {
+    if (!image.refiner) return 'none';
+    
+    if (typeof image.refiner === 'string') {
+      return image.refiner;
+    }
+    
+    if (image.refiner._type === 'string') {
+      return image.refiner.value || 'none';
+    }
+    
+    return 'none';
+  };
+  
+  // Extract the actual parameters
+  const workflowParams = getWorkflowParams();
+  const refinerParams = getRefinerParams();
+  const refiner = getRefiner();
+  
+  // Determine if this image has reference images
+  const hasReferenceImages = referenceImages.length > 0;
+  
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
@@ -84,7 +159,7 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
           </div>
           
           {/* Reference Images - Moved above Details */}
-          {referenceImages.length > 0 && (
+          {hasReferenceImages && (
             <div className="space-y-2">
               <h3 className="text-sm font-bold">Reference Images</h3>
               <div className="flex flex-wrap gap-2">
@@ -122,28 +197,35 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
               <div>Generated:</div>
               <div>{formatDate(image.timestamp)}</div>
               
-              {image.refiner && image.refiner !== 'none' && (
+              {refiner && refiner !== 'none' && (
                 <>
                   <div>Refiner:</div>
-                  <div>{image.refiner}</div>
+                  <div>{refiner}</div>
                 </>
               )}
               
-              {referenceImages.length > 0 && (
+              {hasReferenceImages && (
                 <>
                   <div>Reference Images:</div>
                   <div>{referenceImages.length}</div>
+                </>
+              )}
+              
+              {image.title && (
+                <>
+                  <div>Title:</div>
+                  <div>{image.title}</div>
                 </>
               )}
             </div>
           </div>
           
           {/* Workflow Parameters */}
-          {image.params && Object.keys(image.params).length > 0 && (
+          {Object.keys(workflowParams).length > 0 && (
             <div className="space-y-2">
               <h3 className="text-sm font-bold">Workflow Parameters</h3>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                {Object.entries(image.params).map(([key, value]) => (
+                {Object.entries(workflowParams).map(([key, value]) => (
                   <React.Fragment key={key}>
                     <div className="font-medium">{key}:</div>
                     <div>{String(value)}</div>
@@ -154,11 +236,11 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
           )}
           
           {/* Refiner Parameters */}
-          {image.refinerParams && Object.keys(image.refinerParams).length > 0 && (
+          {refiner !== 'none' && Object.keys(refinerParams).length > 0 && (
             <div className="space-y-2">
               <h3 className="text-sm font-bold">Refiner Parameters</h3>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                {Object.entries(image.refinerParams).map(([key, value]) => (
+                {Object.entries(refinerParams).map(([key, value]) => (
                   <React.Fragment key={key}>
                     <div className="font-medium">{key}:</div>
                     <div>{String(value)}</div>
