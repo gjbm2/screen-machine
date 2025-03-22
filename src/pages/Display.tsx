@@ -43,6 +43,7 @@ const Display = () => {
     metadata,
     isLoading,
     processedCaption,
+    setProcessedCaption,
     isTransitioning,
     oldImageUrl,
     oldImageStyle,
@@ -94,13 +95,13 @@ const Display = () => {
             // Update processed caption with metadata
             if (params.caption) {
               const newCaption = processCaptionWithMetadata(params.caption, data);
-              useDisplayState.setState({ processedCaption: newCaption });
+              setProcessedCaption(newCaption);
             }
           })
           .catch(err => console.error('Error extracting metadata:', err));
       } else if (params.caption) {
         // If there's a caption but no metadata, just use the caption as is
-        useDisplayState.setState({ processedCaption: params.caption });
+        setProcessedCaption(params.caption);
       }
 
       return () => {
