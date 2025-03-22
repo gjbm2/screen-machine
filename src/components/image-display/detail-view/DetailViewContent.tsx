@@ -90,7 +90,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden min-h-0">
+    <div className="flex flex-col h-full overflow-hidden min-h-0 min-w-0">
       {/* Keyboard navigation */}
       <ImageKeyboardNavigation 
         activeIndex={activeIndex}
@@ -104,7 +104,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
 
       {/* Selected image view - adaptive sizing to ensure control visibility */}
       {activeImage && (
-        <div className="flex-grow overflow-hidden flex flex-col min-h-0">
+        <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0">
           <DetailViewImageSection
             activeImage={activeImage}
             onImageLoad={handleImageLoad}

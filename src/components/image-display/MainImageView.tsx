@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import NavigationControls from './NavigationControls';
@@ -102,15 +103,15 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   return (
     <div 
       ref={imageContainerRef}
-      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-full h-full select-none cursor-pointer" 
+      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-auto h-full select-none cursor-pointer" 
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onClick={handleImageContainerClick}
       tabIndex={-1}
-      style={{ outline: 'none' }}
+      style={{ outline: 'none', maxWidth: '100%', minWidth: 0 }}
       onMouseDown={(e) => e.preventDefault()} 
     >
-      <div className="relative flex justify-center items-center w-full h-full py-2">
+      <div className="relative flex justify-center items-center w-full h-full py-2" style={{ maxWidth: 'fit-content' }}>
         <img 
           src={imageUrl}
           alt={altText}
