@@ -7,11 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
-import { Form, FormField, FormItem, FormLabel, FormControl } from "@/components/ui/form";
+import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useNavigate } from "react-router-dom";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { InfoCircledIcon, RefreshCw } from "@radix-ui/react-icons";
+import { Separator } from "@/components/ui/separator";
 
 interface DebugPanelProps {
   params: DisplayParams;
@@ -21,6 +24,8 @@ interface DebugPanelProps {
   nextCheckTime: string;
   imageKey: number;
   outputFiles: string[];
+  imageChanged?: boolean;
+  onCheckNow?: () => void;
 }
 
 export const formatDateTime = (date: Date | null) => {
@@ -51,7 +56,9 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   lastChecked,
   nextCheckTime,
   imageKey,
-  outputFiles
+  outputFiles,
+  imageChanged,
+  onCheckNow
 }) => {
   const navigate = useNavigate();
   const [selectedColor, setSelectedColor] = useState(params.backgroundColor);
@@ -69,13 +76,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   const applySettings = (values: DebugFormValues) => {
     const outputParam = values.output || params.output;
     
-    if (!outputParam) {
-      alert("Output parameter is required");
-      return;
-    }
-    
     const queryParams = new URLSearchParams();
-    queryParams.set('output', outputParam);
+    if (outputParam) {
+      queryParams.set('output', outputParam);
+    }
     queryParams.set('show', values.showMode);
     queryParams.set('refresh', values.refreshInterval.toString());
     queryParams.set('background', values.backgroundColor);
@@ -86,7 +90,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
 
   const applyUrlChange = (url: string) => {
     if (!url) {
-      alert("URL is required");
       return;
     }
     
@@ -124,6 +127,22 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         <CardTitle className="text-lg">Debug Configuration</CardTitle>
       </CardHeader>
       <CardContent className="text-sm">
+        {(!params.output || outputFiles.length === 0) && (
+          <Alert className="mb-4">
+            <InfoCircledIcon className="h-4 w-4" />
+            <AlertTitle>Display Page Configuration</AlertTitle>
+            <AlertDescription>
+              <p className="mb-2">This debug view helps you configure the display page. Set your preferences and generate a shareable URL.</p>
+              <ul className="list-disc list-inside space-y-1 text-xs">
+                <li><strong>output</strong>: (required) Image to display from /output/ directory or full URL</li>
+                <li><strong>show</strong>: Display mode - 'fit', 'fill', or 'actual'</li>
+                <li><strong>refresh</strong>: Check for image updates every X seconds</li>
+                <li><strong>background</strong>: Background color hexcode</li>
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(applySettings)} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -242,9 +261,23 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
               </div>
 
               <div className="space-y-4">
-                <h3 className="font-bold mb-1">Current Settings:</h3>
+                <div className="flex justify-between items-start">
+                  <h3 className="font-bold mb-1">Current Settings:</h3>
+                  {onCheckNow && (
+                    <Button 
+                      type="button" 
+                      onClick={onCheckNow}
+                      size="sm"
+                      variant="outline"
+                      className="flex items-center gap-1"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Check Now
+                    </Button>
+                  )}
+                </div>
                 <ul className="space-y-1 mb-3">
-                  <li><strong>Output:</strong> {params.output}</li>
+                  <li><strong>Output:</strong> {params.output || 'Not set'}</li>
                   <li><strong>Display Mode:</strong> {params.showMode}</li>
                   <li><strong>Refresh:</strong> {params.refreshInterval}s</li>
                   <li><strong>Background:</strong> #{params.backgroundColor}</li>
@@ -252,7 +285,17 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                   <li><strong>Last Modified:</strong> {lastModified || 'Unknown'}</li>
                   <li><strong>Last Checked:</strong> {formatDateTime(lastChecked)}</li>
                   <li><strong>Next Check At:</strong> {nextCheckTime}</li>
+                  <li>
+                    <strong>Status:</strong> 
+                    {imageChanged ? (
+                      <span className="text-amber-600 font-medium"> Image has changed since last load</span>
+                    ) : (
+                      <span className="text-green-600"> Up to date</span>
+                    )}
+                  </li>
                 </ul>
+                
+                <Separator className="my-2" />
                 
                 <h3 className="font-bold mb-1">Available Images:</h3>
                 <div className="max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded p-2">
@@ -270,16 +313,32 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-gray-500">No files found</p>
+                    <p className="text-gray-500">Loading available files...</p>
                   )}
                 </div>
 
-                <a 
-                  href={`/display?output=${params.output || ''}&show=${params.showMode}&refresh=${params.refreshInterval}&background=${params.backgroundColor}`}
-                  className="block text-center bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded mt-4"
-                >
-                  End Debug Mode
-                </a>
+                <div className="flex justify-between items-center mt-4">
+                  {params.output ? (
+                    <a 
+                      href={`/display?output=${params.output || ''}&show=${params.showMode}&refresh=${params.refreshInterval}&background=${params.backgroundColor}`}
+                      className="block text-center bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded"
+                    >
+                      End Debug Mode
+                    </a>
+                  ) : (
+                    <div className="text-gray-500 text-sm italic">
+                      Select an image to enable production mode
+                    </div>
+                  )}
+                  
+                  <div className="text-xs text-gray-500 mt-2">
+                    {params.output && (
+                      <div className="rounded bg-gray-100 p-2 text-gray-700 dark:bg-gray-700 dark:text-gray-300 font-mono text-[10px] break-all">
+                        /display?output={params.output}&show={params.showMode}&refresh={params.refreshInterval}&background={params.backgroundColor}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </form>
