@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import NavigationControls from './NavigationControls';
-import { useWindowSize } from '@/hooks/use-mobile';
 
 interface MainImageViewProps {
   imageUrl: string;
@@ -30,10 +29,21 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   handleTouchEnd,
   onImageClick,
 }) => {
-  const { width: viewportWidth, height: viewportHeight } = useWindowSize();
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+  const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
   
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth);
+      setViewportHeight(window.innerHeight);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const handleImageLoadInternal = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     setImageDimensions({
@@ -44,7 +54,7 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   };
 
   const calculateOptimalSize = () => {
-    if (imageDimensions.width === 0 || imageDimensions.height === 0 || !viewportWidth || !viewportHeight) {
+    if (imageDimensions.width === 0 || imageDimensions.height === 0) {
       return { width: 'auto', height: 'auto', maxWidth: '90%', maxHeight: 'calc(75vh - 120px)' };
     }
 
@@ -56,30 +66,25 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     const controlsSpacePercentage = isVeryLargeScreen ? 0.08 : (isLargeScreen ? 0.1 : 0.15);
     const controlsSpace = Math.min(Math.max(100, viewportHeight * controlsSpacePercentage), 160);
     
-    // Keep vertical behavior the same as before
+    // Allow content to use more of the screen on larger displays
+    const widthPercentage = isVeryLargeScreen ? 0.95 : (isLargeScreen ? 0.92 : 0.9);
+    const availableWidth = viewportWidth * widthPercentage;
+    
+    // Allow images to take up more vertical space on larger screens
     const heightPercentage = isVeryLargeScreen ? 0.9 : (isLargeScreen ? 0.85 : 0.75);
     const availableHeight = viewportHeight * heightPercentage - controlsSpace;
     
-    // Improved dynamic horizontal sizing - allow it to adapt better to available space
-    // Calculate available width based on container size and viewport
-    const containerWidth = imageContainerRef.current?.offsetWidth || viewportWidth;
-    const containerPadding = 24; // account for padding/margins
-    const availableWidth = Math.min(containerWidth - containerPadding, viewportWidth * 0.95);
-    
-    // Calculate scaling ratios
     const widthRatio = availableWidth / imageDimensions.width;
     const heightRatio = availableHeight / imageDimensions.height;
     
-    // Use the smaller ratio to maintain aspect ratio
+    // Use a more generous ratio on larger screens, but still respect aspect ratio
     const ratio = Math.min(widthRatio, heightRatio, isVeryLargeScreen ? 1.5 : (isLargeScreen ? 1.2 : 1));
     
-    const calculatedWidth = Math.min(imageDimensions.width * ratio, availableWidth);
-    const calculatedHeight = Math.min(imageDimensions.height * ratio, availableHeight);
-    
     return { 
-      width: `${calculatedWidth}px`, 
-      height: `${calculatedHeight}px`,
-      maxWidth: '100%'
+      width: 'auto', 
+      height: 'auto', 
+      maxWidth: `${Math.min(imageDimensions.width * ratio, availableWidth)}px`, 
+      maxHeight: `${Math.min(imageDimensions.height * ratio, availableHeight)}px` 
     };
   };
 
@@ -103,22 +108,22 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   return (
     <div 
       ref={imageContainerRef}
-      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-auto h-full select-none cursor-pointer" 
+      className="relative flex justify-center items-center bg-secondary/10 rounded-md overflow-hidden group w-full h-full select-none cursor-pointer" /* Added cursor-pointer to indicate clickability */
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onClick={handleImageContainerClick}
       tabIndex={-1}
-      style={{ outline: 'none', maxWidth: '100%', minWidth: 0 }}
-      onMouseDown={(e) => e.preventDefault()} 
+      style={{ outline: 'none' }}
+      onMouseDown={(e) => e.preventDefault()} // Prevent text selection on mouse down
     >
-      <div className="relative flex justify-center items-center w-full h-full py-2" style={{ maxWidth: 'fit-content' }}>
+      <div className="relative flex justify-center items-center w-full h-full py-2">
         <img 
           src={imageUrl}
           alt={altText}
-          className="object-contain select-none" 
+          className="object-contain select-none" /* Added select-none to prevent image selection */
           style={optimalSize}
           onLoad={handleImageLoadInternal}
-          draggable={false} 
+          draggable={false} /* Prevent dragging the image */
         />
       </div>
       
