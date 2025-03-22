@@ -1,9 +1,10 @@
+
 import { useState, useCallback } from 'react';
-import { GeneratedImage } from './types';
+import { GeneratedImage, ImageGenerationConfig } from './types';
 import { toast } from 'sonner';
 import { nanoid } from '@/lib/utils';
-import { ImageGenerationConfig } from './types';
 import apiService from '@/utils/api';
+import { ImageGenerationStatus } from '@/types/workflows';
 
 export const useImageGenerationApi = (
   addConsoleLog: (log: any) => void,
@@ -176,10 +177,10 @@ export const useImageGenerationApi = (
               if (placeholderIndex >= 0) {
                 // Replace the placeholder with actual data
                 // IMPORTANT: Make sure to preserve the referenceImageUrl
-                const updatedImage = {
+                const updatedImage: GeneratedImage = {
                   ...newImages[placeholderIndex],
                   url: img.url,
-                  status: 'completed',
+                  status: 'completed' as ImageGenerationStatus, // Explicitly cast to ImageGenerationStatus
                   timestamp: Date.now(),
                 };
                 
@@ -196,7 +197,7 @@ export const useImageGenerationApi = (
                   timestamp: Date.now(),
                   batchId: currentBatchId,
                   batchIndex: index,
-                  status: 'completed',
+                  status: 'completed' as ImageGenerationStatus, // Explicitly cast to ImageGenerationStatus
                   params,
                   refiner,
                   refinerParams
@@ -239,7 +240,7 @@ export const useImageGenerationApi = (
               if (img.batchId === currentBatchId && img.status === 'generating') {
                 return {
                   ...img,
-                  status: 'error',
+                  status: 'error' as ImageGenerationStatus, // Explicitly cast to ImageGenerationStatus
                   timestamp: Date.now()
                 };
               }
