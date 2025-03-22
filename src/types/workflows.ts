@@ -22,5 +22,5 @@ export interface ReferenceImageData {
   type?: string;
 }
 
-// Add status type for image generation
-export type ImageGenerationStatus = 'generating' | 'completed' | 'error' | 'failed';
+// Add status type for image generation - adding 'to_update' to fix TypeScript errors
+export type ImageGenerationStatus = 'generating' | 'completed' | 'error' | 'failed' | 'to_update';

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Image } from 'lucide-react';
@@ -88,11 +87,7 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
       }
     }
     
-    // Handle case when params is an object with _type property (from JSON serialization)
-    if (image.params._type === 'object') {
-      return image.params.value || {};
-    }
-    
+    // Remove the check for _type property as it doesn't exist
     return image.params;
   };
   
@@ -108,10 +103,7 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
       }
     }
     
-    if (image.refinerParams._type === 'object') {
-      return image.refinerParams.value || {};
-    }
-    
+    // Remove the check for _type property as it doesn't exist
     return image.refinerParams;
   };
   
@@ -123,10 +115,7 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
       return image.refiner;
     }
     
-    if (image.refiner._type === 'string') {
-      return image.refiner.value || 'none';
-    }
-    
+    // Remove the check for _type property as it doesn't exist
     return 'none';
   };
   
