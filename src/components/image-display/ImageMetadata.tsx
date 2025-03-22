@@ -47,7 +47,7 @@ const ImageMetadata: React.FC<ImageMetadataProps> = ({
             variant="outline" 
             size="sm" 
             className="h-6 md:h-7 px-1.5 md:px-2 text-xs md:text-sm flex items-center gap-1 text-muted-foreground whitespace-nowrap"
-            onClick={onInfoClick}
+            onClick={() => onInfoClick()} // Ensure click event calls the function properly
             aria-label="View image information"
             onMouseDown={(e) => e.preventDefault()} // Prevent text selection
           >
