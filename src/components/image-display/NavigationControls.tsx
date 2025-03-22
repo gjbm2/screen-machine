@@ -27,17 +27,17 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
   const sizeClasses = {
     small: {
       hotspot: 'w-8 h-full',
-      button: 'h-6 w-6',
+      button: 'h-full w-8',
       icon: 'h-3 w-3'
     },
     medium: {
       hotspot: 'w-12 h-full',
-      button: 'h-8 w-8',
+      button: 'h-full w-10',
       icon: 'h-4 w-4'
     },
     large: {
-      hotspot: 'w-16 md:w-24 h-full',
-      button: 'h-9 w-9',
+      hotspot: 'w-16 md:w-16 h-full',
+      button: 'h-full w-10',
       icon: 'h-5 w-5'
     }
   };
@@ -55,8 +55,8 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
         >
           <Button
             size="icon"
-            variant="outline"
-            className={`${button} rounded-full bg-background/70 hover:bg-background transition-opacity opacity-40 group-hover:opacity-100 pointer-events-none`}
+            variant="ghost"
+            className={`${button} rounded-r-md rounded-l-none bg-background/50 hover:bg-background/70 transition-opacity opacity-40 group-hover:opacity-100 pointer-events-none`}
             tabIndex={-1}
           >
             <ChevronLeft className={icon} />
@@ -72,8 +72,8 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
         >
           <Button
             size="icon"
-            variant="outline"
-            className={`${button} rounded-full bg-background/70 hover:bg-background transition-opacity opacity-40 group-hover:opacity-100 pointer-events-none`}
+            variant="ghost"
+            className={`${button} rounded-l-md rounded-r-none bg-background/50 hover:bg-background/70 transition-opacity opacity-40 group-hover:opacity-100 pointer-events-none`}
             tabIndex={-1}
           >
             <ChevronRight className={icon} />

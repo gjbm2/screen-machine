@@ -50,11 +50,9 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     return text.includes('\n') || text.length > 120;
   };
   
-  // Only show the collapsible trigger if the prompt has multiple lines
-  const showCollapsibleTrigger = hasMultipleLines(imagePrompt);
-  
   // State for prompt expansion
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  const showCollapsibleTrigger = hasMultipleLines(imagePrompt);
   
   return (
     <Dialog 
@@ -66,49 +64,52 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         noPadding
         description="Detailed view of generated image"
       >
-        <div className="flex justify-between items-start p-3 pb-0 flex-shrink-0">
-          {imagePrompt ? (
-            <Collapsible 
-              open={isPromptExpanded}
-              onOpenChange={setIsPromptExpanded}
-              className="text-left flex-grow pr-12" // Add right padding to avoid overlap with close button
-            >
-              <div className="flex items-start">
-                {showCollapsibleTrigger && (
-                  <CollapsibleTrigger className="h-6 w-6 flex items-center justify-center mr-1">
+        <div className="flex justify-between items-start p-3 pb-0 flex-shrink-0 border-b border-border/30">
+          <div className="flex items-start flex-grow pr-8 max-w-[calc(100%-40px)]">
+            {showCollapsibleTrigger && (
+              <Collapsible 
+                open={isPromptExpanded}
+                onOpenChange={setIsPromptExpanded}
+                className="w-full"
+              >
+                <div className="flex items-start">
+                  <CollapsibleTrigger className="h-6 mt-0.5 flex-shrink-0 flex items-center justify-center mr-1">
                     {isPromptExpanded ? (
-                      <ChevronDown className="h-4 w-4" />
+                      <ChevronDown className="h-4 w-4 text-foreground" />
                     ) : (
-                      <ChevronRight className="h-4 w-4" />
+                      <ChevronRight className="h-4 w-4 text-foreground" />
                     )}
                   </CollapsibleTrigger>
-                )}
-                <div className="text-sm font-medium text-foreground truncate">
-                  {imagePrompt.substring(0, showCollapsibleTrigger && !isPromptExpanded ? 80 : undefined)}
-                  {showCollapsibleTrigger && !isPromptExpanded && '...'}
+                  
+                  <div className="text-sm font-medium text-foreground truncate">
+                    {!isPromptExpanded ? imagePrompt.substring(0, 100) + (imagePrompt.length > 100 ? '...' : '') : null}
+                  </div>
                 </div>
-              </div>
-              
-              {showCollapsibleTrigger && (
+                
                 <CollapsibleContent>
-                  <div className="text-sm font-medium text-foreground pl-7 pr-2 pt-1">
+                  <div className="text-sm font-medium text-foreground pl-5 pr-2 py-1">
                     {imagePrompt}
                   </div>
                 </CollapsibleContent>
-              )}
-            </Collapsible>
-          ) : (
-            <div className="text-sm font-medium text-foreground pr-12">No prompt available</div>
-          )}
+              </Collapsible>
+            )}
+            
+            {!showCollapsibleTrigger && (
+              <div className="text-sm font-medium text-foreground truncate">
+                {imagePrompt || "No prompt available"}
+              </div>
+            )}
+          </div>
           
           <button 
             onClick={() => setShowFullScreenView(false)}
-            className="p-2 rounded-full hover:bg-muted transition-colors absolute right-3 top-3"
+            className="p-2 rounded-full hover:bg-muted transition-colors flex-shrink-0"
             aria-label="Close dialog"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
+        
         <div className="flex-grow overflow-hidden flex flex-col">
           {batches[fullScreenBatchId] && (
             <ImageDetailView

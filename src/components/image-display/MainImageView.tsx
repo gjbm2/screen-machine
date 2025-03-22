@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import NavigationControls from './NavigationControls';
@@ -34,7 +33,6 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
   
-  // Update viewport dimensions on resize
   useEffect(() => {
     const handleResize = () => {
       setViewportWidth(window.innerWidth);
@@ -54,22 +52,18 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     onImageLoad(e);
   };
 
-  // Calculate optimal image size
   const calculateOptimalSize = () => {
     if (imageDimensions.width === 0 || imageDimensions.height === 0) {
       return { width: 'auto', height: 'auto', maxWidth: '90%', maxHeight: '70vh' };
     }
 
-    // Available space (accounting for controls and padding)
-    const availableWidth = viewportWidth * 0.9; // 90% of viewport width
-    const availableHeight = viewportHeight * 0.7; // 70% of viewport height (leaving room for controls)
+    const availableWidth = viewportWidth * 0.9;
+    const availableHeight = viewportHeight * 0.7;
     
-    // Calculate scale factors
     const widthRatio = availableWidth / imageDimensions.width;
     const heightRatio = availableHeight / imageDimensions.height;
     
-    // Use the smaller ratio to ensure image fits in both dimensions
-    const ratio = Math.min(widthRatio, heightRatio, 1); // Cap at 100% (ratio = 1)
+    const ratio = Math.min(widthRatio, heightRatio, 1);
     
     return { 
       width: 'auto', 
@@ -81,7 +75,6 @@ const MainImageView: React.FC<MainImageViewProps> = ({
 
   const optimalSize = calculateOptimalSize();
 
-  // Determine if previous/next buttons should be shown
   const showPrevButton = currentGlobalIndex !== undefined && currentGlobalIndex > 0 && allImages && allImages.length > 1;
   const showNextButton = currentGlobalIndex !== undefined && allImages && currentGlobalIndex < allImages.length - 1;
 
@@ -92,7 +85,6 @@ const MainImageView: React.FC<MainImageViewProps> = ({
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onClick={onImageClick}
-      // Prevent highlighting of hotspots when using arrow keys
       tabIndex={-1}
       style={{ outline: 'none' }}
     >
@@ -106,7 +98,6 @@ const MainImageView: React.FC<MainImageViewProps> = ({
         />
       </div>
       
-      {/* Navigation controls - Only show when there are images to navigate to */}
       {allImages && allImages.length > 1 && onNavigateGlobal && (
         <NavigationControls 
           onPrevious={(e) => {
