@@ -86,6 +86,7 @@ export const useImageGenerationApi = (
       if (result) {
         // Call the onGenerationComplete callback if provided
         if (onGenerationComplete) {
+          console.log("Generation completed for batch:", batchId);
           onGenerationComplete();
         }
       } else {
