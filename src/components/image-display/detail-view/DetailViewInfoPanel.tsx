@@ -2,7 +2,6 @@
 import React, { useEffect } from 'react';
 import ImageMetadata from '../ImageMetadata';
 import DetailViewActionBar from './DetailViewActionBar';
-import ReferenceImageSection from '../ReferenceImageSection';
 
 interface DetailViewInfoPanelProps {
   activeImage: {
@@ -51,6 +50,9 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
     }
   }, [effectiveReferenceImageUrl, activeImage]);
   
+  // Determine if this image has reference images
+  const hasReferenceImages = Boolean(effectiveReferenceImageUrl);
+  
   return (
     <div className="flex-shrink-0 p-2 space-y-1 bg-background select-none border-t min-h-[100px]">
       {/* Image metadata - now includes the "open in new tab" button */}
@@ -60,7 +62,7 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
         imageUrl={activeImage?.url}
         onOpenInNewTab={onOpenInNewTab}
         onInfoClick={onInfoClick}
-        hasReferenceImages={Boolean(effectiveReferenceImageUrl)}
+        hasReferenceImages={hasReferenceImages}
       />
       
       {/* Image Actions Bar - all buttons in a single row */}
@@ -76,14 +78,6 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
             params: activeImage.params,
             referenceImageUrl: effectiveReferenceImageUrl
           }}
-        />
-      )}
-      
-      {/* Reference image at the bottom */}
-      {effectiveReferenceImageUrl && (
-        <ReferenceImageSection
-          referenceImageUrl={effectiveReferenceImageUrl.split(',')[0]} // Use first image if multiple
-          onReferenceImageClick={() => setShowReferenceImage(true)}
         />
       )}
     </div>

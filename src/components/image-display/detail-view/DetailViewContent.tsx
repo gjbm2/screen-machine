@@ -165,12 +165,12 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onInfoClick={handleInfoClick}
       />
 
-      {/* Reference image dialog */}
+      {/* Reference image dialog - supports multiple images */}
       {referenceImageUrl && (
         <ReferenceImageDialog
           isOpen={showReferenceImage}
           onOpenChange={setShowReferenceImage}
-          imageUrl={referenceImageUrl.split(',')[0]} // Use the first URL if multiple
+          imageUrl={referenceImageUrl} // Pass the entire URL string
         />
       )}
 

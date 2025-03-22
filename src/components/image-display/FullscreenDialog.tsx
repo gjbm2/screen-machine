@@ -192,12 +192,12 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           )}
         </div>
         
-        {/* Reference images dialog - for single reference view */}
+        {/* Reference images dialog - for all reference images */}
         {currentImage?.referenceImageUrl && (
           <ReferenceImageDialog
             isOpen={showReferenceImagesDialog}
             onOpenChange={setShowReferenceImagesDialog}
-            imageUrl={currentImage.referenceImageUrl.split(',')[0]} // Use first image if multiple
+            imageUrl={currentImage.referenceImageUrl} // Pass the entire string to allow multiple images
           />
         )}
 
