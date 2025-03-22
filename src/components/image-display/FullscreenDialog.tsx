@@ -167,14 +167,25 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         />
         
         <FullscreenContent 
+          batchId={fullScreenBatchId || ''}
+          currentBatch={currentBatch || []}
+          fullScreenImageIndex={fullScreenImageIndex}
+          setFullScreenImageIndex={setFullScreenImageIndex}
+          onNavigatePrev={(e) => handleNavigateImages('prev')}
+          onNavigateNext={(e) => handleNavigateImages('next')}
+          onDeleteImage={onDeleteImage || (() => {})}
+          onCreateAgain={onCreateAgain || (() => {})}
+          onUseAsInput={onUseGeneratedAsInput || (() => {})}
+          allImagesFlat={allImagesFlat}
+          currentGlobalIndex={currentGlobalIndex}
+          handleNavigateGlobal={handleNavigateGlobal}
+          onImageClick={handleImageClick}
+          onClose={() => setShowFullScreenView(false)}
+          // Support for alternative usage pattern
           currentImage={currentImage}
           imageCount={currentBatch?.filter(img => img.status === 'completed').length || 0}
           currentImageIndex={fullScreenImageIndex}
           onNavigate={handleNavigateImages}
-          onImageClick={handleImageClick}
-          onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
-          onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
-          onUseAsInput={onUseGeneratedAsInput ? handleUseAsInput : undefined}
           isNavigating={false}
         />
         
