@@ -20,7 +20,7 @@ interface FullscreenDialogProps {
   allImagesFlat: any[];
   currentGlobalIndex: number | null;
   handleNavigateGlobal: (index: number) => void;
-  fullscreenRefreshTrigger?: number; // Add optional refresh trigger
+  fullscreenRefreshTrigger?: number;
 }
 
 const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
@@ -36,7 +36,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   allImagesFlat,
   currentGlobalIndex,
   handleNavigateGlobal,
-  fullscreenRefreshTrigger = 0 // Default to 0
+  fullscreenRefreshTrigger = 0
 }) => {
   const [prompt, setPrompt] = useState('');
   const [currentBatch, setCurrentBatch] = useState<any[] | null>(null);
@@ -48,33 +48,94 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   
   // Update state based on props - now also listen to the refresh trigger
   useEffect(() => {
+    console.log("FullscreenDialog - refresh trigger changed:", fullscreenRefreshTrigger);
+    
+    if (!showFullScreenView) {
+      return; // Don't update if the fullscreen view is not visible
+    }
+    
     if (fullScreenBatchId && batches[fullScreenBatchId]) {
       const batch = batches[fullScreenBatchId];
       setCurrentBatch(batch);
       setLastBatchId(fullScreenBatchId);
       
-      const image = batch[fullScreenImageIndex];
-      setCurrentImage(image);
+      // If the batch only has 'generating' status images and we have a refresh trigger,
+      // check if there are any completed images in the batch now
+      const completedImages = batch.filter(img => img.status === 'completed');
+      const hasNewCompletedImages = completedImages.length > 0;
       
-      if (image?.prompt) {
-        setPrompt(image.prompt);
+      if (hasNewCompletedImages) {
+        // Find newly completed image index
+        const newImageIndex = batch.findIndex(img => img.status === 'completed');
+        if (newImageIndex !== -1 && newImageIndex !== fullScreenImageIndex) {
+          console.log("FullscreenDialog - updating to newly completed image at index:", newImageIndex);
+          // Update the fullscreen image index to show the newly completed image
+          setFullScreenImageIndex(newImageIndex);
+        }
+        
+        // Update to show the current image based on fullScreenImageIndex or the first completed image
+        const imageToShow = batch[fullScreenImageIndex]?.status === 'completed' 
+          ? batch[fullScreenImageIndex] 
+          : completedImages[0];
+        
+        if (imageToShow) {
+          setCurrentImage(imageToShow);
+          if (imageToShow.prompt) {
+            setPrompt(imageToShow.prompt);
+          } else {
+            setPrompt('');
+          }
+          
+          // Debug log for reference images
+          if (imageToShow.referenceImageUrl) {
+            console.log('Reference image URL in fullscreen:', imageToShow.referenceImageUrl);
+          } else {
+            console.log('No reference image URL in fullscreen image');
+          }
+        }
       } else {
-        setPrompt('');
-      }
-      
-      // Debug log for reference images
-      console.log('Current image in fullscreen:', image);
-      if (image?.referenceImageUrl) {
-        console.log('Reference image URL in fullscreen:', image.referenceImageUrl);
-      } else {
-        console.log('No reference image URL in fullscreen image');
+        // If we have valid index, use it, otherwise set to 0
+        const validIndex = fullScreenImageIndex < batch.length ? fullScreenImageIndex : 0;
+        const image = batch[validIndex];
+        setCurrentImage(image);
+        
+        if (image?.prompt) {
+          setPrompt(image.prompt);
+        } else {
+          setPrompt('');
+        }
+        
+        // Debug log for reference images
+        if (image?.referenceImageUrl) {
+          console.log('Reference image URL in fullscreen:', image.referenceImageUrl);
+        } else {
+          console.log('No reference image URL in fullscreen image');
+        }
       }
     } else {
-      setCurrentBatch(null);
-      setCurrentImage(null);
-      setPrompt('');
+      // If no valid batch ID or the batch doesn't exist anymore, try to find the most recent batch 
+      // with completed images and switch to it
+      const batchIds = Object.keys(batches);
+      if (batchIds.length > 0) {
+        // Find the first batch with completed images
+        for (const batchId of batchIds) {
+          const completedImages = batches[batchId].filter(img => img.status === 'completed');
+          if (completedImages.length > 0) {
+            console.log("FullscreenDialog - switching to batch with completed images:", batchId);
+            handleNavigateGlobal(
+              allImagesFlat.findIndex(img => img.batchId === batchId && img.status === 'completed')
+            );
+            break;
+          }
+        }
+      } else {
+        setCurrentBatch(null);
+        setCurrentImage(null);
+        setPrompt('');
+      }
     }
-  }, [fullScreenBatchId, batches, fullScreenImageIndex, fullscreenRefreshTrigger]);
+  }, [fullScreenBatchId, batches, fullScreenImageIndex, fullscreenRefreshTrigger, showFullScreenView, 
+      handleNavigateGlobal, allImagesFlat, setFullScreenImageIndex]);
 
   // Only render dialog if we need to show it
   if (!showFullScreenView) {

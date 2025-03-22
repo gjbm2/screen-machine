@@ -27,13 +27,15 @@ const DetailViewTouchHandler: React.FC<DetailViewTouchHandlerProps> = ({
     const endX = e.changedTouches[0].clientX;
     const diff = startX - endX;
     
-    // Reduce threshold to make swiping more responsive (from 50px to 20px)
-    if (Math.abs(diff) > 20) {
+    // Reduce threshold even further for more responsive swipes (from 20px to 15px)
+    if (Math.abs(diff) > 15) {
       if (diff > 0) {
         // Swipe left, go to next image
+        console.log("Swipe detected: LEFT");
         onSwipeLeft();
       } else {
         // Swipe right, go to previous image
+        console.log("Swipe detected: RIGHT");
         onSwipeRight();
       }
     }
@@ -45,8 +47,18 @@ const DetailViewTouchHandler: React.FC<DetailViewTouchHandlerProps> = ({
   useEffect(() => {
     if (!isMobile) return;
     
-    const preventScroll = (e: Event) => {
-      e.preventDefault();
+    const preventScroll = (e: TouchEvent) => {
+      // Only prevent default if it's a horizontal swipe
+      if (startX !== null) {
+        const touch = e.touches[0];
+        const currentX = touch.clientX;
+        const diff = Math.abs(startX - currentX);
+        
+        // If horizontal movement is significant, prevent the scroll
+        if (diff > 10) {
+          e.preventDefault();
+        }
+      }
     };
     
     const element = touchRef.current;
@@ -59,7 +71,7 @@ const DetailViewTouchHandler: React.FC<DetailViewTouchHandlerProps> = ({
         element.removeEventListener('touchmove', preventScroll);
       }
     };
-  }, [isMobile]);
+  }, [isMobile, startX]);
 
   return (
     <div 

@@ -10,7 +10,7 @@ export const useImageGenerationApi = (
   setImageContainerOrder: React.Dispatch<React.SetStateAction<string[]>>,
   nextContainerId: number,
   setNextContainerId: React.Dispatch<React.SetStateAction<number>>,
-  onGenerationComplete?: () => void
+  onGenerationComplete?: (batchId: string) => void
 ) => {
   const [activeGenerations, setActiveGenerations] = useState<string[]>([]);
   const [lastBatchId, setLastBatchId] = useState<string | null>(null);
@@ -84,14 +84,14 @@ export const useImageGenerationApi = (
       const result = await generateImage(generationConfig, generationActions);
       
       if (result) {
-        // Call the onGenerationComplete callback if provided
+        // Call the onGenerationComplete callback if provided, passing the batchId
         if (onGenerationComplete) {
-          onGenerationComplete();
+          onGenerationComplete(batchId);
         }
       } else {
         // Also trigger refresh callback on error
         if (onGenerationComplete) {
-          onGenerationComplete();
+          onGenerationComplete(batchId);
         }
       }
     } catch (error) {
@@ -104,7 +104,7 @@ export const useImageGenerationApi = (
       
       // If we have a completion callback, call it even on error
       if (onGenerationComplete) {
-        onGenerationComplete();
+        onGenerationComplete(lastBatchId || '');
       }
     }
   }, [
@@ -114,7 +114,8 @@ export const useImageGenerationApi = (
     nextContainerId, 
     setNextContainerId,
     onGenerationComplete,
-    setActiveGenerations
+    setActiveGenerations,
+    lastBatchId
   ]);
 
   return {
