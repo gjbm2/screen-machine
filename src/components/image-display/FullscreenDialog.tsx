@@ -48,60 +48,33 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   
   // Update state based on props - now also listen to the refresh trigger
   useEffect(() => {
-    if (showFullScreenView && fullScreenBatchId && batches[fullScreenBatchId]) {
+    if (fullScreenBatchId && batches[fullScreenBatchId]) {
       const batch = batches[fullScreenBatchId];
       setCurrentBatch(batch);
       setLastBatchId(fullScreenBatchId);
       
-      // Find completed images in the batch
-      const completedImages = batch.filter(img => img.status === 'completed');
+      const image = batch[fullScreenImageIndex];
+      setCurrentImage(image);
       
-      // If we have completed images and a valid index, use it; otherwise use the first completed image
-      if (completedImages.length > 0) {
-        const validIndex = fullScreenImageIndex < completedImages.length 
-          ? fullScreenImageIndex 
-          : 0;
-        
-        const image = completedImages[validIndex];
-        setCurrentImage(image);
-        
-        if (image?.prompt) {
-          setPrompt(image.prompt);
-        } else {
-          setPrompt('');
-        }
+      if (image?.prompt) {
+        setPrompt(image.prompt);
+      } else {
+        setPrompt('');
+      }
+      
+      // Debug log for reference images
+      console.log('Current image in fullscreen:', image);
+      if (image?.referenceImageUrl) {
+        console.log('Reference image URL in fullscreen:', image.referenceImageUrl);
+      } else {
+        console.log('No reference image URL in fullscreen image');
       }
     } else {
       setCurrentBatch(null);
       setCurrentImage(null);
       setPrompt('');
     }
-  }, [fullScreenBatchId, batches, fullScreenImageIndex, fullscreenRefreshTrigger, showFullScreenView]);
-
-  // Log refresh trigger changes for debugging - Moving this useEffect up to maintain consistent hook order
-  useEffect(() => {
-    console.log("FullscreenDialog - refresh trigger changed:", fullscreenRefreshTrigger);
-    
-    // If dialog is open and there's a recent generation, update to display it
-    if (showFullScreenView && lastBatchId && batches[lastBatchId]) {
-      const completedImages = batches[lastBatchId].filter(img => img.status === 'completed');
-      if (completedImages.length > 0) {
-        // If there are completed images in the batch, force update to that batch
-        if (lastBatchId !== fullScreenBatchId || fullScreenImageIndex >= completedImages.length) {
-          console.log("FullscreenDialog - updating to newly completed image at index:", 0);
-          
-          // Find the global index of the first completed image in this batch
-          const globalIndex = allImagesFlat.findIndex(
-            img => img.batchId === lastBatchId && img.batchIndex === 0
-          );
-          
-          if (globalIndex !== -1) {
-            handleNavigateGlobal(globalIndex);
-          }
-        }
-      }
-    }
-  }, [fullscreenRefreshTrigger, showFullScreenView, lastBatchId, batches, fullScreenBatchId, fullScreenImageIndex, allImagesFlat, handleNavigateGlobal]);
+  }, [fullScreenBatchId, batches, fullScreenImageIndex, fullscreenRefreshTrigger]);
 
   // Only render dialog if we need to show it
   if (!showFullScreenView) {
@@ -120,6 +93,12 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
 
   const handleShowInfoPanel = () => {
     console.log("Showing info dialog in fullscreen mode");
+    // Log reference image information for debugging
+    if (currentImage?.referenceImageUrl) {
+      console.log("Reference image URLs for info dialog:", currentImage.referenceImageUrl);
+    } else {
+      console.log("No reference image URLs available for info dialog");
+    }
     setShowInfoDialog(true);
   };
 
@@ -148,7 +127,8 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     setLastBatchId(batchId);
     onCreateAgain(batchId);
     
-    // We don't close the fullscreen view - we'll wait for the new image to be generated
+    // We don't need to close here - we'll wait until the new image is generated
+    // The parent components will update the batches and allImagesFlat
   };
 
   const handleDeleteImage = (batchId: string, index: number) => {
