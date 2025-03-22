@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import ImageDetailView from './ImageDetailView';
 
 interface FullscreenDialogProps {
@@ -33,7 +33,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   currentGlobalIndex,
   handleNavigateGlobal
 }) => {
-  // Always declare hooks at the top level, never conditionally
+  // Always declare hooks at the top level
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   const [isMultiline, setIsMultiline] = useState(false);
   const [prompt, setPrompt] = useState('');
@@ -78,6 +78,11 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     e.stopPropagation();
     setIsPromptExpanded(!isPromptExpanded);
   };
+
+  const handleClose = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowFullScreenView(false);
+  };
   
   return (
     <Dialog 
@@ -93,12 +98,12 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         
         {/* Header with expandable prompt */}
         {prompt && (
-          <div className="px-4 py-1 border-b">
+          <div className="px-4 py-2 border-b">
             <div 
-              className="overflow-hidden"
+              className="overflow-hidden flex items-start justify-between"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-start">
+              <div className="flex items-start flex-grow">
                 {isMultiline && (
                   <button 
                     onClick={togglePromptExpand}
@@ -107,12 +112,21 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
                     {isPromptExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
                 )}
-                <div className={`text-sm text-muted-foreground ${isPromptExpanded ? 'max-h-none' : 'max-h-6 overflow-hidden'}`}>
+                <div className={`text-base text-muted-foreground ${isPromptExpanded ? 'max-h-none' : 'max-h-6 overflow-hidden'}`}>
                   <p className={isPromptExpanded ? 'whitespace-normal' : 'truncate'}>
                     {prompt}
                   </p>
                 </div>
               </div>
+              
+              {/* Close button */}
+              <button 
+                onClick={handleClose}
+                className="inline-flex items-center justify-center p-1 hover:bg-gray-100 rounded-md flex-shrink-0 ml-2"
+                aria-label="Close dialog"
+              >
+                <X size={16} />
+              </button>
             </div>
           </div>
         )}
