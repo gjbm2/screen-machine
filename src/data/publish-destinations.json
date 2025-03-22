@@ -3,32 +3,32 @@
   {
     "id": "share",
     "name": "Share...",
-    "icon": "share2",
+    "icon": "Share2",
     "type": "share",
     "description": "Use device sharing options"
   },
   {
     "id": "screen1",
     "name": "North screen",
-    "icon": "tv",
-    "type": "output file"
-    "file": "screen-north.jpg"
+    "icon": "Tv",
+    "type": "output_file",
+    "file": "screen-north.jpg",
     "description": "Publish to big screen (north)"
-  }
+  },
   {
     "id": "screen2",
     "name": "South screen",
-    "icon": "tv",
-    "type": "output file"
-    "file": "screen-south.jpg"
+    "icon": "Tv",
+    "type": "output_file",
+    "file": "screen-south.jpg",
     "description": "Publish to big screen (south)"
-  }
+  },
   {
-    "id": "screen2",
-    "name": "South screen",
-    "icon": "tv",
-    "type": "s3"
-    "file": "screen-south.jpg"
-    "description": "Publish to big screen (south)"
+    "id": "cloud",
+    "name": "Cloud storage",
+    "icon": "Cloud",
+    "type": "s3",
+    "file": "cloud-storage.jpg",
+    "description": "Publish to cloud storage"
   }
 ]
