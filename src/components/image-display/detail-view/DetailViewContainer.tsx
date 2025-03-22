@@ -79,7 +79,7 @@ const DetailViewContainer: React.FC<DetailViewContainerProps> = ({
       onSwipeLeft={handleSwipeLeft}
       onSwipeRight={handleSwipeRight}
     >
-      <div className="w-full h-full flex flex-col">
+      <div className="w-full h-full flex flex-col overflow-hidden">
         <TooltipProvider>
           <DetailViewContent
             batchId={batchId}

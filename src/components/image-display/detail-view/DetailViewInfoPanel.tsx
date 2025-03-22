@@ -37,7 +37,7 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
   hidePrompt = false
 }) => {
   return (
-    <div className="flex-shrink-0 p-2 space-y-1 bg-background select-none">
+    <div className="flex-shrink-0 p-2 space-y-1 bg-background select-none border-t">
       {/* Image metadata - now includes the "open in new tab" button */}
       <ImageMetadata
         dimensions={dimensions}

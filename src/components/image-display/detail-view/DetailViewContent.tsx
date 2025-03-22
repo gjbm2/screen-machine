@@ -90,7 +90,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   };
 
   return (
-    <>
+    <div className="flex flex-col h-full overflow-hidden min-h-0">
       {/* Keyboard navigation */}
       <ImageKeyboardNavigation 
         activeIndex={activeIndex}
@@ -129,7 +129,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onOpenInNewTab={handleOpenInNewTab}
         hidePrompt={hidePrompt}
       />
-    </>
+    </div>
   );
 };
 

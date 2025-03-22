@@ -96,9 +96,9 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       >
         <DialogTitle className="sr-only">Image Detail View</DialogTitle>
         
-        {/* Header with expandable prompt */}
+        {/* Header with expandable prompt - with fixed minimum height */}
         {prompt && (
-          <div className="px-4 py-2 border-b">
+          <div className="px-4 py-2 border-b min-h-[40px] flex-shrink-0">
             <div 
               className="overflow-hidden flex items-start justify-between"
               onClick={(e) => e.stopPropagation()}
@@ -131,7 +131,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           </div>
         )}
 
-        <div className="flex-grow overflow-hidden flex flex-col">
+        <div className="flex-grow overflow-hidden flex flex-col min-h-0">
           {currentBatch && (
             <ImageDetailView
               batchId={fullScreenBatchId as string}
