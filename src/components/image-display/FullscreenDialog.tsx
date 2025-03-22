@@ -87,12 +87,13 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       <DialogContent 
         className="max-w-[100vw] w-[95vw] md:w-[90vw] max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col select-none" 
         noPadding
+        hideCloseButton
       >
         <DialogTitle className="sr-only">Image Detail View</DialogTitle>
         
         {/* Header with expandable prompt */}
         {prompt && (
-          <div className="px-4 py-2 border-b">
+          <div className="px-4 py-1 border-b">
             <div 
               className="overflow-hidden"
               onClick={(e) => e.stopPropagation()}

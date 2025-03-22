@@ -34,8 +34,9 @@ const DialogContent = React.forwardRef<
     fullscreen?: boolean;
     noPadding?: boolean;
     description?: string;
+    hideCloseButton?: boolean;
   }
->(({ className, children, fullscreen = false, noPadding = false, description, ...props }, ref) => (
+>(({ className, children, fullscreen = false, noPadding = false, description, hideCloseButton = false, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -55,10 +56,12 @@ const DialogContent = React.forwardRef<
         </div>
       )}
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-90 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-foreground/10 backdrop-blur-sm text-foreground hover:bg-foreground/20 p-2 rounded-full z-10">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
+      {!hideCloseButton && (
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-90 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-foreground/10 backdrop-blur-sm text-foreground hover:bg-foreground/20 p-2 rounded-full z-10">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
+      )}
     </DialogPrimitive.Content>
   </DialogPortal>
 ))
