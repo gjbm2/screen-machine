@@ -1,15 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { ExternalLink } from 'lucide-react';
 import NavigationControls from './NavigationControls';
-import { AspectRatio } from '@/components/ui/aspect-ratio';
 
 interface MainImageViewProps {
   imageUrl: string;
   altText: string;
   onImageLoad: (e: React.SyntheticEvent<HTMLImageElement>) => void;
-  onOpenInNewTab: (e: React.MouseEvent) => void;
+  onOpenInNewTab?: (e: React.MouseEvent) => void;
   allImages?: Array<{ url: string; batchId: string; batchIndex: number; prompt?: string; }>;
   isNavigatingAllImages?: boolean;
   onNavigateGlobal?: (imageIndex: number) => void;
@@ -23,7 +21,6 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   imageUrl,
   altText,
   onImageLoad,
-  onOpenInNewTab,
   allImages,
   isNavigatingAllImages,
   onNavigateGlobal,
@@ -84,6 +81,10 @@ const MainImageView: React.FC<MainImageViewProps> = ({
 
   const optimalSize = calculateOptimalSize();
 
+  // Determine if previous/next buttons should be shown
+  const showPrevButton = currentGlobalIndex !== undefined && currentGlobalIndex > 0 && allImages && allImages.length > 1;
+  const showNextButton = currentGlobalIndex !== undefined && allImages && currentGlobalIndex < allImages.length - 1;
+
   return (
     <div 
       ref={imageContainerRef}
@@ -91,6 +92,9 @@ const MainImageView: React.FC<MainImageViewProps> = ({
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onClick={onImageClick}
+      // Prevent highlighting of hotspots when using arrow keys
+      tabIndex={-1}
+      style={{ outline: 'none' }}
     >
       <div className="relative flex justify-center items-center w-full h-full py-2">
         <img 
@@ -102,39 +106,26 @@ const MainImageView: React.FC<MainImageViewProps> = ({
         />
       </div>
       
-      {/* Open in new tab button - moved to bottom right, will be in line with metadata */}
-      <Button 
-        variant="outline" 
-        size="icon" 
-        className="absolute bottom-2 right-2 bg-background/80 backdrop-blur-sm z-30"
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpenInNewTab(e);
-        }}
-        aria-label="Open image in new tab"
-        title="" // Empty title to suppress the tooltip
-      >
-        <ExternalLink className="h-4 w-4" />
-      </Button>
-      
-      {/* Navigation controls - Always use global navigation in fullscreen */}
+      {/* Navigation controls - Only show when there are images to navigate to */}
       {allImages && allImages.length > 1 && onNavigateGlobal && (
         <NavigationControls 
           onPrevious={(e) => {
             e.stopPropagation();
-            if ((currentGlobalIndex as number) > 0) {
+            if (showPrevButton) {
               onNavigateGlobal((currentGlobalIndex as number) - 1);
             }
           }}
           onNext={(e) => {
             e.stopPropagation();
-            if ((currentGlobalIndex as number) < allImages.length - 1) {
+            if (showNextButton) {
               onNavigateGlobal((currentGlobalIndex as number) + 1);
             }
           }}
           size="large"
           currentGlobalIndex={currentGlobalIndex}
           allImages={allImages}
+          showPrevButton={showPrevButton}
+          showNextButton={showNextButton}
         />
       )}
     </div>

@@ -1,93 +1,86 @@
 
-import React, { useState } from 'react';
+// Update the NavigationControls component to support conditionally showing buttons
+import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface NavigationControlsProps {
   onPrevious: (e: React.MouseEvent) => void;
   onNext: (e: React.MouseEvent) => void;
   size?: 'small' | 'medium' | 'large';
-  activeIndex?: number;
-  totalImages?: number;
-  isNavigatingAllImages?: boolean;
-  onNavigateGlobal?: (imageIndex: number) => void;
   currentGlobalIndex?: number;
-  allImages?: Array<any>;
+  allImages?: any[];
+  showPrevButton?: boolean;
+  showNextButton?: boolean;
 }
 
-const NavigationControls: React.FC<NavigationControlsProps> = ({ 
-  onPrevious, 
+const NavigationControls: React.FC<NavigationControlsProps> = ({
+  onPrevious,
   onNext,
   size = 'medium',
-  activeIndex,
-  totalImages,
-  isNavigatingAllImages,
-  onNavigateGlobal,
   currentGlobalIndex,
-  allImages
+  allImages,
+  showPrevButton = true,
+  showNextButton = true
 }) => {
-  const [leftHovered, setLeftHovered] = useState(false);
-  const [rightHovered, setRightHovered] = useState(false);
-
+  // Size mappings for hotspot areas and navigation buttons
   const sizeClasses = {
-    small: 'h-2 w-2',
-    medium: 'h-2.5 w-2.5',
-    large: 'h-3 w-3'  // Reduced size
+    small: {
+      hotspot: 'w-8 h-full',
+      button: 'h-6 w-6',
+      icon: 'h-3 w-3'
+    },
+    medium: {
+      hotspot: 'w-12 h-full',
+      button: 'h-8 w-8',
+      icon: 'h-4 w-4'
+    },
+    large: {
+      hotspot: 'w-16 md:w-24 h-full',
+      button: 'h-9 w-9',
+      icon: 'h-5 w-5'
+    }
   };
 
-  const buttonSizeClasses = {
-    small: 'p-1.5',
-    medium: 'p-1.5',
-    large: 'p-2'  // Reduced padding
-  };
-
-  // Wider clickable areas for fullscreen view
-  const widthClasses = {
-    small: 'w-1/6',
-    medium: 'w-1/5',
-    large: 'w-1/4'  // Keep large clickable area
-  };
-
-  // Determine if we should show prev/next buttons
-  const showPrevious = currentGlobalIndex !== undefined 
-    ? currentGlobalIndex > 0 
-    : activeIndex !== undefined && activeIndex > 0;
-
-  const showNext = currentGlobalIndex !== undefined && allImages 
-    ? currentGlobalIndex < allImages.length - 1
-    : totalImages !== undefined && activeIndex !== undefined 
-      ? activeIndex < totalImages - 1
-      : false;
+  // Get the size classes based on the size prop
+  const { hotspot, button, icon } = sizeClasses[size];
 
   return (
-    <div className="absolute inset-0 pointer-events-none">
-      {showPrevious && (
-        <button 
-          className={`absolute left-0 top-0 bottom-0 ${widthClasses[size]} flex items-center justify-start pl-4 bg-transparent transition-colors pointer-events-auto z-20 outline-none focus:outline-none`}
+    <>
+      {/* Previous button - conditionally rendered */}
+      {showPrevButton && (
+        <div 
+          className={`absolute left-0 top-0 ${hotspot} flex items-center justify-center group`}
           onClick={onPrevious}
-          aria-label="Previous image"
-          onMouseEnter={() => setLeftHovered(true)}
-          onMouseLeave={() => setLeftHovered(false)}
         >
-          <div className={`${leftHovered ? 'bg-black/60' : 'bg-black/30'} rounded-full ${buttonSizeClasses[size]} text-white/90 hover:text-white transition-colors`}>
-            <ChevronLeft className={sizeClasses[size]} />
-          </div>
-        </button>
+          <Button
+            size="icon"
+            variant="outline"
+            className={`${button} rounded-full bg-background/70 hover:bg-background transition-opacity opacity-40 group-hover:opacity-100 pointer-events-none`}
+            tabIndex={-1}
+          >
+            <ChevronLeft className={icon} />
+          </Button>
+        </div>
       )}
       
-      {showNext && (
-        <button 
-          className={`absolute right-0 top-0 bottom-0 ${widthClasses[size]} flex items-center justify-end pr-4 bg-transparent transition-colors pointer-events-auto z-20 outline-none focus:outline-none`}
+      {/* Next button - conditionally rendered */}
+      {showNextButton && (
+        <div 
+          className={`absolute right-0 top-0 ${hotspot} flex items-center justify-center group`} 
           onClick={onNext}
-          aria-label="Next image"
-          onMouseEnter={() => setRightHovered(true)}
-          onMouseLeave={() => setRightHovered(false)}
         >
-          <div className={`${rightHovered ? 'bg-black/60' : 'bg-black/30'} rounded-full ${buttonSizeClasses[size]} text-white/90 hover:text-white transition-colors`}>
-            <ChevronRight className={sizeClasses[size]} />
-          </div>
-        </button>
+          <Button
+            size="icon"
+            variant="outline"
+            className={`${button} rounded-full bg-background/70 hover:bg-background transition-opacity opacity-40 group-hover:opacity-100 pointer-events-none`}
+            tabIndex={-1}
+          >
+            <ChevronRight className={icon} />
+          </Button>
+        </div>
       )}
-    </div>
+    </>
   );
 };
 

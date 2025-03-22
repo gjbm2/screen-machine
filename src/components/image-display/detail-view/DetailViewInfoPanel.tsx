@@ -2,7 +2,6 @@
 import React from 'react';
 import ImageMetadata from '../ImageMetadata';
 import DetailViewActionBar from './DetailViewActionBar';
-import ImagePrompt from './ImagePrompt';
 import ReferenceImageSection from '../ReferenceImageSection';
 import ReferenceImageDialog from '../ReferenceImageDialog';
 
@@ -21,6 +20,7 @@ interface DetailViewInfoPanelProps {
   handleCreateAgain: () => void;
   handleUseAsInput?: () => void;
   handleDeleteImage: () => void;
+  onOpenInNewTab: (e: React.MouseEvent) => void;
   hidePrompt?: boolean;
 }
 
@@ -33,14 +33,17 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
   handleCreateAgain,
   handleUseAsInput,
   handleDeleteImage,
+  onOpenInNewTab,
   hidePrompt = false
 }) => {
   return (
     <div className="flex-shrink-0 p-2 space-y-2 bg-background">
-      {/* Image metadata */}
+      {/* Image metadata - now includes the "open in new tab" button */}
       <ImageMetadata
         dimensions={dimensions}
         timestamp={activeImage?.timestamp}
+        imageUrl={activeImage?.url}
+        onOpenInNewTab={onOpenInNewTab}
       />
       
       {/* Image Actions Bar - all buttons in a single row */}
@@ -58,9 +61,6 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
         />
       )}
       
-      {/* Prompt info - conditionally rendered based on hidePrompt */}
-      {!hidePrompt && <ImagePrompt prompt={activeImage?.prompt} />}
-
       {/* Reference image at the bottom */}
       {referenceImageUrl && (
         <ReferenceImageSection

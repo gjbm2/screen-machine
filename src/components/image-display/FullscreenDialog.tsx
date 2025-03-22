@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import ImageDetailView from './ImageDetailView';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronRight, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, X } from 'lucide-react';
 
 interface FullscreenDialogProps {
   showFullScreenView: boolean;
@@ -45,17 +45,16 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   const currentImage = currentBatch?.filter(img => img.status === 'completed')[fullScreenImageIndex];
   const imagePrompt = currentImage?.prompt || '';
   
-  // Determine if the prompt is long and might need collapsing
-  const isLongPrompt = imagePrompt.length > 80;
-  const [isLongPromptExpanded, setIsLongPromptExpanded] = useState(false);
-  
-  // Function to check if a string contains multiple lines
+  // Function to check if a string contains multiple lines or is very long
   const hasMultipleLines = (text: string) => {
     return text.includes('\n') || text.length > 120;
   };
   
   // Only show the collapsible trigger if the prompt has multiple lines
   const showCollapsibleTrigger = hasMultipleLines(imagePrompt);
+  
+  // State for prompt expansion
+  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   
   return (
     <Dialog 
@@ -70,35 +69,41 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         <div className="flex justify-between items-start p-3 pb-0 flex-shrink-0">
           {imagePrompt ? (
             <Collapsible 
-              defaultOpen={!showCollapsibleTrigger} 
-              className="text-left flex-grow"
-              open={isLongPromptExpanded}
-              onOpenChange={setIsLongPromptExpanded}
+              open={isPromptExpanded}
+              onOpenChange={setIsPromptExpanded}
+              className="text-left flex-grow pr-12" // Add right padding to avoid overlap with close button
             >
               <div className="flex items-start">
                 {showCollapsibleTrigger && (
                   <CollapsibleTrigger className="h-6 w-6 flex items-center justify-center mr-1">
-                    <ChevronRight className="h-4 w-4 transform transition-transform duration-200 data-[state=open]:rotate-90" />
+                    {isPromptExpanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
                   </CollapsibleTrigger>
                 )}
-                <div className="text-sm font-normal text-muted-foreground truncate">
-                  {imagePrompt.substring(0, showCollapsibleTrigger ? 80 : undefined)}
-                  {showCollapsibleTrigger && isLongPromptExpanded === false && '...'}
+                <div className="text-sm font-medium text-foreground truncate">
+                  {imagePrompt.substring(0, showCollapsibleTrigger && !isPromptExpanded ? 80 : undefined)}
+                  {showCollapsibleTrigger && !isPromptExpanded && '...'}
                 </div>
               </div>
-              <CollapsibleContent>
-                <div className="text-sm font-normal text-foreground pl-7 pr-2 pt-1">
-                  {imagePrompt}
-                </div>
-              </CollapsibleContent>
+              
+              {showCollapsibleTrigger && (
+                <CollapsibleContent>
+                  <div className="text-sm font-medium text-foreground pl-7 pr-2 pt-1">
+                    {imagePrompt}
+                  </div>
+                </CollapsibleContent>
+              )}
             </Collapsible>
           ) : (
-            <div className="text-sm font-normal text-muted-foreground">No prompt available</div>
+            <div className="text-sm font-medium text-foreground pr-12">No prompt available</div>
           )}
           
           <button 
             onClick={() => setShowFullScreenView(false)}
-            className="p-2 rounded-full hover:bg-muted transition-colors ml-2"
+            className="p-2 rounded-full hover:bg-muted transition-colors absolute right-3 top-3"
             aria-label="Close dialog"
           >
             <X className="h-4 w-4" />
@@ -135,7 +140,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
               onNavigateGlobal={handleNavigateGlobal}
               currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
               onImageClick={handleImageClick}
-              hidePrompt={true}
+              hidePrompt={true} // Always hide the prompt in the detail view since we're showing it in the dialog header
             />
           )}
         </div>

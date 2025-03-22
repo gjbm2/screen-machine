@@ -126,6 +126,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         handleCreateAgain={handleCreateAgain}
         handleUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
         handleDeleteImage={handleDeleteImage}
+        onOpenInNewTab={handleOpenInNewTab}
         hidePrompt={hidePrompt}
       />
     </>

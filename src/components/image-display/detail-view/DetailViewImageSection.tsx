@@ -27,7 +27,6 @@ interface DetailViewImageSectionProps {
 const DetailViewImageSection: React.FC<DetailViewImageSectionProps> = ({
   activeImage,
   onImageLoad,
-  onOpenInNewTab,
   allImages,
   isNavigatingAllImages,
   onNavigateGlobal,
@@ -40,7 +39,6 @@ const DetailViewImageSection: React.FC<DetailViewImageSectionProps> = ({
         imageUrl={activeImage.url}
         altText={activeImage.prompt || "Generated image"}
         onImageLoad={onImageLoad}
-        onOpenInNewTab={onOpenInNewTab}
         allImages={allImages}
         isNavigatingAllImages={isNavigatingAllImages}
         onNavigateGlobal={onNavigateGlobal}
