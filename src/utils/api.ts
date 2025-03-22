@@ -49,6 +49,15 @@ class ApiService {
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
       
+      // Log the params to debug batch size issues
+      console.log("[api] Generating image with params:", {
+        prompt,
+        workflow,
+        params: workflowParams,
+        global_params,
+        batchSize: global_params?.batch_size
+      });
+      
       // Add refiner if specified
       if (refiner) {
         jsonData.refiner = refiner;
@@ -151,7 +160,8 @@ class ApiService {
   
   // Mock implementation for testing/preview
   private mockGenerateImage(params: GenerateImageParams) {
-    console.info('[MOCK LOG] [mock-backend]', `Generating ${params.global_params?.batch_size || 1} mock image(s) with prompt: "${params.prompt}"`);
+    const batchSize = params.global_params?.batch_size || 1;
+    console.info('[MOCK LOG] [mock-backend]', `Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
     
     // Simulate network delay
     return new Promise((resolve) => {
@@ -168,8 +178,7 @@ class ApiService {
           return placeholderImages[Math.floor(Math.random() * placeholderImages.length)];
         };
         
-        // Create mock images
-        const batchSize = params.global_params?.batch_size || 1;
+        // Create mock images based on the requested batch size
         const mockImages = Array(batchSize).fill(0).map((_, index) => ({
           id: `mock-${Date.now()}-${index}`,
           url: getRandomImage(),

@@ -11,7 +11,7 @@ interface FullscreenHeaderProps {
   onInfoClick: () => void;
   onClose: (e: React.MouseEvent) => void;
   imageNumber: number;
-  title?: string; // Add title field
+  title?: string; 
 }
 
 const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
@@ -22,9 +22,12 @@ const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
   onInfoClick,
   onClose,
   imageNumber,
-  title // Add to component props
+  title
 }) => {
-  // Add debug logging to track the prompt value
+  // Prioritize title over prompt for the display
+  const displayText = title || prompt;
+  
+  // Add debug logging
   console.log(`FullscreenHeader rendering with prompt: "${prompt}", workflowName: ${workflowName}, and title: ${title}`);
   
   return (
@@ -38,7 +41,8 @@ const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
             imageNumber={imageNumber}
             workflowName={workflowName}
             onInfoClick={onInfoClick}
-            title={title} // Pass the title to ImagePrompt
+            title={title}
+            useTitle={true} // Add a flag to prioritize using the title
           />
         </div>
         

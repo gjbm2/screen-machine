@@ -74,7 +74,8 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       prompt: currentImage.prompt,
       workflow: currentImage.workflow,
       batchId: currentImage.batchId,
-      batchIndex: currentImage.batchIndex
+      batchIndex: currentImage.batchIndex,
+      title: currentImage.title // Add title to logged properties
     } : 'No current image');
 
   const handleImageClick = (e: React.MouseEvent) => {
@@ -118,7 +119,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       >
         <DialogTitle className="sr-only">Image Detail View</DialogTitle>
         
-        {/* Header component */}
+        {/* Header component - Now passing title */}
         <FullscreenHeader
           prompt={prompt}
           hasReferenceImages={hasReferenceImages}
@@ -127,6 +128,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           onInfoClick={handleShowInfoPanel}
           onClose={handleClose}
           imageNumber={fullScreenImageIndex + 1}
+          title={currentImage?.title} // Pass the title to the header
         />
 
         {/* Content component */}

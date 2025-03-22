@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -43,7 +42,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
     updateGlobalParam,
   } = usePromptForm();
 
-  // Update prompt when currentPrompt prop changes
   useEffect(() => {
     if (currentPrompt && currentPrompt !== lastReceivedPrompt.current) {
       console.log('PromptForm: Updating prompt from prop:', currentPrompt);
@@ -52,7 +50,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
     }
   }, [currentPrompt]);
 
-  // Handle external image URLs and updates
   useExternalImageUrls(setPreviewUrls);
 
   const handleSubmit = () => {
@@ -68,30 +65,33 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
     setLocalLoading(true);
 
-    // Combine local image files with any external URLs that need to be fetched
     const allImages: (File | string)[] = [...imageFiles];
 
-    // If we have preview URLs that aren't from local files, include them too
     const externalUrls = previewUrls.filter(url => 
       !imageFiles.some(file => url === URL.createObjectURL(file))
     );
     
-    // Add external URLs to the images array (avoid duplicates)
     if (externalUrls.length > 0) {
-      // Use a Set to ensure uniqueness
       const uniqueUrls = new Set([...allImages, ...externalUrls]);
-      allImages.length = 0; // Clear the array
-      allImages.push(...uniqueUrls); // Add unique values
+      allImages.length = 0;
+      allImages.push(...uniqueUrls);
     }
 
     const refinerToUse = selectedRefiner === "none" ? undefined : selectedRefiner;
+    
+    const updatedGlobalParams = {
+      ...globalParams,
+      batch_size: batchSize
+    };
+
+    console.log(`Submitting with batch size: ${batchSize}`, updatedGlobalParams);
 
     onSubmit(
       prompt,
       allImages.length > 0 ? (allImages as File[] | string[]) : undefined,
       selectedWorkflow,
       workflowParams,
-      globalParams,
+      updatedGlobalParams,
       refinerToUse,
       refinerParams
     );
@@ -103,7 +103,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setPrompt(e.target.value);
-    // Update the ref to prevent overwriting user changes with stale props
     lastReceivedPrompt.current = e.target.value;
   };
 
@@ -119,7 +118,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
     
     setImageFiles(prevFiles => [...prevFiles, ...files]);
     setPreviewUrls(prevUrls => {
-      // Create a set of existing URLs for deduplication
       const existingUrls = new Set(prevUrls);
       const uniqueNewUrls = newPreviewUrls.filter(url => !existingUrls.has(url));
       
@@ -130,24 +128,20 @@ const PromptForm: React.FC<PromptFormProps> = ({
   const handleRemoveImage = (index: number) => {
     if (index < 0 || index >= previewUrls.length) return;
     
-    // If this URL is from a File, revoke it
     const url = previewUrls[index];
     const isFileUrl = imageFiles.some(file => URL.createObjectURL(file) === url);
     if (isFileUrl) {
       URL.revokeObjectURL(url);
     }
     
-    // Filter out the file if it exists
     setImageFiles(prevFiles => prevFiles.filter((_, i) => 
       URL.createObjectURL(prevFiles[i]) !== url
     ));
     
-    // Remove from preview URLs
     setPreviewUrls(prevUrls => prevUrls.filter((_, i) => i !== index));
   };
 
   const clearAllImages = () => {
-    // Revoke any object URLs we created
     previewUrls.forEach(url => {
       const isFileUrl = imageFiles.some(file => URL.createObjectURL(file) === url);
       if (isFileUrl) {
