@@ -55,11 +55,12 @@ const MainImageView: React.FC<MainImageViewProps> = ({
 
   const calculateOptimalSize = () => {
     if (imageDimensions.width === 0 || imageDimensions.height === 0) {
-      return { width: 'auto', height: 'auto', maxWidth: '90%', maxHeight: '70vh' };
+      return { width: 'auto', height: 'auto', maxWidth: '90%', maxHeight: '60vh' };
     }
 
+    // Reserve more space for the bottom panels by reducing available height
     const availableWidth = viewportWidth * 0.9;
-    const availableHeight = viewportHeight * 0.7;
+    const availableHeight = viewportHeight * 0.6; // Reduced from 0.7 to ensure bottom controls are visible
     
     const widthRatio = availableWidth / imageDimensions.width;
     const heightRatio = availableHeight / imageDimensions.height;

@@ -11,10 +11,10 @@ const ReferenceImageSection: React.FC<ReferenceImageSectionProps> = ({
   onReferenceImageClick
 }) => {
   return (
-    <div className="mt-4 border-t pt-4">
-      <p className="text-sm text-muted-foreground mb-2">Reference image:</p>
+    <div className="mt-2 border-t pt-2">
+      <p className="text-sm text-muted-foreground mb-1">Reference image:</p>
       <div className="flex justify-center">
-        <div className="border rounded-md overflow-hidden w-24 h-24">
+        <div className="border rounded-md overflow-hidden w-16 h-16">
           <img 
             src={referenceImageUrl} 
             alt="Reference image"
