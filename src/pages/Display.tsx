@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +11,6 @@ const Display = () => {
   const [error, setError] = useState<string | null>(null);
   const [imageKey, setImageKey] = useState<number>(0);
   const [lastModified, setLastModified] = useState<string | null>(null);
-  const [debugMode, setDebugMode] = useState<boolean>(true);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const lastModifiedRef = useRef<string | null>(null);
   const intervalRef = useRef<number | null>(null);
@@ -22,6 +20,7 @@ const Display = () => {
   const showMode = (searchParams.get('show') || 'fit') as ShowMode;
   const refreshInterval = Number(searchParams.get('refresh') || '5');
   const backgroundColor = searchParams.get('background') || '000000';
+  const debugMode = searchParams.get('debug') === 'true';
 
   // Function to validate and process the output parameter
   const processOutputParam = (outputParam: string | null): string | null => {
@@ -137,24 +136,11 @@ const Display = () => {
     }
   })();
 
-  // Function to toggle debug mode
-  const toggleDebugMode = () => {
-    setDebugMode(prev => !prev);
-  };
-
   // Debug panel with all parameters and timestamp
   const DebugPanel = () => (
     <Card className="absolute top-4 left-4 z-10 w-96 bg-white/90 dark:bg-gray-800/90 shadow-lg">
       <CardHeader className="pb-2">
-        <CardTitle className="text-lg flex justify-between items-center">
-          Debug Information
-          <button 
-            onClick={toggleDebugMode}
-            className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-sm"
-          >
-            Hide
-          </button>
-        </CardTitle>
+        <CardTitle className="text-lg">Debug Information</CardTitle>
       </CardHeader>
       <CardContent className="text-sm">
         <h3 className="font-bold mb-1">Parameters:</h3>
@@ -222,20 +208,11 @@ const Display = () => {
           <li><strong>show</strong>: (optional) Display mode - 'fit', 'fill', or 'actual' (default: 'fit')</li>
           <li><strong>refresh</strong>: (optional) Check for image updates every X seconds (default: 5)</li>
           <li><strong>background</strong>: (optional) Background color hexcode (default: 000000)</li>
+          <li><strong>debug</strong>: (optional) Show debug information (true or false, default: false)</li>
         </ul>
       </div>
     );
   }
-
-  // Button to toggle debug mode
-  const ToggleButton = () => (
-    <button 
-      onClick={toggleDebugMode}
-      className="absolute bottom-4 right-4 z-10 px-3 py-2 bg-white/80 dark:bg-gray-800/80 rounded-md shadow-md text-sm"
-    >
-      Debug
-    </button>
-  );
 
   return (
     <div style={containerStyle}>
@@ -257,7 +234,6 @@ const Display = () => {
               onError={handleImageError}
             />
           )}
-          <ToggleButton />
         </>
       )}
     </div>
