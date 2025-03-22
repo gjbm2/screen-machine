@@ -4,36 +4,31 @@
     "id": "share",
     "name": "Share...",
     "icon": "share2",
+    "type": "share",
     "description": "Use device sharing options"
   },
   {
-    "id": "instagram",
-    "name": "Instagram",
-    "icon": "instagram",
-    "description": "Share your creation on Instagram"
-  },
+    "id": "screen1",
+    "name": "North screen",
+    "icon": "tv",
+    "type": "output file"
+    "file": "screen-north.jpg"
+    "description": "Publish to big screen (north)"
+  }
   {
-    "id": "twitter",
-    "name": "Twitter",
-    "icon": "twitter",
-    "description": "Tweet your creation"
-  },
+    "id": "screen2",
+    "name": "South screen",
+    "icon": "tv",
+    "type": "output file"
+    "file": "screen-south.jpg"
+    "description": "Publish to big screen (south)"
+  }
   {
-    "id": "pinterest",
-    "name": "Pinterest",
-    "icon": "pinterest",
-    "description": "Pin your creation to a board"
-  },
-  {
-    "id": "facebook",
-    "name": "Facebook",
-    "icon": "facebook",
-    "description": "Share your creation on Facebook"
-  },
-  {
-    "id": "discord",
-    "name": "Discord",
-    "icon": "message-circle",
-    "description": "Share your creation on Discord"
+    "id": "screen2",
+    "name": "South screen",
+    "icon": "tv",
+    "type": "s3"
+    "file": "screen-south.jpg"
+    "description": "Publish to big screen (south)"
   }
 ]
