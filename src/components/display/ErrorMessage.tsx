@@ -14,7 +14,7 @@ export const ErrorMessage: React.FC<ErrorMessageProps> = ({ error, backgroundCol
       width: '100vw',
       height: '100vh',
       margin: 0,
-      padding: 0,
+      padding: '20px',
       overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
@@ -22,7 +22,6 @@ export const ErrorMessage: React.FC<ErrorMessageProps> = ({ error, backgroundCol
       alignItems: 'center',
       fontSize: '16px',
       textAlign: 'center',
-      padding: '20px',
     }}>
       <h1 style={{ marginBottom: '20px' }}>{error}</h1>
       <p>Parameters:</p>
