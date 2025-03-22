@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import NavigationControls from './NavigationControls';
 import { AspectRatio } from '@/components/ui/aspect-ratio';
 
@@ -101,22 +100,20 @@ const MainImageView: React.FC<MainImageViewProps> = ({
           style={optimalSize}
           onLoad={handleImageLoadInternal}
         />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              variant="outline" 
-              size="icon" 
-              className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm z-30"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenInNewTab(e);
-              }}
-            >
-              <ExternalLink className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Open image in new tab</TooltipContent>
-        </Tooltip>
+        
+        {/* Open in new tab button - moved to bottom left */}
+        <Button 
+          variant="outline" 
+          size="icon" 
+          className="absolute bottom-2 left-2 bg-background/80 backdrop-blur-sm z-30"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenInNewTab(e);
+          }}
+          aria-label="Open image in new tab"
+        >
+          <ExternalLink className="h-4 w-4" />
+        </Button>
       </div>
       
       {/* Navigation controls - Always use global navigation in fullscreen */}

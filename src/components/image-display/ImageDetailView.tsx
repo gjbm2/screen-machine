@@ -39,6 +39,7 @@ interface ImageDetailViewProps {
   isNavigatingAllImages?: boolean;
   onNavigateGlobal?: (imageIndex: number) => void;
   currentGlobalIndex?: number;
+  hidePrompt?: boolean;
 }
 
 const ImageDetailView: React.FC<ImageDetailViewProps> = ({
@@ -55,7 +56,8 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
   allImages,
   isNavigatingAllImages,
   onNavigateGlobal,
-  currentGlobalIndex
+  currentGlobalIndex,
+  hidePrompt = false
 }) => {
   const activeImage = images[activeIndex];
   const [showReferenceImage, setShowReferenceImage] = useState(false);
@@ -175,8 +177,8 @@ const ImageDetailView: React.FC<ImageDetailViewProps> = ({
               />
             )}
             
-            {/* Prompt info */}
-            <ImagePrompt prompt={activeImage?.prompt} />
+            {/* Prompt info - conditionally rendered based on hidePrompt */}
+            {!hidePrompt && <ImagePrompt prompt={activeImage?.prompt} />}
 
             {/* Reference image at the bottom */}
             {referenceImageUrl && (

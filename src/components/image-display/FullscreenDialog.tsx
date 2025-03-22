@@ -1,7 +1,9 @@
 
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import ImageDetailView from './ImageDetailView';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronRight } from 'lucide-react';
 
 interface FullscreenDialogProps {
   showFullScreenView: boolean;
@@ -39,6 +41,13 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     setShowFullScreenView(false);
   };
   
+  const currentBatch = batches[fullScreenBatchId];
+  const currentImage = currentBatch?.filter(img => img.status === 'completed')[fullScreenImageIndex];
+  const imagePrompt = currentImage?.prompt || '';
+  
+  // Determine if the prompt is long and might need collapsing
+  const isLongPrompt = imagePrompt.length > 80;
+  
   return (
     <Dialog 
       open={showFullScreenView} 
@@ -49,9 +58,28 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         noPadding
         description="Detailed view of generated image"
       >
-        <DialogHeader className="p-4 pb-0 flex-shrink-0">
-          <DialogTitle>Image Detail</DialogTitle>
-        </DialogHeader>
+        <div className="p-3 pb-0 flex-shrink-0">
+          {imagePrompt ? (
+            <Collapsible defaultOpen={!isLongPrompt} className="text-left">
+              <div className="flex items-start">
+                <CollapsibleTrigger className="h-6 w-6 flex items-center justify-center mr-1">
+                  <ChevronRight className="h-4 w-4 transform transition-transform duration-200 data-[state=open]:rotate-90" />
+                </CollapsibleTrigger>
+                <div className="text-sm font-normal text-muted-foreground truncate">
+                  {imagePrompt.substring(0, isLongPrompt ? 80 : undefined)}
+                  {isLongPrompt && '...'}
+                </div>
+              </div>
+              <CollapsibleContent>
+                <div className="text-sm font-normal text-muted-foreground pl-7 pr-2 pt-1">
+                  {imagePrompt}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          ) : (
+            <div className="text-sm font-normal text-muted-foreground">No prompt available</div>
+          )}
+        </div>
         <div className="flex-grow overflow-hidden flex flex-col">
           {batches[fullScreenBatchId] && (
             <ImageDetailView
@@ -83,6 +111,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
               onNavigateGlobal={handleNavigateGlobal}
               currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
               onImageClick={handleImageClick}
+              hidePrompt={true}
             />
           )}
         </div>
