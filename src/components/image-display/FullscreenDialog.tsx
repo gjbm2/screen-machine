@@ -57,6 +57,12 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       } else {
         setPrompt('');
       }
+      
+      // Debug log for reference images
+      console.log('Current image in fullscreen:', image);
+      if (image?.referenceImageUrl) {
+        console.log('Reference image URL in fullscreen:', image.referenceImageUrl);
+      }
     } else {
       setCurrentBatch(null);
       setCurrentImage(null);
@@ -92,6 +98,9 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   const hasReferenceImages = Boolean(currentImage?.referenceImageUrl);
   
   const handleShowReferenceImages = () => {
+    if (currentImage?.referenceImageUrl) {
+      console.log("Opening reference image dialog with:", currentImage.referenceImageUrl);
+    }
     setShowReferenceImagesDialog(true);
   };
 
@@ -182,7 +191,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           <ReferenceImageDialog
             isOpen={showReferenceImagesDialog}
             onOpenChange={setShowReferenceImagesDialog}
-            imageUrl={currentImage.referenceImageUrl}
+            imageUrl={currentImage.referenceImageUrl.split(',')[0]} // Use first image if multiple
           />
         )}
 

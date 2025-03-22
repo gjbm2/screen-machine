@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 import { GeneratedImage } from './types';
 import { toast } from 'sonner';
@@ -69,7 +68,8 @@ export const useImageGenerationApi = (
         message: `Using ${uploadedFiles.length + uploadedImageUrls.length} reference images`,
         details: {
           fileCount: uploadedFiles.length,
-          urlCount: uploadedImageUrls.length
+          urlCount: uploadedImageUrls.length,
+          imageUrls: uploadedImageUrls // Add this for debugging
         }
       });
     }
@@ -81,7 +81,8 @@ export const useImageGenerationApi = (
         workflow,
         params,
         globalParams,
-        hasReferenceImage: uploadedFiles.length > 0 || uploadedImageUrls.length > 0
+        hasReferenceImage: uploadedFiles.length > 0 || uploadedImageUrls.length > 0,
+        referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined // Add this for debugging
       }
     });
 
@@ -117,6 +118,9 @@ export const useImageGenerationApi = (
         // Convert the array of URLs to a comma-separated string
         if (uploadedImageUrls.length > 0) {
           placeholderImage.referenceImageUrl = uploadedImageUrls.join(',');
+          
+          // Debug log the reference image URL being stored
+          console.log('Storing reference images in placeholder:', placeholderImage.referenceImageUrl);
         }
         
         // Add containerId if this is a new batch
@@ -126,37 +130,6 @@ export const useImageGenerationApi = (
         
         return [...prevImages, placeholderImage];
       });
-
-      const formData = new FormData();
-      formData.append('prompt', prompt);
-      formData.append('workflow', workflow);
-      
-      // Add parameters as JSON
-      formData.append('params', JSON.stringify(params));
-      formData.append('global_params', JSON.stringify(globalParams));
-      
-      // Add refiner info if present
-      if (refiner) {
-        formData.append('refiner', refiner);
-        if (refinerParams) {
-          formData.append('refiner_params', JSON.stringify(refinerParams));
-        }
-      }
-      
-      // Add batch ID
-      formData.append('batch_id', currentBatchId);
-      
-      // Add uploaded files
-      if (uploadedFiles.length > 0) {
-        uploadedFiles.forEach(file => {
-          formData.append('file', file);
-        });
-      }
-      
-      // Add urls
-      if (uploadedImageUrls.length > 0) {
-        formData.append('image_urls', JSON.stringify(uploadedImageUrls));
-      }
 
       // Use setTimeout to allow the UI to update before starting the API call
       setTimeout(async () => {
@@ -182,7 +155,12 @@ export const useImageGenerationApi = (
           addConsoleLog({
             type: 'success',
             message: `Generated ${images.length} images successfully`,
-            details: { batchId: currentBatchId }
+            details: { 
+              batchId: currentBatchId,
+              // Debug info about reference images
+              hasReferenceImages: uploadedImageUrls.length > 0,
+              referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined
+            }
           });
           
           // Update the images with the actual URLs
@@ -197,12 +175,18 @@ export const useImageGenerationApi = (
               
               if (placeholderIndex >= 0) {
                 // Replace the placeholder with actual data
-                newImages[placeholderIndex] = {
+                // IMPORTANT: Make sure to preserve the referenceImageUrl
+                const updatedImage = {
                   ...newImages[placeholderIndex],
                   url: img.url,
                   status: 'completed',
                   timestamp: Date.now(),
                 };
+                
+                // Debug log the reference images being preserved
+                console.log('Updating image, reference images:', updatedImage.referenceImageUrl);
+                
+                newImages[placeholderIndex] = updatedImage;
               } else {
                 // No placeholder found, this is an additional image
                 const newImage: GeneratedImage = {
@@ -221,6 +205,7 @@ export const useImageGenerationApi = (
                 // If there's a reference image, make sure to include it
                 if (uploadedImageUrls.length > 0) {
                   newImage.referenceImageUrl = uploadedImageUrls.join(',');
+                  console.log('Adding reference images to new image:', newImage.referenceImageUrl);
                 }
                 
                 // Add containerId if this is a new batch

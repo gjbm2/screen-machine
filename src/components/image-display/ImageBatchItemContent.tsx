@@ -26,6 +26,11 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
   };
 
+  // Log for debugging
+  if (hasReferenceImages) {
+    console.log(`Image ${index} has reference images: ${hasReferenceImages}`);
+  }
+
   return (
     <div 
       className={`w-full relative cursor-pointer ${viewMode === 'normal' ? 'aspect-square' : 'h-20'}`}

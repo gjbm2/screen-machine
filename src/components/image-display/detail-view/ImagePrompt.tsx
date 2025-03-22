@@ -28,6 +28,9 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
     (workflowName.length > 10 ? `${workflowName.substring(0, 10)}...` : workflowName) : 
     null;
   
+  // Debug log for reference images
+  console.log(`ImagePrompt has reference images: ${hasReferenceImages}`);
+  
   return (
     <div className="flex items-center gap-1 overflow-hidden">
       {/* Always show the image icon if we have reference images */}
