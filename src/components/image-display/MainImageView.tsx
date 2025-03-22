@@ -58,22 +58,27 @@ const MainImageView: React.FC<MainImageViewProps> = ({
       return { width: 'auto', height: 'auto', maxWidth: '90%', maxHeight: 'calc(75vh - 120px)' };
     }
 
-    // Calculate space needed for controls - adaptive based on viewport size
-    // For larger screens, we'll use a smaller percentage of the screen for controls
-    const controlsSpacePercentage = viewportHeight > 900 ? 0.12 : 0.15;
-    const controlsSpace = Math.min(Math.max(120, viewportHeight * controlsSpacePercentage), 160);
+    // Adaptive sizing based on screen size
+    const isLargeScreen = viewportHeight > 900;
+    const isVeryLargeScreen = viewportHeight > 1200;
     
-    // Reserve space for the bottom panels
-    const availableWidth = viewportWidth * 0.9;
+    // Scale control space down on larger screens
+    const controlsSpacePercentage = isVeryLargeScreen ? 0.08 : (isLargeScreen ? 0.1 : 0.15);
+    const controlsSpace = Math.min(Math.max(100, viewportHeight * controlsSpacePercentage), 160);
+    
+    // Allow content to use more of the screen on larger displays
+    const widthPercentage = isVeryLargeScreen ? 0.95 : (isLargeScreen ? 0.92 : 0.9);
+    const availableWidth = viewportWidth * widthPercentage;
     
     // Allow images to take up more vertical space on larger screens
-    const heightPercentage = viewportHeight > 900 ? 0.8 : 0.75;
+    const heightPercentage = isVeryLargeScreen ? 0.9 : (isLargeScreen ? 0.85 : 0.75);
     const availableHeight = viewportHeight * heightPercentage - controlsSpace;
     
     const widthRatio = availableWidth / imageDimensions.width;
     const heightRatio = availableHeight / imageDimensions.height;
     
-    const ratio = Math.min(widthRatio, heightRatio, 1);
+    // Use a more generous ratio on larger screens, but still respect aspect ratio
+    const ratio = Math.min(widthRatio, heightRatio, isVeryLargeScreen ? 1.5 : (isLargeScreen ? 1.2 : 1));
     
     return { 
       width: 'auto', 
