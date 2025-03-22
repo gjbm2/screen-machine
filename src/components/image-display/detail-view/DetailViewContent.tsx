@@ -4,6 +4,7 @@ import ImageKeyboardNavigation from './ImageKeyboardNavigation';
 import DetailViewImageSection from './DetailViewImageSection';
 import DetailViewInfoPanel from './DetailViewInfoPanel';
 import ReferenceImageDialog from '../ReferenceImageDialog';
+import ImageInfoDialog from '../ImageInfoDialog';
 
 interface DetailViewContentProps {
   batchId: string;
@@ -57,6 +58,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
 }) => {
   const activeImage = images[activeIndex];
   const [showReferenceImage, setShowReferenceImage] = useState(false);
+  const [showImageInfo, setShowImageInfo] = useState(false);
   const referenceImageUrl = activeImage?.referenceImageUrl;
   
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
@@ -88,6 +90,10 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   
   const handleDeleteImage = () => {
     onDeleteImage(batchId, activeIndex);
+  };
+
+  const handleInfoClick = () => {
+    setShowImageInfo(true);
   };
 
   return (
@@ -131,6 +137,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         handleDeleteImage={handleDeleteImage}
         onOpenInNewTab={handleOpenInNewTab}
         hidePrompt={hidePrompt}
+        onInfoClick={handleInfoClick}
       />
 
       {/* Reference image dialog */}
@@ -139,6 +146,16 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
           isOpen={showReferenceImage}
           onOpenChange={setShowReferenceImage}
           imageUrl={referenceImageUrl}
+        />
+      )}
+
+      {/* Image info dialog */}
+      {activeImage && (
+        <ImageInfoDialog
+          isOpen={showImageInfo}
+          onOpenChange={setShowImageInfo}
+          image={activeImage}
+          dimensions={imageDimensions}
         />
       )}
     </div>

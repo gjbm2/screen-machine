@@ -5,6 +5,7 @@ import { X } from 'lucide-react';
 import ImageDetailView from './ImageDetailView';
 import ImagePrompt from './detail-view/ImagePrompt';
 import ReferenceImageDialog from './ReferenceImageDialog';
+import ImageInfoDialog from './ImageInfoDialog';
 
 interface FullscreenDialogProps {
   showFullScreenView: boolean;
@@ -39,6 +40,8 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   const [currentBatch, setCurrentBatch] = useState<any[] | null>(null);
   const [currentImage, setCurrentImage] = useState<any | null>(null);
   const [showReferenceImagesDialog, setShowReferenceImagesDialog] = useState(false);
+  const [showInfoDialog, setShowInfoDialog] = useState(false);
+  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   
   // Update state based on props
   useEffect(() => {
@@ -77,17 +80,21 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   };
 
   const handleShowInfoPanel = () => {
-    // This function should trigger the DetailViewInfoPanel to show info
-    // For now we'll just toggle the reference images dialog as a placeholder
-    if (currentImage?.referenceImageUrl) {
-      setShowReferenceImagesDialog(true);
-    }
+    setShowInfoDialog(true);
   };
 
   const hasReferenceImages = Boolean(currentImage?.referenceImageUrl);
   
   const handleShowReferenceImages = () => {
     setShowReferenceImagesDialog(true);
+  };
+
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget as HTMLImageElement;
+    setImageDimensions({
+      width: img.naturalWidth,
+      height: img.naturalHeight
+    });
   };
   
   return (
@@ -170,6 +177,16 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
             isOpen={showReferenceImagesDialog}
             onOpenChange={setShowReferenceImagesDialog}
             imageUrl={currentImage.referenceImageUrl}
+          />
+        )}
+
+        {/* Image info dialog */}
+        {currentImage && (
+          <ImageInfoDialog
+            isOpen={showInfoDialog}
+            onOpenChange={setShowInfoDialog}
+            image={currentImage}
+            dimensions={imageDimensions}
           />
         )}
       </DialogContent>

@@ -3,7 +3,6 @@ import React from 'react';
 import ImageMetadata from '../ImageMetadata';
 import DetailViewActionBar from './DetailViewActionBar';
 import ReferenceImageSection from '../ReferenceImageSection';
-import ReferenceImageDialog from '../ReferenceImageDialog';
 
 interface DetailViewInfoPanelProps {
   activeImage: {
@@ -22,6 +21,7 @@ interface DetailViewInfoPanelProps {
   handleDeleteImage: () => void;
   onOpenInNewTab: (e: React.MouseEvent) => void;
   hidePrompt?: boolean;
+  onInfoClick?: () => void;
 }
 
 const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
@@ -34,7 +34,8 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
   handleUseAsInput,
   handleDeleteImage,
   onOpenInNewTab,
-  hidePrompt = false
+  hidePrompt = false,
+  onInfoClick
 }) => {
   return (
     <div className="flex-shrink-0 p-2 space-y-1 bg-background select-none border-t min-h-[100px]">
@@ -44,6 +45,7 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
         timestamp={activeImage?.timestamp}
         imageUrl={activeImage?.url}
         onOpenInNewTab={onOpenInNewTab}
+        onInfoClick={onInfoClick}
       />
       
       {/* Image Actions Bar - all buttons in a single row */}
@@ -66,15 +68,6 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
         <ReferenceImageSection
           referenceImageUrl={referenceImageUrl}
           onReferenceImageClick={() => setShowReferenceImage(true)}
-        />
-      )}
-
-      {/* Reference image popup (full size view) */}
-      {referenceImageUrl && (
-        <ReferenceImageDialog
-          isOpen={showReferenceImage}
-          onOpenChange={setShowReferenceImage}
-          imageUrl={referenceImageUrl}
         />
       )}
     </div>
