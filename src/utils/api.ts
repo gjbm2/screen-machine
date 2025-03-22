@@ -1,4 +1,3 @@
-
 // API service for all backend requests
 import { toast } from 'sonner';
 
@@ -49,13 +48,18 @@ class ApiService {
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
       
+      // IMPORTANT: Make sure batch_size is included in global_params
+      if (!jsonData.global_params.batch_size) {
+        jsonData.global_params.batch_size = 1; // Default to 1 if not specified
+      }
+      
       // Log the params to debug batch size issues
       console.log("[api] Generating image with params:", {
         prompt,
         workflow,
         params: workflowParams,
         global_params,
-        batchSize: global_params?.batch_size
+        batchSize: jsonData.global_params.batch_size
       });
       
       // Add refiner if specified
@@ -160,6 +164,7 @@ class ApiService {
   
   // Mock implementation for testing/preview
   private mockGenerateImage(params: GenerateImageParams) {
+    // Make sure we correctly extract batch size from global_params
     const batchSize = params.global_params?.batch_size || 1;
     console.info('[MOCK LOG] [mock-backend]', `Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
     
@@ -186,7 +191,10 @@ class ApiService {
           workflow: params.workflow,
           timestamp: Date.now(),
           batch_id: params.batch_id || `batch-${Date.now()}`,
-          batch_index: index
+          batch_index: index,
+          params: params.params,
+          refiner: params.refiner,
+          refiner_params: params.refiner_params
         }));
         
         console.info('[MOCK LOG] [mock-backend]', `Generated ${mockImages.length} mock image(s) successfully!`);

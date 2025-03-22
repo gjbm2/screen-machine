@@ -1,3 +1,4 @@
+
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -108,18 +109,23 @@ export const generateImage = async (
     console.log(`[image-generator] Using reference images: ${uploadedImageUrls.join(', ')}`);
   }
 
+  // Get batch size from global params, default to 1
+  const batchSize = globalParams?.batch_size || 1;
+  
   addConsoleLog({
     type: 'info',
-    message: `Generating image with prompt: "${prompt}"`,
+    message: `Generating ${batchSize} image(s) with prompt: "${prompt}"`,
     details: {
       workflow,
       params,
       globalParams,
       hasReferenceImage: uploadedFiles.length > 0 || uploadedImageUrls.length > 0,
       referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
-      batchSize: globalParams?.batch_size // Log the batch size
+      batchSize
     }
   });
+  
+  console.log(`[image-generator] Generating batch of ${batchSize} images with prompt: "${prompt}"`);
 
   try {
     // Prepare reference image URL string - make sure it's not empty
@@ -130,8 +136,6 @@ export const generateImage = async (
       console.log("[image-generator] Reference images being used for generation:", referenceImageUrl);
     }
     
-    // Get batch size from global params, default to 1
-    const batchSize = globalParams?.batch_size || 1;
     console.log(`[image-generator] Creating ${batchSize} placeholder(s) for batch ${currentBatchId}`);
     
     // Determine which container ID to use
@@ -165,7 +169,7 @@ export const generateImage = async (
           params,
           global_params: {
             ...globalParams,
-            batch_size: globalParams?.batch_size || 1, // Ensure batch_size is passed
+            batch_size: batchSize, // Make sure batch_size is explicitly included
           },
           refiner,
           refiner_params: refinerParams,

@@ -24,6 +24,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
   const [isFirstRun, setIsFirstRun] = useState(true);
   const [fullscreenRefreshTrigger, setFullscreenRefreshTrigger] = useState(0);
+  const [lastBatchIdUsed, setLastBatchIdUsed] = useState<string | null>(null);
 
   // Initialize global image counter if it doesn't exist
   useEffect(() => {
@@ -59,7 +60,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     setImageContainerOrder,
     nextContainerId,
     setNextContainerId,
-    handleGenerationComplete // Pass the callback to refresh the fullscreen view
+    handleGenerationComplete
   );
 
   // When uploadedImageUrls changes, store them in a global variable
@@ -106,30 +107,32 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
         uniqueImageFiles = [...new Set(urlStrings)];
       } else {
         // If we have a mix, convert all Files to URLs first
-        // For actual implementation, we'd want to handle this differently
-        // This is a workaround to satisfy TypeScript
         const allUrls = [...urlStrings];
         uniqueImageFiles = [...new Set(allUrls)];
       }
     }
     
-    // IMPORTANT: We remove the counter increment here since it's handled in image-generator.ts
-    // to avoid double counting
-    
+    // IMPORTANT: Use the last batchId if available for "Go again" functionality
+    // This is crucial to ensure new images are added to the same container
     const config: ImageGenerationConfig = {
       prompt,
       imageFiles: uniqueImageFiles,
       workflow: currentWorkflow,
       params: currentParams,
       globalParams: currentGlobalParams,
+      batchId: lastBatchIdUsed
     };
     
-    generateImages(config);
+    const newBatchId = await generateImages(config);
+    if (newBatchId) {
+      setLastBatchIdUsed(newBatchId);
+    }
   }, [
     currentWorkflow, 
     currentParams, 
     currentGlobalParams, 
-    generateImages
+    generateImages,
+    lastBatchIdUsed
   ]);
   
   const {

@@ -78,60 +78,52 @@ export const useImageActions = (
         }
         
         // Submit the prompt
-        // FIXED: Use an empty string prompt if no prompt exists
+        // Use an empty string prompt if no prompt exists
         const promptToUse = batchImage.prompt || '';
         
-        // Make sure to pass the existing batchId to reuse the same container
+        // CRITICAL FIX: Pass the batchId to ensure we use the same container
         handleSubmitPrompt(promptToUse, referenceImages);
-        
-        toast.success('Generating new image with same settings');
-        
-        // Return the batch ID so caller can know which batch was regenerated
-        return batchId;
       }
     }
-    return null;
   };
 
-  const handleDownloadImage = (url: string) => {
-    // Get the filename from the URL
-    const image = generatedImages.find(img => img.url === url);
-    if (!image) {
-      console.error('Image not found:', url);
-      return;
-    }
-    
-    // Create a filename based on the prompt or fallback to the timestamp
-    const filenameBase = image.prompt 
-      ? image.prompt.substring(0, 30).replace(/[^a-zA-Z0-9]/g, '_') 
-      : `generated_${new Date().getTime()}`;
-      
-    // Save the file
-    saveAs(url, `${filenameBase}.png`);
-    toast.success('Image downloaded');
+  const handleDownloadImage = (url: string, title?: string) => {
+    const filename = title || `image-${Date.now()}.jpg`;
+    saveAs(url, filename);
+    toast.success(`Downloaded image: ${filename}`);
   };
 
-  const handleDeleteImage = (batchId: string, imageIndex: number) => {
-    setGeneratedImages(prev => {
-      const newImages = [...prev];
-      const imageToDelete = newImages.find(img => img.batchId === batchId && img.batchIndex === imageIndex);
+  const handleDeleteImage = (batchId: string, index: number) => {
+    setGeneratedImages(prevImages => {
+      // Find the specific image to delete based on the batch ID and index
+      const imageToDelete = prevImages.find(
+        img => img.batchId === batchId && img.batchIndex === index
+      );
       
-      if (!imageToDelete) {
-        console.error(`Image not found with batchId ${batchId} and index ${imageIndex}`);
-        return prev;
+      if (!imageToDelete) return prevImages;
+      
+      // Remove this specific image
+      const updatedImages = prevImages.filter(
+        img => !(img.batchId === batchId && img.batchIndex === index)
+      );
+      
+      // If we deleted the last image in a batch, remove the batch ID from the order
+      const batchHasRemainingImages = updatedImages.some(img => img.batchId === batchId);
+      if (!batchHasRemainingImages) {
+        setImageContainerOrder(prev => prev.filter(id => id !== batchId));
       }
       
-      return newImages.filter(img => !(img.batchId === batchId && img.batchIndex === imageIndex));
+      return updatedImages;
     });
-    
-    toast.success('Image deleted');
   };
 
   const handleReorderContainers = (sourceIndex: number, destinationIndex: number) => {
-    const newImageContainerOrder = [...imageContainerOrder];
-    const [removed] = newImageContainerOrder.splice(sourceIndex, 1);
-    newImageContainerOrder.splice(destinationIndex, 0, removed);
-    setImageContainerOrder(newImageContainerOrder);
+    setImageContainerOrder(prev => {
+      const newOrder = [...prev];
+      const [removed] = newOrder.splice(sourceIndex, 1);
+      newOrder.splice(destinationIndex, 0, removed);
+      return newOrder;
+    });
   };
 
   return {
@@ -143,5 +135,3 @@ export const useImageActions = (
     handleReorderContainers,
   };
 };
-
-export default useImageActions;
