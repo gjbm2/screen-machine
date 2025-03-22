@@ -42,12 +42,14 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   const [showReferenceImagesDialog, setShowReferenceImagesDialog] = useState(false);
   const [showInfoDialog, setShowInfoDialog] = useState(false);
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+  const [lastBatchId, setLastBatchId] = useState<string | null>(null);
   
   // Update state based on props
   useEffect(() => {
     if (fullScreenBatchId && batches[fullScreenBatchId]) {
       const batch = batches[fullScreenBatchId];
       setCurrentBatch(batch);
+      setLastBatchId(fullScreenBatchId);
       
       const image = batch[fullScreenImageIndex];
       setCurrentImage(image);
@@ -117,6 +119,27 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       height: img.naturalHeight
     });
   };
+
+  const handleCreateAgain = (batchId: string) => {
+    // Store the current batch ID to navigate to the new image later
+    setLastBatchId(batchId);
+    onCreateAgain(batchId);
+    
+    // We don't need to close here - we'll wait until the new image is generated
+    // The parent components will update the batches and allImagesFlat
+  };
+
+  const handleDeleteImage = (batchId: string, index: number) => {
+    onDeleteImage(batchId, index);
+    // Close the fullscreen view after deleting
+    setShowFullScreenView(false);
+  };
+
+  const handleUseAsInput = (url: string) => {
+    onUseGeneratedAsInput(url);
+    // Close the fullscreen view after applying input
+    setShowFullScreenView(false);
+  };
   
   return (
     <Dialog 
@@ -176,11 +199,10 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
                 }
               }}
               onToggleExpand={() => {}}
-              onDeleteImage={onDeleteImage}
-              onCreateAgain={onCreateAgain}
+              onDeleteImage={handleDeleteImage}
+              onCreateAgain={handleCreateAgain}
               onUseAsInput={(url) => {
-                onUseGeneratedAsInput(url);
-                setShowFullScreenView(false);
+                handleUseAsInput(url);
               }}
               allImages={allImagesFlat}
               isNavigatingAllImages={true}

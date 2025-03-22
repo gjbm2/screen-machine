@@ -22,6 +22,7 @@ interface DetailViewInfoPanelProps {
   onOpenInNewTab: (e: React.MouseEvent) => void;
   hidePrompt?: boolean;
   onInfoClick?: () => void;
+  onClose?: () => void; // Added for closing fullscreen view
 }
 
 const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
@@ -35,7 +36,8 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
   handleDeleteImage,
   onOpenInNewTab,
   hidePrompt = false,
-  onInfoClick
+  onInfoClick,
+  onClose // New prop for closing
 }) => {
   // Use the referenceImageUrl from props first, then from activeImage as fallback
   const effectiveReferenceImageUrl = referenceImageUrl || activeImage?.referenceImageUrl;
@@ -72,6 +74,7 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
           onCreateAgain={handleCreateAgain}
           onUseAsInput={handleUseAsInput}
           onDeleteImage={handleDeleteImage}
+          onClose={onClose} // Pass the onClose handler
           generationInfo={{
             prompt: activeImage.prompt || '',
             workflow: activeImage.workflow || '',
