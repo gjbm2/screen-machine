@@ -11,7 +11,6 @@ interface FullscreenHeaderProps {
   onInfoClick: () => void;
   onClose: (e: React.MouseEvent) => void;
   imageNumber: number;
-  title?: string;
 }
 
 const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
@@ -21,12 +20,10 @@ const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
   workflowName,
   onInfoClick,
   onClose,
-  imageNumber,
-  title
+  imageNumber
 }) => {
   // Add debug logging to track the prompt value
   console.log(`FullscreenHeader rendering with prompt: "${prompt}" and workflowName: ${workflowName}`);
-  console.log(`FullscreenHeader rendering with title: "${title}"`);
   
   return (
     <div className="px-4 py-2 border-b h-10 flex-shrink-0 flex items-center">
@@ -39,7 +36,6 @@ const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
             imageNumber={imageNumber}
             workflowName={workflowName}
             onInfoClick={onInfoClick}
-            title={title}
           />
         </div>
         
