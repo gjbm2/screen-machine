@@ -1,6 +1,8 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import ImageDetailView from './ImageDetailView';
 
 interface FullscreenDialogProps {
@@ -32,13 +34,22 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   currentGlobalIndex,
   handleNavigateGlobal
 }) => {
+  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  
   if (!fullScreenBatchId) return null;
   
   const currentBatch = batches[fullScreenBatchId];
+  const currentImage = currentBatch?.[fullScreenImageIndex];
+  const prompt = currentImage?.prompt || '';
   
   const handleImageClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowFullScreenView(false);
+  };
+
+  const togglePromptExpand = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsPromptExpanded(!isPromptExpanded);
   };
   
   return (
@@ -49,9 +60,37 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       <DialogContent 
         className="max-w-[100vw] w-[95vw] md:w-[90vw] max-h-[95vh] h-auto p-0 overflow-hidden flex flex-col select-none" 
         noPadding
-        title="Image Details"
-        description="Detailed view of generated image"
       >
+        {/* Custom header with expandable prompt and close button */}
+        {currentBatch && (
+          <div className="flex justify-between items-start px-4 py-3 border-b">
+            <div 
+              className={`flex-1 pr-4 overflow-hidden ${isPromptExpanded ? '' : 'max-h-6'}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start">
+                <button 
+                  onClick={togglePromptExpand}
+                  className="inline-flex items-center justify-center p-1 mr-2 mt-0.5 hover:bg-gray-100 rounded-md"
+                >
+                  {isPromptExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+                <p className={`text-sm text-muted-foreground ${isPromptExpanded ? 'whitespace-normal' : 'truncate'}`}>
+                  {prompt}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 h-8 w-8"
+              onClick={() => setShowFullScreenView(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
         <div className="flex-grow overflow-hidden flex flex-col">
           {batches[fullScreenBatchId] && (
             <ImageDetailView
@@ -83,7 +122,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
               onNavigateGlobal={handleNavigateGlobal}
               currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
               onImageClick={handleImageClick}
-              hidePrompt={false}
+              hidePrompt={true} // Hide the prompt since we now show it in the header
             />
           )}
         </div>

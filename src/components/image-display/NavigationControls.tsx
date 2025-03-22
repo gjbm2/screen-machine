@@ -32,12 +32,12 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
     medium: {
       hotspot: 'w-16 h-[100px]', // Wider hotspot (3x button width)
       button: 'h-full w-5',
-      icon: 'h-4 w-4'
+      icon: 'h-5 w-5' // Larger icon for better visibility
     },
     large: {
       hotspot: 'w-16 h-[100px]', // Wider hotspot (3x button width)
       button: 'h-full w-5',
-      icon: 'h-4 w-4'
+      icon: 'h-5 w-5' // Larger icon for better visibility
     }
   };
 
@@ -49,14 +49,14 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
       {/* Previous button - conditionally rendered */}
       {showPrevButton && (
         <div 
-          className={`absolute left-3 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-start cursor-pointer`}
+          className={`absolute left-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-start cursor-pointer`}
           onClick={onPrevious} // Apply the click handler to the entire hotspot div
           onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
           <Button
             size="icon"
             variant="ghost"
-            className={`${button} rounded-r-md rounded-l-none bg-background/50 hover:bg-background/70 transition-opacity opacity-40 group-hover:opacity-100 pointer-events-none`}
+            className={`${button} rounded-r-md rounded-l-none bg-background/60 hover:bg-background/80 transition-opacity opacity-60 group-hover:opacity-100 pointer-events-none text-gray-700`}
             tabIndex={-1}
           >
             <ChevronLeft className={icon} />
@@ -67,14 +67,14 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
       {/* Next button - conditionally rendered */}
       {showNextButton && (
         <div 
-          className={`absolute right-3 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-end cursor-pointer`} 
+          className={`absolute right-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-end cursor-pointer`} 
           onClick={onNext} // Apply the click handler to the entire hotspot div
           onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
           <Button
             size="icon"
             variant="ghost"
-            className={`${button} rounded-l-md rounded-r-none bg-background/50 hover:bg-background/70 transition-opacity opacity-40 group-hover:opacity-100 pointer-events-none`}
+            className={`${button} rounded-l-md rounded-r-none bg-background/60 hover:bg-background/80 transition-opacity opacity-60 group-hover:opacity-100 pointer-events-none text-gray-700`}
             tabIndex={-1}
           >
             <ChevronRight className={icon} />
