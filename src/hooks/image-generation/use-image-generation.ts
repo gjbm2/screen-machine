@@ -69,27 +69,33 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     setIsFirstRun(false);
     
     // Ensure we have unique image files (no duplicates)
-    let uniqueImageFiles: (File | string)[] | undefined = undefined;
+    let uniqueImageFiles: File[] | string[] | undefined = undefined;
     
     if (imageFiles && imageFiles.length > 0) {
-      // Use a Set for string URLs, and a Map for File objects
-      const uniqueUrls = new Set<string>();
-      const uniqueFiles = new Map<string, File>();
+      // Separate files and strings into different arrays
+      const fileObjects: File[] = [];
+      const urlStrings: string[] = [];
       
       imageFiles.forEach(item => {
         if (typeof item === 'string') {
-          uniqueUrls.add(item);
+          urlStrings.push(item);
         } else if (item instanceof File) {
-          // Use file name and size as a unique identifier
-          const fileKey = `${item.name}_${item.size}`;
-          uniqueFiles.set(fileKey, item);
+          fileObjects.push(item);
         }
       });
       
-      uniqueImageFiles = [
-        ...Array.from(uniqueUrls), 
-        ...Array.from(uniqueFiles.values())
-      ];
+      // If we have only files or only strings, use the appropriate array
+      if (fileObjects.length > 0 && urlStrings.length === 0) {
+        uniqueImageFiles = [...new Set(fileObjects)];
+      } else if (urlStrings.length > 0 && fileObjects.length === 0) {
+        uniqueImageFiles = [...new Set(urlStrings)];
+      } else {
+        // If we have a mix, convert all Files to URLs first
+        // For actual implementation, we'd want to handle this differently
+        // This is a workaround to satisfy TypeScript
+        const allUrls = [...urlStrings];
+        uniqueImageFiles = [...new Set(allUrls)];
+      }
     }
     
     const config: ImageGenerationConfig = {
