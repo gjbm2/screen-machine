@@ -58,6 +58,7 @@ export const useImageActions = (
       if (batchImage) {
         console.log('Creating again from batch:', batchId);
         console.log('Batch image:', batchImage);
+        console.log('Container ID:', batchImage.containerId);
         
         // Prepare reference images if any
         let referenceImages: string[] | undefined = undefined;
@@ -79,7 +80,10 @@ export const useImageActions = (
         // Submit the prompt
         // FIXED: Use an empty string prompt if no prompt exists
         const promptToUse = batchImage.prompt || '';
+        
+        // Make sure to pass the existing batchId to reuse the same container
         handleSubmitPrompt(promptToUse, referenceImages);
+        
         toast.success('Generating new image with same settings');
         
         // Return the batch ID so caller can know which batch was regenerated

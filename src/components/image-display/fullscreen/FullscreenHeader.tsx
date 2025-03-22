@@ -24,7 +24,7 @@ const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
   imageNumber,
   title
 }) => {
-  // Prioritize title over prompt for the display
+  // Always use the title for display
   const displayText = title || prompt;
   
   // Add debug logging
@@ -42,7 +42,7 @@ const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
             workflowName={workflowName}
             onInfoClick={onInfoClick}
             title={title}
-            useTitle={true} // Add a flag to prioritize using the title
+            useTitle={true} // Always use the title
           />
         </div>
         

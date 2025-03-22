@@ -113,10 +113,8 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
       }
     }
     
-    // Increment image counter for each generation
-    if (typeof window.imageCounter !== 'undefined') {
-      window.imageCounter += 1;
-    }
+    // IMPORTANT: We remove the counter increment here since it's handled in image-generator.ts
+    // to avoid double counting
     
     const config: ImageGenerationConfig = {
       prompt,

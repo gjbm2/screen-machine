@@ -15,6 +15,9 @@ interface ImageInfoDialogProps {
     params?: Record<string, any>;
     referenceImageUrl?: string;
     timestamp?: number;
+    refiner?: string;
+    refinerParams?: Record<string, any>;
+    title?: string;
   };
   dimensions?: { width: number; height: number };
 }
@@ -119,6 +122,13 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
               <div>Generated:</div>
               <div>{formatDate(image.timestamp)}</div>
               
+              {image.refiner && image.refiner !== 'none' && (
+                <>
+                  <div>Refiner:</div>
+                  <div>{image.refiner}</div>
+                </>
+              )}
+              
               {referenceImages.length > 0 && (
                 <>
                   <div>Reference Images:</div>
@@ -128,12 +138,27 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
             </div>
           </div>
           
-          {/* Parameters */}
+          {/* Workflow Parameters */}
           {image.params && Object.keys(image.params).length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-sm font-bold">Parameters</h3>
+              <h3 className="text-sm font-bold">Workflow Parameters</h3>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 {Object.entries(image.params).map(([key, value]) => (
+                  <React.Fragment key={key}>
+                    <div className="font-medium">{key}:</div>
+                    <div>{String(value)}</div>
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Refiner Parameters */}
+          {image.refinerParams && Object.keys(image.refinerParams).length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-bold">Refiner Parameters</h3>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {Object.entries(image.refinerParams).map(([key, value]) => (
                   <React.Fragment key={key}>
                     <div className="font-medium">{key}:</div>
                     <div>{String(value)}</div>
