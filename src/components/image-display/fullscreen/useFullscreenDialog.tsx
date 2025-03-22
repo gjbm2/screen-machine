@@ -36,14 +36,17 @@ const useFullscreenDialog = ({
       // Make sure we're accessing a valid image
       const completedImages = batch.filter(img => img.status === 'completed');
       if (completedImages.length > 0) {
+        // Ensure the index is valid
         const imageIndex = Math.min(fullScreenImageIndex, completedImages.length - 1);
         const image = completedImages[imageIndex];
         setCurrentImage(image);
         
         // Set the prompt if available
         if (image?.prompt) {
+          console.log('Setting prompt to:', image.prompt);
           setPrompt(image.prompt);
         } else {
+          console.log('No prompt available, clearing prompt');
           setPrompt('');
         }
       }
@@ -62,7 +65,7 @@ const useFullscreenDialog = ({
       // Check if we have a completed image in the latest batch
       if (batches[lastBatchId]) {
         const completedImages = batches[lastBatchId].filter(img => img.status === 'completed');
-        console.log('FullscreenDialog - updating to newly completed image at index:', 0);
+        console.log('FullscreenDialog - updating to newly completed image, found images:', completedImages.length);
         
         if (completedImages.length > 0) {
           // Get the first completed image
@@ -71,7 +74,11 @@ const useFullscreenDialog = ({
           
           // Set the prompt if available
           if (image?.prompt) {
+            console.log('Setting prompt from refresh trigger to:', image.prompt);
             setPrompt(image.prompt);
+          } else {
+            console.log('No prompt available from refresh trigger, clearing prompt');
+            setPrompt('');
           }
         }
       }

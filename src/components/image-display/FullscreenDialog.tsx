@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import ReferenceImageDialog from './ReferenceImageDialog';
 import ImageInfoDialog from './ImageInfoDialog';
@@ -66,6 +66,16 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   if (!showFullScreenView) {
     return null;
   }
+
+  // Additional logging to track what prompt is being displayed
+  console.log(`FullscreenDialog - Current prompt: "${prompt}", Current image:`, 
+    currentImage ? {
+      url: currentImage.url,
+      prompt: currentImage.prompt,
+      workflow: currentImage.workflow,
+      batchId: currentImage.batchId,
+      batchIndex: currentImage.batchIndex
+    } : 'No current image');
 
   const handleImageClick = (e: React.MouseEvent) => {
     e.stopPropagation();

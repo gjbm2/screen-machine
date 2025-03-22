@@ -23,6 +23,8 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
 }) => {
   // Log whether this component has reference images
   console.log("ImagePrompt has reference images:", hasReferenceImages);
+  console.log("ImagePrompt received prompt:", prompt);
+  console.log("ImagePrompt received workflowName:", workflowName);
   
   // If no prompt, use a numbered title with the workflow name
   const displayText = prompt 
