@@ -25,17 +25,17 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
   // Size mappings for hotspot areas and navigation buttons
   const sizeClasses = {
     small: {
-      hotspot: 'w-5 h-[200px]',
+      hotspot: 'w-10 h-[100px]',
       button: 'h-full w-5',
       icon: 'h-3 w-3'
     },
     medium: {
-      hotspot: 'w-5 h-[200px]',
+      hotspot: 'w-10 h-[100px]',
       button: 'h-full w-5',
       icon: 'h-4 w-4'
     },
     large: {
-      hotspot: 'w-5 h-[200px]',
+      hotspot: 'w-10 h-[100px]',
       button: 'h-full w-5',
       icon: 'h-4 w-4'
     }
@@ -49,7 +49,7 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
       {/* Previous button - conditionally rendered */}
       {showPrevButton && (
         <div 
-          className={`absolute left-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-center group`}
+          className={`absolute left-1 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-start group`}
           onClick={onPrevious}
           onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
@@ -67,7 +67,7 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
       {/* Next button - conditionally rendered */}
       {showNextButton && (
         <div 
-          className={`absolute right-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-center group`} 
+          className={`absolute right-1 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-end group`} 
           onClick={onNext}
           onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
