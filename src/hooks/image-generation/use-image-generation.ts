@@ -127,11 +127,11 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     // Don't check the return value directly since it might be void
     try {
       // Generate images and possibly get a batch ID
-      const generatedBatchId = await generateImages(config);
+      const result = await generateImages(config);
       
       // Only update lastBatchIdUsed if we got a valid string back
-      if (typeof generatedBatchId === 'string' && generatedBatchId.trim() !== '') {
-        setLastBatchIdUsed(generatedBatchId);
+      if (result !== null && typeof result === 'string' && result.length > 0) {
+        setLastBatchIdUsed(result);
       }
     } catch (error) {
       console.error("Error during image generation:", error);
