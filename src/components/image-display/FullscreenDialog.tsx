@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { X } from 'lucide-react';
-import ImageDetailView from './ImageDetailView';
-import ImagePrompt from './detail-view/ImagePrompt';
 import ReferenceImageDialog from './ReferenceImageDialog';
 import ImageInfoDialog from './ImageInfoDialog';
+import FullscreenHeader from './fullscreen/FullscreenHeader';
+import FullscreenContent from './fullscreen/FullscreenContent';
+import useFullscreenDialog from './fullscreen/useFullscreenDialog';
 
 interface FullscreenDialogProps {
   showFullScreenView: boolean;
@@ -20,7 +20,7 @@ interface FullscreenDialogProps {
   allImagesFlat: any[];
   currentGlobalIndex: number | null;
   handleNavigateGlobal: (index: number) => void;
-  fullscreenRefreshTrigger?: number; // Add optional refresh trigger
+  fullscreenRefreshTrigger?: number;
 }
 
 const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
@@ -36,68 +36,31 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   allImagesFlat,
   currentGlobalIndex,
   handleNavigateGlobal,
-  fullscreenRefreshTrigger = 0 // Default to 0
+  fullscreenRefreshTrigger = 0
 }) => {
-  const [prompt, setPrompt] = useState('');
-  const [currentBatch, setCurrentBatch] = useState<any[] | null>(null);
-  const [currentImage, setCurrentImage] = useState<any | null>(null);
-  const [showReferenceImagesDialog, setShowReferenceImagesDialog] = useState(false);
-  const [showInfoDialog, setShowInfoDialog] = useState(false);
-  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const [lastBatchId, setLastBatchId] = useState<string | null>(null);
-  
-  // This effect updates the current batch and image when the fullScreenBatchId or fullScreenImageIndex changes
-  useEffect(() => {
-    if (fullScreenBatchId && batches[fullScreenBatchId]) {
-      console.log('FullscreenDialog - updating to new batch id:', fullScreenBatchId);
-      const batch = batches[fullScreenBatchId];
-      setCurrentBatch(batch);
-      setLastBatchId(fullScreenBatchId);
-      
-      // Make sure we're accessing a valid image
-      const completedImages = batch.filter(img => img.status === 'completed');
-      if (completedImages.length > 0) {
-        const imageIndex = Math.min(fullScreenImageIndex, completedImages.length - 1);
-        const image = completedImages[imageIndex];
-        setCurrentImage(image);
-        
-        // Set the prompt if available
-        if (image?.prompt) {
-          setPrompt(image.prompt);
-        } else {
-          setPrompt('');
-        }
-      }
-    } else {
-      // If no valid batch, clear the current state
-      setCurrentBatch(null);
-      setCurrentImage(null);
-      setPrompt('');
-    }
-  }, [fullScreenBatchId, batches, fullScreenImageIndex]);
-  
-  // This effect listens for the fullscreenRefreshTrigger to update
-  useEffect(() => {
-    if (fullscreenRefreshTrigger > 0 && lastBatchId) {
-      console.log('FullscreenDialog - refresh trigger changed:', fullscreenRefreshTrigger);
-      // Check if we have a completed image in the latest batch
-      if (batches[lastBatchId]) {
-        const completedImages = batches[lastBatchId].filter(img => img.status === 'completed');
-        console.log('FullscreenDialog - updating to newly completed image at index:', 0);
-        
-        if (completedImages.length > 0) {
-          // Get the first completed image
-          const image = completedImages[0];
-          setCurrentImage(image);
-          
-          // Set the prompt if available
-          if (image?.prompt) {
-            setPrompt(image.prompt);
-          }
-        }
-      }
-    }
-  }, [fullscreenRefreshTrigger, lastBatchId, batches]);
+
+  const {
+    prompt,
+    currentBatch,
+    currentImage,
+    showReferenceImagesDialog,
+    setShowReferenceImagesDialog,
+    showInfoDialog,
+    setShowInfoDialog,
+    imageDimensions,
+    handleImageLoad,
+    handleShowInfoPanel,
+    handleShowReferenceImages,
+    hasReferenceImages
+  } = useFullscreenDialog({
+    fullScreenBatchId,
+    batches,
+    fullScreenImageIndex,
+    fullscreenRefreshTrigger,
+    lastBatchId,
+    setLastBatchId
+  });
 
   // Only render dialog if we need to show it
   if (!showFullScreenView) {
@@ -114,44 +77,10 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     setShowFullScreenView(false);
   };
 
-  const handleShowInfoPanel = () => {
-    console.log("Showing info dialog in fullscreen mode");
-    // Log reference image information for debugging
-    if (currentImage?.referenceImageUrl) {
-      console.log("Reference image URLs for info dialog:", currentImage.referenceImageUrl);
-    } else {
-      console.log("No reference image URLs available for info dialog");
-    }
-    setShowInfoDialog(true);
-  };
-
-  // Determine if there are reference images based on the currentImage
-  const hasReferenceImages = Boolean(currentImage?.referenceImageUrl);
-  
-  const handleShowReferenceImages = () => {
-    if (currentImage?.referenceImageUrl) {
-      console.log("Opening reference image dialog with:", currentImage.referenceImageUrl);
-    } else {
-      console.log("Attempted to show reference images but none available");
-    }
-    setShowReferenceImagesDialog(true);
-  };
-
-  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget as HTMLImageElement;
-    setImageDimensions({
-      width: img.naturalWidth,
-      height: img.naturalHeight
-    });
-  };
-
   const handleCreateAgain = (batchId: string) => {
     // Store the current batch ID to navigate to the new image later
     setLastBatchId(batchId);
     onCreateAgain(batchId);
-    
-    // We don't need to close here - we'll wait until the new image is generated
-    // The parent components will update the batches and allImagesFlat
   };
 
   const handleDeleteImage = (batchId: string, index: number) => {
@@ -179,77 +108,57 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       >
         <DialogTitle className="sr-only">Image Detail View</DialogTitle>
         
-        {/* Header with prompt - fixed height */}
-        <div className="px-4 py-2 border-b h-10 flex-shrink-0 flex items-center">
-          <div className="flex items-center justify-between w-full min-w-0 overflow-hidden">
-            <div className="flex-grow min-w-0 overflow-hidden">
-              <ImagePrompt 
-                prompt={prompt}
-                hasReferenceImages={hasReferenceImages}
-                onReferenceImageClick={handleShowReferenceImages}
-                imageNumber={fullScreenImageIndex + 1}
-                workflowName={currentImage?.workflow}
-                onInfoClick={handleShowInfoPanel}
-              />
-            </div>
-            
-            {/* Close button */}
-            <button 
-              onClick={handleClose}
-              className="inline-flex items-center justify-center p-1 hover:bg-gray-100 rounded-md flex-shrink-0 ml-2"
-              aria-label="Close dialog"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        </div>
+        {/* Header component */}
+        <FullscreenHeader
+          prompt={prompt}
+          hasReferenceImages={hasReferenceImages}
+          onReferenceImageClick={handleShowReferenceImages}
+          workflowName={currentImage?.workflow}
+          onInfoClick={handleShowInfoPanel}
+          onClose={handleClose}
+          imageNumber={fullScreenImageIndex + 1}
+        />
 
-        <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0 w-auto">
-          {currentBatch && (
-            <ImageDetailView
-              batchId={fullScreenBatchId as string}
-              images={currentBatch.filter(img => img.status === 'completed')}
-              activeIndex={fullScreenImageIndex}
-              onSetActiveIndex={setFullScreenImageIndex}
-              onNavigatePrev={(e) => {
-                e.stopPropagation();
-                if (currentGlobalIndex !== null && currentGlobalIndex > 0) {
-                  handleNavigateGlobal(currentGlobalIndex - 1);
-                }
-              }}
-              onNavigateNext={(e) => {
-                e.stopPropagation();
-                if (currentGlobalIndex !== null && currentGlobalIndex < allImagesFlat.length - 1) {
-                  handleNavigateGlobal(currentGlobalIndex + 1);
-                }
-              }}
-              onToggleExpand={() => {}}
-              onDeleteImage={handleDeleteImage}
-              onCreateAgain={handleCreateAgain}
-              onUseAsInput={(url) => {
-                handleUseAsInput(url);
-              }}
-              allImages={allImagesFlat}
-              isNavigatingAllImages={true}
-              onNavigateGlobal={handleNavigateGlobal}
-              currentGlobalIndex={currentGlobalIndex !== null ? currentGlobalIndex : undefined}
-              onImageClick={handleImageClick}
-              hidePrompt={true} // Hide the prompt since we now show it in the header
-              onClose={() => setShowFullScreenView(false)} // Add handler to close
-            />
-          )}
-        </div>
+        {/* Content component */}
+        {currentBatch && (
+          <FullscreenContent
+            batchId={fullScreenBatchId as string}
+            currentBatch={currentBatch}
+            fullScreenImageIndex={fullScreenImageIndex}
+            setFullScreenImageIndex={setFullScreenImageIndex}
+            onNavigatePrev={(e) => {
+              e.stopPropagation();
+              if (currentGlobalIndex !== null && currentGlobalIndex > 0) {
+                handleNavigateGlobal(currentGlobalIndex - 1);
+              }
+            }}
+            onNavigateNext={(e) => {
+              e.stopPropagation();
+              if (currentGlobalIndex !== null && currentGlobalIndex < allImagesFlat.length - 1) {
+                handleNavigateGlobal(currentGlobalIndex + 1);
+              }
+            }}
+            onDeleteImage={handleDeleteImage}
+            onCreateAgain={handleCreateAgain}
+            onUseAsInput={handleUseAsInput}
+            allImagesFlat={allImagesFlat}
+            currentGlobalIndex={currentGlobalIndex}
+            handleNavigateGlobal={handleNavigateGlobal}
+            onImageClick={handleImageClick}
+            onClose={() => setShowFullScreenView(false)}
+          />
+        )}
         
-        {/* Reference images dialog - for all reference images */}
+        {/* Reference images dialog */}
         {currentImage?.referenceImageUrl && (
           <ReferenceImageDialog
             isOpen={showReferenceImagesDialog}
             onOpenChange={setShowReferenceImagesDialog}
-            imageUrl={currentImage.referenceImageUrl} // Pass the entire string to allow multiple images
+            imageUrl={currentImage.referenceImageUrl}
           />
         )}
 
-        {/* Image info dialog - includes all reference images */}
+        {/* Image info dialog */}
         {currentImage && (
           <ImageInfoDialog
             isOpen={showInfoDialog}

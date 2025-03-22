@@ -1,4 +1,3 @@
-
 import React from 'react';
 import FullscreenDialog from './FullscreenDialog';
 import ViewModeContent from './ViewModeContent';
@@ -23,7 +22,7 @@ interface ImageDisplayProps {
   onReorderContainers: (sourceIndex: number, destinationIndex: number) => void;
   onDeleteImage: (batchId: string, index: number) => void;
   onDeleteContainer: (batchId: string) => void;
-  fullscreenRefreshTrigger?: number; // Make sure this prop is defined
+  fullscreenRefreshTrigger?: number;
 }
 
 const ImageDisplay: React.FC<ImageDisplayProps> = ({
@@ -42,7 +41,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onDeleteContainer,
   fullscreenRefreshTrigger
 }) => {
-  // Use the new custom hook for state management
   const {
     viewMode,
     setViewMode,
@@ -143,8 +141,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             allImagesFlat={allImagesFlat}
             currentGlobalIndex={currentGlobalIndex}
             handleNavigateGlobal={handleNavigateGlobal}
-            fullscreenRefreshTrigger={fullscreenRefreshTrigger} 
-            // Pass the fullscreenRefreshTrigger to FullscreenDialog
+            fullscreenRefreshTrigger={fullscreenRefreshTrigger}
           />
         </div>
       )}
