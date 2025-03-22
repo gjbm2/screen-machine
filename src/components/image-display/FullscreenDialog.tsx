@@ -77,8 +77,11 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   };
 
   const handleShowInfoPanel = () => {
-    // This will be passed to the ImagePrompt to trigger the same action as the Info button
-    // For now, we'll just do nothing since the ImageDetailView already has an info panel
+    // This function should trigger the DetailViewInfoPanel to show info
+    // For now we'll just toggle the reference images dialog as a placeholder
+    if (currentImage?.referenceImageUrl) {
+      setShowReferenceImagesDialog(true);
+    }
   };
 
   const hasReferenceImages = Boolean(currentImage?.referenceImageUrl);

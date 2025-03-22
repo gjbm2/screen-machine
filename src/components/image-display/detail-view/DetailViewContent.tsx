@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import ImageKeyboardNavigation from './ImageKeyboardNavigation';
 import DetailViewImageSection from './DetailViewImageSection';
 import DetailViewInfoPanel from './DetailViewInfoPanel';
+import ReferenceImageDialog from '../ReferenceImageDialog';
 
 interface DetailViewContentProps {
   batchId: string;
@@ -131,6 +132,15 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onOpenInNewTab={handleOpenInNewTab}
         hidePrompt={hidePrompt}
       />
+
+      {/* Reference image dialog */}
+      {referenceImageUrl && (
+        <ReferenceImageDialog
+          isOpen={showReferenceImage}
+          onOpenChange={setShowReferenceImage}
+          imageUrl={referenceImageUrl}
+        />
+      )}
     </div>
   );
 };
