@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -35,23 +34,18 @@ export const useDisplayState = (params: DisplayParams) => {
 
   const loadNewImage = (url: string) => {
     if (params.transition === 'cut' || !imageUrl) {
-      // For immediate transitions or first load
       setImageUrl(url);
       setImageKey(prev => prev + 1);
       setImageChanged(false);
     } else {
-      // For fade transitions, preload the image first
       setIsLoading(true);
       setOldImageUrl(imageUrl);
       
-      // Create a new image element to preload
       const preloadImg = new Image();
       preloadImg.onload = () => {
-        // Once loaded, start transition
         setImageUrl(url);
         setImageKey(prev => prev + 1);
         
-        // Set transition styles
         const duration = params.transition === 'fade-fast' ? 1 : 10;
         setOldImageStyle({
           position: 'absolute',
@@ -67,10 +61,8 @@ export const useDisplayState = (params: DisplayParams) => {
           zIndex: 1
         });
         
-        // Start transition
         setIsTransitioning(true);
         
-        // After a small delay to ensure new image is rendered
         setTimeout(() => {
           setOldImageStyle(prev => ({
             ...prev,
@@ -83,7 +75,6 @@ export const useDisplayState = (params: DisplayParams) => {
             transition: `opacity ${duration}s ease`
           }));
           
-          // End transition after duration
           setTimeout(() => {
             setIsTransitioning(false);
             setOldImageUrl(null);
@@ -95,7 +86,6 @@ export const useDisplayState = (params: DisplayParams) => {
       };
       
       preloadImg.onerror = () => {
-        // If preload fails, fall back to immediate transition
         setImageUrl(url);
         setImageKey(prev => prev + 1);
         setIsLoading(false);
@@ -125,19 +115,16 @@ export const useDisplayState = (params: DisplayParams) => {
             toast.info("Image has been updated on the server");
           }
           
-          // If image has changed, load new metadata first and then load the new image
           if (params.data !== undefined && url) {
             const newMetadata = await extractImageMetadata(url, params.data || undefined);
             setMetadata(newMetadata);
             
-            // Update processed caption with new metadata
             if (params.caption) {
               const newCaption = processCaptionWithMetadata(params.caption, newMetadata);
               setProcessedCaption(newCaption);
             }
           }
           
-          // Load the new image
           loadNewImage(url);
         }
         
@@ -160,9 +147,7 @@ export const useDisplayState = (params: DisplayParams) => {
     }
   };
 
-  // Image position style calculation
   const getImagePositionStyle = (position: string, showMode: string): React.CSSProperties => {
-    // Base styles based on show mode
     const baseStyle: React.CSSProperties = (() => {
       switch (showMode) {
         case 'fill':
@@ -198,7 +183,6 @@ export const useDisplayState = (params: DisplayParams) => {
       }
     })();
     
-    // Add position styles
     const positionStyle: React.CSSProperties = { position: 'absolute' };
     
     switch (position) {
@@ -225,7 +209,6 @@ export const useDisplayState = (params: DisplayParams) => {
     }
   };
 
-  // Compute next check time
   const nextCheckTime = getNextCheckTime(lastChecked, params.refreshInterval);
 
   return {
