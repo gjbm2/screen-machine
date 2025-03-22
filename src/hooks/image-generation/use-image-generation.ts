@@ -48,11 +48,13 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   );
 
   // When uploadedImageUrls changes, store them in a global variable
-  // for access in other components
+  // for access in other components, but ensure uniqueness
   useEffect(() => {
     if (uploadedImageUrls.length > 0) {
-      console.log('Setting global externalImageUrls:', uploadedImageUrls);
-      window.externalImageUrls = [...uploadedImageUrls]; // Make a copy to ensure it's a new array
+      // Convert to Set and back to array to ensure uniqueness
+      const uniqueUrls = [...new Set(uploadedImageUrls)];
+      console.log('Setting global externalImageUrls:', uniqueUrls);
+      window.externalImageUrls = uniqueUrls; 
     } else {
       // Clear the global variable if there are no uploaded images
       window.externalImageUrls = [];
@@ -66,9 +68,33 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   ) => {
     setIsFirstRun(false);
     
+    // Ensure we have unique image files (no duplicates)
+    let uniqueImageFiles: (File | string)[] | undefined = undefined;
+    
+    if (imageFiles && imageFiles.length > 0) {
+      // Use a Set for string URLs, and a Map for File objects
+      const uniqueUrls = new Set<string>();
+      const uniqueFiles = new Map<string, File>();
+      
+      imageFiles.forEach(item => {
+        if (typeof item === 'string') {
+          uniqueUrls.add(item);
+        } else if (item instanceof File) {
+          // Use file name and size as a unique identifier
+          const fileKey = `${item.name}_${item.size}`;
+          uniqueFiles.set(fileKey, item);
+        }
+      });
+      
+      uniqueImageFiles = [
+        ...Array.from(uniqueUrls), 
+        ...Array.from(uniqueFiles.values())
+      ];
+    }
+    
     const config: ImageGenerationConfig = {
       prompt,
-      imageFiles,
+      imageFiles: uniqueImageFiles,
       workflow: currentWorkflow,
       params: currentParams,
       globalParams: currentGlobalParams,
