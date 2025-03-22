@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import NavigationControls from './NavigationControls';
@@ -31,7 +32,35 @@ const MainImageView: React.FC<MainImageViewProps> = ({
 }) => {
   const { width: viewportWidth, height: viewportHeight } = useWindowSize();
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Use ResizeObserver to track container size changes
+  useEffect(() => {
+    if (!imageContainerRef.current) return;
+    
+    const container = imageContainerRef.current;
+    const resizeObserver = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setContainerSize({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height
+        });
+      }
+    });
+    
+    resizeObserver.observe(container);
+    
+    // Initial size measurement
+    setContainerSize({
+      width: container.clientWidth,
+      height: container.clientHeight
+    });
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
   
   const handleImageLoadInternal = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
@@ -59,21 +88,23 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     const heightPercentage = isVeryLargeScreen ? 0.9 : (isLargeScreen ? 0.85 : 0.75);
     const availableHeight = viewportHeight * heightPercentage - controlsSpace;
     
-    // Improved dynamic horizontal sizing - allow it to adapt better to available space
-    // Calculate available width based on container size and viewport
-    const containerWidth = imageContainerRef.current?.offsetWidth || viewportWidth;
-    const containerPadding = 24; // account for padding/margins
-    const availableWidth = Math.min(containerWidth - containerPadding, viewportWidth * 0.95);
+    // Use the actual container width from ResizeObserver for more accurate horizontal sizing
+    const actualContainerWidth = containerSize.width || 
+                                (imageContainerRef.current?.clientWidth || viewportWidth);
+    
+    // Account for container padding/margins - more conservative to ensure fitting
+    const containerPadding = 24;
+    const availableWidth = Math.max(actualContainerWidth - containerPadding, 100);
     
     // Calculate scaling ratios
     const widthRatio = availableWidth / imageDimensions.width;
     const heightRatio = availableHeight / imageDimensions.height;
     
     // Use the smaller ratio to maintain aspect ratio
-    const ratio = Math.min(widthRatio, heightRatio, isVeryLargeScreen ? 1.5 : (isLargeScreen ? 1.2 : 1));
+    const ratio = Math.min(widthRatio, heightRatio);
     
-    const calculatedWidth = Math.min(imageDimensions.width * ratio, availableWidth);
-    const calculatedHeight = Math.min(imageDimensions.height * ratio, availableHeight);
+    const calculatedWidth = Math.floor(imageDimensions.width * ratio);
+    const calculatedHeight = Math.floor(imageDimensions.height * ratio);
     
     return { 
       width: `${calculatedWidth}px`, 
