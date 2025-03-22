@@ -34,7 +34,7 @@ const DetailViewImageSection: React.FC<DetailViewImageSectionProps> = ({
   onImageClick
 }) => {
   return (
-    <div className="flex-grow flex items-center justify-center overflow-hidden min-h-0 min-w-0 relative">
+    <div className="flex-grow flex items-center justify-center overflow-hidden min-h-0 min-w-0">
       <div className="w-auto min-w-0 h-full flex items-center justify-center">
         <MainImageView
           imageUrl={activeImage.url}

@@ -13,11 +13,9 @@ const LoadingPlaceholder: React.FC<LoadingPlaceholderProps> = ({ prompt }) => {
       <div className="aspect-square flex flex-col items-center justify-center bg-secondary/10">
         <ImageLoadingState />
         {prompt && (
-          <div className="w-full px-4 mt-4 overflow-hidden">
-            <p className="text-sm text-center text-muted-foreground truncate">
-              Generating: {prompt}
-            </p>
-          </div>
+          <p className="text-sm text-center text-muted-foreground px-4 mt-4">
+            Generating: {prompt}
+          </p>
         )}
       </div>
     </Card>
