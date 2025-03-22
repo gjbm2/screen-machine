@@ -109,6 +109,11 @@ export const generateImage = async (
     // Prepare reference image URL string
     const referenceImageUrl = uploadedImageUrls.length > 0 ? uploadedImageUrls.join(',') : undefined;
     
+    // Add additional debug log for reference images
+    if (referenceImageUrl) {
+      console.log("Reference images being used for generation:", referenceImageUrl);
+    }
+    
     // Pre-create placeholder records for the images
     // First, let's see how many exist already in this batch
     const existingBatchIndexes = new Set<number>();
@@ -134,6 +139,11 @@ export const generateImage = async (
         referenceImageUrl,
         nextContainerId && !batchId ? nextContainerId : undefined
       );
+      
+      // Additional debug for placeholder
+      if (placeholderImage.referenceImageUrl) {
+        console.log("Placeholder created with reference images:", placeholderImage.referenceImageUrl);
+      }
       
       return [...prevImages, placeholderImage];
     });
@@ -187,6 +197,11 @@ export const generateImage = async (
                 newImages[placeholderIndex], 
                 img.url
               );
+              
+              // Log the updated image for debugging
+              if (newImages[placeholderIndex].referenceImageUrl) {
+                console.log("Updated image with reference image URL:", newImages[placeholderIndex].referenceImageUrl);
+              }
             } else {
               // No placeholder found, this is an additional image
               const newImage: GeneratedImage = {

@@ -65,8 +65,13 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   
   // Debug log when activeImage changes
   useEffect(() => {
-    if (activeImage?.referenceImageUrl) {
-      console.log("Active image has reference image URL:", activeImage.referenceImageUrl);
+    if (activeImage) {
+      console.log("Active image in DetailViewContent:", activeImage);
+      if (activeImage.referenceImageUrl) {
+        console.log("Active image has reference image URL:", activeImage.referenceImageUrl);
+      } else {
+        console.log("Active image has NO reference image URL");
+      }
     }
   }, [activeImage]);
   
@@ -100,7 +105,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   };
 
   const handleInfoClick = () => {
-    console.log("Info button clicked"); // Debug log
+    console.log("Info button clicked for image:", activeImage); 
     
     // Log reference image status
     if (activeImage?.referenceImageUrl) {
@@ -111,6 +116,9 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
     
     setShowImageInfo(true);
   };
+
+  // Determine if there are reference images
+  const hasReferenceImages = Boolean(referenceImageUrl);
 
   return (
     <div className="flex flex-col h-full overflow-hidden min-h-0 min-w-0">

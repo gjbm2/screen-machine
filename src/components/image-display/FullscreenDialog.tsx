@@ -62,6 +62,8 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
       console.log('Current image in fullscreen:', image);
       if (image?.referenceImageUrl) {
         console.log('Reference image URL in fullscreen:', image.referenceImageUrl);
+      } else {
+        console.log('No reference image URL in fullscreen image');
       }
     } else {
       setCurrentBatch(null);
@@ -89,7 +91,9 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     console.log("Showing info dialog in fullscreen mode");
     // Log reference image information for debugging
     if (currentImage?.referenceImageUrl) {
-      console.log("Reference image URLs:", currentImage.referenceImageUrl);
+      console.log("Reference image URLs for info dialog:", currentImage.referenceImageUrl);
+    } else {
+      console.log("No reference image URLs available for info dialog");
     }
     setShowInfoDialog(true);
   };
@@ -100,6 +104,8 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   const handleShowReferenceImages = () => {
     if (currentImage?.referenceImageUrl) {
       console.log("Opening reference image dialog with:", currentImage.referenceImageUrl);
+    } else {
+      console.log("Attempted to show reference images but none available");
     }
     setShowReferenceImagesDialog(true);
   };

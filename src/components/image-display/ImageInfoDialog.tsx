@@ -40,7 +40,7 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
     image.referenceImageUrl.split(',').map(url => url.trim()).filter(url => url !== '') : 
     [];
 
-  console.log("Reference images in dialog:", referenceImages);
+  console.log("Reference images in InfoDialog:", referenceImages, "from:", image.referenceImageUrl);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>

@@ -45,8 +45,13 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
     // Log reference image information for debugging
     if (effectiveReferenceImageUrl) {
       console.log('DetailViewInfoPanel received referenceImageUrl:', effectiveReferenceImageUrl);
+    } else {
+      console.log('DetailViewInfoPanel has no referenceImageUrl');
     }
-  }, [effectiveReferenceImageUrl]);
+    
+    // Log the entire active image for debugging
+    console.log('Active image in DetailViewInfoPanel:', activeImage);
+  }, [effectiveReferenceImageUrl, activeImage]);
   
   return (
     <div className="flex-shrink-0 p-2 space-y-1 bg-background select-none border-t min-h-[100px]">
@@ -57,6 +62,7 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
         imageUrl={activeImage?.url}
         onOpenInNewTab={onOpenInNewTab}
         onInfoClick={onInfoClick}
+        hasReferenceImages={Boolean(effectiveReferenceImageUrl)}
       />
       
       {/* Image Actions Bar - all buttons in a single row */}
@@ -69,7 +75,8 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
           generationInfo={{
             prompt: activeImage.prompt || '',
             workflow: activeImage.workflow || '',
-            params: activeImage.params
+            params: activeImage.params,
+            referenceImageUrl: effectiveReferenceImageUrl
           }}
         />
       )}
@@ -77,7 +84,7 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
       {/* Reference image at the bottom */}
       {effectiveReferenceImageUrl && (
         <ReferenceImageSection
-          referenceImageUrl={effectiveReferenceImageUrl}
+          referenceImageUrl={effectiveReferenceImageUrl.split(',')[0]} // Use first image if multiple
           onReferenceImageClick={() => setShowReferenceImage(true)}
         />
       )}
