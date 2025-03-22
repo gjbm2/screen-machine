@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import ReferenceImageDialog from './ReferenceImageDialog';
 import ImageInfoDialog from './ImageInfoDialog';
-import { useFullscreenDialog } from './fullscreen/useFullscreenDialog';
+import useFullscreenDialog from './fullscreen/useFullscreenDialog';
 import FullscreenContent from './fullscreen/FullscreenContent';
 import FullscreenHeader from './fullscreen/FullscreenHeader';
 import { GeneratedImage } from '@/hooks/image-generation/types';
@@ -39,29 +39,29 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   handleNavigateGlobal,
   fullscreenRefreshTrigger
 }) => {
+  const [lastBatchId, setLastBatchId] = useState<string | null>(null);
+
+  // Use the useFullscreenDialog hook with proper parameters
   const {
-    currentImage,
-    images,
     prompt,
-    isNavigating,
-    showReferenceImages,
+    currentBatch,
+    currentImage,
+    showReferenceImagesDialog,
+    setShowReferenceImagesDialog,
     showInfoDialog,
-    handleNavigateImages,
-    handleCloseFullScreen,
-    handleReferenceImageClick,
-    handleToggleReferenceImages,
-    handleToggleInfoDialog,
+    setShowInfoDialog,
+    imageDimensions,
+    handleImageLoad,
+    handleShowInfoPanel,
+    handleShowReferenceImages,
+    hasReferenceImages
   } = useFullscreenDialog({
-    showFullScreenView,
-    setShowFullScreenView,
     fullScreenBatchId,
     batches,
     fullScreenImageIndex,
-    setFullScreenImageIndex,
-    allImagesFlat,
-    currentGlobalIndex,
-    handleNavigateGlobal,
-    fullscreenRefreshTrigger
+    fullscreenRefreshTrigger,
+    lastBatchId,
+    setLastBatchId
   });
 
   if (!showFullScreenView) {
@@ -83,13 +83,42 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     // Toggle visibility of the header and footer
   };
 
+  const handleNavigateImages = (direction: 'prev' | 'next') => {
+    if (!currentBatch) return;
+    
+    const completedImages = currentBatch.filter(img => img.status === 'completed');
+    if (completedImages.length <= 1) return;
+    
+    let newIndex = fullScreenImageIndex;
+    if (direction === 'prev') {
+      newIndex = (fullScreenImageIndex - 1 + completedImages.length) % completedImages.length;
+    } else {
+      newIndex = (fullScreenImageIndex + 1) % completedImages.length;
+    }
+    
+    setFullScreenImageIndex(newIndex);
+  };
+
+  const handleCloseFullScreen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowFullScreenView(false);
+  };
+
+  const handleToggleReferenceImages = () => {
+    setShowReferenceImagesDialog(!showReferenceImagesDialog);
+  };
+
+  const handleToggleInfoDialog = () => {
+    setShowInfoDialog(!showInfoDialog);
+  };
+
   const handleDeleteImage = () => {
     if (currentImage && currentImage.batchId && onDeleteImage) {
       onDeleteImage(currentImage.batchId, currentImage.batchIndex || 0);
       
       // Navigate to the next image if there are any left
-      if (images && images.length > 1) {
-        const nextIndex = (fullScreenImageIndex + 1) % images.length;
+      if (currentBatch && currentBatch.length > 1) {
+        const nextIndex = (fullScreenImageIndex + 1) % currentBatch.length;
         setFullScreenImageIndex(nextIndex);
       } else {
         // Close the fullscreen view if there are no images left
@@ -139,22 +168,22 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         
         <FullscreenContent 
           currentImage={currentImage}
-          imageCount={images?.length || 0}
+          imageCount={currentBatch?.filter(img => img.status === 'completed').length || 0}
           currentImageIndex={fullScreenImageIndex}
           onNavigate={handleNavigateImages}
           onImageClick={handleImageClick}
           onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
           onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
           onUseAsInput={onUseGeneratedAsInput ? handleUseAsInput : undefined}
-          isNavigating={isNavigating}
+          isNavigating={false}
         />
         
         {/* Show reference images */}
         {currentImage?.referenceImageUrl && (
           <ReferenceImageDialog 
-            isOpen={showReferenceImages} 
-            onClose={handleToggleReferenceImages}
-            referenceImageUrl={currentImage.referenceImageUrl}
+            isOpen={showReferenceImagesDialog}
+            onOpenChange={setShowReferenceImagesDialog}
+            imageUrl={currentImage.referenceImageUrl}
           />
         )}
         
@@ -162,8 +191,9 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
         {currentImage && (
           <ImageInfoDialog
             isOpen={showInfoDialog}
-            onClose={handleToggleInfoDialog}
+            onOpenChange={setShowInfoDialog}
             image={currentImage}
+            dimensions={imageDimensions}
           />
         )}
       </DialogContent>
