@@ -93,7 +93,6 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   };
 
   const handleInfoClick = () => {
-    console.log("Info button clicked"); // Debug log
     setShowImageInfo(true);
   };
 

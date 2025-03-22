@@ -80,7 +80,6 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   };
 
   const handleShowInfoPanel = () => {
-    console.log("Showing info dialog in fullscreen mode"); // Debug log
     setShowInfoDialog(true);
   };
 
