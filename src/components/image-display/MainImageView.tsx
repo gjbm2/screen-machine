@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import ImageLoadingState from './ImageLoadingState';
+import NavigationControls from './NavigationControls';
 
 interface MainImageViewProps {
   imageUrl: string;
@@ -24,6 +25,10 @@ const MainImageView: React.FC<MainImageViewProps> = ({
   imageUrl,
   altText,
   onImageLoad,
+  allImages,
+  isNavigatingAllImages,
+  onNavigateGlobal,
+  currentGlobalIndex,
   handleTouchStart,
   handleTouchEnd,
   onImageClick,
@@ -34,6 +39,21 @@ const MainImageView: React.FC<MainImageViewProps> = ({
     setIsLoading(false);
     if (onImageLoad) {
       onImageLoad(e);
+    }
+  };
+
+  // Navigation handlers
+  const handleNavigatePrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isNavigatingAllImages && onNavigateGlobal && currentGlobalIndex !== undefined && currentGlobalIndex > 0) {
+      onNavigateGlobal(currentGlobalIndex - 1);
+    }
+  };
+
+  const handleNavigateNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isNavigatingAllImages && onNavigateGlobal && currentGlobalIndex !== undefined && allImages && currentGlobalIndex < allImages.length - 1) {
+      onNavigateGlobal(currentGlobalIndex + 1);
     }
   };
 
@@ -63,6 +83,17 @@ const MainImageView: React.FC<MainImageViewProps> = ({
           onLoad={handleImageLoaded}
         />
       </div>
+
+      {/* Navigation Controls */}
+      {isNavigatingAllImages && onNavigateGlobal && currentGlobalIndex !== undefined && allImages && (
+        <NavigationControls
+          onPrevious={handleNavigatePrev}
+          onNext={handleNavigateNext}
+          size="medium"
+          showPrevButton={currentGlobalIndex > 0}
+          showNextButton={currentGlobalIndex < allImages.length - 1}
+        />
+      )}
     </div>
   );
 };

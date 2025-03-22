@@ -21,7 +21,7 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
     <>
       {index > 0 && onNavigatePrev && (
         <button 
-          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 text-white transition-colors z-10"
+          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 text-white transition-colors z-20"
           onClick={onNavigatePrev}
         >
           <ChevronLeft className="h-3 w-3" />
@@ -30,7 +30,7 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
       
       {index < total - 1 && onNavigateNext && (
         <button 
-          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 text-white transition-colors z-10"
+          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 text-white transition-colors z-20"
           onClick={onNavigateNext}
         >
           <ChevronRight className="h-3 w-3" />
