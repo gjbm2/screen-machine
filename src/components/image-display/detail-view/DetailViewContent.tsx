@@ -123,16 +123,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
     setShowImageInfo(true);
   };
 
-  // Handle opening reference image dialog directly
-  const handleReferenceImageClick = () => {
-    console.log("Reference image button clicked in DetailViewContent");
-    console.log("Opening reference image dialog with:", referenceImageUrl);
-    setShowReferenceImage(true);
-  };
-
-  const hasReferenceImages = Boolean(referenceImageUrl);
-
-  // Process reference images array from string or array - Updated to match ImageInfoDialog processing
+  // Process reference images array from string or array - USING THE EXACT SAME LOGIC as ImageInfoDialog
   const referenceImages = React.useMemo(() => {
     if (!referenceImageUrl) return [];
     
@@ -145,6 +136,16 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
     
     return Array.isArray(referenceImageUrl) ? referenceImageUrl : [];
   }, [referenceImageUrl]);
+
+  // Handle opening reference image dialog directly - Made consistent with logic in ImageInfoDialog
+  const handleReferenceImageClick = () => {
+    console.log("Reference image button clicked in DetailViewContent");
+    console.log("Opening reference image dialog with:", referenceImageUrl);
+    console.log("Processed reference images:", referenceImages);
+    setShowReferenceImage(true);
+  };
+
+  const hasReferenceImages = referenceImages.length > 0; // Fixed this logic to match ImageInfoDialog
 
   return (
     <div className="flex flex-col h-full overflow-hidden min-h-0 min-w-0">
@@ -189,7 +190,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onClose={onClose}
       />
 
-      {/* Reference image dialog with the same processing as in ImageInfoDialog */}
+      {/* Reference image dialog - USING EXACTLY THE SAME STRUCTURE as in ImageInfoDialog */}
       {hasReferenceImages && (
         <ReferenceImageDialog
           isOpen={showReferenceImage}

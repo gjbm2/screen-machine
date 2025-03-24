@@ -56,7 +56,7 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
     }
   }, [effectiveReferenceImageUrl, activeImage]);
   
-  // Determine if this image has reference images
+  // Determine if this image has reference images - ensuring consistency with other components
   const hasReferenceImages = Boolean(effectiveReferenceImageUrl);
   
   return (
