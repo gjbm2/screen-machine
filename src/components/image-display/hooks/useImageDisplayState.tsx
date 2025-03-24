@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import useFullscreen from './useFullscreen';
 import useImageSort from './useImageSort';
@@ -12,7 +11,6 @@ export const useImageDisplayState = (
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
   const [allImagesFlat, setAllImagesFlat] = useState<any[]>([]);
 
-  // Use custom hooks
   const { 
     showFullScreenView, 
     setShowFullScreenView,
@@ -107,13 +105,19 @@ export const useImageDisplayState = (
   
   const getAllImages = () => {
     return generatedImages
-      .filter(img => img.status === 'completed' || img.status === 'failed' || img.status === 'error')
+      .filter(img => img.status === 'completed' || img.status === 'generating' || img.status === 'failed' || img.status === 'error')
       .sort((a, b) => {
-        return b.timestamp - a.timestamp;
+        if (a.status === 'generating' && b.status !== 'generating') return -1;
+        if (a.status !== 'generating' && b.status === 'generating') return 1;
+        
+        if (a.status === 'generating' && b.status === 'generating') {
+          return (b.timestamp || 0) - (a.timestamp || 0);
+        }
+        
+        return (b.timestamp || 0) - (a.timestamp || 0);
       });
   };
 
-  // Use image sorting hook
   const { 
     sortField, 
     sortDirection, 
