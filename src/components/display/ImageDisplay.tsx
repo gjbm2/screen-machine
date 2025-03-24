@@ -37,6 +37,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const navigate = useNavigate();
   const [containerSize, setContainerSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [doubleClickAttempted, setDoubleClickAttempted] = useState(false);
+  const doubleClickTimeoutRef = useRef<number | null>(null);
 
   // Update container size on window resize
   useEffect(() => {
@@ -48,7 +49,13 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     };
     
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      // Clear any pending timeouts when component unmounts
+      if (doubleClickTimeoutRef.current) {
+        window.clearTimeout(doubleClickTimeoutRef.current);
+      }
+    };
   }, []);
 
   const handleDoubleClick = (e: React.MouseEvent) => {
@@ -72,7 +79,9 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     navigate(debugUrl);
     
     // Reset the flag after navigation (in case component doesn't unmount)
-    setTimeout(() => setDoubleClickAttempted(false), 1000);
+    doubleClickTimeoutRef.current = window.setTimeout(() => {
+      setDoubleClickAttempted(false);
+    }, 1000);
   };
 
   // Metadata display styles

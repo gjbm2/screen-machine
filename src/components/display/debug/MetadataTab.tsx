@@ -82,59 +82,23 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
       const cacheBustUrl = `${currentImageUrl}${currentImageUrl.includes('?') ? '&' : '?'}forcedRefresh=${Date.now()}_${Math.random()}`;
       
       toast.info("Extracting metadata...");
+      
+      // Skip API endpoint and use utility function directly
       try {
-        // Try API endpoint first
-        console.log('[MetadataTab] Trying API endpoint for metadata extraction');
-        const response = await fetch('/api/extract-metadata', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ imageUrl: cacheBustUrl }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`API response not OK: ${response.status}`);
-        }
-
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-          throw new Error(`Expected JSON response but got ${contentType}`);
-        }
-
-        const data = await response.json();
-        console.log('[MetadataTab] API response data:', data);
+        const metadata = await extractImageMetadata(cacheBustUrl);
         
-        if (data.success && data.metadata && Object.keys(data.metadata).length > 0) {
-          toast.success(`Found ${Object.keys(data.metadata).length} metadata entries`);
+        console.log('[MetadataTab] Fresh metadata from direct extraction:', metadata);
+        
+        if (Object.keys(metadata).length > 0) {
+          toast.success(`Found ${Object.keys(metadata).length} metadata entries`);
           setRefreshKey(prev => prev + 1);
           window.location.reload();
-          setLoading(false);
-          return;
+        } else {
+          toast.warning("No metadata found in this image");
         }
-        
-        throw new Error(data.error || 'No metadata found');
-      } catch (apiError) {
-        console.error('[MetadataTab] API endpoint error:', apiError);
-        
-        // Fall back to utility function
-        try {
-          console.log('[MetadataTab] Falling back to utility function');
-          const metadata = await extractImageMetadata(cacheBustUrl);
-          
-          console.log('[MetadataTab] Fresh metadata from direct extraction:', metadata);
-          
-          if (Object.keys(metadata).length > 0) {
-            toast.success(`Found ${Object.keys(metadata).length} metadata entries`);
-            setRefreshKey(prev => prev + 1);
-            window.location.reload();
-          } else {
-            toast.warning("No metadata found in this image");
-          }
-        } catch (err) {
-          console.error('[MetadataTab] Error in fallback extraction:', err);
-          toast.error(`Failed to extract metadata: ${err instanceof Error ? err.message : 'Unknown error'}`);
-        }
+      } catch (err) {
+        console.error('[MetadataTab] Error in fallback extraction:', err);
+        toast.error(`Failed to extract metadata: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     } catch (err) {
       console.error('[MetadataTab] Error refreshing metadata:', err);

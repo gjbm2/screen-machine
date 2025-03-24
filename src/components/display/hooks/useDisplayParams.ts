@@ -1,5 +1,5 @@
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from '../types';
 import { createUrlWithParams, getDefaultParams } from '../utils';
@@ -7,6 +7,7 @@ import { createUrlWithParams, getDefaultParams } from '../utils';
 export const useDisplayParams = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const redirectAttemptedRef = useRef(false);
   
   const parseBooleanParam = (value: string | null): boolean => 
     value === 'true' || value === '1';
@@ -53,21 +54,21 @@ export const useDisplayParams = () => {
   console.log('[useDisplayParams] Parsed params:', params);
   console.log('[useDisplayParams] Caption background:', params.captionBgColor);
   
-  // Helper function to redirect to debug mode if needed - FIXED to prevent infinite loops
+  // Helper function to redirect to debug mode if needed
   const redirectToDebugMode = () => {
-    // Skip if already in debug mode or no output is specified
-    if (params.debugMode || !params.output) return;
+    // Skip redirection if we already attempted it or if already in debug mode or no output specified
+    if (redirectAttemptedRef.current || params.debugMode || !params.output) return;
     
-    // Check if explicit debugMode parameter exists in URL
-    if (searchParams.has('debugMode')) {
-      // Only redirect if debugMode is explicitly set to 'true' in URL
-      if (parseBooleanParam(searchParams.get('debugMode'))) {
-        const newParams = { ...params, debugMode: true };
-        const newUrl = createUrlWithParams(newParams);
-        
-        console.log('[useDisplayParams] Redirecting to debug mode:', newUrl);
-        navigate(newUrl);
-      }
+    // Mark that we've attempted redirection to prevent loops
+    redirectAttemptedRef.current = true;
+    
+    // Only redirect if debugMode parameter is explicitly set to true in URL
+    if (searchParams.has('debugMode') && parseBooleanParam(searchParams.get('debugMode'))) {
+      const newParams = { ...params, debugMode: true };
+      const newUrl = createUrlWithParams(newParams);
+      
+      console.log('[useDisplayParams] Redirecting to debug mode:', newUrl);
+      navigate(newUrl);
     }
   };
   
