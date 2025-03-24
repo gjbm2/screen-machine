@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -19,6 +20,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
   workflowParams: externalWorkflowParams,
   refinerParams: externalRefinerParams,
   globalParams: externalGlobalParams,
+  onWorkflowChange: externalWorkflowChange,
+  onRefinerChange: externalRefinerChange,
 }) => {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -48,6 +51,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
     updateGlobalParam,
     updateFromAdvancedPanel,
     resetUserChangeFlags,
+    setSelectedWorkflow,
+    setSelectedRefiner,
   } = usePromptForm();
 
   useEffect(() => {
@@ -57,9 +62,31 @@ const PromptForm: React.FC<PromptFormProps> = ({
     }
   }, [currentPrompt]);
 
-  // Handle external updates once during initial mount
+  // Handle external workflow changes
   useEffect(() => {
-    if (isInitialMount.current) {
+    if (externalSelectedWorkflow && externalSelectedWorkflow !== selectedWorkflow) {
+      setSelectedWorkflow(externalSelectedWorkflow);
+    }
+  }, [externalSelectedWorkflow, selectedWorkflow, setSelectedWorkflow]);
+
+  // Handle external refiner changes
+  useEffect(() => {
+    if (externalSelectedRefiner && externalSelectedRefiner !== selectedRefiner) {
+      setSelectedRefiner(externalSelectedRefiner);
+    }
+  }, [externalSelectedRefiner, selectedRefiner, setSelectedRefiner]);
+
+  // Handle updates from advanced panel
+  useEffect(() => {
+    if (!isInitialMount.current) {
+      // Only update if this isn't the initial mount
+      updateFromAdvancedPanel({
+        workflowParams: externalWorkflowParams,
+        refinerParams: externalRefinerParams,
+        globalParams: externalGlobalParams
+      });
+    } else {
+      // Initial mount - set values
       const initialValues = {
         selectedWorkflow: externalSelectedWorkflow,
         selectedRefiner: externalSelectedRefiner,
@@ -77,30 +104,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
       isInitialMount.current = false;
     }
   }, [
-    externalSelectedWorkflow, 
-    externalSelectedRefiner, 
-    externalWorkflowParams, 
-    externalRefinerParams, 
-    externalGlobalParams,
-    updateFromAdvancedPanel,
-    resetUserChangeFlags
-  ]);
-
-  // Handle updates from advanced panel
-  useEffect(() => {
-    if (!isInitialMount.current) {
-      // Only update if this isn't the initial mount
-      updateFromAdvancedPanel({
-        selectedWorkflow: externalSelectedWorkflow,
-        selectedRefiner: externalSelectedRefiner,
-        workflowParams: externalWorkflowParams,
-        refinerParams: externalRefinerParams,
-        globalParams: externalGlobalParams
-      });
-    }
-  }, [
-    externalSelectedWorkflow, 
-    externalSelectedRefiner, 
     externalWorkflowParams, 
     externalRefinerParams, 
     externalGlobalParams,
@@ -108,6 +111,28 @@ const PromptForm: React.FC<PromptFormProps> = ({
   ]);
 
   useExternalImageUrls(setPreviewUrls);
+
+  // Wrapper for workflow change to propagate changes to parent
+  const handleLocalWorkflowChange = (workflowId: string) => {
+    // Update local state
+    handleWorkflowChange(workflowId);
+    
+    // Propagate to parent if handler provided
+    if (externalWorkflowChange) {
+      externalWorkflowChange(workflowId);
+    }
+  };
+
+  // Wrapper for refiner change to propagate changes to parent
+  const handleLocalRefinerChange = (refinerId: string) => {
+    // Update local state
+    handleRefinerChange(refinerId);
+    
+    // Propagate to parent if handler provided
+    if (externalRefinerChange) {
+      externalRefinerChange(refinerId);
+    }
+  };
 
   const handleSubmit = () => {
     if (prompt.trim() === '' && imageFiles.length === 0 && previewUrls.length === 0) {
@@ -245,8 +270,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
           selectedRefiner={selectedRefiner}
           selectedPublish={selectedPublish}
           onImageUpload={handleImageUpload}
-          onWorkflowChange={handleWorkflowChange}
-          onRefinerChange={handleRefinerChange}
+          onWorkflowChange={handleLocalWorkflowChange}
+          onRefinerChange={handleLocalRefinerChange}
           onPublishChange={handlePublishChange}
           toggleAdvancedOptions={toggleAdvancedOptions}
           handleSubmit={handleSubmit}

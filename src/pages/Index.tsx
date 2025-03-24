@@ -73,13 +73,13 @@ const Index = () => {
 
   // Handler for refiner changes from advanced panel
   const handleRefinerChange = useCallback((refiner: string) => {
-    console.log('Index: Refiner changed in advanced panel to:', refiner);
+    console.log('Index: Refiner changed to:', refiner);
     setSelectedRefiner(refiner);
   }, []);
 
   // Handler for refiner param changes from advanced panel
   const handleRefinerParamChange = useCallback((paramId: string, value: any) => {
-    console.log('Index: Refiner param changed in advanced panel:', paramId, value);
+    console.log('Index: Refiner param changed:', paramId, value);
     setRefinerParams(prev => ({
       ...prev,
       [paramId]: value
@@ -191,6 +191,9 @@ const Index = () => {
           workflowParams={currentParams}
           refinerParams={refinerParams}
           globalParams={currentGlobalParams}
+          // Add handlers for workflow and refiner changes from prompt form
+          onWorkflowChange={setCurrentWorkflow}
+          onRefinerChange={handleRefinerChange}
         />
         
         <ImageDisplay 

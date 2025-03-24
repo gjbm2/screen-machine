@@ -24,44 +24,46 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
   });
   const [refinerParams, setRefinerParams] = useState<Record<string, any>>(initialValues.refinerParams || {});
   
-  // Flag to track if changes are made locally by the user
-  const [hasUserChangedWorkflow, setHasUserChangedWorkflow] = useState(false);
-  const [hasUserChangedRefiner, setHasUserChangedRefiner] = useState(false);
-
   // Initialize workflow parameters based on the selected workflow only once
   useEffect(() => {
-    // Only initialize params if this is the first time or if coming from advanced panel without user changes
-    if (!hasUserChangedWorkflow) {
-      // Find the selected workflow
-      const workflow = typedWorkflows.find(w => w.id === selectedWorkflow);
+    // Find the selected workflow
+    const workflow = typedWorkflows.find(w => w.id === selectedWorkflow);
+    
+    if (workflow && workflow.params) {
+      // Create an object with default parameter values
+      const defaultParams: Record<string, any> = {};
       
-      if (workflow && workflow.params) {
-        // Create an object with default parameter values
-        const defaultParams: Record<string, any> = {};
+      workflow.params.forEach(param => {
+        if (param.default !== undefined) {
+          defaultParams[param.id] = param.default;
+        }
+      });
+      
+      // Set workflow parameters with default values, but only for params that don't already exist
+      setWorkflowParams(prevParams => {
+        const mergedParams = { ...prevParams };
         
-        workflow.params.forEach(param => {
-          if (param.default !== undefined) {
-            defaultParams[param.id] = param.default;
+        // Only add default params for keys that don't exist in current params
+        Object.keys(defaultParams).forEach(key => {
+          if (mergedParams[key] === undefined) {
+            mergedParams[key] = defaultParams[key];
           }
         });
         
-        // Set workflow parameters with default values
-        setWorkflowParams(defaultParams);
-      }
+        return mergedParams;
+      });
     }
-  }, [selectedWorkflow, hasUserChangedWorkflow]);
+  }, [selectedWorkflow]);
 
   const handleWorkflowChange = (workflowId: string) => {
     console.log(`usePromptForm: User changed workflow to ${workflowId}`);
     setSelectedWorkflow(workflowId);
-    setHasUserChangedWorkflow(true);
     resetWorkflowParams();
   };
 
   const handleRefinerChange = (refinerId: string) => {
     console.log(`usePromptForm: User changed refiner to ${refinerId}`);
     setSelectedRefiner(refinerId);
-    setHasUserChangedRefiner(true);
     resetRefinerParams();
   };
 
@@ -99,31 +101,24 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
     }));
   };
 
-  // Method to update from advanced panel that respects user choices
+  // Method to update from advanced panel
   const updateFromAdvancedPanel = (updates: Partial<PromptFormInitialValues>) => {
-    // Only update workflow if user hasn't changed it from prompt form
-    if (updates.selectedWorkflow && !hasUserChangedWorkflow) {
-      setSelectedWorkflow(updates.selectedWorkflow);
-    }
-    
-    // Only update refiner if user hasn't changed it from prompt form
-    if (updates.selectedRefiner && !hasUserChangedRefiner) {
-      setSelectedRefiner(updates.selectedRefiner);
-    }
-    
-    // Always update params
+    // Update workflow params
     if (updates.workflowParams) {
       setWorkflowParams(updates.workflowParams);
     }
     
+    // Update refiner params
     if (updates.refinerParams) {
       setRefinerParams(updates.refinerParams);
     }
     
+    // Update global params
     if (updates.globalParams) {
       setGlobalParams(updates.globalParams);
     }
     
+    // Update publish destination
     if (updates.selectedPublish) {
       setSelectedPublish(updates.selectedPublish);
     }
@@ -131,8 +126,7 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
 
   // Reset user change flags (useful when loading a saved state)
   const resetUserChangeFlags = () => {
-    setHasUserChangedWorkflow(false);
-    setHasUserChangedRefiner(false);
+    // Nothing to reset anymore, we've removed the change tracking flags
   };
 
   return {
@@ -153,7 +147,7 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
     updateWorkflowParam,
     updateRefinerParam,
     updateGlobalParam,
-    // Expose setters for external state management with ability to respect user choices
+    // Expose setters for external state management
     setSelectedWorkflow,
     setSelectedRefiner,
     setWorkflowParams,
