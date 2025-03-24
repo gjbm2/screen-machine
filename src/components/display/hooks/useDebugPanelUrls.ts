@@ -2,7 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
 import { createUrlWithParams, processOutputParam } from '../utils/paramUtils';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 interface UseDebugPanelUrlsProps {
   params: DisplayParams;
@@ -145,6 +145,15 @@ export const useDebugPanelUrls = ({
     const processedOutput = processOutputParam(outputToUse);
     console.log('[useDebugPanelUrls] Processed output for view mode:', processedOutput);
     
+    // Clear any stale local storage flags that might affect navigation
+    try {
+      // Store a flag in localStorage to indicate this was an explicit exit from debug mode
+      localStorage.setItem('userExplicitlyExitedDebug', 'true');
+      console.log('[useDebugPanelUrls] Set localStorage flag for explicit debug exit');
+    } catch (e) {
+      console.error('[useDebugPanelUrls] Error setting localStorage flag:', e);
+    }
+    
     // Create new params object with all current settings, but WITHOUT debug mode
     const newParams: DisplayParams = {
       ...params,
@@ -169,6 +178,7 @@ export const useDebugPanelUrls = ({
     console.log('[useDebugPanelUrls] Committing settings, navigating to view mode:', url);
     
     // Use direct window.location change for view mode to ensure a clean state
+    // This forces a complete page reload which should clear any React state
     window.location.href = `/display${url}`;
     
     toast({

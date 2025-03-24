@@ -19,11 +19,32 @@ export const useDisplayPage = () => {
   const mountedRef = useRef(true); // Track if component is mounted
   const initialRenderRef = useRef(true); // Track initial render
   const hasProcessedOutputRef = useRef(false); // Track if we've processed the output param
+  const hasCheckedExplicitExitRef = useRef(false); // Track if we've checked localStorage
 
   // Function to redirect to debug mode
   const redirectToDebugMode = () => {
     updateParam('debug', 'true');
   };
+
+  // Check if user explicitly exited debug mode
+  useEffect(() => {
+    if (!hasCheckedExplicitExitRef.current && mountedRef.current) {
+      hasCheckedExplicitExitRef.current = true;
+      
+      try {
+        const userExplicitlyExited = localStorage.getItem('userExplicitlyExitedDebug');
+        if (userExplicitlyExited === 'true') {
+          console.log('[useDisplayPage] Found explicit debug exit flag in localStorage');
+          // Clear the flag immediately to prevent it from affecting future navigation
+          localStorage.removeItem('userExplicitlyExitedDebug');
+          // Don't redirect to debug mode
+          return;
+        }
+      } catch (e) {
+        console.error('[useDisplayPage] Error checking localStorage flag:', e);
+      }
+    }
+  }, []);
 
   // Debug logging for params
   useEffect(() => {
@@ -68,6 +89,25 @@ export const useDisplayPage = () => {
     getImagePositionStyle,
     extractMetadataFromImage
   } = useDisplayState(previewParams);
+
+  // Debug redirection handling
+  const { checkDebugRedirection, userExplicitlyExitedDebugRef } = useDebugRedirection(displayParams, redirectToDebugMode);
+  
+  // Check for explicit exit flag from localStorage 
+  useEffect(() => {
+    if (mountedRef.current) {
+      try {
+        const userExplicitlyExited = localStorage.getItem('userExplicitlyExitedDebug');
+        if (userExplicitlyExited === 'true') {
+          console.log('[useDisplayPage] Setting explicit exit flag from localStorage');
+          userExplicitlyExitedDebugRef.current = true;
+          localStorage.removeItem('userExplicitlyExitedDebug');
+        }
+      } catch (e) {
+        console.error('[useDisplayPage] Error checking localStorage:', e);
+      }
+    }
+  }, [userExplicitlyExitedDebugRef]);
 
   // Handle output parameter directly to ensure image displays
   useEffect(() => {
@@ -114,14 +154,15 @@ export const useDisplayPage = () => {
     };
   }, []);
 
-  // Debug redirection handling
-  const { checkDebugRedirection } = useDebugRedirection(displayParams, redirectToDebugMode);
-  
-  // Check for debug redirection - this will now trigger for blank /display/ page too
+  // Check for debug redirection - only if user has not explicitly exited
   useEffect(() => {
     if (!mountedRef.current) return;
-    checkDebugRedirection();
-  }, [displayParams, displayParams.output, displayParams.debugMode]);
+    if (!userExplicitlyExitedDebugRef.current) {
+      checkDebugRedirection();
+    } else {
+      console.log('[useDisplayPage] Skipping debug redirection check - user explicitly exited debug mode');
+    }
+  }, [displayParams, displayParams.output, displayParams.debugMode, userExplicitlyExitedDebugRef]);
 
   // Metadata management
   const { 

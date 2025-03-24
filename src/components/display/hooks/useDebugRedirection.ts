@@ -1,5 +1,5 @@
 
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { DisplayParams } from '../types';
 
 export const useDebugRedirection = (
@@ -8,6 +8,17 @@ export const useDebugRedirection = (
 ) => {
   const redirectAttemptedRef = useRef(false);
   const debugHandledRef = useRef(false);
+  const userExplicitlyExitedDebugRef = useRef(false);
+
+  // This effect detects when the user has explicitly exited debug mode
+  useEffect(() => {
+    // If debug mode changes from true to false AND we previously had it as true
+    // then it's likely the user explicitly turned it off (via Commit button)
+    if (debugHandledRef.current && !params.debugMode) {
+      console.log('[useDebugRedirection] User explicitly exited debug mode');
+      userExplicitlyExitedDebugRef.current = true;
+    }
+  }, [params.debugMode]);
 
   const checkDebugRedirection = () => {
     console.log('[useDebugRedirection] Checking if debug redirection is needed:', {
@@ -15,8 +26,15 @@ export const useDebugRedirection = (
       alreadyAttempted: redirectAttemptedRef.current,
       hasOutput: !!params.output,
       debugMode: params.debugMode,
-      debugHandled: debugHandledRef.current
+      debugHandled: debugHandledRef.current,
+      userExplicitlyExited: userExplicitlyExitedDebugRef.current
     });
+    
+    // Skip redirection if the user has explicitly exited debug mode
+    if (userExplicitlyExitedDebugRef.current) {
+      console.log('[useDebugRedirection] Skipping redirection - user explicitly exited debug mode');
+      return;
+    }
     
     // We should enter debug mode in two scenarios:
     // 1. When there's an output param but we're not in debug mode
@@ -42,6 +60,7 @@ export const useDebugRedirection = (
   return {
     redirectAttemptedRef,
     debugHandledRef,
+    userExplicitlyExitedDebugRef,
     checkDebugRedirection
   };
 };
