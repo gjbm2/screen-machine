@@ -1,3 +1,4 @@
+
 import { DisplayParams } from './types';
 
 // Function to validate and process the output parameter
@@ -242,10 +243,9 @@ export const formatDateTime = (date: Date | null) => {
 };
 
 // Calculate next check time
-export const getNextCheckTime = (lastChecked: Date | null, refreshInterval: number) => {
-  if (!lastChecked) return 'N/A';
-  const nextCheck = new Date(lastChecked.getTime() + refreshInterval * 1000);
-  return formatDateTime(nextCheck);
+export const getNextCheckTime = (lastChecked: Date | null, refreshInterval: number): Date | null => {
+  if (!lastChecked) return null;
+  return new Date(lastChecked.getTime() + refreshInterval * 1000);
 };
 
 /**

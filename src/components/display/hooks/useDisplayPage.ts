@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { processOutputParam, fetchOutputFiles, extractImageMetadata, getNextCheckTime } from '@/components/display/utils';
@@ -45,7 +46,7 @@ export const useDisplayPage = () => {
     oldImageStyle,
     newImageStyle,
     imageRef,
-    nextCheckTime,
+    nextCheckTime, // This is now Date | null from useDisplayState
     loadNewImage,
     checkImageModified,
     handleManualCheck,
@@ -137,7 +138,7 @@ export const useDisplayPage = () => {
     oldImageStyle,
     newImageStyle,
     imageRef,
-    nextCheckTime,
+    nextCheckTime, // This is now Date | null
     handleManualCheck,
     getImagePositionStyle,
     handleImageError

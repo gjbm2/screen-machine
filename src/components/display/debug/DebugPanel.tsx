@@ -18,7 +18,7 @@ interface DebugPanelProps {
   imageUrl: string | null;
   lastModified: string | null;
   lastChecked: Date | null;
-  nextCheckTime: Date | null;
+  nextCheckTime: Date | null; // Ensure this is Date | null
   imageKey: number;
   outputFiles: string[];
   imageChanged?: boolean;
@@ -32,7 +32,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   imageUrl,
   lastModified,
   lastChecked,
-  nextCheckTime,
+  nextCheckTime, // This is Date | null
   imageKey,
   outputFiles,
   imageChanged,
