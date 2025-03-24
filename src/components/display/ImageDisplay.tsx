@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { DisplayParams } from './types';
 import { useNavigate } from 'react-router-dom';
 import { createUrlWithParams } from './utils';
@@ -34,6 +34,20 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onImageError
 }) => {
   const navigate = useNavigate();
+  const [containerSize, setContainerSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+
+  // Update container size on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      setContainerSize({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleDoubleClick = () => {
     // Create URL with existing params plus debug mode
@@ -42,16 +56,38 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     navigate(debugUrl);
   };
 
+  // Calculate caption font size scaling
+  const getScaledFontSize = (baseSize: string) => {
+    // Extract numeric portion and unit
+    const matches = baseSize.match(/^(\d+(?:\.\d+)?)([a-z%]+)?$/i);
+    if (!matches) return baseSize;
+    
+    const size = parseFloat(matches[1]);
+    const unit = matches[2] || 'px';
+    
+    // Base scaling on container width (viewport width)
+    // This provides a good way to scale caption text for different screen sizes
+    const baseWidth = 1920; // Reference width (Full HD)
+    const scaleFactor = containerSize.width / baseWidth;
+    
+    // Apply scaling but limit to reasonable bounds
+    const scaledSize = Math.max(10, Math.min(72, size * scaleFactor));
+    
+    return `${scaledSize}${unit}`;
+  };
+
   // Caption styles
   const captionStyle: React.CSSProperties = (() => {
     if (!processedCaption) return {};
+
+    const scaledFontSize = getScaledFontSize(params.captionSize || '16px');
 
     const styles: React.CSSProperties = {
       position: 'absolute',
       padding: '8px 16px',
       backgroundColor: 'rgba(0, 0, 0, 0.7)',
       color: `#${params.captionColor}`,
-      fontSize: params.captionSize,
+      fontSize: scaledFontSize,
       fontFamily: params.captionFont,
       maxWidth: '80%',
       textAlign: 'center',
@@ -103,7 +139,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     color: '#ffffff',
     fontFamily: 'monospace',
-    fontSize: '14px',
+    fontSize: getScaledFontSize('14px'),
     maxWidth: '350px',
     borderRadius: '4px',
     top: '20px',
