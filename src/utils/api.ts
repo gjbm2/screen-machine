@@ -49,20 +49,19 @@ class ApiService {
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
       
-      // CRITICAL: Always use the batch_size that was explicitly provided
-      // Never modify, cache, or transform the value
-      if (global_params && typeof global_params.batch_size !== 'undefined') {
-        jsonData.global_params.batch_size = global_params.batch_size;
-      }
+      // CRITICAL: Log the original batch_size we received to debug issues
+      console.log(`[api] Original global_params received:`, global_params);
       
-      // Log the parameters to debug batch size issues
-      console.log("[api] Generating image with live batch_size:", jsonData.global_params.batch_size);
+      // CRITICAL: Log the batch_size in the payload before sending
+      console.log(`[api] Generating with batch_size:`, jsonData.global_params.batch_size);
+      
+      // Log the complete API payload for debugging
       console.log("[api] Full API payload:", {
         prompt,
         workflow,
         params: workflowParams,
         global_params,
-        batchSize: jsonData.global_params.batch_size,
+        batch_size: jsonData.global_params.batch_size,
         refiner: refiner || 'none',
         refiner_params: refiner_params || {}
       });
@@ -169,8 +168,9 @@ class ApiService {
   
   // Mock implementation for testing/preview
   private mockGenerateImage(params: GenerateImageParams) {
-    // CRITICAL: Always use the provided batch size directly, don't manipulate it
+    // CRITICAL: Always directly use the provided batch size without any manipulation
     const batchSize = params.global_params?.batch_size || 1;
+    
     console.info('[MOCK LOG] [mock-backend]', `Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
     console.info('[MOCK LOG] [mock-backend]', `Using workflow: ${params.workflow}`);
     
@@ -193,7 +193,7 @@ class ApiService {
           return placeholderImages[Math.floor(Math.random() * placeholderImages.length)];
         };
         
-        // Create mock images based on the requested batch size
+        // Create mock images based on the requested batch size - CRITICAL: Use the provided batch size
         const mockImages = Array(batchSize).fill(0).map((_, index) => ({
           id: `mock-${Date.now()}-${index}`,
           url: getRandomImage(),

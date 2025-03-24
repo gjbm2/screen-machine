@@ -1,3 +1,4 @@
+
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -109,11 +110,19 @@ export const generateImage = async (
       console.log(`[image-generator] Using reference images: ${uploadedImageUrls.join(', ')}`);
     }
 
-    // CRITICAL: Get the batch size directly from the provided globalParams
+    // CRITICAL: Directly use the batch size from globalParams, don't override or use defaults
     const batchSize = globalParams?.batch_size || 1;
     
-    // Log the current batch size being used
-    console.log(`[image-generator] Current batch size for generation: ${batchSize}`);
+    // Log the batch size to verify we're using the right value
+    console.log(`[image-generator] Received batch_size: ${batchSize}`);
+    if (globalParams?.batch_size !== undefined) {
+      console.log(`[image-generator] Original globalParams.batch_size: ${globalParams.batch_size}`);
+    } else {
+      console.log(`[image-generator] WARNING: globalParams.batch_size is undefined, using default: 1`);
+    }
+    
+    // Log full global params for debugging
+    console.log(`[image-generator] Full received globalParams:`, globalParams);
     
     addConsoleLog({
       type: 'info',
@@ -130,7 +139,7 @@ export const generateImage = async (
       }
     });
     
-    console.log(`[image-generator] Generating batch of ${batchSize} images with prompt: "${prompt}"`);
+    console.log(`[image-generator] Creating placeholders for batch of ${batchSize} images with prompt: "${prompt}"`);
     if (refiner) {
       console.log(`[image-generator] Using refiner: ${refiner}`);
     }
@@ -169,14 +178,13 @@ export const generateImage = async (
     // Use setTimeout to allow the UI to update before starting the API call
     setTimeout(async () => {
       try {
-        // Make the API call
+        // Make the API call - CRITICAL: Pass globalParams directly without modifying its batch_size
         const payload: GenerateImagePayload = {
           prompt,
           workflow,
           params,
           global_params: {
             ...globalParams,
-            batch_size: batchSize, // Ensure batch_size is explicitly set with current value
           },
           refiner,
           refiner_params: refinerParams,
@@ -186,7 +194,7 @@ export const generateImage = async (
         
         // Enhanced logging to debug batch size issues
         console.log("[image-generator] API payload batch_size:", payload.global_params.batch_size);
-        console.log("[image-generator] Full API payload:", JSON.stringify(payload, null, 2));
+        console.log("[image-generator] Full API payload:", payload);
         
         const response = await apiService.generateImage(payload);
         
