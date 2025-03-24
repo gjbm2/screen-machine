@@ -29,6 +29,8 @@ export const useDebugPanelFileManagement = ({
         outputPath = `/output/${outputPath}`;
       }
       
+      console.log('[useDebugPanelFileManagement] Normalized path:', outputPath);
+      
       // Create a URL with the debug mode and selected file
       const newParams = {
         ...params,

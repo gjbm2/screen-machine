@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ShowMode, PositionMode } from '../../types';
 
 interface ImageDisplayProps {
@@ -23,7 +23,14 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   imageRef,
   getImageStyle
 }) => {
+  // Debug logging
+  useEffect(() => {
+    console.log('[ImageDisplay] Image URL changed:', imageUrl);
+    console.log('[ImageDisplay] Image Key:', imageKey);
+  }, [imageUrl, imageKey]);
+
   if (!imageUrl) {
+    console.log('[ImageDisplay] No image URL provided, showing placeholder');
     return (
       <div className="w-full h-full flex items-center justify-center text-gray-500">
         No image to display
@@ -31,6 +38,9 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     );
   }
 
+  // Log the actual image URL we're trying to load
+  console.log('[ImageDisplay] Attempting to load image from URL:', imageUrl);
+  
   return (
     <img
       ref={imageRef}
@@ -38,8 +48,14 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
       src={imageUrl}
       alt="Preview"
       className="max-w-full max-h-full"
-      onLoad={onImageLoad}
-      onError={onImageError}
+      onLoad={(e) => {
+        console.log('[ImageDisplay] Image loaded successfully:', imageUrl);
+        onImageLoad(e);
+      }}
+      onError={(e) => {
+        console.error('[ImageDisplay] Error loading image:', imageUrl, e);
+        onImageError();
+      }}
       style={getImageStyle()}
     />
   );
