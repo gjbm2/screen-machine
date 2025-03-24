@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
@@ -77,6 +76,7 @@ const Index = () => {
 
   // Create a proper handler for global param changes
   const handleGlobalParamChange = useCallback((paramId: string, value: any) => {
+    console.log('Global param change:', paramId, value);
     setCurrentGlobalParams(prev => ({
       ...prev,
       [paramId]: value
@@ -122,6 +122,10 @@ const Index = () => {
     }
   };
 
+  const handleClearConsole = useCallback(() => {
+    setConsoleLogs([]);
+  }, []);
+
   return (
     <main className="flex flex-col min-h-screen p-4 md:p-6 max-w-screen-2xl mx-auto">
       <HeaderSection 
@@ -165,7 +169,7 @@ const Index = () => {
       {consoleVisible && (
         <ResizableConsole 
           logs={consoleLogs}
-          onClear={() => setConsoleLogs([])}
+          isVisible={consoleVisible}
           onClose={toggleConsole}
         />
       )}
