@@ -2,7 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
 import { createUrlWithParams, processOutputParam, normalizePathForDisplay } from '../utils/paramUtils';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 interface UseDebugPanelFileManagementProps {
   params: DisplayParams;
@@ -23,14 +23,7 @@ export const useDebugPanelFileManagement = ({
       
       if (!outputPath) {
         console.error('[useDebugPanelFileManagement] Failed to process output path');
-        
-        // Fix: Replace toast.error with standard toast with variant
-        toast({
-          title: "Error",
-          description: "Failed to process file path",
-          variant: "destructive"
-        });
-        
+        toast.error("Failed to process file path");
         return;
       }
       
@@ -45,10 +38,7 @@ export const useDebugPanelFileManagement = ({
       console.log('[useDebugPanelFileManagement] Navigating to:', url);
       
       // Notify the user before navigation
-      toast({
-        title: "Image Selected",
-        description: `Loading: ${formatFileName(file)}`,
-      });
+      toast.success(`Loading: ${formatFileName(file)}`);
       
       // Navigate to the URL
       navigate(`/display${url}`, { replace: false });

@@ -1,62 +1,41 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 
-export const useVerboseDebug = () => {
-  const [verboseDebug, setVerboseDebug] = useState<boolean>(false);
-
-  // Initialize from URL param on mount
+export const useVerboseDebugMode = () => {
+  const [isVerboseDebug, setVerboseDebug] = useState<boolean>(false);
+  
+  // Check URL parameters on mount
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const debugParam = params.get('debug');
+    const urlParams = new URLSearchParams(window.location.search);
+    const debug = urlParams.get('debug');
     
-    if (debugParam === 'verbose') {
-      console.info('Verbose debugging enabled via URL parameter');
-      setVerboseDebug(true);
-    }
-    
-    // Also check localStorage for persistent setting
-    const storedDebug = localStorage.getItem('verboseDebug');
-    if (storedDebug === 'true') {
-      console.info('Verbose debugging enabled via localStorage setting');
+    if (debug === 'verbose') {
+      console.info('🐛 Verbose debug mode enabled by URL parameter');
       setVerboseDebug(true);
     }
   }, []);
-
-  // Toggle debug mode
-  const toggleVerboseDebug = useCallback(() => {
-    setVerboseDebug(prev => {
-      const newValue = !prev;
-      
-      // Store in localStorage for persistence
-      localStorage.setItem('verboseDebug', String(newValue));
-      
-      // Add or remove URL parameter
-      const url = new URL(window.location.href);
-      if (newValue) {
-        url.searchParams.set('debug', 'verbose');
-        console.info('Verbose debugging enabled');
-      } else {
-        url.searchParams.delete('debug');
-        console.info('Verbose debugging disabled');
-      }
-      
-      // Update URL without reloading page
-      window.history.replaceState({}, '', url.toString());
-      
-      return newValue;
-    });
-  }, []);
-
-  // Helper function to log verbose info
-  const logVerbose = useCallback((message: string, data?: any) => {
-    if (verboseDebug) {
-      if (data) {
-        console.info(`[VERBOSE] ${message}`, data);
-      } else {
-        console.info(`[VERBOSE] ${message}`);
-      }
+  
+  // Update URL when verbose debug is toggled
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    
+    if (isVerboseDebug) {
+      url.searchParams.set('debug', 'verbose');
+    } else {
+      url.searchParams.delete('debug');
     }
-  }, [verboseDebug]);
-
-  return { verboseDebug, toggleVerboseDebug, logVerbose };
+    
+    // Update the URL without refreshing the page
+    window.history.replaceState({}, '', url.toString());
+  }, [isVerboseDebug]);
+  
+  const toggleVerboseDebug = () => {
+    setVerboseDebug(prev => !prev);
+  };
+  
+  return {
+    isVerboseDebug,
+    setVerboseDebug,
+    toggleVerboseDebug
+  };
 };

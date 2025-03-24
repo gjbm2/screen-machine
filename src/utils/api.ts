@@ -15,6 +15,7 @@ interface GenerateImageParams {
   refiner_params?: Record<string, any>;
   imageFiles?: File[];
   batch_id?: string;
+  isVerboseDebug?: boolean;
 }
 
 class ApiService {
@@ -35,48 +36,63 @@ class ApiService {
   // Generate images through the API
   async generateImage(params: GenerateImageParams) {
     try {
-      const { prompt, workflow, params: workflowParams, global_params, refiner, refiner_params, imageFiles, batch_id } = params;
+      const { prompt, workflow, params: workflowParams, global_params, refiner, refiner_params, imageFiles, batch_id, isVerboseDebug } = params;
+      
+      if (isVerboseDebug) {
+        console.info("[VERBOSE] ⬇️ START API REQUEST ⬇️");
+        console.info("[VERBOSE] Generate image API call with params:");
+        console.info("[VERBOSE] - Prompt:", prompt);
+        console.info("[VERBOSE] - Workflow:", workflow);
+        console.info("[VERBOSE] - Batch ID:", batch_id || "new batch");
+        console.info("[VERBOSE] - Global params:", global_params);
+        console.info("[VERBOSE] - Batch size:", global_params?.batch_size);
+      }
       
       // Create form data for multipart request
       const formData = new FormData();
-      
-      // CRITICAL FIX: Ensure global_params contains a valid batch_size value
-      // If global_params is undefined or batch_size is missing, create with default value
-      const sanitizedGlobalParams = global_params || {};
-      
-      // If batch_size is not a proper number, default to 1
-      if (typeof sanitizedGlobalParams.batch_size !== 'number') {
-        const parsedBatchSize = parseInt(String(sanitizedGlobalParams.batch_size), 10);
-        sanitizedGlobalParams.batch_size = !isNaN(parsedBatchSize) ? parsedBatchSize : 1;
-      }
       
       // Create a data object to serialize as JSON
       const jsonData: any = {
         prompt,
         workflow,
         params: workflowParams || {},
-        global_params: sanitizedGlobalParams,
+        global_params: global_params || {},
         batch_id,
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
       
       // CRITICAL: Log the original batch_size we received to debug issues
-      console.log(`[api] Original global_params received:`, global_params);
-      console.log(`[api] Sanitized global_params:`, sanitizedGlobalParams);
+      if (isVerboseDebug) {
+        console.info(`[VERBOSE] Original global_params received:`, global_params);
+        console.info(`[VERBOSE] Batch size in global_params: ${jsonData.global_params.batch_size}`);
+      } else {
+        console.log(`[api] Original global_params received:`, global_params);
+      }
       
       // CRITICAL: Log the batch_size in the payload before sending
-      console.log(`[api] Generating with batch_size:`, jsonData.global_params.batch_size);
-      
-      // Log the complete API payload for debugging
-      console.log("[api] Full API payload:", {
-        prompt,
-        workflow,
-        params: workflowParams,
-        global_params: sanitizedGlobalParams,
-        batch_size: jsonData.global_params.batch_size,
-        refiner: refiner || 'none',
-        refiner_params: refiner_params || {}
-      });
+      if (isVerboseDebug) {
+        console.info(`[VERBOSE] Generating with batch_size: ${jsonData.global_params.batch_size}`);
+        console.info("[VERBOSE] Full API payload:", {
+          prompt,
+          workflow,
+          params: workflowParams,
+          global_params,
+          batch_size: jsonData.global_params.batch_size,
+          refiner: refiner || 'none',
+          refiner_params: refiner_params || {}
+        });
+      } else {
+        console.log(`[api] Generating with batch_size:`, jsonData.global_params.batch_size);
+        console.log("[api] Full API payload:", {
+          prompt,
+          workflow,
+          params: workflowParams,
+          global_params,
+          batch_size: jsonData.global_params.batch_size,
+          refiner: refiner || 'none',
+          refiner_params: refiner_params || {}
+        });
+      }
       
       // Add refiner if specified
       if (refiner && refiner !== 'none') {
@@ -101,6 +117,10 @@ class ApiService {
         return this.mockGenerateImage(params);
       }
       
+      if (isVerboseDebug) {
+        console.info("[VERBOSE] Sending API request to:", `${this.apiUrl}/generate-image`);
+      }
+      
       // Send the actual request to the backend
       const response = await fetch(`${this.apiUrl}/generate-image`, {
         method: 'POST',
@@ -109,12 +129,27 @@ class ApiService {
       
       if (!response.ok) {
         const errorData = await response.json();
+        if (isVerboseDebug) {
+          console.info("[VERBOSE] ❌ API error response:", errorData);
+        }
         throw new Error(errorData.error || 'Failed to generate image');
       }
       
-      return await response.json();
+      const responseData = await response.json();
+      
+      if (isVerboseDebug) {
+        console.info("[VERBOSE] API response successful:", responseData);
+        console.info("[VERBOSE] Images received:", responseData.images?.length || 0);
+        console.info("[VERBOSE] ⬆️ END API REQUEST ⬆️");
+      }
+      
+      return responseData;
     } catch (error) {
       console.error('Error generating image:', error);
+      if (params.isVerboseDebug) {
+        console.info("[VERBOSE] ❌ Exception during API call:", error);
+        console.info("[VERBOSE] ⬆️ END API REQUEST WITH ERROR ⬆️");
+      }
       throw error;
     }
   }
@@ -180,29 +215,25 @@ class ApiService {
   
   // Mock implementation for testing/preview
   private mockGenerateImage(params: GenerateImageParams) {
-    // CRITICAL FIX: Ensure we properly extract batch_size from global_params
-    let batchSize = 1; // Default
+    // CRITICAL: Always directly use the provided batch size without any manipulation
+    const batchSize = params.global_params?.batch_size || 1;
     
-    if (params.global_params) {
-      if (typeof params.global_params.batch_size === 'number') {
-        batchSize = params.global_params.batch_size;
-      } else if (params.global_params.batch_size !== undefined) {
-        // Try to parse it as a number
-        const parsedBatchSize = parseInt(String(params.global_params.batch_size), 10);
-        if (!isNaN(parsedBatchSize)) {
-          batchSize = parsedBatchSize;
-        }
-      }
+    if (params.isVerboseDebug) {
+      console.info('[VERBOSE] [MOCK BACKEND] 🎨 Generating mock images');
+      console.info(`[VERBOSE] [MOCK BACKEND] Using batch size: ${batchSize}`);
+      console.info(`[VERBOSE] [MOCK BACKEND] Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
+      console.info(`[VERBOSE] [MOCK BACKEND] Using workflow: ${params.workflow}`);
+    } else {
+      console.info('[MOCK LOG] [mock-backend]', `Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
+      console.info('[MOCK LOG] [mock-backend]', `Using workflow: ${params.workflow}`);
     }
     
-    // Ensure batch size is between 1 and 9
-    batchSize = Math.max(1, Math.min(9, batchSize));
-    
-    console.info('[MOCK LOG] [mock-backend]', `Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
-    console.info('[MOCK LOG] [mock-backend]', `Using workflow: ${params.workflow}`);
-    
     if (params.refiner && params.refiner !== 'none') {
-      console.info('[MOCK LOG] [mock-backend]', `Using refiner: ${params.refiner}`);
+      if (params.isVerboseDebug) {
+        console.info(`[VERBOSE] [MOCK BACKEND] Using refiner: ${params.refiner}`);
+      } else {
+        console.info('[MOCK LOG] [mock-backend]', `Using refiner: ${params.refiner}`);
+      }
     }
     
     // Simulate network delay
@@ -220,7 +251,7 @@ class ApiService {
           return placeholderImages[Math.floor(Math.random() * placeholderImages.length)];
         };
         
-        // Create mock images based on the requested batch size
+        // Create mock images based on the requested batch size - CRITICAL: Use the provided batch size
         const mockImages = Array(batchSize).fill(0).map((_, index) => ({
           id: `mock-${Date.now()}-${index}`,
           url: getRandomImage(),
@@ -235,7 +266,16 @@ class ApiService {
           status: 'completed'
         }));
         
-        console.info('[MOCK LOG] [mock-backend]', `Generated ${mockImages.length} mock image(s) successfully!`);
+        if (params.isVerboseDebug) {
+          console.info(`[VERBOSE] [MOCK BACKEND] Generated ${mockImages.length} mock image(s) successfully!`);
+          console.info(`[VERBOSE] [MOCK BACKEND] Response:`, {
+            success: true,
+            images: mockImages.length,
+            batch_id: params.batch_id || `batch-${Date.now()}`,
+          });
+        } else {
+          console.info('[MOCK LOG] [mock-backend]', `Generated ${mockImages.length} mock image(s) successfully!`);
+        }
         
         resolve({
           success: true,

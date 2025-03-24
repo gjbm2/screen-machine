@@ -1,52 +1,95 @@
 
 import React from 'react';
+import { Sparkles, XCircle, Maximize, Heart, Palette } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useVerboseDebug } from '@/hooks/use-verbose-debug';
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import refinersData from '@/data/refiners.json';
 
 interface RefinerSelectorProps {
   selectedRefiner: string;
-  refiners: any[];
   onRefinerChange: (refinerId: string) => void;
-  disabled?: boolean;
+  isCompact?: boolean;
 }
 
 const RefinerSelector: React.FC<RefinerSelectorProps> = ({
   selectedRefiner,
-  refiners,
   onRefinerChange,
-  disabled = false
+  isCompact = false
 }) => {
-  const { logVerbose } = useVerboseDebug();
+  const selectedRefinerObj = refinersData.find(r => r.id === selectedRefiner);
   
-  const handleChange = (value: string) => {
-    logVerbose(`Refiner changed to: ${value}`);
-    onRefinerChange(value);
+  // Get the icon for a refiner
+  const getRefinerIcon = (refinerId: string) => {
+    switch (refinerId) {
+      case 'enhance':
+        return <Sparkles className="h-5 w-5" />;
+      case 'upscale':
+        return <Maximize className="h-5 w-5" />;
+      case 'beautify':
+        return <Heart className="h-5 w-5" />;
+      case 'stylize':
+        return <Palette className="h-5 w-5" />;
+      case 'none':
+      default:
+        return <XCircle className="h-5 w-5" />;
+    }
   };
   
   return (
-    <Select
-      value={selectedRefiner}
-      onValueChange={handleChange}
-      disabled={disabled}
-    >
-      <SelectTrigger className="h-8 text-xs">
-        <SelectValue placeholder="Select refiner" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="none">No Refiner</SelectItem>
-        {refiners.map(refiner => (
-          <SelectItem key={refiner.id} value={refiner.id}>
-            {refiner.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="flex items-center h-[48px]">
+      <HoverCard openDelay={0} closeDelay={100}>
+        <HoverCardTrigger asChild>
+          <Button
+            variant="outline"
+            className="h-8 border border-input hover:bg-purple-500/10 text-purple-700"
+            onClick={(e) => {
+              // Prevent any default action or propagation
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            type="button"
+          >
+            {getRefinerIcon(selectedRefiner)}
+            {!isCompact && (
+              <span className="ml-2 text-sm truncate max-w-[80px]">{selectedRefinerObj?.name || 'No Refiner'}</span>
+            )}
+          </Button>
+        </HoverCardTrigger>
+        <HoverCardContent className="w-64 p-2" align="start">
+          <div className="space-y-2">
+            <h4 className="text-sm font-semibold">Refiners</h4>
+            <div className="grid grid-cols-1 gap-1">
+              {refinersData.map((refiner) => (
+                <Button
+                  key={refiner.id}
+                  variant={refiner.id === selectedRefiner ? "secondary" : "ghost"}
+                  size="sm"
+                  className="justify-start text-sm h-auto py-2"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onRefinerChange(refiner.id);
+                  }}
+                  type="button"
+                >
+                  <div className="mr-2 flex-shrink-0">
+                    {getRefinerIcon(refiner.id)}
+                  </div>
+                  <div className="flex flex-col items-start overflow-hidden">
+                    <span className="truncate w-full text-left">{refiner.name}</span>
+                    <span className="text-xs text-muted-foreground truncate w-full text-left">{refiner.description}</span>
+                  </div>
+                </Button>
+              ))}
+            </div>
+          </div>
+        </HoverCardContent>
+      </HoverCard>
+    </div>
   );
 };
 

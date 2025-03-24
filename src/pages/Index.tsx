@@ -39,6 +39,8 @@ const Index = () => {
     imageContainerOrder,
     isFirstRun,
     fullscreenRefreshTrigger,
+    isVerboseDebug,
+    setVerboseDebug,
     setCurrentPrompt,
     setUploadedImageUrls,
     setCurrentWorkflow,
@@ -106,6 +108,17 @@ const Index = () => {
     }
   };
 
+  // Toggle verbose debug mode
+  const handleToggleVerboseDebug = () => {
+    const newValue = !isVerboseDebug;
+    setVerboseDebug(newValue);
+    toast.info(`Verbose debugging ${newValue ? 'enabled' : 'disabled'}`);
+    if (newValue) {
+      console.info("🐛 VERBOSE DEBUG MODE ENABLED");
+      console.info("Check console for detailed debug information");
+    }
+  };
+
   return (
     <>
       <MainLayout
@@ -115,6 +128,8 @@ const Index = () => {
         consoleLogs={consoleLogs}
         onClearConsole={clearConsole}
         isFirstRun={isFirstRun}
+        isVerboseDebug={isVerboseDebug}
+        onToggleVerboseDebug={handleToggleVerboseDebug}
       >
         {isFirstRun && <IntroText />}
         
@@ -124,6 +139,7 @@ const Index = () => {
           currentPrompt={currentPrompt}
           isFirstRun={isFirstRun}
           onOpenAdvancedOptions={handleOpenAdvancedOptions}
+          isVerboseDebug={isVerboseDebug}
         />
         
         <ImageDisplay 

@@ -30,6 +30,12 @@ export const FilesTab: React.FC<FilesTabProps> = ({
   isCurrentFile,
   formatFileName
 }) => {
+  // Debug the current file selections
+  React.useEffect(() => {
+    console.log('[FilesTab] Current imageUrl:', imageUrl);
+    console.log('[FilesTab] Available outputFiles:', outputFiles);
+  }, [imageUrl, outputFiles]);
+
   return (
     <CardContent className="pt-4 h-full flex flex-col">
       <div className="space-y-4 flex-1 flex flex-col">
