@@ -18,7 +18,7 @@ export const MetadataPanel: React.FC<MetadataPanelProps> = ({
   onRefreshMetadata
 }) => {
   return (
-    <CardContent className="mt-0 flex-1 overflow-hidden">
+    <CardContent className="mt-0 flex-1 overflow-hidden flex flex-col h-[calc(100vh-12rem)]">
       <MetadataTab 
         metadataEntries={metadataEntries}
         insertMetadataTag={insertMetadataTag}
