@@ -130,8 +130,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
             workflow: image.workflow || '',
             params: image.params
           }}
-          referenceImageUrl={image.referenceImageUrl}
           title={image.title} // Pass the title
+          referenceImageUrl={image.referenceImageUrl} // Pass the referenceImageUrl
         />
       )}
     </div>

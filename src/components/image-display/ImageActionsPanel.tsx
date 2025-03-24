@@ -15,6 +15,7 @@ interface ImageActionsPanelProps {
     params?: Record<string, any>;
   };
   title?: string; // Title field
+  referenceImageUrl?: string; // Added referenceImageUrl property
 }
 
 const ImageActionsPanel: React.FC<ImageActionsPanelProps> = ({ 
@@ -24,7 +25,8 @@ const ImageActionsPanel: React.FC<ImageActionsPanelProps> = ({
   onUseAsInput,
   onDeleteImage,
   generationInfo,
-  title // Use title from props
+  title, // Use title from props
+  referenceImageUrl // Add referenceImageUrl parameter
 }) => {
   if (!show) return null;
 
