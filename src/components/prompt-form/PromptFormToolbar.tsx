@@ -1,38 +1,15 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { 
-  Send, 
-  UploadCloud, 
-  Settings, 
-  Loader2
-} from 'lucide-react';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
-import RefinerSelector from './RefinerSelector';
+import { Settings, ArrowUp, Image, Plus, Minus } from 'lucide-react';
+import ImageUploader from '@/components/prompt/ImageUploader';
+import WorkflowIconSelector from '@/components/prompt/WorkflowIconSelector';
+import RefinerSelector from '@/components/prompt/RefinerSelector';
 import BatchControl from './BatchControl';
-import WorkflowSelector from './WorkflowSelector';
+import { ToolbarProps } from './types';
+import { useIsMobile } from '@/hooks/use-mobile';
 
-interface PromptFormToolbarProps {
-  isLoading: boolean;
-  batchSize: number;
-  selectedWorkflow: string;
-  selectedRefiner: string;
-  onImageUpload: (files: File[]) => void;
-  onWorkflowChange: (workflowId: string) => void;
-  onRefinerChange: (refinerId: string) => void;
-  incrementBatchSize: () => void;
-  decrementBatchSize: () => void;
-  toggleAdvancedOptions: () => void;
-  handleSubmit: () => void;
-  prompt: string;
-  isButtonDisabled: boolean;
-  workflows: any[];
-  isCompact?: boolean;
-  hasUploadedImages?: boolean;
-  isVerboseDebug?: boolean;
-}
-
-const PromptFormToolbar: React.FC<PromptFormToolbarProps> = ({
+const PromptFormToolbar: React.FC<ToolbarProps> = ({
   isLoading,
   batchSize,
   selectedWorkflow,
@@ -47,108 +24,66 @@ const PromptFormToolbar: React.FC<PromptFormToolbarProps> = ({
   prompt,
   isButtonDisabled,
   workflows,
-  isCompact = false,
-  hasUploadedImages = false,
-  isVerboseDebug = false
+  isCompact,
+  hasUploadedImages = false
 }) => {
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.length) {
-      onImageUpload(Array.from(e.target.files));
-      // Clear the input to allow uploading the same file again
-      e.target.value = '';
-    }
-  };
+  const isMobile = useIsMobile();
+  
+  // The button should be enabled if there's a prompt OR uploaded images
+  const shouldDisableButton = isLoading || (!prompt.trim() && !hasUploadedImages);
   
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8"
-                onClick={() => document.getElementById('file-upload')?.click()}
-              >
-                <UploadCloud className="h-4 w-4 mr-2" />
-                <span>Upload</span>
-                <input
-                  id="file-upload"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Upload reference image</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+    <div className="flex items-center justify-between overflow-x-auto py-1">
+      <div className="flex flex-nowrap items-center gap-1 sm:gap-2">
+        <ImageUploader
+          isLoading={isLoading}
+          onImageUpload={onImageUpload}
+          onWorkflowChange={onWorkflowChange}
+          hideLabel={isMobile}
+        />
         
-        <WorkflowSelector 
+        <WorkflowIconSelector
           workflows={workflows}
           selectedWorkflow={selectedWorkflow}
           onWorkflowChange={onWorkflowChange}
-          isCompact={isCompact}
+          hideWorkflowName={isMobile}
         />
         
         <RefinerSelector
           selectedRefiner={selectedRefiner}
           onRefinerChange={onRefinerChange}
-          isCompact={isCompact}
         />
         
         <BatchControl 
           batchSize={batchSize}
           incrementBatchSize={incrementBatchSize}
           decrementBatchSize={decrementBatchSize}
-          isCompact={isCompact}
-          isVerboseDebug={isVerboseDebug}
+          isCompact={isMobile}
         />
-      </div>
-      
-      <div className="flex items-center gap-2">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8"
-                onClick={toggleAdvancedOptions}
-              >
-                <Settings className="h-4 w-4 mr-2" />
-                <span>Advanced</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Show advanced options</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        
-        <Button
-          variant="default"
-          size="sm"
-          className="h-8"
-          onClick={handleSubmit}
-          disabled={isButtonDisabled || isLoading}
+
+        <Button 
+          type="button"
+          variant="outline" 
+          size={isMobile ? "icon" : "sm"}
+          onClick={toggleAdvancedOptions}
+          className={`${isMobile ? "h-[28px] w-[28px]" : "h-[28px] px-2"} text-muted-foreground hover:bg-purple-500/10 text-purple-700 shrink-0`}
+          aria-label="Advanced Settings"
         >
-          {isLoading ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              <span>Generating...</span>
-            </>
-          ) : (
-            <>
-              <Send className="h-4 w-4 mr-2" />
-              <span>Generate</span>
-            </>
-          )}
+          <Settings className="h-3.5 w-3.5" />
+          {!isMobile && <span className="ml-1.5 text-xs">Advanced</span>}
+        </Button>
+      </div>
+
+      <div className="ml-auto">
+        <Button 
+          type="submit" 
+          className={`h-12 w-12 rounded-full transition-all hover:shadow-md flex items-center justify-center btn-shine ${
+            shouldDisableButton && isCompact ? 'bg-gray-300 text-gray-600' : 'bg-primary text-primary-foreground'
+          }`}
+          disabled={shouldDisableButton}
+          onClick={handleSubmit}
+        >
+          <ArrowUp className="h-6 w-6" />
         </Button>
       </div>
     </div>

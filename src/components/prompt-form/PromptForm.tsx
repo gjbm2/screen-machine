@@ -16,7 +16,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
   currentPrompt = '',
   isFirstRun = true,
   onOpenAdvancedOptions,
-  isVerboseDebug = false,
 }) => {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -44,21 +43,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
     updateRefinerParam,
     updateGlobalParam,
   } = usePromptForm();
-
-  // Log verbose debug information when enabled
-  useEffect(() => {
-    if (isVerboseDebug) {
-      console.info("[VERBOSE] PromptForm current state:", {
-        prompt,
-        batchSize,
-        selectedWorkflow,
-        selectedRefiner,
-        globalParams,
-        hasImageFiles: imageFiles.length > 0,
-        hasPreviewUrls: previewUrls.length > 0
-      });
-    }
-  }, [isVerboseDebug, prompt, batchSize, selectedWorkflow, selectedRefiner, globalParams, imageFiles.length, previewUrls.length]);
 
   useEffect(() => {
     if (currentPrompt && currentPrompt !== lastReceivedPrompt.current) {
@@ -104,13 +88,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
       batch_size: batchSize // Use the current batch size value directly
     };
 
-    if (isVerboseDebug) {
-      console.info(`[VERBOSE] PromptForm: Submitting generation with batch size: ${batchSize}`);
-      console.info('[VERBOSE] PromptForm: Full global params:', currentGlobalParams);
-    } else {
-      console.log(`PromptForm: Submitting generation with batch size: ${batchSize}`);
-      console.log('PromptForm: Full global params:', currentGlobalParams);
-    }
+    console.log(`PromptForm: Submitting generation with batch size: ${batchSize}`);
+    console.log('PromptForm: Full global params:', currentGlobalParams);
 
     onSubmit(
       prompt,
@@ -225,7 +204,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
           workflows={workflows}
           isCompact={false}
           hasUploadedImages={previewUrls.length > 0}
-          isVerboseDebug={isVerboseDebug}
         />
         
         {isAdvancedOptionsOpen && (
