@@ -45,34 +45,61 @@ export const extractImageMetadata = async (url: string): Promise<Record<string, 
   try {
     console.log('Extracting metadata for image:', url);
     
-    // Call our new backend endpoint
-    const response = await fetch('/api/extract-metadata', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ imageUrl: url }),
-    });
+    // Try with fetch API directly to the endpoint
+    try {
+      const response = await fetch('/api/extract-metadata', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageUrl: url }),
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to extract metadata');
-    }
+      // Check if the response is valid JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.error('Expected JSON response but got', contentType);
+        throw new Error(`Expected JSON response but got ${contentType}`);
+      }
 
-    const data = await response.json();
-    
-    if (!data.success) {
-      throw new Error(data.error || 'Failed to extract metadata');
+      // Parse the response
+      const data = await response.json();
+      
+      if (!response.ok) {
+        console.error('API error response:', data);
+        throw new Error(data.error || `Failed to extract metadata: ${response.status}`);
+      }
+      
+      console.log('API response data:', data);
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to extract metadata');
+      }
+      
+      // Convert all values to strings for consistency
+      const stringMetadata: Record<string, string> = {};
+      Object.entries(data.metadata).forEach(([key, value]) => {
+        stringMetadata[key] = String(value);
+      });
+      
+      console.log('Extracted metadata:', stringMetadata);
+      return stringMetadata;
+    } catch (apiError) {
+      console.error('Error with API endpoint:', apiError);
+      
+      // Fallback to browser-based extraction if the API fails
+      console.log('Falling back to browser-based extraction');
+      try {
+        const browserMetadata = await extractMetadataUsingBrowser(url);
+        if (Object.keys(browserMetadata).length > 0) {
+          return browserMetadata;
+        }
+      } catch (browserError) {
+        console.error('Browser extraction also failed:', browserError);
+      }
+      
+      throw apiError; // Re-throw the original API error if browser extraction also fails
     }
-    
-    // Convert all values to strings for consistency
-    const stringMetadata: Record<string, string> = {};
-    Object.entries(data.metadata).forEach(([key, value]) => {
-      stringMetadata[key] = String(value);
-    });
-    
-    console.log('Extracted metadata:', stringMetadata);
-    return stringMetadata;
   } catch (error) {
     console.error('Error extracting metadata:', error);
     return {

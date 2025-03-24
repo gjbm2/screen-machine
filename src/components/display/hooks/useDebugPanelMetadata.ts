@@ -59,53 +59,75 @@ export const useDebugPanelMetadata = ({
     
     try {
       toast.info("Manually refreshing metadata...");
+      // Store the current URL in localStorage
+      localStorage.setItem('currentImageUrl', imageUrl);
+      
       // Add cache-busting parameter
       const cacheBustUrl = `${imageUrl}${imageUrl.includes('?') ? '&' : '?'}manualRefresh=${Date.now()}`;
       console.log('[useDebugPanelMetadata] Refreshing metadata for URL:', cacheBustUrl);
       
-      // First try the direct API endpoint with fetch
+      // First try the direct API endpoint
       try {
         console.log('[useDebugPanelMetadata] Trying direct API call to extract-metadata');
-        const apiUrl = '/api/extract-metadata';
-        const params = new URLSearchParams({ url: cacheBustUrl });
-        const response = await fetch(`${apiUrl}?${params.toString()}`);
+        const response = await fetch('/api/extract-metadata', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ imageUrl: cacheBustUrl }),
+        });
         
-        if (!response.ok) {
-          throw new Error(`API call failed: ${response.status}`);
+        // Verify that we got JSON back
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error(`Expected JSON response but got ${contentType}`);
         }
         
         const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(`API call failed: ${response.status} - ${data.error || 'Unknown error'}`);
+        }
+        
         console.log('[useDebugPanelMetadata] API response:', data);
         
-        if (data && typeof data === 'object' && Object.keys(data).length > 0) {
-          toast.success(`Found ${Object.keys(data).length} metadata entries`);
+        if (data && data.success && data.metadata && Object.keys(data.metadata).length > 0) {
+          toast.success(`Found ${Object.keys(data.metadata).length} metadata entries`);
+          
+          // Convert values to strings
+          const stringMetadata: Record<string, string> = {};
+          Object.entries(data.metadata).forEach(([key, value]) => {
+            stringMetadata[key] = String(value);
+          });
+          
           // Force page refresh to update UI with new metadata
           window.location.reload();
-          return data;
+          return stringMetadata;
         }
         
         console.warn('[useDebugPanelMetadata] API call returned no metadata or invalid format');
+        throw new Error('API returned no metadata');
       } catch (apiErr) {
         console.error('[useDebugPanelMetadata] Error in direct API call:', apiErr);
+        
+        // Fallback to using the extractImageMetadata utility
+        console.log('[useDebugPanelMetadata] Falling back to extractImageMetadata utility');
+        const newMetadata = await extractImageMetadata(cacheBustUrl);
+        console.log('[useDebugPanelMetadata] Metadata from utility:', newMetadata);
+        
+        if (Object.keys(newMetadata).length > 0) {
+          toast.success(`Found ${Object.keys(newMetadata).length} metadata entries`);
+          // Force page refresh to update UI with new metadata
+          window.location.reload();
+          return newMetadata;
+        }
+        
+        toast.warning("No metadata found in this image");
+        return {};
       }
-      
-      // Fallback to using the extractImageMetadata utility
-      console.log('[useDebugPanelMetadata] Falling back to extractImageMetadata utility');
-      const newMetadata = await extractImageMetadata(cacheBustUrl);
-      console.log('[useDebugPanelMetadata] Metadata from utility:', newMetadata);
-      
-      if (Object.keys(newMetadata).length > 0) {
-        toast.success(`Found ${Object.keys(newMetadata).length} metadata entries`);
-        // Force page refresh to update UI with new metadata
-        window.location.reload();
-        return newMetadata;
-      }
-      
-      toast.warning("No metadata found in this image");
-      return {};
     } catch (err) {
       console.error('[useDebugPanelMetadata] Error refreshing metadata:', err);
-      toast.error("Failed to refresh metadata");
+      toast.error(`Failed to refresh metadata: ${err instanceof Error ? err.message : 'Unknown error'}`);
       return {};
     }
   };

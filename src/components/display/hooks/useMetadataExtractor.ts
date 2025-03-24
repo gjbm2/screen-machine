@@ -25,90 +25,67 @@ export const useMetadataExtractor = () => {
       isExtractingMetadataRef.current = true;
       
       try {
+        // Store the URL in localStorage for other components to access
+        localStorage.setItem('currentImageUrl', url);
+        
         // Add a random query parameter and timestamp to bypass cache completely
         const cacheBustUrl = `${url}${url.includes('?') ? '&' : '?'}cacheBust=${Date.now()}_${Math.random()}`;
         console.log('[useMetadataExtractor] Using cache-busted URL:', cacheBustUrl);
         
-        // First attempt - using the utility function with cache busting
         console.log('[useMetadataExtractor] Attempting to extract metadata from:', cacheBustUrl);
-        const newMetadata = await extractImageMetadata(cacheBustUrl);
-        console.log('[useMetadataExtractor] Extracted metadata (1st attempt):', newMetadata);
         
-        if (Object.keys(newMetadata).length > 0) {
-          setMetadata(newMetadata);
-          lastMetadataUrlRef.current = url;
-          isExtractingMetadataRef.current = false;
-          return newMetadata;
-        }
-        
-        console.warn('[useMetadataExtractor] First attempt returned no metadata, trying second approach');
-        
-        // Second attempt - fetch the image directly as a blob and use the blob URL
+        // Try a direct API call first
         try {
-          const response = await fetch(cacheBustUrl, { 
-            cache: 'no-store',
+          console.log('[useMetadataExtractor] Trying direct API call');
+          const response = await fetch('/api/extract-metadata', {
+            method: 'POST',
             headers: {
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
-              'Expires': '0'
-            }
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ imageUrl: cacheBustUrl }),
           });
           
-          if (!response.ok) {
-            throw new Error(`Failed to fetch image: ${response.status}`);
+          // Check content type to ensure it's JSON
+          const contentType = response.headers.get('content-type');
+          if (!contentType || !contentType.includes('application/json')) {
+            throw new Error(`Expected JSON response but got ${contentType}`);
           }
           
-          const blob = await response.blob();
-          const imgUrl = URL.createObjectURL(blob);
+          const data = await response.json();
+          console.log('[useMetadataExtractor] API response:', data);
           
-          console.log('[useMetadataExtractor] Created blob URL for second attempt:', imgUrl);
-          const retryMetadata = await extractImageMetadata(imgUrl);
-          
-          // Clean up the blob URL
-          URL.revokeObjectURL(imgUrl);
-          
-          if (Object.keys(retryMetadata).length > 0) {
-            console.log('[useMetadataExtractor] Second attempt successful, metadata:', retryMetadata);
-            setMetadata(retryMetadata);
+          if (data.success && data.metadata && Object.keys(data.metadata).length > 0) {
+            // Convert values to strings
+            const stringMetadata: Record<string, string> = {};
+            Object.entries(data.metadata).forEach(([key, value]) => {
+              stringMetadata[key] = String(value);
+            });
+            
+            console.log('[useMetadataExtractor] API call successful, metadata:', stringMetadata);
+            setMetadata(stringMetadata);
             lastMetadataUrlRef.current = url;
             isExtractingMetadataRef.current = false;
-            return retryMetadata;
+            return stringMetadata;
           }
           
-          console.warn('[useMetadataExtractor] Second attempt returned no metadata');
-        } catch (blobErr) {
-          console.error('[useMetadataExtractor] Error in blob approach:', blobErr);
-        }
-        
-        // Third attempt - try directly with the API endpoint
-        try {
-          console.log('[useMetadataExtractor] Attempting direct API call to extract-metadata');
+          throw new Error(data.error || 'API returned no metadata');
+        } catch (apiErr) {
+          console.error('[useMetadataExtractor] API error:', apiErr);
           
-          const apiUrl = '/api/extract-metadata';
-          const params = new URLSearchParams({ url: cacheBustUrl });
-          const apiResponse = await fetch(`${apiUrl}?${params.toString()}`);
+          // Fall back to the utility function
+          const newMetadata = await extractImageMetadata(cacheBustUrl);
+          console.log('[useMetadataExtractor] Extracted metadata (utility function):', newMetadata);
           
-          if (!apiResponse.ok) {
-            throw new Error(`API call failed: ${apiResponse.status}`);
-          }
-          
-          const apiData = await apiResponse.json();
-          console.log('[useMetadataExtractor] API response:', apiData);
-          
-          if (apiData && typeof apiData === 'object' && Object.keys(apiData).length > 0) {
-            console.log('[useMetadataExtractor] API call successful, metadata:', apiData);
-            setMetadata(apiData);
+          if (Object.keys(newMetadata).length > 0) {
+            setMetadata(newMetadata);
             lastMetadataUrlRef.current = url;
             isExtractingMetadataRef.current = false;
-            return apiData;
+            return newMetadata;
           }
           
-          console.warn('[useMetadataExtractor] API call returned no metadata');
+          console.warn('[useMetadataExtractor] No metadata found, providing basic metadata');
           
-          // If still no metadata, show an error toast
-          toast.error("No metadata found in this image");
-          
-          // Return at least basic metadata
+          // If all extraction methods fail, return basic metadata
           const basicMetadata = {
             'filename': url.split('/').pop() || 'unknown',
             'loadedAt': new Date().toISOString(),
@@ -119,21 +96,7 @@ export const useMetadataExtractor = () => {
           lastMetadataUrlRef.current = url;
           isExtractingMetadataRef.current = false;
           return basicMetadata;
-        } catch (apiErr) {
-          console.error('[useMetadataExtractor] Error in API approach:', apiErr);
         }
-        
-        // All approaches failed
-        const fallbackMetadata = {
-          'filename': url.split('/').pop() || 'unknown',
-          'loadedAt': new Date().toISOString(),
-          'error': 'Failed to extract metadata after multiple attempts'
-        };
-        
-        setMetadata(fallbackMetadata);
-        lastMetadataUrlRef.current = url;
-        isExtractingMetadataRef.current = false;
-        return fallbackMetadata;
       } catch (err) {
         console.error('[useMetadataExtractor] Error in metadata extraction:', err);
         isExtractingMetadataRef.current = false;
