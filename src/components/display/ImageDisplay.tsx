@@ -1,8 +1,8 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DisplayParams } from './types';
-import { createUrlWithParams, decodeComplexOutputParam } from './utils';
-import { CaptionRenderer } from './debug/CaptionRenderer';
 import { toast } from 'sonner';
+import { CaptionRenderer } from './debug/CaptionRenderer';
 
 interface ImageDisplayProps {
   params: DisplayParams;
@@ -37,35 +37,11 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [doubleClickAttempted, setDoubleClickAttempted] = useState(false);
   const doubleClickTimeoutRef = useRef<number | null>(null);
   const [hasLoadError, setHasLoadError] = useState(false);
-  // State to hold the final processed image URL (important for complex URLs)
-  const [processedImageUrl, setProcessedImageUrl] = useState<string | null>(null);
 
-  // Process complex URLs to ensure they're fully decoded
+  // Log the image URL for debugging
   useEffect(() => {
-    if (imageUrl) {
-      if (imageUrl.includes('?') && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
-        // For complex URLs, ensure they're fully decoded
-        const fullyDecodedUrl = decodeComplexOutputParam(imageUrl);
-        console.log('[ImageDisplay] Processed complex URL:', fullyDecodedUrl);
-        setProcessedImageUrl(fullyDecodedUrl);
-      } else {
-        // For simple URLs, use as-is
-        setProcessedImageUrl(imageUrl);
-      }
-      
-      // Reset error state when image URL changes
-      setHasLoadError(false);
-    } else {
-      setProcessedImageUrl(null);
-    }
+    console.log('[ImageDisplay] Current image URL:', imageUrl);
   }, [imageUrl]);
-
-  // Debug when image URL changes
-  useEffect(() => {
-    console.log('[ImageDisplay] Image URL changed:', imageUrl);
-    console.log('[ImageDisplay] Processed URL:', processedImageUrl);
-    console.log('[ImageDisplay] Image Key:', imageKey);
-  }, [imageUrl, processedImageUrl, imageKey]);
 
   // Update container size on window resize
   useEffect(() => {
@@ -79,7 +55,6 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     window.addEventListener('resize', handleResize);
     return () => {
       window.removeEventListener('resize', handleResize);
-      // Clear any pending timeouts when component unmounts
       if (doubleClickTimeoutRef.current) {
         window.clearTimeout(doubleClickTimeoutRef.current);
       }
@@ -99,13 +74,11 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     let newUrl;
     if (currentUrl.includes('debug=')) {
       // Already has debug parameter, don't add it again
-      console.log('[ImageDisplay] URL already has debug parameter, not modifying');
       newUrl = currentUrl;
     } else {
       // Add debug=true parameter
       const hasParams = currentUrl.includes('?');
       newUrl = currentUrl + (hasParams ? '&' : '?') + 'debug=true';
-      console.log('[ImageDisplay] Adding debug=true to URL:', newUrl);
     }
     
     // Use window.location.href to ensure a full page reload
@@ -180,17 +153,17 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
       style={{ position: 'relative', width: '100%', height: '100%' }}
       onDoubleClick={handleDoubleClick}
     >
-      {processedImageUrl ? (
+      {imageUrl ? (
         <>
           <img
             key={imageKey}
             ref={imageRef}
-            src={processedImageUrl}
+            src={imageUrl}
             alt=""
             style={isTransitioning ? newImageStyle : imageStyle}
             onError={handleImageLoadError}
-            onLoad={() => console.log('[ImageDisplay] Image loaded successfully:', processedImageUrl)}
-            crossOrigin="anonymous" // Add crossOrigin attribute to help with CORS issues
+            onLoad={() => console.log('[ImageDisplay] Image loaded successfully:', imageUrl)}
+            crossOrigin="anonymous"
           />
           
           {/* Transitioning old image (for fades) */}

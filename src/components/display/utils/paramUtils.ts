@@ -1,28 +1,14 @@
+
 import { DisplayParams } from '../types';
 
 // Create a URL with display parameters
 export const createUrlWithParams = (params: DisplayParams): string => {
   const queryParams = new URLSearchParams();
   
-  // Enhanced logging for output parameter
-  console.log('[paramUtils] Creating URL with output param:', params.output);
-  console.log('[paramUtils] Debug mode:', params.debugMode);
-  
   // Process the output parameter if it exists
   if (params.output) {
-    // For complex URLs with query parameters, we need to ensure they're properly encoded
-    // to avoid breaking the URL structure
-    if (params.output.includes('?') && (params.output.startsWith('http://') || params.output.startsWith('https://'))) {
-      // For URLs with query params, we need to ensure they're properly encoded
-      const encodedOutput = encodeURIComponent(params.output);
-      console.log('[paramUtils] Encoded complex URL for param use:', encodedOutput);
-      queryParams.set('output', encodedOutput);
-    } else {
-      // For simpler URLs or paths, process normally
-      const processedOutput = processOutputParam(params.output);
-      console.log('[paramUtils] Processed output for URL:', processedOutput);
-      queryParams.set('output', processedOutput || '');
-    }
+    // Simple standard encoding for all URLs
+    queryParams.set('output', encodeURIComponent(params.output));
   }
   
   if (params.showMode !== 'fit') queryParams.set('show', params.showMode);
@@ -58,7 +44,6 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   if (params.transition !== 'cut') queryParams.set('transition', params.transition);
   
   const queryString = queryParams.toString();
-  console.log('[paramUtils] Final query string:', queryString);
   return queryString.length > 0 ? `?${queryString}` : '';
 };
 
@@ -86,11 +71,8 @@ export const getDefaultParams = (): DisplayParams => {
 export const processOutputParam = (output: string | null): string | null => {
   if (!output) return null;
   
-  console.log("[processOutputParam] Processing output path:", output);
-  
   // If it's already a fully formed URL, return it as is
   if (output.startsWith('http://') || output.startsWith('https://')) {
-    console.log("[processOutputParam] Already a full URL, returning as is");
     return output;
   }
   
@@ -102,7 +84,6 @@ export const processOutputParam = (output: string | null): string | null => {
   if (!normalizedPath.startsWith('output/')) {
     // If it doesn't have output/ prefix but is a known output file, add the prefix
     if (!normalizedPath.includes('/')) {
-      console.log("[processOutputParam] Adding output/ prefix to filename");
       normalizedPath = `output/${normalizedPath}`;
     }
   }
@@ -110,34 +91,16 @@ export const processOutputParam = (output: string | null): string | null => {
   // Always ensure a leading slash for absolute path from server root
   normalizedPath = `/${normalizedPath}`;
   
-  console.log("[processOutputParam] Normalized path:", normalizedPath);
   return normalizedPath;
 };
 
-// Decode complex output parameters (handles encoded URLs and special chars)
+// Decode URL parameter (simple standard decoding)
 export const decodeComplexOutputParam = (output: string | null): string | null => {
   if (!output) return null;
   
   try {
-    // Try to decode the parameter in case it was URL encoded
-    // We need to attempt decoding multiple times for potentially multiply-encoded URLs
-    let decoded = output;
-    let previousDecoded = '';
-    
-    // Keep decoding until we reach a stable state (no more changes)
-    // This handles cases where the URL might have been encoded multiple times
-    while (decoded !== previousDecoded) {
-      previousDecoded = decoded;
-      try {
-        decoded = decodeURIComponent(previousDecoded);
-      } catch (e) {
-        // If we hit a decoding error, we've reached the limit of what can be decoded
-        break;
-      }
-    }
-    
-    console.log("[decodeComplexOutputParam] Decoded output param:", decoded);
-    return decoded;
+    // Simple, standard decoding
+    return decodeURIComponent(output);
   } catch (e) {
     console.error("[decodeComplexOutputParam] Error decoding output parameter:", e);
     return output; // Return the original if decoding fails
@@ -146,11 +109,8 @@ export const decodeComplexOutputParam = (output: string | null): string | null =
 
 // Normalize a path for display (ensures consistent formatting)
 export const normalizePathForDisplay = (path: string): string => {
-  console.log("[normalizePathForDisplay] Original path:", path);
-  
   // If it's already a fully formed URL, return it as is
   if (path.startsWith('http://') || path.startsWith('https://')) {
-    console.log("[normalizePathForDisplay] Already a full URL");
     return path;
   }
   
@@ -160,12 +120,10 @@ export const normalizePathForDisplay = (path: string): string => {
   // Always ensure output/ directory is referenced correctly
   if (!normalizedPath.startsWith('output/') && !normalizedPath.includes('/')) {
     normalizedPath = `output/${normalizedPath}`;
-    console.log("[normalizePathForDisplay] Added output/ prefix");
   }
   
   // Always ensure leading slash for absolute path
   normalizedPath = `/${normalizedPath}`;
   
-  console.log("[normalizePathForDisplay] Final normalized path:", normalizedPath);
   return normalizedPath;
 };
