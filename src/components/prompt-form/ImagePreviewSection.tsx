@@ -16,12 +16,18 @@ const ImagePreviewSection: React.FC<ImagePreviewSectionProps> = ({
   handleRemoveImage,
   clearAllImages
 }) => {
-  if (previewUrls.length === 0) {
+  // If there are no preview URLs, don't render anything
+  if (!previewUrls || previewUrls.length === 0) {
     return null;
   }
 
   // Remove duplicate URLs if any exist
   const uniqueUrls = [...new Set(previewUrls)];
+  
+  // If after removing duplicates we have no images, don't render anything
+  if (uniqueUrls.length === 0) {
+    return null;
+  }
   
   return (
     <div className="relative p-4 pb-2">
