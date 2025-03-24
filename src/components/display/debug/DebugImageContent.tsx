@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { CardContent } from "@/components/ui/card";
 import { CaptionRenderer } from './CaptionRenderer';
@@ -7,6 +6,7 @@ import { ResizeHandle } from '../ResizeHandle';
 import { ScreenContainer } from './components/ScreenContainer';
 import { ImageDisplay } from './components/ImageDisplay';
 import { getImageStyle } from './utils/ImagePositionStyles';
+import { SCREEN_SIZES } from './ScreenSizeSelector';
 
 interface DebugImageContentProps {
   imageUrl: string | null;
@@ -57,10 +57,8 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
 }) => {
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
   
-  // Ensure captionBgColor has # prefix
   const formattedCaptionBgColor = captionBgColor.startsWith('#') ? captionBgColor : `#${captionBgColor}`;
   
-  // Create a proper image style getter function that encapsulates positioning logic
   const getImageStyleWithContext = () => {
     return getImageStyle(showMode, position, imageDimensions);
   };
