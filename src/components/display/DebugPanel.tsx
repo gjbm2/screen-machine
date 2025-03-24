@@ -61,18 +61,18 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   const [metadataEntries, setMetadataEntries] = useState<Array<{key: string, value: string}>>([]);
   const [previewCaption, setPreviewCaption] = useState<string | null>(null);
   
-  // For making the panel draggable
   const [position2, setPosition2] = useState({ x: 4, y: 4 }); // Default position in pixels
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const panelRef = useRef<HTMLDivElement>(null);
   
-  // Track the current image URL to prevent duplicate metadata processing
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [panelSize, setPanelSize] = useState({ width: '480px', height: 'auto' });
+  
   const previousImageUrlRef = useRef<string | null>(null);
 
-  // Update metadata entries when metadata changes
   useEffect(() => {
-    // Only update metadata entries if the image URL has changed
     if (imageUrl !== previousImageUrlRef.current) {
       console.log("Image URL changed, updating metadata entries");
       previousImageUrlRef.current = imageUrl;
@@ -85,7 +85,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     }
   }, [metadata, imageUrl]);
 
-  // Parse caption with metadata for preview
   useEffect(() => {
     if (caption === '{all}') {
       const allMetadata = metadataEntries
@@ -106,17 +105,30 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     }
   }, [caption, metadataEntries, onApplyCaption]);
 
-  // Apply settings to preview image - now applies immediately without needing to click Apply
   useEffect(() => {
     if (imageUrl) {
-      // This is handled by lifting state up to the parent component
-      // The parent will detect these changes and update the preview accordingly
+      const newParams: DisplayParams = {
+        output: customUrl,
+        showMode,
+        position,
+        refreshInterval,
+        backgroundColor,
+        debugMode: false,
+        caption: caption || null,
+        captionPosition,
+        captionSize,
+        captionColor,
+        captionFont,
+        data: params.data,
+        transition,
+      };
+      
+      const url = createUrlWithParams(newParams);
+      navigate(url);
     }
   }, [showMode, position, backgroundColor, captionPosition, captionSize, captionColor, captionFont, imageUrl]);
 
-  // Generate the URL for the current settings
   const generateUrl = () => {
-    // Ensure custom URL is properly encoded if it contains special characters
     const encodedOutput = customUrl ? encodeURIComponent(customUrl) : null;
     
     const newParams: DisplayParams = {
@@ -138,9 +150,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     return createUrlWithParams(newParams);
   };
 
-  // Apply the current settings and stay in debug mode
   const applySettings = () => {
-    // Ensure custom URL is properly encoded if it contains special characters
     const encodedOutput = customUrl ? encodeURIComponent(customUrl) : null;
     
     const newParams: DisplayParams = {
@@ -164,20 +174,17 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     toast.success("Settings applied");
   };
 
-  // Reset all settings and navigate to /display
   const resetDisplay = () => {
     navigate('/display');
     toast.success("Display reset to defaults");
   };
 
-  // Commit settings and exit debug mode
   const commitSettings = () => {
     const url = generateUrl();
     navigate(url);
     toast.success("Settings committed");
   };
 
-  // Copy the URL to clipboard
   const copyUrl = () => {
     const url = window.location.origin + generateUrl();
     navigator.clipboard.writeText(url)
@@ -192,15 +199,12 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       });
   };
 
-  // Select a file from the list
   const selectFile = (file: string) => {
     setCustomUrl(file);
     setActiveTab("settings");
   };
 
-  // Format the file list for display
   const formatFileName = (file: string) => {
-    // If it's a URL, extract the filename
     if (file.startsWith('http')) {
       try {
         const url = new URL(file);
@@ -212,7 +216,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     return file;
   };
 
-  // Reset to default settings
   const resetSettings = () => {
     setShowMode('fit');
     setPosition('center');
@@ -226,7 +229,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     setTransition('cut');
   };
 
-  // Insert metadata tag into caption
   const insertMetadataTag = (key: string) => {
     setCaption(prevCaption => {
       const textArea = document.getElementById('caption-textarea') as HTMLTextAreaElement;
@@ -237,10 +239,9 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         const textAfter = prevCaption.substring(selectionEnd);
         const newCaption = `${textBefore}{${key}}${textAfter}`;
         
-        // Focus back on textarea and set cursor position after the inserted tag
         setTimeout(() => {
           textArea.focus();
-          const newPosition = selectionStart + key.length + 2; // +2 for the {} brackets
+          const newPosition = selectionStart + key.length + 2;
           textArea.setSelectionRange(newPosition, newPosition);
         }, 50);
         
@@ -250,22 +251,18 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     });
   };
 
-  // Determine if the current file is selected
   const isCurrentFile = (file: string) => {
     if (!imageUrl) return false;
     
-    // Handle both relative and absolute URLs
     if (imageUrl.startsWith('http')) {
       return imageUrl === file;
     } else {
-      // For relative URLs, compare just the filename
       const currentFile = imageUrl.split('/').pop();
       const compareFile = file.split('/').pop();
       return currentFile === compareFile;
     }
   };
 
-  // Format the time for display
   const formatTime = (timeValue: Date | string | null) => {
     if (!timeValue) return 'Never';
     
@@ -277,12 +274,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     }
   };
 
-  // Insert all metadata placeholder
   const insertAllMetadata = () => {
     setCaption('{all}');
   };
-  
-  // Draggable panel handlers
+
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target instanceof Element && e.target.closest('.card-header-drag-handle')) {
       setIsDragging(true);
@@ -296,12 +291,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     }
   };
 
-  // Add resize state
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
-  const [panelSize, setPanelSize] = useState({ width: 480, height: 'auto' });
-  
-  // Update handleMouseMove to handle resizing as well
   const handleMouseMove = (e: MouseEvent) => {
     if (isDragging) {
       const newX = e.clientX - dragOffset.x;
@@ -312,17 +301,15 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     if (isResizing) {
       const newWidth = Math.max(300, resizeStart.width + (e.clientX - resizeStart.x));
       const newHeight = Math.max(400, resizeStart.height + (e.clientY - resizeStart.y));
-      setPanelSize({ width: newWidth, height: newHeight });
+      setPanelSize({ width: `${newWidth}px`, height: `${newHeight}px` });
     }
   };
 
-  // Update handleMouseUp to handle resizing as well
   const handleMouseUp = () => {
     setIsDragging(false);
     setIsResizing(false);
   };
 
-  // Handle resize start
   const handleResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -336,7 +323,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     });
   };
 
-  // Set up global mouse event listeners
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -347,10 +333,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     };
   }, [isDragging, dragOffset, isResizing, resizeStart]);
 
-  // Notify parent of setting changes for live preview
   const notifySettingChange = () => {
-    // This is a no-op since we're using state lifting to manage live preview updates
-    // The Display component will detect changes to these states
   };
 
   return (
@@ -360,10 +343,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       style={{ 
         left: `${position2.x}px`, 
         top: `${position2.y}px`,
-        width: `${panelSize.width}px`,
+        width: panelSize.width,
         height: panelSize.height,
         cursor: isDragging ? 'grabbing' : 'auto',
-        resize: 'none', // We'll handle resizing ourselves
+        resize: 'none',
         position: 'absolute'
       }}
       onMouseDown={handleMouseDown}
@@ -799,7 +782,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         </div>
       </CardFooter>
       
-      {/* Resize handle */}
       <div
         className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize z-20 flex items-center justify-center"
         onMouseDown={handleResizeStart}
