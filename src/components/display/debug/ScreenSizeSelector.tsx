@@ -30,7 +30,7 @@ export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
 }) => {
   return (
     <div className="flex items-center space-x-2">
-      <Label htmlFor="screen-size" className="text-sm">Screen Size:</Label>
+      <Label htmlFor="screen-size" className="text-xs sr-only">Screen Size:</Label>
       <Select 
         value={selectedSize} 
         onValueChange={(val) => {
@@ -38,12 +38,12 @@ export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
           if (onSettingsChange) onSettingsChange();
         }}
       >
-        <SelectTrigger id="screen-size" className="w-[180px]">
+        <SelectTrigger id="screen-size" className="h-7 text-xs px-2 w-[150px]">
           <SelectValue placeholder="Select screen size" />
         </SelectTrigger>
         <SelectContent>
           {SCREEN_SIZES.map((size) => (
-            <SelectItem key={size.name} value={size.name}>
+            <SelectItem key={size.name} value={size.name} className="text-xs">
               {size.name}
             </SelectItem>
           ))}
@@ -52,5 +52,3 @@ export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
     </div>
   );
 };
-
-// Remove the static property approach as it's causing TypeScript errors

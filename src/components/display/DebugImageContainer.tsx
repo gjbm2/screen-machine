@@ -93,10 +93,10 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   };
 
   const cardStyles = isFixedPanel 
-    ? "h-full w-full overflow-hidden" 
+    ? "h-full w-full overflow-hidden flex flex-col" 
     : "absolute z-10 cursor-grab overflow-visible resizable-container";
 
-  const innerStyles = isFixedPanel 
+  const innerStyles: React.CSSProperties = isFixedPanel 
     ? {} 
     : { 
         left: `${containerPosition.x}px`, 
