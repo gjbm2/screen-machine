@@ -23,14 +23,14 @@ export const useDisplayParams = () => {
   // Parse and extract all URL parameters
   const params: DisplayParams = {
     output: searchParams.get('output') || null,
-    showMode: (searchParams.get('show') as ShowMode) || defaultParams.showMode, // Fix: 'show' instead of 'showMode'
+    showMode: (searchParams.get('show') as ShowMode) || defaultParams.showMode,
     position: (searchParams.get('position') as PositionMode) || defaultParams.position,
-    refreshInterval: parseFloatParam(searchParams.get('refresh'), defaultParams.refreshInterval), // Fix: 'refresh' instead of 'refreshInterval'
-    backgroundColor: searchParams.get('background') || defaultParams.backgroundColor, // Fix: 'background' instead of 'backgroundColor'
-    debugMode: parseBooleanParam(searchParams.get('debug')), // Fix: 'debug' instead of 'debugMode'
+    refreshInterval: parseFloatParam(searchParams.get('refresh'), defaultParams.refreshInterval),
+    backgroundColor: searchParams.get('background') || defaultParams.backgroundColor,
+    debugMode: parseBooleanParam(searchParams.get('debug')),
     // Properly handling caption and related params
     caption: searchParams.get('caption') || null,
-    captionPosition: (searchParams.get('caption-position') as CaptionPosition) || defaultParams.captionPosition, // Fix: hyphenated params
+    captionPosition: (searchParams.get('caption-position') as CaptionPosition) || defaultParams.captionPosition,
     captionSize: searchParams.get('caption-size') || defaultParams.captionSize,
     captionColor: searchParams.get('caption-color') || defaultParams.captionColor,
     captionFont: searchParams.get('caption-font') || defaultParams.captionFont,
@@ -69,35 +69,21 @@ export const useDisplayParams = () => {
   const redirectToDebugMode = () => {
     // Skip redirection if we already attempted it or if already in debug mode or no output specified
     if (redirectAttemptedRef.current || params.debugMode || !params.output) {
-      console.log('[useDisplayParams] Skipping redirect - conditions not met:', {
-        alreadyAttempted: redirectAttemptedRef.current,
-        alreadyInDebugMode: params.debugMode,
-        noOutput: !params.output
-      });
       return;
     }
     
     // Mark that we've attempted redirection to prevent loops
     redirectAttemptedRef.current = true;
-    console.log('[useDisplayParams] Marked redirection as attempted');
     
     // Only redirect if debugMode parameter is explicitly set to true in URL
     if (searchParams.has('debug') && parseBooleanParam(searchParams.get('debug'))) {
-      console.log('[useDisplayParams] Debug mode requested, redirecting');
       const newParams = { ...params, debugMode: true };
       const newUrl = createUrlWithParams(newParams);
       
       console.log('[useDisplayParams] Redirecting to debug mode:', newUrl);
       navigate(newUrl, { replace: true }); // Use replace to avoid building history
-    } else {
-      console.log('[useDisplayParams] Debug mode not requested in URL');
     }
   };
-  
-  // Log the current URL for debugging
-  useEffect(() => {
-    console.log('[useDisplayParams] Current URL:', window.location.href);
-  }, []);
   
   return {
     params,
