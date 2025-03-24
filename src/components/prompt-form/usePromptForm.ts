@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import workflowsData from '@/data/workflows.json';
+import typedWorkflows from '@/data/typedWorkflows';
 import refinersData from '@/data/refiners.json';
 import { getPublishDestinations } from '@/services/PublishService';
 
@@ -17,7 +17,7 @@ const usePromptForm = () => {
   // Initialize workflow parameters based on the selected workflow
   useEffect(() => {
     // Find the selected workflow
-    const workflow = workflowsData.find(w => w.id === selectedWorkflow);
+    const workflow = typedWorkflows.find(w => w.id === selectedWorkflow);
     
     if (workflow && workflow.params) {
       // Create an object with default parameter values
@@ -85,7 +85,7 @@ const usePromptForm = () => {
     workflowParams,
     globalParams,
     refinerParams,
-    workflows: workflowsData,
+    workflows: typedWorkflows,
     refiners: refinersData,
     publishDestinations: getPublishDestinations(),
     handleWorkflowChange,
