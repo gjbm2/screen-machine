@@ -83,16 +83,18 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     // Log that we're trying to navigate to debug mode
     console.log('[ImageDisplay] Double-click detected, navigating to debug mode');
     
-    // Create URL with existing params plus debug mode
+    // Create URL with existing params plus debug mode enabled
     const newParams = { ...params, debugMode: true };
     const debugUrl = createUrlWithParams(newParams);
     
     // Navigate to the debug URL
-    console.log('[ImageDisplay] Navigating to:', debugUrl);
+    console.log('[ImageDisplay] Navigating to debug mode:', debugUrl);
     
     // Force a small delay to prevent race conditions
     setTimeout(() => {
-      navigate(debugUrl);
+      navigate(`/display${debugUrl}`);
+      
+      toast.success("Debug Mode Activated");
       
       // Reset the flag after navigation (in case component doesn't unmount)
       setTimeout(() => {

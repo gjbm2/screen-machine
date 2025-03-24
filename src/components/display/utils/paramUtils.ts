@@ -1,3 +1,4 @@
+
 import { DisplayParams } from '../types';
 
 // Create a URL with display parameters
@@ -6,6 +7,7 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   
   // Enhanced logging for output parameter
   console.log('[paramUtils] Creating URL with output param:', params.output);
+  console.log('[paramUtils] Debug mode:', params.debugMode);
   
   // Process the output parameter if it exists
   if (params.output) {
@@ -19,7 +21,9 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   if (params.position !== 'center') queryParams.set('position', params.position);
   if (params.refreshInterval !== 5) queryParams.set('refresh', params.refreshInterval.toString());
   if (params.backgroundColor !== '000000') queryParams.set('background', params.backgroundColor);
-  if (params.debugMode) queryParams.set('debug', 'true');
+  
+  // Only add debug parameter if it's true
+  if (params.debugMode === true) queryParams.set('debug', 'true');
   
   if (params.data !== undefined) {
     const dataStr = typeof params.data === 'string' 
