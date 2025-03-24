@@ -1,11 +1,20 @@
-
 import { DisplayParams } from '../types';
 
 // Create a URL with display parameters
 export const createUrlWithParams = (params: DisplayParams): string => {
   const queryParams = new URLSearchParams();
   
-  if (params.output) queryParams.set('output', params.output);
+  // Enhanced logging for output parameter
+  console.log('[paramUtils] Creating URL with output param:', params.output);
+  
+  // Process the output parameter if it exists
+  if (params.output) {
+    // Ensure it's properly formatted for URL parameter use
+    const processedOutput = processOutputParam(params.output);
+    console.log('[paramUtils] Processed output for URL:', processedOutput);
+    queryParams.set('output', processedOutput || '');
+  }
+  
   if (params.showMode !== 'fit') queryParams.set('show', params.showMode);
   if (params.position !== 'center') queryParams.set('position', params.position);
   if (params.refreshInterval !== 5) queryParams.set('refresh', params.refreshInterval.toString());
@@ -37,6 +46,7 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   if (params.transition !== 'cut') queryParams.set('transition', params.transition);
   
   const queryString = queryParams.toString();
+  console.log('[paramUtils] Final query string:', queryString);
   return queryString.length > 0 ? `?${queryString}` : '';
 };
 
@@ -64,16 +74,55 @@ export const getDefaultParams = (): DisplayParams => {
 export const processOutputParam = (output: string | null): string | null => {
   if (!output) return null;
   
+  console.log('[processOutputParam] Processing output param:', output);
+  
+  // First, we need to ensure we handle URLs and relative paths consistently
   try {
-    // Check if it's a URL
+    // Check if it's a valid URL
     new URL(output);
+    console.log('[processOutputParam] Valid URL detected, using as-is:', output);
     return output;
   } catch (e) {
-    // Not a URL, ensure it has a leading slash
-    if (output.startsWith('/')) return output;
-    if (output.startsWith('output/')) return `/${output}`; // Add leading slash for relative paths
+    // Not a valid URL, so handle as a path
     
-    // Assume it's a relative path in the output directory
-    return `/output/${output}`;
+    // Remove any duplicate slashes
+    let processedPath = output.replace(/\/+/g, '/');
+    
+    // Ensure it has a leading slash
+    if (!processedPath.startsWith('/')) {
+      // If it starts with 'output/', add a leading slash
+      if (processedPath.startsWith('output/')) {
+        processedPath = `/${processedPath}`;
+        console.log('[processOutputParam] Added leading slash to output path:', processedPath);
+      } else {
+        // Otherwise assume it's a relative path in the output directory
+        processedPath = `/output/${processedPath}`;
+        console.log('[processOutputParam] Added output directory prefix:', processedPath);
+      }
+    }
+    
+    console.log('[processOutputParam] Final processed path:', processedPath);
+    return processedPath;
   }
+};
+
+// New helper function to ensure consistent path format for display
+export const normalizePathForDisplay = (path: string): string => {
+  if (!path) return '';
+  
+  // Handle URLs
+  if (path.startsWith('http')) {
+    return path;
+  }
+  
+  // Remove any duplicate slashes
+  let normalizedPath = path.replace(/\/+/g, '/');
+  
+  // Ensure it has a leading slash
+  if (!normalizedPath.startsWith('/')) {
+    normalizedPath = `/${normalizedPath}`;
+  }
+  
+  console.log('[normalizePathForDisplay] Normalized path:', normalizedPath);
+  return normalizedPath;
 };

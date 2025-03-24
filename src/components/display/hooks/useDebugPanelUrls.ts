@@ -1,8 +1,8 @@
 
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 import { DisplayParams } from '../types';
-import { createUrlWithParams } from '../utils/paramUtils';
+import { createUrlWithParams, processOutputParam } from '../utils/paramUtils';
+import { toast } from '@/hooks/use-toast';
 
 interface UseDebugPanelUrlsProps {
   params: DisplayParams;
@@ -41,108 +41,80 @@ export const useDebugPanelUrls = ({
 }: UseDebugPanelUrlsProps) => {
   const navigate = useNavigate();
 
-  const generateUrl = (includeDebug = false) => {
-    const encodedOutput = customUrl ? encodeURIComponent(customUrl) : null;
+  // Generate a URL with the current parameters
+  const generateUrl = () => {
+    // Process the customUrl to ensure it's properly formatted
+    const processedOutput = processOutputParam(customUrl);
+    console.log('[useDebugPanelUrls] Processed custom URL:', processedOutput);
     
+    // Create new params object with all current settings
     const newParams: DisplayParams = {
-      output: encodedOutput,
+      ...params,
+      output: processedOutput,
       showMode,
       position,
       refreshInterval,
       backgroundColor,
-      debugMode: includeDebug,
-      caption: caption || null,
+      caption,
       captionPosition,
       captionSize,
       captionColor,
       captionFont,
       captionBgColor,
       captionBgOpacity,
-      data: params.data,
       transition,
     };
     
-    // Filter out default values to make URL cleaner
-    const cleanParams = Object.entries(newParams).reduce((acc, [key, value]) => {
-      if (key === 'debugMode' && includeDebug) {
-        acc[key] = value;
-      } else if (key === 'output') {
-        if (value !== null) acc[key] = value;
-      } else if (key !== 'debugMode' && value !== null && value !== undefined) {
-        // Only include non-default parameters
-        acc[key] = value;
-      }
-      return acc;
-    }, {} as Partial<DisplayParams>);
+    // Generate URL from params
+    const urlParams = createUrlWithParams(newParams);
+    console.log('[useDebugPanelUrls] Generated URL parameters:', urlParams);
     
-    return createUrlWithParams(cleanParams as DisplayParams);
+    return `/display${urlParams}`;
   };
-
+  
   const applySettings = () => {
-    const encodedOutput = customUrl ? encodeURIComponent(customUrl) : null;
-    
-    const newParams: DisplayParams = {
-      output: encodedOutput,
-      showMode,
-      position,
-      refreshInterval,
-      backgroundColor,
-      debugMode: true,
-      caption: caption || null,
-      captionPosition,
-      captionSize,
-      captionColor,
-      captionFont,
-      captionBgColor,
-      captionBgOpacity,
-      data: params.data,
-      transition,
-    };
-    
-    const url = createUrlWithParams(newParams);
-    navigate(url);
-    toast.success("Settings applied");
+    // For preview purpose only
+    console.log('[useDebugPanelUrls] Applying settings...');
   };
-
+  
   const resetDisplay = () => {
+    // Reset to base display URL with no parameters
     navigate('/display');
-    toast.success("Display reset to defaults");
+    toast({
+      title: "Settings Reset",
+      description: "All settings have been reset to default values.",
+    });
   };
-
+  
   const commitSettings = () => {
-    // Create a URL without debug mode
-    const url = generateUrl(false);
+    const url = generateUrl();
+    console.log('[useDebugPanelUrls] Committing settings, navigating to:', url);
     
-    // We need to prevent navigation from being immediately overridden
-    // by using setTimeout to break out of the current execution context
-    setTimeout(() => {
-      navigate(url);
-      toast.success("Settings committed");
-    }, 0);
+    // Navigate to the main display page with these settings
+    navigate(url);
+    
+    toast({
+      title: "Settings Applied",
+      description: "Display settings have been updated.",
+    });
   };
-
+  
   const copyUrl = () => {
-    // Get the full URL including the domain name and path, without debug mode
-    const relativeUrl = generateUrl(false);
-    const currentPath = window.location.pathname;
-    const baseUrl = window.location.origin;
+    const url = generateUrl();
     
-    // Ensure we have the correct base path (either '/display' or the current path)
-    const basePath = currentPath.includes('/display') ? '/display' : currentPath;
-    const fullUrl = `${baseUrl}${basePath}${relativeUrl}`;
+    // Get the full URL including domain
+    const fullUrl = window.location.origin + url;
+    console.log('[useDebugPanelUrls] Copying URL to clipboard:', fullUrl);
     
-    console.log('[useDebugPanelUrls] Copying URL:', fullUrl);
+    // Copy the URL to clipboard
+    navigator.clipboard.writeText(fullUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
     
-    navigator.clipboard.writeText(fullUrl)
-      .then(() => {
-        setCopied(true);
-        toast.success("URL copied to clipboard");
-        setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(err => {
-        console.error('Failed to copy URL: ', err);
-        toast.error("Failed to copy URL");
-      });
+    toast({
+      title: "URL Copied",
+      description: "Display URL has been copied to clipboard.",
+    });
   };
 
   return {
