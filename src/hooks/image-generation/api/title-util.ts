@@ -1,22 +1,11 @@
 
 /**
- * Utility functions for working with image titles
+ * Generates a title for an image based on the prompt and workflow
  */
-
-// Get or initialize counter for image titles
-export const getNextImageNumber = (): number => {
-  // Initialize counter if it doesn't exist yet
-  if (typeof window.imageCounter === 'undefined') {
-    window.imageCounter = 0;
-  }
+export const generateImageTitle = (prompt?: string, workflow?: string): string => {
+  // Generate a title from the prompt (first 30 chars max) and workflow
+  const promptText = prompt ? prompt.substring(0, 30) + (prompt.length > 30 ? '...' : '') : 'Untitled';
+  const workflowName = workflow || 'default';
   
-  // Increment counter and return new value
-  window.imageCounter += 1;
-  return window.imageCounter;
-};
-
-// Generate a formatted title with the current counter, prompt, and workflow
-export const generateImageTitle = (prompt: string, workflow: string): string => {
-  const imageNumber = getNextImageNumber();
-  return `${imageNumber}. ${prompt} (${workflow})`;
+  return `${promptText} (${workflowName})`;
 };
