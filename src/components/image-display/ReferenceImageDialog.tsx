@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,7 @@ const ReferenceImageDialog: React.FC<ReferenceImageDialogProps> = ({
   };
   
   // Reset index when dialog opens
-  React.useEffect(() => {
+  useEffect(() => {
     if (isOpen) {
       setCurrentIndex(0);
     }
