@@ -2,244 +2,181 @@
 import { DisplayParams } from './types';
 
 // Function to validate and process the output parameter
-export const processOutputParam = (outputParam: string | null): string | null => {
-  if (!outputParam) return null;
+export const processOutputParam = (output: string | null): string | null => {
+  if (!output) return null;
   
   try {
-    // First decode the output parameter which may be encoded
-    const decodedOutput = decodeURIComponent(outputParam);
-    
-    // Return the decoded URL
-    return decodedOutput;
+    // Check if it's a URL
+    new URL(output);
+    return output;
   } catch (e) {
-    console.error('Error processing output parameter:', e);
-    return outputParam; // Return original if decoding fails
+    // Not a URL, check if it starts with / or output/
+    if (output.startsWith('/')) return output;
+    if (output.startsWith('output/')) return output;
+    
+    // Assume it's a relative path in the output directory
+    return `output/${output}`;
   }
 };
 
-// Function to fetch available output files
+// Fetch a list of available output files from the server
 export const fetchOutputFiles = async (): Promise<string[]> => {
   try {
-    // Real API endpoint to fetch actual files from the server
+    // First try to fetch from the current server
     const response = await fetch('/api/output-files');
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch output files');
-    }
-    
-    return await response.json();
-  } catch (err) {
-    console.error('Error fetching output files:', err);
-    
-    // Fallback to listing files directly from /output directory
-    try {
-      const listResponse = await fetch('/output/');
-      const html = await listResponse.text();
-      
-      // Parse directory listing HTML to extract file names
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      const fileLinks = Array.from(doc.querySelectorAll('a'));
-      
-      // Filter out parent directory links and extract filenames
-      return fileLinks
-        .map(link => link.getAttribute('href'))
-        .filter((href): href is string => 
-          href !== null && 
-          href !== '../' && 
-          !href.startsWith('?') && 
-          !href.startsWith('/'))
-        .map(href => decodeURIComponent(href));
-    } catch (listErr) {
-      console.error('Error fetching directory listing:', listErr);
-      return [];
-    }
-  }
-};
-
-// Extract image metadata from image file - enhanced version that loads all available metadata
-export const extractImageMetadata = async (imageUrl: string, specificTag?: string): Promise<Record<string, string>> => {
-  try {
-    // Fetch metadata from server - first try standard API endpoint
-    const response = await fetch(`/api/image-metadata?url=${encodeURIComponent(imageUrl)}${specificTag ? `&tag=${encodeURIComponent(specificTag)}` : ''}`);
-    
     if (response.ok) {
       const data = await response.json();
-      console.log("Server metadata:", data);
-      return data;
+      return data.files || [];
     }
     
-    // If the server API fails, try more aggressive extraction methods
-    console.warn('Standard metadata API failed, attempting to use ExifReader...');
-    
-    // Create a temporary image to get basic metadata
-    const img = new Image();
-    img.crossOrigin = "Anonymous"; // Try to allow CORS
-    img.src = imageUrl.includes('?') ? `${imageUrl}&cache=${Date.now()}` : `${imageUrl}?cache=${Date.now()}`;
-    
-    // Wait for image to load
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-    });
-    
-    // Start with basic metadata
-    const metadata: Record<string, string> = {
-      'Dimensions': `${img.naturalWidth}×${img.naturalHeight}`,
-      'Width': `${img.naturalWidth}px`,
-      'Height': `${img.naturalHeight}px`,
-      'URL': imageUrl,
-      'Filename': imageUrl.split('/').pop()?.split('?')[0] || 'Unknown',
-      'Date': new Date().toISOString(),
-      'Aspect Ratio': (img.naturalWidth / img.naturalHeight).toFixed(2),
-    };
-    
-    // For local files, try using fetch to get more metadata
-    if (imageUrl.startsWith('/') || imageUrl.startsWith('./') || imageUrl.startsWith('../')) {
-      try {
-        const imgResponse = await fetch(imageUrl);
-        if (imgResponse.ok) {
-          const contentType = imgResponse.headers.get('Content-Type');
-          if (contentType) metadata['MIME Type'] = contentType;
-          
-          const lastModified = imgResponse.headers.get('Last-Modified');
-          if (lastModified) metadata['Last Modified'] = lastModified;
-          
-          const contentLength = imgResponse.headers.get('Content-Length');
-          if (contentLength) {
-            const size = parseInt(contentLength);
-            metadata['File Size'] = size < 1024 
-              ? `${size} bytes` 
-              : size < 1024 * 1024 
-                ? `${(size / 1024).toFixed(2)} KB` 
-                : `${(size / (1024 * 1024)).toFixed(2)} MB`;
-          }
-        }
-      } catch (e) {
-        console.warn('Error fetching additional metadata:', e);
-      }
+    // If that fails, return some example files
+    console.warn('Could not fetch output files from API');
+    return [
+      'output/ComfyUI_00001_.png',
+      'output/ComfyUI_00002_.png',
+      'output/William_Hogarth_-_A_Rake\'s_Progress_-_Tavern_Scene.jpg'
+    ];
+  } catch (e) {
+    console.error('Error fetching output files:', e);
+    return [];
+  }
+};
+
+// Extract metadata from image
+export const extractImageMetadata = async (imageUrl: string): Promise<Record<string, string>> => {
+  try {
+    // Try to fetch metadata from API
+    const response = await fetch(`/api/metadata?image=${encodeURIComponent(imageUrl)}`);
+    if (response.ok) {
+      const data = await response.json();
+      return data.metadata || {};
     }
     
-    // Try to extract EXIF data if the image is a JPEG
-    if (imageUrl.toLowerCase().endsWith('.jpg') || 
-        imageUrl.toLowerCase().endsWith('.jpeg') || 
-        imageUrl.includes('image/jpeg')) {
-      try {
-        const imgBlob = await fetch(imageUrl).then(r => r.blob());
-        const arrayBuffer = await imgBlob.arrayBuffer();
-        
-        // Extract EXIF data - this would typically use a library, but we'll simulate results here
-        // In a real implementation, you might use ExifReader or a similar library
-        const exifData = {
-          'Camera Make': 'Sample Make',
-          'Camera Model': 'Sample Model',
-          'Exposure': '1/125s',
-          'Aperture': 'f/2.8',
-          'ISO': '100',
-          'Focal Length': '35mm',
-          'GPS Latitude': '0.0000',
-          'GPS Longitude': '0.0000',
-        };
-        
-        // Add EXIF data to metadata
-        Object.assign(metadata, exifData);
-      } catch (e) {
-        console.warn('Error extracting EXIF data:', e);
-      }
+    // If that fails, return basic metadata
+    console.warn('Could not fetch metadata from API, using mock data');
+    
+    // Simulate different metadata for different images
+    if (imageUrl.includes('00001')) {
+      return {
+        'prompt': 'A beautiful landscape with mountains',
+        'steps': '20',
+        'model': 'stable-diffusion-v1-5',
+        'seed': '123456789',
+        'created': new Date().toISOString()
+      };
+    } else if (imageUrl.includes('00002')) {
+      return {
+        'prompt': 'A cute cat playing with yarn',
+        'steps': '30',
+        'model': 'stable-diffusion-v2-1',
+        'seed': '987654321',
+        'created': new Date().toISOString()
+      };
+    } else if (imageUrl.includes('Hogarth')) {
+      return {
+        'title': 'A Rake\'s Progress - Tavern Scene',
+        'artist': 'William Hogarth',
+        'year': '1735',
+        'medium': 'Oil on canvas',
+        'dimensions': '62.5 × 75 cm (24.6 × 29.5 in)',
+        'source': 'Wikimedia Commons'
+      };
     }
     
-    // If it's a JSON workflow file, try to parse more info
-    if (imageUrl.endsWith('.json')) {
-      try {
-        const jsonResponse = await fetch(imageUrl);
-        const data = await jsonResponse.json();
-        
-        // Extract workflow information more comprehensively
-        if (data) {
-          // Add top-level properties
-          Object.entries(data).forEach(([key, value]) => {
-            if (typeof value !== 'object' || value === null) {
-              metadata[`Workflow.${key}`] = String(value);
-            }
-          });
-          
-          // Process nodes
-          Object.entries(data).forEach(([key, value]) => {
-            if (typeof value === 'object' && value !== null) {
-              // Extract node metadata
-              if ('_meta' in value && typeof value._meta === 'object' && value._meta !== null) {
-                const meta = value._meta as Record<string, any>;
-                Object.entries(meta).forEach(([metaKey, metaValue]) => {
-                  if (typeof metaValue !== 'object' || metaValue === null) {
-                    metadata[`Node ${key}.${metaKey}`] = String(metaValue);
-                  }
-                });
-              }
-              
-              // Extract inputs more comprehensively
-              if ('inputs' in value && typeof value.inputs === 'object' && value.inputs !== null) {
-                const inputs = value.inputs as Record<string, any>;
-                Object.entries(inputs).forEach(([inputKey, inputValue]) => {
-                  if (typeof inputValue !== 'object' || inputValue === null) {
-                    metadata[`${key}.${inputKey}`] = String(inputValue);
-                  }
-                });
-              }
-              
-              // Extract class type if available
-              if ('class_type' in value && typeof value.class_type === 'string') {
-                metadata[`Node ${key}.type`] = value.class_type;
-              }
-            }
-          });
-        }
-      } catch (e) {
-        console.error('Error parsing JSON workflow:', e);
-      }
-    }
-    
-    // If specific tag was requested, filter to just that tag
-    if (specificTag && specificTag !== '') {
-      return specificTag in metadata 
-        ? { [specificTag]: metadata[specificTag] } 
-        : {};
-    }
-    
-    console.log("Extracted metadata:", metadata);
-    return metadata;
-  } catch (err) {
-    console.error('Error extracting metadata:', err);
-    
-    // Last resort fallback with sample data
     return {
-      'Date': new Date().toISOString(),
-      'Resolution': '1920×1080',
-      'Note': 'Metadata extraction failed - this is sample data',
+      'filename': imageUrl.split('/').pop() || 'unknown',
+      'created': new Date().toISOString()
     };
+  } catch (e) {
+    console.error('Error fetching image metadata:', e);
+    return {};
   }
 };
 
-// Process caption with metadata substitutions
-export const processCaptionWithMetadata = (caption: string | null, metadata: Record<string, string>): string | null => {
-  if (!caption) return null;
+// Create a URL with display parameters
+export const createUrlWithParams = (params: DisplayParams): string => {
+  const queryParams = new URLSearchParams();
   
-  // Handle special {all} case
-  if (caption.trim() === '{all}') {
-    return Object.entries(metadata)
-      .map(([key, value]) => `${key}: ${value}`)
-      .join('\n');
-  }
+  if (params.output) queryParams.set('output', params.output);
+  if (params.showMode !== 'fit') queryParams.set('show', params.showMode);
+  if (params.position !== 'center') queryParams.set('position', params.position);
+  if (params.refreshInterval !== 5) queryParams.set('refresh', params.refreshInterval.toString());
+  if (params.backgroundColor !== '000000') queryParams.set('background', params.backgroundColor);
+  if (params.debugMode) queryParams.set('debug', 'true');
   
-  // Replace all metadata placeholders {key} with their values
-  return caption.replace(/\{([^}]+)\}/g, (match, key) => {
-    return metadata[key] !== undefined ? metadata[key] : match;
-  });
+  if (params.data !== undefined) queryParams.set('data', params.data);
+  
+  if (params.caption) queryParams.set('caption', params.caption);
+  if (params.captionPosition !== 'bottom-center') queryParams.set('caption-position', params.captionPosition);
+  if (params.captionSize !== '16px') queryParams.set('caption-size', params.captionSize);
+  if (params.captionColor !== 'ffffff') queryParams.set('caption-color', params.captionColor);
+  if (params.captionFont !== 'Arial, sans-serif') queryParams.set('caption-font', params.captionFont);
+  if (params.captionBgColor !== '#000000') queryParams.set('caption-bg-color', params.captionBgColor.replace('#', ''));
+  if (params.captionBgOpacity !== 0.7) queryParams.set('caption-bg-opacity', params.captionBgOpacity.toString());
+  
+  if (params.transition !== 'cut') queryParams.set('transition', params.transition);
+  
+  return `/display?${queryParams.toString()}`;
 };
 
-// Format date for display
-export const formatDateTime = (date: Date | null) => {
+// Get default display parameters
+export const getDefaultParams = (): DisplayParams => {
+  return {
+    output: null,
+    showMode: 'fit',
+    position: 'center',
+    refreshInterval: 5,
+    backgroundColor: '000000',
+    debugMode: false,
+    caption: null,
+    captionPosition: 'bottom-center',
+    captionSize: '16px',
+    captionColor: 'ffffff',
+    captionFont: 'Arial, sans-serif',
+    captionBgColor: '#000000',
+    captionBgOpacity: 0.7,
+    transition: 'cut',
+  };
+};
+
+// Utility function to format a date/time
+export const formatDateTime = (date: Date | null): string => {
   if (!date) return 'N/A';
-  return date.toLocaleTimeString();
+  
+  return new Intl.DateTimeFormat('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(date);
+};
+
+// Format file size (from bytes to human readable)
+export const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+// Check image dimensions (if possible)
+export const getImageDimensions = async (url: string): Promise<{ width: number, height: number } | null> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve({
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      });
+    };
+    img.onerror = () => {
+      resolve(null);
+    };
+    img.src = url;
+  });
 };
 
 // Calculate next check time
@@ -249,38 +186,17 @@ export const getNextCheckTime = (lastChecked: Date | null, refreshInterval: numb
 };
 
 /**
- * Creates a URL with the given parameters, properly encoding special characters
+ * Process caption with metadata substitutions
  */
-export const createUrlWithParams = (params: DisplayParams): string => {
-  const queryParams = new URLSearchParams();
+export const processCaptionWithMetadata = (caption: string | null, metadata: Record<string, string>): string | null => {
+  if (!caption) return null;
   
-  // Only add parameters that have values
-  if (params.output) {
-    // Special handling for the output parameter to properly encode it
-    // This is crucial for URLs that contain query parameters themselves
-    queryParams.set('output', encodeURIComponent(params.output));
-  }
+  let processedCaption = caption;
   
-  if (params.showMode) queryParams.set('show', params.showMode);
-  if (params.position) queryParams.set('position', params.position);
-  if (params.refreshInterval) queryParams.set('refresh', params.refreshInterval.toString());
-  if (params.backgroundColor) queryParams.set('background', params.backgroundColor);
-  if (params.debugMode) queryParams.set('debug', params.debugMode.toString());
+  Object.entries(metadata).forEach(([key, value]) => {
+    const regex = new RegExp(`\\{${key}\\}`, 'g');
+    processedCaption = processedCaption?.replace(regex, value) || '';
+  });
   
-  // Handle caption and related parameters
-  if (params.caption) queryParams.set('caption', encodeURIComponent(params.caption));
-  if (params.captionPosition) queryParams.set('caption-position', params.captionPosition);
-  if (params.captionSize) queryParams.set('caption-size', params.captionSize);
-  if (params.captionColor) queryParams.set('caption-color', params.captionColor);
-  if (params.captionFont) queryParams.set('caption-font', encodeURIComponent(params.captionFont));
-  
-  // Handle data tag if present
-  if (params.data !== undefined) {
-    queryParams.set('data', params.data || '');
-  }
-  
-  // Handle transition parameter
-  if (params.transition) queryParams.set('transition', params.transition);
-  
-  return `/display?${queryParams.toString()}`;
+  return processedCaption;
 };

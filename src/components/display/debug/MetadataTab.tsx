@@ -22,8 +22,8 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
   setActiveTab
 }) => {
   return (
-    <CardContent className="pt-4 pb-2">
-      <ScrollArea className="h-[300px] rounded-md border p-2">
+    <CardContent className="pt-4 pb-2 h-full flex flex-col">
+      <ScrollArea className="flex-1 rounded-md border p-2 min-h-[200px]">
         {metadataEntries.length > 0 ? (
           <div className="space-y-2">
             {metadataEntries.map((entry, index) => (

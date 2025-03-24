@@ -1,9 +1,8 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from '../types';
-import { createUrlWithParams } from '../utils';
+import { createUrlWithParams, getDefaultParams } from '../utils';
 
 interface DebugPanelHookProps {
   params: DisplayParams;
@@ -25,6 +24,8 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
   const [captionSize, setCaptionSize] = useState(params.captionSize || "16px");
   const [captionColor, setCaptionColor] = useState(params.captionColor || "ffffff");
   const [captionFont, setCaptionFont] = useState(params.captionFont || "Arial, sans-serif");
+  const [captionBgColor, setCaptionBgColor] = useState(params.captionBgColor || "#000000");
+  const [captionBgOpacity, setCaptionBgOpacity] = useState(params.captionBgOpacity || 0.7);
   const [transition, setTransition] = useState<TransitionType>(params.transition || "cut");
   const [copied, setCopied] = useState(false);
   const [metadataEntries, setMetadataEntries] = useState<Array<{key: string, value: string}>>([]);
@@ -40,6 +41,8 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
   const [panelSize, setPanelSize] = useState({ width: '480px', height: 'auto' });
   
   const previousImageUrlRef = useRef<string | null>(null);
+
+  const defaultParams = getDefaultParams();
 
   useEffect(() => {
     if (imageUrl !== previousImageUrlRef.current) {
@@ -76,28 +79,24 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
 
   useEffect(() => {
     if (imageUrl) {
-      const newParams: DisplayParams = {
-        output: customUrl,
-        showMode,
-        position,
-        refreshInterval,
-        backgroundColor,
-        debugMode: true, // Keep debug mode enabled
-        caption: caption || null,
-        captionPosition,
-        captionSize,
-        captionColor,
-        captionFont,
-        data: params.data,
-        transition,
-      };
-      
-      const url = createUrlWithParams(newParams);
-      navigate(url);
+      onApplyCaption(previewCaption);
     }
-  }, [showMode, position, backgroundColor, captionPosition, captionSize, captionColor, captionFont, imageUrl]);
+  }, [
+    showMode, 
+    position, 
+    backgroundColor, 
+    captionPosition, 
+    captionSize, 
+    captionColor, 
+    captionFont, 
+    captionBgColor, 
+    captionBgOpacity, 
+    previewCaption,
+    onApplyCaption,
+    imageUrl
+  ]);
 
-  const generateUrl = () => {
+  const generateUrl = (includeDebug = false) => {
     const encodedOutput = customUrl ? encodeURIComponent(customUrl) : null;
     
     const newParams: DisplayParams = {
@@ -106,17 +105,32 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
       position,
       refreshInterval,
       backgroundColor,
-      debugMode: false, // This is for non-debug mode URL
+      debugMode: includeDebug,
       caption: caption || null,
       captionPosition,
       captionSize,
       captionColor,
       captionFont,
+      captionBgColor,
+      captionBgOpacity,
       data: params.data,
       transition,
     };
     
-    return createUrlWithParams(newParams);
+    const cleanParams = Object.entries(newParams).reduce((acc, [key, value]) => {
+      if (key === 'debugMode' && includeDebug) {
+        acc[key] = value;
+      } else if (key === 'output') {
+        if (value !== null) acc[key] = value;
+      } else if (key !== 'debugMode' && value !== null && value !== undefined) {
+        if (String(value) !== String(defaultParams[key])) {
+          acc[key] = value;
+        }
+      }
+      return acc;
+    }, {} as Partial<DisplayParams>);
+    
+    return createUrlWithParams(cleanParams as DisplayParams);
   };
 
   const applySettings = () => {
@@ -128,12 +142,14 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
       position,
       refreshInterval,
       backgroundColor,
-      debugMode: true, // Ensure we keep debug mode enabled
+      debugMode: true,
       caption: caption || null,
       captionPosition,
       captionSize,
       captionColor,
       captionFont,
+      captionBgColor,
+      captionBgOpacity,
       data: params.data,
       transition,
     };
@@ -144,18 +160,20 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
   };
 
   const resetDisplay = () => {
+    setCustomUrl("");
+    resetSettings();
     navigate('/display');
     toast.success("Display reset to defaults");
   };
 
   const commitSettings = () => {
-    const url = generateUrl();
+    const url = generateUrl(false);
     navigate(url);
     toast.success("Settings committed");
   };
 
   const copyUrl = () => {
-    const url = window.location.origin + generateUrl();
+    const url = window.location.origin + generateUrl(false);
     navigator.clipboard.writeText(url)
       .then(() => {
         setCopied(true);
@@ -170,7 +188,7 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
 
   const selectFile = (file: string) => {
     setCustomUrl(file);
-    setActiveTab("settings");
+    applySettings();
   };
 
   const formatFileName = (file: string) => {
@@ -186,16 +204,18 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
   };
 
   const resetSettings = () => {
-    setShowMode('fit');
-    setPosition('center');
-    setRefreshInterval(5);
-    setBackgroundColor('000000');
+    setShowMode(defaultParams.showMode);
+    setPosition(defaultParams.position);
+    setRefreshInterval(defaultParams.refreshInterval);
+    setBackgroundColor(defaultParams.backgroundColor);
     setCaption('');
-    setCaptionPosition('bottom-center');
-    setCaptionSize('16px');
-    setCaptionColor('ffffff');
-    setCaptionFont('Arial, sans-serif');
-    setTransition('cut');
+    setCaptionPosition(defaultParams.captionPosition);
+    setCaptionSize(defaultParams.captionSize);
+    setCaptionColor(defaultParams.captionColor);
+    setCaptionFont(defaultParams.captionFont);
+    setCaptionBgColor(defaultParams.captionBgColor);
+    setCaptionBgOpacity(defaultParams.captionBgOpacity);
+    setTransition(defaultParams.transition);
   };
 
   const insertMetadataTag = (key: string) => {
@@ -328,6 +348,10 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     setCaptionColor,
     captionFont,
     setCaptionFont,
+    captionBgColor,
+    setCaptionBgColor,
+    captionBgOpacity,
+    setCaptionBgOpacity,
     transition,
     setTransition,
     copied,

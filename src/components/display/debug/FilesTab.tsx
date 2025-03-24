@@ -31,8 +31,8 @@ export const FilesTab: React.FC<FilesTabProps> = ({
   formatFileName
 }) => {
   return (
-    <CardContent className="pt-4">
-      <div className="space-y-4">
+    <CardContent className="pt-4 h-full flex flex-col">
+      <div className="space-y-4 flex-1 flex flex-col">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium">Available Output Files</h3>
           {imageChanged && (
@@ -43,7 +43,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({
           )}
         </div>
         
-        <ScrollArea className="h-[300px] rounded-md border p-2">
+        <ScrollArea className="flex-1 rounded-md border p-2 min-h-[200px]">
           {outputFiles.length > 0 ? (
             <div className="space-y-2">
               {outputFiles.map((file, index) => (
@@ -72,7 +72,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({
           )}
         </ScrollArea>
         
-        <div className="space-y-2">
+        <div className="space-y-2 mt-auto">
           <div className="flex items-center justify-between">
             <Label htmlFor="custom-url" className="text-sm">Custom URL or Path</Label>
             <TooltipProvider>

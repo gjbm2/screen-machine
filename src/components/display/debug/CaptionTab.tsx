@@ -16,11 +16,15 @@ interface CaptionTabProps {
   captionSize: string;
   captionColor: string;
   captionFont: string;
+  captionBgColor: string;
+  captionBgOpacity: number;
   setCaption: (value: string) => void;
   setCaptionPosition: (value: CaptionPosition) => void;
   setCaptionSize: (value: string) => void;
   setCaptionColor: (value: string) => void;
   setCaptionFont: (value: string) => void;
+  setCaptionBgColor: (value: string) => void;
+  setCaptionBgOpacity: (value: number) => void;
   insertAllMetadata: () => void;
 }
 
@@ -31,15 +35,19 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
   captionSize,
   captionColor,
   captionFont,
+  captionBgColor,
+  captionBgOpacity,
   setCaption,
   setCaptionPosition,
   setCaptionSize,
   setCaptionColor,
   setCaptionFont,
+  setCaptionBgColor,
+  setCaptionBgOpacity,
   insertAllMetadata
 }) => {
   return (
-    <CardContent className="pt-4 pb-2">
+    <CardContent className="pt-4 pb-2 overflow-y-auto max-h-[50vh]">
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Button 
@@ -69,7 +77,13 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
         
         <div>
           <h3 className="text-sm font-medium mb-2">Caption Preview</h3>
-          <div className="bg-gray-100 p-3 rounded-md min-h-[60px] text-sm whitespace-pre-line">
+          <div 
+            className="p-3 rounded-md min-h-[60px] text-sm whitespace-pre-line"
+            style={{
+              backgroundColor: `${captionBgColor}${Math.round(captionBgOpacity * 255).toString(16).padStart(2, '0')}`,
+              color: `#${captionColor}`,
+            }}
+          >
             {previewCaption || <span className="text-gray-400">No caption</span>}
           </div>
         </div>
@@ -133,6 +147,44 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
               value={captionFont}
               onChange={(e) => setCaptionFont(e.target.value)}
               placeholder="Arial, sans-serif"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="caption-bg-color" className="text-sm">Background Color</Label>
+              <div className="flex items-center space-x-2">
+                <div 
+                  className="w-3 h-3 rounded-full border" 
+                  style={{ backgroundColor: captionBgColor }}
+                />
+              </div>
+            </div>
+            <Input 
+              id="caption-bg-color"
+              value={captionBgColor.replace('#', '')}
+              onChange={(e) => setCaptionBgColor('#' + e.target.value.replace(/[^0-9a-fA-F]/g, '').substring(0, 6))}
+              placeholder="Hex color (without #)"
+              maxLength={6}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="caption-bg-opacity" className="text-sm">Background Opacity</Label>
+              <span className="text-xs text-gray-500">{Math.round(captionBgOpacity * 100)}%</span>
+            </div>
+            <Input 
+              id="caption-bg-opacity"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={captionBgOpacity}
+              onChange={(e) => setCaptionBgOpacity(parseFloat(e.target.value))}
+              className="w-full"
             />
           </div>
         </div>

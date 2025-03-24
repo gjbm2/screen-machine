@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -38,6 +39,8 @@ interface DebugImageContainerProps {
   captionSize?: string;
   captionColor?: string;
   captionFont?: string;
+  captionBgColor?: string;
+  captionBgOpacity?: number;
   metadata?: Record<string, string>;
   onSettingsChange?: () => void;
 }
@@ -56,6 +59,8 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   captionSize = '16px',
   captionColor = 'ffffff',
   captionFont = 'Arial, sans-serif',
+  captionBgColor = '#000000',
+  captionBgOpacity = 0.7,
   metadata = {},
   onSettingsChange
 }) => {
@@ -325,10 +330,14 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   const getCaptionStyles = (): React.CSSProperties => {
     const scaledFontSize = getCaptionScaledFontSize(captionSize);
     
+    // Calculate background opacity - convert to hex
+    const bgOpacityHex = Math.round((captionBgOpacity || 0.7) * 255).toString(16).padStart(2, '0');
+    const bgColor = `${captionBgColor}${bgOpacityHex}`;
+    
     const styles: React.CSSProperties = {
       position: 'absolute',
       padding: '8px 16px',
-      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+      backgroundColor: bgColor,
       color: `#${captionColor}`,
       fontSize: scaledFontSize,
       fontFamily: captionFont,

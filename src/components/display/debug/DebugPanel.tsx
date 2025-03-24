@@ -63,6 +63,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     setCaptionColor,
     captionFont,
     setCaptionFont,
+    captionBgColor,
+    setCaptionBgColor,
+    captionBgOpacity,
+    setCaptionBgOpacity,
     transition,
     setTransition,
     copied,
@@ -98,7 +102,9 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         height: panelSize.height,
         cursor: isDragging ? 'grabbing' : 'auto',
         resize: 'none',
-        position: 'absolute'
+        position: 'absolute',
+        display: 'flex',
+        flexDirection: 'column'
       }}
       onMouseDown={handleMouseDown}
     >
@@ -109,10 +115,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         copied={copied}
       />
       
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col">
         <DebugPanelTabs activeTab={activeTab} />
         
-        <TabsContent value="files" className="mt-0">
+        <TabsContent value="files" className="mt-0 flex-1 overflow-hidden">
           <FilesTab 
             outputFiles={outputFiles}
             imageChanged={imageChanged}
@@ -125,7 +131,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
           />
         </TabsContent>
         
-        <TabsContent value="settings" className="mt-0">
+        <TabsContent value="settings" className="mt-0 flex-1 overflow-auto">
           <SettingsTab 
             showMode={showMode}
             position={position}
@@ -141,7 +147,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
           />
         </TabsContent>
         
-        <TabsContent value="metadata" className="mt-0">
+        <TabsContent value="metadata" className="mt-0 flex-1 overflow-hidden">
           <MetadataTab 
             metadataEntries={metadataEntries}
             insertMetadataTag={insertMetadataTag}
@@ -149,7 +155,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
           />
         </TabsContent>
         
-        <TabsContent value="caption" className="mt-0">
+        <TabsContent value="caption" className="mt-0 flex-1 overflow-hidden">
           <CaptionTab 
             caption={caption}
             previewCaption={previewCaption}
@@ -157,11 +163,15 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
             captionSize={captionSize}
             captionColor={captionColor}
             captionFont={captionFont}
+            captionBgColor={captionBgColor}
+            captionBgOpacity={captionBgOpacity}
             setCaption={setCaption}
             setCaptionPosition={setCaptionPosition}
             setCaptionSize={setCaptionSize}
             setCaptionColor={setCaptionColor}
             setCaptionFont={setCaptionFont}
+            setCaptionBgColor={setCaptionBgColor}
+            setCaptionBgOpacity={setCaptionBgOpacity}
             insertAllMetadata={insertAllMetadata}
           />
         </TabsContent>
