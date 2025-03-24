@@ -2,7 +2,7 @@
 import React from 'react';
 import { CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Settings2, RefreshCw, Smartphone, Desktop, Tablet, Settings, RotateCcw } from 'lucide-react';
+import { Settings2, RefreshCw, Smartphone, Monitor, Tablet, Settings, RotateCcw } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShowMode, PositionMode } from '../types';
 import { ScreenSizeSelector, SCREEN_SIZES } from './ScreenSizeSelector';
@@ -110,7 +110,7 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
                 className="h-7 w-7"
                 onClick={() => selectScreenSize('Desktop')}
               >
-                <Desktop className="h-3.5 w-3.5" />
+                <Monitor className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">

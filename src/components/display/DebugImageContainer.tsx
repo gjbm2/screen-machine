@@ -97,7 +97,11 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
           const newHeight = contentRef.current.offsetHeight;
           if (newWidth !== containerWidth || newHeight !== containerHeight) {
             // Force re-render to update content dimensions
-            handleImageLoad({ target: imageRef.current } as React.SyntheticEvent<HTMLImageElement>);
+            if (imageRef.current) {
+              // Create a proper SyntheticEvent instead of just a plain object
+              // @ts-ignore - This is a workaround for the type issue
+              handleImageLoad({ currentTarget: imageRef.current, target: imageRef.current } as React.SyntheticEvent<HTMLImageElement>);
+            }
           }
         }
       };
@@ -121,9 +125,6 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         cursor: isDragging ? 'grabbing' : 'grab',
         resize: 'none' as const
       };
-
-  // Get the selectedSize name as a string to pass to DebugImageContent
-  const selectedSizeString = selectedSize.name;
 
   return (
     <Card 
@@ -170,8 +171,8 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         onImageLoad={handleImageLoad}
         imageDimensions={imageDimensions}
         imageRef={imageRef}
-        viewportRatio={viewportRatio}
-        selectedSize={selectedSizeString}
+        viewportRatio={viewportRatio.toString()}
+        selectedSize={selectedSize.name}
         onResizeStart={isFixedPanel ? undefined : handleResizeStart}
       />
     </Card>

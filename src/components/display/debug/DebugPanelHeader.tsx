@@ -3,7 +3,7 @@ import React from 'react';
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { RefreshCw, Copy, Clipboard, Check, Eye, RotateCcw, Settings } from "lucide-react";
+import { RefreshCw, Copy, Check, Eye, RotateCcw, Settings } from "lucide-react";
 
 interface DebugPanelHeaderProps {
   onCheckNow: () => void;
@@ -15,6 +15,7 @@ interface DebugPanelHeaderProps {
   togglePreview?: () => void;
   showingPreview?: boolean;
   isMobile?: boolean;
+  isTopFixed?: boolean;
 }
 
 export const DebugPanelHeader: React.FC<DebugPanelHeaderProps> = ({
@@ -26,17 +27,16 @@ export const DebugPanelHeader: React.FC<DebugPanelHeaderProps> = ({
   formatTime,
   togglePreview,
   showingPreview,
-  isMobile
+  isMobile,
+  isTopFixed = true
 }) => {
   return (
-    <CardHeader className="pb-2 flex flex-col gap-2 sticky top-0 bg-card z-30 border-b">
+    <CardHeader className={`pb-2 flex flex-col gap-2 bg-card z-30 border-b ${
+      isTopFixed ? 'sticky top-0' : ''
+    }`}>
       <div className="flex justify-between items-center">
         <CardTitle className="text-lg flex items-center gap-2">
           <span>Display Configuration</span>
-          <div className="text-xs text-muted-foreground flex items-center">
-            <RefreshCw className="h-3 w-3 mr-1" />
-            <span>Last checked: {formatTime(lastChecked)}</span>
-          </div>
         </CardTitle>
         
         <div className="flex space-x-2">
@@ -60,17 +60,24 @@ export const DebugPanelHeader: React.FC<DebugPanelHeaderProps> = ({
               </Tooltip>
             </TooltipProvider>
           )}
+        </div>
+      </div>
+      
+      <div className="flex justify-between items-center text-sm">
+        <div className="flex items-center gap-1 text-muted-foreground">
+          <RefreshCw className="h-3 w-3 mr-1" />
+          <span>Last checked: {formatTime(lastChecked)}</span>
           
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button 
-                  variant="outline" 
-                  size="sm"
+                  variant="ghost" 
+                  size="icon"
                   onClick={onCheckNow}
-                  className="h-8 w-8 p-0"
+                  className="h-6 w-6 ml-1"
                 >
-                  <RefreshCw className="h-4 w-4" />
+                  <RefreshCw className="h-3 w-3" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -78,7 +85,9 @@ export const DebugPanelHeader: React.FC<DebugPanelHeaderProps> = ({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          
+        </div>
+        
+        <div className="flex space-x-2">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -86,9 +95,9 @@ export const DebugPanelHeader: React.FC<DebugPanelHeaderProps> = ({
                   variant="outline" 
                   size="sm"
                   onClick={copyUrl}
-                  className="h-8 w-8 p-0"
+                  className="h-7 w-7 p-0"
                 >
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -104,9 +113,9 @@ export const DebugPanelHeader: React.FC<DebugPanelHeaderProps> = ({
                   variant="outline" 
                   size="sm"
                   onClick={resetDisplay}
-                  className="h-8 w-8 p-0"
+                  className="h-7 w-7 p-0"
                 >
-                  <RotateCcw className="h-4 w-4" />
+                  <RotateCcw className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>

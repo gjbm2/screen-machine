@@ -7,14 +7,20 @@ import { Save, ExternalLink } from "lucide-react";
 interface DebugPanelFooterProps {
   applySettings: () => void;
   commitSettings: () => void;
+  isBottomFixed?: boolean;
 }
 
 export const DebugPanelFooter: React.FC<DebugPanelFooterProps> = ({
   applySettings,
-  commitSettings
+  commitSettings,
+  isBottomFixed = true
 }) => {
   return (
-    <CardFooter className="flex justify-end gap-3 pt-4 pb-4 sticky bottom-0 bg-card z-30 border-t">
+    <CardFooter 
+      className={`flex justify-end gap-3 pt-4 pb-4 bg-card z-30 border-t ${
+        isBottomFixed ? 'sticky bottom-0' : ''
+      }`}
+    >
       <Button 
         variant="outline" 
         onClick={applySettings}
