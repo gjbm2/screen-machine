@@ -73,8 +73,12 @@ const Index = () => {
     setIsAdvancedOptionsOpen(true);
   };
 
+  // Fix: Make sure this correctly updates the state and doesn't cause any closure issues
   const handleCloseAdvancedOptions = (open: boolean) => {
-    setIsAdvancedOptionsOpen(open);
+    // Add a small delay to ensure React state updates properly
+    setTimeout(() => {
+      setIsAdvancedOptionsOpen(open);
+    }, 0);
   };
 
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false);

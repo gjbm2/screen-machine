@@ -3,7 +3,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
-import { Terminal, Menu, Info, FileText } from 'lucide-react';
+import { Terminal, Menu, Info, FileText, Settings } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
@@ -80,7 +80,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             
             {onOpenAdvancedOptions && (
               <DropdownMenuItem onClick={onOpenAdvancedOptions}>
-                <Info className="h-4 w-4 mr-2" />
+                <Settings className="h-4 w-4 mr-2" />
                 <span>Advanced</span>
               </DropdownMenuItem>
             )}
