@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card } from "@/components/ui/card";
 import { Tabs } from "@/components/ui/tabs";
@@ -98,15 +97,12 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     handleRefreshMetadata
   } = useDebugPanel({ params, imageUrl, metadata, onApplyCaption });
 
-  // Only use dragging functionality when not in fixed mode
   const handlePanelMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isFixedPanel) return;
     
-    // Call the parent's focus handler to raise z-index
     if (onFocus) {
       onFocus();
     }
-    // Call the original mouse down handler
     handleMouseDown(e);
   };
 
