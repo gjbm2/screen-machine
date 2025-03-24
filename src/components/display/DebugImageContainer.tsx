@@ -26,6 +26,7 @@ interface DebugImageContainerProps {
   metadata?: Record<string, string>;
   onSettingsChange?: () => void;
   onFocus?: () => void;
+  isFixedPanel?: boolean;
 }
 
 export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
@@ -46,7 +47,8 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   captionBgOpacity = 0.7,
   metadata = {},
   onSettingsChange,
-  onFocus
+  onFocus,
+  isFixedPanel = false
 }) => {
   const navigate = useNavigate();
   
@@ -74,6 +76,8 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
 
   // Add focus handling to bring this panel to the top
   const handlePanelMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isFixedPanel) return;
+    
     // Call the parent's focus handler to raise z-index
     if (onFocus) {
       onFocus();
@@ -82,18 +86,26 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
     handleMouseDown(e);
   };
 
-  return (
-    <Card 
-      ref={containerRef}
-      className="absolute z-10 cursor-grab overflow-visible resizable-container"
-      style={{ 
+  const cardStyles = isFixedPanel 
+    ? "h-full w-full overflow-hidden" 
+    : "absolute z-10 cursor-grab overflow-visible resizable-container";
+
+  const innerStyles = isFixedPanel 
+    ? {} 
+    : { 
         left: `${containerPosition.x}px`, 
         top: `${containerPosition.y}px`,
         width: `${containerSize.width}px`,
         height: `${containerSize.height}px`,
         cursor: isDragging ? 'grabbing' : 'grab',
         resize: 'none'
-      }}
+      };
+
+  return (
+    <Card 
+      ref={containerRef}
+      className={cardStyles}
+      style={innerStyles}
       onMouseDown={handlePanelMouseDown}
     >
       <DebugImageHeader
@@ -127,7 +139,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         imageRef={imageRef}
         viewportRatio={viewportRatio}
         selectedSize={selectedSize}
-        onResizeStart={handleResizeStart}
+        onResizeStart={isFixedPanel ? undefined : handleResizeStart}
       />
     </Card>
   );

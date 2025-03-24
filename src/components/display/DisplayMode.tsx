@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DebugPanel } from '@/components/display/debug/DebugPanel';
 import { DebugImageContainer } from '@/components/display/DebugImageContainer';
 import { ImageDisplay } from '@/components/display/ImageDisplay';
 import { DisplayParams } from './types';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface DisplayModeProps {
   params: DisplayParams;
@@ -48,6 +49,9 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   onImageError,
   getImagePositionStyle
 }) => {
+  const isMobile = useIsMobile();
+  const [showPreview, setShowPreview] = useState(true);
+  
   const imageStyle = getImagePositionStyle(
     previewParams.position,
     previewParams.showMode,
@@ -57,26 +61,30 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
     imageRef.current?.naturalHeight || 0
   );
 
-  // State to track which panel should be on top (using actual CSS z-index values)
-  const [debugPanelZIndex, setDebugPanelZIndex] = useState(30);
-  const [imageContainerZIndex, setImageContainerZIndex] = useState(20);
-
-  // Handle focus for the debug panel
-  const handleDebugPanelFocus = () => {
-    setDebugPanelZIndex(40);
-    setImageContainerZIndex(20);
-  };
-
-  // Handle focus for the image container
-  const handleImageContainerFocus = () => {
-    setDebugPanelZIndex(20);
-    setImageContainerZIndex(40);
+  // Toggle preview/settings view on mobile
+  const toggleView = () => {
+    setShowPreview(prev => !prev);
   };
 
   if (params.debugMode) {
     return (
-      <>
-        <div style={{ position: 'absolute', zIndex: debugPanelZIndex }}>
+      <div className="fixed inset-0 flex flex-col sm:flex-row overflow-hidden">
+        {/* For mobile - show either settings or preview based on toggle */}
+        {isMobile && (
+          <div className="fixed top-2 right-2 z-50">
+            <button 
+              onClick={toggleView}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 px-3 py-2 rounded-md text-sm font-medium"
+            >
+              {showPreview ? "Settings" : "Preview"}
+            </button>
+          </div>
+        )}
+        
+        {/* Settings Panel */}
+        <div 
+          className={`${isMobile ? (showPreview ? 'hidden' : 'w-full h-full') : 'w-2/5'} overflow-auto`}
+        >
           <DebugPanel 
             params={params}
             imageUrl={imageUrl}
@@ -89,10 +97,14 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
             onCheckNow={onHandleManualCheck}
             metadata={metadata}
             onApplyCaption={(caption) => {}}
-            onFocus={handleDebugPanelFocus}
+            isFixedPanel={true}
           />
         </div>
-        <div style={{ position: 'absolute', zIndex: imageContainerZIndex }}>
+        
+        {/* Preview Panel */}
+        <div 
+          className={`${isMobile ? (showPreview ? 'w-full h-full' : 'hidden') : 'w-3/5'} overflow-auto bg-gray-100 dark:bg-gray-900`}
+        >
           <DebugImageContainer 
             imageUrl={imageUrl}
             imageKey={imageKey}
@@ -110,11 +122,11 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
             captionBgColor={previewParams.captionBgColor}
             captionBgOpacity={previewParams.captionBgOpacity}
             metadata={metadata}
-            onSettingsChange={() => {}} 
-            onFocus={handleImageContainerFocus}
+            onSettingsChange={() => {}}
+            isFixedPanel={true}
           />
         </div>
-      </>
+      </div>
     );
   }
 
