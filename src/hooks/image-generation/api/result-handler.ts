@@ -1,148 +1,74 @@
 
 import { GeneratedImage } from '../types';
-import { ImageGenerationStatus } from '@/types/workflows';
 
 /**
- * Processes the results of a generation and updates the images array
+ * Process the results of an image generation API call and update the generated images state
  */
 export const processGenerationResults = (
   response: any,
   batchId: string,
   prevImages: GeneratedImage[]
 ): GeneratedImage[] => {
-  // Add debug log to see what response we're getting
-  console.log('Processing generation results:', { 
-    responseSuccess: response?.success, 
-    hasImages: !!response?.images,
-    imageCount: response?.images?.length,
-    batchId
-  });
-  
-  if (!response || !response.success) {
-    console.error('Received unsuccessful response:', response);
-    return markBatchAsError(batchId, prevImages);
-  }
-  
-  // Ensure we have images
+  // If no images were returned, return the previous state
   if (!response.images || response.images.length === 0) {
-    console.warn('Response contained no images:', response);
-    return markBatchAsError(batchId, prevImages);
+    console.warn('[result-handler] No images returned from API');
+    return prevImages;
   }
-  
-  // Extract the containerId from the placeholder images for this batch
-  let containerId: number | undefined;
-  const placeholder = prevImages.find(img => img.batchId === batchId && img.containerId);
-  if (placeholder) {
-    containerId = placeholder.containerId;
-  }
-  
-  // Create a map of existing images by batch index to preserve any we may have
-  const existingImagesByIndex = new Map<number, GeneratedImage>();
-  prevImages.forEach(img => {
-    if (img.batchId === batchId && typeof img.batchIndex === 'number') {
-      existingImagesByIndex.set(img.batchIndex, img);
-    }
-  });
-  
-  // Process all images in the response
-  const updatedImages = [...prevImages];
-  
-  // First mark existing placeholders as "to be updated"
-  updatedImages.forEach((img, index) => {
-    if (img.batchId === batchId && img.status === 'generating') {
-      updatedImages[index] = {
-        ...img,
-        status: 'to_update' as ImageGenerationStatus
+
+  // Find all placeholders for this batch
+  const placeholderIndices = prevImages
+    .map((img, index) => img.batchId === batchId ? index : -1)
+    .filter(index => index !== -1);
+
+  // Create a copy of the previous images array
+  const newImages = [...prevImages];
+
+  // Replace placeholders with actual images
+  response.images.forEach((image: any, index: number) => {
+    const placeholderIndex = placeholderIndices[index];
+    
+    if (placeholderIndex !== undefined) {
+      // Extract existing placeholder to preserve metadata
+      const placeholder = prevImages[placeholderIndex];
+      
+      // Create updated image with API response data
+      newImages[placeholderIndex] = {
+        ...placeholder,
+        url: image.url,
+        loading: false,
+        error: false,
+        timestamp: Date.now(),
+        // Make sure to preserve ALL parameters from the placeholder
+        workflow: placeholder.workflow,
+        prompt: placeholder.prompt,
+        params: placeholder.params, // Ensure workflow params are preserved
+        refiner: placeholder.refiner, // Ensure refiner is preserved
+        refinerParams: placeholder.refinerParams, // Ensure refiner params are preserved
+        globalParams: placeholder.globalParams, // Ensure global params are preserved
+        referenceImageUrl: placeholder.referenceImageUrl,
+        title: placeholder.title
       };
     }
   });
-  
-  // Then update or add new images
-  response.images.forEach((responseImage: any, index: number) => {
-    console.log('Processing response image:', { index, responseImage });
-    
-    // Get the batch index from the response or use the array index
-    const batchIndex = responseImage.batch_index ?? index;
-    
-    // Check if this image already exists
-    const existingImageIndex = updatedImages.findIndex(
-      img => img.batchId === batchId 
-        && img.status === 'to_update'
-        && img.batchIndex === batchIndex
-    );
-    
-    // Check if we have a status field, if not assume 'completed'
-    const imageStatus = responseImage.status || 'completed';
-    console.log('Image status:', imageStatus);
-    
-    if (existingImageIndex !== -1) {
-      // Update the existing placeholder
-      updatedImages[existingImageIndex] = {
-        ...updatedImages[existingImageIndex],
-        url: responseImage.url,
-        status: imageStatus as ImageGenerationStatus,
-        prompt: responseImage.prompt || updatedImages[existingImageIndex].prompt,
-        workflow: responseImage.workflow || updatedImages[existingImageIndex].workflow,
-        timestamp: responseImage.timestamp || Date.now(),
-        batchIndex: batchIndex,
-        title: `${window.imageCounter + 1}. ${responseImage.prompt || updatedImages[existingImageIndex].prompt} (${responseImage.workflow || updatedImages[existingImageIndex].workflow})`,
-        params: responseImage.params || updatedImages[existingImageIndex].params,
-        refiner: responseImage.refiner || updatedImages[existingImageIndex].refiner,
-        refinerParams: responseImage.refiner_params || updatedImages[existingImageIndex].refinerParams,
-        containerId: containerId
-      };
-      
-      // Increment the counter
-      if (window.imageCounter !== undefined) {
-        window.imageCounter += 1;
-      }
-    } else {
-      // Create a new image entry if we don't have a placeholder
-      // This happens if we get more images back than we expected
-      const newImage: GeneratedImage = {
-        url: responseImage.url,
-        prompt: responseImage.prompt,
-        workflow: responseImage.workflow || 'unknown',
-        batchId: batchId,
-        batchIndex: batchIndex,
-        status: imageStatus as ImageGenerationStatus,
-        timestamp: responseImage.timestamp || Date.now(),
-        title: `${window.imageCounter + 1}. ${responseImage.prompt} (${responseImage.workflow || 'unknown'})`,
-        params: responseImage.params,
-        refiner: responseImage.refiner,
-        refinerParams: responseImage.refiner_params,
-        containerId: containerId
-      };
-      
-      updatedImages.push(newImage);
-      
-      // Increment the counter
-      if (window.imageCounter !== undefined) {
-        window.imageCounter += 1;
-      }
-    }
-  });
-  
-  // Clean up any "to_update" images that didn't get updated
-  return updatedImages.filter(img => img.status !== 'to_update');
+
+  return newImages;
 };
 
 /**
- * Marks all images in a batch as failed/error
+ * Mark all images in a batch as having an error
  */
 export const markBatchAsError = (
   batchId: string,
   prevImages: GeneratedImage[]
 ): GeneratedImage[] => {
-  console.log(`Marking batch ${batchId} as error`);
-  return prevImages.map(img => {
-    if (img.batchId === batchId && img.status === 'generating') {
+  return prevImages.map(image => {
+    if (image.batchId === batchId) {
       return {
-        ...img,
-        status: 'error',
-        timestamp: Date.now()
+        ...image,
+        loading: false,
+        error: true
       };
     }
-    return img;
+    return image;
   });
 };

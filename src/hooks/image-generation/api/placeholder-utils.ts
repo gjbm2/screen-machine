@@ -1,56 +1,61 @@
 
+import { nanoid } from '@/lib/utils';
 import { GeneratedImage } from '../types';
-import { getExistingBatchIndexes } from './batch-utils';
 
 /**
- * Creates a batch of placeholder images for a generation
+ * Create placeholder images for a batch
  */
 export const createPlaceholderBatch = (
   prompt: string,
   workflow: string,
   batchId: string,
   batchSize: number,
-  existingImages: GeneratedImage[],
-  params?: Record<string, any>,
-  refiner?: string | undefined,
+  prevImages: GeneratedImage[],
+  params: Record<string, any> = {},
+  refiner?: string,
   refinerParams?: Record<string, any>,
   referenceImageUrl?: string,
   containerId?: number
 ): GeneratedImage[] => {
-  // Find existing batch indexes to avoid duplicates
-  const existingBatchIndexes = getExistingBatchIndexes(batchId, existingImages);
+  // Check if there are existing placeholders for this batch
+  const existingPlaceholders = prevImages.filter(img => img.batchId === batchId);
   
-  // Create the specified number of placeholder images
-  const placeholders: GeneratedImage[] = [];
-  
-  console.log('[placeholder-utils] Creating', batchSize, 'placeholders for batch', batchId, 'with containerId', containerId);
-  
-  for (let i = 0; i < batchSize; i++) {
-    // If this index already exists in the batch, skip it
-    if (existingBatchIndexes.has(i)) {
-      console.log('[placeholder-utils] Skipping existing batch index', i);
-      continue;
-    }
-    
-    const placeholder: GeneratedImage = {
-      url: '', // Adding empty url to satisfy the GeneratedImage type
-      batchId,
-      status: 'generating',
-      prompt,
-      workflow,
-      timestamp: Date.now(),
-      batchIndex: i,
-      params,
-      refiner,
-      refinerParams,
-      referenceImageUrl,
-      containerId
-    };
-    
-    placeholders.push(placeholder);
+  if (existingPlaceholders.length > 0) {
+    console.log(`[placeholder-utils] Using ${existingPlaceholders.length} existing placeholders for batch ${batchId}`);
+    return []; // Return empty array to avoid duplicating placeholders
   }
   
-  console.log('[placeholder-utils] Created', placeholders.length, 'placeholders');
+  console.log(`[placeholder-utils] Creating ${batchSize} placeholders for batch ${batchId}`);
+  
+  const placeholders: GeneratedImage[] = [];
+  
+  for (let i = 0; i < batchSize; i++) {
+    placeholders.push({
+      id: nanoid(),
+      url: '',
+      prompt,
+      workflow,
+      batchId,
+      batchIndex: i,
+      loading: true,
+      error: false,
+      timestamp: Date.now(),
+      containerId,
+      params, // Store workflow params
+      refiner, // Store refiner
+      refinerParams, // Store refiner params
+      referenceImageUrl,
+      title: generateTitle(prompt, workflow, i)
+    });
+  }
   
   return placeholders;
+};
+
+/**
+ * Generate a title for a placeholder image
+ */
+const generateTitle = (prompt: string, workflow: string, index: number): string => {
+  const shortPrompt = prompt.length > 30 ? prompt.substring(0, 30) + '...' : prompt;
+  return `${shortPrompt} (${workflow})`;
 };

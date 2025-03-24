@@ -1,30 +1,32 @@
 
-// Export common types that might be needed by other components
-import { ImageGenerationStatus } from '@/types/workflows';
-
+// Define types for image generation results
 export interface GeneratedImage {
+  id: string;
   url: string;
-  prompt: string;
+  prompt?: string;
   workflow: string;
-  timestamp: number;
-  params?: Record<string, any>;
-  batchId?: string;
-  batchIndex?: number;
-  status?: ImageGenerationStatus;
-  refiner?: string;
-  refinerParams?: Record<string, any>;
-  referenceImageUrl?: string;
-  containerId?: number;
-  title?: string; // Added new title field
-}
-
-export interface ImageGenerationConfig {
-  prompt: string;
-  imageFiles?: File[] | string[];
-  workflow?: string;
   params?: Record<string, any>;
   globalParams?: Record<string, any>;
   refiner?: string;
   refinerParams?: Record<string, any>;
-  batchId?: string;
+  batchId: string;
+  batchIndex?: number;
+  containerId?: number;
+  loading?: boolean;
+  error?: boolean;
+  timestamp?: number;
+  referenceImageUrl?: string | string[];
+  title?: string;
+}
+
+// Define types for image generation configuration
+export interface ImageGenerationConfig {
+  prompt: string;
+  imageFiles?: File[] | string[];
+  workflow: string;
+  params?: Record<string, any>;
+  globalParams?: Record<string, any>;
+  batchId?: string | null;
+  refiner?: string;
+  refinerParams?: Record<string, any>;
 }
