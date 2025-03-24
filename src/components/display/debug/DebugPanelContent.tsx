@@ -13,7 +13,7 @@ interface DebugPanelContentProps {
   imageUrl: string | null;
   customUrl: string;
   setCustomUrl: (url: string) => void;
-  selectFile: (file: string) => void;
+  selectFile: (file: string) => void; // Updated type to match implementation
   isCurrentFile: (file: string) => boolean;
   formatFileName: (fileName: string) => string;
   showMode: ShowMode;
