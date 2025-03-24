@@ -82,6 +82,14 @@ const Index = () => {
     setAboutDialogOpen(true);
   };
 
+  // Create a wrapper function that matches the expected signature
+  const handleGlobalParamChange = (paramId: string, value: any) => {
+    setCurrentGlobalParams(prev => ({
+      ...prev,
+      [paramId]: value
+    }));
+  };
+
   const handleRunScript = async (scriptFilename: string) => {
     try {
       addConsoleLog(`Running script: ${scriptFilename}`);
@@ -168,7 +176,7 @@ const Index = () => {
         params={currentParams}
         onParamChange={() => {}} 
         globalParams={currentGlobalParams}
-        onGlobalParamChange={setCurrentGlobalParams} // Fix this to use the actual function
+        onGlobalParamChange={handleGlobalParamChange} 
         isOpen={isAdvancedOptionsOpen}
         onOpenChange={handleCloseAdvancedOptions}
       />
