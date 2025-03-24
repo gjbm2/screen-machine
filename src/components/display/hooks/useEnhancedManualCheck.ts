@@ -24,7 +24,7 @@ export const useEnhancedManualCheck = (
     try {
       // If in debug mode or no imagePollerHandleManualCheck provided, use the original handler
       if (params.debugMode || !imagePollerHandleManualCheck) {
-        console.log('[useEnhancedManualCheck] Using original manual check in debug mode');
+        console.log('[useEnhancedManualCheck] Using original manual check in debug mode or poller unavailable');
         const result = await originalHandleManualCheck();
         
         // Also extract metadata directly in debug mode

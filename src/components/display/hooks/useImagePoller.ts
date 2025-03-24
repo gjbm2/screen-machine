@@ -45,7 +45,10 @@ export const useImagePoller = (
   );
   
   // Set up polling for image changes - Make sure to disable polling in debug mode
-  const isPollingEnabled = !!processedUrl && !params.debugMode;
+  const isPollingEnabled = !!processedUrl && !params.debugMode && !isLoading;
+  
+  // Log the polling state
+  console.log('[useImagePoller] Polling enabled:', isPollingEnabled, 'Debug mode:', params.debugMode);
   
   const { pollNow } = useImageCheckPoller(
     processedUrl,

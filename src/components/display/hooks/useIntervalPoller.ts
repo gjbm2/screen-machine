@@ -20,6 +20,7 @@ export const useIntervalPoller = (
       
       // Clear interval on unmount
       if (intervalIdRef.current !== null) {
+        console.log('[useIntervalPoller] Clearing interval on unmount');
         window.clearInterval(intervalIdRef.current);
         intervalIdRef.current = null;
       }
@@ -28,8 +29,14 @@ export const useIntervalPoller = (
   
   // Setup and manage the interval
   useEffect(() => {
-    // Skip if polling is disabled or onPoll is not provided
-    if (!enabled || typeof onPoll !== 'function') {
+    // Skip if polling is disabled, onPoll is not provided, or interval time is invalid
+    if (!enabled || typeof onPoll !== 'function' || intervalTime <= 0) {
+      // Clear any existing interval if disabled
+      if (intervalIdRef.current !== null) {
+        console.log('[useIntervalPoller] Clearing interval because polling is disabled');
+        window.clearInterval(intervalIdRef.current);
+        intervalIdRef.current = null;
+      }
       return;
     }
     
@@ -41,11 +48,13 @@ export const useIntervalPoller = (
       intervalIdRef.current = null;
     }
     
-    // Create new interval
+    // Create new interval, ensuring it doesn't poll too fast (minimum 1 second)
+    const safeIntervalTime = Math.max(1, intervalTime);
     intervalIdRef.current = window.setInterval(() => {
       if (!mountedRef.current) {
         // Component unmounted, clear interval
         if (intervalIdRef.current !== null) {
+          console.log('[useIntervalPoller] Component unmounted, clearing interval');
           window.clearInterval(intervalIdRef.current);
           intervalIdRef.current = null;
         }
@@ -54,11 +63,12 @@ export const useIntervalPoller = (
       
       // Execute the polling callback
       onPoll();
-    }, intervalTime * 1000);
+    }, safeIntervalTime * 1000);
     
     // Clean up on dependency changes or unmount
     return () => {
       if (intervalIdRef.current !== null) {
+        console.log('[useIntervalPoller] Clearing interval due to dependency changes');
         window.clearInterval(intervalIdRef.current);
         intervalIdRef.current = null;
       }
