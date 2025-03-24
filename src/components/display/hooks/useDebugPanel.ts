@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { DisplayParams } from '../types';
 import { useDebugPanelState } from './useDebugPanelState';
@@ -58,7 +59,14 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     panelRef,
     panelSize,
     handleMouseDown,
-    handleResizeStart
+    handleResizeStart: positionResizeHandler, // Renamed to avoid conflict
+    isResizing,
+    setIsResizing,
+    resizeStart,
+    setResizeStart,
+    dragOffset,
+    setPanelSize,
+    setPosition: setPosition2
   } = useDebugPanelPosition();
 
   const {
@@ -150,48 +158,9 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     return isCurrentFile(file, imageUrl);
   };
 
+  // We're using the resize handler from useDebugPanelPosition
   const handleResizeStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    setIsResizing(true);
-    setResizeStart({
-      x: e.clientX,
-      y: e.clientY,
-      width: panelRef.current?.offsetWidth || 480,
-      height: panelRef.current?.offsetHeight || 600
-    });
-  };
-
-  const handleMouseMove = (e: MouseEvent) => {
-    if (isDragging) {
-      const newX = Math.max(0, e.clientX - dragOffset.x);
-      const newY = Math.max(0, e.clientY - dragOffset.y);
-      
-      const maxX = window.innerWidth - (panelRef.current?.offsetWidth || 480);
-      const maxY = window.innerHeight - (panelRef.current?.offsetHeight || 400);
-      
-      setPosition2({ 
-        x: Math.min(newX, maxX), 
-        y: Math.min(newY, maxY) 
-      });
-    }
-    
-    if (isResizing) {
-      const MIN_WIDTH = 400;
-      const MIN_HEIGHT = 400;
-      
-      const newWidth = Math.max(MIN_WIDTH, resizeStart.width + (e.clientX - resizeStart.x));
-      const newHeight = Math.max(MIN_HEIGHT, resizeStart.height + (e.clientY - resizeStart.y));
-      
-      const maxWidth = window.innerWidth - position2.x;
-      const maxHeight = window.innerHeight - position2.y;
-      
-      setPanelSize({ 
-        width: `${Math.min(newWidth, maxWidth)}px`, 
-        height: `${Math.min(newHeight, maxHeight)}px` 
-      });
-    }
+    positionResizeHandler(e);
   };
 
   return {
