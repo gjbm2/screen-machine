@@ -1,10 +1,12 @@
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { CardContent } from "@/components/ui/card";
 import { CaptionRenderer } from './CaptionRenderer';
 import { ShowMode, PositionMode, CaptionPosition } from '../types';
 import { ResizeHandle } from '../ResizeHandle';
-import { SCREEN_SIZES } from './ScreenSizeSelector';
+import { ScreenContainer } from './components/ScreenContainer';
+import { ImageDisplay } from './components/ImageDisplay';
+import { getImageStyle } from './utils/ImagePositionStyles';
 
 interface DebugImageContentProps {
   imageUrl: string | null;
@@ -53,214 +55,62 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
   viewportRatio,
   onResizeStart
 }) => {
-  const screenContainerRef = useRef<HTMLDivElement>(null);
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
-  
-  // Apply selected screen size to container and handle proper scaling
-  useEffect(() => {
-    if (!screenContainerRef.current || !contentRef.current) return;
-    
-    const selectedSizeObj = SCREEN_SIZES.find(size => size.name === selectedSize);
-    if (!selectedSizeObj) {
-      console.error('[DebugImageContent] Size not found:', selectedSize);
-      return;
-    }
-    
-    console.log('[DebugImageContent] Applying size:', selectedSizeObj);
-    
-    // Get parent dimensions
-    const parentWidth = contentRef.current.clientWidth;
-    const parentHeight = contentRef.current.clientHeight;
-    
-    // Calculate aspect ratio of the selected size
-    const aspectRatio = selectedSizeObj.width / selectedSizeObj.height;
-    
-    // Determine max dimensions that fit within the parent
-    let maxWidth = parentWidth - 40; // Padding
-    let maxHeight = parentHeight - 40; // Padding
-    
-    // Calculate dimensions based on aspect ratio
-    let width, height;
-    
-    // Calculate which dimension is the limiting factor
-    if (maxWidth / aspectRatio <= maxHeight) {
-      width = maxWidth;
-      height = width / aspectRatio;
-    } else {
-      height = maxHeight;
-      width = height * aspectRatio;
-    }
-    
-    // Set dimensions on the container
-    screenContainerRef.current.style.width = `${width}px`;
-    screenContainerRef.current.style.height = `${height}px`;
-    
-    setContainerDimensions({ width, height });
-    
-    console.log('[DebugImageContent] Container dimensions set to:', { width, height });
-  }, [selectedSize, contentRef, containerWidth]);
-  
-  // Prepare the image display style based on the current mode
-  const getImageStyle = (): React.CSSProperties => {
-    let style: React.CSSProperties = {
-      maxWidth: '100%',
-      maxHeight: '100%',
-    };
-    
-    switch (showMode) {
-      case 'fill':
-        style = {
-          ...style,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          objectPosition: position,
-        };
-        break;
-      case 'fit':
-        style = {
-          ...style,
-          width: 'auto',
-          height: 'auto',
-          maxWidth: '100%',
-          maxHeight: '100%',
-          objectFit: 'contain',
-          position: 'absolute',
-        };
-        break;
-      case 'stretch':
-        style = {
-          ...style,
-          width: '100%',
-          height: '100%',
-          objectFit: 'fill',
-        };
-        break;
-      case 'actual':
-        style = {
-          ...style,
-          width: imageDimensions.width > 0 ? `${imageDimensions.width}px` : 'auto',
-          height: imageDimensions.height > 0 ? `${imageDimensions.height}px` : 'auto',
-          objectFit: 'none',
-        };
-        break;
-      default:
-        style = {
-          ...style,
-          objectFit: 'contain',
-        };
-    }
-    
-    // Apply position to fit and actual modes
-    if (showMode === 'fit' || showMode === 'actual') {
-      switch (position) {
-        case 'top-left':
-          style.top = 0;
-          style.left = 0;
-          break;
-        case 'top-center':
-          style.top = 0;
-          style.left = '50%';
-          style.transform = 'translateX(-50%)';
-          break;
-        case 'top-right':
-          style.top = 0;
-          style.right = 0;
-          break;
-        case 'center-left':
-          style.top = '50%';
-          style.left = 0;
-          style.transform = 'translateY(-50%)';
-          break;
-        case 'center':
-          style.top = '50%';
-          style.left = '50%';
-          style.transform = 'translate(-50%, -50%)';
-          break;
-        case 'center-right':
-          style.top = '50%';
-          style.right = 0;
-          style.transform = 'translateY(-50%)';
-          break;
-        case 'bottom-left':
-          style.bottom = 0;
-          style.left = 0;
-          break;
-        case 'bottom-center':
-          style.bottom = 0;
-          style.left = '50%';
-          style.transform = 'translateX(-50%)';
-          break;
-        case 'bottom-right':
-          style.bottom = 0;
-          style.right = 0;
-          break;
-        default:
-          style.top = '50%';
-          style.left = '50%';
-          style.transform = 'translate(-50%, -50%)';
-      }
-    }
-    
-    return style;
-  };
   
   // Ensure captionBgColor has # prefix
   const formattedCaptionBgColor = captionBgColor.startsWith('#') ? captionBgColor : `#${captionBgColor}`;
   
+  // Create a proper image style getter function that encapsulates positioning logic
+  const getImageStyleWithContext = () => {
+    return getImageStyle(showMode, position, imageDimensions);
+  };
+
   return (
     <CardContent 
       className="p-0 flex-1 overflow-auto flex items-center justify-center"
       ref={contentRef}
     >
-      <div 
-        ref={screenContainerRef}
-        className="relative border border-gray-300 shadow-md flex items-center justify-center overflow-hidden"
-        style={{ 
-          backgroundColor: `#${backgroundColor}`, 
-          transition: "width 0.3s, height 0.3s"
-        }}
+      <ScreenContainer
+        selectedSize={selectedSize}
+        contentRef={contentRef}
+        containerWidth={containerWidth}
+        backgroundColor={backgroundColor}
+        onDimensionsChange={setContainerDimensions}
       >
-        {imageUrl ? (
-          <>
-            <img
-              ref={imageRef}
-              key={`image-${imageKey}`}
-              src={imageUrl}
-              alt="Preview"
-              className="max-w-full max-h-full"
-              onLoad={onImageLoad}
-              onError={onImageError}
-              style={getImageStyle()}
-            />
-            
-            {caption && (
-              <CaptionRenderer 
-                caption={caption}
-                position={captionPosition}
-                fontSize={captionSize}
-                color={captionColor}
-                fontFamily={captionFont}
-                backgroundColor={formattedCaptionBgColor}
-                backgroundOpacity={captionBgOpacity}
-                containerWidth={containerDimensions.width}
-                screenWidth={window.innerWidth}
-                screenSize={
-                  selectedSize !== 'Current Viewport' 
-                    ? SCREEN_SIZES.find(size => size.name === selectedSize) 
-                    : undefined
-                }
-              />
-            )}
-          </>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-gray-500">
-            No image to display
-          </div>
+        <ImageDisplay
+          imageUrl={imageUrl}
+          imageKey={imageKey}
+          showMode={showMode}
+          position={position}
+          backgroundColor={backgroundColor}
+          onImageError={onImageError}
+          onImageLoad={onImageLoad}
+          imageDimensions={imageDimensions}
+          imageRef={imageRef}
+          getImageStyle={getImageStyleWithContext}
+        />
+        
+        {caption && (
+          <CaptionRenderer 
+            caption={caption}
+            position={captionPosition}
+            fontSize={captionSize}
+            color={captionColor}
+            fontFamily={captionFont}
+            backgroundColor={formattedCaptionBgColor}
+            backgroundOpacity={captionBgOpacity}
+            containerWidth={containerDimensions.width}
+            screenWidth={window.innerWidth}
+            screenSize={
+              selectedSize !== 'Current Viewport' 
+                ? SCREEN_SIZES.find(size => size.name === selectedSize) 
+                : undefined
+            }
+          />
         )}
         
         {onResizeStart && <ResizeHandle onMouseDown={onResizeStart} />}
-      </div>
+      </ScreenContainer>
     </CardContent>
   );
 };
