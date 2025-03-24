@@ -2,6 +2,7 @@
 import React, { useEffect } from 'react';
 import ImageMetadata from '../ImageMetadata';
 import DetailViewActionBar from './DetailViewActionBar';
+import ImagePrompt from './ImagePrompt';
 
 interface DetailViewInfoPanelProps {
   activeImage: {
@@ -22,6 +23,7 @@ interface DetailViewInfoPanelProps {
   onOpenInNewTab: (e: React.MouseEvent) => void;
   hidePrompt?: boolean;
   onInfoClick?: () => void;
+  onReferenceImageClick?: () => void;
   onClose?: () => void; // Added for closing fullscreen view
 }
 
@@ -37,6 +39,7 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
   onOpenInNewTab,
   hidePrompt = false,
   onInfoClick,
+  onReferenceImageClick,
   onClose // New prop for closing
 }) => {
   // Use the referenceImageUrl from props first, then from activeImage as fallback
@@ -57,6 +60,18 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
   
   return (
     <div className="flex-shrink-0 p-2 space-y-1 bg-background select-none border-t min-h-[100px]">
+      {/* Prompt display with reference image button */}
+      {!hidePrompt && activeImage?.prompt && (
+        <ImagePrompt
+          prompt={activeImage.prompt}
+          hasReferenceImages={hasReferenceImages}
+          onReferenceImageClick={onReferenceImageClick}
+          workflowName={activeImage.workflow}
+          onInfoClick={onInfoClick}
+          title={activeImage.title}
+        />
+      )}
+      
       {/* Image metadata - now includes the "open in new tab" button */}
       <ImageMetadata
         dimensions={dimensions}

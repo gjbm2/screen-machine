@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import ImageKeyboardNavigation from './ImageKeyboardNavigation';
 import DetailViewImageSection from './DetailViewImageSection';
@@ -120,7 +121,26 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
     setShowImageInfo(true);
   };
 
+  // Handle opening reference image dialog directly
+  const handleReferenceImageClick = () => {
+    console.log("Reference image button clicked");
+    setShowReferenceImage(true);
+  };
+
   const hasReferenceImages = Boolean(referenceImageUrl);
+
+  // Process reference images array from string or array
+  const referenceImages = React.useMemo(() => {
+    if (!referenceImageUrl) return [];
+    
+    if (typeof referenceImageUrl === 'string') {
+      return referenceImageUrl.split(',')
+        .map(url => url.trim())
+        .filter(url => url !== '');
+    }
+    
+    return Array.isArray(referenceImageUrl) ? referenceImageUrl : [];
+  }, [referenceImageUrl]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden min-h-0 min-w-0">
@@ -161,14 +181,16 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onOpenInNewTab={handleOpenInNewTab}
         hidePrompt={hidePrompt}
         onInfoClick={handleInfoClick}
+        onReferenceImageClick={hasReferenceImages ? handleReferenceImageClick : undefined}
         onClose={onClose}
       />
 
-      {referenceImageUrl && (
+      {/* Reference image dialog for direct reference image button click */}
+      {hasReferenceImages && (
         <ReferenceImageDialog
           isOpen={showReferenceImage}
           onOpenChange={setShowReferenceImage}
-          imageUrls={referenceImageUrl ? (typeof referenceImageUrl === 'string' ? [referenceImageUrl] : referenceImageUrl) : []}
+          imageUrls={referenceImages}
         />
       )}
 
