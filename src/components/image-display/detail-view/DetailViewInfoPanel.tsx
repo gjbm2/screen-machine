@@ -11,11 +11,11 @@ interface DetailViewInfoPanelProps {
     workflow: string;
     params?: Record<string, any>;
     timestamp?: number;
-    referenceImageUrl?: string | string[];
+    referenceImageUrl?: string;
     title?: string; // Added title property to the activeImage type
   };
   dimensions: { width: number; height: number };
-  referenceImageUrl?: string | string[];
+  referenceImageUrl?: string;
   showReferenceImage: boolean;
   setShowReferenceImage: (show: boolean) => void;
   handleCreateAgain: () => void;
@@ -56,21 +56,8 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
     }
   }, [effectiveReferenceImageUrl, activeImage]);
   
-  // Process reference images array from string to determine if we have any
-  const hasReferenceImages = React.useMemo(() => {
-    if (!effectiveReferenceImageUrl) return false;
-    
-    if (typeof effectiveReferenceImageUrl === 'string') {
-      const urls = effectiveReferenceImageUrl
-        .split(',')
-        .map(url => url.trim())
-        .filter(url => url !== '');
-      return urls.length > 0;
-    }
-    
-    // Add explicit type guard before checking length 
-    return Array.isArray(effectiveReferenceImageUrl) && effectiveReferenceImageUrl.length > 0;
-  }, [effectiveReferenceImageUrl]);
+  // Determine if this image has reference images - ensuring consistency with other components
+  const hasReferenceImages = Boolean(effectiveReferenceImageUrl);
   
   return (
     <div className="flex-shrink-0 p-2 space-y-1 bg-background select-none border-t min-h-[100px]">
