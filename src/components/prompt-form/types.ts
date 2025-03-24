@@ -1,35 +1,4 @@
 
-export interface WorkflowProps {
-  id: string;
-  name: string;
-  description: string;
-  params: {
-    id: string;
-    name: string;
-    type: "select" | "checkbox" | "range" | "text";
-    options?: string[];
-    default?: string | boolean | number;
-  }[];
-}
-
-export interface ToolbarProps {
-  isLoading: boolean;
-  selectedWorkflow: string;
-  selectedRefiner: string;
-  selectedPublish?: string;
-  onImageUpload: (files: File[]) => void;
-  onWorkflowChange: (workflowId: string) => void;
-  onRefinerChange: (refinerId: string) => void;
-  onPublishChange?: (publishId: string) => void;
-  toggleAdvancedOptions: () => void;
-  handleSubmit: () => void;
-  prompt: string;
-  isButtonDisabled: boolean;
-  workflows: WorkflowProps[];
-  isCompact: boolean;
-  hasUploadedImages?: boolean;
-}
-
 export interface PromptFormProps {
   onSubmit: (
     prompt: string,
@@ -45,10 +14,23 @@ export interface PromptFormProps {
   currentPrompt?: string;
   isFirstRun?: boolean;
   onOpenAdvancedOptions?: () => void;
+  // Add props for external state
+  selectedWorkflow?: string;
+  selectedRefiner?: string;
+  workflowParams?: Record<string, any>;
+  refinerParams?: Record<string, any>;
+  globalParams?: Record<string, any>;
 }
 
-export interface ImagePreviewSectionProps {
-  previewUrls: string[];
-  handleRemoveImage: (index: number) => void;
-  clearAllImages: () => void;
+export interface WorkflowProps {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export interface RefinerProps {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
 }

@@ -13,6 +13,11 @@ interface AdvancedOptionsContainerProps {
   onWorkflowChange: (workflow: string) => void;
   onParamsChange: (params: Record<string, any>) => void;
   onGlobalParamChange: (paramId: string, value: any) => void;
+  // Add props for refiner handling
+  selectedRefiner?: string;
+  refinerParams?: Record<string, any>;
+  onRefinerChange?: (refiner: string) => void;
+  onRefinerParamChange?: (paramId: string, value: any) => void;
 }
 
 const AdvancedOptionsContainer: React.FC<AdvancedOptionsContainerProps> = ({
@@ -24,7 +29,12 @@ const AdvancedOptionsContainer: React.FC<AdvancedOptionsContainerProps> = ({
   currentGlobalParams,
   onWorkflowChange,
   onParamsChange,
-  onGlobalParamChange
+  onGlobalParamChange,
+  // Include new props with defaults
+  selectedRefiner = 'none',
+  refinerParams = {},
+  onRefinerChange = () => {},
+  onRefinerParamChange = () => {}
 }) => {
   // Handler for global param changes
   const handleGlobalParamChange = useCallback((paramId: string, value: any) => {
@@ -45,6 +55,18 @@ const AdvancedOptionsContainer: React.FC<AdvancedOptionsContainerProps> = ({
     // Call the original onParamsChange with the updated object
     onParamsChange(updatedParams);
   }, [currentParams, onParamsChange]);
+
+  // Handler for refiner param changes - wrapper to adapt to expected format
+  const handleRefinerParamChange = useCallback((paramId: string, value: any) => {
+    console.log('Refiner param change:', paramId, value);
+    onRefinerParamChange(paramId, value);
+  }, [onRefinerParamChange]);
+
+  // Handler for refiner selection changes
+  const handleRefinerChange = useCallback((refinerId: string) => {
+    console.log('Refiner selected:', refinerId);
+    onRefinerChange(refinerId);
+  }, [onRefinerChange]);
 
   // Handle panel open/close
   const handleOpenChange = useCallback((open: boolean) => {
@@ -72,10 +94,11 @@ const AdvancedOptionsContainer: React.FC<AdvancedOptionsContainerProps> = ({
       onParamChange={handleParamChange}
       globalParams={currentGlobalParams}
       onGlobalParamChange={handleGlobalParamChange}
-      selectedRefiner={'none'}
-      onRefinerChange={() => {}}
-      refinerParams={{}}
-      onRefinerParamChange={() => {}}
+      // Pass refiner props
+      selectedRefiner={selectedRefiner}
+      onRefinerChange={handleRefinerChange}
+      refinerParams={refinerParams}
+      onRefinerParamChange={handleRefinerParamChange}
       isOpen={isOpen}
       onOpenChange={handleOpenChange}
     />

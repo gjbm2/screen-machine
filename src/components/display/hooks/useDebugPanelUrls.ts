@@ -1,3 +1,4 @@
+
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
 import { createUrlWithParams, processOutputParam } from '../utils/paramUtils';
@@ -129,6 +130,17 @@ export const useDebugPanelUrls = ({
     const outputToUse = params.output || customUrl;
     console.log('[useDebugPanelUrls] Using output for view mode:', outputToUse);
     
+    // Validate that we have an output URL
+    if (!outputToUse) {
+      console.error('[useDebugPanelUrls] No output URL for view mode, cannot commit');
+      toast({
+        title: "Error",
+        description: "No image URL specified. Please select an image file or enter a URL.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     // Process the output to ensure it's properly formatted
     const processedOutput = processOutputParam(outputToUse);
     console.log('[useDebugPanelUrls] Processed output for view mode:', processedOutput);
@@ -156,7 +168,7 @@ export const useDebugPanelUrls = ({
     const url = createUrlWithParams(newParams);
     console.log('[useDebugPanelUrls] Committing settings, navigating to view mode:', url);
     
-    // Use direct window.location change to force a full page reload
+    // Use direct window.location change for view mode to ensure a clean state
     window.location.href = `/display${url}`;
     
     toast({
