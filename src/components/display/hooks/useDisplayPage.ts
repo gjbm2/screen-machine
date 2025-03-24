@@ -17,6 +17,12 @@ export const useDisplayPage = () => {
   const [previewParams, setPreviewParams] = useState(params);
   const mountedRef = useRef(true); // Track if component is mounted
 
+  // Debug logging for params
+  useEffect(() => {
+    console.log("[useDisplayPage] Debug mode active:", params.debugMode);
+    console.log("[useDisplayPage] Params:", params);
+  }, [params]);
+
   // Process output parameter
   useOutputProcessor(params);
 
@@ -87,53 +93,33 @@ export const useDisplayPage = () => {
     resetMetadataExtractionFlag();
   }, [imageUrl]);
 
-  // Add debug output to trace debug mode functionality
-  useEffect(() => {
-    if (!mountedRef.current) return;
-    
-    if (params.debugMode) {
-      console.log('[useDisplayPage] Debug mode is enabled in params');
-    } else {
-      console.log('[useDisplayPage] Debug mode is NOT enabled in params');
-    }
-  }, [params.debugMode]);
-
-  // Add debug logging for image loading
-  useEffect(() => {
-    if (!mountedRef.current) return;
-    
-    if (imageUrl) {
-      console.log('[useDisplayPage] Current image URL:', imageUrl);
-    } else if (params.output) {
-      console.log('[useDisplayPage] No image URL yet, but output param is:', params.output);
-    }
-  }, [imageUrl, params.output]);
-
   // Process captions with metadata
   useCaptionProcessor(previewParams, metadata, imageUrl, setProcessedCaption);
 
   // Fetch debug output files only when in debug mode
   useDebugFiles(params.debugMode, setOutputFiles);
 
-  // Poll for image changes - Only setup when component is mounted
-  const { handleManualCheck: imagePollerHandleManualCheck } = useImagePoller(
-    params,
-    imageUrl,
-    isLoading,
-    isTransitioning,
-    loadNewImage,
-    checkImageModified,
-    extractMetadataFromImage
-  );
+  // Only setup image polling when NOT in debug mode to prevent infinite loops
+  const imagePollerHandleManualCheck = params.debugMode 
+    ? null 
+    : useImagePoller(
+        params,
+        imageUrl,
+        isLoading,
+        isTransitioning,
+        loadNewImage,
+        checkImageModified,
+        extractMetadataFromImage
+      )?.handleManualCheck;
 
   // Handle image errors
   const { handleImageError } = useImageErrorHandler(imageUrl, mountedRef);
 
-  // Enhanced manual check
+  // Enhanced manual check - handle the case when imagePollerHandleManualCheck is null
   const { handleManualCheck } = useEnhancedManualCheck(
     mountedRef,
     imageUrl,
-    imagePollerHandleManualCheck,
+    imagePollerHandleManualCheck || (async () => false),
     originalHandleManualCheck,
     params,
     extractMetadataFromImage

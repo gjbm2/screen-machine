@@ -44,7 +44,9 @@ export const useImagePoller = (
     extractMetadataFromImage
   );
   
-  // Set up polling for image changes
+  // Set up polling for image changes - Make sure to disable polling in debug mode
+  const isPollingEnabled = !!processedUrl && !params.debugMode;
+  
   const { pollNow } = useImageCheckPoller(
     processedUrl,
     params.refreshInterval,
@@ -53,7 +55,7 @@ export const useImagePoller = (
     checkImageModified,
     loadNewImage,
     extractMetadataFromImage,
-    !!processedUrl && !params.debugMode
+    isPollingEnabled
   );
   
   // Handle manual updates
