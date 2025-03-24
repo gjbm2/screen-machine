@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Database, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { extractImageMetadata } from "../utils";
 
 interface MetadataEntry {
   key: string;
@@ -23,6 +24,7 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
   setActiveTab
 }) => {
   const [loading, setLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   
   // Enhanced logging to debug metadata issues
   useEffect(() => {
@@ -36,6 +38,36 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
     }
   }, [metadataEntries]);
   
+  // Extract and force refresh metadata from current URL in local storage
+  const forceRefreshMetadata = async () => {
+    setLoading(true);
+    try {
+      // Get the current URL from localStorage if available
+      const currentImageUrl = localStorage.getItem('currentImageUrl');
+      
+      if (currentImageUrl) {
+        console.log('Forcing metadata refresh for URL:', currentImageUrl);
+        const metadata = await extractImageMetadata(currentImageUrl);
+        console.log('Freshly extracted metadata:', metadata);
+        
+        if (Object.keys(metadata).length > 0) {
+          toast.success(`Refreshed metadata: found ${Object.keys(metadata).length} entries`);
+          // Force rerender of component
+          setRefreshKey(prev => prev + 1);
+        } else {
+          toast.warning("No metadata found in this image");
+        }
+      } else {
+        toast.info("No image URL to refresh metadata from");
+      }
+    } catch (err) {
+      console.error('Error refreshing metadata:', err);
+      toast.error("Failed to refresh metadata");
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   // Simple animation to indicate the component is refreshed
   const triggerRefreshAnimation = () => {
     setLoading(true);
@@ -43,7 +75,7 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
   };
   
   return (
-    <CardContent className="pt-4 pb-2 h-full flex flex-col">
+    <CardContent className="pt-4 pb-2 h-full flex flex-col" key={refreshKey}>
       <div className="flex justify-between items-center mb-2">
         <h3 className="text-sm font-medium">Image Metadata</h3>
         <Button 
@@ -52,12 +84,7 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
           className="h-7 px-2"
           onClick={() => {
             triggerRefreshAnimation();
-            // This acts as a visual indicator only
-            if (metadataEntries.length === 0) {
-              toast.info("No metadata found to refresh");
-            } else {
-              toast.success(`Refreshed ${metadataEntries.length} metadata entries`);
-            }
+            forceRefreshMetadata();
           }}
         >
           <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
@@ -85,6 +112,7 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
                     console.log('Using metadata tag:', entry.key);
                     insertMetadataTag(entry.key);
                     setActiveTab("caption");
+                    toast.success(`Added ${entry.key} tag to caption`);
                   }}
                 >
                   Use
@@ -96,7 +124,7 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
             <Database className="h-8 w-8 mb-2" />
             <p className="text-sm">No metadata available</p>
-            <p className="text-xs mt-1">Select an image to view its metadata</p>
+            <p className="text-xs mt-1">Click refresh to try again or select an image to view its metadata</p>
           </div>
         )}
       </ScrollArea>

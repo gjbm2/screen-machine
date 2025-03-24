@@ -145,7 +145,7 @@ export const useDisplayPage = () => {
     console.log('[useDisplayPage] Manual check initiated');
     
     if (imageUrl) {
-      const result = await originalHandleManualCheck(imageUrl, params.debugMode);
+      const result = await originalHandleManualCheck(imageUrl);
       
       // Force metadata refresh regardless of whether the image changed
       if (params.debugMode) {

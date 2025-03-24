@@ -1,6 +1,6 @@
-
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import GenerationFailedPlaceholder from '../GenerationFailedPlaceholder';
+import LoadingPlaceholder from '../LoadingPlaceholder';
 
 interface SmallGridViewProps {
   images: any[];
@@ -17,9 +17,27 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
   onCreateAgain,
   onDeleteImage
 }) => {
+  const [sortedImages, setSortedImages] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!images || images.length === 0) {
+      setSortedImages([]);
+      return;
+    }
+
+    const sorted = [...images].sort((a, b) => {
+      if (a.status === 'generating' && b.status !== 'generating') return -1;
+      if (a.status !== 'generating' && b.status === 'generating') return 1;
+      
+      return (b.timestamp || 0) - (a.timestamp || 0);
+    });
+    
+    setSortedImages(sorted);
+  }, [images]);
+
   return (
     <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-0.5">
-      {images.map((image, idx) => (
+      {sortedImages.map((image, idx) => (
         <div 
           key={`${image.batchId}-${image.batchIndex}`} 
           className="aspect-square rounded-md overflow-hidden cursor-pointer"
@@ -31,6 +49,8 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
               alt={image.prompt || `Generated image ${idx + 1}`}
               className="w-full h-full object-cover"
             />
+          ) : image.status === 'generating' ? (
+            <LoadingPlaceholder prompt={image.prompt} isCompact={true} />
           ) : (
             <GenerationFailedPlaceholder 
               prompt={null} 
