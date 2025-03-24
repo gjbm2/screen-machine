@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -66,15 +67,24 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const panelRef = useRef<HTMLDivElement>(null);
+  
+  // Track the current image URL to prevent duplicate metadata processing
+  const previousImageUrlRef = useRef<string | null>(null);
 
   // Update metadata entries when metadata changes
   useEffect(() => {
-    const entries = Object.entries(metadata).map(([key, value]) => ({
-      key,
-      value
-    }));
-    setMetadataEntries(entries);
-  }, [metadata]);
+    // Only update metadata entries if the image URL has changed
+    if (imageUrl !== previousImageUrlRef.current) {
+      console.log("Image URL changed, updating metadata entries");
+      previousImageUrlRef.current = imageUrl;
+      
+      const entries = Object.entries(metadata).map(([key, value]) => ({
+        key,
+        value
+      }));
+      setMetadataEntries(entries);
+    }
+  }, [metadata, imageUrl]);
 
   // Parse caption with metadata for preview
   useEffect(() => {
@@ -107,8 +117,11 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
 
   // Generate the URL for the current settings
   const generateUrl = () => {
+    // Ensure custom URL is properly encoded if it contains special characters
+    const encodedOutput = customUrl ? encodeURIComponent(customUrl) : null;
+    
     const newParams: DisplayParams = {
-      output: customUrl || null,
+      output: encodedOutput,
       showMode,
       position,
       refreshInterval,
@@ -128,8 +141,11 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
 
   // Apply the current settings and stay in debug mode
   const applySettings = () => {
+    // Ensure custom URL is properly encoded if it contains special characters
+    const encodedOutput = customUrl ? encodeURIComponent(customUrl) : null;
+    
     const newParams: DisplayParams = {
-      output: customUrl || null,
+      output: encodedOutput,
       showMode,
       position,
       refreshInterval,
