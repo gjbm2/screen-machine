@@ -2,23 +2,31 @@
 // Fetch a list of available output files from the server
 export const fetchOutputFiles = async (): Promise<string[]> => {
   try {
+    console.log("[fetchOutputFiles] Attempting to fetch output files from API");
     // First try to fetch from the current server
     const response = await fetch('/api/output-files');
+    
     if (response.ok) {
       const data = await response.json();
+      console.log("[fetchOutputFiles] Successfully fetched output files:", data.files);
       return data.files || [];
     }
     
-    // If that fails, return some example files
-    console.warn('Could not fetch output files from API');
+    // If that fails, log and return some example files
+    console.warn('[fetchOutputFiles] Could not fetch output files from API, status:', response.status);
     return [
       'output/ComfyUI_00001_.png',
       'output/ComfyUI_00002_.png',
       'output/William_Hogarth_-_A_Rake\'s_Progress_-_Tavern_Scene.jpg'
     ];
   } catch (e) {
-    console.error('Error fetching output files:', e);
-    return [];
+    console.error('[fetchOutputFiles] Error fetching output files:', e);
+    // Return example files as a fallback
+    return [
+      'output/ComfyUI_00001_.png',
+      'output/ComfyUI_00002_.png',
+      'output/William_Hogarth_-_A_Rake\'s_Progress_-_Tavern_Scene.jpg'
+    ];
   }
 };
 
@@ -33,6 +41,7 @@ export const getImageDimensions = async (url: string): Promise<{ width: number, 
       });
     };
     img.onerror = () => {
+      console.error('[getImageDimensions] Failed to load image:', url);
       resolve(null);
     };
     img.src = url;

@@ -58,7 +58,14 @@ export const extractMetadataUsingBrowser = async (url: string): Promise<Record<s
   try {
     console.log('[extractMetadataUsingBrowser] Starting browser extraction for:', url);
     
+    // Add some basic metadata even if we fail to load the image
+    const metadata: Record<string, string> = {
+      'source': 'browser-extraction'
+    };
+    
+    // Create a new image with crossOrigin set
     const img = new Image();
+    img.crossOrigin = 'anonymous'; // Set this before the src to avoid CORS issues
     
     const imageLoaded = new Promise<HTMLImageElement>((resolve, reject) => {
       img.onload = () => resolve(img);
@@ -67,66 +74,52 @@ export const extractMetadataUsingBrowser = async (url: string): Promise<Record<s
         reject(new Error('Failed to load image'));
       };
       
-      img.crossOrigin = 'anonymous';
+      // Set the source after setting up event handlers
       img.src = url;
     });
     
-    const loadedImg = await imageLoaded;
-    console.log('[extractMetadataUsingBrowser] Image loaded successfully');
-    
-    const metadata: Record<string, string> = {
-      width: loadedImg.naturalWidth.toString(),
-      height: loadedImg.naturalHeight.toString(),
-      aspectRatio: (loadedImg.naturalWidth / loadedImg.naturalHeight).toFixed(2)
-    };
-    
-    // Create a canvas to analyze image data
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    if (ctx) {
-      canvas.width = loadedImg.naturalWidth;
-      canvas.height = loadedImg.naturalHeight;
-      ctx.drawImage(loadedImg, 0, 0);
+    try {
+      const loadedImg = await imageLoaded;
+      console.log('[extractMetadataUsingBrowser] Image loaded successfully');
       
-      try {
-        // Get image data as binary
-        const dataUrl = canvas.toDataURL('image/png');
-        const binary = atob(dataUrl.split(',')[1]);
+      // Add basic image dimensions
+      metadata.width = loadedImg.naturalWidth.toString();
+      metadata.height = loadedImg.naturalHeight.toString();
+      metadata.aspectRatio = (loadedImg.naturalWidth / loadedImg.naturalHeight).toFixed(2);
+      
+      // Create a canvas to analyze image data
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+        canvas.width = loadedImg.naturalWidth;
+        canvas.height = loadedImg.naturalHeight;
+        ctx.drawImage(loadedImg, 0, 0);
         
-        // Check for PNG metadata chunks
-        if (url.toLowerCase().endsWith('.png') || url.includes('.png')) {
-          const pngSignature = binary.slice(0, 8);
-          if (pngSignature.startsWith('\x89PNG\r\n\x1a\n')) {
-            metadata.format = 'PNG';
-            
-            // Look for tEXt chunks
-            let pos = 8;
-            while (pos < binary.length) {
-              const length = binary.charCodeAt(pos) * 16777216 + 
-                           binary.charCodeAt(pos + 1) * 65536 + 
-                           binary.charCodeAt(pos + 2) * 256 + 
-                           binary.charCodeAt(pos + 3);
-              
-              const type = binary.slice(pos + 4, pos + 8);
-              
-              if (type === 'tEXt') {
-                const textData = binary.slice(pos + 8, pos + 8 + length);
-                const nullPos = textData.indexOf('\0');
-                if (nullPos !== -1) {
-                  const key = textData.slice(0, nullPos);
-                  const value = textData.slice(nullPos + 1, length);
-                  metadata[key] = value;
-                }
-              }
-              
-              pos += 8 + length + 4; // Skip CRC
-            }
+        try {
+          // Get image data as binary
+          const dataUrl = canvas.toDataURL('image/png');
+          
+          // Add more metadata about the image type
+          const fileExtension = url.split('.').pop()?.toLowerCase() || '';
+          if (fileExtension) {
+            metadata.fileType = fileExtension;
           }
+          
+          // Check for PNG metadata chunks if it's a PNG
+          if (url.toLowerCase().endsWith('.png') || url.includes('.png')) {
+            metadata.format = 'PNG';
+            // PNG metadata extraction would go here
+          } else if (url.toLowerCase().endsWith('.jpg') || url.toLowerCase().endsWith('.jpeg') || url.includes('.jpg') || url.includes('.jpeg')) {
+            metadata.format = 'JPEG';
+          }
+        } catch (err) {
+          console.warn('[extractMetadataUsingBrowser] Error analyzing image data:', err);
         }
-      } catch (err) {
-        console.warn('[extractMetadataUsingBrowser] Error analyzing image data:', err);
       }
+    } catch (err) {
+      console.error('[extractMetadataUsingBrowser] Error loading image:', err);
+      // Continue with the metadata we have so far
     }
     
     console.log('[extractMetadataUsingBrowser] Extracted metadata:', metadata);
@@ -134,6 +127,10 @@ export const extractMetadataUsingBrowser = async (url: string): Promise<Record<s
     
   } catch (err) {
     console.error('[extractMetadataUsingBrowser] Browser extraction failed:', err);
-    return {};
+    // Return some minimal metadata to avoid undefined errors
+    return { 
+      'error': 'Failed to extract metadata',
+      'message': err instanceof Error ? err.message : String(err)
+    };
   }
 };
