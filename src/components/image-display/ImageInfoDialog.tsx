@@ -28,7 +28,6 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
   dimensions
 }) => {
   const [referenceDialogOpen, setReferenceDialogOpen] = useState(false);
-  const [selectedReferenceImage, setSelectedReferenceImage] = useState<string>('');
   
   const formatDate = (timestamp?: number) => {
     if (!timestamp) return 'Unknown';
@@ -60,7 +59,6 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
 
   // Handle reference image click
   const handleReferenceImageClick = (imageUrl: string) => {
-    setSelectedReferenceImage(imageUrl);
     setReferenceDialogOpen(true);
   };
 
