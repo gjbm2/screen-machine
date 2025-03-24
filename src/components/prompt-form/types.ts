@@ -3,7 +3,13 @@ export interface WorkflowProps {
   id: string;
   name: string;
   description: string;
-  params: any[];
+  params: {
+    id: string;
+    name: string;
+    type: "select" | "checkbox" | "range" | "text";
+    options?: string[];
+    default?: string | boolean | number;
+  }[];
 }
 
 export interface ToolbarProps {
