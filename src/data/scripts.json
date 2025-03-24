@@ -1,0 +1,23 @@
+
+[
+  {
+    "id": "script1",
+    "title": "Daily Satire",
+    "filename": "dailysatire.bat"
+  },
+  {
+    "id": "script2",
+    "title": "Political Cartoon",
+    "filename": "political-cartoon.txt"
+  },
+  {
+    "id": "script3",
+    "title": "Style Transfer",
+    "filename": "flux1-dev-scale.json"
+  },
+  {
+    "id": "script4",
+    "title": "Default System Prompt",
+    "filename": "default-system-prompt.txt"
+  }
+]

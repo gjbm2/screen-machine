@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import PromptForm from '@/components/PromptForm';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
 import ResizableConsole from '@/components/debug/ResizableConsole';
@@ -9,6 +9,8 @@ import IntroSection from '@/components/main/IntroSection';
 import useConsole from '@/hooks/use-console';
 import useImageGeneration from '@/hooks/image-generation';
 import useIntroText from '@/hooks/use-intro-text';
+import AdvancedOptions from '@/components/AdvancedOptions';
+import { toast } from 'sonner';
 
 const Index = () => {
   const { randomIntroText } = useIntroText();
@@ -20,6 +22,8 @@ const Index = () => {
     toggleConsole,
     setIsConsoleVisible
   } = useConsole();
+  
+  const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   
   const {
     activeGenerations,
@@ -65,12 +69,56 @@ const Index = () => {
     }));
   };
 
+  const handleOpenAdvancedOptions = () => {
+    setIsAdvancedOptionsOpen(true);
+  };
+
+  const handleCloseAdvancedOptions = (open: boolean) => {
+    setIsAdvancedOptionsOpen(open);
+  };
+
+  const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
+  const handleOpenAboutDialog = () => {
+    setAboutDialogOpen(true);
+  };
+
+  const handleRunScript = async (scriptFilename: string) => {
+    try {
+      addConsoleLog(`Running script: ${scriptFilename}`);
+      
+      const response = await fetch('/api/run-script', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ filename: scriptFilename }),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        toast.success(`Script executed: ${scriptFilename}`);
+        addConsoleLog(`Script execution result: ${data.message}`);
+      } else {
+        toast.error(`Script execution failed: ${data.error}`);
+        addConsoleLog(`Script execution error: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Error running script:', error);
+      toast.error('Failed to run script');
+      addConsoleLog(`Script execution error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   return (
     <div className="min-h-screen hero-gradient flex flex-col">
       <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 flex-grow">
         <HeaderSection 
           onToggleConsole={handleToggleConsole} 
-          isConsoleVisible={isConsoleVisible} 
+          isConsoleVisible={isConsoleVisible}
+          onOpenAdvancedOptions={handleOpenAdvancedOptions}
+          onOpenAboutDialog={handleOpenAboutDialog}
+          onRunScript={handleRunScript}
         />
         
         {isFirstRun && <IntroSection introText={randomIntroText} />}
@@ -81,6 +129,7 @@ const Index = () => {
             isLoading={activeGenerations.length > 0}
             currentPrompt={currentPrompt}
             isFirstRun={isFirstRun}
+            onOpenAdvancedOptions={handleOpenAdvancedOptions}
           />
         </div>
         
@@ -110,6 +159,18 @@ const Index = () => {
         logs={consoleLogs}
         isVisible={isConsoleVisible}
         onClose={handleConsoleClose}
+      />
+
+      <AdvancedOptions 
+        workflows={[]} // Add your workflows data here
+        selectedWorkflow={currentWorkflow}
+        onWorkflowChange={() => {}} // Add your workflow change handler here
+        params={currentParams}
+        onParamChange={() => {}} // Add your param change handler here
+        globalParams={currentGlobalParams}
+        onGlobalParamChange={() => {}} // Add your global param change handler here
+        isOpen={isAdvancedOptionsOpen}
+        onOpenChange={handleCloseAdvancedOptions}
       />
     </div>
   );
