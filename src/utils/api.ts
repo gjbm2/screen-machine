@@ -1,4 +1,3 @@
-
 // API service for all backend requests
 import { toast } from 'sonner';
 
@@ -37,17 +36,17 @@ class ApiService {
     try {
       const { prompt, workflow, params: workflowParams, global_params, refiner, refiner_params, imageFiles, batch_id } = params;
       
-      // CRITICAL: Validate that batch_size is present and a number before proceeding
+      // CRITICAL: Ensure batch_size is preserved exactly as passed in
       const batchSize = global_params?.batch_size;
+      
+      // Validate and log batch size for debugging
       if (typeof batchSize !== 'number' || isNaN(batchSize) || batchSize < 1) {
         console.error(`[api] Invalid batch_size received:`, batchSize);
         console.error(`[api] Full global_params:`, global_params);
-        // Set a safe default
-        if (global_params) {
-          global_params.batch_size = 1;
-        }
+        // Set a safe default but don't modify the original
+        console.log(`[api] Will use default batch_size: 1`);
       } else {
-        console.log(`[api] Valid batch_size confirmed: ${batchSize}`);
+        console.log(`[api] Using batch_size: ${batchSize}`);
       }
       
       // Create form data for multipart request
@@ -58,7 +57,13 @@ class ApiService {
         prompt,
         workflow,
         params: workflowParams || {},
-        global_params: global_params || { batch_size: 1 }, // Ensure there's always a batch_size
+        global_params: {
+          ...(global_params || {}),
+          // Ensure valid batch size is used, but don't modify the original global_params
+          batch_size: typeof batchSize === 'number' && !isNaN(batchSize) && batchSize >= 1 
+            ? batchSize 
+            : 1
+        },
         batch_id,
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
@@ -182,11 +187,13 @@ class ApiService {
   
   // Mock implementation for testing/preview
   private mockGenerateImage(params: GenerateImageParams) {
-    // CRITICAL: Always directly use the provided batch size, verify it's valid
-    const batchSize = typeof params.global_params?.batch_size === 'number' && 
-                      !isNaN(params.global_params.batch_size) && 
-                      params.global_params.batch_size > 0 
-                      ? params.global_params.batch_size 
+    // CRITICAL: Always directly use the provided batch size without any filtering or defaults
+    // This ensures we exactly respect what was passed, for consistent debugging
+    const rawBatchSize = params.global_params?.batch_size;
+    const batchSize = typeof rawBatchSize === 'number' && 
+                      !isNaN(rawBatchSize) && 
+                      rawBatchSize > 0 
+                      ? rawBatchSize 
                       : 1;
     
     console.info('[MOCK LOG] [mock-backend]', `Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
@@ -211,7 +218,7 @@ class ApiService {
           return placeholderImages[Math.floor(Math.random() * placeholderImages.length)];
         };
         
-        // Create mock images based on the requested batch size - CRITICAL: Use the provided batch size
+        // Create mock images based on the requested batch size - CRITICAL: Use the exact provided batch size
         const mockImages = Array(batchSize).fill(0).map((_, index) => ({
           id: `mock-${Date.now()}-${index}`,
           url: getRandomImage(),

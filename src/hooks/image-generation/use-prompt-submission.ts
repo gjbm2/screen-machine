@@ -61,16 +61,15 @@ export const usePromptSubmission = ({
       }
     }
     
-    // CRITICAL FIX: Always prioritize the explicitly provided globalParams to fix the batch size delay issue
-    // This ensures the batch_size from the UI component is immediately used, not delayed
+    // CRITICAL: Extract batch size explicitly from globalParams or use default
+    // This ensures we isolate this critical value and pass it directly
+    const batchSize = globalParams?.batch_size || currentGlobalParams?.batch_size || 1;
+    
+    // Create a fresh globalParams object that explicitly sets batch_size
     const effectiveGlobalParams = {
-      // Start with a default batch size of 1
-      batch_size: 1,
-      // Then apply any current global params from context as a fallback
-      ...currentGlobalParams,
-      // Finally, override with explicitly provided global params from function args
-      // This ensures the batch_size from PromptForm.tsx is immediately used
-      ...(globalParams || {})
+      ...currentGlobalParams, // Base with current settings
+      ...(globalParams || {}),  // Override with any provided params
+      batch_size: batchSize // Explicitly set batch size to ensure it's correct
     };
     
     // IMPORTANT DEBUG: Log the batch size being used for this generation request
