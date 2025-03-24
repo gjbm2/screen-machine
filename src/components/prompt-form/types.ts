@@ -26,6 +26,15 @@ export interface WorkflowProps {
   id: string;
   name: string;
   description?: string;
+  params?: WorkflowParam[]; // Add the params property to match Workflow interface
+}
+
+export interface WorkflowParam {
+  id: string;
+  name: string;
+  type: 'select' | 'checkbox' | 'range' | 'text';
+  options?: string[];
+  default?: string | boolean | number;
 }
 
 export interface RefinerProps {
@@ -56,7 +65,7 @@ export interface ToolbarProps {
   handleSubmit: () => void;
   prompt: string;
   isButtonDisabled: boolean;
-  workflows: WorkflowProps[];
+  workflows: WorkflowProps[]; // Keep this as WorkflowProps[] since that's what the component expects
   isCompact: boolean;
   hasUploadedImages?: boolean;
 }
