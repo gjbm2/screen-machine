@@ -440,7 +440,8 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                       <TooltipContent>
                         <p className="max-w-xs">Enter a URL or relative path to an image</p>
                       </TooltipContent>
-                    </TooltipProvider>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
                 <div className="flex space-x-2">
                   <Input 
