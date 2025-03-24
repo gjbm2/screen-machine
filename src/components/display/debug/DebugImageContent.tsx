@@ -119,7 +119,7 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
               onLoad={handleImageLoad}
               onError={onImageError}
               style={{
-                objectFit: showMode === "contain" ? 'contain' : 'cover',
+                objectFit: showMode === "fit" ? 'contain' : 'cover',
                 objectPosition: position === "center" ? 'center' : position,
                 width: '100%',
                 height: '100%'
