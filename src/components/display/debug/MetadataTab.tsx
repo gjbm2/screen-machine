@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,101 +26,85 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
   const [refreshKey, setRefreshKey] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Enhanced logging to debug metadata issues
   useEffect(() => {
-    console.log('MetadataTab mounted/updated with entries:', metadataEntries);
+    console.log('[MetadataTab] Mounted/updated with entries:', metadataEntries);
     
     if (metadataEntries.length === 0) {
-      console.log('No metadata entries found. This might indicate an extraction issue.');
+      console.log('[MetadataTab] No metadata entries found');
     } else {
-      console.log('Metadata entries found:', metadataEntries.length);
-      console.log('First few metadata entries:', metadataEntries.slice(0, 3));
+      console.log('[MetadataTab] Number of metadata entries:', metadataEntries.length);
+      console.log('[MetadataTab] First few entries:', metadataEntries.slice(0, 3));
     }
   }, [metadataEntries]);
   
-  // Filter entries based on search term
   const filteredEntries = metadataEntries.filter(entry => 
     entry.key.toLowerCase().includes(searchTerm.toLowerCase()) || 
     entry.value.toLowerCase().includes(searchTerm.toLowerCase())
   );
   
-  // Extract and force refresh metadata from current URL in local storage
   const forceRefreshMetadata = async () => {
     setLoading(true);
     try {
-      // Get the current URL from localStorage if available
       const currentImageUrl = localStorage.getItem('currentImageUrl');
       
       if (currentImageUrl) {
-        console.log('Forcing metadata refresh for URL:', currentImageUrl);
+        console.log('[MetadataTab] Forcing refresh for:', currentImageUrl);
         
-        // Add a random cache buster to really force a new fetch
         const cacheBustUrl = `${currentImageUrl}${currentImageUrl.includes('?') ? '&' : '?'}forcedRefresh=${Date.now()}_${Math.random()}`;
         
         toast.info("Extracting metadata...");
         const metadata = await extractImageMetadata(cacheBustUrl);
-        console.log('Freshly extracted metadata:', metadata);
+        
+        console.log('[MetadataTab] Fresh metadata:', metadata);
         
         if (Object.keys(metadata).length > 0) {
-          const metadataCount = Object.keys(metadata).length;
-          toast.success(`Refreshed metadata: found ${metadataCount} entries`);
-          
-          // Force rerender of component
+          toast.success(`Found ${Object.keys(metadata).length} metadata entries`);
           setRefreshKey(prev => prev + 1);
-          
-          // Reload the page to ensure metadata is fully refreshed in the UI
           window.location.reload();
         } else {
+          console.warn('[MetadataTab] No metadata found after refresh');
           toast.warning("No metadata found in this image");
           
-          // Try a more aggressive approach with a direct fetch
-          try {
-            const response = await fetch(cacheBustUrl, { 
-              cache: 'no-store',
-              headers: {
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0'
-              }
-            });
-            
-            if (!response.ok) {
-              throw new Error(`Failed to fetch image: ${response.status}`);
+          // Try an alternative approach
+          const response = await fetch(cacheBustUrl, {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0'
             }
-            
-            const blob = await response.blob();
-            const imgUrl = URL.createObjectURL(blob);
-            
-            console.log('Created blob URL for metadata extraction:', imgUrl);
-            const retryMetadata = await extractImageMetadata(imgUrl);
-            
-            // Clean up the blob URL
-            URL.revokeObjectURL(imgUrl);
-            
-            if (Object.keys(retryMetadata).length > 0) {
-              toast.success(`Found ${Object.keys(retryMetadata).length} metadata entries on second attempt`);
-              // Force page reload
-              window.location.reload();
-            } else {
-              toast.error("Still no metadata found. The image may not contain any embedded metadata.");
-            }
-          } catch (err) {
-            console.error('Error in second metadata extraction attempt:', err);
-            toast.error("Failed to extract metadata on second attempt");
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.status}`);
+          }
+          
+          const blob = await response.blob();
+          const imgUrl = URL.createObjectURL(blob);
+          
+          console.log('[MetadataTab] Trying with blob URL:', imgUrl);
+          const retryMetadata = await extractImageMetadata(imgUrl);
+          
+          URL.revokeObjectURL(imgUrl);
+          
+          if (Object.keys(retryMetadata).length > 0) {
+            toast.success(`Found ${Object.keys(retryMetadata).length} metadata entries on second attempt`);
+            window.location.reload();
+          } else {
+            toast.error("No metadata found after multiple attempts");
           }
         }
       } else {
-        toast.info("No image URL to refresh metadata from");
+        toast.error("No image URL available");
       }
     } catch (err) {
-      console.error('Error refreshing metadata:', err);
+      console.error('[MetadataTab] Error refreshing metadata:', err);
       toast.error("Failed to refresh metadata");
     } finally {
       setLoading(false);
     }
   };
   
-  // Simple animation to indicate the component is refreshed
   const triggerRefreshAnimation = () => {
     setLoading(true);
     setTimeout(() => setLoading(false), 500);

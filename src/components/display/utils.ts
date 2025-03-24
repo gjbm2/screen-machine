@@ -41,155 +41,169 @@ export const fetchOutputFiles = async (): Promise<string[]> => {
   }
 };
 
-// Extract metadata from image
 export const extractImageMetadata = async (imageUrl: string): Promise<Record<string, string>> => {
   try {
-    console.log('[extractImageMetadata] Extracting metadata from:', imageUrl);
+    console.log('[extractImageMetadata] Starting extraction for:', imageUrl);
     
-    // Add cache busting parameter to ensure we get fresh data
-    const cacheBustUrl = `${imageUrl}${imageUrl.includes('?') ? '&' : '?'}cacheBust=${Date.now()}`;
+    // Add cache busting parameter
+    const cacheBustUrl = `${imageUrl}${imageUrl.includes('?') ? '&' : '?'}cacheBust=${Date.now()}_${Math.random()}`;
+    console.log('[extractImageMetadata] Using cache-busted URL:', cacheBustUrl);
     
-    // Try to fetch metadata from API with explicit no-cache headers
-    const response = await fetch(`/api/metadata?image=${encodeURIComponent(cacheBustUrl)}`, {
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      console.log('[extractImageMetadata] API returned metadata:', data.metadata);
+    // First attempt: Try API endpoint
+    try {
+      console.log('[extractImageMetadata] Attempting API extraction...');
+      const response = await fetch(`/api/metadata?image=${encodeURIComponent(cacheBustUrl)}`, {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
       
-      if (data.metadata && Object.keys(data.metadata).length > 0) {
-        return data.metadata;
+      console.log('[extractImageMetadata] API response status:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[extractImageMetadata] API returned data:', data);
+        
+        if (data.metadata && Object.keys(data.metadata).length > 0) {
+          console.log('[extractImageMetadata] Successfully extracted metadata from API:', data.metadata);
+          return data.metadata;
+        }
       }
-      console.warn('[extractImageMetadata] API returned empty metadata');
-    } else {
-      console.warn('[extractImageMetadata] API request failed, status:', response.status);
+    } catch (apiError) {
+      console.warn('[extractImageMetadata] API extraction failed:', apiError);
     }
     
-    // If API fails or returns empty, try to extract directly from image using browser
-    const metadata = await extractMetadataUsingBrowser(cacheBustUrl);
-    if (metadata && Object.keys(metadata).length > 0) {
-      console.log('[extractImageMetadata] Browser extraction successful:', metadata);
-      return metadata;
+    // Second attempt: Try browser-based extraction
+    try {
+      console.log('[extractImageMetadata] Attempting browser-based extraction...');
+      const browserMetadata = await extractMetadataUsingBrowser(cacheBustUrl);
+      
+      if (browserMetadata && Object.keys(browserMetadata).length > 0) {
+        console.log('[extractImageMetadata] Successfully extracted browser metadata:', browserMetadata);
+        return browserMetadata;
+      }
+    } catch (browserError) {
+      console.warn('[extractImageMetadata] Browser extraction failed:', browserError);
     }
     
-    // If all else fails, use mock metadata based on filename pattern
-    console.warn('[extractImageMetadata] All extraction methods failed, using mock data');
-    
-    // Simulate different metadata for different images
-    if (imageUrl.includes('00001')) {
-      return {
-        'prompt': 'A beautiful landscape with mountains',
-        'steps': '20',
-        'model': 'stable-diffusion-v1-5',
-        'seed': '123456789',
-        'created': new Date().toISOString()
+    // Last resort: Direct image fetch with headers inspection
+    try {
+      console.log('[extractImageMetadata] Attempting direct fetch...');
+      const imgResponse = await fetch(cacheBustUrl, {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      
+      const headers = Object.fromEntries(imgResponse.headers.entries());
+      console.log('[extractImageMetadata] Image response headers:', headers);
+      
+      const basicMetadata: Record<string, string> = {
+        'Content-Type': headers['content-type'] || 'unknown',
+        'Content-Length': headers['content-length'] || 'unknown',
+        'Last-Modified': headers['last-modified'] || 'unknown'
       };
-    } else if (imageUrl.includes('00002')) {
-      return {
-        'prompt': 'A cute cat playing with yarn',
-        'steps': '30',
-        'model': 'stable-diffusion-v2-1',
-        'seed': '987654321',
-        'created': new Date().toISOString()
-      };
-    } else if (imageUrl.includes('Hogarth')) {
-      return {
-        'title': 'A Rake\'s Progress - Tavern Scene',
-        'artist': 'William Hogarth',
-        'year': '1735',
-        'medium': 'Oil on canvas',
-        'dimensions': '62.5 × 75 cm (24.6 × 29.5 in)',
-        'source': 'Wikimedia Commons'
-      };
+      
+      if (Object.keys(basicMetadata).length > 0) {
+        console.log('[extractImageMetadata] Extracted basic metadata from headers:', basicMetadata);
+        return basicMetadata;
+      }
+    } catch (fetchError) {
+      console.warn('[extractImageMetadata] Direct fetch failed:', fetchError);
     }
     
-    return {
-      'filename': imageUrl.split('/').pop() || 'unknown',
-      'created': new Date().toISOString()
-    };
-  } catch (e) {
-    console.error('[extractImageMetadata] Error extracting metadata:', e);
+    console.warn('[extractImageMetadata] All extraction attempts failed');
+    return {};
+    
+  } catch (error) {
+    console.error('[extractImageMetadata] Fatal error in metadata extraction:', error);
     return {};
   }
 };
 
-// New helper function to attempt metadata extraction using browser capabilities
+// Enhanced browser-based metadata extraction
 async function extractMetadataUsingBrowser(url: string): Promise<Record<string, string>> {
   try {
-    console.log('[extractMetadataUsingBrowser] Attempting browser extraction for:', url);
+    console.log('[extractMetadataUsingBrowser] Starting browser extraction for:', url);
     
-    // Create a new image element to load the image
     const img = new Image();
     
-    // Create a promise that resolves when the image loads or errors
     const imageLoaded = new Promise<HTMLImageElement>((resolve, reject) => {
       img.onload = () => resolve(img);
       img.onerror = (err) => {
-        console.error('[extractMetadataUsingBrowser] Error loading image:', err);
+        console.error('[extractMetadataUsingBrowser] Image load error:', err);
         reject(new Error('Failed to load image'));
       };
       
-      // Set crossOrigin to anonymous to avoid CORS issues when possible
       img.crossOrigin = 'anonymous';
       img.src = url;
     });
     
-    // Wait for image to load
     const loadedImg = await imageLoaded;
+    console.log('[extractMetadataUsingBrowser] Image loaded successfully');
     
-    // Create a canvas to draw the image
+    const metadata: Record<string, string> = {
+      width: loadedImg.naturalWidth.toString(),
+      height: loadedImg.naturalHeight.toString(),
+      aspectRatio: (loadedImg.naturalWidth / loadedImg.naturalHeight).toFixed(2)
+    };
+    
+    // Create a canvas to analyze image data
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    if (!ctx) {
-      console.error('[extractMetadataUsingBrowser] Failed to get canvas context');
-      return {};
-    }
-    
-    // Set canvas dimensions to match image
-    canvas.width = loadedImg.naturalWidth;
-    canvas.height = loadedImg.naturalHeight;
-    
-    // Draw image to canvas
-    ctx.drawImage(loadedImg, 0, 0);
-    
-    // Try to extract EXIF data using canvas
-    let metadata: Record<string, string> = {};
-    
-    try {
-      // Get image data as binary
-      const dataUrl = canvas.toDataURL('image/jpeg');
+    if (ctx) {
+      canvas.width = loadedImg.naturalWidth;
+      canvas.height = loadedImg.naturalHeight;
+      ctx.drawImage(loadedImg, 0, 0);
       
-      // Extract metadata from dimensions at minimum
-      metadata['width'] = loadedImg.naturalWidth.toString();
-      metadata['height'] = loadedImg.naturalHeight.toString();
-      metadata['aspectRatio'] = (loadedImg.naturalWidth / loadedImg.naturalHeight).toFixed(2);
-      
-      // For PNG images, we can also check if there are tEXt chunks in the binary data
-      if (url.toLowerCase().endsWith('.png') || url.includes('.png')) {
-        // For PNG, we could parse the dataUrl for tEXt chunks
+      try {
+        // Get image data as binary
+        const dataUrl = canvas.toDataURL('image/png');
         const binary = atob(dataUrl.split(',')[1]);
         
-        // Simple detection of text chunks (this is a basic implementation)
-        const textChunkPattern = /tEXt(.{20})/g;
-        const matches = binary.match(textChunkPattern);
-        
-        if (matches && matches.length > 0) {
-          console.log('[extractMetadataUsingBrowser] Found potential PNG text chunks:', matches.length);
-          metadata['hasPngMetadata'] = 'true';
+        // Check for PNG metadata chunks
+        if (url.toLowerCase().endsWith('.png') || url.includes('.png')) {
+          const pngSignature = binary.slice(0, 8);
+          if (pngSignature.startsWith('\x89PNG\r\n\x1a\n')) {
+            metadata.format = 'PNG';
+            
+            // Look for tEXt chunks
+            let pos = 8;
+            while (pos < binary.length) {
+              const length = binary.charCodeAt(pos) * 16777216 + 
+                           binary.charCodeAt(pos + 1) * 65536 + 
+                           binary.charCodeAt(pos + 2) * 256 + 
+                           binary.charCodeAt(pos + 3);
+              
+              const type = binary.slice(pos + 4, pos + 8);
+              
+              if (type === 'tEXt') {
+                const textData = binary.slice(pos + 8, pos + 8 + length);
+                const nullPos = textData.indexOf('\0');
+                if (nullPos !== -1) {
+                  const key = textData.slice(0, nullPos);
+                  const value = textData.slice(nullPos + 1, length);
+                  metadata[key] = value;
+                }
+              }
+              
+              pos += 8 + length + 4; // Skip CRC
+            }
+          }
         }
+      } catch (err) {
+        console.warn('[extractMetadataUsingBrowser] Error analyzing image data:', err);
       }
-    } catch (err) {
-      console.error('[extractMetadataUsingBrowser] Error extracting from canvas:', err);
     }
     
     console.log('[extractMetadataUsingBrowser] Extracted metadata:', metadata);
     return metadata;
+    
   } catch (err) {
     console.error('[extractMetadataUsingBrowser] Browser extraction failed:', err);
     return {};
