@@ -17,7 +17,7 @@ export const DebugPanelFooter: React.FC<DebugPanelFooterProps> = ({
 }) => {
   return (
     <CardFooter 
-      className={`flex justify-end gap-3 pt-4 pb-4 bg-card z-30 border-t ${
+      className={`flex justify-end gap-3 pt-4 pb-4 bg-card z-[60] border-t ${
         isBottomFixed ? 'sticky bottom-0' : ''
       }`}
     >

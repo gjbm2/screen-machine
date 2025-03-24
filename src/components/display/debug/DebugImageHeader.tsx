@@ -32,6 +32,13 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
   showingPreview,
   isMobile
 }) => {
+  const handleScreenSizeSelect = (sizeName: string) => {
+    const selectedSizeObj = SCREEN_SIZES.find(size => size.name === sizeName);
+    if (selectedSizeObj) {
+      setSelectedSize(selectedSizeObj);
+    }
+  };
+
   return (
     <CardHeader className="px-3 py-2 flex-row justify-between items-center gap-2 border-b sticky top-0 bg-card z-30">
       <div className="flex items-center gap-2">
@@ -58,9 +65,8 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
       <div className="flex items-center gap-1.5">
         <ScreenSizeSelector 
           selectedSize={selectedSize.name} 
-          onSelect={(sizeName) => {
-            setSelectedSize(sizeName);
-          }}
+          onSelect={handleScreenSizeSelect}
+          onSettingsChange={onSettingsChange}
         />
         
         <TooltipProvider>

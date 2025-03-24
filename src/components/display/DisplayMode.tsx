@@ -71,9 +71,9 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   if (params.debugMode) {
     return (
       <div className="fixed inset-0 flex flex-col sm:flex-row overflow-hidden">
-        {/* Mobile View Switcher - fixed position */}
+        {/* Mobile View Switcher - fixed position with higher z-index */}
         {isMobile && (
-          <div className="fixed top-3 right-3 z-50">
+          <div className="fixed top-3 right-3 z-[100]">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

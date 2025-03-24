@@ -30,25 +30,30 @@ export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
   onSettingsChange,
   containerRef
 }) => {
+  // Track current size object to update dynamically
+  const [currentSizes, setCurrentSizes] = useState(SCREEN_SIZES);
+  
   // Update Current Viewport size when window is resized
   useEffect(() => {
     const handleResize = () => {
-      SCREEN_SIZES[0] = { 
+      const updatedSizes = [...currentSizes];
+      updatedSizes[0] = { 
         name: 'Current Viewport', 
         width: window.innerWidth, 
         height: window.innerHeight 
       };
+      setCurrentSizes(updatedSizes);
       
       // If container exists and Current Viewport is selected, apply the new size
       if (containerRef?.current && selectedSize === 'Current Viewport') {
-        containerRef.current.style.width = `${SCREEN_SIZES[0].width}px`;
-        containerRef.current.style.height = `${SCREEN_SIZES[0].height}px`;
+        containerRef.current.style.width = `${updatedSizes[0].width}px`;
+        containerRef.current.style.height = `${updatedSizes[0].height}px`;
       }
     };
     
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [selectedSize, containerRef]);
+  }, [selectedSize, containerRef, currentSizes]);
 
   return (
     <div className="flex items-center space-x-2">
@@ -63,8 +68,8 @@ export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
         <SelectTrigger id="screen-size" className="h-7 text-xs px-2 w-[150px]">
           <SelectValue placeholder="Select screen size" />
         </SelectTrigger>
-        <SelectContent>
-          {SCREEN_SIZES.map((size) => (
+        <SelectContent className="z-50 bg-popover">
+          {currentSizes.map((size) => (
             <SelectItem key={size.name} value={size.name} className="text-xs">
               {size.name}
             </SelectItem>
