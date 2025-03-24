@@ -1,8 +1,7 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import ImageActions from '@/components/ImageActions';
-import ReferenceImageSection from './ReferenceImageSection';
 
 interface ImageActionsPanelProps {
   show: boolean;
@@ -15,8 +14,7 @@ interface ImageActionsPanelProps {
     workflow: string;
     params?: Record<string, any>;
   };
-  referenceImageUrl?: string;
-  title?: string; // Add title field
+  title?: string; // Title field
 }
 
 const ImageActionsPanel: React.FC<ImageActionsPanelProps> = ({ 
@@ -26,15 +24,8 @@ const ImageActionsPanel: React.FC<ImageActionsPanelProps> = ({
   onUseAsInput,
   onDeleteImage,
   generationInfo,
-  referenceImageUrl,
-  title // Add to component props
+  title // Use title from props
 }) => {
-  const [isReferenceDialogOpen, setIsReferenceDialogOpen] = useState(false);
-
-  const handleReferenceImageClick = () => {
-    setIsReferenceDialogOpen(true);
-  };
-
   if (!show) return null;
 
   return (
@@ -48,7 +39,7 @@ const ImageActionsPanel: React.FC<ImageActionsPanelProps> = ({
           onDeleteImage={onDeleteImage}
           generationInfo={generationInfo}
           alwaysVisible={true}
-          title={title} // Pass the title through
+          title={title} // Pass title through
         />
       </div>
     </div>

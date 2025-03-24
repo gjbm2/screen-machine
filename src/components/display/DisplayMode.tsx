@@ -164,7 +164,7 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   }
 
   // Otherwise, render the normal image display
-  console.log('[DisplayMode] Rendering normal image display');
+  console.log('[DisplayMode] Rendering normal image display with imageUrl:', imageUrl);
   return (
     <ImageDisplay
       params={previewParams}
