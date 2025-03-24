@@ -1,11 +1,13 @@
 
-import { useState, useCallback, useEffect } from 'react';
-import { nanoid } from '@/lib/utils';
+import { useState } from 'react';
 import { useImageState } from './use-image-state';
 import { useImageContainer } from './use-image-container';
 import { useImageActions } from './use-image-actions';
 import { useImageGenerationApi } from './use-image-generation-api';
-import { ImageGenerationConfig } from './types';
+import { useImageGenerationLoading } from './use-image-generation-loading';
+import { useUploadedImages } from './use-uploaded-images';
+import { usePromptSubmission } from './use-prompt-submission';
+import { useContainerOrderEffect } from './use-container-order-effect';
 
 // Declare global window type to include our custom property
 declare global {
@@ -18,20 +20,16 @@ declare global {
 export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   // State for current prompts and workflows
   const [currentPrompt, setCurrentPrompt] = useState<string>('');
-  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
   const [currentWorkflow, setCurrentWorkflow] = useState<string>('flux1');
   const [currentParams, setCurrentParams] = useState<Record<string, any>>({});
   const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
-  const [isFirstRun, setIsFirstRun] = useState(true);
-  const [fullscreenRefreshTrigger, setFullscreenRefreshTrigger] = useState(0);
-  const [lastBatchIdUsed, setLastBatchIdUsed] = useState<string | null>(null);
 
   // Initialize global image counter if it doesn't exist
-  useEffect(() => {
+  useState(() => {
     if (typeof window.imageCounter === 'undefined') {
       window.imageCounter = 0;
     }
-  }, []);
+  });
 
   // Use our custom hooks
   const { generatedImages, setGeneratedImages } = useImageState();
@@ -45,34 +43,26 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     handleDeleteContainer: internalHandleDeleteContainer
   } = useImageContainer();
 
-  // Ensure generating images are always first in the order
-  useEffect(() => {
-    // Find any containers with 'generating' status
-    const generatingBatchIds = generatedImages
-      .filter(img => img.status === 'generating')
-      .map(img => img.batchId);
-    
-    // Get unique batch IDs that are generating
-    const uniqueGeneratingBatchIds = [...new Set(generatingBatchIds)];
-    
-    if (uniqueGeneratingBatchIds.length > 0) {
-      // Reorder to ensure generating batches are first
-      setImageContainerOrder(prev => {
-        // Filter out the generating batch IDs
-        const orderedContainers = prev.filter(id => !uniqueGeneratingBatchIds.includes(id));
-        // Put generating batch IDs at the beginning
-        return [...uniqueGeneratingBatchIds, ...orderedContainers];
-      });
-    }
-  }, [generatedImages, setImageContainerOrder]);
+  const {
+    isFirstRun,
+    setIsFirstRun,
+    fullscreenRefreshTrigger,
+    lastBatchIdUsed,
+    setLastBatchIdUsed,
+    activeGenerations,
+    setActiveGenerations,
+    handleGenerationComplete
+  } = useImageGenerationLoading();
 
-  // When generation completes, increment the fullscreenRefreshTrigger
-  const handleGenerationComplete = useCallback(() => {
-    setFullscreenRefreshTrigger(prev => prev + 1);
-  }, []);
+  const { uploadedImageUrls, setUploadedImageUrls } = useUploadedImages();
+
+  // Apply the container order effect
+  useContainerOrderEffect({
+    generatedImages,
+    setImageContainerOrder
+  });
 
   const {
-    activeGenerations,
     lastBatchId,
     generateImages,
   } = useImageGenerationApi(
@@ -84,85 +74,15 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     handleGenerationComplete
   );
 
-  // When uploadedImageUrls changes, store them in a global variable
-  // for access in other components, but ensure uniqueness
-  useEffect(() => {
-    if (uploadedImageUrls.length > 0) {
-      // Convert to Set and back to array to ensure uniqueness
-      const uniqueUrls = [...new Set(uploadedImageUrls)];
-      console.log('Setting global externalImageUrls:', uniqueUrls);
-      window.externalImageUrls = uniqueUrls; 
-    } else {
-      // Clear the global variable if there are no uploaded images
-      window.externalImageUrls = [];
-    }
-  }, [uploadedImageUrls]);
-
-  // Submit prompt handler - defined after generateImages is available
-  const handleSubmitPrompt = useCallback(async (
-    prompt: string, 
-    imageFiles?: File[] | string[]
-  ) => {
-    setIsFirstRun(false);
-    
-    // Ensure we have unique image files (no duplicates)
-    let uniqueImageFiles: File[] | string[] | undefined = undefined;
-    
-    if (imageFiles && imageFiles.length > 0) {
-      // Separate files and strings into different arrays
-      const fileObjects: File[] = [];
-      const urlStrings: string[] = [];
-      
-      imageFiles.forEach(item => {
-        if (typeof item === 'string') {
-          urlStrings.push(item);
-        } else if (item instanceof File) {
-          fileObjects.push(item);
-        }
-      });
-      
-      // If we have only files or only strings, use the appropriate array
-      if (fileObjects.length > 0 && urlStrings.length === 0) {
-        uniqueImageFiles = [...new Set(fileObjects)];
-      } else if (urlStrings.length > 0 && fileObjects.length === 0) {
-        uniqueImageFiles = [...new Set(urlStrings)];
-      } else {
-        // If we have a mix, convert all Files to URLs first
-        const allUrls = [...urlStrings];
-        uniqueImageFiles = [...new Set(allUrls)];
-      }
-    }
-    
-    // IMPORTANT: Use the last batchId if available for "Go again" functionality
-    // This is crucial to ensure new images are added to the same container
-    const config: ImageGenerationConfig = {
-      prompt,
-      imageFiles: uniqueImageFiles,
-      workflow: currentWorkflow,
-      params: currentParams,
-      globalParams: currentGlobalParams,
-      batchId: lastBatchIdUsed
-    };
-    
-    // Call generateImages and store the returned batchId
-    try {
-      // Generate images and possibly get a batch ID
-      const result = await generateImages(config);
-      
-      // Only update lastBatchIdUsed if we got a valid string back
-      if (result !== null && typeof result === 'string') {
-        setLastBatchIdUsed(result);
-      }
-    } catch (error) {
-      console.error("Error during image generation:", error);
-    }
-  }, [
-    currentWorkflow, 
-    currentParams, 
-    currentGlobalParams, 
-    generateImages,
-    lastBatchIdUsed
-  ]);
+  const { handleSubmitPrompt } = usePromptSubmission({
+    currentWorkflow,
+    currentParams,
+    currentGlobalParams,
+    lastBatchIdUsed,
+    setIsFirstRun,
+    setLastBatchIdUsed,
+    generateImages
+  });
   
   const {
     imageUrl,
@@ -183,9 +103,9 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   );
 
   // Wrapper for handleDeleteContainer to match the expected signature
-  const handleDeleteContainer = useCallback((batchId: string) => {
+  const handleDeleteContainer = (batchId: string) => {
     internalHandleDeleteContainer(batchId, setGeneratedImages);
-  }, [internalHandleDeleteContainer, setGeneratedImages]);
+  };
 
   return {
     generatedImages,
