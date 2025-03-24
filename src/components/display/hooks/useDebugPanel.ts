@@ -6,6 +6,10 @@ import { useDebugPanelFiles } from './useDebugPanelFiles';
 import { useDebugPanelPosition } from './useDebugPanelPosition';
 import { useDebugPanelCaption } from './useDebugPanelCaption';
 import { useDebugPanelMetadata } from './useDebugPanelMetadata';
+import { useDebugPanelPreview } from './useDebugPanelPreview';
+import { useDebugPanelMetadataTag } from './useDebugPanelMetadataTag';
+import { useDebugPanelFileSelector } from './useDebugPanelFileSelector';
+import { useDebugPanelResize } from './useDebugPanelResize';
 
 interface DebugPanelHookProps {
   params: DisplayParams;
@@ -116,12 +120,8 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     setMetadataEntries
   });
 
-  useEffect(() => {
-    if (imageUrl) {
-      console.log('[useDebugPanel] Applying caption with preview settings');
-      onApplyCaption(previewCaption);
-    }
-  }, [
+  // Use our new hooks to organize functionality
+  useDebugPanelPreview({
     showMode, 
     position, 
     backgroundColor, 
@@ -134,34 +134,32 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     previewCaption,
     onApplyCaption,
     imageUrl
-  ]);
+  });
 
-  const insertMetadataTag = (key: string) => {
-    const handler = getMetadataTagHandler(key);
-    const newCaption = handler();
-    if (newCaption) {
-      setCaption(newCaption);
-    }
-  };
+  const {
+    insertMetadataTag,
+    insertAllMetadata
+  } = useDebugPanelMetadataTag({
+    caption,
+    getMetadataTagHandler,
+    getAllMetadataHandler,
+    setCaption
+  });
 
-  const insertAllMetadata = () => {
-    const newCaption = getAllMetadataHandler();
-    setCaption(newCaption);
-  };
+  const {
+    selectFileHandler,
+    isCurrentFileHandler
+  } = useDebugPanelFileSelector({
+    selectFile,
+    isCurrentFile,
+    imageUrl
+  });
 
-  const selectFileHandler = (file: string) => {
-    const handler = selectFile(file);
-    handler();
-  };
-
-  const isCurrentFileHandler = (file: string) => {
-    return isCurrentFile(file, imageUrl);
-  };
-
-  // We're using the positionResizeHandler as our main resize handler
-  const handleResizeStartInternal = (e: React.MouseEvent) => {
-    positionResizeHandler(e);
-  };
+  const {
+    handleResizeStartInternal
+  } = useDebugPanelResize({
+    positionResizeHandler
+  });
 
   return {
     activeTab,
