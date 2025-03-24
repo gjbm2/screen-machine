@@ -12,6 +12,14 @@ export const useImageCheckPoller = (
   extractMetadata: (url: string) => Promise<Record<string, string>>,
   enabled: boolean
 ) => {
+  // Use the interval poller first to get mountedRef
+  const { mountedRef } = useIntervalPoller(
+    enabled && !!outputUrl,
+    refreshInterval,
+    () => {}, // Empty callback initially, we'll set the real one later
+    [outputUrl, isLoading, isTransitioning, refreshInterval]
+  );
+  
   // Create the polling callback
   const handlePoll = useCallback(() => {
     if (outputUrl && !isLoading && !isTransitioning) {
@@ -35,14 +43,14 @@ export const useImageCheckPoller = (
         }
       });
     }
-  }, [outputUrl, isLoading, isTransitioning, checkImageModified, loadNewImage, extractMetadata]);
+  }, [outputUrl, isLoading, isTransitioning, checkImageModified, loadNewImage, extractMetadata, mountedRef]);
   
-  // Use the interval poller
-  const { mountedRef } = useIntervalPoller(
+  // Update the interval poller with the real callback
+  useIntervalPoller(
     enabled && !!outputUrl,
     refreshInterval,
     handlePoll,
-    [outputUrl, isLoading, isTransitioning, refreshInterval]
+    [outputUrl, isLoading, isTransitioning, refreshInterval, handlePoll]
   );
   
   return {

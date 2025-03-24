@@ -28,8 +28,8 @@ export const useIntervalPoller = (
   
   // Setup and manage the interval
   useEffect(() => {
-    // Skip if polling is disabled
-    if (!enabled) {
+    // Skip if polling is disabled or onPoll is not provided
+    if (!enabled || typeof onPoll !== 'function') {
       return;
     }
     
