@@ -3,7 +3,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
-import { Terminal, Menu, Info, FileText, Settings } from 'lucide-react';
+import { Terminal, Menu, Info, FileText, Settings, Bug } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
@@ -20,6 +20,8 @@ interface HeaderSectionProps {
   onOpenAdvancedOptions?: () => void;
   onOpenAboutDialog?: () => void;
   onRunScript?: (scriptFilename: string) => void;
+  isVerboseDebug?: boolean;
+  onToggleVerboseDebug?: () => void;
 }
 
 const HeaderSection: React.FC<HeaderSectionProps> = ({ 
@@ -27,7 +29,9 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   isConsoleVisible,
   onOpenAdvancedOptions,
   onOpenAboutDialog,
-  onRunScript
+  onRunScript,
+  isVerboseDebug = false,
+  onToggleVerboseDebug
 }) => {
   const handleRunScript = (filename: string) => {
     if (onRunScript) {
@@ -70,7 +74,24 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           </Tooltip>
         )}
         
-        {/* Advanced Options button was removed from here */}
+        {/* Show verbose debug button when enabled */}
+        {isVerboseDebug && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={onToggleVerboseDebug}
+                className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50 mr-2"
+              >
+                <Bug className="h-5 w-5 text-emerald-500" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Verbose Debug Mode Active (Click to Toggle)</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
         
         {/* Burger menu */}
         <DropdownMenu>
@@ -95,6 +116,13 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               <DropdownMenuItem onClick={handleOpenAdvancedFromMenu}>
                 <Settings className="h-4 w-4 mr-2" />
                 <span>Advanced</span>
+              </DropdownMenuItem>
+            )}
+            
+            {onToggleVerboseDebug && (
+              <DropdownMenuItem onClick={onToggleVerboseDebug}>
+                <Bug className={`h-4 w-4 mr-2 ${isVerboseDebug ? 'text-emerald-500' : ''}`} />
+                <span>{isVerboseDebug ? 'Disable Verbose Debug' : 'Enable Verbose Debug'}</span>
               </DropdownMenuItem>
             )}
             
