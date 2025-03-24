@@ -1,13 +1,28 @@
 
 import { useEffect } from 'react';
 import { DisplayParams } from '../types';
-import { processOutputParam } from '../utils/paramUtils';
+import { processOutputParam, fullyDecodeUrl } from '../utils/paramUtils';
 
 export const useOutputProcessor = (params: DisplayParams) => {
   // Process the output parameter to ensure correct URL format
   useEffect(() => {
     if (params.output) {
       console.log('[useOutputProcessor] Raw output param:', params.output);
+      
+      // For deeply nested external URLs, make sure they're fully decoded
+      if (params.output.includes('%') && (
+          params.output.includes('http%3A') || 
+          params.output.includes('https%3A')
+        )) {
+        try {
+          const decodedUrl = fullyDecodeUrl(params.output);
+          console.log('[useOutputProcessor] Fully decoded external URL:', decodedUrl);
+          params.output = decodedUrl;
+          return;
+        } catch (e) {
+          console.error('[useOutputProcessor] Failed to decode complex URL:', e);
+        }
+      }
       
       // Skip processing for external URLs
       if (params.output.startsWith('http://') || params.output.startsWith('https://')) {

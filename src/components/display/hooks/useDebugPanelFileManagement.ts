@@ -1,7 +1,7 @@
 
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
-import { createUrlWithParams, processOutputParam, normalizePathForDisplay } from '../utils/paramUtils';
+import { createUrlWithParams, processOutputParam, normalizePathForDisplay, fullyDecodeUrl } from '../utils/paramUtils';
 import { toast } from 'sonner';
 
 interface UseDebugPanelFileManagementProps {
@@ -17,9 +17,17 @@ export const useDebugPanelFileManagement = ({
     return () => {
       console.log('[useDebugPanelFileManagement] Selected file:', file);
       
-      // Normalize the path first using our shared utility
-      const outputPath = processOutputParam(file);
-      console.log('[useDebugPanelFileManagement] Normalized path with processOutputParam:', outputPath);
+      // Handle fully formed URLs (especially with query parameters) differently
+      let outputPath;
+      if (file.startsWith('http://') || file.startsWith('https://')) {
+        // Don't process URLs through normalizePathForDisplay - use directly
+        console.log('[useDebugPanelFileManagement] Using external URL directly:', file);
+        outputPath = file;
+      } else {
+        // For local files, normalize the path using our utility
+        outputPath = processOutputParam(file);
+        console.log('[useDebugPanelFileManagement] Normalized local path:', outputPath);
+      }
       
       if (!outputPath) {
         console.error('[useDebugPanelFileManagement] Failed to process output path');
@@ -74,18 +82,58 @@ export const useDebugPanelFileManagement = ({
   const isCurrentFile = (file: string, imageUrl: string | null) => {
     if (!imageUrl) return false;
     
-    // Use our path normalization utility for consistent comparison
-    const normalizedFile = processOutputParam(file);
-    const normalizedImageUrl = processOutputParam(imageUrl);
+    // Handle external URLs with query parameters
+    let normalizedFile;
+    let normalizedImageUrl;
     
-    console.log('[useDebugPanelFileManagement] Comparing:', {
-      normalizedFile,
-      normalizedImageUrl,
-      isMatch: normalizedImageUrl === normalizedFile
-    });
+    // For external URLs, try to fully decode both before comparison
+    if (file.startsWith('http') || file.includes('http%3A')) {
+      try {
+        normalizedFile = fullyDecodeUrl(file);
+      } catch (e) {
+        normalizedFile = file;
+      }
+    } else {
+      // Use our path normalization utility for local files
+      normalizedFile = processOutputParam(file);
+    }
     
-    // More exact comparison now that we've normalized both paths
-    return normalizedImageUrl === normalizedFile;
+    // Same for image URL
+    if (imageUrl.startsWith('http') || imageUrl.includes('http%3A')) {
+      try {
+        normalizedImageUrl = fullyDecodeUrl(imageUrl);
+      } catch (e) {
+        normalizedImageUrl = imageUrl;
+      }
+    } else {
+      normalizedImageUrl = processOutputParam(imageUrl);
+    }
+    
+    // Compare the base URLs without query parameters for more robust matching
+    try {
+      const fileUrlObj = new URL(normalizedFile);
+      const imageUrlObj = new URL(normalizedImageUrl);
+      
+      // Compare pathnames for more accurate matching
+      const isPathMatch = fileUrlObj.pathname === imageUrlObj.pathname;
+      
+      console.log('[useDebugPanelFileManagement] Comparing:', {
+        filePathname: fileUrlObj.pathname,
+        imagePathname: imageUrlObj.pathname,
+        isPathMatch
+      });
+      
+      return isPathMatch;
+    } catch (e) {
+      // If URL parsing fails, fall back to simple string comparison
+      console.log('[useDebugPanelFileManagement] URL parsing failed, using string comparison:', {
+        normalizedFile,
+        normalizedImageUrl,
+        isMatch: normalizedImageUrl === normalizedFile
+      });
+      
+      return normalizedImageUrl === normalizedFile;
+    }
   };
 
   const formatTime = (timeValue: Date | string | null) => {
