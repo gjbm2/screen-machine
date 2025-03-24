@@ -93,19 +93,119 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
     setContainerDimensions({ width, height });
   }, [selectedSize, contentRef, containerWidth]);
   
-  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    // Forward the event to parent component
-    onImageLoad(e);
+  // Prepare the image display style based on the current mode
+  const getImageStyle = (): React.CSSProperties => {
+    let style: React.CSSProperties = {
+      maxWidth: '100%',
+      maxHeight: '100%',
+    };
+    
+    switch (showMode) {
+      case 'fill':
+        style = {
+          ...style,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          objectPosition: position,
+        };
+        break;
+      case 'fit':
+        style = {
+          ...style,
+          width: 'auto',
+          height: 'auto',
+          maxWidth: '100%',
+          maxHeight: '100%',
+          objectFit: 'contain',
+          position: 'absolute',
+        };
+        break;
+      case 'stretch':
+        style = {
+          ...style,
+          width: '100%',
+          height: '100%',
+          objectFit: 'fill',
+        };
+        break;
+      case 'actual':
+        style = {
+          ...style,
+          width: imageDimensions.width > 0 ? `${imageDimensions.width}px` : 'auto',
+          height: imageDimensions.height > 0 ? `${imageDimensions.height}px` : 'auto',
+          objectFit: 'none',
+        };
+        break;
+      default:
+        style = {
+          ...style,
+          objectFit: 'contain',
+        };
+    }
+    
+    // Apply position to fit and actual modes
+    if (showMode === 'fit' || showMode === 'actual') {
+      switch (position) {
+        case 'top-left':
+          style.top = 0;
+          style.left = 0;
+          break;
+        case 'top-center':
+          style.top = 0;
+          style.left = '50%';
+          style.transform = 'translateX(-50%)';
+          break;
+        case 'top-right':
+          style.top = 0;
+          style.right = 0;
+          break;
+        case 'center-left':
+          style.top = '50%';
+          style.left = 0;
+          style.transform = 'translateY(-50%)';
+          break;
+        case 'center':
+          style.top = '50%';
+          style.left = '50%';
+          style.transform = 'translate(-50%, -50%)';
+          break;
+        case 'center-right':
+          style.top = '50%';
+          style.right = 0;
+          style.transform = 'translateY(-50%)';
+          break;
+        case 'bottom-left':
+          style.bottom = 0;
+          style.left = 0;
+          break;
+        case 'bottom-center':
+          style.bottom = 0;
+          style.left = '50%';
+          style.transform = 'translateX(-50%)';
+          break;
+        case 'bottom-right':
+          style.bottom = 0;
+          style.right = 0;
+          break;
+        default:
+          style.top = '50%';
+          style.left = '50%';
+          style.transform = 'translate(-50%, -50%)';
+      }
+    }
+    
+    return style;
   };
   
   return (
     <CardContent 
-      className="p-0 flex-1 overflow-hidden flex items-center justify-center"
+      className="p-0 flex-1 overflow-auto flex items-center justify-center"
       ref={contentRef}
     >
       <div 
         ref={screenContainerRef}
-        className="relative border border-gray-300 shadow-md flex items-center justify-center"
+        className="relative border border-gray-300 shadow-md flex items-center justify-center overflow-hidden"
         style={{ 
           backgroundColor: `#${backgroundColor}`, 
           transition: "width 0.3s, height 0.3s"
@@ -119,14 +219,9 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
               src={imageUrl}
               alt="Preview"
               className="max-w-full max-h-full"
-              onLoad={handleImageLoad}
+              onLoad={onImageLoad}
               onError={onImageError}
-              style={{
-                objectFit: showMode === "fit" ? 'contain' : 'cover',
-                objectPosition: position === "center" ? 'center' : position,
-                width: '100%',
-                height: '100%'
-              }}
+              style={getImageStyle()}
             />
             
             {caption && (

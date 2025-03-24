@@ -3,7 +3,7 @@ import React from 'react';
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { RefreshCw, Copy, Check, Eye, RotateCcw, Settings } from "lucide-react";
+import { RefreshCw, Copy, Check, Eye, Trash2, Settings } from "lucide-react";
 
 interface DebugPanelHeaderProps {
   onCheckNow: () => void;
@@ -39,28 +39,26 @@ export const DebugPanelHeader: React.FC<DebugPanelHeaderProps> = ({
           <span>Display Configuration</span>
         </CardTitle>
         
-        <div className="flex space-x-2">
-          {/* Mobile switch view button - always in the same position */}
-          {isMobile && togglePreview && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={togglePreview}
-                    className="h-8 w-8 p-0"
-                  >
-                    {showingPreview ? <Settings className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{showingPreview ? "Show Settings" : "Show Preview"}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </div>
+        {/* Mobile switch view button - always in the same position */}
+        {isMobile && togglePreview && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={togglePreview}
+                  className="h-8 w-8 p-0"
+                >
+                  {showingPreview ? <Settings className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{showingPreview ? "Show Settings" : "Show Preview"}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
       
       <div className="flex justify-between items-center text-sm">
@@ -113,9 +111,9 @@ export const DebugPanelHeader: React.FC<DebugPanelHeaderProps> = ({
                   variant="outline" 
                   size="sm"
                   onClick={resetDisplay}
-                  className="h-7 w-7 p-0"
+                  className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
-                  <RotateCcw className="h-3.5 w-3.5" />
+                  <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
