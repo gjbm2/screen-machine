@@ -87,8 +87,13 @@ export const useDebugPanelUrls = ({
   };
   
   const commitSettings = () => {
-    // Process the customUrl to ensure it's properly formatted
-    const processedOutput = processOutputParam(customUrl);
+    // Use the actual current image URL from params instead of customUrl when available
+    const outputToUse = params.output || customUrl;
+    console.log('[useDebugPanelUrls] Using output for view mode:', outputToUse);
+    
+    // Process the output to ensure it's properly formatted
+    const processedOutput = processOutputParam(outputToUse);
+    console.log('[useDebugPanelUrls] Processed output for view mode:', processedOutput);
     
     // Create new params object with all current settings, but WITHOUT debug mode
     const newParams: DisplayParams = {

@@ -1,3 +1,4 @@
+
 import { DisplayParams } from '../types';
 
 export const createUrlWithParams = (params: DisplayParams): string => {
@@ -5,6 +6,7 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   
   // Add each parameter to the query string
   if (params.output) {
+    console.log('[createUrlWithParams] Adding output param:', params.output);
     // Handle external URLs with query parameters differently to prevent double encoding
     if (params.output.startsWith('http')) {
       queryParams.set('output', params.output);
@@ -65,7 +67,9 @@ export const createUrlWithParams = (params: DisplayParams): string => {
     queryParams.set('debug', 'true');
   }
   
-  return `?${queryParams.toString()}`;
+  const result = `?${queryParams.toString()}`;
+  console.log('[createUrlWithParams] Final URL params:', result);
+  return result;
 };
 
 // Recursive function to fully decode a URL
@@ -93,6 +97,8 @@ export const fullyDecodeUrl = (url: string): string => {
 export const processOutputParam = (output: string): string => {
   if (!output) return output;
   
+  console.log('[processOutputParam] Processing output:', output);
+  
   // For external URLs, decode them fully to handle possible nested encodings
   if (output.includes('http') || output.includes('%3A%2F%2F')) {
     console.log('[processOutputParam] Processing possible URL:', output);
@@ -111,7 +117,9 @@ export const processOutputParam = (output: string): string => {
   }
   
   // For local file paths, normalize them
-  return normalizePathForDisplay(output);
+  const normalized = normalizePathForDisplay(output);
+  console.log('[processOutputParam] Normalized path:', normalized);
+  return normalized;
 };
 
 export const decodeComplexOutputParam = (output: string | null): string | null => {

@@ -18,6 +18,7 @@ export const useDisplayPage = () => {
   const [previewParams, setPreviewParams] = useState(displayParams);
   const mountedRef = useRef(true); // Track if component is mounted
   const initialRenderRef = useRef(true); // Track initial render
+  const hasProcessedOutputRef = useRef(false); // Track if we've processed the output param
 
   // Function to redirect to debug mode
   const redirectToDebugMode = () => {
@@ -72,15 +73,18 @@ export const useDisplayPage = () => {
   useEffect(() => {
     if (!mountedRef.current) return;
     
-    if (displayParams.output) {
+    if (displayParams.output && !hasProcessedOutputRef.current) {
       console.log('[useDisplayPage] Processing output parameter:', displayParams.output);
+      hasProcessedOutputRef.current = true;
       
       // For fully formed URLs, use directly
       if (displayParams.output.startsWith('http://') || displayParams.output.startsWith('https://')) {
+        console.log('[useDisplayPage] Setting direct URL:', displayParams.output);
         setImageUrl(displayParams.output);
       } else {
         // For local paths, normalize 
         const normalizedPath = normalizePathForDisplay(displayParams.output);
+        console.log('[useDisplayPage] Setting normalized path:', normalizedPath);
         setImageUrl(normalizedPath);
       }
       
@@ -93,6 +97,11 @@ export const useDisplayPage = () => {
       toast.success(`Displaying image: ${displayName}`);
     }
   }, [displayParams.output, setImageUrl, setImageKey]);
+
+  // Reset output processing flag on route change
+  useEffect(() => {
+    hasProcessedOutputRef.current = false;
+  }, [location.pathname, location.search]);
 
   // Set mounted ref to false on unmount
   useEffect(() => {
@@ -187,10 +196,12 @@ export const useDisplayPage = () => {
         if (mountedRef.current) {
           // For fully formed URLs, use directly
           if (displayParams.output && displayParams.output.startsWith('http')) {
+            console.log('[useDisplayPage] Initial render - setting direct URL:', displayParams.output);
             setImageUrl(displayParams.output);
           } else if (displayParams.output) {
             // For local paths, normalize 
             const normalizedPath = normalizePathForDisplay(displayParams.output);
+            console.log('[useDisplayPage] Initial render - setting normalized path:', normalizedPath);
             setImageUrl(normalizedPath);
           }
           setImageKey(prev => prev + 1);
