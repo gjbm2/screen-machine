@@ -1,31 +1,38 @@
 
-import React, { useEffect, useState } from 'react';
-import PromptForm from '@/components/PromptForm';
-import ImageDisplay from '@/components/image-display/ImageDisplay';
-import ResizableConsole from '@/components/debug/ResizableConsole';
-import Footer from '@/components/Footer';
-import HeaderSection from '@/components/main/HeaderSection';
-import IntroSection from '@/components/main/IntroSection';
-import useConsole from '@/hooks/use-console';
-import useImageGeneration from '@/hooks/image-generation';
-import useIntroText from '@/hooks/use-intro-text';
-import AdvancedOptions from '@/components/AdvancedOptions';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
+import ImageDisplay from '@/components/image-display/ImageDisplay';
+import PromptForm from '@/components/prompt-form/PromptForm';
+import ResizableConsole from '@/components/debug/ResizableConsole';
+import HeaderSection from '@/components/main/HeaderSection';
+import { useImageGeneration } from '@/hooks/image-generation/use-image-generation';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import AboutDialog from '@/components/about/AboutDialog';
+import AdvancedOptions from '@/components/AdvancedOptions';
+import IntroText from '@/components/IntroText';
+import Footer from '@/components/Footer';
 
 const Index = () => {
-  const { randomIntroText } = useIntroText();
-  const { 
-    consoleLogs, 
-    isConsoleVisible, 
-    addConsoleLog, 
-    handleCloseConsole, 
-    toggleConsole,
-    setIsConsoleVisible
-  } = useConsole();
+  const [consoleVisible, setConsoleVisible] = useState(false);
+  const [consoleLogs, setConsoleLogs] = useState<any[]>([]);
+  const [showAboutDialog, setShowAboutDialog] = useState(false);
+  const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   
-  const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
+  // This will store console logs for debug purposes
+  const consoleLogsRef = React.useRef<any[]>([]);
   
+  // Add logging for debugging the advanced panel issue
+  useEffect(() => {
+    console.log('Advanced options panel open state:', advancedOptionsOpen);
+  }, [advancedOptionsOpen]);
+
+  const addConsoleLog = useCallback((log: any) => {
+    setConsoleLogs((prevLogs) => [...prevLogs, log]);
+    consoleLogsRef.current = [...consoleLogsRef.current, log];
+  }, []);
+
   const {
+    generatedImages,
     activeGenerations,
     imageUrl,
     currentPrompt,
@@ -33,158 +40,157 @@ const Index = () => {
     currentWorkflow,
     currentParams,
     currentGlobalParams,
-    generatedImages,
     imageContainerOrder,
     isFirstRun,
     fullscreenRefreshTrigger,
+    setCurrentPrompt,
+    setUploadedImageUrls,
+    setCurrentWorkflow,
+    setCurrentParams,
     setCurrentGlobalParams,
+    setImageContainerOrder,
     handleSubmitPrompt,
     handleUseGeneratedAsInput,
     handleCreateAgain,
-    handleReorderContainers,
+    handleDownloadImage,
     handleDeleteImage,
+    handleReorderContainers,
     handleDeleteContainer
   } = useImageGeneration(addConsoleLog);
 
-  // Connect console visibility to global params
-  useEffect(() => {
-    if (currentGlobalParams.showConsoleOutput) {
-      setIsConsoleVisible(true);
-    }
-  }, [currentGlobalParams.showConsoleOutput, setIsConsoleVisible]);
-
-  const handleToggleConsole = () => {
-    const newState = toggleConsole();
-    setCurrentGlobalParams(prev => ({
-      ...prev,
-      showConsoleOutput: newState
-    }));
+  const toggleConsole = () => {
+    setConsoleVisible(!consoleVisible);
   };
 
-  const handleConsoleClose = () => {
-    handleCloseConsole();
-    setCurrentGlobalParams(prev => ({
-      ...prev,
-      showConsoleOutput: false
-    }));
-  };
+  const handleOpenAdvancedOptions = useCallback(() => {
+    console.log('Opening advanced options panel');
+    setAdvancedOptionsOpen(true);
+  }, []);
 
-  const handleOpenAdvancedOptions = () => {
-    setIsAdvancedOptionsOpen(true);
-  };
-
-  // Fix: Make sure this correctly updates the state and doesn't cause any closure issues
-  const handleCloseAdvancedOptions = (open: boolean) => {
-    // Add a small delay to ensure React state updates properly
+  const handleCloseAdvancedOptions = useCallback(() => {
+    console.log('Closing advanced options panel');
+    // Add setTimeout to ensure state updates correctly
     setTimeout(() => {
-      setIsAdvancedOptionsOpen(open);
+      setAdvancedOptionsOpen(false);
     }, 0);
-  };
+  }, []);
 
-  const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
-  const handleOpenAboutDialog = () => {
-    setAboutDialogOpen(true);
-  };
-
-  // Create a wrapper function that matches the expected signature
-  const handleGlobalParamChange = (paramId: string, value: any) => {
+  // Create a proper handler for global param changes
+  const handleGlobalParamChange = useCallback((paramId: string, value: any) => {
     setCurrentGlobalParams(prev => ({
       ...prev,
       [paramId]: value
     }));
-  };
+  }, [setCurrentGlobalParams]);
 
-  const handleRunScript = async (scriptFilename: string) => {
+  const handlePromptSubmit = async (
+    prompt: string,
+    imageFiles?: File[] | string[],
+    workflow?: string,
+    params?: Record<string, any>,
+    globalParams?: Record<string, any>,
+    refiner?: string,
+    refinerParams?: Record<string, any>
+  ) => {
     try {
-      addConsoleLog(`Running script: ${scriptFilename}`);
+      setCurrentPrompt(prompt);
       
-      const response = await fetch('/api/run-script', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ filename: scriptFilename }),
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        toast.success(`Script executed: ${scriptFilename}`);
-        addConsoleLog(`Script execution result: ${data.message}`);
-      } else {
-        toast.error(`Script execution failed: ${data.error}`);
-        addConsoleLog(`Script execution error: ${data.error}`);
+      if (workflow) {
+        setCurrentWorkflow(workflow);
       }
+      
+      if (params) {
+        setCurrentParams(params);
+      }
+      
+      if (globalParams) {
+        setCurrentGlobalParams(globalParams);
+      }
+      
+      if (imageFiles && imageFiles.length > 0) {
+        const fileUrls = imageFiles
+          .filter((file): file is string => typeof file === 'string')
+          .map(url => url);
+          
+        setUploadedImageUrls(fileUrls);
+      }
+      
+      await handleSubmitPrompt(prompt, imageFiles);
     } catch (error) {
-      console.error('Error running script:', error);
-      toast.error('Failed to run script');
-      addConsoleLog(`Script execution error: ${error instanceof Error ? error.message : String(error)}`);
+      console.error('Error submitting prompt:', error);
+      toast.error('Error generating image');
     }
   };
 
   return (
-    <div className="min-h-screen hero-gradient flex flex-col">
-      <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 flex-grow">
-        <HeaderSection 
-          onToggleConsole={handleToggleConsole} 
-          isConsoleVisible={isConsoleVisible}
+    <main className="flex flex-col min-h-screen p-4 md:p-6 max-w-screen-2xl mx-auto">
+      <HeaderSection 
+        onToggleConsole={toggleConsole}
+        isConsoleVisible={consoleVisible}
+        onOpenAdvancedOptions={handleOpenAdvancedOptions}
+        onOpenAboutDialog={() => setShowAboutDialog(true)}
+      />
+      
+      <ScrollArea className="flex-1 max-h-full overflow-y-auto pr-4">
+        {isFirstRun && <IntroText />}
+        
+        <PromptForm 
+          onSubmit={handlePromptSubmit}
+          isLoading={activeGenerations.length > 0}
+          currentPrompt={currentPrompt}
+          isFirstRun={isFirstRun}
           onOpenAdvancedOptions={handleOpenAdvancedOptions}
-          onOpenAboutDialog={handleOpenAboutDialog}
-          onRunScript={handleRunScript}
         />
         
-        {isFirstRun && <IntroSection introText={randomIntroText} />}
+        <ImageDisplay 
+          imageUrl={imageUrl}
+          prompt={currentPrompt}
+          isLoading={activeGenerations.length > 0}
+          uploadedImages={uploadedImageUrls}
+          generatedImages={generatedImages}
+          imageContainerOrder={imageContainerOrder}
+          workflow={currentWorkflow}
+          generationParams={currentParams}
+          onUseGeneratedAsInput={handleUseGeneratedAsInput}
+          onCreateAgain={handleCreateAgain}
+          onReorderContainers={handleReorderContainers}
+          onDeleteImage={handleDeleteImage}
+          onDeleteContainer={handleDeleteContainer}
+          fullscreenRefreshTrigger={fullscreenRefreshTrigger}
+        />
         
-        <div className={`${isFirstRun ? 'mt-4' : 'mt-8'} transition-all duration-500`}>
-          <PromptForm 
-            onSubmit={handleSubmitPrompt} 
-            isLoading={activeGenerations.length > 0}
-            currentPrompt={currentPrompt}
-            isFirstRun={isFirstRun}
-            onOpenAdvancedOptions={handleOpenAdvancedOptions}
-          />
-        </div>
-        
-        <div className="mb-20">
-          <ImageDisplay 
-            imageUrl={imageUrl}
-            prompt={currentPrompt}
-            isLoading={activeGenerations.length > 0}
-            uploadedImages={uploadedImageUrls}
-            generatedImages={generatedImages}
-            imageContainerOrder={imageContainerOrder}
-            workflow={currentWorkflow}
-            onUseGeneratedAsInput={handleUseGeneratedAsInput}
-            onCreateAgain={handleCreateAgain}
-            onReorderContainers={handleReorderContainers}
-            onDeleteImage={handleDeleteImage}
-            onDeleteContainer={handleDeleteContainer}
-            generationParams={{...currentParams, ...currentGlobalParams}}
-            fullscreenRefreshTrigger={fullscreenRefreshTrigger}
-          />
-        </div>
-      </div>
+        <Footer />
+      </ScrollArea>
       
-      <Footer />
+      {consoleVisible && (
+        <ResizableConsole 
+          logs={consoleLogs}
+          onClear={() => setConsoleLogs([])}
+          onClose={toggleConsole}
+        />
+      )}
       
-      <ResizableConsole 
-        logs={consoleLogs}
-        isVisible={isConsoleVisible}
-        onClose={handleConsoleClose}
+      <AboutDialog 
+        open={showAboutDialog} 
+        onOpenChange={setShowAboutDialog}
       />
-
-      <AdvancedOptions 
-        workflows={[]} // Keep existing workflows data
+      
+      <AdvancedOptions
+        workflows={[]}
         selectedWorkflow={currentWorkflow}
-        onWorkflowChange={() => {}} 
+        onWorkflowChange={setCurrentWorkflow}
         params={currentParams}
-        onParamChange={() => {}} 
+        onParamChange={setCurrentParams}
         globalParams={currentGlobalParams}
-        onGlobalParamChange={handleGlobalParamChange} 
-        isOpen={isAdvancedOptionsOpen}
+        onGlobalParamChange={handleGlobalParamChange}
+        selectedRefiner={'none'}
+        onRefinerChange={() => {}}
+        refinerParams={{}}
+        onRefinerParamChange={() => {}}
+        isOpen={advancedOptionsOpen}
         onOpenChange={handleCloseAdvancedOptions}
       />
-    </div>
+    </main>
   );
 };
 

@@ -10,6 +10,14 @@ export const processGenerationResults = (
   batchId: string,
   prevImages: GeneratedImage[]
 ): GeneratedImage[] => {
+  // Add debug log to see what response we're getting
+  console.log('Processing generation results:', { 
+    responseSuccess: response?.success, 
+    hasImages: !!response?.images,
+    imageCount: response?.images?.length,
+    batchId
+  });
+  
   if (!response || !response.success) {
     console.error('Received unsuccessful response:', response);
     return markBatchAsError(batchId, prevImages);
@@ -51,6 +59,8 @@ export const processGenerationResults = (
   
   // Then update or add new images
   response.images.forEach((responseImage: any, index: number) => {
+    console.log('Processing response image:', { index, responseImage });
+    
     // Get the batch index from the response or use the array index
     const batchIndex = responseImage.batch_index ?? index;
     
@@ -61,12 +71,16 @@ export const processGenerationResults = (
         && img.batchIndex === batchIndex
     );
     
+    // Check if we have a status field, if not assume 'completed'
+    const imageStatus = responseImage.status || 'completed';
+    console.log('Image status:', imageStatus);
+    
     if (existingImageIndex !== -1) {
       // Update the existing placeholder
       updatedImages[existingImageIndex] = {
         ...updatedImages[existingImageIndex],
         url: responseImage.url,
-        status: 'completed',
+        status: imageStatus as ImageGenerationStatus,
         prompt: responseImage.prompt || updatedImages[existingImageIndex].prompt,
         workflow: responseImage.workflow || updatedImages[existingImageIndex].workflow,
         timestamp: responseImage.timestamp || Date.now(),
@@ -91,7 +105,7 @@ export const processGenerationResults = (
         workflow: responseImage.workflow || 'unknown',
         batchId: batchId,
         batchIndex: batchIndex,
-        status: 'completed',
+        status: imageStatus as ImageGenerationStatus,
         timestamp: responseImage.timestamp || Date.now(),
         title: `${window.imageCounter + 1}. ${responseImage.prompt} (${responseImage.workflow || 'unknown'})`,
         params: responseImage.params,
@@ -120,6 +134,7 @@ export const markBatchAsError = (
   batchId: string,
   prevImages: GeneratedImage[]
 ): GeneratedImage[] => {
+  console.log(`Marking batch ${batchId} as error`);
   return prevImages.map(img => {
     if (img.batchId === batchId && img.status === 'generating') {
       return {
