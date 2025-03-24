@@ -1,4 +1,6 @@
+
 openai
 runpod==1.7.7
 websocket-server
+websockets>=10.0
 asyncio
