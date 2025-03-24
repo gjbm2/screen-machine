@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { CardContent } from "@/components/ui/card";
 import { CaptionRenderer } from './CaptionRenderer';
 import { ShowMode, PositionMode, CaptionPosition } from '../types';
@@ -62,6 +63,12 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
   const getImageStyleWithContext = () => {
     return getImageStyle(showMode, position, imageDimensions);
   };
+
+  // Log to debug image loading issues
+  useEffect(() => {
+    console.log('[DebugImageContent] Current imageUrl:', imageUrl);
+    console.log('[DebugImageContent] Current imageKey:', imageKey);
+  }, [imageUrl, imageKey]);
 
   return (
     <CardContent 

@@ -16,11 +16,13 @@ export const useDisplayPage = () => {
   const { params, redirectToDebugMode } = useDisplayParams();
   const [previewParams, setPreviewParams] = useState(params);
   const mountedRef = useRef(true); // Track if component is mounted
+  const outputProcessedRef = useRef(false); // Track if output has been processed
 
   // Debug logging for params
   useEffect(() => {
     console.log("[useDisplayPage] Debug mode active:", params.debugMode);
     console.log("[useDisplayPage] Params:", params);
+    console.log("[useDisplayPage] Output param:", params.output);
   }, [params]);
 
   // Process output parameter
@@ -29,8 +31,10 @@ export const useDisplayPage = () => {
   // Get display state from the core hook
   const {
     imageUrl,
+    setImageUrl, // Make sure this is used to update the image URL
     error,
     imageKey,
+    setImageKey, // This should be incremented when the image changes
     lastModified,
     lastChecked,
     outputFiles,
@@ -52,6 +56,35 @@ export const useDisplayPage = () => {
     getImagePositionStyle,
     extractMetadataFromImage
   } = useDisplayState(previewParams);
+
+  // Handle output parameter directly to ensure image displays
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    
+    // Only process if we have an output parameter and it hasn't been processed already for this value
+    if (params.output && (!outputProcessedRef.current || imageUrl !== params.output)) {
+      console.log('[useDisplayPage] Processing output parameter directly:', params.output);
+      
+      // Set the image URL directly
+      setImageUrl(params.output);
+      
+      // Increment the image key to force a reload
+      setImageKey(prev => prev + 1);
+      
+      // Mark as processed
+      outputProcessedRef.current = true;
+      
+      // Toast to notify user
+      toast.success(`Displaying image: ${params.output.split('/').pop()}`);
+    }
+  }, [params.output, setImageUrl, setImageKey, imageUrl]);
+
+  // Reset output processed flag when output param changes
+  useEffect(() => {
+    if (params.output === null) {
+      outputProcessedRef.current = false;
+    }
+  }, [params.output]);
 
   // Set mounted ref to false on unmount
   useEffect(() => {
