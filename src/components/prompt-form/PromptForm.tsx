@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -8,7 +9,6 @@ import AdvancedOptions from '@/components/AdvancedOptions';
 import { PromptFormProps, WorkflowProps } from './types';
 import useExternalImageUrls from '@/hooks/use-external-images';
 import ImagePreviewSection from './ImagePreviewSection';
-import { Workflow } from '@/types/workflows';
 
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
@@ -166,8 +166,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
   const isButtonDisabled = localLoading || ((prompt.trim() === '' && imageFiles.length === 0 && previewUrls.length === 0));
 
-  const workflowsWithCorrectType = workflows as unknown as WorkflowProps[];
-
   return (
     <div className="w-full mb-8">
       <Card className="p-4 relative">
@@ -196,14 +194,14 @@ const PromptForm: React.FC<PromptFormProps> = ({
           handleSubmit={handleSubmit}
           prompt={prompt}
           isButtonDisabled={isButtonDisabled}
-          workflows={workflowsWithCorrectType}
+          workflows={workflows as unknown as WorkflowProps[]}
           isCompact={false}
           hasUploadedImages={previewUrls.length > 0}
         />
         
         {isAdvancedOptionsOpen && (
           <AdvancedOptions
-            workflows={workflows as unknown as Workflow[]}
+            workflows={workflows}
             selectedWorkflow={selectedWorkflow}
             onWorkflowChange={handleWorkflowChange}
             params={workflowParams}

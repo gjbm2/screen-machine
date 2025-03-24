@@ -28,7 +28,7 @@ const ImagePreviewSection: React.FC<ImagePreviewSectionProps> = ({
       <Carousel className="w-full">
         <CarouselContent>
           {uniqueUrls.map((url, index) => (
-            <CarouselItem key={`preview-${index}-${url.slice(-8)}`} className="basis-full md:basis-1/2 lg:basis-1/3">
+            <CarouselItem key={`preview-${index}-${typeof url === 'string' ? url.slice(-8) : index}`} className="basis-full md:basis-1/2 lg:basis-1/3">
               <div className="relative rounded-lg overflow-hidden h-48 border border-border/30">
                 <img 
                   src={url} 
