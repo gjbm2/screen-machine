@@ -81,10 +81,10 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
     const refinerToUse = selectedRefiner === "none" ? undefined : selectedRefiner;
     
-    // CRITICAL FIX: Always create a fresh global params object with the CURRENT batch size
-    const freshGlobalParams = {
+    // Create a fresh global params object with the current batch size
+    const currentGlobalParams = {
       ...globalParams,
-      batch_size: batchSize // Use the current batchSize directly from state
+      batch_size: batchSize // Use the current batch size value directly
     };
 
     console.log(`PromptForm: Submitting with current batch size: ${batchSize}`);
@@ -94,7 +94,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
       allImages.length > 0 ? (allImages as File[] | string[]) : undefined,
       selectedWorkflow,
       workflowParams,
-      freshGlobalParams, // Use the fresh global params with current batch size
+      currentGlobalParams, // Pass the current global params with batch size
       refinerToUse,
       refinerParams
     );

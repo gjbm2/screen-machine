@@ -1,4 +1,3 @@
-
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -110,8 +109,7 @@ export const generateImage = async (
       console.log(`[image-generator] Using reference images: ${uploadedImageUrls.join(', ')}`);
     }
 
-    // CRITICAL FIX: Always use the current batch size from the provided globalParams
-    // Don't rely on cached values
+    // CRITICAL: Get the batch size directly from the provided globalParams
     const batchSize = globalParams?.batch_size || 1;
     
     // Log the current batch size being used
