@@ -105,8 +105,11 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
     >
       <div 
         ref={screenContainerRef}
-        className="relative border border-gray-300 shadow-md bg-gray-900 flex items-center justify-center"
-        style={{ backgroundColor, transition: "width 0.3s, height 0.3s" }}
+        className="relative border border-gray-300 shadow-md flex items-center justify-center"
+        style={{ 
+          backgroundColor: `#${backgroundColor}`, 
+          transition: "width 0.3s, height 0.3s"
+        }}
       >
         {imageUrl ? (
           <>
