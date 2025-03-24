@@ -117,12 +117,10 @@ export const useDisplayPage = () => {
   // Debug redirection handling
   const { checkDebugRedirection } = useDebugRedirection(displayParams, redirectToDebugMode);
   
-  // Check for debug redirection - only if not already in debug mode
+  // Check for debug redirection - this will now trigger for blank /display/ page too
   useEffect(() => {
     if (!mountedRef.current) return;
-    if (!displayParams.debugMode) {
-      checkDebugRedirection();
-    }
+    checkDebugRedirection();
   }, [displayParams, displayParams.output, displayParams.debugMode]);
 
   // Metadata management
@@ -153,10 +151,9 @@ export const useDisplayPage = () => {
   // Fetch debug output files only when in debug mode
   useDebugFiles(displayParams.debugMode, setOutputFiles);
 
-  // Only setup image polling when NOT in debug mode to prevent infinite loops
-  const { handleManualCheck: imagePollerHandleManualCheck } = displayParams.debugMode 
-    ? { handleManualCheck: null }
-    : useImagePoller(
+  // Setup image polling in both view mode and debug mode when URL is present
+  const { handleManualCheck: imagePollerHandleManualCheck } = displayParams.output 
+    ? useImagePoller(
         displayParams,
         imageUrl,
         isLoading,
@@ -164,7 +161,8 @@ export const useDisplayPage = () => {
         loadNewImage,
         checkImageModified,
         extractMetadataFromImage
-      );
+      )
+    : { handleManualCheck: null };
 
   // Handle image errors
   const { handleImageError } = useImageErrorHandler(imageUrl, mountedRef);
