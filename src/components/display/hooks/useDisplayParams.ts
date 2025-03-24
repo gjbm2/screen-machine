@@ -53,21 +53,21 @@ export const useDisplayParams = () => {
   console.log('[useDisplayParams] Parsed params:', params);
   console.log('[useDisplayParams] Caption background:', params.captionBgColor);
   
-  // Helper function to redirect to debug mode if needed
+  // Helper function to redirect to debug mode if needed - FIXED to prevent infinite loops
   const redirectToDebugMode = () => {
     // Skip if already in debug mode or no output is specified
     if (params.debugMode || !params.output) return;
     
-    // If both output and debugMode are specified, force debug mode
-    if (searchParams.has('output') && searchParams.has('debugMode')) {
-      // If debugMode is explicitly set to 'false', don't override
-      if (!parseBooleanParam(searchParams.get('debugMode'))) return;
-      
-      const newParams = { ...params, debugMode: true };
-      const newUrl = createUrlWithParams(newParams);
-      
-      console.log('[useDisplayParams] Redirecting to debug mode');
-      navigate(newUrl);
+    // Check if explicit debugMode parameter exists in URL
+    if (searchParams.has('debugMode')) {
+      // Only redirect if debugMode is explicitly set to 'true' in URL
+      if (parseBooleanParam(searchParams.get('debugMode'))) {
+        const newParams = { ...params, debugMode: true };
+        const newUrl = createUrlWithParams(newParams);
+        
+        console.log('[useDisplayParams] Redirecting to debug mode:', newUrl);
+        navigate(newUrl);
+      }
     }
   };
   
