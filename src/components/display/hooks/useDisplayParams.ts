@@ -2,7 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from '../types';
-import { createUrlWithParams, getDefaultParams } from '../utils';
+import { createUrlWithParams, getDefaultParams, decodeComplexOutputParam } from '../utils';
 
 export const useDisplayParams = () => {
   const [searchParams] = useSearchParams();
@@ -22,7 +22,7 @@ export const useDisplayParams = () => {
   
   // Parse and extract all URL parameters
   const params: DisplayParams = {
-    output: searchParams.get('output') || null,
+    output: decodeComplexOutputParam(searchParams.get('output')) || null,
     showMode: (searchParams.get('show') as ShowMode) || defaultParams.showMode,
     position: (searchParams.get('position') as PositionMode) || defaultParams.position,
     refreshInterval: parseFloatParam(searchParams.get('refresh'), defaultParams.refreshInterval),
@@ -40,6 +40,9 @@ export const useDisplayParams = () => {
     captionBgOpacity: parseFloatParam(searchParams.get('caption-bg-opacity'), defaultParams.captionBgOpacity),
     transition: (searchParams.get('transition') as TransitionType) || defaultParams.transition,
   };
+  
+  // Log the extracted output parameter for debugging
+  console.log('[useDisplayParams] Extracted output param:', params.output);
   
   // Add data parameter if it exists
   if (searchParams.has('data')) {

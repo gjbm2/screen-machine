@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
@@ -10,7 +11,7 @@ import { useDebugRedirection } from '@/components/display/hooks/useDebugRedirect
 import { useOutputProcessor } from '@/components/display/hooks/useOutputProcessor';
 import { useImageErrorHandler } from '@/components/display/hooks/useImageErrorHandler';
 import { useEnhancedManualCheck } from '@/components/display/hooks/useEnhancedManualCheck';
-import { normalizePathForDisplay } from '../utils/paramUtils';
+import { normalizePathForDisplay, decodeComplexOutputParam } from '../utils/paramUtils';
 
 export const useDisplayPage = () => {
   const { params, redirectToDebugMode } = useDisplayParams();
@@ -83,12 +84,16 @@ export const useDisplayPage = () => {
       // Update the previous output ref to avoid reprocessing
       previousOutputRef.current = params.output;
       
-      // Normalize the path for display
-      const normalizedPath = normalizePathForDisplay(params.output);
-      console.log('[useDisplayPage] Normalized path for display:', normalizedPath);
-      
-      // Set the image URL directly
-      setImageUrl(normalizedPath);
+      // For complex URLs with query parameters, use them directly
+      if (params.output.includes('?') && (params.output.startsWith('http://') || params.output.startsWith('https://'))) {
+        console.log('[useDisplayPage] Complex URL detected, using directly:', params.output);
+        setImageUrl(params.output);
+      } else {
+        // Normalize the path for display
+        const normalizedPath = normalizePathForDisplay(params.output);
+        console.log('[useDisplayPage] Normalized path for display:', normalizedPath);
+        setImageUrl(normalizedPath);
+      }
       
       // Increment the image key to force a reload
       setImageKey(prev => prev + 1);
@@ -97,7 +102,9 @@ export const useDisplayPage = () => {
       outputProcessedRef.current = true;
       
       // Toast to notify user
-      toast.success(`Displaying image: ${normalizedPath.split('/').pop() || normalizedPath}`);
+      const filename = params.output.split('/').pop() || params.output;
+      const displayName = filename.length > 30 ? filename.substring(0, 27) + '...' : filename;
+      toast.success(`Displaying image: ${displayName}`);
     }
   }, [params.output, setImageUrl, setImageKey, imageUrl]);
 
@@ -202,14 +209,21 @@ export const useDisplayPage = () => {
       console.log('[useDisplayPage] 🔄 Initial render with output param:', params.output);
       initialRenderRef.current = false;
       
-      // Normalize the path for display
-      const normalizedPath = normalizePathForDisplay(params.output);
-      console.log('[useDisplayPage] Normalized initial path for display:', normalizedPath);
+      let urlToUse = params.output;
+      
+      // For complex URLs with query parameters, use them directly
+      if (params.output.includes('?') && (params.output.startsWith('http://') || params.output.startsWith('https://'))) {
+        console.log('[useDisplayPage] Complex URL detected for initial render, using directly:', params.output);
+      } else {
+        // Normalize the path for display
+        urlToUse = normalizePathForDisplay(params.output);
+        console.log('[useDisplayPage] Normalized initial path for display:', urlToUse);
+      }
       
       // Small delay to ensure DOM is ready
       setTimeout(() => {
         if (mountedRef.current) {
-          setImageUrl(normalizedPath);
+          setImageUrl(urlToUse);
           setImageKey(prev => prev + 1);
         }
       }, 100);

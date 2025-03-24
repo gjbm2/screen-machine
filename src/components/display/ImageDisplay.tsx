@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DisplayParams } from './types';
 import { createUrlWithParams } from './utils';
@@ -73,19 +74,22 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     e.stopPropagation();
     e.preventDefault();
     
-    // Prevent duplicate navigation attempts
-    if (doubleClickAttempted) return;
-    setDoubleClickAttempted(true);
-    
-    // Log that we're trying to navigate to debug mode
     console.log('[ImageDisplay] Double-click detected, navigating to debug mode');
     
     // Get current URL and add debug=true parameter
     const currentUrl = window.location.href;
-    const hasParams = currentUrl.includes('?');
-    const newUrl = currentUrl + (hasParams ? '&' : '?') + 'debug=true';
     
-    console.log('[ImageDisplay] Redirecting to debug mode:', newUrl);
+    let newUrl;
+    if (currentUrl.includes('debug=')) {
+      // Already has debug parameter, don't add it again
+      console.log('[ImageDisplay] URL already has debug parameter, not modifying');
+      newUrl = currentUrl;
+    } else {
+      // Add debug=true parameter
+      const hasParams = currentUrl.includes('?');
+      newUrl = currentUrl + (hasParams ? '&' : '?') + 'debug=true';
+      console.log('[ImageDisplay] Adding debug=true to URL:', newUrl);
+    }
     
     // Use window.location.href to ensure a full page reload
     window.location.href = newUrl;
@@ -104,17 +108,23 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     
     // Try to get more details about the error
     if (imageUrl) {
-      fetch(imageUrl, { method: 'HEAD' })
-        .then(response => {
-          console.log('[ImageDisplay] Image HEAD request status:', response.status);
-          if (!response.ok) {
-            toast.error(`Image not found (${response.status})`);
-          }
-        })
-        .catch(err => {
-          console.error('[ImageDisplay] Network error checking image:', err);
-          toast.error(`Network error: ${err.message}`);
-        });
+      const isCrossOrigin = imageUrl.startsWith('http') && !imageUrl.startsWith(window.location.origin);
+      if (isCrossOrigin) {
+        console.warn('[ImageDisplay] Cross-origin image may have CORS restrictions:', imageUrl);
+        toast.error("Cross-origin image failed to load. CORS may be restricted.");
+      } else {
+        fetch(imageUrl, { method: 'HEAD' })
+          .then(response => {
+            console.log('[ImageDisplay] Image HEAD request status:', response.status);
+            if (!response.ok) {
+              toast.error(`Image not found (${response.status})`);
+            }
+          })
+          .catch(err => {
+            console.error('[ImageDisplay] Network error checking image:', err);
+            toast.error(`Network error: ${err.message}`);
+          });
+      }
     }
     
     // Call the original error handler
@@ -163,6 +173,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
             style={isTransitioning ? newImageStyle : imageStyle}
             onError={handleImageLoadError}
             onLoad={() => console.log('[ImageDisplay] Image loaded successfully:', imageUrl)}
+            crossOrigin="anonymous" // Add crossOrigin attribute to help with CORS issues
           />
           
           {/* Transitioning old image (for fades) */}
@@ -171,6 +182,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
               src={oldImageUrl}
               alt=""
               style={oldImageStyle}
+              crossOrigin="anonymous"
             />
           )}
           
