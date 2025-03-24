@@ -6,10 +6,9 @@ import usePromptForm from './usePromptForm';
 import PromptInput from '@/components/prompt/PromptInput';
 import PromptFormToolbar from './PromptFormToolbar';
 import AdvancedOptions from '@/components/AdvancedOptions';
-import { PromptFormProps } from './types';
+import { PromptFormProps, WorkflowProps } from './types';
 import useExternalImageUrls from '@/hooks/use-external-images';
 import ImagePreviewSection from './ImagePreviewSection';
-import { WorkflowProps } from './types';
 
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
@@ -195,7 +194,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           handleSubmit={handleSubmit}
           prompt={prompt}
           isButtonDisabled={isButtonDisabled}
-          workflows={workflows as WorkflowProps[]}
+          workflows={workflows as unknown as WorkflowProps[]}
           isCompact={false}
           hasUploadedImages={previewUrls.length > 0}
         />
@@ -215,6 +214,14 @@ const PromptForm: React.FC<PromptFormProps> = ({
             onRefinerParamChange={updateRefinerParam}
             isOpen={isAdvancedOptionsOpen}
             onOpenChange={setIsAdvancedOptionsOpen}
+          />
+        )}
+
+        {previewUrls.length > 0 && (
+          <ImagePreviewSection
+            previewUrls={previewUrls}
+            handleRemoveImage={handleRemoveImage}
+            clearAllImages={clearAllImages}
           />
         )}
       </Card>
