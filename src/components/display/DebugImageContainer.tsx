@@ -145,11 +145,11 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   return (
     <Card 
       ref={containerRef}
-      className="w-2/3 max-w-3xl absolute z-10"
+      className="w-2/3 max-w-3xl absolute z-10 cursor-grab"
       style={{ 
         left: `${containerPosition.x}px`, 
         top: `${containerPosition.y}px`,
-        cursor: isDragging ? 'grabbing' : 'auto'
+        cursor: isDragging ? 'grabbing' : 'grab'
       }}
       onMouseDown={handleMouseDown}
     >

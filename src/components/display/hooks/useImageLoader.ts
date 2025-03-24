@@ -23,46 +23,24 @@ export const useImageLoader = (
     currentImageUrl: string | null,
     params: DisplayParams
   ) => {
-    // Skip if the URL is the same as the current one and hasn't changed
-    if (url === currentImageUrl) {
-      console.log('Image URL unchanged, skipping load');
-      return;
-    }
-
-    // Direct cut transition or no current image
-    if (params.transition === 'cut' || !currentImageUrl) {
-      setImageUrl(url);
-      setImageKey(prev => prev + 1);
-      setImageChanged(false);
-      
-      // Extract metadata only if needed
-      if (params.data !== undefined || params.caption) {
-        try {
-          console.log('Extracting metadata for new image (cut transition)');
-          const newMetadata = await extractMetadataFromImage(url, params.data || undefined);
-          
-          // Process caption with new metadata if caption exists
-          if (params.caption) {
-            updateCaption(params.caption, newMetadata);
-          }
-        } catch (err) {
-          console.error('Error extracting metadata:', err);
-        }
+    try {
+      // Skip if the URL is the same as the current one and hasn't changed
+      if (url === currentImageUrl) {
+        console.log('[useImageLoader] Image URL unchanged, skipping load');
+        return;
       }
-    } else {
-      // Fade transition
-      setIsLoading(true);
-      
-      // Preload the new image
-      const preloadImg = new Image();
-      preloadImg.onload = async () => {
+
+      // Direct cut transition or no current image
+      if (params.transition === 'cut' || !currentImageUrl) {
+        console.log('[useImageLoader] Loading new image with cut transition:', url);
         setImageUrl(url);
         setImageKey(prev => prev + 1);
+        setImageChanged(false);
         
-        // Extract metadata for the new image only if needed
+        // Extract metadata only if needed
         if (params.data !== undefined || params.caption) {
           try {
-            console.log('Extracting metadata for new image (fade transition)');
+            console.log('[useImageLoader] Extracting metadata for new image (cut transition)');
             const newMetadata = await extractMetadataFromImage(url, params.data || undefined);
             
             // Process caption with new metadata if caption exists
@@ -70,37 +48,68 @@ export const useImageLoader = (
               updateCaption(params.caption, newMetadata);
             }
           } catch (err) {
-            console.error('Error extracting metadata:', err);
+            console.error('[useImageLoader] Error extracting metadata:', err);
           }
         }
+      } else {
+        // Fade transition
+        console.log('[useImageLoader] Loading new image with fade transition:', url);
+        setIsLoading(true);
         
-        const duration = params.transition === 'fade-fast' ? 1 : 2;
+        // Preload the new image
+        const preloadImg = new Image();
+        preloadImg.onload = async () => {
+          setImageUrl(url);
+          setImageKey(prev => prev + 1);
+          
+          // Extract metadata for the new image only if needed
+          if (params.data !== undefined || params.caption) {
+            try {
+              console.log('[useImageLoader] Extracting metadata for new image (fade transition)');
+              const newMetadata = await extractMetadataFromImage(url, params.data || undefined);
+              
+              // Process caption with new metadata if caption exists
+              if (params.caption) {
+                updateCaption(params.caption, newMetadata);
+              }
+            } catch (err) {
+              console.error('[useImageLoader] Error extracting metadata:', err);
+            }
+          }
+          
+          const duration = params.transition === 'fade-fast' ? 1 : 2;
+          
+          // Initialize the transition
+          initializeTransition(
+            currentImageUrl, 
+            params.position, 
+            params.showMode,
+            getImagePositionStyle
+          );
+          
+          // Execute the transition
+          executeTransition(duration, () => {
+            setImageChanged(false);
+          });
+          
+          setIsLoading(false);
+        };
         
-        // Initialize the transition
-        initializeTransition(
-          currentImageUrl, 
-          params.position, 
-          params.showMode,
-          getImagePositionStyle
-        );
-        
-        // Execute the transition
-        executeTransition(duration, () => {
+        preloadImg.onerror = (error) => {
+          console.error('[useImageLoader] Failed to preload image:', error);
+          setImageUrl(url); // Still set the URL so user can see the error
+          setImageKey(prev => prev + 1);
+          setIsLoading(false);
           setImageChanged(false);
-        });
+          toast.error("Failed to preload image for transition");
+        };
         
-        setIsLoading(false);
-      };
-      
-      preloadImg.onerror = () => {
-        setImageUrl(url);
-        setImageKey(prev => prev + 1);
-        setIsLoading(false);
-        setImageChanged(false);
-        toast.error("Failed to preload image for transition");
-      };
-      
-      preloadImg.src = url;
+        preloadImg.src = url;
+      }
+    } catch (error) {
+      console.error('[useImageLoader] Unexpected error loading image:', error);
+      toast.error("Error loading image");
+      setIsLoading(false);
     }
   };
 
