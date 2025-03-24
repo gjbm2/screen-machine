@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
@@ -6,6 +5,7 @@ import { ShowMode, PositionMode, CaptionPosition } from './types';
 import { useDebugImageContainer } from './debug/useDebugImageContainer';
 import { DebugImageHeader } from './debug/DebugImageHeader';
 import { DebugImageContent } from './debug/DebugImageContent';
+import { SCREEN_SIZES } from './debug/ScreenSizeSelector';
 
 interface DebugImageContainerProps {
   imageUrl: string | null;
@@ -115,13 +115,14 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       <DebugImageHeader
         showMode={showMode}
         position={position}
-        selectedScreenSize={selectedSize.name}
-        setSelectedScreenSize={(size) => {
-          // Handle the size object correctly by extracting the name
-          if (typeof size === 'object' && size.name) {
-            return size.name;
+        selectedSize={selectedSize}
+        setSelectedSize={(size) => {
+          // Accept both object and string forms
+          if (typeof size === 'string') {
+            const foundSize = SCREEN_SIZES.find(s => s.name === size);
+            return foundSize || selectedSize;
           }
-          return size as string;
+          return size;
         }}
         imageChanged={imageChanged}
         onSettingsChange={onSettingsChange}
