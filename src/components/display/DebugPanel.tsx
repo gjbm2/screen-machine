@@ -298,18 +298,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     };
   }, [isDragging, dragOffset]);
 
-  // Format time for display
-  const formatTime = (timeValue: Date | string | null) => {
-    if (!timeValue) return 'Never';
-    
-    try {
-      const date = timeValue instanceof Date ? timeValue : new Date(timeValue);
-      return date.toLocaleTimeString();
-    } catch (e) {
-      return String(timeValue);
-    }
-  };
-
   return (
     <Card 
       ref={panelRef}
