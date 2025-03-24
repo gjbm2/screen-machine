@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -27,16 +26,15 @@ const PromptForm: React.FC<PromptFormProps> = ({
   const {
     selectedWorkflow,
     selectedRefiner,
-    batchSize,
+    selectedPublish,
     workflowParams,
     globalParams,
     refinerParams,
     workflows,
     refiners,
-    incrementBatchSize,
-    decrementBatchSize,
     handleWorkflowChange,
     handleRefinerChange,
+    handlePublishChange,
     resetWorkflowParams,
     resetRefinerParams,
     updateWorkflowParam,
@@ -80,15 +78,13 @@ const PromptForm: React.FC<PromptFormProps> = ({
     }
 
     const refinerToUse = selectedRefiner === "none" ? undefined : selectedRefiner;
+    const publishToUse = selectedPublish === "none" ? undefined : selectedPublish;
     
-    // CRITICAL: Create a fresh global params object with the current batch size
-    // This ensures we're always using the most up-to-date batch size value
     const currentGlobalParams = {
-      ...globalParams,
-      batch_size: batchSize // Use the current batch size value directly
+      ...globalParams
     };
 
-    console.log(`PromptForm: Submitting generation with batch size: ${batchSize}`);
+    console.log('PromptForm: Submitting generation with publish destination:', publishToUse);
     console.log('PromptForm: Full global params:', currentGlobalParams);
 
     onSubmit(
@@ -96,9 +92,10 @@ const PromptForm: React.FC<PromptFormProps> = ({
       allImages.length > 0 ? (allImages as File[] | string[]) : undefined,
       selectedWorkflow,
       workflowParams,
-      currentGlobalParams, // Pass the current global params with batch size
+      currentGlobalParams,
       refinerToUse,
-      refinerParams
+      refinerParams,
+      publishToUse
     );
 
     setTimeout(() => {
@@ -166,10 +163,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
     }
   };
 
-  const handleDecrementBatchSize = () => {
-    decrementBatchSize();
-  };
-
   const isButtonDisabled = localLoading || ((prompt.trim() === '' && imageFiles.length === 0 && previewUrls.length === 0));
 
   return (
@@ -189,14 +182,13 @@ const PromptForm: React.FC<PromptFormProps> = ({
         
         <PromptFormToolbar 
           isLoading={localLoading}
-          batchSize={batchSize}
           selectedWorkflow={selectedWorkflow}
           selectedRefiner={selectedRefiner}
+          selectedPublish={selectedPublish}
           onImageUpload={handleImageUpload}
           onWorkflowChange={handleWorkflowChange}
           onRefinerChange={handleRefinerChange}
-          incrementBatchSize={incrementBatchSize}
-          decrementBatchSize={handleDecrementBatchSize}
+          onPublishChange={handlePublishChange}
           toggleAdvancedOptions={toggleAdvancedOptions}
           handleSubmit={handleSubmit}
           prompt={prompt}

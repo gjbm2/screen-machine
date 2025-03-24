@@ -1,24 +1,23 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Settings, ArrowUp, Image, Plus, Minus } from 'lucide-react';
+import { Settings, ArrowUp, Image } from 'lucide-react';
 import ImageUploader from '@/components/prompt/ImageUploader';
 import WorkflowIconSelector from '@/components/prompt/WorkflowIconSelector';
 import RefinerSelector from '@/components/prompt/RefinerSelector';
-import BatchControl from './BatchControl';
+import PublishSelector from './PublishSelector';
 import { ToolbarProps } from './types';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 const PromptFormToolbar: React.FC<ToolbarProps> = ({
   isLoading,
-  batchSize,
   selectedWorkflow,
   selectedRefiner,
+  selectedPublish,
   onImageUpload,
   onWorkflowChange,
   onRefinerChange,
-  incrementBatchSize,
-  decrementBatchSize,
+  onPublishChange,
   toggleAdvancedOptions,
   handleSubmit,
   prompt,
@@ -54,10 +53,9 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
           onRefinerChange={onRefinerChange}
         />
         
-        <BatchControl 
-          batchSize={batchSize}
-          incrementBatchSize={incrementBatchSize}
-          decrementBatchSize={decrementBatchSize}
+        <PublishSelector 
+          selectedPublish={selectedPublish || 'none'}
+          onPublishChange={onPublishChange}
           isCompact={isMobile}
         />
 
