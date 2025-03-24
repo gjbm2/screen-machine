@@ -3,8 +3,8 @@ import React from 'react';
 import { CaptionPosition } from '../types';
 
 interface CaptionRendererProps {
-  caption: string | null;
-  captionPosition?: CaptionPosition;
+  caption: string;
+  captionPosition: CaptionPosition;
   captionSize?: string;
   captionColor?: string;
   captionFont?: string;
@@ -16,7 +16,7 @@ interface CaptionRendererProps {
 
 export const CaptionRenderer: React.FC<CaptionRendererProps> = ({
   caption,
-  captionPosition = 'bottom-center',
+  captionPosition,
   captionSize = '16px',
   captionColor = 'ffffff',
   captionFont = 'Arial, sans-serif',
@@ -25,83 +25,70 @@ export const CaptionRenderer: React.FC<CaptionRendererProps> = ({
   containerWidth,
   screenWidth
 }) => {
-  if (!caption) return null;
-
-  const getCaptionScaledFontSize = (baseSize: string) => {
-    const matches = baseSize.match(/^(\d+(?:\.\d+)?)([a-z%]+)?$/i);
-    if (!matches) return baseSize;
-    
-    const size = parseFloat(matches[1]);
-    const unit = matches[2] || 'px';
-    
-    const scaleFactor = containerWidth / screenWidth;
-    
-    const scaledSize = Math.max(8, Math.min(32, size * scaleFactor));
-    
-    return `${scaledSize}${unit}`;
-  };
-
-  const getCaptionStyles = (): React.CSSProperties => {
-    const scaledFontSize = getCaptionScaledFontSize(captionSize);
-    
-    // Calculate background opacity - convert to hex
-    const bgOpacityHex = Math.round((captionBgOpacity || 0.7) * 255).toString(16).padStart(2, '0');
-    const bgColor = `${captionBgColor}${bgOpacityHex}`;
-    
-    // Determine text alignment based on position
-    let textAlign: React.CSSProperties['textAlign'] = 'center';
-    if (captionPosition?.includes('left')) {
-      textAlign = 'left';
-    } else if (captionPosition?.includes('right')) {
-      textAlign = 'right';
-    } else if (captionPosition?.includes('center')) {
-      textAlign = 'center';
-    }
-    
-    const styles: React.CSSProperties = {
-      position: 'absolute',
-      padding: '8px 16px',
-      backgroundColor: bgColor,
-      color: `#${captionColor}`,
-      fontSize: scaledFontSize,
-      fontFamily: captionFont,
-      maxWidth: '80%',
-      textAlign: textAlign,
-      borderRadius: '4px',
-      zIndex: 10,
-      // Only use pre-line when there are explicit newlines, otherwise no-wrap
-      whiteSpace: caption?.includes('\n') ? 'pre-line' : 'nowrap',
-    };
-    
-    if (captionPosition?.includes('top')) {
-      styles.top = '10px';
-    } else if (captionPosition?.includes('bottom')) {
-      styles.bottom = '10px';
-    } else {
-      styles.top = '50%';
-      styles.transform = 'translateY(-50%)';
-    }
-    
-    if (captionPosition?.includes('left')) {
-      styles.left = '10px';
-    } else if (captionPosition?.includes('right')) {
-      styles.right = '10px';
-    } else {
-      styles.left = '50%';
-      styles.transform = captionPosition === 'bottom-center' || captionPosition === 'top-center' ? 
-        'translateX(-50%)' : styles.transform || 'none';
-      
-      if (captionPosition && !captionPosition.includes('-')) {
-        styles.transform = 'translate(-50%, -50%)';
-      }
-    }
-    
-    return styles;
-  };
+  // Determine positioning based on captionPosition
+  let positionClasses = '';
+  let textAlignment = 'text-center';
+  
+  // Set horizontal alignment
+  if (captionPosition.includes('left')) {
+    textAlignment = 'text-left';
+  } else if (captionPosition.includes('right')) {
+    textAlignment = 'text-right';
+  } else if (captionPosition.includes('center')) {
+    textAlignment = 'text-center';
+  }
+  
+  // Set position on screen
+  if (captionPosition.startsWith('top')) {
+    positionClasses = 'top-0 left-0 right-0';
+  } else if (captionPosition.startsWith('middle')) {
+    positionClasses = 'top-1/2 -translate-y-1/2 left-0 right-0';
+  } else if (captionPosition.startsWith('bottom')) {
+    positionClasses = 'bottom-0 left-0 right-0';
+  }
+  
+  // Calculate max width based on screen size
+  const maxWidth = Math.min(containerWidth, screenWidth);
+  
+  // Pre-process caption to handle newlines
+  const captionLines = caption.split('\n');
 
   return (
-    <div style={getCaptionStyles()}>
-      {caption}
+    <div 
+      className={`absolute p-2 ${positionClasses} ${textAlignment}`}
+      style={{
+        maxWidth: `${maxWidth}px`,
+        marginLeft: 'auto',
+        marginRight: 'auto',
+        boxSizing: 'border-box',
+      }}
+    >
+      <div 
+        className="inline-block px-3 py-1" 
+        style={{
+          backgroundColor: captionBgColor,
+          opacity: captionBgOpacity,
+          borderRadius: '4px',
+        }}
+      >
+        {captionLines.map((line, index) => (
+          <div 
+            key={index}
+            style={{
+              color: `#${captionColor}`,
+              fontSize: captionSize,
+              fontFamily: captionFont,
+              lineHeight: '1.3',
+              whiteSpace: 'pre-wrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: '100%',
+            }}
+          >
+            {line || "\u00A0"}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

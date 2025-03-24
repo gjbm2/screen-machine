@@ -9,8 +9,8 @@ import { ScreenSizeSelector } from './ScreenSizeSelector';
 interface DebugImageHeaderProps {
   showMode: ShowMode;
   position: PositionMode;
-  selectedScreenSize: string;
-  setSelectedScreenSize: (size: string) => void;
+  selectedScreenSize: { name: string; width: number; height: number };
+  setSelectedScreenSize: (size: { name: string; width: number; height: number }) => void;
   imageChanged?: boolean;
   onSettingsChange?: () => void;
   onReset: () => void;
@@ -32,8 +32,17 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
       </div>
       <div className="flex items-center gap-1">
         <ScreenSizeSelector 
-          selectedSize={selectedScreenSize} 
-          onSelect={setSelectedScreenSize} 
+          selectedSize={selectedScreenSize.name} 
+          onSelect={(sizeName) => {
+            const sizeOptions = [
+              { name: 'Mobile', width: 375, height: 667 },
+              { name: 'Tablet', width: 768, height: 1024 },
+              { name: 'Desktop', width: 1280, height: 720 },
+              { name: 'Large Desktop', width: 1920, height: 1080 }
+            ];
+            const newSize = sizeOptions.find(s => s.name === sizeName) || sizeOptions[0];
+            setSelectedScreenSize(newSize);
+          }} 
         />
         <Button 
           size="icon" 
