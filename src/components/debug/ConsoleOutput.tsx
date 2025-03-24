@@ -14,11 +14,15 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs }) => {
     }
   }, [logs]);
   
-  // Sort logs by timestamp if they have a timestamp format [HH:MM:SS]
+  // Ensure logs are strings and then sort by timestamp if they have a timestamp format [HH:MM:SS]
   const sortedLogs = [...logs].sort((a, b) => {
+    // Ensure a and b are strings
+    const strA = String(a);
+    const strB = String(b);
+    
     const timeRegex = /\[(\d{1,2}):(\d{2}):(\d{2})\]/;
-    const matchA = a.match(timeRegex);
-    const matchB = b.match(timeRegex);
+    const matchA = strA.match(timeRegex);
+    const matchB = strB.match(timeRegex);
     
     if (matchA && matchB) {
       const timeA = new Date();

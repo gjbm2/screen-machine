@@ -165,6 +165,7 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     resetDisplay,
     commitSettings,
     copyUrl,
+    // Use selectFileHandler which returns the correct type
     selectFile: selectFileHandler,
     formatFileName,
     resetSettings,
