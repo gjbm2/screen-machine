@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { processOutputParam, fetchOutputFiles, extractImageMetadata } from '@/components/display/utils';

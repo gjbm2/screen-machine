@@ -63,7 +63,7 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
         <DebugPanel 
           params={params}
           imageUrl={imageUrl}
-          lastModified={lastModified ? new Date(lastModified) : null}
+          lastModified={lastModified}
           lastChecked={lastChecked}
           nextCheckTime={nextCheckTime}
           imageKey={imageKey}

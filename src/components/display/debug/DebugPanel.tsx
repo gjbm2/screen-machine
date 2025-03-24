@@ -18,7 +18,7 @@ interface DebugPanelProps {
   imageUrl: string | null;
   lastModified: string | null;
   lastChecked: Date | null;
-  nextCheckTime: string | null;
+  nextCheckTime: Date | null;
   imageKey: number;
   outputFiles: string[];
   imageChanged?: boolean;
