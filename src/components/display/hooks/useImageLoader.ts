@@ -13,7 +13,8 @@ export const useImageLoader = (
     currentImage: string | null, 
     position: string, 
     showMode: string,
-    getPositionStyle: (position: string, showMode: string) => React.CSSProperties
+    getPositionStyle: (position: string, showMode: string) => React.CSSProperties,
+    transitionType?: string
   ) => number,
   executeTransition: (duration: number, onComplete: () => void) => void,
   getImagePositionStyle: (position: string, showMode: string) => React.CSSProperties
@@ -77,14 +78,13 @@ export const useImageLoader = (
             }
           }
           
-          const duration = params.transition === 'fade-fast' ? 1 : 2;
-          
-          // Initialize the transition
-          initializeTransition(
+          // Initialize the transition, passing the transition type
+          const duration = initializeTransition(
             currentImageUrl, 
             params.position, 
             params.showMode,
-            getImagePositionStyle
+            getImagePositionStyle,
+            params.transition
           );
           
           // Execute the transition

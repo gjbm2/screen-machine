@@ -12,11 +12,19 @@ export const useTransitionEffect = () => {
     currentImage: string | null,
     position: string,
     showMode: string,
-    getPositionStyle: (position: string, showMode: string) => React.CSSProperties
+    getPositionStyle: (position: string, showMode: string) => React.CSSProperties,
+    transitionType: string = 'fade-fast'
   ) => {
     setOldImageUrl(currentImage);
     
-    const duration = 1; // Default duration
+    // Determine transition duration based on type
+    let duration = 2; // default for fade-fast
+    
+    if (transitionType === 'fade-slow') {
+      duration = 10;
+    } else if (transitionType === 'fade-fast') {
+      duration = 2;
+    }
     
     setOldImageStyle({
       position: 'absolute',

@@ -1,11 +1,10 @@
 
 import React from 'react';
-import { TabsContent } from "@/components/ui/tabs";
 import { FilesPanel } from './panels/FilesPanel';
 import { SettingsPanel } from './panels/SettingsPanel';
 import { MetadataPanel } from './panels/MetadataPanel';
 import { CaptionPanel } from './panels/CaptionPanel';
-import { ShowMode, PositionMode, CaptionPosition, TransitionType } from '../types';
+import { ShowMode, PositionMode, CaptionPosition, TransitionType, MetadataEntry } from '../types';
 
 interface DebugPanelContentProps {
   activeTab: string;
@@ -16,23 +15,23 @@ interface DebugPanelContentProps {
   setCustomUrl: (url: string) => void;
   selectFile: (file: string) => void;
   isCurrentFile: (file: string) => boolean;
-  formatFileName: (file: string) => string;
+  formatFileName: (fileName: string) => string;
   showMode: ShowMode;
   position: PositionMode;
-  refreshInterval: number;
+  refreshInterval: number; 
   backgroundColor: string;
   transition: TransitionType;
-  setShowMode: (value: ShowMode) => void;
-  setPosition: (value: PositionMode) => void;
-  setRefreshInterval: (value: number) => void;
-  setBackgroundColor: (value: string) => void;
-  setTransition: (value: TransitionType) => void;
+  setShowMode: (mode: ShowMode) => void;
+  setPosition: (position: PositionMode) => void;
+  setRefreshInterval: (interval: number) => void;
+  setBackgroundColor: (color: string) => void;
+  setTransition: (transition: TransitionType) => void;
   resetSettings: () => void;
-  metadataEntries: Array<{key: string, value: string}>;
+  metadataEntries: MetadataEntry[];
   insertMetadataTag: (key: string) => void;
   setActiveTab: (tab: string) => void;
-  onRefreshMetadata: () => Promise<Record<string, string>>;
-  caption: string;
+  onRefreshMetadata: () => void;
+  caption: string | null;
   previewCaption: string | null;
   captionPosition: CaptionPosition;
   captionSize: string;
@@ -40,17 +39,18 @@ interface DebugPanelContentProps {
   captionFont: string;
   captionBgColor: string;
   captionBgOpacity: number;
-  setCaption: (value: string) => void;
-  setCaptionPosition: (value: CaptionPosition) => void;
-  setCaptionSize: (value: string) => void;
-  setCaptionColor: (value: string) => void;
-  setCaptionFont: (value: string) => void;
-  setCaptionBgColor: (value: string) => void;
-  setCaptionBgOpacity: (value: number) => void;
+  setCaption: (caption: string | null) => void;
+  setCaptionPosition: (position: CaptionPosition) => void;
+  setCaptionSize: (size: string) => void;
+  setCaptionColor: (color: string) => void;
+  setCaptionFont: (font: string) => void;
+  setCaptionBgColor: (color: string) => void;
+  setCaptionBgOpacity: (opacity: number) => void;
   insertAllMetadata: () => void;
+  applySettings?: () => void;
 }
 
-export const DebugPanelContent: React.FC<DebugPanelContentProps> = ({
+const DebugPanelContent: React.FC<DebugPanelContentProps> = ({
   activeTab,
   outputFiles,
   imageChanged,
@@ -90,11 +90,12 @@ export const DebugPanelContent: React.FC<DebugPanelContentProps> = ({
   setCaptionFont,
   setCaptionBgColor,
   setCaptionBgOpacity,
-  insertAllMetadata
+  insertAllMetadata,
+  applySettings
 }) => {
   return (
-    <>
-      <TabsContent value="files" className="mt-0 flex-1 overflow-hidden">
+    <div className="flex-1 overflow-hidden flex flex-col">
+      {activeTab === 'files' && (
         <FilesPanel 
           outputFiles={outputFiles}
           imageChanged={imageChanged}
@@ -105,9 +106,9 @@ export const DebugPanelContent: React.FC<DebugPanelContentProps> = ({
           isCurrentFile={isCurrentFile}
           formatFileName={formatFileName}
         />
-      </TabsContent>
+      )}
       
-      <TabsContent value="settings" className="mt-0 flex-1 overflow-auto">
+      {activeTab === 'settings' && (
         <SettingsPanel 
           showMode={showMode}
           position={position}
@@ -120,19 +121,20 @@ export const DebugPanelContent: React.FC<DebugPanelContentProps> = ({
           setBackgroundColor={setBackgroundColor}
           setTransition={setTransition}
           resetSettings={resetSettings}
+          applySettings={applySettings}
         />
-      </TabsContent>
+      )}
       
-      <TabsContent value="metadata" className="mt-0 flex-1 overflow-hidden">
+      {activeTab === 'metadata' && (
         <MetadataPanel 
           metadataEntries={metadataEntries}
           insertMetadataTag={insertMetadataTag}
           setActiveTab={setActiveTab}
           onRefreshMetadata={onRefreshMetadata}
         />
-      </TabsContent>
+      )}
       
-      <TabsContent value="caption" className="mt-0 flex-1 overflow-hidden">
+      {activeTab === 'caption' && (
         <CaptionPanel 
           caption={caption}
           previewCaption={previewCaption}
@@ -149,9 +151,13 @@ export const DebugPanelContent: React.FC<DebugPanelContentProps> = ({
           setCaptionFont={setCaptionFont}
           setCaptionBgColor={setCaptionBgColor}
           setCaptionBgOpacity={setCaptionBgOpacity}
+          insertMetadataTag={insertMetadataTag}
           insertAllMetadata={insertAllMetadata}
+          applySettings={applySettings}
         />
-      </TabsContent>
-    </>
+      )}
+    </div>
   );
 };
+
+export default DebugPanelContent;
