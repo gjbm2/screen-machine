@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
@@ -6,7 +5,6 @@ import { ShowMode, PositionMode, CaptionPosition } from './types';
 import { useDebugImageContainer } from './debug/useDebugImageContainer';
 import { DebugImageHeader } from './debug/DebugImageHeader';
 import { DebugImageContent } from './debug/DebugImageContent';
-import { SCREEN_SIZES } from './debug/ScreenSizeSelector';
 
 interface DebugImageContainerProps {
   imageUrl: string | null;
@@ -79,15 +77,12 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
     navigate('/display');
   };
 
-  // Add focus handling to bring this panel to the top
   const handlePanelMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isFixedPanel) return;
     
-    // Call the parent's focus handler to raise z-index
     if (onFocus) {
       onFocus();
     }
-    // Call the original mouse down handler
     handleMouseDown(e);
   };
 
@@ -106,6 +101,8 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         resize: 'none' as const
       };
 
+  const selectedSizeString = selectedSize.name;
+
   return (
     <Card 
       ref={containerRef}
@@ -118,7 +115,6 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         position={position}
         selectedSize={selectedSize}
         setSelectedSize={(size) => {
-          // Accept both object and string forms
           if (typeof size === 'string') {
             const foundSize = SCREEN_SIZES.find(s => s.name === size);
             return foundSize || selectedSize;
@@ -153,7 +149,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         imageDimensions={imageDimensions}
         imageRef={imageRef}
         viewportRatio={viewportRatio}
-        selectedSize={selectedSize.name}
+        selectedSize={selectedSizeString}
         onResizeStart={isFixedPanel ? undefined : handleResizeStart}
       />
     </Card>
