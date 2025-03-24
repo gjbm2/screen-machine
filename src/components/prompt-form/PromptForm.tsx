@@ -9,6 +9,7 @@ import AdvancedOptions from '@/components/AdvancedOptions';
 import { PromptFormProps, WorkflowProps } from './types';
 import useExternalImageUrls from '@/hooks/use-external-images';
 import ImagePreviewSection from './ImagePreviewSection';
+import { Workflow } from '@/types/workflows';
 
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
@@ -194,14 +195,14 @@ const PromptForm: React.FC<PromptFormProps> = ({
           handleSubmit={handleSubmit}
           prompt={prompt}
           isButtonDisabled={isButtonDisabled}
-          workflows={workflows as unknown as WorkflowProps[]}
+          workflows={workflows as WorkflowProps[]}
           isCompact={false}
           hasUploadedImages={previewUrls.length > 0}
         />
         
         {isAdvancedOptionsOpen && (
           <AdvancedOptions
-            workflows={workflows}
+            workflows={workflows as Workflow[]}
             selectedWorkflow={selectedWorkflow}
             onWorkflowChange={handleWorkflowChange}
             params={workflowParams}
