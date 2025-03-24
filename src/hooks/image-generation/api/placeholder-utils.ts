@@ -24,6 +24,9 @@ export const createPlaceholderBatch = (
   const placeholders: GeneratedImage[] = [];
   
   console.log('[placeholder-utils] Creating', batchSize, 'placeholders for batch', batchId, 'with containerId', containerId);
+  console.log('[placeholder-utils] With params:', params);
+  console.log('[placeholder-utils] With refiner:', refiner);
+  console.log('[placeholder-utils] With refinerParams:', refinerParams);
   
   for (let i = 0; i < batchSize; i++) {
     // If this index already exists in the batch, skip it

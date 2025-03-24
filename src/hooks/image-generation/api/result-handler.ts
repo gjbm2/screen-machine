@@ -77,20 +77,34 @@ export const processGenerationResults = (
     
     if (existingImageIndex !== -1) {
       // Update the existing placeholder
+      const existingImage = updatedImages[existingImageIndex];
+      const existingParams = existingImage.params || {};
+      const existingRefiner = existingImage.refiner;
+      const existingRefinerParams = existingImage.refinerParams || {};
+      
+      // Preserve or update parameters
       updatedImages[existingImageIndex] = {
-        ...updatedImages[existingImageIndex],
+        ...existingImage,
         url: responseImage.url,
         status: imageStatus as ImageGenerationStatus,
-        prompt: responseImage.prompt || updatedImages[existingImageIndex].prompt,
-        workflow: responseImage.workflow || updatedImages[existingImageIndex].workflow,
+        prompt: responseImage.prompt || existingImage.prompt,
+        workflow: responseImage.workflow || existingImage.workflow,
         timestamp: responseImage.timestamp || Date.now(),
         batchIndex: batchIndex,
-        title: `${window.imageCounter + 1}. ${responseImage.prompt || updatedImages[existingImageIndex].prompt} (${responseImage.workflow || updatedImages[existingImageIndex].workflow})`,
-        params: responseImage.params || updatedImages[existingImageIndex].params,
-        refiner: responseImage.refiner || updatedImages[existingImageIndex].refiner,
-        refinerParams: responseImage.refiner_params || updatedImages[existingImageIndex].refinerParams,
+        title: `${window.imageCounter + 1}. ${responseImage.prompt || existingImage.prompt} (${responseImage.workflow || existingImage.workflow})`,
+        // Preserve params from placeholder or use response params
+        params: responseImage.params || existingParams,
+        // Preserve refiner from placeholder or use response refiner
+        refiner: responseImage.refiner || existingRefiner,
+        // Preserve refinerParams from placeholder or use response refiner_params
+        refinerParams: responseImage.refiner_params || existingRefinerParams,
         containerId: containerId
       };
+      
+      // Log what we're preserving for debugging
+      console.log('Preserving/updating params:', updatedImages[existingImageIndex].params);
+      console.log('Preserving/updating refiner:', updatedImages[existingImageIndex].refiner);
+      console.log('Preserving/updating refinerParams:', updatedImages[existingImageIndex].refinerParams);
       
       // Increment the counter
       if (window.imageCounter !== undefined) {
@@ -108,7 +122,7 @@ export const processGenerationResults = (
         status: imageStatus as ImageGenerationStatus,
         timestamp: responseImage.timestamp || Date.now(),
         title: `${window.imageCounter + 1}. ${responseImage.prompt} (${responseImage.workflow || 'unknown'})`,
-        params: responseImage.params,
+        params: responseImage.params || {},
         refiner: responseImage.refiner,
         refinerParams: responseImage.refiner_params,
         containerId: containerId
