@@ -1,9 +1,7 @@
-
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
 import { GeneratedImage } from '../types';
-import { ApiResponse, GenerateImagePayload } from './types';
 import { processUploadedFiles } from './reference-image-utils';
 import { createPlaceholderBatch } from './placeholder-utils';
 import { processGenerationResults, markBatchAsError } from './result-handler';
@@ -57,6 +55,16 @@ export const generateImage = async (
     setActiveGenerations
   } = actions;
 
+  // Log all incoming parameters for debugging
+  console.log('[image-generator] Generating with parameters:');
+  console.log('- prompt:', prompt);
+  console.log('- workflow:', workflow);
+  console.log('- params:', params);
+  console.log('- globalParams:', globalParams);
+  console.log('- refiner:', refiner);
+  console.log('- refinerParams:', refinerParams);
+  console.log('- publish destination:', params.publish_destination);
+
   // Create or use the provided batch ID
   const currentBatchId = batchId || nanoid();
   
@@ -107,7 +115,6 @@ export const generateImage = async (
           imageUrls: uploadedImageUrls
         }
       });
-      console.log(`[image-generator] Using reference images: ${uploadedImageUrls.join(', ')}`);
     }
 
     // Get batch size from globalParams, with fallback to 1
@@ -129,23 +136,13 @@ export const generateImage = async (
       }
     });
     
-    console.log(`[image-generator] Creating placeholders for batch of ${batchSize} images with prompt: "${prompt}"`);
-    if (refiner) {
-      console.log(`[image-generator] Using refiner: ${refiner}`);
-    }
+    // Log publish destination if present
     if (params.publish_destination) {
       console.log(`[image-generator] Using publish destination: ${params.publish_destination}`);
     }
 
     // Prepare reference image URL string - make sure it's not empty
     const referenceImageUrl = uploadedImageUrls.length > 0 ? uploadedImageUrls.join(',') : undefined;
-    
-    // Additional debug log for reference images
-    if (referenceImageUrl) {
-      console.log("[image-generator] Reference images being used for generation:", referenceImageUrl);
-    }
-    
-    console.log(`[image-generator] Creating ${batchSize} placeholder(s) for batch ${currentBatchId}`);
     
     // Determine which container ID to use
     const containerIdToUse = getContainerIdForBatch(batchId, existingContainerId, nextContainerId);
@@ -171,8 +168,8 @@ export const generateImage = async (
     // Use setTimeout to allow the UI to update before starting the API call
     setTimeout(async () => {
       try {
-        // Make the API call
-        const payload: GenerateImagePayload = {
+        // Make the API call with all parameters
+        const payload = {
           prompt,
           workflow,
           params,
@@ -183,8 +180,8 @@ export const generateImage = async (
           batch_id: currentBatchId
         };
         
-        // Enhanced logging to debug batch size issues
-        console.log("[image-generator] API payload:", payload);
+        // Enhanced logging to debug
+        console.log("[image-generator] Sending API payload:", payload);
         
         const response = await apiService.generateImage(payload);
         
@@ -196,6 +193,7 @@ export const generateImage = async (
             hasReferenceImages: uploadedImageUrls.length > 0,
             referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
             refiner: refiner || undefined,
+            refinerParams: refinerParams || undefined,
             publishDestination: params.publish_destination || undefined
           }
         });
