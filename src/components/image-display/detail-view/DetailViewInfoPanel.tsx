@@ -11,11 +11,11 @@ interface DetailViewInfoPanelProps {
     workflow: string;
     params?: Record<string, any>;
     timestamp?: number;
-    referenceImageUrl?: string;
+    referenceImageUrl?: string | string[];
     title?: string; // Added title property to the activeImage type
   };
   dimensions: { width: number; height: number };
-  referenceImageUrl?: string;
+  referenceImageUrl?: string | string[];
   showReferenceImage: boolean;
   setShowReferenceImage: (show: boolean) => void;
   handleCreateAgain: () => void;
@@ -68,7 +68,7 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
       return urls.length > 0;
     }
     
-    // Fix the type issue: ensure effectiveReferenceImageUrl is treated as an array with proper type checking
+    // Add explicit type guard before checking length 
     return Array.isArray(effectiveReferenceImageUrl) && effectiveReferenceImageUrl.length > 0;
   }, [effectiveReferenceImageUrl]);
   
