@@ -57,26 +57,26 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
     imageRef.current?.naturalHeight || 0
   );
 
-  // State to track which panel should be on top
-  const [debugPanelZIndex, setDebugPanelZIndex] = useState(11);
-  const [imageContainerZIndex, setImageContainerZIndex] = useState(10);
+  // State to track which panel should be on top (using actual CSS z-index values)
+  const [debugPanelZIndex, setDebugPanelZIndex] = useState(30);
+  const [imageContainerZIndex, setImageContainerZIndex] = useState(20);
 
   // Handle focus for the debug panel
   const handleDebugPanelFocus = () => {
-    setDebugPanelZIndex(12);
-    setImageContainerZIndex(10);
+    setDebugPanelZIndex(40);
+    setImageContainerZIndex(20);
   };
 
   // Handle focus for the image container
   const handleImageContainerFocus = () => {
-    setDebugPanelZIndex(10);
-    setImageContainerZIndex(12);
+    setDebugPanelZIndex(20);
+    setImageContainerZIndex(40);
   };
 
   if (params.debugMode) {
     return (
       <>
-        <div style={{ zIndex: debugPanelZIndex }}>
+        <div style={{ position: 'absolute', zIndex: debugPanelZIndex }}>
           <DebugPanel 
             params={params}
             imageUrl={imageUrl}
@@ -92,7 +92,7 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
             onFocus={handleDebugPanelFocus}
           />
         </div>
-        <div style={{ zIndex: imageContainerZIndex }}>
+        <div style={{ position: 'absolute', zIndex: imageContainerZIndex }}>
           <DebugImageContainer 
             imageUrl={imageUrl}
             imageKey={imageKey}

@@ -59,14 +59,14 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     panelRef,
     panelSize,
     handleMouseDown,
-    handleResizeStart: positionResizeHandler, // Renamed to avoid conflict
+    handleResizeStart: positionResizeHandler,
     isResizing,
     setIsResizing,
     resizeStart,
     setResizeStart,
     dragOffset,
-    setPanelSize,
-    setPosition: setPosition2
+    setPosition: setPosition2,
+    setPanelSize
   } = useDebugPanelPosition();
 
   const {
@@ -158,8 +158,8 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     return isCurrentFile(file, imageUrl);
   };
 
-  // We're using the resize handler from useDebugPanelPosition
-  const handleResizeStart = (e: React.MouseEvent) => {
+  // We're using the positionResizeHandler as our main resize handler
+  const handleResizeStartInternal = (e: React.MouseEvent) => {
     positionResizeHandler(e);
   };
 
@@ -211,7 +211,7 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     formatTime,
     insertAllMetadata,
     handleMouseDown,
-    handleResizeStart,
+    handleResizeStart: handleResizeStartInternal,
     handleRefreshMetadata
   };
 };
