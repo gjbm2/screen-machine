@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { CardContent } from "@/components/ui/card";
 import { CaptionRenderer } from './CaptionRenderer';
 import { ShowMode, PositionMode, CaptionPosition } from '../types';
@@ -53,42 +53,45 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
   viewportRatio,
   onResizeStart
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const screenContainerRef = useRef<HTMLDivElement>(null);
+  const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
   
-  // Apply selected screen size to container
+  // Apply selected screen size to container and handle proper scaling
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!screenContainerRef.current || !contentRef.current) return;
     
     const selectedSizeObj = SCREEN_SIZES.find(size => size.name === selectedSize);
     if (!selectedSizeObj) return;
     
-    // Calculate the maximum size that fits in the available space
-    const parentWidth = contentRef.current?.clientWidth || window.innerWidth;
-    const parentHeight = contentRef.current?.clientHeight || window.innerHeight;
+    // Get parent dimensions
+    const parentWidth = contentRef.current.clientWidth;
+    const parentHeight = contentRef.current.clientHeight;
     
     // Calculate aspect ratio of the selected size
     const aspectRatio = selectedSizeObj.width / selectedSizeObj.height;
     
-    // Calculate maximum dimensions that fit within the parent container
-    const maxWidth = Math.min(selectedSizeObj.width, parentWidth);
-    const maxHeight = Math.min(selectedSizeObj.height, parentHeight);
+    // Determine max dimensions that fit within the parent
+    let maxWidth = parentWidth - 40; // Padding
+    let maxHeight = parentHeight - 40; // Padding
     
     // Calculate dimensions based on aspect ratio
     let width, height;
+    
+    // Calculate which dimension is the limiting factor
     if (maxWidth / aspectRatio <= maxHeight) {
-      // Width is the limiting factor
       width = maxWidth;
       height = width / aspectRatio;
     } else {
-      // Height is the limiting factor
       height = maxHeight;
       width = height * aspectRatio;
     }
     
-    // Apply dimensions to container
-    containerRef.current.style.width = `${width}px`;
-    containerRef.current.style.height = `${height}px`;
-  }, [selectedSize, contentRef]);
+    // Set dimensions on the container
+    screenContainerRef.current.style.width = `${width}px`;
+    screenContainerRef.current.style.height = `${height}px`;
+    
+    setContainerDimensions({ width, height });
+  }, [selectedSize, contentRef, containerWidth]);
   
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     // Forward the event to parent component
@@ -101,9 +104,9 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
       ref={contentRef}
     >
       <div 
-        ref={containerRef}
-        className="relative overflow-hidden bg-gray-900"
-        style={{ backgroundColor }}
+        ref={screenContainerRef}
+        className="relative border border-gray-300 shadow-md bg-gray-900 flex items-center justify-center"
+        style={{ backgroundColor, transition: "width 0.3s, height 0.3s" }}
       >
         {imageUrl ? (
           <>
@@ -112,12 +115,14 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
               key={`image-${imageKey}`}
               src={imageUrl}
               alt="Preview"
-              className="w-full h-full object-contain"
+              className="max-w-full max-h-full"
               onLoad={handleImageLoad}
               onError={onImageError}
               style={{
-                objectFit: showMode === 'contain' ? 'contain' : 'cover',
-                objectPosition: position === 'center' ? 'center' : position
+                objectFit: showMode === ShowMode.Contain ? 'contain' : 'cover',
+                objectPosition: position === PositionMode.Center ? 'center' : position,
+                width: '100%',
+                height: '100%'
               }}
             />
             
@@ -130,7 +135,7 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
                 fontFamily={captionFont}
                 backgroundColor={captionBgColor}
                 backgroundOpacity={captionBgOpacity}
-                containerWidth={containerRef.current?.clientWidth || window.innerWidth}
+                containerWidth={containerDimensions.width}
                 screenWidth={window.innerWidth}
               />
             )}

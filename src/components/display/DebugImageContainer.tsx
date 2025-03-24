@@ -59,8 +59,6 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   const navigate = useNavigate();
   
   const {
-    selectedScreenSize,
-    setSelectedScreenSizeObject,
     imageDimensions,
     containerWidth,
     containerHeight,
@@ -117,8 +115,14 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       <DebugImageHeader
         showMode={showMode}
         position={position}
-        selectedScreenSize={selectedSize}
-        setSelectedScreenSize={setSelectedScreenSizeObject}
+        selectedScreenSize={selectedSize.name}
+        setSelectedScreenSize={(size) => {
+          // Handle the size object correctly by extracting the name
+          if (typeof size === 'object' && size.name) {
+            return size.name;
+          }
+          return size;
+        }}
         imageChanged={imageChanged}
         onSettingsChange={onSettingsChange}
         onReset={handleReset}
@@ -147,7 +151,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         imageDimensions={imageDimensions}
         imageRef={imageRef}
         viewportRatio={viewportRatio}
-        selectedSize={selectedSize}
+        selectedSize={selectedSize.name}
         onResizeStart={isFixedPanel ? undefined : handleResizeStart}
       />
     </Card>
