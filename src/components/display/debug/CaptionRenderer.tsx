@@ -48,6 +48,16 @@ export const CaptionRenderer: React.FC<CaptionRendererProps> = ({
     const bgOpacityHex = Math.round((captionBgOpacity || 0.7) * 255).toString(16).padStart(2, '0');
     const bgColor = `${captionBgColor}${bgOpacityHex}`;
     
+    // Determine text alignment based on position
+    let textAlign: React.CSSProperties['textAlign'] = 'center';
+    if (captionPosition?.includes('left')) {
+      textAlign = 'left';
+    } else if (captionPosition?.includes('right')) {
+      textAlign = 'right';
+    } else if (captionPosition?.includes('center')) {
+      textAlign = 'center';
+    }
+    
     const styles: React.CSSProperties = {
       position: 'absolute',
       padding: '8px 16px',
@@ -56,10 +66,11 @@ export const CaptionRenderer: React.FC<CaptionRendererProps> = ({
       fontSize: scaledFontSize,
       fontFamily: captionFont,
       maxWidth: '80%',
-      textAlign: 'center',
+      textAlign: textAlign,
       borderRadius: '4px',
       zIndex: 10,
-      whiteSpace: caption?.includes('\n') ? 'pre-line' : 'normal',
+      // Only use pre-line when there are explicit newlines, otherwise no-wrap
+      whiteSpace: caption?.includes('\n') ? 'pre-line' : 'nowrap',
     };
     
     if (captionPosition?.includes('top')) {

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
 import { ShowMode, PositionMode, CaptionPosition } from './types';
@@ -25,6 +25,7 @@ interface DebugImageContainerProps {
   captionBgOpacity?: number;
   metadata?: Record<string, string>;
   onSettingsChange?: () => void;
+  onFocus?: () => void;
 }
 
 export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
@@ -44,7 +45,8 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   captionBgColor = '#000000',
   captionBgOpacity = 0.7,
   metadata = {},
-  onSettingsChange
+  onSettingsChange,
+  onFocus
 }) => {
   const navigate = useNavigate();
   
@@ -70,6 +72,16 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
     navigate('/display');
   };
 
+  // Add focus handling to bring this panel to the top
+  const handlePanelMouseDown = (e: React.MouseEvent) => {
+    // Call the parent's focus handler to raise z-index
+    if (onFocus) {
+      onFocus();
+    }
+    // Call the original mouse down handler
+    handleMouseDown(e);
+  };
+
   return (
     <Card 
       ref={containerRef}
@@ -82,7 +94,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         cursor: isDragging ? 'grabbing' : 'grab',
         resize: 'none'
       }}
-      onMouseDown={handleMouseDown}
+      onMouseDown={handlePanelMouseDown}
     >
       <DebugImageHeader
         showMode={showMode}
