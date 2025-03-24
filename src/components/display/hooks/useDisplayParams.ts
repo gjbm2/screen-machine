@@ -51,6 +51,13 @@ export const useDisplayParams = () => {
       params.data = { error: 'Failed to parse data' };
     }
   }
+
+  // NEW: Auto-enable debug mode if no parameters are specified
+  const hasAnyParams = searchParams.toString().length > 0;
+  if (!hasAnyParams) {
+    params.debugMode = true;
+    console.log('[useDisplayParams] No parameters provided, enabling debug mode automatically');
+  }
   
   // Debugging log to show all extracted parameters
   console.log('[useDisplayParams] Parsed params:', params);

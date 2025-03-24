@@ -101,9 +101,23 @@ export const useDebugPanelFiles = ({
   };
   
   const selectFile = (file: string) => {
+    // FIX: Return a proper function that actually loads the file in the preview
     return () => {
-      // Set the custom URL to the selected file
+      // Set the custom URL to the selected file and notify
       console.log('[useDebugPanelFiles] Selected file:', file);
+      toast({
+        title: "Image Selected",
+        description: `Now displaying: ${file.split('/').pop()}`,
+      });
+      
+      // Update the current URL to display the selected file with debug mode enabled
+      let outputPath = file;
+      if (!outputPath.startsWith('/')) {
+        outputPath = `/output/${outputPath}`;
+      }
+      
+      // Use navigate to update the URL with the selected image
+      navigate(`/display?output=${encodeURIComponent(outputPath)}&debug=true`);
     };
   };
   
@@ -114,7 +128,14 @@ export const useDebugPanelFiles = ({
   
   const isCurrentFile = (file: string, imageUrl: string | null) => {
     if (!imageUrl) return false;
-    return imageUrl.includes(file);
+    
+    // Normalize paths for comparison
+    const normalizedFile = file.startsWith('/') ? file : `/output/${file}`;
+    const normalizedImageUrl = imageUrl.includes('/output/') ? 
+      imageUrl : 
+      (imageUrl.startsWith('/') ? imageUrl : `/output/${imageUrl}`);
+    
+    return normalizedImageUrl.includes(normalizedFile);
   };
   
   const formatTime = (date: Date | null) => {
