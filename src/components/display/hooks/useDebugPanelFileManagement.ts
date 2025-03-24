@@ -13,58 +13,57 @@ export const useDebugPanelFileManagement = ({
 }: UseDebugPanelFileManagementProps) => {
   const navigate = useNavigate();
 
+  // Updated to return a function that directly selects the file
   const selectFile = (file: string) => {
-    return () => {
-      console.log('[useDebugPanelFileManagement] Selected file:', file);
-      
-      // Handle fully formed URLs (especially with query parameters) differently
-      let outputPath;
-      if (file.startsWith('http://') || file.startsWith('https://')) {
-        // Don't process URLs through normalizePathForDisplay - use directly
-        console.log('[useDebugPanelFileManagement] Using external URL directly:', file);
-        outputPath = file;
-      } else {
-        // For local files, normalize the path using our utility
-        outputPath = processOutputParam(file);
-        console.log('[useDebugPanelFileManagement] Normalized local path:', outputPath);
-      }
-      
-      if (!outputPath) {
-        console.error('[useDebugPanelFileManagement] Failed to process output path');
-        toast.error("Failed to process file path");
-        return;
-      }
-      
-      // Create a URL with the debug mode and selected file
-      const newParams = {
-        ...params,
-        output: outputPath,
-        debugMode: true
-      };
-      
-      const url = createUrlWithParams(newParams);
-      console.log('[useDebugPanelFileManagement] Navigating to:', url);
-      
-      // Notify the user before navigation
-      toast.success(`Loading: ${formatFileName(file)}`);
-      
-      // Navigate to the URL
-      navigate(`/display${url}`, { replace: false });
-      
-      // Force a refresh after navigation to ensure the image loads
-      setTimeout(() => {
-        console.log('[useDebugPanelFileManagement] Post-navigation check');
-        const currentParams = new URLSearchParams(window.location.search);
-        const currentOutput = currentParams.get('output');
-        
-        console.log('[useDebugPanelFileManagement] Current output param:', currentOutput);
-        
-        // If we have the right param but image isn't showing, consider forcing a refresh
-        if (currentOutput === outputPath) {
-          console.log('[useDebugPanelFileManagement] Output param is set correctly');
-        }
-      }, 500);
+    console.log('[useDebugPanelFileManagement] Selected file:', file);
+    
+    // Handle fully formed URLs (especially with query parameters) differently
+    let outputPath;
+    if (file.startsWith('http://') || file.startsWith('https://')) {
+      // Don't process URLs through normalizePathForDisplay - use directly
+      console.log('[useDebugPanelFileManagement] Using external URL directly:', file);
+      outputPath = file;
+    } else {
+      // For local files, normalize the path using our utility
+      outputPath = processOutputParam(file);
+      console.log('[useDebugPanelFileManagement] Normalized local path:', outputPath);
+    }
+    
+    if (!outputPath) {
+      console.error('[useDebugPanelFileManagement] Failed to process output path');
+      toast.error("Failed to process file path");
+      return;
+    }
+    
+    // Create a URL with the debug mode and selected file
+    const newParams = {
+      ...params,
+      output: outputPath,
+      debugMode: true
     };
+    
+    const url = createUrlWithParams(newParams);
+    console.log('[useDebugPanelFileManagement] Navigating to:', url);
+    
+    // Notify the user before navigation
+    toast.success(`Loading: ${formatFileName(file)}`);
+    
+    // Navigate to the URL
+    navigate(`/display${url}`, { replace: false });
+    
+    // Force a refresh after navigation to ensure the image loads
+    setTimeout(() => {
+      console.log('[useDebugPanelFileManagement] Post-navigation check');
+      const currentParams = new URLSearchParams(window.location.search);
+      const currentOutput = currentParams.get('output');
+      
+      console.log('[useDebugPanelFileManagement] Current output param:', currentOutput);
+      
+      // If we have the right param but image isn't showing, consider forcing a refresh
+      if (currentOutput === outputPath) {
+        console.log('[useDebugPanelFileManagement] Output param is set correctly');
+      }
+    }, 500);
   };
 
   const formatFileName = (file: string) => {
@@ -79,7 +78,7 @@ export const useDebugPanelFileManagement = ({
     return file.split('/').pop() || file;
   };
 
-  const isCurrentFile = (file: string, imageUrl: string | null) => {
+  const isCurrentFile = (file: string, imageUrl: string | null = null) => {
     if (!imageUrl) return false;
     
     // Handle external URLs with query parameters

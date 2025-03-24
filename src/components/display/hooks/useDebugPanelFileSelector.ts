@@ -2,7 +2,7 @@
 import { useCallback } from 'react';
 
 interface UseDebugPanelFileSelectorProps {
-  selectFile: (file: string) => () => void;
+  selectFile: (file: string) => void;
   isCurrentFile: (file: string, imageUrl: string | null) => boolean;
   imageUrl: string | null;
 }
@@ -16,11 +16,7 @@ export const useDebugPanelFileSelector = ({
   // Create a callback to handle file selection
   const selectFileHandler = useCallback((file: string) => {
     console.log('[useDebugPanelFileSelector] Selecting file:', file);
-    // Execute the function returned by selectFile
-    const handler = selectFile(file);
-    if (handler) {
-      handler();
-    }
+    selectFile(file);
   }, [selectFile]);
   
   // Create a callback to check if a file is currently selected
