@@ -13,21 +13,27 @@ export const useCaptionProcessor = (
     if (!imageUrl) return;
 
     if (previewParams.caption) {
-      if (previewParams.data !== undefined) {
-        if (Object.keys(metadata).length > 0) {
-          const newCaption = processCaptionWithMetadata(previewParams.caption, metadata);
-          setProcessedCaption(newCaption);
-        }
+      console.log('[useCaptionProcessor] Processing caption:', previewParams.caption);
+      console.log('[useCaptionProcessor] With metadata:', metadata);
+      console.log('[useCaptionProcessor] Metadata keys available:', Object.keys(metadata));
+      
+      // Always process caption with metadata, regardless of data flag
+      if (Object.keys(metadata).length > 0) {
+        const newCaption = processCaptionWithMetadata(previewParams.caption, metadata);
+        console.log('[useCaptionProcessor] Processed caption result:', newCaption);
+        setProcessedCaption(newCaption);
       } else {
+        console.warn('[useCaptionProcessor] No metadata available for caption processing');
+        // Use the caption as-is if no metadata is available
         setProcessedCaption(previewParams.caption);
       }
     } else {
       setProcessedCaption(null);
     }
-  }, [previewParams.caption, previewParams.data, metadata, imageUrl, setProcessedCaption]);
+  }, [previewParams.caption, metadata, imageUrl, setProcessedCaption]);
 };
 
-// Helper function for caption processing
+// Helper function for caption processing with improved logging
 export const processCaptionWithMetadata = (caption: string | null, metadata: Record<string, string>): string | null => {
   if (!caption) return null;
   
@@ -36,20 +42,35 @@ export const processCaptionWithMetadata = (caption: string | null, metadata: Rec
   // More detailed logging
   console.log('[processCaptionWithMetadata] Processing caption:', caption);
   console.log('[processCaptionWithMetadata] With metadata:', metadata);
+  console.log('[processCaptionWithMetadata] Metadata keys:', Object.keys(metadata));
   
   // Special case for {all} placeholder
   if (caption === '{all}') {
     const allMetadata = Object.entries(metadata)
       .map(([key, value]) => `${key}: ${value}`)
       .join('\n');
+    
+    console.log('[processCaptionWithMetadata] All metadata caption:', allMetadata);
     return allMetadata || 'No metadata available';
   }
   
-  // Replace individual tags
+  // Replace individual tags with detailed logging
   Object.entries(metadata).forEach(([key, value]) => {
     const regex = new RegExp(`\\{${key}\\}`, 'g');
+    const prevCaption = processedCaption;
     processedCaption = processedCaption?.replace(regex, value) || '';
+    
+    // If a replacement was made, log it
+    if (prevCaption !== processedCaption) {
+      console.log(`[processCaptionWithMetadata] Replaced {${key}} with "${value}"`);
+    }
   });
+  
+  // Check if there are any unreplaced tags remaining
+  const unreplacedTagsMatch = processedCaption.match(/\{([^}]+)\}/g);
+  if (unreplacedTagsMatch) {
+    console.warn('[processCaptionWithMetadata] Unreplaced tags found:', unreplacedTagsMatch);
+  }
   
   return processedCaption;
 };

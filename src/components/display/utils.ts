@@ -1,4 +1,3 @@
-
 import { DisplayParams } from './types';
 
 // Function to validate and process the output parameter
@@ -45,15 +44,41 @@ export const fetchOutputFiles = async (): Promise<string[]> => {
 // Extract metadata from image
 export const extractImageMetadata = async (imageUrl: string): Promise<Record<string, string>> => {
   try {
-    // Try to fetch metadata from API
-    const response = await fetch(`/api/metadata?image=${encodeURIComponent(imageUrl)}`);
+    console.log('[extractImageMetadata] Extracting metadata from:', imageUrl);
+    
+    // Add cache busting parameter to ensure we get fresh data
+    const cacheBustUrl = `${imageUrl}${imageUrl.includes('?') ? '&' : '?'}cacheBust=${Date.now()}`;
+    
+    // Try to fetch metadata from API with explicit no-cache headers
+    const response = await fetch(`/api/metadata?image=${encodeURIComponent(cacheBustUrl)}`, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
+    
     if (response.ok) {
       const data = await response.json();
-      return data.metadata || {};
+      console.log('[extractImageMetadata] API returned metadata:', data.metadata);
+      
+      if (data.metadata && Object.keys(data.metadata).length > 0) {
+        return data.metadata;
+      }
+      console.warn('[extractImageMetadata] API returned empty metadata');
+    } else {
+      console.warn('[extractImageMetadata] API request failed, status:', response.status);
     }
     
-    // If that fails, return basic metadata
-    console.warn('Could not fetch metadata from API, using mock data');
+    // If API fails or returns empty, try to extract directly from image using browser
+    const metadata = await extractMetadataUsingBrowser(cacheBustUrl);
+    if (metadata && Object.keys(metadata).length > 0) {
+      console.log('[extractImageMetadata] Browser extraction successful:', metadata);
+      return metadata;
+    }
+    
+    // If all else fails, use mock metadata based on filename pattern
+    console.warn('[extractImageMetadata] All extraction methods failed, using mock data');
     
     // Simulate different metadata for different images
     if (imageUrl.includes('00001')) {
@@ -88,10 +113,88 @@ export const extractImageMetadata = async (imageUrl: string): Promise<Record<str
       'created': new Date().toISOString()
     };
   } catch (e) {
-    console.error('Error fetching image metadata:', e);
+    console.error('[extractImageMetadata] Error extracting metadata:', e);
     return {};
   }
 };
+
+// New helper function to attempt metadata extraction using browser capabilities
+async function extractMetadataUsingBrowser(url: string): Promise<Record<string, string>> {
+  try {
+    console.log('[extractMetadataUsingBrowser] Attempting browser extraction for:', url);
+    
+    // Create a new image element to load the image
+    const img = new Image();
+    
+    // Create a promise that resolves when the image loads or errors
+    const imageLoaded = new Promise<HTMLImageElement>((resolve, reject) => {
+      img.onload = () => resolve(img);
+      img.onerror = (err) => {
+        console.error('[extractMetadataUsingBrowser] Error loading image:', err);
+        reject(new Error('Failed to load image'));
+      };
+      
+      // Set crossOrigin to anonymous to avoid CORS issues when possible
+      img.crossOrigin = 'anonymous';
+      img.src = url;
+    });
+    
+    // Wait for image to load
+    const loadedImg = await imageLoaded;
+    
+    // Create a canvas to draw the image
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      console.error('[extractMetadataUsingBrowser] Failed to get canvas context');
+      return {};
+    }
+    
+    // Set canvas dimensions to match image
+    canvas.width = loadedImg.naturalWidth;
+    canvas.height = loadedImg.naturalHeight;
+    
+    // Draw image to canvas
+    ctx.drawImage(loadedImg, 0, 0);
+    
+    // Try to extract EXIF data using canvas
+    let metadata: Record<string, string> = {};
+    
+    try {
+      // Get image data as binary
+      const dataUrl = canvas.toDataURL('image/jpeg');
+      
+      // Extract metadata from dimensions at minimum
+      metadata['width'] = loadedImg.naturalWidth.toString();
+      metadata['height'] = loadedImg.naturalHeight.toString();
+      metadata['aspectRatio'] = (loadedImg.naturalWidth / loadedImg.naturalHeight).toFixed(2);
+      
+      // For PNG images, we can also check if there are tEXt chunks in the binary data
+      if (url.toLowerCase().endsWith('.png') || url.includes('.png')) {
+        // For PNG, we could parse the dataUrl for tEXt chunks
+        const binary = atob(dataUrl.split(',')[1]);
+        
+        // Simple detection of text chunks (this is a basic implementation)
+        const textChunkPattern = /tEXt(.{20})/g;
+        const matches = binary.match(textChunkPattern);
+        
+        if (matches && matches.length > 0) {
+          console.log('[extractMetadataUsingBrowser] Found potential PNG text chunks:', matches.length);
+          metadata['hasPngMetadata'] = 'true';
+        }
+      }
+    } catch (err) {
+      console.error('[extractMetadataUsingBrowser] Error extracting from canvas:', err);
+    }
+    
+    console.log('[extractMetadataUsingBrowser] Extracted metadata:', metadata);
+    return metadata;
+  } catch (err) {
+    console.error('[extractMetadataUsingBrowser] Browser extraction failed:', err);
+    return {};
+  }
+}
 
 // Create a URL with display parameters
 export const createUrlWithParams = (params: DisplayParams): string => {
