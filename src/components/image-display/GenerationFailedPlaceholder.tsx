@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Card } from '@/components/ui/card';
-import { AlertTriangle, Trash2 } from 'lucide-react';
+import { AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface GenerationFailedPlaceholderProps {
@@ -31,7 +31,7 @@ const GenerationFailedPlaceholder: React.FC<GenerationFailedPlaceholderProps> = 
               className="h-7 w-7 bg-background/80"
               onClick={onRetry}
             >
-              <AlertTriangle className="h-3 w-3 text-yellow-500" />
+              <RefreshCw className="h-3 w-3 text-blue-500" />
             </Button>
           )}
           
@@ -70,7 +70,7 @@ const GenerationFailedPlaceholder: React.FC<GenerationFailedPlaceholderProps> = 
               onClick={onRetry}
               className="flex items-center"
             >
-              <AlertTriangle className="h-3 w-3 mr-1.5 text-yellow-500" />
+              <RefreshCw className="h-3 w-3 mr-1.5 text-blue-500" />
               Try again
             </Button>
           )}

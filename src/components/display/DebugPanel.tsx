@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { RefreshCw, Clock, Info, Copy, Check, Clipboard, FileImage, Settings, Image as ImageIcon, Eye, Tag, Database, Type, PanelLeft } from "lucide-react";
+import { RefreshCw, Clock, Info, Copy, Check, Clipboard, FileImage, Settings, Image as ImageIcon, Eye, Tag, Database, Type, PanelLeft, Move } from "lucide-react";
 import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from './types';
 import { createUrlWithParams } from './utils';
 import { useNavigate } from 'react-router-dom';
@@ -61,6 +60,12 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   const [copied, setCopied] = useState(false);
   const [metadataEntries, setMetadataEntries] = useState<Array<{key: string, value: string}>>([]);
   const [previewCaption, setPreviewCaption] = useState<string | null>(null);
+  
+  // For making the panel draggable
+  const [position2, setPosition2] = useState({ x: 4, y: 4 }); // Default position in pixels
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const panelRef = useRef<HTMLDivElement>(null);
 
   // Update metadata entries when metadata changes
   useEffect(() => {
@@ -255,12 +260,73 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   const insertAllMetadata = () => {
     setCaption('{all}');
   };
+  
+  // Draggable panel handlers
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target instanceof Element && e.target.closest('.card-header-drag-handle')) {
+      setIsDragging(true);
+      const rect = panelRef.current?.getBoundingClientRect();
+      if (rect) {
+        setDragOffset({
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top
+        });
+      }
+    }
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (isDragging) {
+      const newX = e.clientX - dragOffset.x;
+      const newY = e.clientY - dragOffset.y;
+      setPosition2({ x: newX, y: newY });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Set up global mouse event listeners
+  useEffect(() => {
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, dragOffset]);
+
+  // Format time for display
+  const formatTime = (timeValue: Date | string | null) => {
+    if (!timeValue) return 'Never';
+    
+    try {
+      const date = timeValue instanceof Date ? timeValue : new Date(timeValue);
+      return date.toLocaleTimeString();
+    } catch (e) {
+      return String(timeValue);
+    }
+  };
 
   return (
-    <Card className="w-1/3 max-w-md absolute left-4 top-4 z-10 opacity-90 hover:opacity-100 transition-opacity">
-      <CardHeader className="pb-2">
+    <Card 
+      ref={panelRef}
+      className="w-1/3 max-w-md absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg"
+      style={{ 
+        left: `${position2.x}px`, 
+        top: `${position2.y}px`,
+        cursor: isDragging ? 'grabbing' : 'auto'
+      }}
+      onMouseDown={handleMouseDown}
+    >
+      <CardHeader className="pb-2 card-header-drag-handle cursor-grab">
         <CardTitle className="text-lg flex justify-between items-center">
-          <span>Display Configuration</span>
+          <div className="flex items-center">
+            <Move className="h-4 w-4 text-muted-foreground mr-2" />
+            <span>Display Configuration</span>
+          </div>
           <div className="flex space-x-2">
             <TooltipProvider>
               <Tooltip>
@@ -374,8 +440,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                       <TooltipContent>
                         <p className="max-w-xs">Enter a URL or relative path to an image</p>
                       </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                    </TooltipProvider>
                 </div>
                 <div className="flex space-x-2">
                   <Input 
