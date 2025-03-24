@@ -1,7 +1,7 @@
 
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
-import { createUrlWithParams } from '../utils/paramUtils';
+import { createUrlWithParams, processOutputParam, normalizePathForDisplay } from '../utils/paramUtils';
 import { toast } from '@/hooks/use-toast';
 
 interface UseDebugPanelFileManagementProps {
@@ -17,13 +17,15 @@ export const useDebugPanelFileManagement = ({
     return () => {
       console.log('[useDebugPanelFileManagement] Selected file:', file);
       
-      // Normalize the path first
-      let outputPath = file;
-      if (!outputPath.startsWith('/') && !outputPath.startsWith('http')) {
-        outputPath = `/output/${outputPath}`;
-      }
+      // Normalize the path first using our shared utility
+      const outputPath = processOutputParam(file);
+      console.log('[useDebugPanelFileManagement] Normalized path with processOutputParam:', outputPath);
       
-      console.log('[useDebugPanelFileManagement] Normalized path:', outputPath);
+      if (!outputPath) {
+        console.error('[useDebugPanelFileManagement] Failed to process output path');
+        toast.error("Failed to process file path");
+        return;
+      }
       
       // Create a URL with the debug mode and selected file
       const newParams = {
@@ -38,14 +40,13 @@ export const useDebugPanelFileManagement = ({
       // Notify the user before navigation
       toast({
         title: "Image Selected",
-        description: `Loading: ${file.split('/').pop() || file}`,
+        description: `Loading: ${formatFileName(file)}`,
       });
       
       // Navigate to the URL
-      navigate(url, { replace: false });
+      navigate(`/display${url}`, { replace: false });
       
       // Force a refresh after navigation to ensure the image loads
-      // This is a workaround for situations where the navigation doesn't trigger proper state updates
       setTimeout(() => {
         console.log('[useDebugPanelFileManagement] Post-navigation check');
         const currentParams = new URLSearchParams(window.location.search);
@@ -76,19 +77,18 @@ export const useDebugPanelFileManagement = ({
   const isCurrentFile = (file: string, imageUrl: string | null) => {
     if (!imageUrl) return false;
     
-    // Normalize paths for comparison
-    const normalizedFile = file.startsWith('/') ? file : `/output/${file}`;
-    const normalizedImageUrl = imageUrl.includes('/output/') ? 
-      imageUrl : 
-      (imageUrl.startsWith('/') ? imageUrl : `/output/${imageUrl}`);
+    // Use our path normalization utility for consistent comparison
+    const normalizedFile = processOutputParam(file);
+    const normalizedImageUrl = processOutputParam(imageUrl);
     
     console.log('[useDebugPanelFileManagement] Comparing:', {
       normalizedFile,
       normalizedImageUrl,
-      isMatch: normalizedImageUrl.includes(normalizedFile)
+      isMatch: normalizedImageUrl === normalizedFile
     });
     
-    return normalizedImageUrl.includes(normalizedFile);
+    // More exact comparison now that we've normalized both paths
+    return normalizedImageUrl === normalizedFile;
   };
 
   const formatTime = (timeValue: Date | string | null) => {

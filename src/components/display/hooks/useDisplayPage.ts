@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
@@ -11,6 +10,7 @@ import { useDebugRedirection } from '@/components/display/hooks/useDebugRedirect
 import { useOutputProcessor } from '@/components/display/hooks/useOutputProcessor';
 import { useImageErrorHandler } from '@/components/display/hooks/useImageErrorHandler';
 import { useEnhancedManualCheck } from '@/components/display/hooks/useEnhancedManualCheck';
+import { normalizePathForDisplay } from '../utils/paramUtils';
 
 export const useDisplayPage = () => {
   const { params, redirectToDebugMode } = useDisplayParams();
@@ -18,6 +18,7 @@ export const useDisplayPage = () => {
   const mountedRef = useRef(true); // Track if component is mounted
   const outputProcessedRef = useRef(false); // Track if output has been processed
   const initialRenderRef = useRef(true); // Track initial render
+  const previousOutputRef = useRef<string | null>(null); // Track previous output
 
   // Debug logging for params
   useEffect(() => {
@@ -40,7 +41,7 @@ export const useDisplayPage = () => {
     setImageUrl,
     error,
     imageKey,
-    setImageKey, // Make sure this is destructured to use it
+    setImageKey,
     lastModified,
     lastChecked,
     outputFiles,
@@ -68,14 +69,26 @@ export const useDisplayPage = () => {
   useEffect(() => {
     if (!mountedRef.current) return;
     
+    // Skip if the output hasn't changed since last time
+    if (previousOutputRef.current === params.output) {
+      console.log('[useDisplayPage] Output parameter unchanged, skipping processing');
+      return;
+    }
+    
     // Always process the output parameter on initial render or when it changes
     if (params.output) {
       console.log('[useDisplayPage] 🖼️ Processing output parameter:', params.output);
       console.log('[useDisplayPage] Current imageUrl:', imageUrl);
-      console.log('[useDisplayPage] Processing needed:', !outputProcessedRef.current || imageUrl !== params.output);
+      
+      // Update the previous output ref to avoid reprocessing
+      previousOutputRef.current = params.output;
+      
+      // Normalize the path for display
+      const normalizedPath = normalizePathForDisplay(params.output);
+      console.log('[useDisplayPage] Normalized path for display:', normalizedPath);
       
       // Set the image URL directly
-      setImageUrl(params.output);
+      setImageUrl(normalizedPath);
       
       // Increment the image key to force a reload
       setImageKey(prev => prev + 1);
@@ -84,7 +97,7 @@ export const useDisplayPage = () => {
       outputProcessedRef.current = true;
       
       // Toast to notify user
-      toast.success(`Displaying image: ${params.output.split('/').pop()}`);
+      toast.success(`Displaying image: ${normalizedPath.split('/').pop() || normalizedPath}`);
     }
   }, [params.output, setImageUrl, setImageKey, imageUrl]);
 
@@ -93,6 +106,7 @@ export const useDisplayPage = () => {
     if (params.output === null) {
       console.log('[useDisplayPage] Output param is null, resetting processed flag');
       outputProcessedRef.current = false;
+      previousOutputRef.current = null;
     }
   }, [params.output]);
 
@@ -188,10 +202,14 @@ export const useDisplayPage = () => {
       console.log('[useDisplayPage] 🔄 Initial render with output param:', params.output);
       initialRenderRef.current = false;
       
+      // Normalize the path for display
+      const normalizedPath = normalizePathForDisplay(params.output);
+      console.log('[useDisplayPage] Normalized initial path for display:', normalizedPath);
+      
       // Small delay to ensure DOM is ready
       setTimeout(() => {
         if (mountedRef.current) {
-          setImageUrl(params.output);
+          setImageUrl(normalizedPath);
           setImageKey(prev => prev + 1);
         }
       }, 100);
@@ -217,8 +235,8 @@ export const useDisplayPage = () => {
     newImageStyle,
     imageRef,
     nextCheckTime,
-    handleManualCheck,
+    handleManualCheck: originalHandleManualCheck,
     getImagePositionStyle,
-    handleImageError
+    handleImageError: useImageErrorHandler(imageUrl, mountedRef).handleImageError
   };
 };

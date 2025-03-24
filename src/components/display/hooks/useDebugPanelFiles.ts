@@ -22,6 +22,8 @@ interface UseDebugPanelFilesProps {
 }
 
 export const useDebugPanelFiles = (props: UseDebugPanelFilesProps) => {
+  console.log('[useDebugPanelFiles] Initializing with params:', props.params);
+  
   // Use the URL management hook
   const {
     generateUrl,
