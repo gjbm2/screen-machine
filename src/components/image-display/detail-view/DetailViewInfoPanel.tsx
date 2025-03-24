@@ -68,7 +68,8 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
       return urls.length > 0;
     }
     
-    return Array.isArray(effectiveReferenceImageUrl) ? effectiveReferenceImageUrl.length > 0 : false;
+    // Fix the type issue: ensure effectiveReferenceImageUrl is treated as an array with proper type checking
+    return Array.isArray(effectiveReferenceImageUrl) && effectiveReferenceImageUrl.length > 0;
   }, [effectiveReferenceImageUrl]);
   
   return (
