@@ -25,40 +25,46 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
       return;
     }
 
-    // Track batchIds of generating images to avoid duplicates
-    const generatingBatchIds = new Set<string>();
+    // Create a map to collect all images by batchId and batchIndex for proper filtering
+    const imagesByBatchAndIndex = new Map<string, any>();
     
-    // Modified sorting logic to properly handle generating images
-    // - Generating images should appear at the top (only once per batchId)
-    // - Completed images should follow in timestamp order (newest first)
-    const sorted = images
-      .filter(img => {
-        // For generating images, only keep one per batchId
-        if (img.status === 'generating') {
-          if (generatingBatchIds.has(img.batchId)) {
-            return false; // Skip duplicates
-          }
-          generatingBatchIds.add(img.batchId);
-          return true;
+    // First pass: add all images to the map with a composite key of batchId-batchIndex
+    // This ensures we only keep one image per unique batchId-batchIndex combination
+    images.forEach(img => {
+      const key = `${img.batchId}-${img.batchIndex || 0}`;
+      // For generating images, always keep them
+      // For other images, only keep if not already in the map or replace if newer
+      if (img.status === 'generating' || !imagesByBatchAndIndex.has(key)) {
+        imagesByBatchAndIndex.set(key, img);
+      } else {
+        // If we already have this image, keep the one with the newest timestamp
+        const existingImg = imagesByBatchAndIndex.get(key);
+        if ((img.timestamp || 0) > (existingImg.timestamp || 0)) {
+          imagesByBatchAndIndex.set(key, img);
         }
-        return true; // Keep all non-generating images
-      })
-      .sort((a, b) => {
-        // First prioritize by status - generating images always first
-        if (a.status === 'generating' && b.status !== 'generating') return -1;
-        if (a.status !== 'generating' && b.status === 'generating') return 1;
-        
-        // If both are generating, sort by timestamp (newest first)
-        if (a.status === 'generating' && b.status === 'generating') {
-          return (b.timestamp || 0) - (a.timestamp || 0);
-        }
-        
-        // For all other images, sort by timestamp (newest first)
+      }
+    });
+    
+    // Convert map values back to array and sort
+    const uniqueImages = Array.from(imagesByBatchAndIndex.values());
+    
+    // Sort the unique images
+    const sorted = uniqueImages.sort((a, b) => {
+      // First prioritize by status - generating images always first
+      if (a.status === 'generating' && b.status !== 'generating') return -1;
+      if (a.status !== 'generating' && b.status === 'generating') return 1;
+      
+      // If both are generating, sort by timestamp (newest first)
+      if (a.status === 'generating' && b.status === 'generating') {
         return (b.timestamp || 0) - (a.timestamp || 0);
-      });
+      }
+      
+      // For all other images, sort by timestamp (newest first)
+      return (b.timestamp || 0) - (a.timestamp || 0);
+    });
     
-    console.log('[SmallGridView] Unique generating images:', Array.from(generatingBatchIds));
     console.log('[SmallGridView] Total sorted images:', sorted.length);
+    console.log('[SmallGridView] Generating images count:', sorted.filter(img => img.status === 'generating').length);
     
     setSortedImages(sorted);
   }, [images]);
