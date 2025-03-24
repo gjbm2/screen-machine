@@ -92,7 +92,8 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
         if (Object.keys(metadata).length > 0) {
           toast.success(`Found ${Object.keys(metadata).length} metadata entries`);
           setRefreshKey(prev => prev + 1);
-          window.location.reload();
+          // Don't reload the page as it breaks the debug mode
+          // window.location.reload();
         } else {
           toast.warning("No metadata found in this image");
         }

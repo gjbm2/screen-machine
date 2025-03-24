@@ -76,12 +76,16 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     
     // Navigate to the debug URL
     console.log('[ImageDisplay] Navigating to:', debugUrl);
-    navigate(debugUrl);
     
-    // Reset the flag after navigation (in case component doesn't unmount)
-    doubleClickTimeoutRef.current = window.setTimeout(() => {
-      setDoubleClickAttempted(false);
-    }, 1000);
+    // Force a small delay to prevent race conditions
+    setTimeout(() => {
+      navigate(debugUrl);
+      
+      // Reset the flag after navigation (in case component doesn't unmount)
+      setTimeout(() => {
+        setDoubleClickAttempted(false);
+      }, 1000);
+    }, 10);
   };
 
   // Metadata display styles
