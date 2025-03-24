@@ -23,19 +23,21 @@ export const useDisplayParams = () => {
   // Parse and extract all URL parameters
   const params: DisplayParams = {
     output: searchParams.get('output') || null,
-    showMode: (searchParams.get('showMode') as ShowMode) || defaultParams.showMode,
+    showMode: (searchParams.get('show') as ShowMode) || defaultParams.showMode, // Fix: 'show' instead of 'showMode'
     position: (searchParams.get('position') as PositionMode) || defaultParams.position,
-    refreshInterval: parseFloatParam(searchParams.get('refreshInterval'), defaultParams.refreshInterval),
-    backgroundColor: searchParams.get('backgroundColor') || defaultParams.backgroundColor,
-    debugMode: parseBooleanParam(searchParams.get('debugMode')),
+    refreshInterval: parseFloatParam(searchParams.get('refresh'), defaultParams.refreshInterval), // Fix: 'refresh' instead of 'refreshInterval'
+    backgroundColor: searchParams.get('background') || defaultParams.backgroundColor, // Fix: 'background' instead of 'backgroundColor'
+    debugMode: parseBooleanParam(searchParams.get('debug')), // Fix: 'debug' instead of 'debugMode'
     // Properly handling caption and related params
     caption: searchParams.get('caption') || null,
-    captionPosition: (searchParams.get('captionPosition') as CaptionPosition) || defaultParams.captionPosition,
-    captionSize: searchParams.get('captionSize') || defaultParams.captionSize,
-    captionColor: searchParams.get('captionColor') || defaultParams.captionColor,
-    captionFont: searchParams.get('captionFont') || defaultParams.captionFont,
-    captionBgColor: searchParams.get('captionBgColor') || defaultParams.captionBgColor,
-    captionBgOpacity: parseFloatParam(searchParams.get('captionBgOpacity'), defaultParams.captionBgOpacity),
+    captionPosition: (searchParams.get('caption-position') as CaptionPosition) || defaultParams.captionPosition, // Fix: hyphenated params
+    captionSize: searchParams.get('caption-size') || defaultParams.captionSize,
+    captionColor: searchParams.get('caption-color') || defaultParams.captionColor,
+    captionFont: searchParams.get('caption-font') || defaultParams.captionFont,
+    captionBgColor: searchParams.get('caption-bg-color') ? 
+                    `#${searchParams.get('caption-bg-color')}` : 
+                    defaultParams.captionBgColor,
+    captionBgOpacity: parseFloatParam(searchParams.get('caption-bg-opacity'), defaultParams.captionBgOpacity),
     transition: (searchParams.get('transition') as TransitionType) || defaultParams.transition,
   };
   
@@ -53,8 +55,10 @@ export const useDisplayParams = () => {
   // Debugging log to show all extracted parameters
   console.log('[useDisplayParams] Parsed params:', params);
   console.log('[useDisplayParams] Caption background:', params.captionBgColor);
+  console.log('[useDisplayParams] URL params:', Object.fromEntries(searchParams.entries()));
+  console.log('[useDisplayParams] Debug mode enabled:', params.debugMode);
   
-  // Helper function to redirect to debug mode if needed - FIXED TO PREVENT LOOPS
+  // Helper function to redirect to debug mode if needed
   const redirectToDebugMode = () => {
     // Skip redirection if we already attempted it or if already in debug mode or no output specified
     if (redirectAttemptedRef.current || params.debugMode || !params.output) {
@@ -71,7 +75,7 @@ export const useDisplayParams = () => {
     console.log('[useDisplayParams] Marked redirection as attempted');
     
     // Only redirect if debugMode parameter is explicitly set to true in URL
-    if (searchParams.has('debugMode') && parseBooleanParam(searchParams.get('debugMode'))) {
+    if (searchParams.has('debug') && parseBooleanParam(searchParams.get('debug'))) {
       console.log('[useDisplayParams] Debug mode requested, redirecting');
       const newParams = { ...params, debugMode: true };
       const newUrl = createUrlWithParams(newParams);
@@ -86,9 +90,7 @@ export const useDisplayParams = () => {
   // Log the current URL for debugging
   useEffect(() => {
     console.log('[useDisplayParams] Current URL:', window.location.href);
-    console.log('[useDisplayParams] URL params:', Object.fromEntries(searchParams.entries()));
-    console.log('[useDisplayParams] Debug mode enabled:', params.debugMode);
-  }, [searchParams, params.debugMode]);
+  }, []);
   
   return {
     params,

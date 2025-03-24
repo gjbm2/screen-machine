@@ -77,9 +77,19 @@ export const useDisplayPage = () => {
     }
   }, [imageUrl, previousImageUrl]);
 
+  // Add debug output to trace debug mode functionality
+  useEffect(() => {
+    if (params.debugMode) {
+      console.log('[useDisplayPage] Debug mode is enabled in params');
+    } else {
+      console.log('[useDisplayPage] Debug mode is NOT enabled in params');
+    }
+  }, [params.debugMode]);
+
   // Redirect to debug mode if needed (only once per component mount)
   useEffect(() => {
     console.log('[useDisplayPage] Checking if debug redirection is needed:', {
+      params,
       alreadyAttempted: redirectAttemptedRef.current,
       hasOutput: !!params.output,
       debugMode: params.debugMode,
@@ -99,7 +109,7 @@ export const useDisplayPage = () => {
         redirectToDebugMode();
       }
     }
-  }, [params.output, params.debugMode, redirectToDebugMode]);
+  }, [params, params.output, params.debugMode, redirectToDebugMode]);
 
   // Process captions with metadata
   useCaptionProcessor(previewParams, metadata, imageUrl, setProcessedCaption);

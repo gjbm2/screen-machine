@@ -12,19 +12,32 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   if (params.backgroundColor !== '000000') queryParams.set('background', params.backgroundColor);
   if (params.debugMode) queryParams.set('debug', 'true');
   
-  if (params.data !== undefined) queryParams.set('data', params.data);
+  if (params.data !== undefined) {
+    const dataStr = typeof params.data === 'string' 
+      ? params.data 
+      : JSON.stringify(params.data);
+    queryParams.set('data', dataStr);
+  }
   
   if (params.caption) queryParams.set('caption', params.caption);
   if (params.captionPosition !== 'bottom-center') queryParams.set('caption-position', params.captionPosition);
   if (params.captionSize !== '16px') queryParams.set('caption-size', params.captionSize);
   if (params.captionColor !== 'ffffff') queryParams.set('caption-color', params.captionColor);
   if (params.captionFont !== 'Arial, sans-serif') queryParams.set('caption-font', params.captionFont);
-  if (params.captionBgColor !== '#000000') queryParams.set('caption-bg-color', params.captionBgColor.replace('#', ''));
-  if (params.captionBgOpacity !== 0.7) queryParams.set('caption-bg-opacity', params.captionBgOpacity.toString());
   
+  // Handle the backgroundColor with or without # prefix
+  if (params.captionBgColor !== '#000000') {
+    const color = params.captionBgColor.startsWith('#') 
+      ? params.captionBgColor.substring(1) 
+      : params.captionBgColor;
+    queryParams.set('caption-bg-color', color);
+  }
+  
+  if (params.captionBgOpacity !== 0.7) queryParams.set('caption-bg-opacity', params.captionBgOpacity.toString());
   if (params.transition !== 'cut') queryParams.set('transition', params.transition);
   
-  return `/display?${queryParams.toString()}`;
+  const queryString = queryParams.toString();
+  return queryString.length > 0 ? `?${queryString}` : '';
 };
 
 // Get default display parameters
