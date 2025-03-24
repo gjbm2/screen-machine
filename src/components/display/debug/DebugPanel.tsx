@@ -6,7 +6,6 @@ import { DebugPanelHeader } from './DebugPanelHeader';
 import { DebugPanelFooter } from './DebugPanelFooter';
 import { DebugPanelTabs } from './DebugPanelTabs';
 import { DebugPanelContent } from './DebugPanelContent';
-import { ResizeHandle } from './ResizeHandle';
 import { useDebugPanel } from '../hooks/useDebugPanel';
 import { DisplayParams } from '../types';
 
@@ -23,6 +22,7 @@ interface DebugPanelProps {
   metadata: Record<string, string>;
   onApplyCaption: (caption: string | null) => void;
   onFocus?: () => void;
+  isFixedPanel?: boolean;
 }
 
 export const DebugPanel: React.FC<DebugPanelProps> = ({
@@ -37,7 +37,8 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   onCheckNow,
   metadata,
   onApplyCaption,
-  onFocus
+  onFocus,
+  isFixedPanel = false
 }) => {
   const {
     activeTab,
@@ -91,8 +92,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     handleRefreshMetadata
   } = useDebugPanel({ params, imageUrl, metadata, onApplyCaption });
 
-  // Add focus handling to bring this panel to the top
+  // Only use dragging functionality when not in fixed mode
   const handlePanelMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isFixedPanel) return;
+    
     // Call the parent's focus handler to raise z-index
     if (onFocus) {
       onFocus();
@@ -101,11 +104,13 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     handleMouseDown(e);
   };
 
-  return (
-    <Card 
-      ref={panelRef}
-      className="absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg min-w-[400px] min-h-[400px] resizable-container"
-      style={{ 
+  const cardStyles = isFixedPanel 
+    ? "h-full w-full overflow-auto" 
+    : "absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg min-w-[400px] min-h-[400px] resizable-container";
+
+  const innerStyles = isFixedPanel 
+    ? {} 
+    : { 
         left: `${position2.x}px`, 
         top: `${position2.y}px`,
         width: panelSize.width,
@@ -113,6 +118,14 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         cursor: isDragging ? 'grabbing' : 'auto',
         resize: 'none',
         position: 'absolute',
+      };
+
+  return (
+    <Card 
+      ref={panelRef}
+      className={cardStyles}
+      style={{ 
+        ...innerStyles,
         display: 'flex',
         flexDirection: 'column'
       }}
@@ -179,7 +192,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         formatTime={formatTime}
       />
       
-      <ResizeHandle onMouseDown={handleResizeStart} />
+      {!isFixedPanel && <div className="resize-handle" onMouseDown={handleResizeStart} />}
     </Card>
   );
 };
