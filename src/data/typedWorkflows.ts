@@ -7,7 +7,7 @@ function convertToTypedWorkflows(data: any[]): Workflow[] {
   return data.map(workflow => ({
     id: workflow.id,
     name: workflow.name,
-    description: workflow.description,
+    description: workflow.description || '', // Ensure description exists with a fallback
     params: workflow.params.map((param: any): WorkflowParam => ({
       id: param.id,
       name: param.name,

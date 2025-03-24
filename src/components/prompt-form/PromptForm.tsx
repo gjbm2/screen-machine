@@ -240,7 +240,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           handleSubmit={handleSubmit}
           prompt={prompt}
           isButtonDisabled={isButtonDisabled}
-          workflows={workflows as WorkflowProps[]}
+          workflows={workflows as unknown as WorkflowProps[]} // Cast to satisfy TypeScript
           isCompact={false}
           hasUploadedImages={previewUrls.length > 0}
         />
