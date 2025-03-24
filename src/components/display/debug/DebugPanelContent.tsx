@@ -30,7 +30,7 @@ interface DebugPanelContentProps {
   metadataEntries: MetadataEntry[];
   insertMetadataTag: (key: string) => void;
   setActiveTab: (tab: string) => void;
-  onRefreshMetadata: () => void;
+  onRefreshMetadata: () => Promise<Record<string, string>>;
   caption: string | null;
   previewCaption: string | null;
   captionPosition: CaptionPosition;
@@ -136,7 +136,7 @@ const DebugPanelContent: React.FC<DebugPanelContentProps> = ({
       
       {activeTab === 'caption' && (
         <CaptionPanel 
-          caption={caption}
+          caption={caption || ''}
           previewCaption={previewCaption}
           captionPosition={captionPosition}
           captionSize={captionSize}

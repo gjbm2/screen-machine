@@ -27,6 +27,8 @@ interface CaptionPanelProps {
   setCaptionBgColor: (value: string) => void;
   setCaptionBgOpacity: (value: number) => void;
   insertAllMetadata: () => void;
+  insertMetadataTag: (key: string) => void;
+  applySettings?: () => void;
 }
 
 export const CaptionPanel: React.FC<CaptionPanelProps> = ({
@@ -45,7 +47,9 @@ export const CaptionPanel: React.FC<CaptionPanelProps> = ({
   setCaptionFont,
   setCaptionBgColor,
   setCaptionBgOpacity,
-  insertAllMetadata
+  insertAllMetadata,
+  insertMetadataTag,
+  applySettings
 }) => {
   // Remove # if present for consistency
   const normalizeColor = (color: string) => color.replace('#', '');
