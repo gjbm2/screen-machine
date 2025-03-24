@@ -103,6 +103,7 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     insertMetadataTag,
     insertAllMetadata,
     selectFileHandler,
+    selectFileDirectly,
     isCurrentFileHandler,
     handleRefreshMetadata,
     handleResizeStartInternal
@@ -165,11 +166,12 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     resetDisplay,
     commitSettings,
     copyUrl,
-    selectFile: selectFileHandler, // Use wrapped handler to match expected type
+    selectFile: selectFileHandler, // For onClick handlers
+    selectFileDirectly, // For direct function calls
     formatFileName,
     resetSettings,
     insertMetadataTag,
-    isCurrentFile: isCurrentFileHandler, // Use wrapped handler to match expected type
+    isCurrentFile: isCurrentFileHandler, 
     formatTime,
     insertAllMetadata,
     handleMouseDown,

@@ -9,7 +9,8 @@ interface FilesPanelProps {
   imageUrl: string | null;
   customUrl: string;
   setCustomUrl: (url: string) => void;
-  selectFile: (file: string) => void;
+  selectFile: (file: string) => () => void;
+  selectFileDirectly: (file: string) => void;
   isCurrentFile: (file: string) => boolean;
   formatFileName: (file: string) => string;
 }
@@ -21,6 +22,7 @@ export const FilesPanel: React.FC<FilesPanelProps> = ({
   customUrl,
   setCustomUrl,
   selectFile,
+  selectFileDirectly,
   isCurrentFile,
   formatFileName
 }) => {
@@ -33,6 +35,7 @@ export const FilesPanel: React.FC<FilesPanelProps> = ({
         customUrl={customUrl}
         setCustomUrl={setCustomUrl}
         selectFile={selectFile}
+        selectFileDirectly={selectFileDirectly}
         isCurrentFile={isCurrentFile}
         formatFileName={formatFileName}
       />

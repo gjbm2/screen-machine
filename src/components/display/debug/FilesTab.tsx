@@ -15,7 +15,8 @@ interface FilesTabProps {
   imageUrl: string | null;
   customUrl: string;
   setCustomUrl: (url: string) => void;
-  selectFile: (file: string) => void;
+  selectFile: (file: string) => () => void; // For list items onClick
+  selectFileDirectly: (file: string) => void; // For direct calls
   isCurrentFile: (file: string) => boolean;
   formatFileName: (file: string) => string;
 }
@@ -27,6 +28,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({
   customUrl,
   setCustomUrl,
   selectFile,
+  selectFileDirectly,
   isCurrentFile,
   formatFileName
 }) => {
@@ -40,7 +42,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({
   const handleUseCustomUrl = () => {
     if (customUrl && customUrl.trim() !== '') {
       console.log('[FilesTab] Using custom URL:', customUrl);
-      selectFile(customUrl);
+      selectFileDirectly(customUrl);
     }
   };
 
@@ -64,7 +66,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({
                 <div 
                   key={index}
                   className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${isCurrentFile(file) ? 'bg-blue-50 border border-blue-200' : ''}`}
-                  onClick={() => selectFile(file)} 
+                  onClick={selectFile(file)} 
                 >
                   <div className="flex items-center">
                     <ImageIcon className="h-4 w-4 mr-2 text-gray-500" />
