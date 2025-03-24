@@ -13,7 +13,7 @@ interface DisplayModeProps {
   imageRef: React.RefObject<HTMLImageElement>;
   lastModified: string | null;
   lastChecked: Date | null;
-  nextCheckTime: Date | null;
+  nextCheckTime: Date | null;  // Ensure this is Date | null
   imageChanged: boolean;
   outputFiles: string[];
   metadata: Record<string, string>;
@@ -65,7 +65,7 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
           imageUrl={imageUrl}
           lastModified={lastModified}
           lastChecked={lastChecked}
-          nextCheckTime={nextCheckTime}
+          nextCheckTime={nextCheckTime}  // Pass as Date | null
           imageKey={imageKey}
           outputFiles={outputFiles}
           imageChanged={imageChanged}
