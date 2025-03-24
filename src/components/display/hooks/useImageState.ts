@@ -25,14 +25,22 @@ export const useImageState = () => {
     console.log('[useImageState] Metadata keys:', Object.keys(metadata));
   }, [metadata]);
 
+  // Store current image URL in localStorage for potential refreshes
+  useEffect(() => {
+    if (imageUrl) {
+      localStorage.setItem('currentImageUrl', imageUrl);
+      console.log('[useImageState] Stored image URL in localStorage:', imageUrl);
+    }
+  }, [imageUrl]);
+
   const checkImageModified = async (url: string) => {
     try {
       setLastChecked(new Date());
       
-      const checkUrl = url.includes('?') ? url : url;
+      const checkUrl = url;
       
       try {
-        const response = await fetch(checkUrl, { method: 'HEAD' });
+        const response = await fetch(checkUrl, { method: 'HEAD', cache: 'no-store' });
         const lastModified = response.headers.get('last-modified');
         
         setLastModified(lastModified);
@@ -70,21 +78,23 @@ export const useImageState = () => {
     return false;
   };
 
-  const handleManualCheck = async (url: string | null, debugMode: boolean) => {
+  const handleManualCheck = async (url: string | null) => {
     if (url) {
+      console.log('[useImageState] Manual check for URL:', url);
       setImageChanged(false);
+      
+      // Force metadata re-extraction on manual check by clearing the last URL
+      lastMetadataUrlRef.current = null;
+      
       const hasChanged = await checkImageModified(url);
       
-      // Force metadata re-extraction on manual check
-      if (hasChanged || debugMode) {
-        console.log('[useImageState] Manual check - forcing metadata extraction');
-        lastMetadataUrlRef.current = null;
-        await extractMetadataFromImage(url);
-      }
+      // Extract metadata regardless of whether the image has changed
+      await extractMetadataFromImage(url);
       
       if (!hasChanged) {
         toast.info("Image has not changed since last check");
       }
+      
       return hasChanged;
     } else {
       toast.error("No image URL to check");
@@ -128,6 +138,28 @@ export const useImageState = () => {
         
         if (Object.keys(newMetadata).length === 0) {
           console.warn('[useImageState] No metadata extracted from image');
+          
+          // Try a second time with a different caching approach
+          const secondAttemptUrl = `${url}${url.includes('?') ? '&' : '?'}nocache=${Math.random()}`;
+          console.log('[useImageState] Second attempt with URL:', secondAttemptUrl);
+          
+          // Use a direct fetch with cache:no-store to bypass browser cache
+          const response = await fetch(secondAttemptUrl, { cache: 'no-store' });
+          const blob = await response.blob();
+          const imgUrl = URL.createObjectURL(blob);
+          
+          console.log('[useImageState] Created blob URL for second attempt:', imgUrl);
+          const retryMetadata = await extractImageMetadata(imgUrl);
+          
+          if (Object.keys(retryMetadata).length > 0) {
+            console.log('[useImageState] Second attempt successful, metadata:', retryMetadata);
+            setMetadata(retryMetadata);
+            lastMetadataUrlRef.current = url;
+            URL.revokeObjectURL(imgUrl); // Clean up
+            return retryMetadata;
+          }
+          
+          URL.revokeObjectURL(imgUrl); // Clean up
         }
         
         // Update metadata state
