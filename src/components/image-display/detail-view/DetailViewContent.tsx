@@ -123,7 +123,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
 
   // Handle opening reference image dialog directly
   const handleReferenceImageClick = () => {
-    console.log("Reference image button clicked");
+    console.log("Reference image button clicked in DetailViewContent");
     setShowReferenceImage(true);
   };
 
