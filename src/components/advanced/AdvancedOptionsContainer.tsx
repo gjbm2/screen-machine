@@ -46,25 +46,6 @@ const AdvancedOptionsContainer: React.FC<AdvancedOptionsContainerProps> = ({
     onParamsChange(updatedParams);
   }, [currentParams, onParamsChange]);
 
-  // Refiner state and handlers
-  const [selectedRefiner, setSelectedRefiner] = React.useState('none');
-  const [refinerParams, setRefinerParams] = React.useState<Record<string, any>>({});
-
-  // Handle refiner change
-  const handleRefinerChange = useCallback((refinerId: string) => {
-    console.log('Refiner change:', refinerId);
-    setSelectedRefiner(refinerId);
-  }, []);
-
-  // Handle refiner param change
-  const handleRefinerParamChange = useCallback((paramId: string, value: any) => {
-    console.log('Refiner param change:', paramId, value);
-    setRefinerParams(prev => ({
-      ...prev,
-      [paramId]: value
-    }));
-  }, []);
-
   // Handle panel open/close
   const handleOpenChange = useCallback((open: boolean) => {
     console.log('Advanced options container - handleOpenChange:', open);
@@ -91,10 +72,10 @@ const AdvancedOptionsContainer: React.FC<AdvancedOptionsContainerProps> = ({
       onParamChange={handleParamChange}
       globalParams={currentGlobalParams}
       onGlobalParamChange={handleGlobalParamChange}
-      selectedRefiner={selectedRefiner}
-      onRefinerChange={handleRefinerChange}
-      refinerParams={refinerParams}
-      onRefinerParamChange={handleRefinerParamChange}
+      selectedRefiner={'none'}
+      onRefinerChange={() => {}}
+      refinerParams={{}}
+      onRefinerParamChange={() => {}}
       isOpen={isOpen}
       onOpenChange={handleOpenChange}
     />
