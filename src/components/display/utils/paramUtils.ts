@@ -63,9 +63,11 @@ export const createUrlWithParams = (params: DisplayParams): string => {
     queryParams.set('transition', params.transition);
   }
   
-  if (params.debugMode) {
+  // Only add debug=true if debugMode is true, otherwise omit entirely
+  if (params.debugMode === true) {
     queryParams.set('debug', 'true');
   }
+  // Explicitly removed: Don't set debug=false, just omit the parameter
   
   const result = `?${queryParams.toString()}`;
   console.log('[createUrlWithParams] Final URL params:', result);

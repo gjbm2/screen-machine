@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DebugPanel } from '@/components/display/debug/DebugPanel';
 import { DebugImageContainer } from '@/components/display/DebugImageContainer';
@@ -55,7 +56,7 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   const [showPreview, setShowPreview] = useState(!isMobile);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   
-  // Log when this component renders in debug mode
+  // Log when this component renders
   useEffect(() => {
     console.log('[DisplayMode] Rendering with params:', {
       debugMode: params.debugMode,
@@ -81,7 +82,7 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
 
   // If we're in debug mode, render the debug interface
   if (params.debugMode) {
-    console.log('[DisplayMode] Rendering debug interface');
+    console.log('[DisplayMode] Rendering debug interface with imageUrl:', imageUrl);
     return (
       <div className="fixed inset-0 flex flex-col sm:flex-row overflow-hidden">
         {/* Mobile View Switcher - fixed position with higher z-index */}

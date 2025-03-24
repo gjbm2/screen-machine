@@ -1,4 +1,3 @@
-
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
 import { createUrlWithParams, processOutputParam } from '../utils/paramUtils';
@@ -73,8 +72,47 @@ export const useDebugPanelUrls = ({
   };
   
   const applySettings = () => {
-    // For preview purpose only
+    // Actually apply settings by updating the URL
     console.log('[useDebugPanelUrls] Applying settings...');
+    
+    // Use the actual current image URL from params instead of customUrl when available
+    const outputToUse = params.output || customUrl;
+    console.log('[useDebugPanelUrls] Using output for applying settings:', outputToUse);
+    
+    // Process the output to ensure it's properly formatted
+    const processedOutput = processOutputParam(outputToUse);
+    console.log('[useDebugPanelUrls] Processed output for applying settings:', processedOutput);
+    
+    // Create new params object with all current settings, keeping debug mode
+    const newParams: DisplayParams = {
+      ...params,
+      output: processedOutput,
+      showMode,
+      position,
+      refreshInterval,
+      backgroundColor,
+      caption,
+      captionPosition,
+      captionSize,
+      captionColor,
+      captionFont,
+      captionBgColor,
+      captionBgOpacity,
+      transition,
+      debugMode: true // Maintain debug mode
+    };
+    
+    // Generate URL for debug mode
+    const url = createUrlWithParams(newParams);
+    console.log('[useDebugPanelUrls] Applying settings, navigating to:', url);
+    
+    // Use navigate instead of direct location change to avoid full reload
+    navigate(`/display${url}`);
+    
+    toast({
+      title: "Settings Applied",
+      description: "Display settings have been updated.",
+    });
   };
   
   const resetDisplay = () => {
@@ -114,7 +152,7 @@ export const useDebugPanelUrls = ({
       debugMode: false // Explicitly set debugMode to false
     };
     
-    // Generate clean URL from params (without debug mode)
+    // Generate URL from params
     const url = createUrlWithParams(newParams);
     console.log('[useDebugPanelUrls] Committing settings, navigating to view mode:', url);
     

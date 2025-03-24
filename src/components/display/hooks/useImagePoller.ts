@@ -33,7 +33,7 @@ export const useImagePoller = (
         await extractMetadataFromImage(url);
       }
     },
-    !!params.debugMode
+    false // Remove dependency on debug mode for initial load
   );
   
   // Detect image changes
@@ -44,11 +44,11 @@ export const useImagePoller = (
     extractMetadataFromImage
   );
   
-  // Set up polling for image changes - Make sure to disable polling in debug mode
-  const isPollingEnabled = !!processedUrl && !params.debugMode && !isLoading;
+  // Set up polling for image changes - Enable polling regardless of debug mode
+  const isPollingEnabled = !!processedUrl && !isLoading;
   
   // Log the polling state
-  console.log('[useImagePoller] Polling enabled:', isPollingEnabled, 'Debug mode:', params.debugMode);
+  console.log('[useImagePoller] Polling enabled:', isPollingEnabled, 'Refresh interval:', params.refreshInterval);
   
   const { pollNow } = useImageCheckPoller(
     processedUrl,
