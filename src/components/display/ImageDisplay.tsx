@@ -50,10 +50,19 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleDoubleClick = () => {
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    // Prevent event bubbling
+    e.stopPropagation();
+    e.preventDefault();
+    
+    // Log that we're trying to navigate to debug mode
+    console.log('[ImageDisplay] Double-click detected, navigating to debug mode');
+    
     // Create URL with existing params plus debug mode
     const newParams = { ...params, debugMode: true };
     const debugUrl = createUrlWithParams(newParams);
+    
+    // Navigate to the debug URL
     navigate(debugUrl);
   };
 
