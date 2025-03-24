@@ -119,8 +119,8 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
               onLoad={handleImageLoad}
               onError={onImageError}
               style={{
-                objectFit: showMode === ShowMode.Contain ? 'contain' : 'cover',
-                objectPosition: position === PositionMode.Center ? 'center' : position,
+                objectFit: showMode === 'contain' ? 'contain' : 'cover',
+                objectPosition: position === 'center' ? 'center' : position,
                 width: '100%',
                 height: '100%'
               }}
@@ -129,7 +129,7 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
             {caption && (
               <CaptionRenderer 
                 caption={caption}
-                position={captionPosition}
+                captionPosition={captionPosition}
                 fontSize={captionSize}
                 color={captionColor}
                 fontFamily={captionFont}
