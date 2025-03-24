@@ -71,15 +71,15 @@ const Index = () => {
     setAdvancedOptionsOpen(open);
   }, []);
 
-  // Handler for refiner changes
+  // Handler for refiner changes from advanced panel
   const handleRefinerChange = useCallback((refiner: string) => {
-    console.log('Index: Refiner changed to:', refiner);
+    console.log('Index: Refiner changed in advanced panel to:', refiner);
     setSelectedRefiner(refiner);
   }, []);
 
-  // Handler for refiner param changes
+  // Handler for refiner param changes from advanced panel
   const handleRefinerParamChange = useCallback((paramId: string, value: any) => {
-    console.log('Index: Refiner param changed:', paramId, value);
+    console.log('Index: Refiner param changed in advanced panel:', paramId, value);
     setRefinerParams(prev => ({
       ...prev,
       [paramId]: value
@@ -107,15 +107,15 @@ const Index = () => {
       console.log('- refinerParams:', refinerParams);
       console.log('- publish:', publish);
       
-      // Update state with the values
+      // Update state with the values from prompt form
       setCurrentPrompt(prompt);
       
-      // Update workflow state if provided
+      // Update workflow state if provided from prompt form
       if (workflow) {
         setCurrentWorkflow(workflow);
       }
       
-      // Update refiner state if provided
+      // Update refiner state if provided from prompt form
       if (refiner) {
         setSelectedRefiner(refiner);
       }
