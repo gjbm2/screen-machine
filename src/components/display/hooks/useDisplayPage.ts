@@ -64,10 +64,12 @@ export const useDisplayPage = () => {
   // Debug redirection handling
   const { checkDebugRedirection } = useDebugRedirection(params, redirectToDebugMode);
   
-  // Check for debug redirection
+  // Check for debug redirection - only if not already in debug mode
   useEffect(() => {
     if (!mountedRef.current) return;
-    checkDebugRedirection();
+    if (!params.debugMode) {
+      checkDebugRedirection();
+    }
   }, [params, params.output, params.debugMode]);
 
   // Metadata management
@@ -84,7 +86,10 @@ export const useDisplayPage = () => {
     console.log('[useDisplayPage] Image URL:', imageUrl);
     console.log('[useDisplayPage] Metadata:', metadata);
     
-    attemptMetadataExtraction(imageUrl, metadata, isLoading, isTransitioning);
+    // Only attempt metadata extraction if not loading and not transitioning
+    if (!isLoading && !isTransitioning) {
+      attemptMetadataExtraction(imageUrl, metadata, isLoading, isTransitioning);
+    }
   }, [params, imageUrl, metadata, isLoading, isTransitioning]);
 
   // Reset metadata extraction flag when image URL changes
@@ -100,8 +105,8 @@ export const useDisplayPage = () => {
   useDebugFiles(params.debugMode, setOutputFiles);
 
   // Only setup image polling when NOT in debug mode to prevent infinite loops
-  const imagePollerHandleManualCheck = params.debugMode 
-    ? null 
+  const { handleManualCheck: imagePollerHandleManualCheck } = params.debugMode 
+    ? { handleManualCheck: null }
     : useImagePoller(
         params,
         imageUrl,
@@ -110,7 +115,7 @@ export const useDisplayPage = () => {
         loadNewImage,
         checkImageModified,
         extractMetadataFromImage
-      )?.handleManualCheck;
+      );
 
   // Handle image errors
   const { handleImageError } = useImageErrorHandler(imageUrl, mountedRef);
@@ -119,7 +124,7 @@ export const useDisplayPage = () => {
   const { handleManualCheck } = useEnhancedManualCheck(
     mountedRef,
     imageUrl,
-    imagePollerHandleManualCheck || (async () => false),
+    imagePollerHandleManualCheck,
     originalHandleManualCheck,
     params,
     extractMetadataFromImage
