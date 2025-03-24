@@ -123,10 +123,17 @@ export const useDebugPanelFiles = ({
 
   const copyUrl = () => {
     // Get the full URL including the domain name and path, without debug mode
-    const url = window.location.origin + generateUrl(false);
-    console.log('[useDebugPanelFiles] Copying URL:', url);
+    const relativeUrl = generateUrl(false);
+    const currentPath = window.location.pathname;
+    const baseUrl = window.location.origin;
     
-    navigator.clipboard.writeText(url)
+    // Ensure we have the correct base path (either '/display' or the current path)
+    const basePath = currentPath.includes('/display') ? '/display' : currentPath;
+    const fullUrl = `${baseUrl}${basePath}${relativeUrl}`;
+    
+    console.log('[useDebugPanelFiles] Copying URL:', fullUrl);
+    
+    navigator.clipboard.writeText(fullUrl)
       .then(() => {
         setCopied(true);
         toast.success("URL copied to clipboard");

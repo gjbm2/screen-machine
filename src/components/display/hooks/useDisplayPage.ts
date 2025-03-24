@@ -92,7 +92,8 @@ export const useDisplayPage = () => {
     isLoading,
     isTransitioning,
     loadNewImage,
-    checkImageModified
+    checkImageModified,
+    extractMetadataFromImage
   );
 
   // Update preview params when URL params change
