@@ -87,11 +87,12 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     formatTime,
     insertAllMetadata,
     handleMouseDown,
-    handleResizeStart
+    handleResizeStart,
+    handleRefreshMetadata
   } = useDebugPanel({ params, imageUrl, metadata, onApplyCaption });
 
   // Add focus handling to bring this panel to the top
-  const handlePanelMouseDown = (e: React.MouseEvent) => {
+  const handlePanelMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     // Call the parent's focus handler to raise z-index
     if (onFocus) {
       onFocus();
@@ -103,7 +104,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   return (
     <Card 
       ref={panelRef}
-      className="absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg min-w-[400px] min-h-[400px]"
+      className="absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg min-w-[400px] min-h-[400px] resizable-container"
       style={{ 
         left: `${position2.x}px`, 
         top: `${position2.y}px`,

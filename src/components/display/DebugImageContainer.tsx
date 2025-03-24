@@ -73,7 +73,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   };
 
   // Add focus handling to bring this panel to the top
-  const handlePanelMouseDown = (e: React.MouseEvent) => {
+  const handlePanelMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     // Call the parent's focus handler to raise z-index
     if (onFocus) {
       onFocus();
@@ -85,7 +85,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   return (
     <Card 
       ref={containerRef}
-      className="absolute z-10 cursor-grab overflow-visible"
+      className="absolute z-10 cursor-grab overflow-visible resizable-container"
       style={{ 
         left: `${containerPosition.x}px`, 
         top: `${containerPosition.y}px`,
@@ -99,7 +99,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       <DebugImageHeader
         showMode={showMode}
         position={position}
-        selectedScreenSize={selectedScreenSize}
+        selectedScreenSize={selectedSize}
         setSelectedScreenSize={setSelectedScreenSize}
         imageChanged={imageChanged}
         onSettingsChange={onSettingsChange}

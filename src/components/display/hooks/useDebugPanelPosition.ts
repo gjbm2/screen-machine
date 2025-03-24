@@ -39,17 +39,31 @@ export const useDebugPanelPosition = () => {
 
   const handleMouseMove = (e: MouseEvent) => {
     if (isDragging) {
-      const newX = e.clientX - dragOffset.x;
-      const newY = e.clientY - dragOffset.y;
-      setPosition({ x: newX, y: newY });
+      const newX = Math.max(0, e.clientX - dragOffset.x);
+      const newY = Math.max(0, e.clientY - dragOffset.y);
+      
+      const maxX = window.innerWidth - (panelRef.current?.offsetWidth || 480);
+      const maxY = window.innerHeight - (panelRef.current?.offsetHeight || 400);
+      
+      setPosition({ 
+        x: Math.min(newX, maxX), 
+        y: Math.min(newY, maxY) 
+      });
     }
     
     if (isResizing) {
-      const newWidth = Math.max(300, resizeStart.width + (e.clientX - resizeStart.x));
-      const newHeight = Math.max(400, resizeStart.height + (e.clientY - resizeStart.y));
+      const MIN_WIDTH = 400;
+      const MIN_HEIGHT = 400;
+      
+      const newWidth = Math.max(MIN_WIDTH, resizeStart.width + (e.clientX - resizeStart.x));
+      const newHeight = Math.max(MIN_HEIGHT, resizeStart.height + (e.clientY - resizeStart.y));
+      
+      const maxWidth = window.innerWidth - position.x;
+      const maxHeight = window.innerHeight - position.y;
+      
       setPanelSize({ 
-        width: `${newWidth}px`, 
-        height: `${newHeight}px` 
+        width: `${Math.min(newWidth, maxWidth)}px`, 
+        height: `${Math.min(newHeight, maxHeight)}px` 
       });
     }
   };
@@ -67,13 +81,22 @@ export const useDebugPanelPosition = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragOffset, isResizing, resizeStart]);
+  }, [isDragging, dragOffset, isResizing, resizeStart, position]);
 
   return {
     position,
+    setPosition,
     isDragging,
+    setIsDragging,
+    dragOffset,
+    setDragOffset,
     panelRef,
     panelSize,
+    setPanelSize,
+    isResizing,
+    setIsResizing,
+    resizeStart,
+    setResizeStart,
     handleMouseDown,
     handleResizeStart
   };

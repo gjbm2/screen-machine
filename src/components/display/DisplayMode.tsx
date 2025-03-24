@@ -76,42 +76,44 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   if (params.debugMode) {
     return (
       <>
-        <DebugPanel 
-          params={params}
-          imageUrl={imageUrl}
-          lastModified={lastModified}
-          lastChecked={lastChecked}
-          nextCheckTime={nextCheckTime}
-          imageKey={imageKey}
-          outputFiles={outputFiles}
-          imageChanged={imageChanged}
-          onCheckNow={onHandleManualCheck}
-          metadata={metadata}
-          onApplyCaption={(caption) => {}}
-          onFocus={handleDebugPanelFocus}
-          style={{ zIndex: debugPanelZIndex }}
-        />
-        <DebugImageContainer 
-          imageUrl={imageUrl}
-          imageKey={imageKey}
-          showMode={previewParams.showMode}
-          position={previewParams.position}
-          backgroundColor={previewParams.backgroundColor}
-          onImageError={onImageError}
-          imageRef={imageRef}
-          imageChanged={imageChanged}
-          caption={processedCaption}
-          captionPosition={previewParams.captionPosition}
-          captionSize={previewParams.captionSize}
-          captionColor={previewParams.captionColor}
-          captionFont={previewParams.captionFont}
-          captionBgColor={previewParams.captionBgColor}
-          captionBgOpacity={previewParams.captionBgOpacity}
-          metadata={metadata}
-          onSettingsChange={() => {}} 
-          onFocus={handleImageContainerFocus}
-          style={{ zIndex: imageContainerZIndex }}
-        />
+        <div style={{ zIndex: debugPanelZIndex }}>
+          <DebugPanel 
+            params={params}
+            imageUrl={imageUrl}
+            lastModified={lastModified}
+            lastChecked={lastChecked}
+            nextCheckTime={nextCheckTime}
+            imageKey={imageKey}
+            outputFiles={outputFiles}
+            imageChanged={imageChanged}
+            onCheckNow={onHandleManualCheck}
+            metadata={metadata}
+            onApplyCaption={(caption) => {}}
+            onFocus={handleDebugPanelFocus}
+          />
+        </div>
+        <div style={{ zIndex: imageContainerZIndex }}>
+          <DebugImageContainer 
+            imageUrl={imageUrl}
+            imageKey={imageKey}
+            showMode={previewParams.showMode}
+            position={previewParams.position}
+            backgroundColor={previewParams.backgroundColor}
+            onImageError={onImageError}
+            imageRef={imageRef}
+            imageChanged={imageChanged}
+            caption={processedCaption}
+            captionPosition={previewParams.captionPosition}
+            captionSize={previewParams.captionSize}
+            captionColor={previewParams.captionColor}
+            captionFont={previewParams.captionFont}
+            captionBgColor={previewParams.captionBgColor}
+            captionBgOpacity={previewParams.captionBgOpacity}
+            metadata={metadata}
+            onSettingsChange={() => {}} 
+            onFocus={handleImageContainerFocus}
+          />
+        </div>
       </>
     );
   }
