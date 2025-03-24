@@ -46,14 +46,20 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
     try {
       const currentImageUrl = localStorage.getItem('currentImageUrl');
       
-      if (currentImageUrl) {
-        console.log('[MetadataTab] Forcing refresh for:', currentImageUrl);
+      if (!currentImageUrl) {
+        toast.error("No image URL available");
+        setLoading(false);
+        return;
+      }
+      
+      console.log('[MetadataTab] Forcing refresh for:', currentImageUrl);
+      
+      // Use the provided onRefreshMetadata if available
+      if (onRefreshMetadata) {
+        toast.info("Extracting metadata...");
+        console.log('[MetadataTab] Using provided onRefreshMetadata function');
         
-        // Use the provided onRefreshMetadata if available
-        if (onRefreshMetadata) {
-          toast.info("Extracting metadata...");
-          console.log('[MetadataTab] Using provided onRefreshMetadata function');
-          
+        try {
           const metadata = await onRefreshMetadata();
           console.log('[MetadataTab] Fresh metadata from provided function:', metadata);
           
@@ -63,60 +69,76 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
           } else {
             toast.warning("No metadata found in this image");
           }
+        } catch (error) {
+          console.error('[MetadataTab] Error from onRefreshMetadata:', error);
+          toast.error(`Failed to extract metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+        
+        setLoading(false);
+        return;
+      }
+      
+      // Fallback to direct extraction if no onRefreshMetadata provided
+      const cacheBustUrl = `${currentImageUrl}${currentImageUrl.includes('?') ? '&' : '?'}forcedRefresh=${Date.now()}_${Math.random()}`;
+      
+      toast.info("Extracting metadata...");
+      try {
+        // Try API endpoint first
+        console.log('[MetadataTab] Trying API endpoint for metadata extraction');
+        const response = await fetch('/api/extract-metadata', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ imageUrl: cacheBustUrl }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`API response not OK: ${response.status}`);
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error(`Expected JSON response but got ${contentType}`);
+        }
+
+        const data = await response.json();
+        console.log('[MetadataTab] API response data:', data);
+        
+        if (data.success && data.metadata && Object.keys(data.metadata).length > 0) {
+          toast.success(`Found ${Object.keys(data.metadata).length} metadata entries`);
+          setRefreshKey(prev => prev + 1);
+          window.location.reload();
+          setLoading(false);
           return;
         }
         
-        // Fallback to direct extraction if no onRefreshMetadata provided
-        const cacheBustUrl = `${currentImageUrl}${currentImageUrl.includes('?') ? '&' : '?'}forcedRefresh=${Date.now()}_${Math.random()}`;
+        throw new Error(data.error || 'No metadata found');
+      } catch (apiError) {
+        console.error('[MetadataTab] API endpoint error:', apiError);
         
-        toast.info("Extracting metadata...");
-        const metadata = await extractImageMetadata(cacheBustUrl);
-        
-        console.log('[MetadataTab] Fresh metadata from direct extraction:', metadata);
-        
-        if (Object.keys(metadata).length > 0) {
-          toast.success(`Found ${Object.keys(metadata).length} metadata entries`);
-          setRefreshKey(prev => prev + 1);
-          window.location.reload();
-        } else {
-          console.warn('[MetadataTab] No metadata found after refresh');
-          toast.warning("No metadata found in this image");
+        // Fall back to utility function
+        try {
+          console.log('[MetadataTab] Falling back to utility function');
+          const metadata = await extractImageMetadata(cacheBustUrl);
           
-          // Try an alternative approach
-          const response = await fetch(cacheBustUrl, {
-            cache: 'no-store',
-            headers: {
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
-              'Expires': '0'
-            }
-          });
+          console.log('[MetadataTab] Fresh metadata from direct extraction:', metadata);
           
-          if (!response.ok) {
-            throw new Error(`Failed to fetch image: ${response.status}`);
-          }
-          
-          const blob = await response.blob();
-          const imgUrl = URL.createObjectURL(blob);
-          
-          console.log('[MetadataTab] Trying with blob URL:', imgUrl);
-          const retryMetadata = await extractImageMetadata(imgUrl);
-          
-          URL.revokeObjectURL(imgUrl);
-          
-          if (Object.keys(retryMetadata).length > 0) {
-            toast.success(`Found ${Object.keys(retryMetadata).length} metadata entries on second attempt`);
+          if (Object.keys(metadata).length > 0) {
+            toast.success(`Found ${Object.keys(metadata).length} metadata entries`);
+            setRefreshKey(prev => prev + 1);
             window.location.reload();
           } else {
-            toast.error("No metadata found after multiple attempts");
+            toast.warning("No metadata found in this image");
           }
+        } catch (err) {
+          console.error('[MetadataTab] Error in fallback extraction:', err);
+          toast.error(`Failed to extract metadata: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
-      } else {
-        toast.error("No image URL available");
       }
     } catch (err) {
       console.error('[MetadataTab] Error refreshing metadata:', err);
-      toast.error("Failed to refresh metadata");
+      toast.error(`Failed to refresh metadata: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
