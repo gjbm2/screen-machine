@@ -14,8 +14,11 @@ interface PromptFormInitialValues {
 }
 
 const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
+  // Get the default workflow ID for initialization
+  const defaultWorkflowId = typedWorkflows.length > 0 ? typedWorkflows[0].id : 'text-to-image';
+  
   // Use initialValues if provided, otherwise use defaults
-  const [selectedWorkflow, setSelectedWorkflow] = useState(initialValues.selectedWorkflow || 'text-to-image');
+  const [selectedWorkflow, setSelectedWorkflow] = useState(initialValues.selectedWorkflow || defaultWorkflowId);
   const [selectedRefiner, setSelectedRefiner] = useState(initialValues.selectedRefiner || 'none');
   const [selectedPublish, setSelectedPublish] = useState(initialValues.selectedPublish || 'none');
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>(initialValues.workflowParams || {});

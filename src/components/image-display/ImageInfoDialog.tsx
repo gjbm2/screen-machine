@@ -12,7 +12,7 @@ interface ImageInfoDialogProps {
     prompt?: string;
     workflow: string;
     params?: Record<string, any>;
-    referenceImageUrl?: string;
+    referenceImageUrl?: string | string[];
     timestamp?: number;
     refiner?: string;
     refinerParams?: Record<string, any>;
@@ -43,15 +43,29 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
   };
 
   // Process reference images if they exist
-  const referenceImages = image.referenceImageUrl ? 
-    (typeof image.referenceImageUrl === 'string' ? 
-      image.referenceImageUrl.split(',').map(url => url.trim()).filter(url => url !== '') : 
-      []) : 
-    [];
+  const referenceImages = React.useMemo(() => {
+    if (!image.referenceImageUrl) return [];
+    
+    if (typeof image.referenceImageUrl === 'string') {
+      return image.referenceImageUrl
+        .split(',')
+        .map(url => url.trim())
+        .filter(url => url !== '');
+    }
+    
+    return Array.isArray(image.referenceImageUrl) 
+      ? image.referenceImageUrl
+      : [];
+  }, [image.referenceImageUrl]);
 
   // Handle reference image click
   const handleReferenceImageClick = (imageUrl: string) => {
     setSelectedReferenceImage(imageUrl);
+    setReferenceDialogOpen(true);
+  };
+
+  // Handle view all reference images
+  const handleViewAllReferenceImages = () => {
     setReferenceDialogOpen(true);
   };
 
@@ -245,7 +259,7 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
         <ReferenceImageDialog 
           isOpen={referenceDialogOpen}
           onOpenChange={setReferenceDialogOpen}
-          imageUrls={[selectedReferenceImage]}
+          imageUrls={referenceImages.length > 0 ? referenceImages : []}
         />
       </DialogContent>
     </Dialog>
