@@ -52,3 +52,6 @@ export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
     </div>
   );
 };
+
+// Static property to make the screen sizes accessible
+ScreenSizeSelector.SCREEN_SIZES = SCREEN_SIZES;

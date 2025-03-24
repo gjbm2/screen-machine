@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Card } from "@/components/ui/card";
 import { Tabs } from "@/components/ui/tabs";
 import { DebugPanelHeader } from './DebugPanelHeader';
@@ -23,6 +23,9 @@ interface DebugPanelProps {
   onApplyCaption: (caption: string | null) => void;
   onFocus?: () => void;
   isFixedPanel?: boolean;
+  togglePreview?: () => void;
+  showingPreview?: boolean;
+  isMobile?: boolean;
 }
 
 export const DebugPanel: React.FC<DebugPanelProps> = ({
@@ -38,7 +41,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   metadata,
   onApplyCaption,
   onFocus,
-  isFixedPanel = false
+  isFixedPanel = false,
+  togglePreview,
+  showingPreview,
+  isMobile
 }) => {
   const {
     activeTab,
@@ -137,6 +143,9 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         copyUrl={copyUrl}
         resetDisplay={resetDisplay}
         copied={copied}
+        togglePreview={togglePreview}
+        showingPreview={showingPreview}
+        isMobile={isMobile}
       />
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col">
