@@ -21,6 +21,7 @@ interface SettingsPanelProps {
   setBackgroundColor: (value: string) => void;
   setTransition: (value: TransitionType) => void;
   resetSettings: () => void;
+  applySettings?: () => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -34,8 +35,35 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   setRefreshInterval,
   setBackgroundColor,
   setTransition,
-  resetSettings
+  resetSettings,
+  applySettings
 }) => {
+  // Create handlers that apply changes immediately
+  const handleShowModeChange = (value: ShowMode) => {
+    setShowMode(value);
+    if (applySettings) applySettings();
+  };
+  
+  const handlePositionChange = (value: PositionMode) => {
+    setPosition(value);
+    if (applySettings) applySettings();
+  };
+  
+  const handleRefreshIntervalChange = (value: number[]) => {
+    setRefreshInterval(value[0]);
+    if (applySettings) applySettings();
+  };
+  
+  const handleBackgroundColorChange = (value: string) => {
+    setBackgroundColor(value.replace('#', ''));
+    if (applySettings) applySettings();
+  };
+  
+  const handleTransitionChange = (value: TransitionType) => {
+    setTransition(value);
+    if (applySettings) applySettings();
+  };
+
   return (
     <CardContent className="mt-0 flex-1 overflow-auto space-y-4">
       <div className="flex justify-between items-center">
@@ -57,7 +85,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <Label htmlFor="showMode">Display Mode</Label>
             <Select 
               value={showMode} 
-              onValueChange={(value) => setShowMode(value as ShowMode)}
+              onValueChange={handleShowModeChange}
             >
               <SelectTrigger id="showMode">
                 <SelectValue placeholder="Select display mode" />
@@ -75,7 +103,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <Label htmlFor="position">Position</Label>
             <Select 
               value={position} 
-              onValueChange={(value) => setPosition(value as PositionMode)}
+              onValueChange={handlePositionChange}
             >
               <SelectTrigger id="position">
                 <SelectValue placeholder="Select position" />
@@ -99,15 +127,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <Label htmlFor="transition">Transition Type</Label>
           <Select 
             value={transition} 
-            onValueChange={(value) => setTransition(value as TransitionType)}
+            onValueChange={handleTransitionChange}
           >
             <SelectTrigger id="transition">
               <SelectValue placeholder="Select transition" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="cut">Cut</SelectItem>
-              <SelectItem value="fade-fast">Fast Fade</SelectItem>
-              <SelectItem value="fade-slow">Slow Fade</SelectItem>
+              <SelectItem value="fade-fast">Fast Fade (2s)</SelectItem>
+              <SelectItem value="fade-slow">Slow Fade (10s)</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -120,7 +148,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               min={1}
               max={60}
               step={1}
-              onValueChange={(value) => setRefreshInterval(value[0])}
+              onValueChange={handleRefreshIntervalChange}
               className="flex-1"
             />
             <span className="w-8 text-center">{refreshInterval}s</span>
@@ -137,7 +165,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <Input
               id="backgroundColor"
               value={backgroundColor}
-              onChange={(e) => setBackgroundColor(e.target.value.replace('#', ''))}
+              onChange={(e) => handleBackgroundColorChange(e.target.value)}
               placeholder="Background color (hex)"
               className="flex-1"
               maxLength={6}
@@ -145,7 +173,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <input
               type="color"
               value={`#${backgroundColor}`}
-              onChange={(e) => setBackgroundColor(e.target.value.substring(1))}
+              onChange={(e) => handleBackgroundColorChange(e.target.value)}
               className="w-10 h-10 p-1 rounded border border-gray-300"
             />
           </div>

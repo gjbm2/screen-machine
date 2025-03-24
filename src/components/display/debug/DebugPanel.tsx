@@ -5,7 +5,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { DebugPanelHeader } from './DebugPanelHeader';
 import { DebugPanelFooter } from './DebugPanelFooter';
 import { DebugPanelTabs } from './DebugPanelTabs';
-import { DebugPanelContent } from './DebugPanelContent';
+import DebugPanelContent from './DebugPanelContent';
 import { useDebugPanel } from '../hooks/useDebugPanel';
 import { DisplayParams } from '../types';
 
@@ -194,6 +194,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
           setCaptionBgColor={setCaptionBgColor}
           setCaptionBgOpacity={setCaptionBgOpacity}
           insertAllMetadata={insertAllMetadata}
+          applySettings={applySettings}
         />
       </Tabs>
       

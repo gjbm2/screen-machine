@@ -1,5 +1,5 @@
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { DisplayParams } from '@/components/display/types';
 import { processOutputParam, extractImageMetadata } from '@/components/display/utils';
 import { toast } from 'sonner';
@@ -12,6 +12,9 @@ export const useImagePoller = (
   loadNewImage: (url: string) => void,
   checkImageModified: (url: string) => Promise<boolean>
 ) => {
+  // Use a ref to track the current interval ID
+  const intervalIdRef = useRef<number | null>(null);
+  
   // Handle initial image loading and periodic checking
   useEffect(() => {
     if (!params.output && !params.debugMode) {
@@ -22,6 +25,7 @@ export const useImagePoller = (
     
     // Logging for debugging
     console.log('[useImagePoller] Processed URL:', processedUrl);
+    console.log('[useImagePoller] Refresh interval:', params.refreshInterval);
     console.log('[useImagePoller] Is transitioning:', isTransitioning);
     console.log('[useImagePoller] Is loading:', isLoading);
     
@@ -31,19 +35,30 @@ export const useImagePoller = (
         loadNewImage(processedUrl);
       }
       
-      // Set up polling interval
-      const intervalId = window.setInterval(() => {
+      // Clear any existing interval
+      if (intervalIdRef.current !== null) {
+        window.clearInterval(intervalIdRef.current);
+        intervalIdRef.current = null;
+      }
+      
+      // Set up new polling interval
+      intervalIdRef.current = window.setInterval(() => {
         if (processedUrl && !isLoading && !isTransitioning) {
+          console.log('[useImagePoller] Checking for image updates...');
           checkImageModified(processedUrl).then(changed => {
             if (changed) {
-              console.log('[useImagePoller] Image changed, should re-extract metadata');
+              console.log('[useImagePoller] Image changed, reloading...');
+              loadNewImage(processedUrl);
             }
           });
         }
       }, params.refreshInterval * 1000);
 
       return () => {
-        window.clearInterval(intervalId);
+        if (intervalIdRef.current !== null) {
+          window.clearInterval(intervalIdRef.current);
+          intervalIdRef.current = null;
+        }
       };
     }
   }, [params.output, params.refreshInterval, params.debugMode, isLoading, isTransitioning, loadNewImage, checkImageModified]);
