@@ -43,6 +43,18 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
     }
   };
   
+  const handleWorkflowSelect = (workflowId: string, e: React.MouseEvent) => {
+    // Prevent event bubbling and properly handle the workflow change
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Change workflow selection
+    if (workflowId !== selectedWorkflow) {
+      console.log(`WorkflowIconSelector: Changing workflow to: ${workflowId}`);
+      onWorkflowChange(workflowId);
+    }
+  };
+  
   return (
     <div className="flex items-center h-[48px]">
       <HoverCard openDelay={0} closeDelay={100}>
@@ -73,16 +85,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
                   variant={workflow.id === selectedWorkflow ? "secondary" : "ghost"}
                   size="sm"
                   className="justify-start text-sm h-auto py-2"
-                  onClick={(e) => {
-                    // Prevent event bubbling and properly handle the workflow change
-                    e.preventDefault();
-                    e.stopPropagation();
-                    // Change workflow selection
-                    if (workflow.id !== selectedWorkflow) {
-                      console.log(`Changing workflow to: ${workflow.id}`);
-                      onWorkflowChange(workflow.id);
-                    }
-                  }}
+                  onClick={(e) => handleWorkflowSelect(workflow.id, e)}
                   type="button"
                 >
                   <div className="mr-2 flex-shrink-0">

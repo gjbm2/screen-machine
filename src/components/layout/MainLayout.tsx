@@ -1,24 +1,29 @@
 
-import React, { useState, useCallback } from 'react';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import HeaderSection from '@/components/main/HeaderSection';
-import ResizableConsole from '@/components/debug/ResizableConsole';
-import AboutDialog from '@/components/about/AboutDialog';
+import React, { ReactNode, useState } from 'react';
+import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import { useConsoleManagement } from '@/hooks/use-console-management';
+import { Menu, Terminal, X } from 'lucide-react';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import AboutDialog from '@/components/about/AboutDialog';
+import ConsoleOutput from '@/components/debug/ConsoleOutput';
+import ResizableConsole from '@/components/debug/ResizableConsole';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface MainLayoutProps {
-  children: React.ReactNode;
-  onToggleConsole: () => void;
-  consoleVisible: boolean;
-  onOpenAdvancedOptions: () => void;
-  consoleLogs: any[];
-  onClearConsole: () => void;
+  children: ReactNode;
+  onToggleConsole?: () => void;
+  consoleVisible?: boolean;
+  onOpenAdvancedOptions?: () => void;
+  consoleLogs?: any[];
+  onClearConsole?: () => void;
   isFirstRun?: boolean;
 }
 
-const MainLayout: React.FC<MainLayoutProps> = ({
-  children,
+const MainLayout: React.FC<MainLayoutProps> = ({ 
+  children, 
   onToggleConsole,
   consoleVisible,
   onOpenAdvancedOptions,
@@ -26,36 +31,86 @@ const MainLayout: React.FC<MainLayoutProps> = ({
   onClearConsole,
   isFirstRun = false
 }) => {
-  const [showAboutDialog, setShowAboutDialog] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const isMobile = useIsMobile();
   
   return (
-    <main className="flex flex-col min-h-screen p-4 md:p-6 max-w-screen-2xl mx-auto">
-      <HeaderSection 
-        onToggleConsole={onToggleConsole}
-        isConsoleVisible={consoleVisible}
-        onOpenAdvancedOptions={onOpenAdvancedOptions}
-        onOpenAboutDialog={() => setShowAboutDialog(true)}
-      />
+    <div className="min-h-screen flex flex-col">
+      <Header />
       
-      <ScrollArea className="flex-1 max-h-full overflow-y-auto pr-4">
+      <div className="fixed top-4 right-4 z-50 flex items-center space-x-2">
+        {/* Console Toggle Button */}
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-10 w-10 rounded-full bg-white border shadow-md hover:bg-slate-100"
+          onClick={onToggleConsole}
+          title="Toggle Console"
+        >
+          <Terminal className="h-5 w-5" />
+        </Button>
+        
+        {/* Mobile Menu */}
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 rounded-full bg-white border shadow-md hover:bg-slate-100"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent>
+            <div className="flex flex-col h-full">
+              <div className="px-1 py-4">
+                <h2 className="text-xl font-bold mb-2">Menu</h2>
+                <Separator className="my-4" />
+              </div>
+              
+              <div className="flex-1">
+                <div className="space-y-4">
+                  <Button 
+                    variant="ghost" 
+                    className="w-full justify-start" 
+                    onClick={onOpenAdvancedOptions}
+                  >
+                    Advanced Options
+                  </Button>
+                  
+                  <Button 
+                    variant="ghost" 
+                    className="w-full justify-start"
+                    onClick={() => setIsAboutOpen(true)}
+                  >
+                    About
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+      
+      <main className="flex-1 container mx-auto px-4 py-8">
         {children}
-        <Footer />
-      </ScrollArea>
+      </main>
       
-      {consoleVisible && (
-        <ResizableConsole 
-          logs={consoleLogs}
-          isVisible={consoleVisible}
-          onClose={onToggleConsole}
-          onClear={onClearConsole}
-        />
+      <Footer />
+      
+      {/* Console Output */}
+      {consoleVisible && consoleLogs && (
+        <ResizableConsole onClose={onToggleConsole} onClear={onClearConsole}>
+          <ConsoleOutput logs={consoleLogs} />
+        </ResizableConsole>
       )}
       
+      {/* About Dialog */}
       <AboutDialog 
-        open={showAboutDialog} 
-        onOpenChange={setShowAboutDialog}
+        isOpen={isAboutOpen}
+        onOpenChange={setIsAboutOpen}
       />
-    </main>
+    </div>
   );
 };
 
