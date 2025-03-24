@@ -1,9 +1,8 @@
 
 import React from 'react';
-import { CardHeader, CardTitle } from "@/components/ui/card";
-import { Move, RefreshCw } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Settings2, RefreshCw } from 'lucide-react';
 import { ShowMode, PositionMode } from '../types';
 import { ScreenSizeSelector } from './ScreenSizeSelector';
 
@@ -11,7 +10,7 @@ interface DebugImageHeaderProps {
   showMode: ShowMode;
   position: PositionMode;
   selectedScreenSize: string;
-  setSelectedScreenSize: (value: string) => void;
+  setSelectedScreenSize: (size: string) => void;
   imageChanged?: boolean;
   onSettingsChange?: () => void;
   onReset: () => void;
@@ -27,35 +26,31 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
   onReset
 }) => {
   return (
-    <CardHeader className="pb-2 flex flex-row justify-between items-center card-header-drag-handle cursor-grab">
-      <div className="flex items-center">
-        <Move className="h-4 w-4 text-muted-foreground mr-2" />
-        <CardTitle className="text-lg">Image Preview ({showMode} mode, {position} position)</CardTitle>
+    <CardHeader className="px-2 py-2 flex-row justify-between items-center space-x-2 card-header-drag-handle cursor-grab">
+      <div className="text-sm font-medium truncate flex-shrink-1 min-w-0 whitespace-nowrap">
+        Preview {showMode}/{position}
       </div>
-      
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center gap-1">
         <ScreenSizeSelector 
-          selectedScreenSize={selectedScreenSize}
-          setSelectedScreenSize={setSelectedScreenSize}
-          onSettingsChange={onSettingsChange}
+          selectedSize={selectedScreenSize} 
+          onSelect={setSelectedScreenSize} 
         />
-        
-        <Button
-          variant="outline"
-          size="sm"
+        <Button 
+          size="icon" 
+          variant="ghost" 
+          className="h-6 w-6"
+          onClick={onSettingsChange}
+        >
+          <Settings2 className="h-4 w-4" />
+        </Button>
+        <Button 
+          size="icon" 
+          variant="ghost" 
+          className={`h-6 w-6 ${imageChanged ? 'text-blue-500' : ''}`}
           onClick={onReset}
         >
-          Reset
+          <RefreshCw className="h-4 w-4" />
         </Button>
-        
-        {imageChanged && (
-          <Alert variant="default" className="py-2 border-amber-500 bg-amber-50">
-            <RefreshCw className="h-4 w-4 text-amber-500 mr-2 animate-spin" />
-            <AlertDescription className="text-amber-600">
-              Image has been updated on the server
-            </AlertDescription>
-          </Alert>
-        )}
       </div>
     </CardHeader>
   );

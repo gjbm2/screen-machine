@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { Tabs } from "@/components/ui/tabs";
 import { DebugPanelHeader } from './DebugPanelHeader';
@@ -22,6 +22,7 @@ interface DebugPanelProps {
   onCheckNow: () => void;
   metadata: Record<string, string>;
   onApplyCaption: (caption: string | null) => void;
+  onFocus?: () => void;
 }
 
 export const DebugPanel: React.FC<DebugPanelProps> = ({
@@ -35,7 +36,8 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   imageChanged,
   onCheckNow,
   metadata,
-  onApplyCaption
+  onApplyCaption,
+  onFocus
 }) => {
   const {
     activeTab,
@@ -85,14 +87,23 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     formatTime,
     insertAllMetadata,
     handleMouseDown,
-    handleResizeStart,
-    handleRefreshMetadata
+    handleResizeStart
   } = useDebugPanel({ params, imageUrl, metadata, onApplyCaption });
+
+  // Add focus handling to bring this panel to the top
+  const handlePanelMouseDown = (e: React.MouseEvent) => {
+    // Call the parent's focus handler to raise z-index
+    if (onFocus) {
+      onFocus();
+    }
+    // Call the original mouse down handler
+    handleMouseDown(e);
+  };
 
   return (
     <Card 
       ref={panelRef}
-      className="absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg"
+      className="absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg min-w-[400px] min-h-[400px]"
       style={{ 
         left: `${position2.x}px`, 
         top: `${position2.y}px`,
@@ -104,7 +115,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         display: 'flex',
         flexDirection: 'column'
       }}
-      onMouseDown={handleMouseDown}
+      onMouseDown={handlePanelMouseDown}
     >
       <DebugPanelHeader 
         onCheckNow={onCheckNow}

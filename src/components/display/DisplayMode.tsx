@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { DebugPanel } from '@/components/display/debug/DebugPanel';
 import { DebugImageContainer } from '@/components/display/DebugImageContainer';
 import { ImageDisplay } from '@/components/display/ImageDisplay';
@@ -13,7 +13,7 @@ interface DisplayModeProps {
   imageRef: React.RefObject<HTMLImageElement>;
   lastModified: string | null;
   lastChecked: Date | null;
-  nextCheckTime: Date | null;  // Ensure this is Date | null
+  nextCheckTime: Date | null;
   imageChanged: boolean;
   outputFiles: string[];
   metadata: Record<string, string>;
@@ -57,6 +57,22 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
     imageRef.current?.naturalHeight || 0
   );
 
+  // State to track which panel should be on top
+  const [debugPanelZIndex, setDebugPanelZIndex] = useState(11);
+  const [imageContainerZIndex, setImageContainerZIndex] = useState(10);
+
+  // Handle focus for the debug panel
+  const handleDebugPanelFocus = () => {
+    setDebugPanelZIndex(12);
+    setImageContainerZIndex(10);
+  };
+
+  // Handle focus for the image container
+  const handleImageContainerFocus = () => {
+    setDebugPanelZIndex(10);
+    setImageContainerZIndex(12);
+  };
+
   if (params.debugMode) {
     return (
       <>
@@ -65,13 +81,15 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
           imageUrl={imageUrl}
           lastModified={lastModified}
           lastChecked={lastChecked}
-          nextCheckTime={nextCheckTime}  // Pass as Date | null
+          nextCheckTime={nextCheckTime}
           imageKey={imageKey}
           outputFiles={outputFiles}
           imageChanged={imageChanged}
           onCheckNow={onHandleManualCheck}
           metadata={metadata}
           onApplyCaption={(caption) => {}}
+          onFocus={handleDebugPanelFocus}
+          style={{ zIndex: debugPanelZIndex }}
         />
         <DebugImageContainer 
           imageUrl={imageUrl}
@@ -91,6 +109,8 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
           captionBgOpacity={previewParams.captionBgOpacity}
           metadata={metadata}
           onSettingsChange={() => {}} 
+          onFocus={handleImageContainerFocus}
+          style={{ zIndex: imageContainerZIndex }}
         />
       </>
     );

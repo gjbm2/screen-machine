@@ -113,8 +113,11 @@ export const useDebugPanelFiles = ({
   };
 
   const commitSettings = () => {
+    // Create URL without debug mode flag
     const url = generateUrl(false);
-    navigate(url);
+    
+    // Force navigation to non-debug mode URL
+    window.location.href = url;
     toast.success("Settings committed");
   };
 
