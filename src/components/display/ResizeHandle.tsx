@@ -1,6 +1,5 @@
 
 import React from 'react';
-import { MoveDiagonal } from 'lucide-react';
 
 interface ResizeHandleProps {
   onMouseDown: (e: React.MouseEvent) => void;
@@ -28,7 +27,7 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
       onMouseDown={handleMouseDown}
       title="Resize panel"
     >
-      <MoveDiagonal className="h-4 w-4 text-gray-400" />
+      {/* Removed the MoveDiagonal icon as requested */}
     </div>
   );
 };

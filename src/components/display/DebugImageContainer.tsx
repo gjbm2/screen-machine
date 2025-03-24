@@ -27,6 +27,9 @@ interface DebugImageContainerProps {
   onSettingsChange?: () => void;
   onFocus?: () => void;
   isFixedPanel?: boolean;
+  togglePreview?: () => void;
+  showingPreview?: boolean;
+  isMobile?: boolean;
 }
 
 export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
@@ -48,7 +51,10 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   metadata = {},
   onSettingsChange,
   onFocus,
-  isFixedPanel = false
+  isFixedPanel = false,
+  togglePreview,
+  showingPreview,
+  isMobile
 }) => {
   const navigate = useNavigate();
   
@@ -116,6 +122,9 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         imageChanged={imageChanged}
         onSettingsChange={onSettingsChange}
         onReset={handleReset}
+        togglePreview={togglePreview}
+        showingPreview={showingPreview}
+        isMobile={isMobile}
       />
       
       <DebugImageContent

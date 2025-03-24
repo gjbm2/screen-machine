@@ -68,19 +68,7 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
 
   if (params.debugMode) {
     return (
-      <div className="fixed inset-0 flex flex-col sm:flex-row overflow-hidden">
-        {/* For mobile - show either settings or preview based on toggle */}
-        {isMobile && (
-          <div className="fixed top-2 right-2 z-50">
-            <button 
-              onClick={toggleView}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 px-3 py-2 rounded-md text-sm font-medium"
-            >
-              {showPreview ? "Settings" : "Preview"}
-            </button>
-          </div>
-        )}
-        
+      <div className="fixed inset-0 flex flex-col sm:flex-row overflow-hidden">        
         {/* Settings Panel */}
         <div 
           className={`${isMobile ? (showPreview ? 'hidden' : 'w-full h-full') : 'w-2/5'} overflow-auto`}
@@ -98,6 +86,9 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
             metadata={metadata}
             onApplyCaption={(caption) => {}}
             isFixedPanel={true}
+            togglePreview={toggleView}
+            showingPreview={showPreview}
+            isMobile={isMobile}
           />
         </div>
         
@@ -122,8 +113,11 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
             captionBgColor={previewParams.captionBgColor}
             captionBgOpacity={previewParams.captionBgOpacity}
             metadata={metadata}
-            onSettingsChange={() => {}}
+            onSettingsChange={toggleView}
             isFixedPanel={true}
+            togglePreview={toggleView}
+            showingPreview={showPreview}
+            isMobile={isMobile}
           />
         </div>
       </div>

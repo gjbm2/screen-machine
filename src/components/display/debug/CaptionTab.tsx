@@ -1,6 +1,5 @@
 
 import React from 'react';
-import { CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -87,7 +86,7 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
     const inputColor = includeHash ? color.replace('#', '') : color;
     
     return (
-      <div className="space-y-2">
+      <div className="space-y-1">
         <div className="flex items-center justify-between">
           <Label htmlFor={`caption-${label.toLowerCase()}-color`} className="text-sm">{label}</Label>
           <div className="flex items-center space-x-2">
@@ -140,9 +139,9 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
   };
 
   return (
-    <CardContent className="pt-4 pb-2 overflow-y-auto max-h-[50vh]">
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
+    <div className="p-4 overflow-y-auto flex flex-col h-full">
+      <div className="space-y-3 flex-grow">
+        <div className="flex items-center gap-2 mb-3">
           <Button 
             variant="outline" 
             size="sm" 
@@ -169,22 +168,22 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
           </Tooltip>
         </div>
         
-        <div className="space-y-2">
+        <div className="space-y-1 mb-3">
           <Label htmlFor="caption-textarea" className="text-sm">Caption Text</Label>
           <Textarea 
             id="caption-textarea"
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
             placeholder="Enter caption text or use {tag} for metadata..."
-            className="min-h-[100px]"
+            className="min-h-[80px] resize-none"
           />
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-gray-500 mt-1">
             Use {"{tagname}"} to insert metadata values, {"{all}"} for all metadata, or regex patterns like /pattern/flags.
           </div>
         </div>
         
-        <div>
-          <h3 className="text-sm font-medium mb-2">Caption Preview</h3>
+        <div className="mb-3">
+          <h3 className="text-sm font-medium mb-1">Caption Preview</h3>
           <div 
             className="p-3 rounded-md min-h-[60px] text-sm whitespace-pre-line"
             style={{
@@ -195,9 +194,9 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
             {previewCaption || <span className="text-gray-400">No caption</span>}
           </div>
         </div>
-        
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+          <div className="space-y-1">
             <Label htmlFor="caption-position" className="text-sm">Caption Position</Label>
             <Select 
               value={captionPosition} 
@@ -217,7 +216,7 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
             </Select>
           </div>
           
-          <div className="space-y-2">
+          <div className="space-y-1">
             <Label htmlFor="caption-size" className="text-sm">Font Size</Label>
             <Select 
               value={captionSize} 
@@ -233,16 +232,14 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
               </SelectContent>
             </Select>
           </div>
-        </div>
         
-        <div className="grid grid-cols-2 gap-4">
           <ColorPicker 
             label="Text Color" 
             color={captionColor}
             onChange={handleColorChange(setCaptionColor)}
           />
           
-          <div className="space-y-2">
+          <div className="space-y-1">
             <Label htmlFor="caption-font" className="text-sm">Font Family</Label>
             <Select 
               value={captionFont} 
@@ -260,9 +257,7 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
               </SelectContent>
             </Select>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
+        
           <ColorPicker 
             label="Background Color" 
             color={captionBgColor}
@@ -270,7 +265,7 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
             includeHash={true}
           />
 
-          <div className="space-y-2">
+          <div className="space-y-1">
             <div className="flex items-center justify-between">
               <Label htmlFor="caption-bg-opacity" className="text-sm">Background Opacity</Label>
               <span className="text-xs text-gray-500">{Math.round(captionBgOpacity * 100)}%</span>
@@ -288,6 +283,6 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
           </div>
         </div>
       </div>
-    </CardContent>
+    </div>
   );
 };
