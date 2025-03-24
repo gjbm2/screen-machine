@@ -2,7 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { DisplayParams } from '../types';
-import { createUrlWithParams } from '../utils';
+import { createUrlWithParams } from '../utils/paramUtils';
 
 interface UseDebugPanelUrlsProps {
   params: DisplayParams;

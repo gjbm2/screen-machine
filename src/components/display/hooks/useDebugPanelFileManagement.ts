@@ -1,7 +1,7 @@
 
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
-import { createUrlWithParams } from '../utils';
+import { createUrlWithParams } from '../utils/paramUtils';
 
 interface UseDebugPanelFileManagementProps {
   params: DisplayParams;
