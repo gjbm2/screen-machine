@@ -1,4 +1,3 @@
-
 // API service for all backend requests
 import { toast } from 'sonner';
 
@@ -50,16 +49,13 @@ class ApiService {
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
       
-      // CRITICAL: Ensure the batch_size is properly passed through
-      // Never default here; use what was explicitly provided
+      // CRITICAL: Always use the batch_size that was explicitly provided
+      // Never modify, cache, or transform the value
       if (global_params && typeof global_params.batch_size !== 'undefined') {
         jsonData.global_params.batch_size = global_params.batch_size;
-      } else {
-        // Only use a default if nothing was provided at all
-        jsonData.global_params.batch_size = 1;
       }
       
-      // Log the params to debug batch size issues
+      // Log the parameters to debug batch size issues
       console.log("[api] Generating image with live batch_size:", jsonData.global_params.batch_size);
       console.log("[api] Full API payload:", {
         prompt,
@@ -173,7 +169,7 @@ class ApiService {
   
   // Mock implementation for testing/preview
   private mockGenerateImage(params: GenerateImageParams) {
-    // CRITICAL: Always use the provided batch size, don't rely on defaults or cached values
+    // CRITICAL: Always use the provided batch size directly, don't manipulate it
     const batchSize = params.global_params?.batch_size || 1;
     console.info('[MOCK LOG] [mock-backend]', `Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
     console.info('[MOCK LOG] [mock-backend]', `Using workflow: ${params.workflow}`);
