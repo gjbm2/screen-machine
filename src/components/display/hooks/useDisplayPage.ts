@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
 import { useDisplayParams } from '@/components/display/hooks/useDisplayParams';
@@ -12,6 +12,7 @@ export const useDisplayPage = () => {
   const [previewParams, setPreviewParams] = useState(params);
   const [metadataExtractionAttempted, setMetadataExtractionAttempted] = useState(false);
   const [previousImageUrl, setPreviousImageUrl] = useState<string | null>(null);
+  const redirectAttemptedRef = useRef(false);
 
   // Get display state from the core hook
   const {
@@ -53,7 +54,8 @@ export const useDisplayPage = () => {
     if (imageUrl && 
         (imageUrlChanged || Object.keys(metadata).length === 0) && 
         !isLoading && 
-        !isTransitioning) {
+        !isTransitioning && 
+        !metadataExtractionAttempted) {
       
       console.log('[useDisplayPage] Image URL changed or no metadata found, retrieving metadata');
       setPreviousImageUrl(imageUrl);
@@ -64,7 +66,7 @@ export const useDisplayPage = () => {
         console.error('[useDisplayPage] Error extracting metadata:', err)
       );
     }
-  }, [params, imageUrl, metadata, extractMetadataFromImage, isLoading, isTransitioning, previousImageUrl]);
+  }, [params, imageUrl, metadata, extractMetadataFromImage, isLoading, isTransitioning, previousImageUrl, metadataExtractionAttempted]);
 
   // Reset metadata extraction flag when image URL changes
   useEffect(() => {
@@ -74,10 +76,13 @@ export const useDisplayPage = () => {
     }
   }, [imageUrl, previousImageUrl]);
 
-  // Redirect to debug mode if needed
+  // Redirect to debug mode if needed (only once per component mount)
   useEffect(() => {
-    redirectToDebugMode();
-  }, [params.output, params.debugMode, redirectToDebugMode]);
+    if (!redirectAttemptedRef.current && params.output) {
+      redirectAttemptedRef.current = true;
+      redirectToDebugMode();
+    }
+  }, [params.output, redirectToDebugMode]);
 
   // Process captions with metadata
   useCaptionProcessor(previewParams, metadata, imageUrl, setProcessedCaption);

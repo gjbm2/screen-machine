@@ -36,6 +36,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
 }) => {
   const navigate = useNavigate();
   const [containerSize, setContainerSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const [doubleClickAttempted, setDoubleClickAttempted] = useState(false);
 
   // Update container size on window resize
   useEffect(() => {
@@ -51,9 +52,13 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   }, []);
 
   const handleDoubleClick = (e: React.MouseEvent) => {
-    // Prevent event bubbling
+    // Prevent event bubbling and default behavior
     e.stopPropagation();
     e.preventDefault();
+    
+    // Prevent duplicate navigation attempts
+    if (doubleClickAttempted) return;
+    setDoubleClickAttempted(true);
     
     // Log that we're trying to navigate to debug mode
     console.log('[ImageDisplay] Double-click detected, navigating to debug mode');
@@ -63,7 +68,11 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     const debugUrl = createUrlWithParams(newParams);
     
     // Navigate to the debug URL
+    console.log('[ImageDisplay] Navigating to:', debugUrl);
     navigate(debugUrl);
+    
+    // Reset the flag after navigation (in case component doesn't unmount)
+    setTimeout(() => setDoubleClickAttempted(false), 1000);
   };
 
   // Metadata display styles
