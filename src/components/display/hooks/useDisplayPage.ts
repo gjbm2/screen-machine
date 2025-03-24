@@ -11,7 +11,6 @@ import { useDebugRedirection } from '@/components/display/hooks/useDebugRedirect
 import { useOutputProcessor } from '@/components/display/hooks/useOutputProcessor';
 import { useImageErrorHandler } from '@/components/display/hooks/useImageErrorHandler';
 import { useEnhancedManualCheck } from '@/components/display/hooks/useEnhancedManualCheck';
-import { processOutputParam } from '../utils/paramUtils';
 
 export const useDisplayPage = () => {
   const { params, redirectToDebugMode } = useDisplayParams();
@@ -32,8 +31,8 @@ export const useDisplayPage = () => {
     }
   }, [params]);
 
-  // Process output parameter and get the processed value
-  const { processedOutput } = useOutputProcessor(params);
+  // Process output parameter
+  useOutputProcessor(params);
 
   // Get display state from the core hook
   const {
@@ -41,7 +40,7 @@ export const useDisplayPage = () => {
     setImageUrl,
     error,
     imageKey,
-    setImageKey,
+    setImageKey, // Make sure this is destructured to use it
     lastModified,
     lastChecked,
     outputFiles,
@@ -69,30 +68,25 @@ export const useDisplayPage = () => {
   useEffect(() => {
     if (!mountedRef.current) return;
     
-    if (processedOutput) {
-      console.log('[useDisplayPage] 🖼️ Processing output parameter:', processedOutput);
+    // Always process the output parameter on initial render or when it changes
+    if (params.output) {
+      console.log('[useDisplayPage] 🖼️ Processing output parameter:', params.output);
       console.log('[useDisplayPage] Current imageUrl:', imageUrl);
+      console.log('[useDisplayPage] Processing needed:', !outputProcessedRef.current || imageUrl !== params.output);
       
-      // Only update if the image URL is different
-      if (!outputProcessedRef.current || imageUrl !== processedOutput) {
-        console.log('[useDisplayPage] Setting image URL to:', processedOutput);
-        
-        // Set the image URL directly
-        setImageUrl(processedOutput);
-        
-        // Increment the image key to force a reload
-        setImageKey(prev => prev + 1);
-        
-        // Mark as processed
-        outputProcessedRef.current = true;
-        
-        // Toast to notify user
-        toast.success(`Displaying image: ${processedOutput.split('/').pop()}`);
-      } else {
-        console.log('[useDisplayPage] Image URL already set to processed output');
-      }
+      // Set the image URL directly
+      setImageUrl(params.output);
+      
+      // Increment the image key to force a reload
+      setImageKey(prev => prev + 1);
+      
+      // Mark as processed
+      outputProcessedRef.current = true;
+      
+      // Toast to notify user
+      toast.success(`Displaying image: ${params.output.split('/').pop()}`);
     }
-  }, [processedOutput, setImageUrl, setImageKey, imageUrl]);
+  }, [params.output, setImageUrl, setImageKey, imageUrl]);
 
   // Reset output processed flag when output param changes to null
   useEffect(() => {
@@ -194,15 +188,10 @@ export const useDisplayPage = () => {
       console.log('[useDisplayPage] 🔄 Initial render with output param:', params.output);
       initialRenderRef.current = false;
       
-      // Get processed output path
-      const processedPath = processOutputParam(params.output);
-      console.log('[useDisplayPage] Processed output path:', processedPath);
-      
       // Small delay to ensure DOM is ready
       setTimeout(() => {
-        if (mountedRef.current && processedPath) {
-          console.log('[useDisplayPage] Setting initial image URL to:', processedPath);
-          setImageUrl(processedPath);
+        if (mountedRef.current) {
+          setImageUrl(params.output);
           setImageKey(prev => prev + 1);
         }
       }, 100);

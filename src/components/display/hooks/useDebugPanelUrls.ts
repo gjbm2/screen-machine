@@ -1,3 +1,4 @@
+
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { DisplayParams } from '../types';
@@ -40,24 +41,11 @@ export const useDebugPanelUrls = ({
 }: UseDebugPanelUrlsProps) => {
   const navigate = useNavigate();
 
-  const processCustomUrl = (url: string) => {
-    if (!url) return null;
-    
-    if (url.startsWith('http')) {
-      return url;
-    }
-    
-    if (url.startsWith('/')) return url;
-    if (url.startsWith('output/')) return `/${url}`;
-    
-    return `/output/${url}`;
-  };
-
   const generateUrl = (includeDebug = false) => {
-    const processedOutput = customUrl ? processCustomUrl(customUrl) : null;
+    const encodedOutput = customUrl ? encodeURIComponent(customUrl) : null;
     
     const newParams: DisplayParams = {
-      output: processedOutput,
+      output: encodedOutput,
       showMode,
       position,
       refreshInterval,
@@ -74,12 +62,14 @@ export const useDebugPanelUrls = ({
       transition,
     };
     
+    // Filter out default values to make URL cleaner
     const cleanParams = Object.entries(newParams).reduce((acc, [key, value]) => {
       if (key === 'debugMode' && includeDebug) {
         acc[key] = value;
       } else if (key === 'output') {
         if (value !== null) acc[key] = value;
       } else if (key !== 'debugMode' && value !== null && value !== undefined) {
+        // Only include non-default parameters
         acc[key] = value;
       }
       return acc;
@@ -89,10 +79,10 @@ export const useDebugPanelUrls = ({
   };
 
   const applySettings = () => {
-    const processedOutput = customUrl ? processCustomUrl(customUrl) : null;
+    const encodedOutput = customUrl ? encodeURIComponent(customUrl) : null;
     
     const newParams: DisplayParams = {
-      output: processedOutput,
+      output: encodedOutput,
       showMode,
       position,
       refreshInterval,
@@ -110,7 +100,6 @@ export const useDebugPanelUrls = ({
     };
     
     const url = createUrlWithParams(newParams);
-    console.log('[useDebugPanelUrls] Applying settings, navigating to:', url);
     navigate(url);
     toast.success("Settings applied");
   };
@@ -121,9 +110,11 @@ export const useDebugPanelUrls = ({
   };
 
   const commitSettings = () => {
+    // Create a URL without debug mode
     const url = generateUrl(false);
-    console.log('[useDebugPanelUrls] Committing settings, navigating to:', url);
     
+    // We need to prevent navigation from being immediately overridden
+    // by using setTimeout to break out of the current execution context
     setTimeout(() => {
       navigate(url);
       toast.success("Settings committed");
@@ -131,10 +122,12 @@ export const useDebugPanelUrls = ({
   };
 
   const copyUrl = () => {
+    // Get the full URL including the domain name and path, without debug mode
     const relativeUrl = generateUrl(false);
     const currentPath = window.location.pathname;
     const baseUrl = window.location.origin;
     
+    // Ensure we have the correct base path (either '/display' or the current path)
     const basePath = currentPath.includes('/display') ? '/display' : currentPath;
     const fullUrl = `${baseUrl}${basePath}${relativeUrl}`;
     

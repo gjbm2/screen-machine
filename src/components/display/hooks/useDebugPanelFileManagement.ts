@@ -26,7 +26,6 @@ export const useDebugPanelFileManagement = ({
       console.log('[useDebugPanelFileManagement] Normalized path:', outputPath);
       
       // Create a URL with the debug mode and selected file
-      // Don't URL encode the path here - that will be done in createUrlWithParams
       const newParams = {
         ...params,
         output: outputPath,
@@ -54,6 +53,7 @@ export const useDebugPanelFileManagement = ({
         
         console.log('[useDebugPanelFileManagement] Current output param:', currentOutput);
         
+        // If we have the right param but image isn't showing, consider forcing a refresh
         if (currentOutput === outputPath) {
           console.log('[useDebugPanelFileManagement] Output param is set correctly');
         }
