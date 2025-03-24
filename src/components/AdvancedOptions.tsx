@@ -57,6 +57,13 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   const [currentRefinerParams, setCurrentRefinerParams] = useState<WorkflowParam[]>([]);
   const isMobile = useIsMobile();
   
+  const handleOpenChange = (open: boolean) => {
+    // Use setTimeout to ensure React state updates are processed
+    setTimeout(() => {
+      onOpenChange(open);
+    }, 0);
+  };
+  
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflow) || workflows[0];
 
   useEffect(() => {
@@ -64,11 +71,14 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
     if (refinerData && refinerData.params) {
       setCurrentRefinerParams(refinerData.params as WorkflowParam[]);
       
-      refinerData.params.forEach(param => {
-        if (param.default !== undefined && refinerParams[param.id] === undefined) {
-          onRefinerParamChange(param.id, param.default);
-        }
-      });
+      // Set default values for refiner params if not already set
+      if (refinerData.params) {
+        refinerData.params.forEach(param => {
+          if (param.default !== undefined && refinerParams[param.id] === undefined) {
+            onRefinerParamChange(param.id, param.default);
+          }
+        });
+      }
     } else {
       setCurrentRefinerParams([]);
     }
@@ -77,7 +87,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   const sheetWidth = isMobile ? "w-[85%]" : "sm:max-w-md";
 
   return (
-    <Sheet open={isOpen} onOpenChange={onOpenChange}>
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
       <SheetContent className={`${sheetWidth} overflow-y-auto`}>
         <SheetHeader className="text-left p-0">
           <div className="flex justify-between items-center mb-4">
@@ -173,7 +183,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
         
         <SheetFooter className="flex justify-end py-4 sm:py-0 mt-4">
           <SheetClose asChild>
-            <Button variant="outline">Close</Button>
+            <Button variant="outline" onClick={() => handleOpenChange(false)}>Close</Button>
           </SheetClose>
         </SheetFooter>
       </SheetContent>
