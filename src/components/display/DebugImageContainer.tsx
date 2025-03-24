@@ -52,7 +52,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   
   const {
     selectedScreenSize,
-    setSelectedScreenSize,
+    setSelectedScreenSizeObject,
     imageDimensions,
     containerWidth,
     containerHeight,
@@ -100,7 +100,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         showMode={showMode}
         position={position}
         selectedScreenSize={selectedSize}
-        setSelectedScreenSize={setSelectedScreenSize}
+        setSelectedScreenSize={setSelectedScreenSizeObject}
         imageChanged={imageChanged}
         onSettingsChange={onSettingsChange}
         onReset={handleReset}

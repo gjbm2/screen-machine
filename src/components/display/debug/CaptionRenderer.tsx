@@ -83,6 +83,8 @@ export const CaptionRenderer: React.FC<CaptionRendererProps> = ({
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               maxWidth: '100%',
+              textAlign: captionPosition.includes('left') ? 'left' : 
+                         captionPosition.includes('right') ? 'right' : 'center',
             }}
           >
             {line || "\u00A0"}

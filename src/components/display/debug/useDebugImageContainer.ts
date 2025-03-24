@@ -4,7 +4,7 @@ import { ShowMode, PositionMode } from '../types';
 import { SCREEN_SIZES } from './ScreenSizeSelector';
 
 export const useDebugImageContainer = () => {
-  const [selectedScreenSize, setSelectedScreenSize] = useState('Current Viewport');
+  const [selectedScreenSize, setSelectedScreenSize] = useState<string>('Current Viewport');
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -93,9 +93,20 @@ export const useDebugImageContainer = () => {
     };
   }, [isDragging, dragOffset, isResizing, resizeStart]);
 
+  // This method will update the selectedScreenSize state with a name string
+  const updateSelectedScreenSize = (name: string) => {
+    setSelectedScreenSize(name);
+  };
+
+  // This method takes the full size object and just extracts the name to update the state
+  const setSelectedScreenSizeObject = (size: { name: string; width: number; height: number }) => {
+    setSelectedScreenSize(size.name);
+  };
+
   return {
     selectedScreenSize,
-    setSelectedScreenSize,
+    setSelectedScreenSize: updateSelectedScreenSize,
+    setSelectedScreenSizeObject,
     imageDimensions,
     containerWidth,
     containerHeight,
