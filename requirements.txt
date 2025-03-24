@@ -6,3 +6,7 @@ openai==1.68.0
 runpod==1.7.7
 websocket-server==0.6.4
 asyncio==3.4.3
+pillow
+piexif
+python-xmp-toolki
+iptcinfo3
