@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
@@ -14,6 +15,15 @@ export const useDisplayPage = () => {
   const [previousImageUrl, setPreviousImageUrl] = useState<string | null>(null);
   const redirectAttemptedRef = useRef(false);
   const debugHandledRef = useRef(false);
+  const mountedRef = useRef(true); // Track if component is mounted
+
+  // Set mounted ref to false on unmount
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // Process the output parameter to ensure correct URL format
   useEffect(() => {
@@ -55,6 +65,8 @@ export const useDisplayPage = () => {
 
   // Enhanced debug logging for metadata
   useEffect(() => {
+    if (!mountedRef.current) return; // Skip if unmounted
+    
     console.log('[useDisplayPage] Params:', params);
     console.log('[useDisplayPage] Image URL:', imageUrl);
     console.log('[useDisplayPage] Metadata:', metadata);
@@ -67,21 +79,26 @@ export const useDisplayPage = () => {
         (imageUrlChanged || Object.keys(metadata).length === 0) && 
         !isLoading && 
         !isTransitioning && 
-        !metadataExtractionAttempted) {
+        !metadataExtractionAttempted &&
+        mountedRef.current) {
       
       console.log('[useDisplayPage] Image URL changed or no metadata found, retrieving metadata');
       setPreviousImageUrl(imageUrl);
       setMetadataExtractionAttempted(true);
       
       // Always try to extract metadata when image changes or loads
-      extractMetadataFromImage(imageUrl).catch(err => 
-        console.error('[useDisplayPage] Error extracting metadata:', err)
-      );
+      if (mountedRef.current) {
+        extractMetadataFromImage(imageUrl).catch(err => 
+          console.error('[useDisplayPage] Error extracting metadata:', err)
+        );
+      }
     }
   }, [params, imageUrl, metadata, extractMetadataFromImage, isLoading, isTransitioning, previousImageUrl, metadataExtractionAttempted]);
 
   // Reset metadata extraction flag when image URL changes
   useEffect(() => {
+    if (!mountedRef.current) return; // Skip if unmounted
+    
     if (imageUrl !== previousImageUrl) {
       setPreviousImageUrl(imageUrl);
       setMetadataExtractionAttempted(false);
@@ -90,6 +107,8 @@ export const useDisplayPage = () => {
 
   // Add debug output to trace debug mode functionality
   useEffect(() => {
+    if (!mountedRef.current) return; // Skip if unmounted
+    
     if (params.debugMode) {
       console.log('[useDisplayPage] Debug mode is enabled in params');
     } else {
@@ -99,6 +118,8 @@ export const useDisplayPage = () => {
 
   // Redirect to debug mode if needed (only once per component mount)
   useEffect(() => {
+    if (!mountedRef.current) return; // Skip if unmounted
+    
     console.log('[useDisplayPage] Checking if debug redirection is needed:', {
       params,
       alreadyAttempted: redirectAttemptedRef.current,
@@ -117,13 +138,19 @@ export const useDisplayPage = () => {
         console.log('[useDisplayPage] Already in debug mode, marking as handled');
       } else {
         // Only redirect if not already in debug mode
-        redirectToDebugMode();
+        try {
+          redirectToDebugMode();
+        } catch (err) {
+          console.error('[useDisplayPage] Error during debug redirection:', err);
+        }
       }
     }
   }, [params, params.output, params.debugMode, redirectToDebugMode]);
 
   // Add debug logging for image loading
   useEffect(() => {
+    if (!mountedRef.current) return; // Skip if unmounted
+    
     if (imageUrl) {
       console.log('[useDisplayPage] Current image URL:', imageUrl);
     } else if (params.output) {
@@ -137,7 +164,7 @@ export const useDisplayPage = () => {
   // Fetch debug output files only when in debug mode
   useDebugFiles(params.debugMode, setOutputFiles);
 
-  // Poll for image changes
+  // Poll for image changes - Only setup when component is mounted
   const { handleManualCheck: imagePollerHandleManualCheck } = useImagePoller(
     params,
     imageUrl,
@@ -150,15 +177,18 @@ export const useDisplayPage = () => {
 
   // Update preview params when URL params change
   useEffect(() => {
+    if (!mountedRef.current) return; // Skip if unmounted
     setPreviewParams(params);
   }, [params]);
 
   // Wrap the manual check to use the enhanced version
   const handleManualCheck = async () => {
+    if (!mountedRef.current) return false; // Skip if unmounted
+    
     const result = await imagePollerHandleManualCheck(imageUrl, originalHandleManualCheck, params);
     
     // If there's a new image loaded, extract metadata
-    if (result && imageUrl) {
+    if (result && imageUrl && mountedRef.current) {
       console.log('[useDisplayPage] New image loaded after manual check, extracting metadata');
       await extractMetadataFromImage(imageUrl);
     }
@@ -167,6 +197,8 @@ export const useDisplayPage = () => {
   };
 
   const handleImageError = () => {
+    if (!mountedRef.current) return; // Skip if unmounted
+    
     console.error('Failed to load image:', imageUrl);
     toast.error("Failed to load image");
     
@@ -175,10 +207,14 @@ export const useDisplayPage = () => {
       console.error('[handleImageError] Image URL that failed to load:', imageUrl);
       fetch(imageUrl, { method: 'HEAD' })
         .then(response => {
-          console.log('[handleImageError] HTTP status for image:', response.status, response.statusText);
+          if (mountedRef.current) {
+            console.log('[handleImageError] HTTP status for image:', response.status, response.statusText);
+          }
         })
         .catch(err => {
-          console.error('[handleImageError] Network error when checking image:', err);
+          if (mountedRef.current) {
+            console.error('[handleImageError] Network error when checking image:', err);
+          }
         });
     }
   };

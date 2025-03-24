@@ -18,6 +18,22 @@ export const useImagePoller = (
   const lastCheckedUrl = useRef<string | null>(null);
   // Track whether we've loaded the initial image
   const initialLoadCompleted = useRef<boolean>(false);
+  // Track component mounted state
+  const mountedRef = useRef<boolean>(true);
+  
+  // Set mounted ref to false on unmount
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      
+      // Clear interval on unmount
+      if (intervalIdRef.current !== null) {
+        window.clearInterval(intervalIdRef.current);
+        intervalIdRef.current = null;
+      }
+    };
+  }, []);
   
   // Handle initial image loading and periodic checking
   useEffect(() => {
@@ -41,9 +57,11 @@ export const useImagePoller = (
         initialLoadCompleted.current = true;
         
         // Extract metadata on initial load
-        if (!isLoading) {
+        if (!isLoading && mountedRef.current) {
           extractMetadataFromImage(processedUrl).catch(err => {
-            console.error('[useImagePoller] Error extracting metadata on initial load:', err);
+            if (mountedRef.current) {
+              console.error('[useImagePoller] Error extracting metadata on initial load:', err);
+            }
           });
         }
       }
@@ -56,19 +74,34 @@ export const useImagePoller = (
       
       // Set up new polling interval
       intervalIdRef.current = window.setInterval(() => {
+        if (!mountedRef.current) {
+          // Component unmounted, clear interval
+          if (intervalIdRef.current !== null) {
+            window.clearInterval(intervalIdRef.current);
+            intervalIdRef.current = null;
+          }
+          return;
+        }
+        
         if (processedUrl && !isLoading && !isTransitioning) {
           console.log('[useImagePoller] Checking for image updates...');
           checkImageModified(processedUrl).then(changed => {
+            if (!mountedRef.current) return; // Skip if component unmounted
+            
             if (changed) {
               console.log('[useImagePoller] Image changed, reloading...');
               loadNewImage(processedUrl);
               // Automatically extract metadata when image changes
               extractMetadataFromImage(processedUrl).catch(err => {
-                console.error('[useImagePoller] Error extracting metadata:', err);
+                if (mountedRef.current) {
+                  console.error('[useImagePoller] Error extracting metadata:', err);
+                }
               });
             }
           }).catch(err => {
-            console.error('[useImagePoller] Error checking image modifications:', err);
+            if (mountedRef.current) {
+              console.error('[useImagePoller] Error checking image modifications:', err);
+            }
           });
         }
       }, params.refreshInterval * 1000);
@@ -87,12 +120,14 @@ export const useImagePoller = (
 
   // Extract metadata whenever the image URL changes
   useEffect(() => {
-    if (imageUrl && imageUrl !== lastCheckedUrl.current && !isLoading && !isTransitioning) {
+    if (imageUrl && imageUrl !== lastCheckedUrl.current && !isLoading && !isTransitioning && mountedRef.current) {
       console.log('[useImagePoller] New image URL detected, extracting metadata:', imageUrl);
       lastCheckedUrl.current = imageUrl;
       
       extractMetadataFromImage(imageUrl).catch(err => {
-        console.error('[useImagePoller] Error extracting metadata on URL change:', err);
+        if (mountedRef.current) {
+          console.error('[useImagePoller] Error extracting metadata on URL change:', err);
+        }
       });
     }
   }, [imageUrl, isLoading, isTransitioning, extractMetadataFromImage]);
@@ -103,24 +138,33 @@ export const useImagePoller = (
     originalHandleManualCheck: () => Promise<boolean>,
     params: DisplayParams
   ): Promise<boolean> => {
+    if (!mountedRef.current) return false; // Skip if component unmounted
+    
     console.log('[useImagePoller] Manual check initiated');
     
     if (imageUrl) {
       // Call the base image check function without arguments
       const result = await originalHandleManualCheck();
       
+      if (!mountedRef.current) return false; // Skip if component unmounted during async operation
+      
       // Force metadata refresh regardless of whether the image changed
       try {
         console.log('[useImagePoller] Forcing metadata refresh on manual check');
         const extractedMetadata = await extractImageMetadata(imageUrl);
+        
+        if (!mountedRef.current) return false; // Skip if component unmounted during async operation
+        
         console.log('[useImagePoller] Manually extracted metadata:', extractedMetadata);
         
         if (Object.keys(extractedMetadata).length === 0) {
           toast.warning("No metadata found in this image");
         }
       } catch (err) {
-        console.error('[useImagePoller] Error during manual metadata extraction:', err);
-        toast.error("Failed to extract metadata");
+        if (mountedRef.current) {
+          console.error('[useImagePoller] Error during manual metadata extraction:', err);
+          toast.error("Failed to extract metadata");
+        }
       }
       
       return result;

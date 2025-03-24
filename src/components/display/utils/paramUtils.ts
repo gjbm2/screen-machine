@@ -69,7 +69,7 @@ export const processOutputParam = (output: string | null): string | null => {
     new URL(output);
     return output;
   } catch (e) {
-    // Not a URL, check if it starts with / or output/
+    // Not a URL, ensure it has a leading slash
     if (output.startsWith('/')) return output;
     if (output.startsWith('output/')) return `/${output}`; // Add leading slash for relative paths
     
