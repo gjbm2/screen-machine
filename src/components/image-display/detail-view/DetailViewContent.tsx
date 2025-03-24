@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import ImageKeyboardNavigation from './ImageKeyboardNavigation';
 import DetailViewImageSection from './DetailViewImageSection';
@@ -65,7 +64,6 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   
-  // Debug log when activeImage changes
   useEffect(() => {
     if (activeImage) {
       console.log("Active image in DetailViewContent:", activeImage);
@@ -105,7 +103,6 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   
   const handleDeleteImage = () => {
     onDeleteImage(batchId, activeIndex);
-    // Close fullscreen if requested
     if (onClose) {
       onClose();
     }
@@ -114,7 +111,6 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   const handleInfoClick = () => {
     console.log("Info button clicked for image:", activeImage); 
     
-    // Log reference image status
     if (activeImage?.referenceImageUrl) {
       console.log("Opening info dialog with reference images:", activeImage.referenceImageUrl);
     } else {
@@ -124,12 +120,10 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
     setShowImageInfo(true);
   };
 
-  // Determine if there are reference images
   const hasReferenceImages = Boolean(referenceImageUrl);
 
   return (
     <div className="flex flex-col h-full overflow-hidden min-h-0 min-w-0">
-      {/* Keyboard navigation */}
       <ImageKeyboardNavigation 
         activeIndex={activeIndex}
         imagesLength={images.length}
@@ -140,7 +134,6 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onNavigateGlobal={onNavigateGlobal}
       />
 
-      {/* Selected image view - adaptive sizing to ensure control visibility */}
       {activeImage && (
         <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0 w-auto">
           <DetailViewImageSection
@@ -156,7 +149,6 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         </div>
       )}
       
-      {/* Bottom panel with metadata and controls */}
       <DetailViewInfoPanel
         activeImage={activeImage}
         dimensions={imageDimensions}
@@ -169,10 +161,9 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onOpenInNewTab={handleOpenInNewTab}
         hidePrompt={hidePrompt}
         onInfoClick={handleInfoClick}
-        onClose={onClose} // Pass the onClose handler
+        onClose={onClose}
       />
 
-      {/* Reference image dialog - supports multiple images */}
       {referenceImageUrl && (
         <ReferenceImageDialog
           isOpen={showReferenceImage}
@@ -181,13 +172,12 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         />
       )}
 
-      {/* Image info dialog */}
       {activeImage && (
         <ImageInfoDialog
-          open={showImageInfo}
+          isOpen={showImageInfo}
           onOpenChange={setShowImageInfo}
           image={activeImage}
-          onDownload={() => window.open(activeImage.url, '_blank')}
+          dimensions={imageDimensions}
         />
       )}
     </div>
