@@ -4,7 +4,7 @@ import { CaptionPosition } from '../types';
 
 interface CaptionRendererProps {
   caption: string;
-  position: CaptionPosition;
+  captionPosition: CaptionPosition; // Changed from 'position' to 'captionPosition'
   fontSize?: string;
   color?: string;
   fontFamily?: string;
@@ -16,7 +16,7 @@ interface CaptionRendererProps {
 
 export const CaptionRenderer: React.FC<CaptionRendererProps> = ({
   caption,
-  position,
+  captionPosition, // Changed from 'position' to 'captionPosition'
   fontSize = '16px',
   color = 'ffffff',
   fontFamily = 'Arial, sans-serif',
@@ -30,20 +30,20 @@ export const CaptionRenderer: React.FC<CaptionRendererProps> = ({
   let textAlignment = 'text-center';
   
   // Set horizontal alignment
-  if (position.includes('left')) {
+  if (captionPosition.includes('left')) {
     textAlignment = 'text-left';
-  } else if (position.includes('right')) {
+  } else if (captionPosition.includes('right')) {
     textAlignment = 'text-right';
-  } else if (position.includes('center')) {
+  } else if (captionPosition.includes('center')) {
     textAlignment = 'text-center';
   }
   
   // Set position on screen
-  if (position.startsWith('top')) {
+  if (captionPosition.startsWith('top')) {
     positionClasses = 'top-0 left-0 right-0';
-  } else if (position.startsWith('middle')) {
+  } else if (captionPosition.startsWith('middle')) {
     positionClasses = 'top-1/2 -translate-y-1/2 left-0 right-0';
-  } else if (position.startsWith('bottom')) {
+  } else if (captionPosition.startsWith('bottom')) {
     positionClasses = 'bottom-0 left-0 right-0';
   }
   
@@ -92,8 +92,8 @@ export const CaptionRenderer: React.FC<CaptionRendererProps> = ({
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               maxWidth: '100%',
-              textAlign: position.includes('left') ? 'left' : 
-                        position.includes('right') ? 'right' : 'center',
+              textAlign: captionPosition.includes('left') ? 'left' : 
+                        captionPosition.includes('right') ? 'right' : 'center',
             }}
           >
             {line || "\u00A0"}
