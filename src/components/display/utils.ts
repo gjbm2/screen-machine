@@ -41,87 +41,44 @@ export const fetchOutputFiles = async (): Promise<string[]> => {
   }
 };
 
-export const extractImageMetadata = async (imageUrl: string): Promise<Record<string, string>> => {
+export const extractImageMetadata = async (url: string): Promise<Record<string, string>> => {
   try {
-    console.log('[extractImageMetadata] Starting extraction for:', imageUrl);
+    console.log('Extracting metadata for image:', url);
     
-    // Add cache busting parameter
-    const cacheBustUrl = `${imageUrl}${imageUrl.includes('?') ? '&' : '?'}cacheBust=${Date.now()}_${Math.random()}`;
-    console.log('[extractImageMetadata] Using cache-busted URL:', cacheBustUrl);
+    // Call our new backend endpoint
+    const response = await fetch('/api/extract-metadata', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ imageUrl: url }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to extract metadata');
+    }
+
+    const data = await response.json();
     
-    // First attempt: Try API endpoint
-    try {
-      console.log('[extractImageMetadata] Attempting API extraction...');
-      const response = await fetch(`/api/metadata?image=${encodeURIComponent(cacheBustUrl)}`, {
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
-      });
-      
-      console.log('[extractImageMetadata] API response status:', response.status);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[extractImageMetadata] API returned data:', data);
-        
-        if (data.metadata && Object.keys(data.metadata).length > 0) {
-          console.log('[extractImageMetadata] Successfully extracted metadata from API:', data.metadata);
-          return data.metadata;
-        }
-      }
-    } catch (apiError) {
-      console.warn('[extractImageMetadata] API extraction failed:', apiError);
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to extract metadata');
     }
     
-    // Second attempt: Try browser-based extraction
-    try {
-      console.log('[extractImageMetadata] Attempting browser-based extraction...');
-      const browserMetadata = await extractMetadataUsingBrowser(cacheBustUrl);
-      
-      if (browserMetadata && Object.keys(browserMetadata).length > 0) {
-        console.log('[extractImageMetadata] Successfully extracted browser metadata:', browserMetadata);
-        return browserMetadata;
-      }
-    } catch (browserError) {
-      console.warn('[extractImageMetadata] Browser extraction failed:', browserError);
-    }
+    // Convert all values to strings for consistency
+    const stringMetadata: Record<string, string> = {};
+    Object.entries(data.metadata).forEach(([key, value]) => {
+      stringMetadata[key] = String(value);
+    });
     
-    // Last resort: Direct image fetch with headers inspection
-    try {
-      console.log('[extractImageMetadata] Attempting direct fetch...');
-      const imgResponse = await fetch(cacheBustUrl, {
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
-      });
-      
-      const headers = Object.fromEntries(imgResponse.headers.entries());
-      console.log('[extractImageMetadata] Image response headers:', headers);
-      
-      const basicMetadata: Record<string, string> = {
-        'Content-Type': headers['content-type'] || 'unknown',
-        'Content-Length': headers['content-length'] || 'unknown',
-        'Last-Modified': headers['last-modified'] || 'unknown'
-      };
-      
-      if (Object.keys(basicMetadata).length > 0) {
-        console.log('[extractImageMetadata] Extracted basic metadata from headers:', basicMetadata);
-        return basicMetadata;
-      }
-    } catch (fetchError) {
-      console.warn('[extractImageMetadata] Direct fetch failed:', fetchError);
-    }
-    
-    console.warn('[extractImageMetadata] All extraction attempts failed');
-    return {};
-    
+    console.log('Extracted metadata:', stringMetadata);
+    return stringMetadata;
   } catch (error) {
-    console.error('[extractImageMetadata] Fatal error in metadata extraction:', error);
-    return {};
+    console.error('Error extracting metadata:', error);
+    return {
+      'error': 'Failed to extract metadata',
+      'message': error instanceof Error ? error.message : String(error)
+    };
   }
 };
 

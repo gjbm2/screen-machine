@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
@@ -34,15 +33,23 @@ export const useDisplayPage = () => {
     loadNewImage,
     checkImageModified,
     handleManualCheck: originalHandleManualCheck,
-    getImagePositionStyle
+    getImagePositionStyle,
+    extractMetadataFromImage
   } = useDisplayState(previewParams);
 
-  // Debug logging
+  // Enhanced debug logging for metadata
   useEffect(() => {
     console.log('[useDisplayPage] Params:', params);
     console.log('[useDisplayPage] Image URL:', imageUrl);
     console.log('[useDisplayPage] Metadata:', metadata);
-  }, [params, imageUrl, metadata]);
+    
+    if (imageUrl && Object.keys(metadata).length === 0) {
+      console.log('[useDisplayPage] No metadata found, manually triggering extraction');
+      extractMetadataFromImage(imageUrl).catch(err => 
+        console.error('[useDisplayPage] Error extracting metadata:', err)
+      );
+    }
+  }, [params, imageUrl, metadata, extractMetadataFromImage]);
 
   // Redirect to debug mode if needed
   useEffect(() => {

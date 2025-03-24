@@ -1,4 +1,3 @@
-
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
@@ -357,6 +356,33 @@ def get_refiner_params(refiner_id):
 def get_global_options():
     info(f"Returning {len(global_options_data)} global options")
     return jsonify({"global_options": global_options_data})
+
+# Add a new endpoint for extracting image metadata
+@app.route('/api/extract-metadata', methods=['POST'])
+def extract_metadata():
+    try:
+        data = request.json
+        if not data or 'imageUrl' not in data:
+            return jsonify({"success": False, "error": "No image URL provided"}), 400
+        
+        image_url = data['imageUrl']
+        info(f"Extracting metadata for image: {image_url}")
+        
+        # For now, we'll return a placeholder response
+        # This will be replaced with actual metadata extraction code later
+        metadata = {
+            "placeholder": "This is a placeholder response. The actual metadata extraction will be implemented later.",
+            "imageUrl": image_url,
+            "timestamp": time.time()
+        }
+        
+        # Return the metadata
+        return jsonify({"success": True, "metadata": metadata})
+    
+    except Exception as e:
+        error_msg = f"Error extracting metadata: {str(e)}"
+        error(error_msg)
+        return jsonify({"success": False, "error": error_msg}), 500
 
 # Serve the React frontend
 @app.route('/', defaults={'path': ''})
