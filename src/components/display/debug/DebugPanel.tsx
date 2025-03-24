@@ -1,14 +1,11 @@
 
 import React from 'react';
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { Tabs } from "@/components/ui/tabs";
 import { DebugPanelHeader } from './DebugPanelHeader';
 import { DebugPanelFooter } from './DebugPanelFooter';
 import { DebugPanelTabs } from './DebugPanelTabs';
-import { FilesTab } from './FilesTab';
-import { SettingsTab } from './SettingsTab';
-import { MetadataTab } from './MetadataTab';
-import { CaptionTab } from './CaptionTab';
+import { DebugPanelContent } from './DebugPanelContent';
 import { ResizeHandle } from './ResizeHandle';
 import { useDebugPanel } from '../hooks/useDebugPanel';
 import { DisplayParams } from '../types';
@@ -119,64 +116,48 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col">
         <DebugPanelTabs activeTab={activeTab} />
         
-        <TabsContent value="files" className="mt-0 flex-1 overflow-hidden">
-          <FilesTab 
-            outputFiles={outputFiles}
-            imageChanged={imageChanged}
-            imageUrl={imageUrl}
-            customUrl={customUrl}
-            setCustomUrl={setCustomUrl}
-            selectFile={selectFile}
-            isCurrentFile={isCurrentFile}
-            formatFileName={formatFileName}
-          />
-        </TabsContent>
-        
-        <TabsContent value="settings" className="mt-0 flex-1 overflow-auto">
-          <SettingsTab 
-            showMode={showMode}
-            position={position}
-            refreshInterval={refreshInterval}
-            backgroundColor={backgroundColor}
-            transition={transition}
-            setShowMode={setShowMode}
-            setPosition={setPosition}
-            setRefreshInterval={setRefreshInterval}
-            setBackgroundColor={setBackgroundColor}
-            setTransition={setTransition}
-            resetSettings={resetSettings}
-          />
-        </TabsContent>
-        
-        <TabsContent value="metadata" className="mt-0 flex-1 overflow-hidden">
-          <MetadataTab 
-            metadataEntries={metadataEntries}
-            insertMetadataTag={insertMetadataTag}
-            setActiveTab={setActiveTab}
-            onRefreshMetadata={handleRefreshMetadata}
-          />
-        </TabsContent>
-        
-        <TabsContent value="caption" className="mt-0 flex-1 overflow-hidden">
-          <CaptionTab 
-            caption={caption}
-            previewCaption={previewCaption}
-            captionPosition={captionPosition}
-            captionSize={captionSize}
-            captionColor={captionColor}
-            captionFont={captionFont}
-            captionBgColor={captionBgColor}
-            captionBgOpacity={captionBgOpacity}
-            setCaption={setCaption}
-            setCaptionPosition={setCaptionPosition}
-            setCaptionSize={setCaptionSize}
-            setCaptionColor={setCaptionColor}
-            setCaptionFont={setCaptionFont}
-            setCaptionBgColor={setCaptionBgColor}
-            setCaptionBgOpacity={setCaptionBgOpacity}
-            insertAllMetadata={insertAllMetadata}
-          />
-        </TabsContent>
+        <DebugPanelContent 
+          activeTab={activeTab}
+          outputFiles={outputFiles}
+          imageChanged={imageChanged}
+          imageUrl={imageUrl}
+          customUrl={customUrl}
+          setCustomUrl={setCustomUrl}
+          selectFile={selectFile}
+          isCurrentFile={isCurrentFile}
+          formatFileName={formatFileName}
+          showMode={showMode}
+          position={position}
+          refreshInterval={refreshInterval}
+          backgroundColor={backgroundColor}
+          transition={transition}
+          setShowMode={setShowMode}
+          setPosition={setPosition}
+          setRefreshInterval={setRefreshInterval}
+          setBackgroundColor={setBackgroundColor}
+          setTransition={setTransition}
+          resetSettings={resetSettings}
+          metadataEntries={metadataEntries}
+          insertMetadataTag={insertMetadataTag}
+          setActiveTab={setActiveTab}
+          onRefreshMetadata={handleRefreshMetadata}
+          caption={caption}
+          previewCaption={previewCaption}
+          captionPosition={captionPosition}
+          captionSize={captionSize}
+          captionColor={captionColor}
+          captionFont={captionFont}
+          captionBgColor={captionBgColor}
+          captionBgOpacity={captionBgOpacity}
+          setCaption={setCaption}
+          setCaptionPosition={setCaptionPosition}
+          setCaptionSize={setCaptionSize}
+          setCaptionColor={setCaptionColor}
+          setCaptionFont={setCaptionFont}
+          setCaptionBgColor={setCaptionBgColor}
+          setCaptionBgOpacity={setCaptionBgOpacity}
+          insertAllMetadata={insertAllMetadata}
+        />
       </Tabs>
       
       <DebugPanelFooter 
