@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
@@ -102,6 +103,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         resize: 'none' as const
       };
 
+  // Get the selectedSize name as a string to pass to DebugImageContent
   const selectedSizeString = selectedSize.name;
 
   return (
