@@ -21,6 +21,9 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
   insertMetadataTag,
   setActiveTab
 }) => {
+  // Add a console log to debug metadata
+  console.log('Rendering MetadataTab with entries:', metadataEntries);
+  
   return (
     <CardContent className="pt-4 pb-2 h-full flex flex-col">
       <ScrollArea className="flex-1 rounded-md border p-2 min-h-[200px]">

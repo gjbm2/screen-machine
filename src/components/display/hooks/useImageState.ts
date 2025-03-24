@@ -87,31 +87,37 @@ export const useImageState = () => {
 
   const extractMetadataFromImage = async (url: string, dataTag?: string) => {
     try {
+      // Log that we're trying to extract metadata
+      console.log('[useImageState] Starting metadata extraction for URL:', url);
+      
       // If we're already extracting metadata, just return the current metadata
       if (isExtractingMetadataRef.current) {
         console.log('[useImageState] Already extracting metadata, using current metadata');
         return metadata;
       }
       
-      // Only extract metadata if we haven't already extracted it for this URL
-      // or if the URL has changed
-      if (url !== lastMetadataUrlRef.current) {
-        console.log('[useImageState] Extracting metadata for new URL:', url);
-        isExtractingMetadataRef.current = true;
+      // Reset the metadata state to ensure we don't show stale data
+      setMetadata({});
+      
+      // We'll extract metadata regardless of whether we've seen this URL before
+      // This ensures we always have fresh metadata
+      console.log('[useImageState] Extracting metadata for URL:', url);
+      isExtractingMetadataRef.current = true;
+      
+      try {
+        // Get the metadata from the image
+        const newMetadata = await extractImageMetadata(url);
+        console.log('[useImageState] Extracted metadata:', newMetadata);
         
-        try {
-          // Fixed: Passing only the url parameter to extractImageMetadata
-          const newMetadata = await extractImageMetadata(url);
-          setMetadata(newMetadata);
-          // Update the last metadata URL
-          lastMetadataUrlRef.current = url;
-          return newMetadata;
-        } finally {
-          isExtractingMetadataRef.current = false;
-        }
-      } else {
-        console.log('[useImageState] Using cached metadata for URL:', url);
-        return metadata;
+        // Update the state with the new metadata
+        setMetadata(newMetadata);
+        
+        // Update the last metadata URL
+        lastMetadataUrlRef.current = url;
+        
+        return newMetadata;
+      } finally {
+        isExtractingMetadataRef.current = false;
       }
     } catch (err) {
       console.error('Error extracting metadata:', err);
