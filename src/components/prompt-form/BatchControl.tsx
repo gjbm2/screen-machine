@@ -2,6 +2,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus, Minus } from 'lucide-react';
+import { useVerboseDebug } from '@/hooks/use-verbose-debug';
 
 interface BatchControlProps {
   batchSize: number;
@@ -16,18 +17,20 @@ const BatchControl: React.FC<BatchControlProps> = ({
   decrementBatchSize,
   isCompact = false
 }) => {
+  const { logVerbose } = useVerboseDebug();
+  
   // Log the current value immediately when rendered
-  console.log(`[BatchControl] Current batch size in component: ${batchSize}`);
+  logVerbose(`BatchControl component rendered with batch size: ${batchSize}`);
   
   const handleIncrement = () => {
     incrementBatchSize();
     // We can't log the updated value immediately as state updates are async
-    console.log(`[BatchControl] Increment requested (current: ${batchSize})`);
+    logVerbose(`Batch size increment requested (current: ${batchSize})`);
   };
   
   const handleDecrement = () => {
     decrementBatchSize();
-    console.log(`[BatchControl] Decrement requested (current: ${batchSize})`);
+    logVerbose(`Batch size decrement requested (current: ${batchSize})`);
   };
   
   return (

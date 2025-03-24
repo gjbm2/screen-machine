@@ -1,3 +1,4 @@
+
 // API service for all backend requests
 import { toast } from 'sonner';
 
@@ -39,18 +40,29 @@ class ApiService {
       // Create form data for multipart request
       const formData = new FormData();
       
+      // CRITICAL FIX: Ensure global_params contains a valid batch_size value
+      // If global_params is undefined or batch_size is missing, create with default value
+      const sanitizedGlobalParams = global_params || {};
+      
+      // If batch_size is not a proper number, default to 1
+      if (typeof sanitizedGlobalParams.batch_size !== 'number') {
+        const parsedBatchSize = parseInt(String(sanitizedGlobalParams.batch_size), 10);
+        sanitizedGlobalParams.batch_size = !isNaN(parsedBatchSize) ? parsedBatchSize : 1;
+      }
+      
       // Create a data object to serialize as JSON
       const jsonData: any = {
         prompt,
         workflow,
         params: workflowParams || {},
-        global_params: global_params || {},
+        global_params: sanitizedGlobalParams,
         batch_id,
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
       
       // CRITICAL: Log the original batch_size we received to debug issues
       console.log(`[api] Original global_params received:`, global_params);
+      console.log(`[api] Sanitized global_params:`, sanitizedGlobalParams);
       
       // CRITICAL: Log the batch_size in the payload before sending
       console.log(`[api] Generating with batch_size:`, jsonData.global_params.batch_size);
@@ -60,7 +72,7 @@ class ApiService {
         prompt,
         workflow,
         params: workflowParams,
-        global_params,
+        global_params: sanitizedGlobalParams,
         batch_size: jsonData.global_params.batch_size,
         refiner: refiner || 'none',
         refiner_params: refiner_params || {}
@@ -168,8 +180,23 @@ class ApiService {
   
   // Mock implementation for testing/preview
   private mockGenerateImage(params: GenerateImageParams) {
-    // CRITICAL: Always directly use the provided batch size without any manipulation
-    const batchSize = params.global_params?.batch_size || 1;
+    // CRITICAL FIX: Ensure we properly extract batch_size from global_params
+    let batchSize = 1; // Default
+    
+    if (params.global_params) {
+      if (typeof params.global_params.batch_size === 'number') {
+        batchSize = params.global_params.batch_size;
+      } else if (params.global_params.batch_size !== undefined) {
+        // Try to parse it as a number
+        const parsedBatchSize = parseInt(String(params.global_params.batch_size), 10);
+        if (!isNaN(parsedBatchSize)) {
+          batchSize = parsedBatchSize;
+        }
+      }
+    }
+    
+    // Ensure batch size is between 1 and 9
+    batchSize = Math.max(1, Math.min(9, batchSize));
     
     console.info('[MOCK LOG] [mock-backend]', `Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
     console.info('[MOCK LOG] [mock-backend]', `Using workflow: ${params.workflow}`);
@@ -193,7 +220,7 @@ class ApiService {
           return placeholderImages[Math.floor(Math.random() * placeholderImages.length)];
         };
         
-        // Create mock images based on the requested batch size - CRITICAL: Use the provided batch size
+        // Create mock images based on the requested batch size
         const mockImages = Array(batchSize).fill(0).map((_, index) => ({
           id: `mock-${Date.now()}-${index}`,
           url: getRandomImage(),

@@ -1,15 +1,33 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Settings, ArrowUp, Image, Plus, Minus } from 'lucide-react';
-import ImageUploader from '@/components/prompt/ImageUploader';
-import WorkflowIconSelector from '@/components/prompt/WorkflowIconSelector';
-import RefinerSelector from '@/components/prompt/RefinerSelector';
+import { Upload, Settings, SendHorizontal } from 'lucide-react';
 import BatchControl from './BatchControl';
-import { ToolbarProps } from './types';
-import { useIsMobile } from '@/hooks/use-mobile';
+import WorkflowSelector from './WorkflowSelector';
+import RefinerSelector from './RefinerSelector';
+import { useVerboseDebug } from '@/hooks/use-verbose-debug';
 
-const PromptFormToolbar: React.FC<ToolbarProps> = ({
+interface PromptFormToolbarProps {
+  isLoading: boolean;
+  batchSize: number;
+  selectedWorkflow: string;
+  selectedRefiner: string;
+  onImageUpload: (files: File[]) => void;
+  onWorkflowChange: (workflowId: string) => void;
+  onRefinerChange: (refinerId: string) => void;
+  incrementBatchSize: () => void;
+  decrementBatchSize: () => void;
+  toggleAdvancedOptions: () => void;
+  handleSubmit: () => void;
+  prompt: string;
+  isButtonDisabled: boolean;
+  workflows: any[];
+  refiners?: any[];
+  isCompact?: boolean;
+  hasUploadedImages?: boolean;
+}
+
+const PromptFormToolbar: React.FC<PromptFormToolbarProps> = ({
   isLoading,
   batchSize,
   selectedWorkflow,
@@ -24,68 +42,109 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   prompt,
   isButtonDisabled,
   workflows,
-  isCompact,
+  refiners = [],
+  isCompact = false,
   hasUploadedImages = false
 }) => {
-  const isMobile = useIsMobile();
+  const { logVerbose } = useVerboseDebug();
   
-  // The button should be enabled if there's a prompt OR uploaded images
-  const shouldDisableButton = isLoading || (!prompt.trim() && !hasUploadedImages);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const filesArray = Array.from(e.target.files);
+      logVerbose(`Files selected: ${filesArray.map(f => f.name).join(', ')}`);
+      onImageUpload(filesArray);
+      
+      // Reset the input value to allow selecting the same file again
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+  
+  const handleUploadClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+  
+  const handleGenerateClick = () => {
+    logVerbose(`Generate clicked with batch size: ${batchSize}`);
+    logVerbose(`Current workflow: ${selectedWorkflow}`);
+    logVerbose(`Current refiner: ${selectedRefiner}`);
+    handleSubmit();
+  };
   
   return (
-    <div className="flex items-center justify-between overflow-x-auto py-1">
-      <div className="flex flex-nowrap items-center gap-1 sm:gap-2">
-        <ImageUploader
-          isLoading={isLoading}
-          onImageUpload={onImageUpload}
-          onWorkflowChange={onWorkflowChange}
-          hideLabel={isMobile}
+    <div className="flex flex-wrap gap-2 mt-2 items-center">
+      <div className="flex-1 flex flex-wrap gap-2">
+        <input 
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileInputChange}
+          accept="image/*"
+          multiple
+          className="hidden"
         />
         
-        <WorkflowIconSelector
-          workflows={workflows}
-          selectedWorkflow={selectedWorkflow}
-          onWorkflowChange={onWorkflowChange}
-          hideWorkflowName={isMobile}
-        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8"
+          onClick={handleUploadClick}
+        >
+          <Upload className="h-3.5 w-3.5 mr-1" />
+          {!isCompact && 'Upload Image'}
+        </Button>
         
-        <RefinerSelector
-          selectedRefiner={selectedRefiner}
-          onRefinerChange={onRefinerChange}
-        />
+        {!isCompact && (
+          <WorkflowSelector
+            selectedWorkflow={selectedWorkflow}
+            workflows={workflows}
+            onWorkflowChange={onWorkflowChange}
+            disabled={isLoading}
+          />
+        )}
         
-        <BatchControl 
+        {!isCompact && refiners.length > 0 && (
+          <RefinerSelector
+            selectedRefiner={selectedRefiner}
+            refiners={refiners}
+            onRefinerChange={onRefinerChange}
+            disabled={isLoading}
+          />
+        )}
+        
+        <BatchControl
           batchSize={batchSize}
           incrementBatchSize={incrementBatchSize}
           decrementBatchSize={decrementBatchSize}
-          isCompact={isMobile}
+          isCompact={isCompact}
         />
-
-        <Button 
-          type="button"
-          variant="outline" 
-          size={isMobile ? "icon" : "sm"}
+        
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8"
           onClick={toggleAdvancedOptions}
-          className={`${isMobile ? "h-[28px] w-[28px]" : "h-[28px] px-2"} text-muted-foreground hover:bg-purple-500/10 text-purple-700 shrink-0`}
-          aria-label="Advanced Settings"
         >
-          <Settings className="h-3.5 w-3.5" />
-          {!isMobile && <span className="ml-1.5 text-xs">Advanced</span>}
+          <Settings className="h-3.5 w-3.5 mr-1" />
+          {!isCompact && 'Advanced'}
         </Button>
       </div>
-
-      <div className="ml-auto">
-        <Button 
-          type="submit" 
-          className={`h-12 w-12 rounded-full transition-all hover:shadow-md flex items-center justify-center btn-shine ${
-            shouldDisableButton && isCompact ? 'bg-gray-300 text-gray-600' : 'bg-primary text-primary-foreground'
-          }`}
-          disabled={shouldDisableButton}
-          onClick={handleSubmit}
-        >
-          <ArrowUp className="h-6 w-6" />
-        </Button>
-      </div>
+      
+      <Button
+        type="button"
+        onClick={handleGenerateClick}
+        disabled={isButtonDisabled}
+        className="h-8"
+        size="sm"
+      >
+        <SendHorizontal className="h-3.5 w-3.5 mr-1" />
+        Generate
+      </Button>
     </div>
   );
 };
