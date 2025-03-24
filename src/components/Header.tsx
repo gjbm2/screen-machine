@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { menuItems } from '@/data/menu-items';
 import {
@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Menu, Code, Sliders, Bug } from 'lucide-react';
+import { Menu, Code, Sliders, Bug, Info } from 'lucide-react';
 import AboutDialog from './about/AboutDialog';
 
 interface HeaderProps {
@@ -18,14 +18,26 @@ interface HeaderProps {
   onOpenAdvancedOptions: () => void;
   onToggleVerboseDebug: () => void;
   verboseDebugEnabled: boolean;
+  onOpenAboutDialog?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
   onToggleConsole, 
   onOpenAdvancedOptions,
   onToggleVerboseDebug,
-  verboseDebugEnabled
+  verboseDebugEnabled,
+  onOpenAboutDialog
 }) => {
+  const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
+  
+  const handleOpenAboutDialog = () => {
+    if (onOpenAboutDialog) {
+      onOpenAboutDialog();
+    } else {
+      setAboutDialogOpen(true);
+    }
+  };
+
   return (
     <header className="border-b">
       <div className="container mx-auto flex justify-between items-center p-2">
@@ -62,9 +74,21 @@ const Header: React.FC<HeaderProps> = ({
               </DropdownMenuItem>
               
               <DropdownMenuSeparator />
-              <AboutDialog />
+              
+              <DropdownMenuItem onClick={handleOpenAboutDialog}>
+                <Info className="mr-2 h-4 w-4" />
+                <span>About</span>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          
+          {/* Controlled dialog when using onOpenAboutDialog */}
+          {onOpenAboutDialog && (
+            <AboutDialog 
+              open={aboutDialogOpen} 
+              onOpenChange={setAboutDialogOpen} 
+            />
+          )}
         </div>
       </div>
     </header>

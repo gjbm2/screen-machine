@@ -1,19 +1,33 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Info } from 'lucide-react';
 
-interface AboutDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+export interface AboutDialogProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-const AboutDialog: React.FC<AboutDialogProps> = ({ open, onOpenChange }) => {
+const AboutDialog: React.FC<AboutDialogProps> = ({ 
+  open: controlledOpen, 
+  onOpenChange: controlledOnOpenChange 
+}) => {
+  // For uncontrolled usage
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  
+  // Determine if we're in controlled or uncontrolled mode
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : uncontrolledOpen;
+  const onOpenChange = isControlled ? controlledOnOpenChange : setUncontrolledOpen;
+  
   // Add an effect to ensure we clean up any potential stuck event handlers
   useEffect(() => {
     // This ensures we properly clean up when the dialog is unmounted
@@ -35,30 +49,60 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ open, onOpenChange }) => {
       }, 10);
     }
     
-    onOpenChange(newOpenState);
+    if (onOpenChange) {
+      onOpenChange(newOpenState);
+    }
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>About Imagine</DialogTitle>
-          <DialogDescription>
-            <div className="space-y-4 mt-4">
-              <p>
-                Imagine is an AI-powered image generation tool that turns your text prompts into stunning visuals.
-              </p>
-              <p>
-                Simply describe what you want to see or upload reference images, and watch as artificial intelligence transforms your ideas into art within seconds.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Version 1.0.0 • Made with ❤️ by your team
-              </p>
-            </div>
-          </DialogDescription>
-        </DialogHeader>
-      </DialogContent>
-    </Dialog>
+    isControlled ? (
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>About Imagine</DialogTitle>
+            <DialogDescription>
+              <div className="space-y-4 mt-4">
+                <p>
+                  Imagine is an AI-powered image generation tool that turns your text prompts into stunning visuals.
+                </p>
+                <p>
+                  Simply describe what you want to see or upload reference images, and watch as artificial intelligence transforms your ideas into art within seconds.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Version 1.0.0 • Made with ❤️ by your team
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+    ) : (
+      <DropdownMenuItem onSelect={() => setUncontrolledOpen(true)}>
+        <Info className="h-4 w-4 mr-2" />
+        <span>About</span>
+        
+        <Dialog open={open} onOpenChange={handleOpenChange}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>About Imagine</DialogTitle>
+              <DialogDescription>
+                <div className="space-y-4 mt-4">
+                  <p>
+                    Imagine is an AI-powered image generation tool that turns your text prompts into stunning visuals.
+                  </p>
+                  <p>
+                    Simply describe what you want to see or upload reference images, and watch as artificial intelligence transforms your ideas into art within seconds.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Version 1.0.0 • Made with ❤️ by your team
+                  </p>
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+          </DialogContent>
+        </Dialog>
+      </DropdownMenuItem>
+    )
   );
 };
 

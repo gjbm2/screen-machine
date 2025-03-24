@@ -2,7 +2,7 @@
 import React from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import { ResizableConsole } from '@/components/debug/ResizableConsole';
+import ResizableConsole from '@/components/debug/ResizableConsole';
 import ConsoleView from '@/components/console/ConsoleView';
 import { useVerboseDebug } from '@/hooks/use-verbose-debug';
 
@@ -43,12 +43,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({
       <Footer />
       
       {consoleVisible && (
-        <ResizableConsole>
-          <ConsoleView 
-            logs={consoleLogs}
-            onClear={onClearConsole}
-          />
-        </ResizableConsole>
+        <ResizableConsole
+          logs={consoleLogs}
+          isVisible={consoleVisible}
+          onClose={onToggleConsole}
+          onClear={onClearConsole}
+        />
       )}
     </div>
   );

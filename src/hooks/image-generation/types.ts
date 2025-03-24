@@ -1,5 +1,5 @@
 
-export type ImageGenerationStatus = 'generating' | 'completed' | 'error' | 'failed';
+export type ImageGenerationStatus = 'generating' | 'completed' | 'error' | 'failed' | 'to_update';
 
 export interface GeneratedImage {
   id?: string;
