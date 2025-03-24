@@ -1,3 +1,4 @@
+
 // API service for all backend requests
 import { toast } from 'sonner';
 
@@ -36,6 +37,19 @@ class ApiService {
     try {
       const { prompt, workflow, params: workflowParams, global_params, refiner, refiner_params, imageFiles, batch_id } = params;
       
+      // CRITICAL: Validate that batch_size is present and a number before proceeding
+      const batchSize = global_params?.batch_size;
+      if (typeof batchSize !== 'number' || isNaN(batchSize) || batchSize < 1) {
+        console.error(`[api] Invalid batch_size received:`, batchSize);
+        console.error(`[api] Full global_params:`, global_params);
+        // Set a safe default
+        if (global_params) {
+          global_params.batch_size = 1;
+        }
+      } else {
+        console.log(`[api] Valid batch_size confirmed: ${batchSize}`);
+      }
+      
       // Create form data for multipart request
       const formData = new FormData();
       
@@ -44,7 +58,7 @@ class ApiService {
         prompt,
         workflow,
         params: workflowParams || {},
-        global_params: global_params || {},
+        global_params: global_params || { batch_size: 1 }, // Ensure there's always a batch_size
         batch_id,
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
@@ -168,8 +182,12 @@ class ApiService {
   
   // Mock implementation for testing/preview
   private mockGenerateImage(params: GenerateImageParams) {
-    // CRITICAL: Always directly use the provided batch size without any manipulation
-    const batchSize = params.global_params?.batch_size || 1;
+    // CRITICAL: Always directly use the provided batch size, verify it's valid
+    const batchSize = typeof params.global_params?.batch_size === 'number' && 
+                      !isNaN(params.global_params.batch_size) && 
+                      params.global_params.batch_size > 0 
+                      ? params.global_params.batch_size 
+                      : 1;
     
     console.info('[MOCK LOG] [mock-backend]', `Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
     console.info('[MOCK LOG] [mock-backend]', `Using workflow: ${params.workflow}`);
