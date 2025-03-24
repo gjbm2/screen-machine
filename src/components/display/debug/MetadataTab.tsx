@@ -29,12 +29,13 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
       console.log('No metadata entries found. This might indicate an extraction issue.');
     } else {
       console.log('Metadata entries found:', metadataEntries.length);
+      console.log('First few metadata entries:', metadataEntries.slice(0, 3));
     }
   }, [metadataEntries]);
   
   return (
     <CardContent className="pt-4 pb-2 h-full flex flex-col">
-      <ScrollArea className="flex-1 rounded-md border p-2 min-h-[200px]">
+      <ScrollArea className="flex-1 rounded-md border p-2 min-h-[200px] min-w-[200px]">
         {metadataEntries.length > 0 ? (
           <div className="space-y-2">
             {metadataEntries.map((entry, index) => (
@@ -51,6 +52,7 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
                   size="sm" 
                   className="h-7 px-2"
                   onClick={() => {
+                    console.log('Using metadata tag:', entry.key);
                     insertMetadataTag(entry.key);
                     setActiveTab("caption");
                   }}

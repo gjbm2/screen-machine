@@ -80,6 +80,10 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
     refetch();
   };
   
+  const handleClearLogs = () => {
+    setCombinedLogs([]);
+  };
+  
   if (!isVisible && !isExiting) {
     return null;
   }
@@ -138,6 +142,15 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
                 >
                   <Copy className="h-4 w-4" />
                   <span className="sr-only">Copy logs</span>
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={handleClearLogs}
+                >
+                  <ChevronsDown className="h-4 w-4" />
+                  <span className="sr-only">Clear logs</span>
                 </Button>
                 <Button 
                   variant="ghost" 

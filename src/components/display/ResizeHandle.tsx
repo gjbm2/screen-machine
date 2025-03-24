@@ -4,12 +4,60 @@ import { MoveDiagonal } from 'lucide-react';
 
 interface ResizeHandleProps {
   onMouseDown: (e: React.MouseEvent) => void;
+  minWidth?: number;
+  minHeight?: number;
 }
 
-export const ResizeHandle: React.FC<ResizeHandleProps> = ({ onMouseDown }) => {
+export const ResizeHandle: React.FC<ResizeHandleProps> = ({ 
+  onMouseDown,
+  minWidth = 300,
+  minHeight = 200 
+}) => {
   // Add a custom mouse down handler to enforce minimum size constraints
   const handleMouseDown = (e: React.MouseEvent) => {
     console.log('ResizeHandle: Mouse down event triggered');
+    
+    // Store original dimensions to apply constraints
+    const container = (e.currentTarget as HTMLElement).closest('.resizable-container');
+    
+    if (container) {
+      const originalWidth = container.clientWidth;
+      const originalHeight = container.clientHeight;
+      
+      console.log(`ResizeHandle: Original dimensions - ${originalWidth}x${originalHeight}`);
+      
+      // Create a tracking function to enforce minimum size during resize
+      const trackMouseMove = (moveEvent: MouseEvent) => {
+        const currentWidth = container.clientWidth;
+        const currentHeight = container.clientHeight;
+        
+        // If dimensions are getting too small, cancel the mouse tracking
+        if (currentWidth < minWidth || currentHeight < minHeight) {
+          console.log(`ResizeHandle: Dimensions got too small: ${currentWidth}x${currentHeight}`);
+          console.log(`ResizeHandle: Enforcing minimum size: ${minWidth}x${minHeight}`);
+          
+          // Set minimum dimensions
+          if (currentWidth < minWidth) {
+            container.style.width = `${minWidth}px`;
+          }
+          
+          if (currentHeight < minHeight) {
+            container.style.height = `${minHeight}px`;
+          }
+        }
+      };
+      
+      // Add the tracking function to the document
+      document.addEventListener('mousemove', trackMouseMove);
+      
+      // Remove tracking when mouse is released
+      const cleanupTracking = () => {
+        document.removeEventListener('mousemove', trackMouseMove);
+        document.removeEventListener('mouseup', cleanupTracking);
+      };
+      
+      document.addEventListener('mouseup', cleanupTracking, { once: true });
+    }
     
     // Call the original handler to maintain existing functionality
     onMouseDown(e);
