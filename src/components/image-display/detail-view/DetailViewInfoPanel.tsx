@@ -61,12 +61,11 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
   
   return (
     <div className="flex-shrink-0 p-2 space-y-1 bg-background select-none border-t min-h-[100px]">
-      {/* Prompt display with reference image button */}
+      {/* Prompt display with reference image icon (non-interactive) */}
       {!hidePrompt && activeImage?.prompt && (
         <ImagePrompt
           prompt={activeImage.prompt}
           hasReferenceImages={hasReferenceImages}
-          onReferenceImageClick={onReferenceImageClick}
           workflowName={activeImage.workflow}
           onInfoClick={onInfoClick}
           title={activeImage.title}
