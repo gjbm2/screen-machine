@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { DebugPanel } from '@/components/display/DebugPanel';
+import { DebugPanel } from '@/components/display/debug/DebugPanel';
 import { DebugImageContainer } from '@/components/display/DebugImageContainer';
 import { ImageDisplay } from '@/components/display/ImageDisplay';
 import { DisplayParams } from './types';
