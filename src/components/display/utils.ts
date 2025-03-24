@@ -4,3 +4,5 @@ export * from './utils/paramUtils';
 export * from './utils/metadataUtils';
 export * from './utils/imageUtils';
 export * from './utils/formatUtils';
+export * from './utils/metadataExtraction';
+
