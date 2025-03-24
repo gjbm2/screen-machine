@@ -113,7 +113,7 @@ export const useDebugPanelFiles = ({
     // Create a URL without debug mode
     const url = generateUrl(false);
     
-    // Fix: Use navigate instead of direct location change to ensure proper routing
+    // Navigate to display page with parameters but without debug mode
     navigate(url);
     toast.success("Settings committed");
   };
