@@ -11,15 +11,13 @@ import { useDebugRedirection } from '@/components/display/hooks/useDebugRedirect
 import { useOutputProcessor } from '@/components/display/hooks/useOutputProcessor';
 import { useImageErrorHandler } from '@/components/display/hooks/useImageErrorHandler';
 import { useEnhancedManualCheck } from '@/components/display/hooks/useEnhancedManualCheck';
-import { normalizePathForDisplay, decodeComplexOutputParam } from '../utils/paramUtils';
+import { normalizePathForDisplay } from '../utils/paramUtils';
 
 export const useDisplayPage = () => {
   const { params, redirectToDebugMode } = useDisplayParams();
   const [previewParams, setPreviewParams] = useState(params);
   const mountedRef = useRef(true); // Track if component is mounted
-  const outputProcessedRef = useRef(false); // Track if output has been processed
   const initialRenderRef = useRef(true); // Track initial render
-  const previousOutputRef = useRef<string | null>(null); // Track previous output
 
   // Debug logging for params
   useEffect(() => {
@@ -66,59 +64,30 @@ export const useDisplayPage = () => {
   } = useDisplayState(previewParams);
 
   // Handle output parameter directly to ensure image displays
-  // This is critical for when images are selected in debug mode
   useEffect(() => {
     if (!mountedRef.current) return;
     
-    // Skip if the output hasn't changed since last time
-    if (previousOutputRef.current === params.output) {
-      console.log('[useDisplayPage] Output parameter unchanged, skipping processing');
-      return;
-    }
-    
-    // Always process the output parameter on initial render or when it changes
     if (params.output) {
-      console.log('[useDisplayPage] 🖼️ Processing output parameter:', params.output);
-      console.log('[useDisplayPage] Current imageUrl:', imageUrl);
+      console.log('[useDisplayPage] Processing output parameter:', params.output);
       
-      // Update the previous output ref to avoid reprocessing
-      previousOutputRef.current = params.output;
-      
-      // For complex URLs with query parameters, ensure they're fully decoded before use
-      if (params.output.includes('?') && (params.output.startsWith('http://') || params.output.startsWith('https://'))) {
-        console.log('[useDisplayPage] Complex URL detected, ensuring full decoding:', params.output);
-        // Ensure the URL is fully decoded before setting it as the image source
-        const fullyDecodedUrl = decodeComplexOutputParam(params.output);
-        console.log('[useDisplayPage] Using fully decoded URL:', fullyDecodedUrl);
-        setImageUrl(fullyDecodedUrl);
+      // For fully formed URLs, use directly
+      if (params.output.startsWith('http://') || params.output.startsWith('https://')) {
+        setImageUrl(params.output);
       } else {
-        // Normalize the path for display
+        // For local paths, normalize 
         const normalizedPath = normalizePathForDisplay(params.output);
-        console.log('[useDisplayPage] Normalized path for display:', normalizedPath);
         setImageUrl(normalizedPath);
       }
       
       // Increment the image key to force a reload
       setImageKey(prev => prev + 1);
       
-      // Mark as processed
-      outputProcessedRef.current = true;
-      
       // Toast to notify user
       const filename = params.output.split('/').pop() || params.output;
       const displayName = filename.length > 30 ? filename.substring(0, 27) + '...' : filename;
       toast.success(`Displaying image: ${displayName}`);
     }
-  }, [params.output, setImageUrl, setImageKey, imageUrl]);
-
-  // Reset output processed flag when output param changes to null
-  useEffect(() => {
-    if (params.output === null) {
-      console.log('[useDisplayPage] Output param is null, resetting processed flag');
-      outputProcessedRef.current = false;
-      previousOutputRef.current = null;
-    }
-  }, [params.output]);
+  }, [params.output, setImageUrl, setImageKey]);
 
   // Set mounted ref to false on unmount
   useEffect(() => {
@@ -151,10 +120,6 @@ export const useDisplayPage = () => {
   // Enhanced debug logging for metadata
   useEffect(() => {
     if (!mountedRef.current) return;
-    
-    console.log('[useDisplayPage] Params:', params);
-    console.log('[useDisplayPage] Image URL:', imageUrl);
-    console.log('[useDisplayPage] Metadata:', metadata);
     
     // Only attempt metadata extraction if not loading and not transitioning
     if (!isLoading && !isTransitioning) {
@@ -209,24 +174,20 @@ export const useDisplayPage = () => {
   // Special handling for initial render with output parameter
   useEffect(() => {
     if (initialRenderRef.current && params.output) {
-      console.log('[useDisplayPage] 🔄 Initial render with output param:', params.output);
+      console.log('[useDisplayPage] Initial render with output param:', params.output);
       initialRenderRef.current = false;
-      
-      let urlToUse = params.output;
-      
-      // For complex URLs with query parameters, use them directly
-      if (params.output.includes('?') && (params.output.startsWith('http://') || params.output.startsWith('https://'))) {
-        console.log('[useDisplayPage] Complex URL detected for initial render, using directly:', params.output);
-      } else {
-        // Normalize the path for display
-        urlToUse = normalizePathForDisplay(params.output);
-        console.log('[useDisplayPage] Normalized initial path for display:', urlToUse);
-      }
       
       // Small delay to ensure DOM is ready
       setTimeout(() => {
         if (mountedRef.current) {
-          setImageUrl(urlToUse);
+          // For fully formed URLs, use directly
+          if (params.output && params.output.startsWith('http')) {
+            setImageUrl(params.output);
+          } else if (params.output) {
+            // For local paths, normalize 
+            const normalizedPath = normalizePathForDisplay(params.output);
+            setImageUrl(normalizedPath);
+          }
           setImageKey(prev => prev + 1);
         }
       }, 100);
