@@ -22,6 +22,10 @@ const Index = () => {
     addLog: addConsoleLog 
   } = useConsoleManagement();
   
+  // Add state for refiner and refiner params
+  const [selectedRefiner, setSelectedRefiner] = useState('none');
+  const [refinerParams, setRefinerParams] = useState<Record<string, any>>({});
+  
   // Add logging for debugging the advanced panel issue
   useEffect(() => {
     console.log('Advanced options panel open state:', advancedOptionsOpen);
@@ -67,6 +71,21 @@ const Index = () => {
     setAdvancedOptionsOpen(open);
   }, []);
 
+  // Handler for refiner changes
+  const handleRefinerChange = useCallback((refiner: string) => {
+    console.log('Index: Refiner changed to:', refiner);
+    setSelectedRefiner(refiner);
+  }, []);
+
+  // Handler for refiner param changes
+  const handleRefinerParamChange = useCallback((paramId: string, value: any) => {
+    console.log('Index: Refiner param changed:', paramId, value);
+    setRefinerParams(prev => ({
+      ...prev,
+      [paramId]: value
+    }));
+  }, []);
+
   // Handler for prompt submission
   const handlePromptSubmit = async (
     prompt: string,
@@ -96,6 +115,11 @@ const Index = () => {
         setCurrentWorkflow(workflow);
       }
       
+      // Update refiner state if provided
+      if (refiner) {
+        setSelectedRefiner(refiner);
+      }
+      
       // Create a copy of the params to avoid mutation issues
       let effectiveParams = params ? { ...params } : { ...currentParams };
       
@@ -111,6 +135,11 @@ const Index = () => {
       // Update global params if provided
       if (globalParams) {
         setCurrentGlobalParams(globalParams);
+      }
+      
+      // Update refiner params if provided
+      if (refinerParams) {
+        setRefinerParams(refinerParams);
       }
       
       // Process image files if provided
@@ -156,6 +185,12 @@ const Index = () => {
           currentPrompt={currentPrompt}
           isFirstRun={isFirstRun}
           onOpenAdvancedOptions={handleOpenAdvancedOptions}
+          // Pass additional props to reflect current state
+          selectedWorkflow={currentWorkflow}
+          selectedRefiner={selectedRefiner}
+          workflowParams={currentParams}
+          refinerParams={refinerParams}
+          globalParams={currentGlobalParams}
         />
         
         <ImageDisplay 
@@ -191,6 +226,11 @@ const Index = () => {
             [paramId]: value
           }));
         }}
+        // Pass refiner props
+        selectedRefiner={selectedRefiner}
+        refinerParams={refinerParams}
+        onRefinerChange={handleRefinerChange}
+        onRefinerParamChange={handleRefinerParamChange}
       />
     </>
   );

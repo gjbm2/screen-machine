@@ -1,4 +1,3 @@
-
 import { DisplayParams } from '../types';
 
 export const createUrlWithParams = (params: DisplayParams): string => {
@@ -67,7 +66,6 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   if (params.debugMode === true) {
     queryParams.set('debug', 'true');
   }
-  // Explicitly removed: Don't set debug=false, just omit the parameter
   
   const result = `?${queryParams.toString()}`;
   console.log('[createUrlWithParams] Final URL params:', result);

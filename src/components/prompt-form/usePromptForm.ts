@@ -96,6 +96,12 @@ const usePromptForm = () => {
     updateWorkflowParam,
     updateRefinerParam,
     updateGlobalParam,
+    // Expose setters for external state management
+    setSelectedWorkflow,
+    setSelectedRefiner,
+    setWorkflowParams,
+    setRefinerParams,
+    setGlobalParams,
   };
 };
 
