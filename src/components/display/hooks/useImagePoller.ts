@@ -1,0 +1,87 @@
+
+import { useEffect } from 'react';
+import { DisplayParams } from '@/components/display/types';
+import { processOutputParam, extractImageMetadata } from '@/components/display/utils';
+import { toast } from 'sonner';
+
+export const useImagePoller = (
+  params: DisplayParams,
+  imageUrl: string | null,
+  isLoading: boolean,
+  isTransitioning: boolean,
+  loadNewImage: (url: string) => void,
+  checkImageModified: (url: string) => Promise<boolean>
+) => {
+  // Handle initial image loading and periodic checking
+  useEffect(() => {
+    if (!params.output && !params.debugMode) {
+      return;
+    }
+
+    const processedUrl = processOutputParam(params.output);
+    
+    // Logging for debugging
+    console.log('[useImagePoller] Processed URL:', processedUrl);
+    console.log('[useImagePoller] Is transitioning:', isTransitioning);
+    console.log('[useImagePoller] Is loading:', isLoading);
+    
+    // Initial load
+    if (processedUrl) {
+      if (!isTransitioning) {
+        loadNewImage(processedUrl);
+      }
+      
+      // Set up polling interval
+      const intervalId = window.setInterval(() => {
+        if (processedUrl && !isLoading && !isTransitioning) {
+          checkImageModified(processedUrl).then(changed => {
+            if (changed) {
+              console.log('[useImagePoller] Image changed, should re-extract metadata');
+            }
+          });
+        }
+      }, params.refreshInterval * 1000);
+
+      return () => {
+        window.clearInterval(intervalId);
+      };
+    }
+  }, [params.output, params.refreshInterval, params.debugMode, isLoading, isTransitioning, loadNewImage, checkImageModified]);
+
+  // Enhanced manual check that handles metadata refresh
+  const handleManualCheck = async (
+    imageUrl: string | null,
+    originalHandleManualCheck: () => Promise<boolean>,
+    params: DisplayParams
+  ): Promise<boolean> => {
+    console.log('[useImagePoller] Manual check initiated');
+    
+    if (imageUrl) {
+      // Call the base image check function without arguments
+      const result = await originalHandleManualCheck();
+      
+      // Force metadata refresh regardless of whether the image changed
+      if (params.debugMode) {
+        try {
+          console.log('[useImagePoller] Forcing metadata refresh on manual check');
+          const extractedMetadata = await extractImageMetadata(imageUrl);
+          console.log('[useImagePoller] Manually extracted metadata:', extractedMetadata);
+          
+          if (Object.keys(extractedMetadata).length === 0) {
+            toast.warning("No metadata found in this image");
+          }
+        } catch (err) {
+          console.error('[useImagePoller] Error during manual metadata extraction:', err);
+        }
+      }
+      
+      return result;
+    }
+    
+    return false;
+  };
+
+  return {
+    handleManualCheck
+  };
+};

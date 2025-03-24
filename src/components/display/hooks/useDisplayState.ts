@@ -79,9 +79,10 @@ export const useDisplayState = (params: DisplayParams) => {
     return imageLoader(url, imageUrl, params);
   };
 
-  // Maintains the original handleManualCheck API
+  // Maintains the original handleManualCheck API 
+  // Fixed: Now we call handleManualCheck with no arguments
   const handleManualCheckOriginal = async () => {
-    return handleManualCheck(imageUrl, params.debugMode);
+    return handleManualCheck();
   };
 
   // Calculate next check time
@@ -107,7 +108,7 @@ export const useDisplayState = (params: DisplayParams) => {
     oldImageStyle,
     newImageStyle,
     imageRef,
-    nextCheckTime,  // This is Date | null from getNextCheckTime
+    nextCheckTime,
     loadNewImage,
     checkImageModified,
     handleManualCheck: handleManualCheckOriginal,
