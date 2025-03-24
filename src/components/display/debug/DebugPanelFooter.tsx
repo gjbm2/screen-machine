@@ -31,7 +31,11 @@ export const DebugPanelFooter: React.FC<DebugPanelFooterProps> = ({
           Apply Changes
         </Button>
         <Button 
-          onClick={commitSettings}
+          onClick={() => {
+            // Use window.location.href instead of navigate to ensure full page reload
+            const url = window.location.pathname.replace('?debugMode=true', '');
+            window.location.href = url;
+          }}
         >
           Commit
         </Button>

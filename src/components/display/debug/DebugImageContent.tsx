@@ -1,11 +1,10 @@
 
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { CardContent } from "@/components/ui/card";
-import { AspectRatio } from "@/components/ui/aspect-ratio";
-import { MoveDiagonal } from "lucide-react";
-import { ShowMode, PositionMode, CaptionPosition } from '../types';
-import { getPositioningStyles } from './ImagePositionStyles';
 import { CaptionRenderer } from './CaptionRenderer';
+import { ShowMode, PositionMode, CaptionPosition } from '../types';
+import { ResizeHandle } from '../ResizeHandle';
+import { SCREEN_SIZES } from './ScreenSizeSelector';
 
 interface DebugImageContentProps {
   imageUrl: string | null;
@@ -20,15 +19,15 @@ interface DebugImageContentProps {
   captionFont?: string;
   captionBgColor?: string;
   captionBgOpacity?: number;
+  selectedSize?: string;
   contentRef: React.RefObject<HTMLDivElement>;
   containerWidth: number;
   onImageError: () => void;
   onImageLoad: (e: React.SyntheticEvent<HTMLImageElement>) => void;
   imageDimensions: { width: number; height: number };
   imageRef: React.RefObject<HTMLImageElement>;
-  viewportRatio: number;
-  selectedSize: { name: string; width: number; height: number };
-  onResizeStart: (e: React.MouseEvent) => void;
+  viewportRatio: string;
+  onResizeStart?: (e: React.MouseEvent) => void;
 }
 
 export const DebugImageContent: React.FC<DebugImageContentProps> = ({
@@ -39,11 +38,12 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
   backgroundColor,
   caption,
   captionPosition = 'bottom-center',
-  captionSize,
-  captionColor,
-  captionFont,
-  captionBgColor,
-  captionBgOpacity,
+  captionSize = '16px',
+  captionColor = 'ffffff',
+  captionFont = 'Arial, sans-serif',
+  captionBgColor = '#000000',
+  captionBgOpacity = 0.7,
+  selectedSize = 'Current Viewport',
   contentRef,
   containerWidth,
   onImageError,
@@ -51,64 +51,95 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
   imageDimensions,
   imageRef,
   viewportRatio,
-  selectedSize,
   onResizeStart
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  // Apply selected screen size to container
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    const selectedSizeObj = SCREEN_SIZES.find(size => size.name === selectedSize);
+    if (!selectedSizeObj) return;
+    
+    // Calculate the maximum size that fits in the available space
+    const parentWidth = contentRef.current?.clientWidth || window.innerWidth;
+    const parentHeight = contentRef.current?.clientHeight || window.innerHeight;
+    
+    // Calculate aspect ratio of the selected size
+    const aspectRatio = selectedSizeObj.width / selectedSizeObj.height;
+    
+    // Calculate maximum dimensions that fit within the parent container
+    const maxWidth = Math.min(selectedSizeObj.width, parentWidth);
+    const maxHeight = Math.min(selectedSizeObj.height, parentHeight);
+    
+    // Calculate dimensions based on aspect ratio
+    let width, height;
+    if (maxWidth / aspectRatio <= maxHeight) {
+      // Width is the limiting factor
+      width = maxWidth;
+      height = width / aspectRatio;
+    } else {
+      // Height is the limiting factor
+      height = maxHeight;
+      width = height * aspectRatio;
+    }
+    
+    // Apply dimensions to container
+    containerRef.current.style.width = `${width}px`;
+    containerRef.current.style.height = `${height}px`;
+  }, [selectedSize, contentRef]);
+  
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    // Forward the event to parent component
+    onImageLoad(e);
+  };
+  
   return (
-    <CardContent className="overflow-hidden p-0 relative">
-      <AspectRatio 
-        ratio={viewportRatio} 
-        className="overflow-hidden"
-        ref={contentRef}
+    <CardContent 
+      className="p-0 flex-1 overflow-hidden flex items-center justify-center"
+      ref={contentRef}
+    >
+      <div 
+        ref={containerRef}
+        className="relative overflow-hidden bg-gray-900"
+        style={{ backgroundColor }}
       >
-        <div 
-          className="w-full h-full relative flex items-center justify-center"
-          style={{ backgroundColor: `#${backgroundColor}` }}
-        >
-          {imageUrl ? (
-            <>
-              <img
-                key={imageKey}
-                ref={imageRef}
-                src={imageUrl}
-                alt=""
-                style={getPositioningStyles(position, showMode, imageDimensions)}
-                onError={onImageError}
-                onLoad={onImageLoad}
+        {imageUrl ? (
+          <>
+            <img
+              ref={imageRef}
+              key={`image-${imageKey}`}
+              src={imageUrl}
+              alt="Preview"
+              className="w-full h-full object-contain"
+              onLoad={handleImageLoad}
+              onError={onImageError}
+              style={{
+                objectFit: showMode === 'contain' ? 'contain' : 'cover',
+                objectPosition: position === 'center' ? 'center' : position
+              }}
+            />
+            
+            {caption && (
+              <CaptionRenderer 
+                caption={caption}
+                position={captionPosition}
+                fontSize={captionSize}
+                color={captionColor}
+                fontFamily={captionFont}
+                backgroundColor={captionBgColor}
+                backgroundOpacity={captionBgOpacity}
               />
-              
-              {caption && (
-                <CaptionRenderer
-                  caption={caption}
-                  captionPosition={captionPosition}
-                  captionSize={captionSize}
-                  captionColor={captionColor}
-                  captionFont={captionFont}
-                  captionBgColor={captionBgColor}
-                  captionBgOpacity={captionBgOpacity}
-                  containerWidth={containerWidth}
-                  screenWidth={selectedSize.width}
-                />
-              )}
-            </>
-          ) : (
-            <div className="text-center p-4 text-gray-500">
-              <p>No image selected</p>
-              <p className="text-sm mt-2">Select an image from the available files list or enter a custom URL</p>
-            </div>
-          )}
-        </div>
-      </AspectRatio>
-      
-      <div
-        className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize z-20 flex items-center justify-center"
-        onMouseDown={onResizeStart}
-      >
-        <MoveDiagonal className="h-4 w-4 text-gray-400" />
-      </div>
-      
-      <div className="text-xs text-gray-500 mt-2 pl-4 pb-2">
-        Preview dimensions: {selectedSize.width}×{selectedSize.height}
+            )}
+          </>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-gray-500">
+            No image to display
+          </div>
+        )}
+        
+        {onResizeStart && <ResizeHandle onMouseDown={onResizeStart} />}
       </div>
     </CardContent>
   );

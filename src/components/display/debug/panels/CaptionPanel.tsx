@@ -42,7 +42,7 @@ export const CaptionPanel: React.FC<CaptionPanelProps> = ({
   insertAllMetadata
 }) => {
   return (
-    <CardContent className="p-0 flex-1 h-full overflow-hidden">
+    <CardContent className="p-0 flex-1 h-full overflow-auto">
       <CaptionTab 
         caption={caption}
         previewCaption={previewCaption}
