@@ -9,8 +9,8 @@ import { ScreenSizeSelector, SCREEN_SIZES } from './ScreenSizeSelector';
 interface DebugImageHeaderProps {
   showMode: ShowMode;
   position: PositionMode;
-  selectedScreenSize: { name: string; width: number; height: number };
-  setSelectedScreenSize: (size: { name: string; width: number; height: number }) => void;
+  selectedSize: { name: string; width: number; height: number };
+  setSelectedSize: (size: { name: string; width: number; height: number } | string) => void;
   imageChanged?: boolean;
   onSettingsChange?: () => void;
   onReset: () => void;
@@ -22,8 +22,8 @@ interface DebugImageHeaderProps {
 export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
   showMode,
   position,
-  selectedScreenSize,
-  setSelectedScreenSize,
+  selectedSize,
+  setSelectedSize,
   imageChanged,
   onSettingsChange,
   onReset,
@@ -56,12 +56,9 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
       
       <div className="flex items-center gap-2">
         <ScreenSizeSelector 
-          selectedSize={selectedScreenSize.name} 
+          selectedSize={selectedSize.name} 
           onSelect={(sizeName) => {
-            const found = SCREEN_SIZES.find(s => s.name === sizeName);
-            if (found) {
-              setSelectedScreenSize(found);
-            }
+            setSelectedSize(sizeName);
           }} 
           onSettingsChange={onSettingsChange}
         />
