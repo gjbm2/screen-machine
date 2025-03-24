@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Sheet,
@@ -58,6 +59,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   
   const handleOpenChange = (open: boolean) => {
     console.log("Advanced options panel - handleOpenChange called with:", open);
+    // Directly call onOpenChange without setTimeout
     onOpenChange(open);
   };
   
@@ -84,7 +86,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
 
   return (
     <Sheet open={isOpen} onOpenChange={handleOpenChange}>
-      <SheetContent className={`${sheetWidth} overflow-y-auto`}>
+      <SheetContent className={`${sheetWidth} overflow-y-auto`} onPointerDownOutside={(e) => e.preventDefault()}>
         <SheetHeader className="text-left p-0">
           <div className="flex justify-between items-center mb-4">
             <div>

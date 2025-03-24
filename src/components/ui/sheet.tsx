@@ -62,6 +62,24 @@ const SheetContent = React.forwardRef<
       ref={ref}
       className={cn(sheetVariants({ side }), className, "min-w-[300px] min-h-[200px]")}
       {...props}
+      onEscapeKeyDown={(e) => {
+        // Prevent propagation to parent dialogs
+        e.stopPropagation();
+        
+        // Run any existing onEscapeKeyDown handler
+        if (props.onEscapeKeyDown) {
+          props.onEscapeKeyDown(e);
+        }
+      }}
+      onInteractOutside={(e) => {
+        // Ensure click outside events are properly handled
+        e.preventDefault();
+        
+        // Run any existing onInteractOutside handler
+        if (props.onInteractOutside) {
+          props.onInteractOutside(e);
+        }
+      }}
     >
       {children}
       <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">

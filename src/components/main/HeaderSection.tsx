@@ -59,6 +59,25 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           </Tooltip>
         )}
         
+        {/* Advanced Options button (shown directly in header) */}
+        {onOpenAdvancedOptions && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={onOpenAdvancedOptions}
+                className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50 mr-2"
+              >
+                <Settings className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Advanced Options</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        
         {/* Burger menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
