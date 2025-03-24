@@ -245,7 +245,7 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
         <ReferenceImageDialog 
           isOpen={referenceDialogOpen}
           onOpenChange={setReferenceDialogOpen}
-          imageUrl={selectedReferenceImage}
+          imageUrls={[selectedReferenceImage]}
         />
       </DialogContent>
     </Dialog>
