@@ -2,6 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
 import { createUrlWithParams } from '../utils/paramUtils';
+import { toast } from '@/hooks/use-toast';
 
 interface UseDebugPanelFileManagementProps {
   params: DisplayParams;
@@ -14,10 +15,32 @@ export const useDebugPanelFileManagement = ({
 
   const selectFile = (file: string) => {
     return () => {
-      navigate(createUrlWithParams({
+      console.log('[useDebugPanelFileManagement] Selected file:', file);
+      
+      // Notify the user
+      toast({
+        title: "Image Selected",
+        description: `Now displaying: ${file.split('/').pop() || file}`,
+      });
+      
+      // Normalize the path
+      let outputPath = file;
+      if (!outputPath.startsWith('/') && !outputPath.startsWith('http')) {
+        outputPath = `/output/${outputPath}`;
+      }
+      
+      // Create a URL with the debug mode and selected file
+      const newParams = {
         ...params,
-        output: encodeURIComponent(file)
-      }));
+        output: outputPath,
+        debugMode: true
+      };
+      
+      const url = createUrlWithParams(newParams);
+      console.log('[useDebugPanelFileManagement] Navigating to:', url);
+      
+      // Navigate to the URL
+      navigate(url);
     };
   };
 
@@ -30,19 +53,25 @@ export const useDebugPanelFileManagement = ({
         return file;
       }
     }
-    return file;
+    return file.split('/').pop() || file;
   };
 
   const isCurrentFile = (file: string, imageUrl: string | null) => {
     if (!imageUrl) return false;
     
-    if (imageUrl.startsWith('http')) {
-      return imageUrl === file;
-    } else {
-      const currentFile = imageUrl.split('/').pop();
-      const compareFile = file.split('/').pop();
-      return currentFile === compareFile;
-    }
+    // Normalize paths for comparison
+    const normalizedFile = file.startsWith('/') ? file : `/output/${file}`;
+    const normalizedImageUrl = imageUrl.includes('/output/') ? 
+      imageUrl : 
+      (imageUrl.startsWith('/') ? imageUrl : `/output/${imageUrl}`);
+    
+    console.log('[useDebugPanelFileManagement] Comparing:', {
+      normalizedFile,
+      normalizedImageUrl,
+      isMatch: normalizedImageUrl.includes(normalizedFile)
+    });
+    
+    return normalizedImageUrl.includes(normalizedFile);
   };
 
   const formatTime = (timeValue: Date | string | null) => {
