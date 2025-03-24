@@ -2,9 +2,10 @@
 import React from 'react';
 import { CardContent } from "@/components/ui/card";
 import { MetadataTab } from '../MetadataTab';
+import { MetadataEntry } from '../../types';
 
 interface MetadataPanelProps {
-  metadataEntries: Array<{key: string, value: string}>;
+  metadataEntries: MetadataEntry[];
   insertMetadataTag: (key: string) => void;
   setActiveTab: (tab: string) => void;
   onRefreshMetadata: () => Promise<Record<string, string>>;
