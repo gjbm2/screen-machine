@@ -61,24 +61,20 @@ export const usePromptSubmission = ({
       }
     }
     
-    // FIX FOR BATCH SIZE: 
-    // CRITICAL: Always prioritize the explicitly passed globalParams (from the form submission)
-    // over any potentially stale values from context
+    // CRITICAL FIX: Always ensure we have batch_size by merging provided globalParams with defaults
+    // Never use || {} which can replace the entire object if globalParams is undefined
     const effectiveGlobalParams = {
       // Start with a default batch size of 1
       batch_size: 1,
-      // Then apply any current global params from context as fallback values
+      // Then apply any current global params from context
       ...currentGlobalParams,
-      // IMPORTANT: *Always* prefer the explicitly passed globalParams (from the form)
-      // This ensures we always use the most current batch_size the user has set
+      // Finally, override with explicitly provided global params from function args
+      // This ensures the batch_size from PromptForm.tsx is preserved
       ...(globalParams || {})
     };
     
-    // Verify the batch size we're using
-    const batchSizeToUse = effectiveGlobalParams.batch_size;
-    console.log("[usePromptSubmission] Using batch size:", batchSizeToUse, 
-      "directly from UI:", globalParams?.batch_size, 
-      "context value:", currentGlobalParams.batch_size);
+    // IMPORTANT DEBUG: Log the batch size being used for this generation request
+    console.log("[usePromptSubmission] Using batch size:", effectiveGlobalParams.batch_size);
     
     const effectiveWorkflow = workflow || currentWorkflow;
     const effectiveWorkflowParams = workflowParams || currentParams;

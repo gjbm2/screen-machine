@@ -111,7 +111,6 @@ export const generateImage = async (
     }
 
     // CRITICAL: Ensure batch_size is a valid number and exists in globalParams
-    // DEFAULT to 1 if missing or invalid
     let batchSize = 1; // Default to 1
     
     if (globalParams && typeof globalParams.batch_size === 'number' && 
@@ -124,9 +123,11 @@ export const generateImage = async (
       console.warn(`[image-generator] Invalid batch_size in globalParams, using default: 1`);
     }
     
-    // Enhanced logging for debugging the batch size issue
+    // Log the batch size to verify we're using the right value
     console.log(`[image-generator] Using batch_size: ${batchSize}`);
     console.log(`[image-generator] Original globalParams.batch_size: ${globalParams.batch_size}`);
+    
+    // Log full global params for debugging
     console.log(`[image-generator] Full received globalParams:`, globalParams);
     
     addConsoleLog({
@@ -184,14 +185,13 @@ export const generateImage = async (
     setTimeout(async () => {
       try {
         // Make the API call - CRITICAL: Ensure globalParams.batch_size is set correctly
-        // IMPORTANT FIX: Create a fresh global_params object ensuring batch_size is set
         const payload: GenerateImagePayload = {
           prompt,
           workflow,
           params,
           global_params: {
             ...globalParams,
-            batch_size: batchSize // Explicitly set batch_size to ensure it's correct
+            batch_size: batchSize // Ensure batch_size is explicitly set in global_params
           },
           refiner,
           refiner_params: refinerParams,
