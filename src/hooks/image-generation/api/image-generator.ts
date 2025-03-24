@@ -110,7 +110,8 @@ export const generateImage = async (
       console.log(`[image-generator] Using reference images: ${uploadedImageUrls.join(', ')}`);
     }
 
-    // Always extract the current batch size from globalParams, defaulting to 1 if not specified
+    // CRITICAL FIX: Always use the current batch size from the provided globalParams
+    // Don't rely on cached values
     const batchSize = globalParams?.batch_size || 1;
     
     // Log the current batch size being used
@@ -177,7 +178,7 @@ export const generateImage = async (
           params,
           global_params: {
             ...globalParams,
-            batch_size: batchSize, // Ensure batch_size is explicitly included with current value
+            batch_size: batchSize, // Ensure batch_size is explicitly set with current value
           },
           refiner,
           refiner_params: refinerParams,
