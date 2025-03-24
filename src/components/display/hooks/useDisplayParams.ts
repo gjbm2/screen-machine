@@ -1,4 +1,3 @@
-
 import { useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from '../types';
@@ -20,7 +19,6 @@ export const useDisplayParams = () => {
   
   const defaultParams = getDefaultParams();
   
-  // Parse and extract all URL parameters
   const params: DisplayParams = {
     output: decodeComplexOutputParam(searchParams.get('output')) || null,
     showMode: (searchParams.get('show') as ShowMode) || defaultParams.showMode,
@@ -28,7 +26,6 @@ export const useDisplayParams = () => {
     refreshInterval: parseFloatParam(searchParams.get('refresh'), defaultParams.refreshInterval),
     backgroundColor: searchParams.get('background') || defaultParams.backgroundColor,
     debugMode: parseBooleanParam(searchParams.get('debug')),
-    // Properly handling caption and related params
     caption: searchParams.get('caption') || null,
     captionPosition: (searchParams.get('caption-position') as CaptionPosition) || defaultParams.captionPosition,
     captionSize: searchParams.get('caption-size') || defaultParams.captionSize,
@@ -41,13 +38,10 @@ export const useDisplayParams = () => {
     transition: (searchParams.get('transition') as TransitionType) || defaultParams.transition,
   };
   
-  // Log the extracted output parameter for debugging
   console.log('[useDisplayParams] Extracted output param:', params.output);
   
-  // Add data parameter if it exists
   if (searchParams.has('data')) {
     try {
-      // Attempt to parse data as JSON
       params.data = JSON.parse(searchParams.get('data') || '{}');
     } catch (e) {
       console.error('Failed to parse data parameter:', e);
@@ -55,36 +49,30 @@ export const useDisplayParams = () => {
     }
   }
 
-  // NEW: Auto-enable debug mode if no parameters are specified
   const hasAnyParams = searchParams.toString().length > 0;
   if (!hasAnyParams) {
     params.debugMode = true;
     console.log('[useDisplayParams] No parameters provided, enabling debug mode automatically');
   }
   
-  // Debugging log to show all extracted parameters
   console.log('[useDisplayParams] Parsed params:', params);
   console.log('[useDisplayParams] Caption background:', params.captionBgColor);
   console.log('[useDisplayParams] URL params:', Object.fromEntries(searchParams.entries()));
   console.log('[useDisplayParams] Debug mode enabled:', params.debugMode);
   
-  // Helper function to redirect to debug mode if needed
   const redirectToDebugMode = () => {
-    // Skip redirection if we already attempted it or if already in debug mode or no output specified
     if (redirectAttemptedRef.current || params.debugMode || !params.output) {
       return;
     }
     
-    // Mark that we've attempted redirection to prevent loops
     redirectAttemptedRef.current = true;
     
-    // Only redirect if debugMode parameter is explicitly set to true in URL
     if (searchParams.has('debug') && parseBooleanParam(searchParams.get('debug'))) {
       const newParams = { ...params, debugMode: true };
       const newUrl = createUrlWithParams(newParams);
       
       console.log('[useDisplayParams] Redirecting to debug mode:', newUrl);
-      navigate(newUrl, { replace: true }); // Use replace to avoid building history
+      navigate(newUrl, { replace: true });
     }
   };
   

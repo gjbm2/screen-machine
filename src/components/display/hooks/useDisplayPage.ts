@@ -84,10 +84,13 @@ export const useDisplayPage = () => {
       // Update the previous output ref to avoid reprocessing
       previousOutputRef.current = params.output;
       
-      // For complex URLs with query parameters, use them directly
+      // For complex URLs with query parameters, ensure they're fully decoded before use
       if (params.output.includes('?') && (params.output.startsWith('http://') || params.output.startsWith('https://'))) {
-        console.log('[useDisplayPage] Complex URL detected, using directly:', params.output);
-        setImageUrl(params.output);
+        console.log('[useDisplayPage] Complex URL detected, ensuring full decoding:', params.output);
+        // Ensure the URL is fully decoded before setting it as the image source
+        const fullyDecodedUrl = decodeComplexOutputParam(params.output);
+        console.log('[useDisplayPage] Using fully decoded URL:', fullyDecodedUrl);
+        setImageUrl(fullyDecodedUrl);
       } else {
         // Normalize the path for display
         const normalizedPath = normalizePathForDisplay(params.output);

@@ -120,7 +120,22 @@ export const decodeComplexOutputParam = (output: string | null): string | null =
   
   try {
     // Try to decode the parameter in case it was URL encoded
-    const decoded = decodeURIComponent(output);
+    // We need to attempt decoding multiple times for potentially multiply-encoded URLs
+    let decoded = output;
+    let previousDecoded = '';
+    
+    // Keep decoding until we reach a stable state (no more changes)
+    // This handles cases where the URL might have been encoded multiple times
+    while (decoded !== previousDecoded) {
+      previousDecoded = decoded;
+      try {
+        decoded = decodeURIComponent(previousDecoded);
+      } catch (e) {
+        // If we hit a decoding error, we've reached the limit of what can be decoded
+        break;
+      }
+    }
+    
     console.log("[decodeComplexOutputParam] Decoded output param:", decoded);
     return decoded;
   } catch (e) {
