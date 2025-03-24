@@ -25,7 +25,7 @@ export interface PromptFormProps {
 export interface WorkflowProps {
   id: string;
   name: string;
-  description?: string;
+  description: string; // Changed from optional to required
   params?: WorkflowParam[]; // Add the params property to match Workflow interface
 }
 

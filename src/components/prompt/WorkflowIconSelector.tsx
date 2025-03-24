@@ -1,6 +1,5 @@
 
 import React from 'react';
-import { Workflow } from '@/types/workflows';
 import { Button } from '@/components/ui/button';
 import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
 import {
@@ -9,9 +8,10 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { Image, Wand, PaintBucket } from 'lucide-react';
+import { WorkflowProps } from '@/components/prompt-form/types';
 
 interface WorkflowIconSelectorProps {
-  workflows: Workflow[];
+  workflows: WorkflowProps[];
   selectedWorkflow: string;
   onWorkflowChange: (workflowId: string) => void;
   hideWorkflowName?: boolean;
