@@ -89,9 +89,12 @@ export const processGenerationResults = (
         if (typeof responseImage.refiner === 'string') {
           refinerValue = responseImage.refiner;
         } 
-        // If response refiner is an object with value, extract the value
-        else if (typeof responseImage.refiner === 'object' && responseImage.refiner.value) {
-          refinerValue = String(responseImage.refiner.value);
+        // If response refiner is an object with value property, extract the value
+        else if (typeof responseImage.refiner === 'object' && responseImage.refiner !== null) {
+          const refinerObj = responseImage.refiner as Record<string, any>;
+          if ('value' in refinerObj) {
+            refinerValue = String(refinerObj.value);
+          }
         }
       } 
       // If no response refiner, but we have existing refiner
@@ -100,9 +103,12 @@ export const processGenerationResults = (
         if (typeof existingRefiner === 'string') {
           refinerValue = existingRefiner;
         } 
-        // If existing refiner is an object with value, extract the value
-        else if (typeof existingRefiner === 'object' && existingRefiner.value) {
-          refinerValue = String(existingRefiner.value);
+        // If existing refiner is an object with value property, extract the value
+        else if (typeof existingRefiner === 'object' && existingRefiner !== null) {
+          const refinerObj = existingRefiner as Record<string, any>;
+          if ('value' in refinerObj) {
+            refinerValue = String(refinerObj.value);
+          }
         }
       }
       
@@ -140,8 +146,11 @@ export const processGenerationResults = (
       if (responseImage.refiner) {
         if (typeof responseImage.refiner === 'string') {
           refinerValue = responseImage.refiner;
-        } else if (typeof responseImage.refiner === 'object' && responseImage.refiner.value) {
-          refinerValue = String(responseImage.refiner.value);
+        } else if (typeof responseImage.refiner === 'object' && responseImage.refiner !== null) {
+          const refinerObj = responseImage.refiner as Record<string, any>;
+          if ('value' in refinerObj) {
+            refinerValue = String(refinerObj.value);
+          }
         }
       }
       
