@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { MoveDiagonal } from 'lucide-react';
 
 interface ResizeHandleProps {
   onMouseDown: (e: React.MouseEvent) => void;

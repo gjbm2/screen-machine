@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DebugPanel } from '@/components/display/debug/DebugPanel';
 import { DebugImageContainer } from '@/components/display/DebugImageContainer';
 import { ImageDisplay } from '@/components/display/ImageDisplay';
@@ -51,12 +51,13 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
 }) => {
   const isMobile = useIsMobile();
   const [showPreview, setShowPreview] = useState(true);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
   
   const imageStyle = getImagePositionStyle(
     previewParams.position,
     previewParams.showMode,
-    window.innerWidth,
-    window.innerHeight,
+    previewContainerRef.current?.clientWidth || window.innerWidth,
+    previewContainerRef.current?.clientHeight || window.innerHeight,
     imageRef.current?.naturalWidth || 0,
     imageRef.current?.naturalHeight || 0
   );
@@ -94,6 +95,7 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
         
         {/* Preview Panel */}
         <div 
+          ref={previewContainerRef}
           className={`${isMobile ? (showPreview ? 'w-full h-full' : 'hidden') : 'w-3/5'} overflow-auto bg-gray-100 dark:bg-gray-900`}
         >
           <DebugImageContainer 

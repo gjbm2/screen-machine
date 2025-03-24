@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
@@ -21,13 +21,35 @@ export interface ScreenSizeSelectorProps {
   selectedSize: string;
   onSelect: (sizeName: string) => void;
   onSettingsChange?: () => void;
+  containerRef?: React.RefObject<HTMLDivElement>;
 }
 
 export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
   selectedSize,
   onSelect,
-  onSettingsChange
+  onSettingsChange,
+  containerRef
 }) => {
+  // Update Current Viewport size when window is resized
+  useEffect(() => {
+    const handleResize = () => {
+      SCREEN_SIZES[0] = { 
+        name: 'Current Viewport', 
+        width: window.innerWidth, 
+        height: window.innerHeight 
+      };
+      
+      // If container exists and Current Viewport is selected, apply the new size
+      if (containerRef?.current && selectedSize === 'Current Viewport') {
+        containerRef.current.style.width = `${SCREEN_SIZES[0].width}px`;
+        containerRef.current.style.height = `${SCREEN_SIZES[0].height}px`;
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [selectedSize, containerRef]);
+
   return (
     <div className="flex items-center space-x-2">
       <Label htmlFor="screen-size" className="text-xs sr-only">Screen Size:</Label>
