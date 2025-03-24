@@ -24,7 +24,7 @@ const Display = () => {
     oldImageStyle,
     newImageStyle,
     imageRef,
-    nextCheckTime,  // This should be Date | null
+    nextCheckTime,  // This is now Date | null
     handleManualCheck,
     getImagePositionStyle,
     handleImageError
@@ -44,7 +44,7 @@ const Display = () => {
         imageRef={imageRef}
         lastModified={lastModified}
         lastChecked={lastChecked}
-        nextCheckTime={nextCheckTime}  // Pass as Date | null
+        nextCheckTime={nextCheckTime}  // This is now Date | null
         imageChanged={imageChanged}
         outputFiles={outputFiles}
         metadata={metadata}
