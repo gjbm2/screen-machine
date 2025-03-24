@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
@@ -61,17 +62,16 @@ const Index = () => {
     setConsoleVisible(!consoleVisible);
   };
 
+  // Simplified and fixed handler for opening advanced options
   const handleOpenAdvancedOptions = useCallback(() => {
     console.log('Opening advanced options panel');
     setAdvancedOptionsOpen(true);
   }, []);
 
-  const handleCloseAdvancedOptions = useCallback(() => {
-    console.log('Closing advanced options panel');
-    // Add setTimeout to ensure state updates correctly
-    setTimeout(() => {
-      setAdvancedOptionsOpen(false);
-    }, 0);
+  // Simplified and fixed handler for closing advanced options
+  const handleAdvancedOptionsOpenChange = useCallback((open: boolean) => {
+    console.log('Advanced options panel open state changing to:', open);
+    setAdvancedOptionsOpen(open);
   }, []);
 
   // Create a proper handler for global param changes
@@ -171,6 +171,7 @@ const Index = () => {
           logs={consoleLogs}
           isVisible={consoleVisible}
           onClose={toggleConsole}
+          onClear={handleClearConsole}
         />
       )}
       
@@ -192,7 +193,7 @@ const Index = () => {
         refinerParams={{}}
         onRefinerParamChange={() => {}}
         isOpen={advancedOptionsOpen}
-        onOpenChange={handleCloseAdvancedOptions}
+        onOpenChange={handleAdvancedOptionsOpenChange}
       />
     </main>
   );

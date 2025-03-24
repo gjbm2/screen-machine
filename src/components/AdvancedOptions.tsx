@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Sheet,
@@ -58,10 +57,8 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   const isMobile = useIsMobile();
   
   const handleOpenChange = (open: boolean) => {
-    // Use setTimeout to ensure React state updates are processed
-    setTimeout(() => {
-      onOpenChange(open);
-    }, 0);
+    console.log("Advanced options panel - handleOpenChange called with:", open);
+    onOpenChange(open);
   };
   
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflow) || workflows[0];
@@ -71,7 +68,6 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
     if (refinerData && refinerData.params) {
       setCurrentRefinerParams(refinerData.params as WorkflowParam[]);
       
-      // Set default values for refiner params if not already set
       if (refinerData.params) {
         refinerData.params.forEach(param => {
           if (param.default !== undefined && refinerParams[param.id] === undefined) {
