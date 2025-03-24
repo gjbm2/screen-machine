@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus, Minus } from 'lucide-react';
 
@@ -8,43 +8,26 @@ interface BatchControlProps {
   incrementBatchSize: () => void;
   decrementBatchSize: () => void;
   isCompact?: boolean;
-  isVerboseDebug?: boolean;
 }
 
 const BatchControl: React.FC<BatchControlProps> = ({
   batchSize,
   incrementBatchSize,
   decrementBatchSize,
-  isCompact = false,
-  isVerboseDebug = false
+  isCompact = false
 }) => {
   // Log the current value immediately when rendered
   console.log(`[BatchControl] Current batch size in component: ${batchSize}`);
   
-  // Add batch size logging on component mount and updates
-  useEffect(() => {
-    if (isVerboseDebug) {
-      console.info(`[VERBOSE] BatchControl rendered with batch size: ${batchSize}`);
-    }
-  }, [batchSize, isVerboseDebug]);
-  
   const handleIncrement = () => {
     incrementBatchSize();
     // We can't log the updated value immediately as state updates are async
-    if (isVerboseDebug) {
-      console.info(`[VERBOSE] Batch size increment requested (current: ${batchSize})`);
-    } else {
-      console.log(`[BatchControl] Increment requested (current: ${batchSize})`);
-    }
+    console.log(`[BatchControl] Increment requested (current: ${batchSize})`);
   };
   
   const handleDecrement = () => {
     decrementBatchSize();
-    if (isVerboseDebug) {
-      console.info(`[VERBOSE] Batch size decrement requested (current: ${batchSize})`);
-    } else {
-      console.log(`[BatchControl] Decrement requested (current: ${batchSize})`);
-    }
+    console.log(`[BatchControl] Decrement requested (current: ${batchSize})`);
   };
   
   return (
