@@ -245,6 +245,11 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
                 backgroundOpacity={captionBgOpacity}
                 containerWidth={containerDimensions.width}
                 screenWidth={window.innerWidth}
+                screenSize={
+                  selectedSize !== 'Current Viewport' 
+                    ? SCREEN_SIZES.find(size => size.name === selectedSize) 
+                    : undefined
+                }
               />
             )}
           </>

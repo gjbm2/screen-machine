@@ -30,8 +30,9 @@ interface CaptionTabProps {
   insertAllMetadata: () => void;
 }
 
+// Font sizes and font families for dropdowns
 const FONT_SIZES = [
-  '10px', '12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '36px', '48px'
+  '10px', '12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '36px', '48px', '64px', '72px', '96px', '120px'
 ];
 
 const FONT_FAMILIES = [
@@ -144,9 +145,6 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
   // Ensure background color has # prefix
   const bgColorWithHash = captionBgColor.startsWith('#') ? captionBgColor : `#${captionBgColor}`;
   
-  // Convert opacity (0-1) to hex (00-FF)
-  const bgOpacityHex = Math.round(captionBgOpacity * 255).toString(16).padStart(2, '0');
-  
   return (
     <div className="p-4 overflow-y-auto h-full">
       <div className="space-y-4 flex flex-col h-full">
@@ -190,21 +188,6 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
             Use {"{tagname}"} to insert metadata values, {"{all}"} for all metadata, or regex patterns like /pattern/flags.
           </div>
         </div>
-        
-        <div className="mb-3">
-          <h3 className="text-sm font-medium mb-1">Caption Preview</h3>
-          <div 
-            className="p-3 rounded-md min-h-[60px] text-sm whitespace-pre-line"
-            style={{
-              backgroundColor: `${bgColorWithHash}${bgOpacityHex}`,
-              color: `#${captionColor}`,
-              fontFamily: captionFont,
-              fontSize: captionSize
-            }}
-          >
-            {previewCaption || <span className="text-gray-400">No caption</span>}
-          </div>
-        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2 flex-1">
           <div className="space-y-2">
@@ -220,6 +203,9 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
                 <SelectItem value="top-left">Top Left</SelectItem>
                 <SelectItem value="top-center">Top Center</SelectItem>
                 <SelectItem value="top-right">Top Right</SelectItem>
+                <SelectItem value="middle-left">Middle Left</SelectItem>
+                <SelectItem value="middle-center">Middle Center</SelectItem>
+                <SelectItem value="middle-right">Middle Right</SelectItem>
                 <SelectItem value="bottom-left">Bottom Left</SelectItem>
                 <SelectItem value="bottom-center">Bottom Center</SelectItem>
                 <SelectItem value="bottom-right">Bottom Right</SelectItem>

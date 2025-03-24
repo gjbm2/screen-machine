@@ -1,43 +1,82 @@
 
+import { useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { DisplayParams } from '@/components/display/types';
+import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from '../types';
+import { createUrlWithParams, getDefaultParams } from '../utils';
 
 export const useDisplayParams = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-
-  // Extract and parse all URL parameters
-  const params: DisplayParams = {
-    output: searchParams.get('output') ? decodeURIComponent(searchParams.get('output') || '') : null,
-    showMode: (searchParams.get('show') || 'fit') as DisplayParams['showMode'],
-    position: (searchParams.get('position') || 'center') as DisplayParams['position'],
-    refreshInterval: Number(searchParams.get('refresh') || '5'),
-    backgroundColor: searchParams.get('background') || '000000',
-    debugMode: searchParams.get('debug') === 'true',
-    data: searchParams.has('data') ? searchParams.get('data') : undefined,
-    caption: searchParams.get('caption') ? decodeURIComponent(searchParams.get('caption') || '') : null,
-    captionPosition: searchParams.get('caption-position') as DisplayParams['captionPosition'] || 'bottom-center',
-    captionSize: searchParams.get('caption-size') || '16px',
-    captionColor: searchParams.get('caption-color') || 'ffffff',
-    captionFont: searchParams.get('caption-font') ? decodeURIComponent(searchParams.get('caption-font') || '') : 'Arial, sans-serif',
-    captionBgColor: searchParams.get('caption-bg-color') || '#000000',
-    captionBgOpacity: searchParams.get('caption-bg-opacity') ? parseFloat(searchParams.get('caption-bg-opacity') || '0.7') : 0.7,
-    transition: searchParams.get('transition') as DisplayParams['transition'] || 'cut',
+  
+  const parseBooleanParam = (value: string | null): boolean => 
+    value === 'true' || value === '1';
+  
+  const parseFloatParam = (value: string | null, defaultValue: number): number => {
+    if (!value) return defaultValue;
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? defaultValue : parsed;
   };
-
-  // Initialize debug mode if no output is provided
+  
+  const defaultParams = getDefaultParams();
+  
+  // Parse and extract all URL parameters
+  const params: DisplayParams = {
+    output: searchParams.get('output') || null,
+    showMode: (searchParams.get('showMode') as ShowMode) || defaultParams.showMode,
+    position: (searchParams.get('position') as PositionMode) || defaultParams.position,
+    refreshInterval: parseFloatParam(searchParams.get('refreshInterval'), defaultParams.refreshInterval),
+    backgroundColor: searchParams.get('backgroundColor') || defaultParams.backgroundColor,
+    debugMode: parseBooleanParam(searchParams.get('debugMode')),
+    // Properly handling caption and related params
+    caption: searchParams.get('caption') || null,
+    captionPosition: (searchParams.get('captionPosition') as CaptionPosition) || defaultParams.captionPosition,
+    captionSize: searchParams.get('captionSize') || defaultParams.captionSize,
+    captionColor: searchParams.get('captionColor') || defaultParams.captionColor,
+    captionFont: searchParams.get('captionFont') || defaultParams.captionFont,
+    captionBgColor: searchParams.get('captionBgColor') || defaultParams.captionBgColor,
+    captionBgOpacity: parseFloatParam(searchParams.get('captionBgOpacity'), defaultParams.captionBgOpacity),
+    transition: (searchParams.get('transition') as TransitionType) || defaultParams.transition,
+  };
+  
+  // Add data parameter if it exists
+  if (searchParams.has('data')) {
+    try {
+      // Attempt to parse data as JSON
+      params.data = JSON.parse(searchParams.get('data') || '{}');
+    } catch (e) {
+      console.error('Failed to parse data parameter:', e);
+      params.data = { _type: 'undefined', value: 'undefined' };
+    }
+  }
+  
+  // Debugging log to show all extracted parameters
+  console.log('[useDisplayParams] Parsed params:', params);
+  console.log('[useDisplayParams] Caption background:', params.captionBgColor);
+  
+  // Helper function to redirect to debug mode if needed
   const redirectToDebugMode = () => {
-    if (!params.output && !params.debugMode) {
-      const queryParams = new URLSearchParams();
-      queryParams.set('debug', 'true');
-      if (params.showMode) queryParams.set('show', params.showMode);
-      if (params.position) queryParams.set('position', params.position);
-      if (params.refreshInterval) queryParams.set('refresh', params.refreshInterval.toString());
-      if (params.backgroundColor) queryParams.set('background', params.backgroundColor);
-      navigate(`/display?${queryParams.toString()}`);
+    // Skip if already in debug mode or no output is specified
+    if (params.debugMode || !params.output) return;
+    
+    // If both output and debugMode are specified, force debug mode
+    if (searchParams.has('output') && searchParams.has('debugMode')) {
+      // If debugMode is explicitly set to 'false', don't override
+      if (!parseBooleanParam(searchParams.get('debugMode'))) return;
+      
+      const newParams = { ...params, debugMode: true };
+      const newUrl = createUrlWithParams(newParams);
+      
+      console.log('[useDisplayParams] Redirecting to debug mode');
+      navigate(newUrl);
     }
   };
-
+  
+  // Log the current URL for debugging
+  useEffect(() => {
+    console.log('[useDisplayParams] Current URL:', window.location.href);
+    console.log('[useDisplayParams] URL params:', Object.fromEntries(searchParams.entries()));
+  }, [searchParams]);
+  
   return {
     params,
     redirectToDebugMode
