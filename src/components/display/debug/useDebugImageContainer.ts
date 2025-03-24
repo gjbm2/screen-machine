@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect } from 'react';
 import { SCREEN_SIZES } from './ScreenSizeSelector';
 
@@ -160,7 +161,7 @@ export const useDebugImageContainer = () => {
     contentRef,
     containerSize,
     selectedSize,
-    viewportRatio,
+    viewportRatio: viewportRatio.toString(),  // Convert to string to match the expected type
     handleImageLoad,
     handleMouseDown,
     handleResizeStart
