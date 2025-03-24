@@ -162,13 +162,13 @@ const Index = () => {
       />
 
       <AdvancedOptions 
-        workflows={[]} // Add your workflows data here
+        workflows={[]} // Keep existing workflows data
         selectedWorkflow={currentWorkflow}
-        onWorkflowChange={() => {}} // Add your workflow change handler here
+        onWorkflowChange={() => {}} 
         params={currentParams}
-        onParamChange={() => {}} // Add your param change handler here
+        onParamChange={() => {}} 
         globalParams={currentGlobalParams}
-        onGlobalParamChange={() => {}} // Add your global param change handler here
+        onGlobalParamChange={setCurrentGlobalParams} // Fix this to use the actual function
         isOpen={isAdvancedOptionsOpen}
         onOpenChange={handleCloseAdvancedOptions}
       />

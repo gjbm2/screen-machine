@@ -1,3 +1,4 @@
+
 // API service for all backend requests
 import { toast } from 'sonner';
 
@@ -23,7 +24,8 @@ class ApiService {
   constructor(apiUrl: string = DEFAULT_API_URL) {
     this.apiUrl = apiUrl;
     // Check if we're running in mock mode (when backend is not available)
-    this.mockMode = window.location.hostname.includes('lovableproject.com');
+    this.mockMode = window.location.hostname.includes('lovable') || 
+                    !apiUrl.startsWith('http');
     
     if (this.mockMode) {
       console.info('API Service running in mock mode - backend simulation active');
@@ -194,7 +196,8 @@ class ApiService {
           batch_index: index,
           params: params.params,
           refiner: params.refiner,
-          refiner_params: params.refiner_params
+          refiner_params: params.refiner_params,
+          status: 'completed'
         }));
         
         console.info('[MOCK LOG] [mock-backend]', `Generated ${mockImages.length} mock image(s) successfully!`);
@@ -206,7 +209,7 @@ class ApiService {
           prompt: params.prompt,
           workflow: params.workflow
         });
-      }, 3000); // 3 second delay to simulate processing
+      }, 2000); // 2 second delay to simulate processing
     });
   }
 }

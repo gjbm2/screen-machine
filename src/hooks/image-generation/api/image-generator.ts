@@ -90,44 +90,44 @@ export const generateImage = async (
   // Keep track of this generation
   setActiveGenerations(prev => [...prev, currentBatchId]);
   
-  const { uploadedFiles, uploadedImageUrls } = processUploadedFiles(imageFiles);
-  
-  // Generate title for this image generation
-  const imageTitle = generateImageTitle(prompt, workflow);
-  
-  // Log information about reference images for debugging
-  if (uploadedFiles.length > 0 || uploadedImageUrls.length > 0) {
+  try {
+    const { uploadedFiles, uploadedImageUrls } = processUploadedFiles(imageFiles);
+    
+    // Generate title for this image generation
+    const imageTitle = generateImageTitle(prompt, workflow);
+    
+    // Log information about reference images for debugging
+    if (uploadedFiles.length > 0 || uploadedImageUrls.length > 0) {
+      addConsoleLog({
+        type: 'info',
+        message: `Using ${uploadedFiles.length + uploadedImageUrls.length} reference images`,
+        details: {
+          fileCount: uploadedFiles.length,
+          urlCount: uploadedImageUrls.length,
+          imageUrls: uploadedImageUrls
+        }
+      });
+      console.log(`[image-generator] Using reference images: ${uploadedImageUrls.join(', ')}`);
+    }
+
+    // Get batch size from global params, default to 1
+    const batchSize = globalParams?.batch_size || 1;
+    
     addConsoleLog({
       type: 'info',
-      message: `Using ${uploadedFiles.length + uploadedImageUrls.length} reference images`,
+      message: `Generating ${batchSize} image(s) with prompt: "${prompt}"`,
       details: {
-        fileCount: uploadedFiles.length,
-        urlCount: uploadedImageUrls.length,
-        imageUrls: uploadedImageUrls
+        workflow,
+        params,
+        globalParams,
+        hasReferenceImage: uploadedFiles.length > 0 || uploadedImageUrls.length > 0,
+        referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
+        batchSize
       }
     });
-    console.log(`[image-generator] Using reference images: ${uploadedImageUrls.join(', ')}`);
-  }
+    
+    console.log(`[image-generator] Generating batch of ${batchSize} images with prompt: "${prompt}"`);
 
-  // Get batch size from global params, default to 1
-  const batchSize = globalParams?.batch_size || 1;
-  
-  addConsoleLog({
-    type: 'info',
-    message: `Generating ${batchSize} image(s) with prompt: "${prompt}"`,
-    details: {
-      workflow,
-      params,
-      globalParams,
-      hasReferenceImage: uploadedFiles.length > 0 || uploadedImageUrls.length > 0,
-      referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
-      batchSize
-    }
-  });
-  
-  console.log(`[image-generator] Generating batch of ${batchSize} images with prompt: "${prompt}"`);
-
-  try {
     // Prepare reference image URL string - make sure it's not empty
     const referenceImageUrl = uploadedImageUrls.length > 0 ? uploadedImageUrls.join(',') : undefined;
     

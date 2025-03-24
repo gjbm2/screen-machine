@@ -3,7 +3,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
-import { Terminal, Menu, Settings, Info, FileText } from 'lucide-react';
+import { Terminal, Menu, Info, FileText } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
@@ -58,25 +58,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             </TooltipContent>
           </Tooltip>
         )}
-
-        {/* Settings button for quick access */}
-        {onOpenAdvancedOptions && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={onOpenAdvancedOptions}
-                className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50 mr-2"
-              >
-                <Settings className="h-5 w-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Advanced Options</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
         
         {/* Burger menu */}
         <DropdownMenu>
@@ -99,7 +80,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             
             {onOpenAdvancedOptions && (
               <DropdownMenuItem onClick={onOpenAdvancedOptions}>
-                <Settings className="h-4 w-4 mr-2" />
+                <Info className="h-4 w-4 mr-2" />
                 <span>Advanced</span>
               </DropdownMenuItem>
             )}
@@ -110,10 +91,10 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             </DropdownMenuItem>
             
             <DropdownMenuItem asChild>
-              <Link to="/display">
+              <a href="/display" target="_blank" rel="noopener noreferrer">
                 <FileText className="h-4 w-4 mr-2" />
                 <span>Display Editor</span>
-              </Link>
+              </a>
             </DropdownMenuItem>
             
             <DropdownMenuSeparator />
