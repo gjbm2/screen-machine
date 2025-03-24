@@ -13,15 +13,17 @@ export const useDebugPanelFileSelector = ({
   imageUrl
 }: UseDebugPanelFileSelectorProps) => {
   
+  // Create a callback to handle file selection
   const selectFileHandler = useCallback((file: string) => {
-    const handler = selectFile(file);
-    handler();
+    console.log('[useDebugPanelFileSelector] Selecting file:', file);
+    return selectFile(file);
   }, [selectFile]);
-
+  
+  // Create a callback to check if a file is currently selected
   const isCurrentFileHandler = useCallback((file: string) => {
     return isCurrentFile(file, imageUrl);
   }, [isCurrentFile, imageUrl]);
-
+  
   return {
     selectFileHandler,
     isCurrentFileHandler
