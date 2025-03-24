@@ -74,9 +74,14 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
                   size="sm"
                   className="justify-start text-sm h-auto py-2"
                   onClick={(e) => {
+                    // Prevent event bubbling and properly handle the workflow change
                     e.preventDefault();
                     e.stopPropagation();
-                    onWorkflowChange(workflow.id);
+                    // Change workflow selection
+                    if (workflow.id !== selectedWorkflow) {
+                      console.log(`Changing workflow to: ${workflow.id}`);
+                      onWorkflowChange(workflow.id);
+                    }
                   }}
                   type="button"
                 >

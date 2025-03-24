@@ -35,11 +35,13 @@ const usePromptForm = () => {
   }, [selectedWorkflow]);
 
   const handleWorkflowChange = (workflowId: string) => {
+    console.log(`usePromptForm: Setting workflow to ${workflowId}`);
     setSelectedWorkflow(workflowId);
     resetWorkflowParams();
   };
 
   const handleRefinerChange = (refinerId: string) => {
+    console.log(`usePromptForm: Setting refiner to ${refinerId}`);
     setSelectedRefiner(refinerId);
     resetRefinerParams();
   };
