@@ -41,20 +41,30 @@ export const getImageDimensions = async (url: string): Promise<{ width: number, 
   // Add logging to debug image loading issues
   console.log('[getImageDimensions] Attempting to load image:', url);
   
+  // Check if URL is properly formatted
+  if (!url) {
+    console.error('[getImageDimensions] Invalid URL provided:', url);
+    return null;
+  }
+  
+  // Ensure URL has a leading slash if it's a relative path
+  const formattedUrl = url.startsWith('/') || url.startsWith('http') ? url : `/${url}`;
+  console.log('[getImageDimensions] Formatted URL:', formattedUrl);
+  
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      console.log('[getImageDimensions] Successfully loaded image:', url, 'dimensions:', img.naturalWidth, 'x', img.naturalHeight);
+      console.log('[getImageDimensions] Successfully loaded image:', formattedUrl, 'dimensions:', img.naturalWidth, 'x', img.naturalHeight);
       resolve({
         width: img.naturalWidth,
         height: img.naturalHeight
       });
     };
     img.onerror = (error) => {
-      console.error('[getImageDimensions] Failed to load image:', url, 'Error:', error);
+      console.error('[getImageDimensions] Failed to load image:', formattedUrl, 'Error:', error);
       resolve(null);
     };
-    img.src = url;
+    img.src = formattedUrl;
   });
 };
 
