@@ -35,3 +35,29 @@ export interface PromptFormProps {
   onWorkflowChange?: (workflowId: string) => void;
   onRefinerChange?: (refinerId: string) => void;
 }
+
+// Add the ImagePreviewSectionProps interface
+export interface ImagePreviewSectionProps {
+  previewUrls: string[];
+  handleRemoveImage: (index: number) => void;
+  clearAllImages: () => void;
+}
+
+// Add the ToolbarProps interface
+export interface ToolbarProps {
+  isLoading: boolean;
+  selectedWorkflow: string;
+  selectedRefiner: string;
+  selectedPublish?: string;
+  onImageUpload: (files: File[]) => void;
+  onWorkflowChange: (workflowId: string) => void;
+  onRefinerChange: (refinerId: string) => void;
+  onPublishChange?: (publishId: string) => void;
+  toggleAdvancedOptions: () => void;
+  handleSubmit: () => void;
+  prompt: string;
+  isButtonDisabled: boolean;
+  workflows: WorkflowProps[];
+  isCompact: boolean;
+  hasUploadedImages?: boolean;
+}
