@@ -19,7 +19,6 @@ export const useDisplayPage = () => {
   const mountedRef = useRef(true); // Track if component is mounted
   const initialRenderRef = useRef(true); // Track initial render
   const hasProcessedOutputRef = useRef(false); // Track if we've processed the output param
-  const lastDebugModeRef = useRef(displayParams.debugMode); // Track debug mode changes
 
   // Function to redirect to debug mode
   const redirectToDebugMode = () => {
@@ -35,17 +34,6 @@ export const useDisplayPage = () => {
     // Log a clear message if output parameter exists
     if (displayParams.output) {
       console.log("[useDisplayPage] ⚠️ Output parameter detected:", displayParams.output);
-    }
-    
-    // Track debug mode changes
-    if (lastDebugModeRef.current !== displayParams.debugMode) {
-      console.log("[useDisplayPage] Debug mode changed from", lastDebugModeRef.current, "to", displayParams.debugMode);
-      lastDebugModeRef.current = displayParams.debugMode;
-      
-      // Reset output processing flag when switching modes
-      if (!displayParams.debugMode) {
-        hasProcessedOutputRef.current = false;
-      }
     }
   }, [displayParams]);
 
@@ -110,16 +98,9 @@ export const useDisplayPage = () => {
     }
   }, [displayParams.output, setImageUrl, setImageKey]);
 
-  // Reset output processing flag on route change or debug mode change
+  // Reset output processing flag on route change
   useEffect(() => {
-    const searchParams = new URLSearchParams(location.search);
-    const debugParam = searchParams.get('debug');
-    
-    // Reset flag when URL changes significantly or debug mode changes
-    if (debugParam === null && hasProcessedOutputRef.current) {
-      console.log('[useDisplayPage] Route or debug mode changed, resetting output processing flag');
-      hasProcessedOutputRef.current = false;
-    }
+    hasProcessedOutputRef.current = false;
   }, [location.pathname, location.search]);
 
   // Set mounted ref to false on unmount
@@ -246,7 +227,7 @@ export const useDisplayPage = () => {
     newImageStyle,
     imageRef,
     nextCheckTime,
-    handleManualCheck,
+    handleManualCheck: originalHandleManualCheck,
     getImagePositionStyle,
     handleImageError: useImageErrorHandler(imageUrl, mountedRef).handleImageError,
     redirectToDebugMode
