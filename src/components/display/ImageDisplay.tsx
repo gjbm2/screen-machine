@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { DisplayParams } from './types';
-import { createUrlWithParams } from './utils';
+import { createUrlWithParams, decodeComplexOutputParam } from './utils';
 import { CaptionRenderer } from './debug/CaptionRenderer';
 import { toast } from 'sonner';
 
@@ -38,17 +37,35 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [doubleClickAttempted, setDoubleClickAttempted] = useState(false);
   const doubleClickTimeoutRef = useRef<number | null>(null);
   const [hasLoadError, setHasLoadError] = useState(false);
+  // State to hold the final processed image URL (important for complex URLs)
+  const [processedImageUrl, setProcessedImageUrl] = useState<string | null>(null);
+
+  // Process complex URLs to ensure they're fully decoded
+  useEffect(() => {
+    if (imageUrl) {
+      if (imageUrl.includes('?') && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
+        // For complex URLs, ensure they're fully decoded
+        const fullyDecodedUrl = decodeComplexOutputParam(imageUrl);
+        console.log('[ImageDisplay] Processed complex URL:', fullyDecodedUrl);
+        setProcessedImageUrl(fullyDecodedUrl);
+      } else {
+        // For simple URLs, use as-is
+        setProcessedImageUrl(imageUrl);
+      }
+      
+      // Reset error state when image URL changes
+      setHasLoadError(false);
+    } else {
+      setProcessedImageUrl(null);
+    }
+  }, [imageUrl]);
 
   // Debug when image URL changes
   useEffect(() => {
     console.log('[ImageDisplay] Image URL changed:', imageUrl);
+    console.log('[ImageDisplay] Processed URL:', processedImageUrl);
     console.log('[ImageDisplay] Image Key:', imageKey);
-    
-    // Reset error state when image URL changes
-    if (imageUrl) {
-      setHasLoadError(false);
-    }
-  }, [imageUrl, imageKey]);
+  }, [imageUrl, processedImageUrl, imageKey]);
 
   // Update container size on window resize
   useEffect(() => {
@@ -163,16 +180,16 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
       style={{ position: 'relative', width: '100%', height: '100%' }}
       onDoubleClick={handleDoubleClick}
     >
-      {imageUrl ? (
+      {processedImageUrl ? (
         <>
           <img
             key={imageKey}
             ref={imageRef}
-            src={imageUrl}
+            src={processedImageUrl}
             alt=""
             style={isTransitioning ? newImageStyle : imageStyle}
             onError={handleImageLoadError}
-            onLoad={() => console.log('[ImageDisplay] Image loaded successfully:', imageUrl)}
+            onLoad={() => console.log('[ImageDisplay] Image loaded successfully:', processedImageUrl)}
             crossOrigin="anonymous" // Add crossOrigin attribute to help with CORS issues
           />
           
