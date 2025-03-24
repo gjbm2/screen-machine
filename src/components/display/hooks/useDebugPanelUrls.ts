@@ -1,4 +1,3 @@
-
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
 import { createUrlWithParams, processOutputParam } from '../utils/paramUtils';
@@ -110,18 +109,16 @@ export const useDebugPanelUrls = ({
     // Use navigate instead of direct location change to avoid full reload
     navigate(`/display${url}`);
     
-    toast({
-      title: "Settings Applied",
-      description: "Display settings have been updated.",
+    toast("Settings Applied", {
+      description: "Display settings have been updated."
     });
   };
   
   const resetDisplay = () => {
     // Reset to base display URL with no parameters
     window.location.href = '/display';
-    toast({
-      title: "Settings Reset",
-      description: "All settings have been reset to default values.",
+    toast("Settings Reset", {
+      description: "All settings have been reset to default values."
     });
   };
   
@@ -133,8 +130,7 @@ export const useDebugPanelUrls = ({
     // Validate that we have an output URL
     if (!outputToUse) {
       console.error('[useDebugPanelUrls] No output URL for view mode, cannot commit');
-      toast({
-        title: "Error",
+      toast("Error", {
         description: "No image URL specified. Please select an image file or enter a URL.",
         variant: "destructive"
       });
@@ -181,9 +177,8 @@ export const useDebugPanelUrls = ({
     // This forces a complete page reload which should clear any React state
     window.location.href = `/display${url}`;
     
-    toast({
-      title: "View Mode Activated",
-      description: "Settings applied and debug mode disabled.",
+    toast("View Mode Activated", {
+      description: "Settings applied and debug mode disabled."
     });
   };
   
@@ -199,9 +194,8 @@ export const useDebugPanelUrls = ({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
     
-    toast({
-      title: "URL Copied",
-      description: "Display URL has been copied to clipboard.",
+    toast("URL Copied", {
+      description: "Display URL has been copied to clipboard."
     });
   };
 
