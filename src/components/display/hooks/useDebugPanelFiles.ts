@@ -1,8 +1,7 @@
 
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 import { DisplayParams } from '../types';
-import { createUrlWithParams } from '../utils';
+import { useDebugPanelUrls } from './useDebugPanelUrls';
+import { useDebugPanelFileManagement } from './useDebugPanelFileManagement';
 
 interface UseDebugPanelFilesProps {
   params: DisplayParams;
@@ -22,172 +21,25 @@ interface UseDebugPanelFilesProps {
   setCopied: (value: boolean) => void;
 }
 
-export const useDebugPanelFiles = ({
-  params,
-  customUrl,
-  showMode,
-  position,
-  refreshInterval,
-  backgroundColor,
-  caption,
-  captionPosition,
-  captionSize,
-  captionColor,
-  captionFont,
-  captionBgColor,
-  captionBgOpacity,
-  transition,
-  setCopied
-}: UseDebugPanelFilesProps) => {
-  const navigate = useNavigate();
+export const useDebugPanelFiles = (props: UseDebugPanelFilesProps) => {
+  // Use the URL management hook
+  const {
+    generateUrl,
+    applySettings,
+    resetDisplay,
+    commitSettings,
+    copyUrl
+  } = useDebugPanelUrls(props);
 
-  const generateUrl = (includeDebug = false) => {
-    const encodedOutput = customUrl ? encodeURIComponent(customUrl) : null;
-    
-    const newParams: DisplayParams = {
-      output: encodedOutput,
-      showMode,
-      position,
-      refreshInterval,
-      backgroundColor,
-      debugMode: includeDebug,
-      caption: caption || null,
-      captionPosition,
-      captionSize,
-      captionColor,
-      captionFont,
-      captionBgColor,
-      captionBgOpacity,
-      data: params.data,
-      transition,
-    };
-    
-    // Filter out default values to make URL cleaner
-    const cleanParams = Object.entries(newParams).reduce((acc, [key, value]) => {
-      if (key === 'debugMode' && includeDebug) {
-        acc[key] = value;
-      } else if (key === 'output') {
-        if (value !== null) acc[key] = value;
-      } else if (key !== 'debugMode' && value !== null && value !== undefined) {
-        // Only include non-default parameters
-        acc[key] = value;
-      }
-      return acc;
-    }, {} as Partial<DisplayParams>);
-    
-    return createUrlWithParams(cleanParams as DisplayParams);
-  };
-
-  const applySettings = () => {
-    const encodedOutput = customUrl ? encodeURIComponent(customUrl) : null;
-    
-    const newParams: DisplayParams = {
-      output: encodedOutput,
-      showMode,
-      position,
-      refreshInterval,
-      backgroundColor,
-      debugMode: true,
-      caption: caption || null,
-      captionPosition,
-      captionSize,
-      captionColor,
-      captionFont,
-      captionBgColor,
-      captionBgOpacity,
-      data: params.data,
-      transition,
-    };
-    
-    const url = createUrlWithParams(newParams);
-    navigate(url);
-    toast.success("Settings applied");
-  };
-
-  const resetDisplay = () => {
-    navigate('/display');
-    toast.success("Display reset to defaults");
-  };
-
-  const commitSettings = () => {
-    // Create a URL without debug mode
-    const url = generateUrl(false);
-    
-    // We need to prevent navigation from being immediately overridden
-    // by using setTimeout to break out of the current execution context
-    setTimeout(() => {
-      navigate(url);
-      toast.success("Settings committed");
-    }, 0);
-  };
-
-  const copyUrl = () => {
-    // Get the full URL including the domain name and path, without debug mode
-    const relativeUrl = generateUrl(false);
-    const currentPath = window.location.pathname;
-    const baseUrl = window.location.origin;
-    
-    // Ensure we have the correct base path (either '/display' or the current path)
-    const basePath = currentPath.includes('/display') ? '/display' : currentPath;
-    const fullUrl = `${baseUrl}${basePath}${relativeUrl}`;
-    
-    console.log('[useDebugPanelFiles] Copying URL:', fullUrl);
-    
-    navigator.clipboard.writeText(fullUrl)
-      .then(() => {
-        setCopied(true);
-        toast.success("URL copied to clipboard");
-        setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(err => {
-        console.error('Failed to copy URL: ', err);
-        toast.error("Failed to copy URL");
-      });
-  };
-
-  const selectFile = (file: string) => {
-    return () => {
-      navigate(createUrlWithParams({
-        ...params,
-        output: encodeURIComponent(file)
-      }));
-    };
-  };
-
-  const formatFileName = (file: string) => {
-    if (file.startsWith('http')) {
-      try {
-        const url = new URL(file);
-        return url.pathname.split('/').pop() || file;
-      } catch (e) {
-        return file;
-      }
-    }
-    return file;
-  };
-
-  const isCurrentFile = (file: string, imageUrl: string | null) => {
-    if (!imageUrl) return false;
-    
-    if (imageUrl.startsWith('http')) {
-      return imageUrl === file;
-    } else {
-      const currentFile = imageUrl.split('/').pop();
-      const compareFile = file.split('/').pop();
-      return currentFile === compareFile;
-    }
-  };
-
-  const formatTime = (timeValue: Date | string | null) => {
-    if (!timeValue) return 'Never';
-    
-    try {
-      const date = timeValue instanceof Date ? timeValue : new Date(timeValue);
-      return date.toLocaleTimeString();
-    } catch (e) {
-      return String(timeValue);
-    }
-  };
+  // Use the file management hook
+  const {
+    selectFile,
+    formatFileName,
+    isCurrentFile,
+    formatTime
+  } = useDebugPanelFileManagement({
+    params: props.params
+  });
 
   return {
     generateUrl,
