@@ -27,7 +27,7 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
       onMouseDown={handleMouseDown}
       title="Resize panel"
     >
-      {/* Removed the MoveDiagonal icon as requested */}
+      {/* Removed the resize icon as requested */}
     </div>
   );
 };
