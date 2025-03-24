@@ -35,13 +35,13 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
         if (currentWidth < minWidth || currentHeight < minHeight) {
           console.log(`ResizeHandle: Enforcing minimum size: ${minWidth}x${minHeight}`);
           
-          // Set minimum dimensions
+          // Set minimum dimensions - fix the Element type by casting to HTMLElement
           if (currentWidth < minWidth) {
-            container.style.width = `${minWidth}px`;
+            (container as HTMLElement).style.width = `${minWidth}px`;
           }
           
           if (currentHeight < minHeight) {
-            container.style.height = `${minHeight}px`;
+            (container as HTMLElement).style.height = `${minHeight}px`;
           }
         }
       };

@@ -32,13 +32,27 @@ const AdvancedOptionsContainer: React.FC<AdvancedOptionsContainerProps> = ({
     onGlobalParamChange(paramId, value);
   }, [onGlobalParamChange]);
 
+  // Create a wrapper function to adapt the parameter format
+  const handleParamChange = useCallback((paramId: string, value: any) => {
+    console.log('Param change:', paramId, value);
+    
+    // Update the parameter in the current params object
+    const updatedParams = {
+      ...currentParams,
+      [paramId]: value
+    };
+    
+    // Call the original onParamsChange with the updated object
+    onParamsChange(updatedParams);
+  }, [currentParams, onParamsChange]);
+
   return (
     <AdvancedOptions
       workflows={workflows}
       selectedWorkflow={selectedWorkflow}
       onWorkflowChange={onWorkflowChange}
       params={currentParams}
-      onParamChange={onParamsChange}
+      onParamChange={handleParamChange}
       globalParams={currentGlobalParams}
       onGlobalParamChange={handleGlobalParamChange}
       selectedRefiner={'none'}
