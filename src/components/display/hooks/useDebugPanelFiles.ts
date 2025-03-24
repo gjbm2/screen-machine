@@ -113,9 +113,12 @@ export const useDebugPanelFiles = ({
     // Create a URL without debug mode
     const url = generateUrl(false);
     
-    // Navigate to display page with parameters but without debug mode
-    navigate(url);
-    toast.success("Settings committed");
+    // We need to prevent navigation from being immediately overridden
+    // by using setTimeout to break out of the current execution context
+    setTimeout(() => {
+      navigate(url);
+      toast.success("Settings committed");
+    }, 0);
   };
 
   const copyUrl = () => {

@@ -2,7 +2,7 @@
 import React from 'react';
 import { CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Settings2, RefreshCw, Smartphone, Monitor, Tablet, Settings, RotateCcw } from 'lucide-react';
+import { RefreshCw, Trash2, Settings } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShowMode, PositionMode } from '../types';
 import { ScreenSizeSelector, SCREEN_SIZES } from './ScreenSizeSelector';
@@ -32,14 +32,6 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
   showingPreview,
   isMobile
 }) => {
-  // Helper function to select popular screen sizes
-  const selectScreenSize = (size: string) => {
-    const foundSize = SCREEN_SIZES.find(s => s.name === size);
-    if (foundSize) {
-      setSelectedSize(foundSize);
-    }
-  };
-
   return (
     <CardHeader className="px-3 py-2 flex-row justify-between items-center gap-2 border-b sticky top-0 bg-card z-30">
       <div className="flex items-center gap-2">
@@ -64,67 +56,11 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
       </div>
       
       <div className="flex items-center gap-1.5">
-        {/* Quick device presets */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                size="icon" 
-                variant="ghost" 
-                className="h-7 w-7"
-                onClick={() => selectScreenSize('Mobile')}
-              >
-                <Smartphone className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>Mobile (390×844)</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                size="icon" 
-                variant="ghost" 
-                className="h-7 w-7"
-                onClick={() => selectScreenSize('Tablet')}
-              >
-                <Tablet className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>Tablet (768×1024)</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                size="icon" 
-                variant="ghost" 
-                className="h-7 w-7"
-                onClick={() => selectScreenSize('Desktop')}
-              >
-                <Monitor className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>Desktop (1920×1080)</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        
         <ScreenSizeSelector 
           selectedSize={selectedSize.name} 
           onSelect={(sizeName) => {
             setSelectedSize(sizeName);
-          }} 
-          onSettingsChange={onSettingsChange}
+          }}
         />
         
         <TooltipProvider>
@@ -133,32 +69,14 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
               <Button 
                 size="icon" 
                 variant="ghost" 
-                className="h-7 w-7"
-                onClick={onSettingsChange}
-              >
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>Settings</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                size="icon" 
-                variant="ghost" 
-                className={`h-7 w-7 ${imageChanged ? 'text-green-500' : ''}`}
+                className={`h-7 w-7 text-destructive hover:bg-destructive/10 ${imageChanged ? 'text-destructive' : ''}`}
                 onClick={onReset}
               >
-                <RotateCcw className="h-4 w-4" />
+                <Trash2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p>Reset View</p>
+              <p>Reset to defaults</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

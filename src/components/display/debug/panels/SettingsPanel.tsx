@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { ShowMode, PositionMode, TransitionType } from '../../types';
-import { RotateCcw } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 
 interface SettingsPanelProps {
   showMode: ShowMode;
@@ -44,9 +44,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           variant="ghost"
           size="sm"
           onClick={resetSettings}
-          className="h-8 px-2 text-xs"
+          className="h-8 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
         >
-          <RotateCcw className="h-3.5 w-3.5 mr-1" />
+          <Trash2 className="h-3.5 w-3.5 mr-1" />
           Reset to defaults
         </Button>
       </div>
@@ -65,6 +65,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <SelectContent>
                 <SelectItem value="fit">Fit</SelectItem>
                 <SelectItem value="fill">Fill</SelectItem>
+                <SelectItem value="stretch">Stretch</SelectItem>
+                <SelectItem value="actual">Actual Size</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -80,13 +82,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="center">Center</SelectItem>
-                <SelectItem value="top">Top</SelectItem>
-                <SelectItem value="right">Right</SelectItem>
-                <SelectItem value="bottom">Bottom</SelectItem>
-                <SelectItem value="left">Left</SelectItem>
                 <SelectItem value="top-left">Top Left</SelectItem>
+                <SelectItem value="top-center">Top Center</SelectItem>
                 <SelectItem value="top-right">Top Right</SelectItem>
+                <SelectItem value="center-left">Center Left</SelectItem>
+                <SelectItem value="center-right">Center Right</SelectItem>
                 <SelectItem value="bottom-left">Bottom Left</SelectItem>
+                <SelectItem value="bottom-center">Bottom Center</SelectItem>
                 <SelectItem value="bottom-right">Bottom Right</SelectItem>
               </SelectContent>
             </Select>
@@ -104,11 +106,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="cut">Cut</SelectItem>
-              <SelectItem value="fade">Fade</SelectItem>
-              <SelectItem value="slide-left">Slide Left</SelectItem>
-              <SelectItem value="slide-right">Slide Right</SelectItem>
-              <SelectItem value="slide-up">Slide Up</SelectItem>
-              <SelectItem value="slide-down">Slide Down</SelectItem>
+              <SelectItem value="fade-fast">Fast Fade</SelectItem>
+              <SelectItem value="fade-slow">Slow Fade</SelectItem>
             </SelectContent>
           </Select>
         </div>

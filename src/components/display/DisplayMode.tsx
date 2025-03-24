@@ -5,6 +5,9 @@ import { DebugImageContainer } from '@/components/display/DebugImageContainer';
 import { ImageDisplay } from '@/components/display/ImageDisplay';
 import { DisplayParams } from './types';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Button } from '@/components/ui/button';
+import { Eye, Settings } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface DisplayModeProps {
   params: DisplayParams;
@@ -68,6 +71,29 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   if (params.debugMode) {
     return (
       <div className="fixed inset-0 flex flex-col sm:flex-row overflow-hidden">
+        {/* Mobile View Switcher - fixed position */}
+        {isMobile && (
+          <div className="fixed top-3 right-3 z-50">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={toggleView}
+                    className="h-8 w-8 p-0 bg-background shadow-md border-border"
+                  >
+                    {showPreview ? <Settings className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{showPreview ? "Show Settings" : "Show Preview"}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        )}
+        
         {/* Settings Panel */}
         <div 
           className={`${isMobile ? (showPreview ? 'hidden' : 'w-full h-full') : 'w-2/5'} flex-shrink-0 overflow-hidden flex flex-col`}
