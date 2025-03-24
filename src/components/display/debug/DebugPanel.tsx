@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Card } from "@/components/ui/card";
 import { Tabs } from "@/components/ui/tabs";
@@ -86,6 +87,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     commitSettings,
     copyUrl,
     selectFile,
+    selectFileDirectly,
     formatFileName,
     resetSettings,
     insertMetadataTag,
@@ -157,6 +159,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
           customUrl={customUrl}
           setCustomUrl={setCustomUrl}
           selectFile={selectFile}
+          selectFileDirectly={selectFileDirectly}
           isCurrentFile={isCurrentFile}
           formatFileName={formatFileName}
           showMode={showMode}
