@@ -14,6 +14,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
   isLoading = false,
   currentPrompt = '',
   isFirstRun = true,
+  onOpenAdvancedOptions,
 }) => {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -154,7 +155,11 @@ const PromptForm: React.FC<PromptFormProps> = ({
   };
 
   const toggleAdvancedOptions = () => {
-    setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
+    if (onOpenAdvancedOptions) {
+      onOpenAdvancedOptions();
+    } else {
+      setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
+    }
   };
 
   const handleDecrementBatchSize = () => {

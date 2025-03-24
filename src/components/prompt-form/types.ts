@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Workflow } from '@/types/workflows';
 
@@ -15,6 +14,7 @@ export interface PromptFormProps {
   isLoading?: boolean;
   currentPrompt?: string;
   isFirstRun?: boolean;
+  onOpenAdvancedOptions?: () => void;
 }
 
 export interface ToolbarProps {
