@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import usePromptForm from './usePromptForm';
 import PromptInput from '@/components/prompt/PromptInput';
 import PromptFormToolbar from './PromptFormToolbar';
-import AdvancedOptions from '@/components/AdvancedOptions';
 import { PromptFormProps, WorkflowProps } from './types';
 import useExternalImageUrls from '@/hooks/use-external-images';
 import { Workflow } from '@/types/workflows';
@@ -33,6 +32,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
     refinerParams,
     workflows,
     refiners,
+    publishDestinations,
     handleWorkflowChange,
     handleRefinerChange,
     handlePublishChange,
@@ -198,30 +198,9 @@ const PromptForm: React.FC<PromptFormProps> = ({
           isCompact={false}
           hasUploadedImages={previewUrls.length > 0}
         />
-        
-        {isAdvancedOptionsOpen && (
-          <AdvancedOptions
-            workflows={workflows as Workflow[]}
-            selectedWorkflow={selectedWorkflow}
-            onWorkflowChange={handleWorkflowChange}
-            params={workflowParams}
-            onParamChange={updateWorkflowParam}
-            globalParams={globalParams}
-            onGlobalParamChange={updateGlobalParam}
-            selectedRefiner={selectedRefiner}
-            onRefinerChange={handleRefinerChange}
-            refinerParams={refinerParams}
-            onRefinerParamChange={updateRefinerParam}
-            isOpen={isAdvancedOptionsOpen}
-            onOpenChange={setIsAdvancedOptionsOpen}
-          />
-        )}
-
-        {/* Removed ImagePreviewSection from here */}
       </Card>
     </div>
   );
 };
 
 export default PromptForm;
-
