@@ -17,7 +17,7 @@ export const useDebugPanelCaption = ({
   imageUrl
 }: UseDebugPanelCaptionProps) => {
   
-  // Process caption with metadata replacements
+  // Process caption with metadata replacements and regex processing
   useEffect(() => {
     console.log('[useDebugPanelCaption] Processing caption template:', caption);
     console.log('[useDebugPanelCaption] Available metadata entries:', metadataEntries);
@@ -31,18 +31,35 @@ export const useDebugPanelCaption = ({
       setPreviewCaption(allMetadata);
       onApplyCaption(allMetadata);
     } else if (caption) {
-      // Process template tags like {key}
+      // STEP 1: Process template tags like {key}
       try {
-        const processed = caption.replace(/\{([^}]+)\}/g, (match, key) => {
+        let processedText = caption.replace(/\{([^}]+)\}/g, (match, key) => {
           const entry = metadataEntries.find(e => e.key === key);
           const replacement = entry ? entry.value : match;
           console.log(`[useDebugPanelCaption] Replacing ${match} with:`, replacement);
           return replacement;
         });
         
-        console.log('[useDebugPanelCaption] Processed caption:', processed);
-        setPreviewCaption(processed);
-        onApplyCaption(processed);
+        // STEP 2: Check if the processed text is a regex pattern
+        const regexMatch = processedText.match(/^\/(.+)\/([gimuy]*)$/);
+        
+        if (regexMatch) {
+          const [_, pattern, flags] = regexMatch;
+          console.log(`[useDebugPanelCaption] Processing regex pattern: ${pattern} with flags: ${flags}`);
+          
+          try {
+            // For now, just indicate it's a regex pattern
+            // In a more advanced implementation, we could generate matching text
+            processedText = `[Regex pattern: /${pattern}/${flags}]`;
+          } catch (err) {
+            console.error('[useDebugPanelCaption] Invalid regex:', err);
+            processedText = `[Invalid regex: ${err.message}]`;
+          }
+        }
+        
+        console.log('[useDebugPanelCaption] Processed caption:', processedText);
+        setPreviewCaption(processedText);
+        onApplyCaption(processedText);
       } catch (err) {
         console.error('[useDebugPanelCaption] Error processing caption:', err);
         setPreviewCaption(caption);

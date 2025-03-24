@@ -1,8 +1,7 @@
-
 import { useState, useRef, useEffect } from 'react';
 
 export const useDebugPanelPosition = () => {
-  const [position, setPosition] = useState({ x: 4, y: 4 });
+  const [position, setPosition] = useState({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const panelRef = useRef<HTMLDivElement>(null);
@@ -42,12 +41,15 @@ export const useDebugPanelPosition = () => {
       const newX = Math.max(0, e.clientX - dragOffset.x);
       const newY = Math.max(0, e.clientY - dragOffset.y);
       
-      const maxX = window.innerWidth - (panelRef.current?.offsetWidth || 480);
-      const maxY = window.innerHeight - (panelRef.current?.offsetHeight || 400);
+      const panelWidth = panelRef.current?.offsetWidth || 480;
+      const panelHeight = panelRef.current?.offsetHeight || 400;
+      
+      const maxX = window.innerWidth - panelWidth;
+      const maxY = window.innerHeight - panelHeight;
       
       setPosition({ 
-        x: Math.min(newX, maxX), 
-        y: Math.min(newY, maxY) 
+        x: Math.min(Math.max(0, newX), maxX), 
+        y: Math.min(Math.max(0, newY), maxY) 
       });
     }
     
