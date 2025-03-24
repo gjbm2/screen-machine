@@ -61,19 +61,22 @@ export const usePromptSubmission = ({
       }
     }
     
-    // CRITICAL: Extract batch size explicitly from globalParams or use default
-    // This ensures we isolate this critical value and pass it directly
-    const batchSize = globalParams?.batch_size || currentGlobalParams?.batch_size || 1;
+    // CRITICAL: Prioritize the explicitly passed batch_size from UI
+    // We get a fresh value every time from the UI which should take precedence
+    const userSelectedBatchSize = globalParams?.batch_size;
     
-    // Create a fresh globalParams object that explicitly sets batch_size
+    // Create a fresh globalParams object with the correct batch_size
     const effectiveGlobalParams = {
       ...currentGlobalParams, // Base with current settings
       ...(globalParams || {}),  // Override with any provided params
-      batch_size: batchSize // Explicitly set batch size to ensure it's correct
+      // Explicitly set batch_size using the UI value if available
+      ...(userSelectedBatchSize !== undefined ? { batch_size: userSelectedBatchSize } : {})
     };
     
-    // IMPORTANT DEBUG: Log the batch size being used for this generation request
+    // IMPORTANT DEBUG: Log the batch size being used - this helps trace the value
+    console.log("[usePromptSubmission] UI-provided batch size:", userSelectedBatchSize);
     console.log("[usePromptSubmission] Using batch size:", effectiveGlobalParams.batch_size);
+    console.log("[usePromptSubmission] Full effective global params:", effectiveGlobalParams);
     
     const effectiveWorkflow = workflow || currentWorkflow;
     const effectiveWorkflowParams = workflowParams || currentParams;
@@ -109,7 +112,7 @@ export const usePromptSubmission = ({
   }, [
     currentWorkflow, 
     currentParams, 
-    currentGlobalParams, // This dependency ensures the callback is recreated when context changes
+    currentGlobalParams,
     lastBatchIdUsed,
     setIsFirstRun,
     setLastBatchIdUsed,
