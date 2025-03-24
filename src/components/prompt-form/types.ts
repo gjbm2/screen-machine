@@ -25,3 +25,36 @@ export interface FileUploadResult {
   fileName: string;
   file?: File;
 }
+
+// Missing interfaces that we need to add:
+export interface BatchControlProps {
+  batchSize: number;
+  incrementBatchSize: () => void;
+  decrementBatchSize: () => void;
+  isCompact?: boolean;
+}
+
+export interface ImagePreviewSectionProps {
+  previewUrls: string[];
+  handleRemoveImage: (index: number) => void;
+  clearAllImages: () => void;
+}
+
+export interface ToolbarProps {
+  isLoading: boolean;
+  batchSize: number;
+  selectedWorkflow: string;
+  selectedRefiner: string;
+  onImageUpload: (files: File[]) => void;
+  onWorkflowChange: (workflow: string) => void;
+  onRefinerChange: (refiner: string) => void;
+  incrementBatchSize: () => void;
+  decrementBatchSize: () => void;
+  toggleAdvancedOptions: () => void;
+  handleSubmit: () => void;
+  prompt: string;
+  isButtonDisabled: boolean;
+  workflows: any[];
+  isCompact: boolean;
+  hasUploadedImages?: boolean;
+}
