@@ -8,7 +8,6 @@ import PromptFormToolbar from './PromptFormToolbar';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import { PromptFormProps, WorkflowProps } from './types';
 import useExternalImageUrls from '@/hooks/use-external-images';
-import ImagePreviewSection from './ImagePreviewSection';
 import { Workflow } from '@/types/workflows';
 
 const PromptForm: React.FC<PromptFormProps> = ({
@@ -218,16 +217,11 @@ const PromptForm: React.FC<PromptFormProps> = ({
           />
         )}
 
-        {previewUrls.length > 0 && (
-          <ImagePreviewSection
-            previewUrls={previewUrls}
-            handleRemoveImage={handleRemoveImage}
-            clearAllImages={clearAllImages}
-          />
-        )}
+        {/* Removed ImagePreviewSection from here */}
       </Card>
     </div>
   );
 };
 
 export default PromptForm;
+
