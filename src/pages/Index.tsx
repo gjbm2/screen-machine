@@ -78,20 +78,41 @@ const Index = () => {
     publish?: string
   ) => {
     try {
+      console.log('Index: handlePromptSubmit called with:');
+      console.log('- prompt:', prompt);
+      console.log('- workflow:', workflow);
+      console.log('- params:', params);
+      console.log('- globalParams:', globalParams);
+      console.log('- refiner:', refiner);
+      console.log('- refinerParams:', refinerParams);
+      console.log('- publish:', publish);
+      
+      // Update state with the values
       setCurrentPrompt(prompt);
       
+      // Update workflow state if provided
       if (workflow) {
         setCurrentWorkflow(workflow);
       }
       
-      if (params) {
-        setCurrentParams(params);
+      // Create a copy of the params to avoid mutation issues
+      let effectiveParams = params ? { ...params } : { ...currentParams };
+      
+      // Add publish destination to params if provided
+      if (publish && publish !== 'none') {
+        console.log('Adding publish destination to params:', publish);
+        effectiveParams.publish_destination = publish;
       }
       
+      // Update params state
+      setCurrentParams(effectiveParams);
+      
+      // Update global params if provided
       if (globalParams) {
         setCurrentGlobalParams(globalParams);
       }
       
+      // Process image files if provided
       if (imageFiles && imageFiles.length > 0) {
         const fileUrls = imageFiles
           .filter((file): file is string => typeof file === 'string')
@@ -100,18 +121,16 @@ const Index = () => {
         setUploadedImageUrls(fileUrls);
       }
       
-      // Log the publish destination if provided
-      if (publish) {
-        console.log('Submitting with publish destination:', publish);
-        // Include the publish destination in the parameters
-        if (params) {
-          params.publish_destination = publish;
-        } else {
-          setCurrentParams({ ...currentParams, publish_destination: publish });
-        }
-      }
-      
-      await handleSubmitPrompt(prompt, imageFiles);
+      // Submit the generation request with all parameters
+      await handleSubmitPrompt(
+        prompt, 
+        imageFiles, 
+        workflow, 
+        effectiveParams, 
+        globalParams, 
+        refiner, 
+        refinerParams
+      );
     } catch (error) {
       console.error('Error submitting prompt:', error);
       toast.error('Error generating image');

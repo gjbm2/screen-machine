@@ -13,7 +13,8 @@ interface DebugPanelContentProps {
   imageUrl: string | null;
   customUrl: string;
   setCustomUrl: (url: string) => void;
-  selectFile: (file: string) => void; // Updated type to match implementation
+  selectFile: (file: string) => () => void;
+  selectFileDirectly: (file: string) => void;
   isCurrentFile: (file: string) => boolean;
   formatFileName: (fileName: string) => string;
   showMode: ShowMode;
@@ -58,6 +59,7 @@ const DebugPanelContent: React.FC<DebugPanelContentProps> = ({
   customUrl,
   setCustomUrl,
   selectFile,
+  selectFileDirectly,
   isCurrentFile,
   formatFileName,
   showMode,
@@ -103,6 +105,7 @@ const DebugPanelContent: React.FC<DebugPanelContentProps> = ({
           customUrl={customUrl}
           setCustomUrl={setCustomUrl}
           selectFile={selectFile}
+          selectFileDirectly={selectFileDirectly}
           isCurrentFile={isCurrentFile}
           formatFileName={formatFileName}
         />

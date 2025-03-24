@@ -61,19 +61,22 @@ export const usePromptSubmission = ({
       }
     }
     
-    // Use the provided globalParams or fall back to currentGlobalParams
-    const effectiveGlobalParams = globalParams ? { ...globalParams } : { ...currentGlobalParams };
-    
-    // Log the global params being used for debugging
-    console.log("[usePromptSubmission] Using provided globalParams:", !!globalParams);
-    console.log("[usePromptSubmission] Full effective global params:", effectiveGlobalParams);
-    
+    // Use the provided parameters or fall back to current settings
     const effectiveWorkflow = workflow || currentWorkflow;
     const effectiveWorkflowParams = workflowParams || currentParams;
+    const effectiveGlobalParams = globalParams ? { ...globalParams } : { ...currentGlobalParams };
+    
+    // Log the parameters being used
+    console.log("[usePromptSubmission] Using workflow:", effectiveWorkflow);
+    console.log("[usePromptSubmission] Using workflow params:", effectiveWorkflowParams);
+    console.log("[usePromptSubmission] Using global params:", effectiveGlobalParams);
+    console.log("[usePromptSubmission] Using refiner:", refiner);
+    console.log("[usePromptSubmission] Using refiner params:", refinerParams);
     
     // Check for publish destination in workflow params
-    if (effectiveWorkflowParams.publish_destination) {
-      console.log("[usePromptSubmission] Using publish destination:", effectiveWorkflowParams.publish_destination);
+    const publishDestination = effectiveWorkflowParams.publish_destination;
+    if (publishDestination) {
+      console.log("[usePromptSubmission] Using publish destination:", publishDestination);
     }
     
     // Create the configuration for image generation
@@ -87,10 +90,6 @@ export const usePromptSubmission = ({
       refiner, 
       refinerParams
     };
-    
-    console.log("[usePromptSubmission] Final global params being sent:", config.globalParams);
-    console.log("[usePromptSubmission] Using workflow:", config.workflow);
-    console.log("[usePromptSubmission] Using refiner:", config.refiner);
     
     // Call generateImages and store the returned batchId
     try {

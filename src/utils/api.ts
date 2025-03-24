@@ -1,3 +1,4 @@
+
 // API service for all backend requests
 import { toast } from 'sonner';
 
@@ -36,15 +37,16 @@ class ApiService {
     try {
       const { prompt, workflow, params: workflowParams, global_params, refiner, refiner_params, imageFiles, batch_id } = params;
       
-      // SIMPLIFIED: Use global_params directly without extraction and re-assignment
-      // This ensures we don't lose the batch_size when creating new objects
+      console.log(`[api] Received request with workflow: ${workflow}`);
+      console.log(`[api] Received workflowParams:`, workflowParams);
       console.log(`[api] Received global_params:`, global_params);
-      console.log(`[api] Using batch_size directly:`, global_params?.batch_size);
+      console.log(`[api] Received refiner:`, refiner);
+      console.log(`[api] Received refiner_params:`, refiner_params);
       
       // Create form data for multipart request
       const formData = new FormData();
       
-      // Create a data object to serialize as JSON - use global_params directly
+      // Create a data object to serialize as JSON
       const jsonData: any = {
         prompt,
         workflow,
@@ -54,27 +56,23 @@ class ApiService {
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
       
-      // CRITICAL: Log the batch_size in the payload before sending - no extraction
-      console.log(`[api] Generating with batch_size:`, jsonData.global_params.batch_size);
-      
-      // Log the complete API payload for debugging
-      console.log("[api] Full API payload:", {
-        prompt,
-        workflow,
-        params: workflowParams,
-        global_params,
-        batch_size: jsonData.global_params.batch_size,
-        refiner: refiner || 'none',
-        refiner_params: refiner_params || {}
-      });
+      // Log publish destination if present
+      if (workflowParams?.publish_destination) {
+        console.log(`[api] Publishing to destination:`, workflowParams.publish_destination);
+      }
       
       // Add refiner if specified
       if (refiner && refiner !== 'none') {
+        console.log(`[api] Using refiner:`, refiner);
         jsonData.refiner = refiner;
         if (refiner_params) {
+          console.log(`[api] With refiner params:`, refiner_params);
           jsonData.refiner_params = refiner_params;
         }
       }
+      
+      // Log the complete API payload for debugging
+      console.log("[api] Full API payload:", jsonData);
       
       // Append the JSON data
       formData.append('data', JSON.stringify(jsonData));
@@ -170,14 +168,21 @@ class ApiService {
   
   // Mock implementation for testing/preview
   private mockGenerateImage(params: GenerateImageParams) {
-    // SIMPLIFIED: Use batch_size directly from params.global_params
+    // Get batch size from params
     const batchSize = params.global_params?.batch_size || 1;
     
     console.info('[MOCK LOG] [mock-backend]', `Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
     console.info('[MOCK LOG] [mock-backend]', `Using workflow: ${params.workflow}`);
     
+    if (params.params?.publish_destination) {
+      console.info('[MOCK LOG] [mock-backend]', `Publishing to: ${params.params.publish_destination}`);
+    }
+    
     if (params.refiner && params.refiner !== 'none') {
       console.info('[MOCK LOG] [mock-backend]', `Using refiner: ${params.refiner}`);
+      if (params.refiner_params) {
+        console.info('[MOCK LOG] [mock-backend]', `With refiner params:`, params.refiner_params);
+      }
     }
     
     // Simulate network delay
@@ -195,7 +200,7 @@ class ApiService {
           return placeholderImages[Math.floor(Math.random() * placeholderImages.length)];
         };
         
-        // Create mock images based on the requested batch size - use directly from params
+        // Create mock images based on the requested batch size
         const mockImages = Array(batchSize).fill(0).map((_, index) => ({
           id: `mock-${Date.now()}-${index}`,
           url: getRandomImage(),
