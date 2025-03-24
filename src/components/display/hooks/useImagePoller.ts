@@ -16,6 +16,8 @@ export const useImagePoller = (
   // Use a ref to track the current interval ID
   const intervalIdRef = useRef<number | null>(null);
   const lastCheckedUrl = useRef<string | null>(null);
+  // Track whether we've loaded the initial image
+  const initialLoadCompleted = useRef<boolean>(false);
   
   // Handle initial image loading and periodic checking
   useEffect(() => {
@@ -33,8 +35,17 @@ export const useImagePoller = (
     
     // Initial load
     if (processedUrl) {
-      if (!isTransitioning) {
+      if (!isTransitioning && !initialLoadCompleted.current) {
+        console.log('[useImagePoller] Initial image load for:', processedUrl);
         loadNewImage(processedUrl);
+        initialLoadCompleted.current = true;
+        
+        // Extract metadata on initial load
+        if (!isLoading) {
+          extractMetadataFromImage(processedUrl).catch(err => {
+            console.error('[useImagePoller] Error extracting metadata on initial load:', err);
+          });
+        }
       }
       
       // Clear any existing interval
@@ -69,6 +80,9 @@ export const useImagePoller = (
         }
       };
     }
+    
+    // Reset flag if there's no URL
+    initialLoadCompleted.current = false;
   }, [params.output, params.refreshInterval, params.debugMode, isLoading, isTransitioning, loadNewImage, checkImageModified, extractMetadataFromImage]);
 
   // Extract metadata whenever the image URL changes
@@ -96,18 +110,17 @@ export const useImagePoller = (
       const result = await originalHandleManualCheck();
       
       // Force metadata refresh regardless of whether the image changed
-      if (params.debugMode) {
-        try {
-          console.log('[useImagePoller] Forcing metadata refresh on manual check');
-          const extractedMetadata = await extractImageMetadata(imageUrl);
-          console.log('[useImagePoller] Manually extracted metadata:', extractedMetadata);
-          
-          if (Object.keys(extractedMetadata).length === 0) {
-            toast.warning("No metadata found in this image");
-          }
-        } catch (err) {
-          console.error('[useImagePoller] Error during manual metadata extraction:', err);
+      try {
+        console.log('[useImagePoller] Forcing metadata refresh on manual check');
+        const extractedMetadata = await extractImageMetadata(imageUrl);
+        console.log('[useImagePoller] Manually extracted metadata:', extractedMetadata);
+        
+        if (Object.keys(extractedMetadata).length === 0) {
+          toast.warning("No metadata found in this image");
         }
+      } catch (err) {
+        console.error('[useImagePoller] Error during manual metadata extraction:', err);
+        toast.error("Failed to extract metadata");
       }
       
       return result;

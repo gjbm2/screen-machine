@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { DisplayParams } from './types';
 import { useNavigate } from 'react-router-dom';
 import { createUrlWithParams } from './utils';
+import { CaptionRenderer } from './debug/CaptionRenderer';
 
 interface ImageDisplayProps {
   params: DisplayParams;
@@ -56,102 +57,6 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     navigate(debugUrl);
   };
 
-  // Calculate caption font size scaling
-  const getScaledFontSize = (baseSize: string) => {
-    // Extract numeric portion and unit
-    const matches = baseSize.match(/^(\d+(?:\.\d+)?)([a-z%]+)?$/i);
-    if (!matches) return baseSize;
-    
-    const size = parseFloat(matches[1]);
-    const unit = matches[2] || 'px';
-    
-    // Base scaling on container width (viewport width)
-    // This provides a good way to scale caption text for different screen sizes
-    const baseWidth = 1920; // Reference width (Full HD)
-    const scaleFactor = containerSize.width / baseWidth;
-    
-    // Apply scaling but limit to reasonable bounds
-    const scaledSize = Math.max(10, Math.min(96, size * scaleFactor)); // Increased max size to 96px
-    
-    return `${scaledSize}${unit}`;
-  };
-
-  // Caption styles
-  const captionStyle: React.CSSProperties = (() => {
-    if (!processedCaption) return {};
-
-    const scaledFontSize = getScaledFontSize(params.captionSize || '16px');
-
-    // Fix background color handling - ensure it has proper format
-    const bgColor = params.captionBgColor || '#000000';
-    const formattedBgColor = bgColor.startsWith('#') ? bgColor : `#${bgColor}`;
-    
-    // Calculate background opacity as hex value for rgba
-    const bgOpacityValue = params.captionBgOpacity !== undefined ? params.captionBgOpacity : 0.7;
-    const bgOpacityHex = Math.round(bgOpacityValue * 255).toString(16).padStart(2, '0');
-    
-    // Combine color and opacity
-    const bgColorWithOpacity = `${formattedBgColor}${bgOpacityHex}`;
-
-    console.log('[ImageDisplay] Caption styles:', {
-      bgColor,
-      formattedBgColor,
-      bgOpacityValue,
-      bgOpacityHex,
-      bgColorWithOpacity,
-      fontSize: scaledFontSize
-    });
-
-    const styles: React.CSSProperties = {
-      position: 'absolute',
-      padding: '8px 16px',
-      backgroundColor: bgColorWithOpacity,
-      color: `#${params.captionColor || 'ffffff'}`,
-      fontSize: scaledFontSize,
-      fontFamily: params.captionFont || 'Arial, sans-serif',
-      maxWidth: '80%',
-      textAlign: 'center',
-      borderRadius: '4px',
-      zIndex: 10,
-      whiteSpace: processedCaption.includes('\n') ? 'pre-line' : 'normal',
-    };
-
-    switch (params.captionPosition) {
-      case 'top-left':
-        styles.top = '20px';
-        styles.left = '20px';
-        break;
-      case 'top-center':
-        styles.top = '20px';
-        styles.left = '50%';
-        styles.transform = 'translateX(-50%)';
-        break;
-      case 'top-right':
-        styles.top = '20px';
-        styles.right = '20px';
-        break;
-      case 'bottom-left':
-        styles.bottom = '20px';
-        styles.left = '20px';
-        break;
-      case 'bottom-center':
-        styles.bottom = '20px';
-        styles.left = '50%';
-        styles.transform = 'translateX(-50%)';
-        break;
-      case 'bottom-right':
-        styles.bottom = '20px';
-        styles.right = '20px';
-        break;
-      default:
-        styles.bottom = '20px';
-        styles.left = '50%';
-        styles.transform = 'translateX(-50%)';
-    }
-
-    return styles;
-  })();
-
   // Metadata display styles
   const metadataStyle: React.CSSProperties = {
     position: 'absolute',
@@ -159,7 +64,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     color: '#ffffff',
     fontFamily: 'monospace',
-    fontSize: getScaledFontSize('14px'),
+    fontSize: '14px',
     maxWidth: '350px',
     borderRadius: '4px',
     top: '20px',
@@ -168,6 +73,16 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     overflowY: 'auto',
     maxHeight: '80vh',
   };
+
+  // Get dimensions for scaling captions appropriately
+  const imageDimensions = {
+    width: imageRef.current?.naturalWidth || 0,
+    height: imageRef.current?.naturalHeight || 0
+  };
+  
+  // Fix background color handling - ensure it has proper format
+  const captionBgColor = params.captionBgColor || '#000000';
+  const formattedBgColor = captionBgColor.startsWith('#') ? captionBgColor : `#${captionBgColor}`;
 
   return (
     <div 
@@ -195,9 +110,18 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
           )}
           
           {processedCaption && (
-            <div style={captionStyle}>
-              {processedCaption}
-            </div>
+            <CaptionRenderer
+              caption={processedCaption}
+              position={params.captionPosition || 'bottom-center'}
+              fontSize={params.captionSize || '16px'}
+              color={params.captionColor || 'ffffff'}
+              fontFamily={params.captionFont || 'Arial, sans-serif'}
+              backgroundColor={formattedBgColor}
+              backgroundOpacity={params.captionBgOpacity !== undefined ? params.captionBgOpacity : 0.7}
+              containerWidth={containerSize.width}
+              screenWidth={window.innerWidth}
+              screenSize={imageDimensions}
+            />
           )}
           
           {params.data !== undefined && Object.keys(metadata).length > 0 && (
