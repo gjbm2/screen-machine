@@ -107,7 +107,7 @@ export const useDisplayState = (params: DisplayParams) => {
     oldImageStyle,
     newImageStyle,
     imageRef,
-    nextCheckTime,
+    nextCheckTime,  // This is Date | null from getNextCheckTime
     loadNewImage,
     checkImageModified,
     handleManualCheck: handleManualCheckOriginal,

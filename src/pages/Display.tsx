@@ -24,7 +24,7 @@ const Display = () => {
     oldImageStyle,
     newImageStyle,
     imageRef,
-    nextCheckTime,
+    nextCheckTime,  // This should be Date | null
     handleManualCheck,
     getImagePositionStyle,
     handleImageError
@@ -44,7 +44,7 @@ const Display = () => {
         imageRef={imageRef}
         lastModified={lastModified}
         lastChecked={lastChecked}
-        nextCheckTime={nextCheckTime}
+        nextCheckTime={nextCheckTime}  // Pass as Date | null
         imageChanged={imageChanged}
         outputFiles={outputFiles}
         metadata={metadata}
