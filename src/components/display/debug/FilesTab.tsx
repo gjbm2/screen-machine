@@ -36,6 +36,14 @@ export const FilesTab: React.FC<FilesTabProps> = ({
     console.log('[FilesTab] Available outputFiles:', outputFiles);
   }, [imageUrl, outputFiles]);
 
+  // Direct URL handler - don't double encode external URLs
+  const handleUseCustomUrl = () => {
+    if (customUrl && customUrl.trim() !== '') {
+      console.log('[FilesTab] Using custom URL:', customUrl);
+      selectFile(customUrl);
+    }
+  };
+
   return (
     <CardContent className="pt-4 h-full flex flex-col">
       <div className="space-y-4 flex-1 flex flex-col">
@@ -56,7 +64,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({
                 <div 
                   key={index}
                   className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${isCurrentFile(file) ? 'bg-blue-50 border border-blue-200' : ''}`}
-                  onClick={() => selectFile(file)}
+                  onClick={selectFile(file)}
                 >
                   <div className="flex items-center">
                     <ImageIcon className="h-4 w-4 mr-2 text-gray-500" />
@@ -101,7 +109,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({
             />
             <Button 
               variant="secondary"
-              onClick={() => selectFile(customUrl)}
+              onClick={handleUseCustomUrl}
             >
               Use
             </Button>

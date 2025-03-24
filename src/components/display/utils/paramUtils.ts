@@ -1,4 +1,3 @@
-
 import { DisplayParams } from '../types';
 
 // Create a URL with display parameters
@@ -7,8 +6,22 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   
   // Process the output parameter if it exists
   if (params.output) {
-    // Simple standard encoding for all URLs
-    queryParams.set('output', encodeURIComponent(params.output));
+    // Check if the URL already contains encoded characters
+    // If it does, don't encode it again to avoid double encoding
+    if (params.output.includes('%') && (
+        params.output.includes('http%3A') || 
+        params.output.includes('https%3A') ||
+        params.output.includes('%2F') ||
+        params.output.includes('%3F') || // encoded ?
+        params.output.includes('%26')    // encoded &
+      )) {
+      console.log('[createUrlWithParams] URL already contains encoded characters, using as is');
+      queryParams.set('output', params.output);
+    } else {
+      // URL is not encoded yet, safe to encode
+      console.log('[createUrlWithParams] Encoding URL parameter');
+      queryParams.set('output', encodeURIComponent(params.output));
+    }
   }
   
   if (params.showMode !== 'fit') queryParams.set('show', params.showMode);
@@ -73,7 +86,19 @@ export const processOutputParam = (output: string | null): string | null => {
   
   // If it's already a fully formed URL, return it as is
   if (output.startsWith('http://') || output.startsWith('https://')) {
+    console.log('[processOutputParam] URL already starts with http(s), using as is:', output);
     return output;
+  }
+  
+  // Check if this is an encoded URL that we need to decode first
+  if (output.includes('http%3A') || output.includes('https%3A')) {
+    try {
+      const decodedUrl = fullyDecodeUrl(output);
+      console.log('[processOutputParam] Decoded URL from encoded form:', decodedUrl);
+      return decodedUrl;
+    } catch (e) {
+      console.error('[processOutputParam] Failed to decode URL:', e);
+    }
   }
   
   // Now normalize the path for local files
@@ -91,19 +116,55 @@ export const processOutputParam = (output: string | null): string | null => {
   // Always ensure a leading slash for absolute path from server root
   normalizedPath = `/${normalizedPath}`;
   
+  console.log('[processOutputParam] Processed local path:', normalizedPath);
   return normalizedPath;
 };
 
-// Decode URL parameter (simple standard decoding)
+// Recursively decode a URL until it can't be decoded further
+export const fullyDecodeUrl = (url: string): string => {
+  let decodedUrl = url;
+  let prevUrl = '';
+  let count = 0;
+  const maxIterations = 5; // Prevent infinite loops
+  
+  while (decodedUrl !== prevUrl && count < maxIterations) {
+    prevUrl = decodedUrl;
+    try {
+      decodedUrl = decodeURIComponent(prevUrl);
+      count++;
+      console.log(`[fullyDecodeUrl] Iteration ${count}:`, decodedUrl);
+    } catch (e) {
+      console.warn(`[fullyDecodeUrl] Decoding stopped at iteration ${count}:`, e);
+      break;
+    }
+  }
+  
+  return decodedUrl;
+};
+
+// Decode URL parameter (improved to handle multiple levels of encoding)
 export const decodeComplexOutputParam = (output: string | null): string | null => {
   if (!output) return null;
   
+  console.log('[decodeComplexOutputParam] Starting with output:', output);
+  
+  // Use our recursive decoder
   try {
-    // Simple, standard decoding
-    return decodeURIComponent(output);
+    const fullyDecodedUrl = fullyDecodeUrl(output);
+    console.log('[decodeComplexOutputParam] Fully decoded URL:', fullyDecodedUrl);
+    return fullyDecodedUrl;
   } catch (e) {
-    console.error("[decodeComplexOutputParam] Error decoding output parameter:", e);
-    return output; // Return the original if decoding fails
+    console.error("[decodeComplexOutputParam] Error fully decoding output parameter:", e);
+    
+    // Fallback to single decoding if recursive decoding fails
+    try {
+      const singleDecodedUrl = decodeURIComponent(output);
+      console.log('[decodeComplexOutputParam] Single decoded URL (fallback):', singleDecodedUrl);
+      return singleDecodedUrl;
+    } catch (e2) {
+      console.error("[decodeComplexOutputParam] Error with single decoding:", e2);
+      return output; // Return original as last resort
+    }
   }
 };
 
@@ -112,6 +173,17 @@ export const normalizePathForDisplay = (path: string): string => {
   // If it's already a fully formed URL, return it as is
   if (path.startsWith('http://') || path.startsWith('https://')) {
     return path;
+  }
+  
+  // Check if this is an encoded URL that we need to decode first
+  if (path.includes('http%3A') || path.includes('https%3A')) {
+    try {
+      const decodedUrl = fullyDecodeUrl(path);
+      console.log('[normalizePathForDisplay] Decoded URL from encoded form:', decodedUrl);
+      return decodedUrl;
+    } catch (e) {
+      console.error('[normalizePathForDisplay] Failed to decode URL:', e);
+    }
   }
   
   // Remove any extra slashes at the beginning
