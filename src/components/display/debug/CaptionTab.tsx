@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PanelLeft } from "lucide-react";
 import { CaptionPosition } from '../types';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface CaptionTabProps {
   caption: string;
@@ -28,6 +29,23 @@ interface CaptionTabProps {
   insertAllMetadata: () => void;
 }
 
+const FONT_SIZES = [
+  '10px', '12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '36px', '48px'
+];
+
+const FONT_FAMILIES = [
+  'Arial, sans-serif',
+  'Helvetica, sans-serif',
+  'Times New Roman, serif',
+  'Georgia, serif',
+  'Courier New, monospace',
+  'Verdana, sans-serif',
+  'Tahoma, sans-serif',
+  'Trebuchet MS, sans-serif',
+  'Impact, sans-serif',
+  'Comic Sans MS, cursive'
+];
+
 export const CaptionTab: React.FC<CaptionTabProps> = ({
   caption,
   previewCaption,
@@ -46,6 +64,80 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
   setCaptionBgOpacity,
   insertAllMetadata
 }) => {
+  // Helper to handle color input changes with validation
+  const handleColorChange = (setter: (value: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/[^0-9a-fA-F]/g, '').substring(0, 6);
+    setter(value);
+  };
+
+  // Color picker component to reuse
+  const ColorPicker = ({ 
+    label, 
+    color, 
+    onChange, 
+    includeHash = false 
+  }: { 
+    label: string, 
+    color: string, 
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void,
+    includeHash?: boolean 
+  }) => {
+    const displayColor = includeHash ? color : `#${color}`;
+    const inputColor = includeHash ? color.replace('#', '') : color;
+    
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor={`caption-${label.toLowerCase()}-color`} className="text-sm">{label}</Label>
+          <div className="flex items-center space-x-2">
+            <div 
+              className="w-5 h-5 rounded-full border border-gray-300" 
+              style={{ backgroundColor: displayColor }}
+            />
+          </div>
+        </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="w-full justify-between">
+              <span>{displayColor}</span>
+              <div 
+                className="w-4 h-4 rounded-full border border-gray-300" 
+                style={{ backgroundColor: displayColor }}
+              />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64">
+            <div className="space-y-3">
+              <input 
+                type="color" 
+                value={displayColor}
+                onChange={(e) => {
+                  const newColor = e.target.value.substring(1);
+                  if (includeHash) {
+                    setCaptionBgColor(e.target.value);
+                  } else {
+                    setCaptionColor(newColor);
+                  }
+                }}
+                className="w-full h-8"
+              />
+              <div className="flex items-center">
+                <span className={includeHash ? "mr-1" : "hidden"}>#</span>
+                <Input
+                  id={`caption-${label.toLowerCase()}-color`}
+                  value={inputColor}
+                  onChange={onChange}
+                  placeholder="Hex color (without #)"
+                  maxLength={6}
+                />
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
+    );
+  };
+
   return (
     <CardContent className="pt-4 pb-2 overflow-y-auto max-h-[50vh]">
       <div className="space-y-4">
@@ -111,65 +203,56 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
           
           <div className="space-y-2">
             <Label htmlFor="caption-size" className="text-sm">Font Size</Label>
-            <Input 
-              id="caption-size"
-              value={captionSize}
-              onChange={(e) => setCaptionSize(e.target.value)}
-              placeholder="16px"
-            />
+            <Select 
+              value={captionSize} 
+              onValueChange={(value) => setCaptionSize(value)}
+            >
+              <SelectTrigger id="caption-size">
+                <SelectValue placeholder="Select font size" />
+              </SelectTrigger>
+              <SelectContent>
+                {FONT_SIZES.map(size => (
+                  <SelectItem key={size} value={size}>{size}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="caption-color" className="text-sm">Text Color</Label>
-              <div className="flex items-center space-x-2">
-                <div 
-                  className="w-3 h-3 rounded-full border" 
-                  style={{ backgroundColor: `#${captionColor}` }}
-                />
-              </div>
-            </div>
-            <Input 
-              id="caption-color"
-              value={captionColor}
-              onChange={(e) => setCaptionColor(e.target.value.replace(/[^0-9a-fA-F]/g, '').substring(0, 6))}
-              placeholder="Hex color (without #)"
-              maxLength={6}
-            />
-          </div>
+          <ColorPicker 
+            label="Text Color" 
+            color={captionColor}
+            onChange={handleColorChange(setCaptionColor)}
+          />
           
           <div className="space-y-2">
             <Label htmlFor="caption-font" className="text-sm">Font Family</Label>
-            <Input 
-              id="caption-font"
-              value={captionFont}
-              onChange={(e) => setCaptionFont(e.target.value)}
-              placeholder="Arial, sans-serif"
-            />
+            <Select 
+              value={captionFont} 
+              onValueChange={(value) => setCaptionFont(value)}
+            >
+              <SelectTrigger id="caption-font">
+                <SelectValue placeholder="Select font family" />
+              </SelectTrigger>
+              <SelectContent>
+                {FONT_FAMILIES.map(font => (
+                  <SelectItem key={font} value={font} style={{ fontFamily: font }}>
+                    {font.split(',')[0]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="caption-bg-color" className="text-sm">Background Color</Label>
-              <div className="flex items-center space-x-2">
-                <div 
-                  className="w-3 h-3 rounded-full border" 
-                  style={{ backgroundColor: captionBgColor }}
-                />
-              </div>
-            </div>
-            <Input 
-              id="caption-bg-color"
-              value={captionBgColor.replace('#', '')}
-              onChange={(e) => setCaptionBgColor('#' + e.target.value.replace(/[^0-9a-fA-F]/g, '').substring(0, 6))}
-              placeholder="Hex color (without #)"
-              maxLength={6}
-            />
-          </div>
+          <ColorPicker 
+            label="Background Color" 
+            color={captionBgColor}
+            onChange={(e) => setCaptionBgColor('#' + e.target.value)}
+            includeHash={true}
+          />
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
