@@ -8,6 +8,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import AdvancedOptionsContainer from '@/components/advanced/AdvancedOptionsContainer';
 import { useImageGeneration } from '@/hooks/image-generation/use-image-generation';
 import { useConsoleManagement } from '@/hooks/use-console-management';
+import workflowsData from '@/data/workflows.json';
 
 const Index = () => {
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
@@ -178,7 +179,7 @@ const Index = () => {
       <AdvancedOptionsContainer
         isOpen={advancedOptionsOpen}
         onOpenChange={handleAdvancedOptionsOpenChange}
-        workflows={[]}
+        workflows={workflowsData}
         selectedWorkflow={currentWorkflow}
         currentParams={currentParams}
         currentGlobalParams={currentGlobalParams}
