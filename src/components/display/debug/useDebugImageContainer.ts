@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { SCREEN_SIZES } from './ScreenSizeSelector';
 
@@ -7,7 +6,7 @@ export const useDebugImageContainer = () => {
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
-  const [containerPosition, setContainerPosition] = useState({ x: 400, y: 4 });
+  const [containerPosition, setContainerPosition] = useState({ x: 540, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -68,12 +67,18 @@ export const useDebugImageContainer = () => {
         const newX = Math.max(0, e.clientX - dragOffset.x);
         const newY = Math.max(0, e.clientY - dragOffset.y);
         
-        const maxX = window.innerWidth - containerSize.width;
-        const maxY = window.innerHeight - containerSize.height;
+        // Get container dimensions
+        const containerWidth = containerSize.width;
+        const containerHeight = containerSize.height;
         
+        // Calculate maximum positions to keep container on screen
+        const maxX = window.innerWidth - containerWidth;
+        const maxY = window.innerHeight - containerHeight;
+        
+        // Ensure container stays within viewport bounds
         setContainerPosition({ 
-          x: Math.min(newX, maxX), 
-          y: Math.min(newY, maxY) 
+          x: Math.min(Math.max(0, newX), maxX), 
+          y: Math.min(Math.max(0, newY), maxY) 
         });
       }
       
@@ -113,7 +118,7 @@ export const useDebugImageContainer = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragOffset, isResizing, resizeStart, containerPosition, viewportRatio]);
+  }, [isDragging, dragOffset, isResizing, resizeStart, containerPosition, viewportRatio, containerSize]);
 
   // Update container dimensions when screen size changes
   useEffect(() => {

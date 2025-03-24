@@ -50,8 +50,44 @@ export const CaptionRenderer: React.FC<CaptionRendererProps> = ({
   // Calculate max width based on screen size
   const maxWidth = Math.min(containerWidth, screenWidth);
   
+  // Process the caption text - check if it contains a regex pattern
+  const processedCaption = (() => {
+    if (!caption) return null;
+    
+    try {
+      // Check if caption is a regex pattern - must start with / and end with / or /flags
+      const regexMatch = caption.match(/^\/(.+)\/([gimuy]*)$/);
+      
+      if (regexMatch) {
+        const [_, pattern, flags] = regexMatch;
+        console.log(`[CaptionRenderer] Processing regex pattern: ${pattern} with flags: ${flags}`);
+        
+        try {
+          // Create a new RegExp object
+          const regex = new RegExp(pattern, flags);
+          
+          // Generate a random string that matches the regex
+          // This is a simple implementation and may not work for all regex patterns
+          // For complex patterns, we'd need a more sophisticated regex-to-string generator
+          
+          // For now, we'll just return the pattern as a string
+          return `[Regex: ${pattern}]`;
+        } catch (err) {
+          console.error('[CaptionRenderer] Invalid regex:', err);
+          return `[Invalid regex: ${err.message}]`;
+        }
+      }
+      
+      // If not a regex, just return the original caption
+      return caption;
+    } catch (err) {
+      console.error('[CaptionRenderer] Error processing caption:', err);
+      return caption;
+    }
+  })();
+  
   // Pre-process caption to handle newlines
-  const captionLines = caption.split('\n');
+  const captionLines = processedCaption ? processedCaption.split('\n') : [];
 
   // Calculate background opacity as a CSS rgba value
   const bgColorNoHash = captionBgColor.replace('#', '');

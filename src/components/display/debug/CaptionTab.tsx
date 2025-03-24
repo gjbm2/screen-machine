@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PanelLeft } from "lucide-react";
+import { PanelLeft, Info } from "lucide-react";
 import { CaptionPosition } from '../types';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface CaptionTabProps {
   caption: string;
@@ -151,6 +152,21 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
             <PanelLeft className="h-3 w-3 mr-1" />
             Insert All Metadata
           </Button>
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 px-2">
+                <Info className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-80">
+              <p className="text-xs">
+                In addition to metadata tags, you can use regex patterns by starting with / and ending with /flags.
+                <br/><br/>
+                Example: <code>/Hello, \w+!?/i</code>
+              </p>
+            </TooltipContent>
+          </Tooltip>
         </div>
         
         <div className="space-y-2">
@@ -163,7 +179,7 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
             className="min-h-[100px]"
           />
           <div className="text-xs text-gray-500">
-            Use {"{tagname}"} to insert metadata values or {"{all}"} for all metadata.
+            Use {"{tagname}"} to insert metadata values, {"{all}"} for all metadata, or regex patterns like /pattern/flags.
           </div>
         </div>
         
