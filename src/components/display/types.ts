@@ -1,3 +1,4 @@
+
 export type ShowMode = 'fit' | 'fill' | 'actual' | 'stretch';
 export type PositionMode = 'top-left' | 'top-center' | 'top-right' | 'center-left' | 'center' | 'center-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
 export type CaptionPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';

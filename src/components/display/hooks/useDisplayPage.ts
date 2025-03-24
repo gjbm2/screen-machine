@@ -23,6 +23,8 @@ export const useDisplayPage = () => {
     captionSize: searchParams.get('caption-size') || '16px',
     captionColor: searchParams.get('caption-color') || 'ffffff',
     captionFont: searchParams.get('caption-font') ? decodeURIComponent(searchParams.get('caption-font') || '') : 'Arial, sans-serif',
+    captionBgColor: searchParams.get('caption-bg-color') || '#000000',
+    captionBgOpacity: searchParams.get('caption-bg-opacity') ? parseFloat(searchParams.get('caption-bg-opacity') || '0.7') : 0.7,
     transition: searchParams.get('transition') as DisplayParams['transition'] || 'cut',
   };
 
