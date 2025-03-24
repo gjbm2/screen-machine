@@ -1,29 +1,11 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AspectRatio } from "@/components/ui/aspect-ratio";
-import { ShowMode, PositionMode, CaptionPosition } from './types';
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { RefreshCw, Move, MoveDiagonal } from "lucide-react";
-import { processCaptionWithMetadata } from './utils';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
+import React from 'react';
+import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
-
-const SCREEN_SIZES = [
-  { name: 'Current Viewport', width: window.innerWidth, height: window.innerHeight },
-  { name: 'HD (1280x720)', width: 1280, height: 720 },
-  { name: 'HD Portrait (720x1280)', width: 720, height: 1280 },
-  { name: 'Full HD (1920x1080)', width: 1920, height: 1080 },
-  { name: 'Full HD Portrait (1080x1920)', width: 1080, height: 1920 },
-  { name: '4K UHD (3840x2160)', width: 3840, height: 2160 },
-  { name: '4K UHD Portrait (2160x3840)', width: 2160, height: 3840 },
-  { name: 'iPad (768x1024)', width: 768, height: 1024 },
-  { name: 'iPad Landscape (1024x768)', width: 1024, height: 768 },
-  { name: 'iPhone (375x667)', width: 375, height: 667 },
-  { name: 'iPhone Landscape (667x375)', width: 667, height: 375 },
-];
+import { ShowMode, PositionMode, CaptionPosition } from './types';
+import { useDebugImageContainer } from './debug/useDebugImageContainer';
+import { DebugImageHeader } from './debug/DebugImageHeader';
+import { DebugImageContent } from './debug/DebugImageContent';
 
 interface DebugImageContainerProps {
   imageUrl: string | null;
@@ -65,313 +47,27 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   onSettingsChange
 }) => {
   const navigate = useNavigate();
-  const [selectedScreenSize, setSelectedScreenSize] = useState('Current Viewport');
-  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [containerHeight, setContainerHeight] = useState(0);
   
-  const [containerPosition, setContainerPosition] = useState({ x: window.innerWidth / 2 - 300, y: 200 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const containerRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  
-  const [containerSize, setContainerSize] = useState({ width: 600, height: 400 });
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
-  
-  const selectedSize = SCREEN_SIZES.find(size => size.name === selectedScreenSize) || SCREEN_SIZES[0];
-  const viewportRatio = selectedSize.width / selectedSize.height;
-  
-  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
-    setImageDimensions({
-      width: img.naturalWidth,
-      height: img.naturalHeight
-    });
-  };
-  
-  useEffect(() => {
-    if (contentRef.current) {
-      const rect = contentRef.current.getBoundingClientRect();
-      setContainerWidth(rect.width);
-      setContainerHeight(rect.height);
-    }
-  }, [containerSize, selectedScreenSize]);
+  const {
+    selectedScreenSize,
+    setSelectedScreenSize,
+    imageDimensions,
+    containerWidth,
+    containerHeight,
+    containerPosition,
+    isDragging,
+    containerRef,
+    contentRef,
+    containerSize,
+    selectedSize,
+    viewportRatio,
+    handleImageLoad,
+    handleMouseDown,
+    handleResizeStart
+  } = useDebugImageContainer();
   
   const handleReset = () => {
     navigate('/display');
-  };
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target instanceof Element && e.target.closest('.card-header-drag-handle')) {
-      setIsDragging(true);
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (rect) {
-        setDragOffset({
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top
-        });
-      }
-    }
-  };
-
-  const handleMouseMove = (e: MouseEvent) => {
-    if (isDragging) {
-      const newX = e.clientX - dragOffset.x;
-      const newY = e.clientY - dragOffset.y;
-      setContainerPosition({ x: newX, y: newY });
-    }
-    
-    if (isResizing) {
-      const newWidth = Math.max(300, resizeStart.width + (e.clientX - resizeStart.x));
-      const newHeight = Math.max(200, resizeStart.height + (e.clientY - resizeStart.y));
-      setContainerSize({ width: newWidth, height: newHeight });
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-    setIsResizing(false);
-  };
-  
-  const handleResizeStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    setIsResizing(true);
-    setResizeStart({
-      x: e.clientX,
-      y: e.clientY,
-      width: containerSize.width,
-      height: containerSize.height
-    });
-  };
-
-  useEffect(() => {
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging, dragOffset, isResizing, resizeStart]);
-  
-  const getPositioningStyles = (pos: PositionMode, mode: ShowMode): React.CSSProperties => {
-    let styles: React.CSSProperties = {
-      position: 'absolute',
-    };
-    
-    if (mode === 'actual' && imageDimensions.width > 0 && imageDimensions.height > 0) {
-      const screenWidth = selectedSize.width;
-      const screenHeight = selectedSize.height;
-      
-      styles.width = `${imageDimensions.width}px`;
-      styles.height = `${imageDimensions.height}px`;
-      styles.objectFit = 'none';
-      
-      switch(pos) {
-        case 'top-left':
-          styles.top = '0';
-          styles.left = '0';
-          break;
-        case 'top-center':
-          styles.top = '0';
-          styles.left = '50%';
-          styles.transform = 'translateX(-50%)';
-          break;
-        case 'top-right':
-          styles.top = '0';
-          styles.right = '0';
-          break;
-        case 'center-left':
-          styles.top = '50%';
-          styles.left = '0';
-          styles.transform = 'translateY(-50%)';
-          break;
-        case 'center':
-          styles.top = '50%';
-          styles.left = '50%';
-          styles.transform = 'translate(-50%, -50%)';
-          break;
-        case 'center-right':
-          styles.top = '50%';
-          styles.right = '0';
-          styles.transform = 'translateY(-50%)';
-          break;
-        case 'bottom-left':
-          styles.bottom = '0';
-          styles.left = '0';
-          break;
-        case 'bottom-center':
-          styles.bottom = '0';
-          styles.left = '50%';
-          styles.transform = 'translateX(-50%)';
-          break;
-        case 'bottom-right':
-          styles.bottom = '0';
-          styles.right = '0';
-          break;
-        default:
-          styles.top = '50%';
-          styles.left = '50%';
-          styles.transform = 'translate(-50%, -50%)';
-      }
-      
-      return styles;
-    }
-    
-    switch (mode) {
-      case 'fill':
-        styles = {
-          ...styles,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-        };
-        break;
-      
-      case 'fit':
-        styles = {
-          ...styles,
-          maxWidth: '100%',
-          maxHeight: '100%',
-          width: 'auto',
-          height: 'auto',
-          objectFit: 'contain',
-        };
-        break;
-      
-      case 'stretch':
-        styles = {
-          ...styles,
-          width: '100%',
-          height: '100%',
-          objectFit: 'fill',
-        };
-        break;
-      
-      default:
-        styles = {
-          ...styles,
-          maxWidth: '100%',
-          maxHeight: '100%',
-          objectFit: 'contain',
-        };
-    }
-    
-    switch(pos) {
-      case 'top-left':
-        styles.top = '0';
-        styles.left = '0';
-        break;
-      case 'top-center':
-        styles.top = '0';
-        styles.left = '50%';
-        styles.transform = 'translateX(-50%)';
-        break;
-      case 'top-right':
-        styles.top = '0';
-        styles.right = '0';
-        break;
-      case 'center-left':
-        styles.top = '50%';
-        styles.left = '0';
-        styles.transform = 'translateY(-50%)';
-        break;
-      case 'center':
-        styles.top = '50%';
-        styles.left = '50%';
-        styles.transform = 'translate(-50%, -50%)';
-        break;
-      case 'center-right':
-        styles.top = '50%';
-        styles.right = '0';
-        styles.transform = 'translateY(-50%)';
-        break;
-      case 'bottom-left':
-        styles.bottom = '0';
-        styles.left = '0';
-        break;
-      case 'bottom-center':
-        styles.bottom = '0';
-        styles.left = '50%';
-        styles.transform = 'translateX(-50%)';
-        break;
-      case 'bottom-right':
-        styles.bottom = '0';
-        styles.right = '0';
-        break;
-      default:
-        styles.top = '50%';
-        styles.left = '50%';
-        styles.transform = 'translate(-50%, -50%)';
-    }
-    
-    return styles;
-  };
-
-  const getCaptionScaledFontSize = (baseSize: string) => {
-    const matches = baseSize.match(/^(\d+(?:\.\d+)?)([a-z%]+)?$/i);
-    if (!matches) return baseSize;
-    
-    const size = parseFloat(matches[1]);
-    const unit = matches[2] || 'px';
-    
-    const screenWidth = selectedSize.width;
-    const scaleFactor = containerWidth / screenWidth;
-    
-    const scaledSize = Math.max(8, Math.min(32, size * scaleFactor));
-    
-    return `${scaledSize}${unit}`;
-  };
-
-  const getCaptionStyles = (): React.CSSProperties => {
-    const scaledFontSize = getCaptionScaledFontSize(captionSize);
-    
-    // Calculate background opacity - convert to hex
-    const bgOpacityHex = Math.round((captionBgOpacity || 0.7) * 255).toString(16).padStart(2, '0');
-    const bgColor = `${captionBgColor}${bgOpacityHex}`;
-    
-    const styles: React.CSSProperties = {
-      position: 'absolute',
-      padding: '8px 16px',
-      backgroundColor: bgColor,
-      color: `#${captionColor}`,
-      fontSize: scaledFontSize,
-      fontFamily: captionFont,
-      maxWidth: '80%',
-      textAlign: 'center',
-      borderRadius: '4px',
-      zIndex: 10,
-      whiteSpace: caption?.includes('\n') ? 'pre-line' : 'normal',
-    };
-    
-    if (captionPosition?.includes('top')) {
-      styles.top = '10px';
-    } else if (captionPosition?.includes('bottom')) {
-      styles.bottom = '10px';
-    } else {
-      styles.top = '50%';
-      styles.transform = 'translateY(-50%)';
-    }
-    
-    if (captionPosition?.includes('left')) {
-      styles.left = '10px';
-    } else if (captionPosition?.includes('right')) {
-      styles.right = '10px';
-    } else {
-      styles.left = '50%';
-      styles.transform = captionPosition === 'bottom-center' || captionPosition === 'top-center' ? 
-        'translateX(-50%)' : styles.transform || 'none';
-      
-      if (captionPosition && !captionPosition.includes('-')) {
-        styles.transform = 'translate(-50%, -50%)';
-      }
-    }
-    
-    return styles;
   };
 
   return (
@@ -388,102 +84,39 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       }}
       onMouseDown={handleMouseDown}
     >
-      <CardHeader className="pb-2 flex flex-row justify-between items-center card-header-drag-handle cursor-grab">
-        <div className="flex items-center">
-          <Move className="h-4 w-4 text-muted-foreground mr-2" />
-          <CardTitle className="text-lg">Image Preview ({showMode} mode, {position} position)</CardTitle>
-        </div>
-        
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <Label htmlFor="screen-size" className="text-sm">Screen Size:</Label>
-            <Select 
-              value={selectedScreenSize} 
-              onValueChange={(val) => {
-                setSelectedScreenSize(val);
-                if (onSettingsChange) onSettingsChange();
-              }}
-            >
-              <SelectTrigger id="screen-size" className="w-[180px]">
-                <SelectValue placeholder="Select screen size" />
-              </SelectTrigger>
-              <SelectContent>
-                {SCREEN_SIZES.map((size) => (
-                  <SelectItem key={size.name} value={size.name}>
-                    {size.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleReset}
-          >
-            Reset
-          </Button>
-          
-          {imageChanged && (
-            <Alert variant="default" className="py-2 border-amber-500 bg-amber-50">
-              <RefreshCw className="h-4 w-4 text-amber-500 mr-2 animate-spin" />
-              <AlertDescription className="text-amber-600">
-                Image has been updated on the server
-              </AlertDescription>
-            </Alert>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="overflow-hidden p-0 relative">
-        <AspectRatio 
-          ratio={viewportRatio} 
-          className="overflow-hidden"
-          ref={contentRef}
-        >
-          <div 
-            className="w-full h-full relative flex items-center justify-center"
-            style={{ backgroundColor: `#${backgroundColor}` }}
-          >
-            {imageUrl && (
-              <>
-                <img
-                  key={imageKey}
-                  ref={imageRef}
-                  src={imageUrl}
-                  alt=""
-                  style={getPositioningStyles(position, showMode)}
-                  onError={onImageError}
-                  onLoad={handleImageLoad}
-                />
-                
-                {caption && (
-                  <div style={getCaptionStyles()}>
-                    {caption}
-                  </div>
-                )}
-              </>
-            )}
-            {!imageUrl && (
-              <div className="text-center p-4 text-gray-500">
-                <p>No image selected</p>
-                <p className="text-sm mt-2">Select an image from the available files list or enter a custom URL</p>
-              </div>
-            )}
-          </div>
-        </AspectRatio>
-        
-        <div
-          className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize z-20 flex items-center justify-center"
-          onMouseDown={handleResizeStart}
-        >
-          <MoveDiagonal className="h-4 w-4 text-gray-400" />
-        </div>
-        
-        <div className="text-xs text-gray-500 mt-2 pl-4 pb-2">
-          Preview dimensions: {selectedSize.width}×{selectedSize.height}
-        </div>
-      </CardContent>
+      <DebugImageHeader
+        showMode={showMode}
+        position={position}
+        selectedScreenSize={selectedScreenSize}
+        setSelectedScreenSize={setSelectedScreenSize}
+        imageChanged={imageChanged}
+        onSettingsChange={onSettingsChange}
+        onReset={handleReset}
+      />
+      
+      <DebugImageContent
+        imageUrl={imageUrl}
+        imageKey={imageKey}
+        showMode={showMode}
+        position={position}
+        backgroundColor={backgroundColor}
+        caption={caption}
+        captionPosition={captionPosition}
+        captionSize={captionSize}
+        captionColor={captionColor}
+        captionFont={captionFont}
+        captionBgColor={captionBgColor}
+        captionBgOpacity={captionBgOpacity}
+        contentRef={contentRef}
+        containerWidth={containerWidth}
+        onImageError={onImageError}
+        onImageLoad={handleImageLoad}
+        imageDimensions={imageDimensions}
+        imageRef={imageRef}
+        viewportRatio={viewportRatio}
+        selectedSize={selectedSize}
+        onResizeStart={handleResizeStart}
+      />
     </Card>
   );
 };
