@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { ShowMode, PositionMode, CaptionPosition } from './types';
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { RefreshCw, Move, CornerRightDown } from "lucide-react";
+import { RefreshCw, Move, MoveDiagonal } from "lucide-react";
 import { processCaptionWithMetadata } from './utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -166,26 +166,52 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       styles.height = `${imageDimensions.height}px`;
       styles.objectFit = 'none';
       
-      if (pos.includes('top')) {
-        styles.top = '0';
-      } else if (pos.includes('bottom')) {
-        styles.bottom = '0';
-      } else {
-        styles.top = '50%';
-        styles.transform = styles.transform ? styles.transform + ' translateY(-50%)' : 'translateY(-50%)';
-      }
-      
-      if (pos.includes('left')) {
-        styles.left = '0';
-      } else if (pos.includes('right')) {
-        styles.right = '0';
-      } else {
-        styles.left = '50%';
-        styles.transform = styles.transform ? styles.transform.replace('translateY', 'translate') : 'translateX(-50%)';
-      }
-      
-      if (pos === 'center') {
-        styles.transform = 'translate(-50%, -50%)';
+      switch(pos) {
+        case 'top-left':
+          styles.top = '0';
+          styles.left = '0';
+          break;
+        case 'top-center':
+          styles.top = '0';
+          styles.left = '50%';
+          styles.transform = 'translateX(-50%)';
+          break;
+        case 'top-right':
+          styles.top = '0';
+          styles.right = '0';
+          break;
+        case 'center-left':
+          styles.top = '50%';
+          styles.left = '0';
+          styles.transform = 'translateY(-50%)';
+          break;
+        case 'center':
+          styles.top = '50%';
+          styles.left = '50%';
+          styles.transform = 'translate(-50%, -50%)';
+          break;
+        case 'center-right':
+          styles.top = '50%';
+          styles.right = '0';
+          styles.transform = 'translateY(-50%)';
+          break;
+        case 'bottom-left':
+          styles.bottom = '0';
+          styles.left = '0';
+          break;
+        case 'bottom-center':
+          styles.bottom = '0';
+          styles.left = '50%';
+          styles.transform = 'translateX(-50%)';
+          break;
+        case 'bottom-right':
+          styles.bottom = '0';
+          styles.right = '0';
+          break;
+        default:
+          styles.top = '50%';
+          styles.left = '50%';
+          styles.transform = 'translate(-50%, -50%)';
       }
       
       return styles;
@@ -206,6 +232,8 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
           ...styles,
           maxWidth: '100%',
           maxHeight: '100%',
+          width: 'auto',
+          height: 'auto',
           objectFit: 'contain',
         };
         break;
@@ -228,27 +256,52 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         };
     }
     
-    if (pos.includes('top')) {
-      styles.top = '0';
-    } else if (pos.includes('bottom')) {
-      styles.bottom = '0';
-    } else {
-      styles.top = '50%';
-      styles.transform = 'translateY(-50%)';
-    }
-    
-    if (pos.includes('left')) {
-      styles.left = '0';
-    } else if (pos.includes('right')) {
-      styles.right = '0';
-    } else {
-      styles.left = '50%';
-      styles.transform = captionPosition === 'bottom-center' || captionPosition === 'top-center' ? 
-        'translateX(-50%)' : styles.transform || 'none';
-      
-      if (captionPosition && !captionPosition.includes('-')) {
+    switch(pos) {
+      case 'top-left':
+        styles.top = '0';
+        styles.left = '0';
+        break;
+      case 'top-center':
+        styles.top = '0';
+        styles.left = '50%';
+        styles.transform = 'translateX(-50%)';
+        break;
+      case 'top-right':
+        styles.top = '0';
+        styles.right = '0';
+        break;
+      case 'center-left':
+        styles.top = '50%';
+        styles.left = '0';
+        styles.transform = 'translateY(-50%)';
+        break;
+      case 'center':
+        styles.top = '50%';
+        styles.left = '50%';
         styles.transform = 'translate(-50%, -50%)';
-      }
+        break;
+      case 'center-right':
+        styles.top = '50%';
+        styles.right = '0';
+        styles.transform = 'translateY(-50%)';
+        break;
+      case 'bottom-left':
+        styles.bottom = '0';
+        styles.left = '0';
+        break;
+      case 'bottom-center':
+        styles.bottom = '0';
+        styles.left = '50%';
+        styles.transform = 'translateX(-50%)';
+        break;
+      case 'bottom-right':
+        styles.bottom = '0';
+        styles.right = '0';
+        break;
+      default:
+        styles.top = '50%';
+        styles.left = '50%';
+        styles.transform = 'translate(-50%, -50%)';
     }
     
     return styles;
@@ -322,7 +375,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         width: `${containerSize.width}px`,
         height: `${containerSize.height}px`,
         cursor: isDragging ? 'grabbing' : 'grab',
-        resize: 'both'
+        resize: 'none'
       }}
       onMouseDown={handleMouseDown}
     >
@@ -415,7 +468,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
           className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize z-20 flex items-center justify-center"
           onMouseDown={handleResizeStart}
         >
-          <CornerRightDown className="h-4 w-4 text-gray-400" />
+          <MoveDiagonal className="h-4 w-4 text-gray-400" />
         </div>
         
         <div className="text-xs text-gray-500 mt-2 pl-4 pb-2">

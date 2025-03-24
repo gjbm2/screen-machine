@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { RefreshCw, Clock, Info, Copy, Check, Clipboard, FileImage, Settings, Image as ImageIcon, Eye, Tag, Database, Type, PanelLeft, Move } from "lucide-react";
+import { RefreshCw, Clock, Info, Copy, Check, Clipboard, FileImage, Settings, Image as ImageIcon, Eye, Tag, Database, Type, PanelLeft, Move, MoveHorizontal, MoveVertical, MoveUp, MoveDown, MoveRight, MoveLeft, MoveDiagonal } from "lucide-react";
 import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from './types';
 import { createUrlWithParams } from './utils';
 import { useNavigate } from 'react-router-dom';
@@ -296,16 +296,44 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     }
   };
 
+  // Add resize state
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [panelSize, setPanelSize] = useState({ width: 480, height: 'auto' });
+  
+  // Update handleMouseMove to handle resizing as well
   const handleMouseMove = (e: MouseEvent) => {
     if (isDragging) {
       const newX = e.clientX - dragOffset.x;
       const newY = e.clientY - dragOffset.y;
       setPosition2({ x: newX, y: newY });
     }
+    
+    if (isResizing) {
+      const newWidth = Math.max(300, resizeStart.width + (e.clientX - resizeStart.x));
+      const newHeight = Math.max(400, resizeStart.height + (e.clientY - resizeStart.y));
+      setPanelSize({ width: newWidth, height: newHeight });
+    }
   };
 
+  // Update handleMouseUp to handle resizing as well
   const handleMouseUp = () => {
     setIsDragging(false);
+    setIsResizing(false);
+  };
+
+  // Handle resize start
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setIsResizing(true);
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      width: panelRef.current?.offsetWidth || 480,
+      height: panelRef.current?.offsetHeight || 600
+    });
   };
 
   // Set up global mouse event listeners
@@ -317,7 +345,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragOffset]);
+  }, [isDragging, dragOffset, isResizing, resizeStart]);
 
   // Notify parent of setting changes for live preview
   const notifySettingChange = () => {
@@ -328,11 +356,15 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   return (
     <Card 
       ref={panelRef}
-      className="w-1/3 max-w-md absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg"
+      className="absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg"
       style={{ 
         left: `${position2.x}px`, 
         top: `${position2.y}px`,
-        cursor: isDragging ? 'grabbing' : 'auto'
+        width: `${panelSize.width}px`,
+        height: panelSize.height,
+        cursor: isDragging ? 'grabbing' : 'auto',
+        resize: 'none', // We'll handle resizing ourselves
+        position: 'absolute'
       }}
       onMouseDown={handleMouseDown}
     >
@@ -766,6 +798,14 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
           </Button>
         </div>
       </CardFooter>
+      
+      {/* Resize handle */}
+      <div
+        className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize z-20 flex items-center justify-center"
+        onMouseDown={handleResizeStart}
+      >
+        <MoveDiagonal className="h-4 w-4 text-gray-400" />
+      </div>
     </Card>
   );
 };

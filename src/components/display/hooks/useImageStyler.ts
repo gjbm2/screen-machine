@@ -22,6 +22,8 @@ export const useImageStyler = () => {
         baseStyle = {
           maxWidth: '100%',
           maxHeight: '100%',
+          width: 'auto', // Add explicit width auto
+          height: 'auto', // Add explicit height auto
           objectFit: 'contain',
         };
         break;
@@ -61,28 +63,74 @@ export const useImageStyler = () => {
         };
     }
     
-    // Apply position
+    // Apply position - refactored for clarity and correctness
     switch (position) {
       case 'top-left':
         return { ...baseStyle, ...positionStyle, top: 0, left: 0 };
+        
       case 'top-center':
-        return { ...baseStyle, ...positionStyle, top: 0, left: '50%', transform: 'translateX(-50%)' };
+        return { 
+          ...baseStyle, 
+          ...positionStyle, 
+          top: 0, 
+          left: '50%', 
+          transform: 'translateX(-50%)'
+        };
+        
       case 'top-right':
         return { ...baseStyle, ...positionStyle, top: 0, right: 0 };
+        
       case 'center-left':
-        return { ...baseStyle, ...positionStyle, top: '50%', left: 0, transform: 'translateY(-50%)' };
+        return { 
+          ...baseStyle, 
+          ...positionStyle, 
+          top: '50%', 
+          left: 0, 
+          transform: 'translateY(-50%)'
+        };
+        
       case 'center':
-        return { ...baseStyle, ...positionStyle, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+        return { 
+          ...baseStyle, 
+          ...positionStyle, 
+          top: '50%', 
+          left: '50%', 
+          transform: 'translate(-50%, -50%)'
+        };
+        
       case 'center-right':
-        return { ...baseStyle, ...positionStyle, top: '50%', right: 0, transform: 'translateY(-50%)' };
+        return { 
+          ...baseStyle, 
+          ...positionStyle, 
+          top: '50%', 
+          right: 0, 
+          transform: 'translateY(-50%)'
+        };
+        
       case 'bottom-left':
         return { ...baseStyle, ...positionStyle, bottom: 0, left: 0 };
+        
       case 'bottom-center':
-        return { ...baseStyle, ...positionStyle, bottom: 0, left: '50%', transform: 'translateX(-50%)' };
+        return { 
+          ...baseStyle, 
+          ...positionStyle, 
+          bottom: 0, 
+          left: '50%', 
+          transform: 'translateX(-50%)'
+        };
+        
       case 'bottom-right':
         return { ...baseStyle, ...positionStyle, bottom: 0, right: 0 };
+        
       default:
-        return { ...baseStyle, ...positionStyle, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+        // Default to center if position is not recognized
+        return { 
+          ...baseStyle, 
+          ...positionStyle, 
+          top: '50%', 
+          left: '50%', 
+          transform: 'translate(-50%, -50%)'
+        };
     }
   };
 
