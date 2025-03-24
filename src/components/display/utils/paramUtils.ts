@@ -11,10 +11,19 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   
   // Process the output parameter if it exists
   if (params.output) {
-    // Ensure it's properly formatted for URL parameter use
-    const processedOutput = processOutputParam(params.output);
-    console.log('[paramUtils] Processed output for URL:', processedOutput);
-    queryParams.set('output', processedOutput || '');
+    // For complex URLs with query parameters, we need to ensure they're properly encoded
+    // to avoid breaking the URL structure
+    if (params.output.includes('?') && (params.output.startsWith('http://') || params.output.startsWith('https://'))) {
+      // For URLs with query params, we need to ensure they're properly encoded
+      const encodedOutput = encodeURIComponent(params.output);
+      console.log('[paramUtils] Encoded complex URL for param use:', encodedOutput);
+      queryParams.set('output', encodedOutput);
+    } else {
+      // For simpler URLs or paths, process normally
+      const processedOutput = processOutputParam(params.output);
+      console.log('[paramUtils] Processed output for URL:', processedOutput);
+      queryParams.set('output', processedOutput || '');
+    }
   }
   
   if (params.showMode !== 'fit') queryParams.set('show', params.showMode);
@@ -80,6 +89,12 @@ export const processOutputParam = (output: string | null): string | null => {
   
   console.log('[processOutputParam] Processing output param:', output);
   
+  // Handle complex URLs with query parameters specially
+  if (output.includes('?') && (output.startsWith('http://') || output.startsWith('https://'))) {
+    console.log('[processOutputParam] Detected complex URL with query params, preserving as-is');
+    return output; // Return complex URLs as-is to avoid breaking query parameters
+  }
+  
   // First, we need to ensure we handle URLs and relative paths consistently
   try {
     // Check if it's a valid URL
@@ -129,4 +144,21 @@ export const normalizePathForDisplay = (path: string): string => {
   
   console.log('[normalizePathForDisplay] Normalized path:', normalizedPath);
   return normalizedPath;
+};
+
+// New helper function to handle decoding of complex URLs from URL parameters
+export const decodeComplexOutputParam = (output: string | null): string | null => {
+  if (!output) return null;
+  
+  try {
+    // If the output looks like an encoded URL, decode it
+    if (output.includes('%3A%2F%2F')) {
+      console.log('[decodeComplexOutputParam] Decoding encoded URL:', output);
+      return decodeURIComponent(output);
+    }
+    return output;
+  } catch (error) {
+    console.error('[decodeComplexOutputParam] Error decoding URL:', error);
+    return output;
+  }
 };
