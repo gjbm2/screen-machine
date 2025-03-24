@@ -34,3 +34,29 @@ export interface RefinerProps {
   description?: string;
   icon?: string;
 }
+
+// Add missing type for ImagePreviewSection
+export interface ImagePreviewSectionProps {
+  previewUrls: string[];
+  handleRemoveImage: (index: number) => void;
+  clearAllImages: () => void;
+}
+
+// Add missing type for ToolbarProps
+export interface ToolbarProps {
+  isLoading: boolean;
+  selectedWorkflow: string;
+  selectedRefiner: string;
+  selectedPublish: string;
+  onImageUpload: (files: File[]) => void;
+  onWorkflowChange: (workflow: string) => void;
+  onRefinerChange: (refiner: string) => void;
+  onPublishChange: (publish: string) => void;
+  toggleAdvancedOptions: () => void;
+  handleSubmit: () => void;
+  prompt: string;
+  isButtonDisabled: boolean;
+  workflows: WorkflowProps[];
+  isCompact: boolean;
+  hasUploadedImages?: boolean;
+}
