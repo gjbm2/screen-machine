@@ -105,7 +105,7 @@ export const useDisplayPage = () => {
     const result = await imagePollerHandleManualCheck(imageUrl, originalHandleManualCheck, params);
     
     // If there's a new image loaded, extract metadata
-    if (result && result.newImageLoaded && imageUrl) {
+    if (result && imageUrl) {
       console.log('[useDisplayPage] New image loaded after manual check, extracting metadata');
       await extractMetadataFromImage(imageUrl);
     }
