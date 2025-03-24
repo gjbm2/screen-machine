@@ -14,9 +14,12 @@ export const useDebugPanelFileSelector = ({
 }: UseDebugPanelFileSelectorProps) => {
   
   // Create a callback to handle file selection
+  // Ensure it returns a function to match the expected type in useDebugPanel
   const selectFileHandler = useCallback((file: string) => {
-    console.log('[useDebugPanelFileSelector] Selecting file:', file);
-    selectFile(file);
+    return () => {
+      console.log('[useDebugPanelFileSelector] Selecting file:', file);
+      selectFile(file);
+    };
   }, [selectFile]);
   
   // Create a callback to check if a file is currently selected

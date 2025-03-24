@@ -13,7 +13,7 @@ export const useDebugPanelFileManagement = ({
 }: UseDebugPanelFileManagementProps) => {
   const navigate = useNavigate();
 
-  // Updated to return a function that directly selects the file
+  // Updated to ensure it matches the type FilesTab.tsx expects
   const selectFile = (file: string) => {
     console.log('[useDebugPanelFileManagement] Selected file:', file);
     

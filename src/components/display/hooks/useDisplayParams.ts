@@ -1,78 +1,50 @@
-
-import { useEffect, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from '../types';
-import { createUrlWithParams, getDefaultParams, decodeComplexOutputParam } from '../utils';
+import { useCallback } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { DisplayParams } from '../types';
+import { decodeComplexOutputParam, processOutputParam } from '../utils/paramUtils';
+import { getDefaultParams } from '../utils/defaultParams';
 
 export const useDisplayParams = () => {
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const redirectAttemptedRef = useRef(false);
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   
-  const parseBooleanParam = (value: string | null): boolean => 
-    value === 'true' || value === '1';
+  // Function to safely get a parameter from the URL
+  const getParam = useCallback((key: string, defaultValue: string | null = null): string | null => {
+    const paramValue = searchParams.get(key);
+    return paramValue !== null ? paramValue : defaultValue;
+  }, [searchParams]);
   
-  const parseFloatParam = (value: string | null, defaultValue: number): number => {
-    if (!value) return defaultValue;
-    const parsed = parseFloat(value);
-    return isNaN(parsed) ? defaultValue : parsed;
-  };
-  
-  const defaultParams = getDefaultParams();
-  
-  const params: DisplayParams = {
-    // Standard decoding of the output parameter
-    output: searchParams.has('output') ? decodeComplexOutputParam(searchParams.get('output')) : null,
-    showMode: (searchParams.get('show') as ShowMode) || defaultParams.showMode,
-    position: (searchParams.get('position') as PositionMode) || defaultParams.position,
-    refreshInterval: parseFloatParam(searchParams.get('refresh'), defaultParams.refreshInterval),
-    backgroundColor: searchParams.get('background') || defaultParams.backgroundColor,
-    debugMode: parseBooleanParam(searchParams.get('debug')),
-    caption: searchParams.get('caption') || null,
-    captionPosition: (searchParams.get('caption-position') as CaptionPosition) || defaultParams.captionPosition,
-    captionSize: searchParams.get('caption-size') || defaultParams.captionSize,
-    captionColor: searchParams.get('caption-color') || defaultParams.captionColor,
-    captionFont: searchParams.get('caption-font') || defaultParams.captionFont,
-    captionBgColor: searchParams.get('caption-bg-color') ? 
-                    `#${searchParams.get('caption-bg-color')}` : 
-                    defaultParams.captionBgColor,
-    captionBgOpacity: parseFloatParam(searchParams.get('caption-bg-opacity'), defaultParams.captionBgOpacity),
-    transition: (searchParams.get('transition') as TransitionType) || defaultParams.transition,
-  };
-  
-  if (searchParams.has('data')) {
-    try {
-      params.data = JSON.parse(searchParams.get('data') || '{}');
-    } catch (e) {
-      console.error('Failed to parse data parameter:', e);
-      params.data = { error: 'Failed to parse data' };
+  // Function to update a parameter in the URL
+  const updateParam = useCallback((key: string, value: string | null) => {
+    if (value) {
+      searchParams.set(key, value);
+    } else {
+      searchParams.delete(key);
     }
-  }
-
-  const hasAnyParams = searchParams.toString().length > 0;
-  if (!hasAnyParams) {
-    params.debugMode = true;
-    console.log('[useDisplayParams] No parameters provided, enabling debug mode automatically');
-  }
+    setSearchParams(searchParams);
+  }, [searchParams, setSearchParams]);
   
-  const redirectToDebugMode = () => {
-    if (redirectAttemptedRef.current || params.debugMode || !params.output) {
-      return;
-    }
-    
-    redirectAttemptedRef.current = true;
-    
-    if (searchParams.has('debug') && parseBooleanParam(searchParams.get('debug'))) {
-      const newParams = { ...params, debugMode: true };
-      const newUrl = createUrlWithParams(newParams);
-      
-      console.log('[useDisplayParams] Redirecting to debug mode:', newUrl);
-      navigate(newUrl, { replace: true });
-    }
+  // Construct the display parameters from the URL
+  const displayParams: DisplayParams = {
+    output: decodeComplexOutputParam(getParam('output', null)),
+    showMode: getParam('showMode', 'contain') as DisplayParams['showMode'],
+    position: getParam('position', 'center') as DisplayParams['position'],
+    refreshInterval: parseInt(getParam('refreshInterval', '0') || '0', 10),
+    backgroundColor: getParam('backgroundColor', '#000000') || '#000000',
+    caption: decodeComplexOutputParam(getParam('caption', null)),
+    captionPosition: getParam('captionPosition', 'bottom') as DisplayParams['captionPosition'],
+    captionSize: getParam('captionSize', 'medium') || 'medium',
+    captionColor: getParam('captionColor', '#ffffff') || '#ffffff',
+    captionFont: getParam('captionFont', 'sans') || 'sans',
+    captionBgColor: getParam('captionBgColor', '#000000') || '#000000',
+    captionBgOpacity: parseFloat(getParam('captionBgOpacity', '0.5') || '0.5'),
+    transition: getParam('transition', 'fade') as DisplayParams['transition'],
+    debugMode: getParam('debug', 'false') === 'true'
   };
   
   return {
-    params,
-    redirectToDebugMode
+    displayParams,
+    updateParam,
+    location
   };
 };

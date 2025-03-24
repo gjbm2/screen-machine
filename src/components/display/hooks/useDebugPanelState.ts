@@ -1,7 +1,6 @@
-
 import { useState } from 'react';
-import { DisplayParams, ShowMode, PositionMode, CaptionPosition, TransitionType } from '../types';
-import { getDefaultParams } from '../utils';
+import { DisplayParams, MetadataEntry } from '../types';
+import { getDefaultParams } from '../utils/defaultParams';
 
 interface UseDebugPanelStateProps {
   params: DisplayParams;
@@ -34,7 +33,7 @@ export const useDebugPanelState = ({ params }: UseDebugPanelStateProps) => {
   const [copied, setCopied] = useState(false);
   
   // Metadata state
-  const [metadataEntries, setMetadataEntries] = useState<Array<{key: string, value: string}>>([]);
+  const [metadataEntries, setMetadataEntries] = useState<Array<MetadataEntry>>([]);
   const [previewCaption, setPreviewCaption] = useState<string | null>(null);
 
   const resetSettings = () => {
