@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useImageState } from './use-image-state';
 import { useImageContainer } from './use-image-container';
 import { useImageActions } from './use-image-actions';
@@ -8,6 +8,7 @@ import { useImageGenerationLoading } from './use-image-generation-loading';
 import { useUploadedImages } from './use-uploaded-images';
 import { usePromptSubmission } from './use-prompt-submission';
 import { useContainerOrderEffect } from './use-container-order-effect';
+import { useVerboseDebugMode } from '@/hooks/use-verbose-debug';
 
 // Declare global window type to include our custom property
 declare global {
@@ -23,6 +24,20 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   const [currentWorkflow, setCurrentWorkflow] = useState<string>('flux1');
   const [currentParams, setCurrentParams] = useState<Record<string, any>>({});
   const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
+  
+  // Use the verbose debug hook
+  const { isVerboseDebug, setVerboseDebug } = useVerboseDebugMode();
+  
+  // Log verbose debug mode status
+  useEffect(() => {
+    if (isVerboseDebug) {
+      console.info("[VERBOSE] 🐛 Verbose debug mode is ENABLED");
+      addConsoleLog({
+        type: 'info',
+        message: '🐛 Verbose debugging enabled. Check browser console for detailed logs.'
+      });
+    }
+  }, [isVerboseDebug, addConsoleLog]);
 
   // Initialize global image counter if it doesn't exist
   useState(() => {
@@ -81,7 +96,8 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     lastBatchIdUsed,
     setIsFirstRun,
     setLastBatchIdUsed,
-    generateImages
+    generateImages,
+    isVerboseDebug
   });
   
   const {
@@ -120,6 +136,8 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     lastBatchId,
     isFirstRun,
     fullscreenRefreshTrigger,
+    isVerboseDebug,
+    setVerboseDebug,
     setCurrentPrompt,
     setUploadedImageUrls,
     setCurrentWorkflow,

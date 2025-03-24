@@ -1,61 +1,59 @@
 
-import React, { useState, useCallback } from 'react';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import React from 'react';
 import HeaderSection from '@/components/main/HeaderSection';
-import ResizableConsole from '@/components/debug/ResizableConsole';
-import AboutDialog from '@/components/about/AboutDialog';
-import Footer from '@/components/Footer';
-import { useConsoleManagement } from '@/hooks/use-console-management';
+import ConsoleView from '@/components/console/ConsoleView';
 
 interface MainLayoutProps {
   children: React.ReactNode;
   onToggleConsole: () => void;
-  consoleVisible: boolean;
-  onOpenAdvancedOptions: () => void;
-  consoleLogs: any[];
-  onClearConsole: () => void;
+  consoleVisible?: boolean;
+  onOpenAdvancedOptions?: () => void;
+  consoleLogs?: any[];
+  onClearConsole?: () => void;
   isFirstRun?: boolean;
+  isVerboseDebug?: boolean;
+  onToggleVerboseDebug?: () => void;
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({
   children,
   onToggleConsole,
-  consoleVisible,
+  consoleVisible = false,
   onOpenAdvancedOptions,
-  consoleLogs,
+  consoleLogs = [],
   onClearConsole,
-  isFirstRun = false
+  isFirstRun = false,
+  isVerboseDebug = false,
+  onToggleVerboseDebug
 }) => {
-  const [showAboutDialog, setShowAboutDialog] = useState(false);
-  
   return (
-    <main className="flex flex-col min-h-screen p-4 md:p-6 max-w-screen-2xl mx-auto">
-      <HeaderSection 
-        onToggleConsole={onToggleConsole}
-        isConsoleVisible={consoleVisible}
-        onOpenAdvancedOptions={onOpenAdvancedOptions}
-        onOpenAboutDialog={() => setShowAboutDialog(true)}
-      />
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      <div className="container mx-auto px-4 py-2 md:py-4 flex-1 flex flex-col">
+        <HeaderSection 
+          onToggleConsole={onToggleConsole}
+          isConsoleVisible={consoleVisible}
+          onOpenAdvancedOptions={onOpenAdvancedOptions}
+          isVerboseDebug={isVerboseDebug}
+          onToggleVerboseDebug={onToggleVerboseDebug}
+        />
+        
+        <div className={`flex-1 w-full flex flex-col ${isFirstRun ? 'justify-center' : ''}`}>
+          <div className="flex-1 py-4">
+            {/* Main content */}
+            {children}
+          </div>
+        </div>
+      </div>
       
-      <ScrollArea className="flex-1 max-h-full overflow-y-auto pr-4">
-        {children}
-        <Footer />
-      </ScrollArea>
-      
+      {/* Console View */}
       {consoleVisible && (
-        <ResizableConsole 
-          logs={consoleLogs}
-          isVisible={consoleVisible}
+        <ConsoleView 
+          logs={consoleLogs} 
           onClose={onToggleConsole}
           onClear={onClearConsole}
         />
       )}
-      
-      <AboutDialog 
-        open={showAboutDialog} 
-        onOpenChange={setShowAboutDialog}
-      />
-    </main>
+    </div>
   );
 };
 
