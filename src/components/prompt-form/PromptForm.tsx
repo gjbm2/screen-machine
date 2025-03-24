@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -26,6 +27,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
   const lastReceivedPrompt = useRef(currentPrompt);
+  const isInitialMount = useRef(true);
 
   const {
     selectedWorkflow,
@@ -45,55 +47,66 @@ const PromptForm: React.FC<PromptFormProps> = ({
     updateWorkflowParam,
     updateRefinerParam,
     updateGlobalParam,
-    setSelectedWorkflow,
-    setSelectedRefiner,
-    setWorkflowParams,
-    setRefinerParams,
-    setGlobalParams,
+    updateFromAdvancedPanel,
+    resetUserChangeFlags,
   } = usePromptForm();
 
   useEffect(() => {
     if (currentPrompt && currentPrompt !== lastReceivedPrompt.current) {
-      console.log('PromptForm: Updating prompt from prop:', currentPrompt);
       setPrompt(currentPrompt);
       lastReceivedPrompt.current = currentPrompt;
     }
   }, [currentPrompt]);
 
+  // Handle external updates once during initial mount
   useEffect(() => {
-    if (externalSelectedWorkflow && externalSelectedWorkflow !== selectedWorkflow) {
-      console.log('PromptForm: Updating workflow from external state:', externalSelectedWorkflow);
-      setSelectedWorkflow(externalSelectedWorkflow);
+    if (isInitialMount.current) {
+      const initialValues = {
+        selectedWorkflow: externalSelectedWorkflow,
+        selectedRefiner: externalSelectedRefiner,
+        workflowParams: externalWorkflowParams,
+        refinerParams: externalRefinerParams,
+        globalParams: externalGlobalParams
+      };
+      
+      // Update the form with external values
+      updateFromAdvancedPanel(initialValues);
+      
+      // Reset flags since this is initial state, not user change
+      resetUserChangeFlags();
+      
+      isInitialMount.current = false;
     }
-  }, [externalSelectedWorkflow, selectedWorkflow, setSelectedWorkflow]);
+  }, [
+    externalSelectedWorkflow, 
+    externalSelectedRefiner, 
+    externalWorkflowParams, 
+    externalRefinerParams, 
+    externalGlobalParams,
+    updateFromAdvancedPanel,
+    resetUserChangeFlags
+  ]);
 
+  // Handle updates from advanced panel
   useEffect(() => {
-    if (externalSelectedRefiner && externalSelectedRefiner !== selectedRefiner) {
-      console.log('PromptForm: Updating refiner from external state:', externalSelectedRefiner);
-      setSelectedRefiner(externalSelectedRefiner);
+    if (!isInitialMount.current) {
+      // Only update if this isn't the initial mount
+      updateFromAdvancedPanel({
+        selectedWorkflow: externalSelectedWorkflow,
+        selectedRefiner: externalSelectedRefiner,
+        workflowParams: externalWorkflowParams,
+        refinerParams: externalRefinerParams,
+        globalParams: externalGlobalParams
+      });
     }
-  }, [externalSelectedRefiner, selectedRefiner, setSelectedRefiner]);
-
-  useEffect(() => {
-    if (externalWorkflowParams && JSON.stringify(externalWorkflowParams) !== JSON.stringify(workflowParams)) {
-      console.log('PromptForm: Updating workflow params from external state:', externalWorkflowParams);
-      setWorkflowParams(externalWorkflowParams);
-    }
-  }, [externalWorkflowParams, workflowParams, setWorkflowParams]);
-
-  useEffect(() => {
-    if (externalRefinerParams && JSON.stringify(externalRefinerParams) !== JSON.stringify(refinerParams)) {
-      console.log('PromptForm: Updating refiner params from external state:', externalRefinerParams);
-      setRefinerParams(externalRefinerParams);
-    }
-  }, [externalRefinerParams, refinerParams, setRefinerParams]);
-
-  useEffect(() => {
-    if (externalGlobalParams && JSON.stringify(externalGlobalParams) !== JSON.stringify(globalParams)) {
-      console.log('PromptForm: Updating global params from external state:', externalGlobalParams);
-      setGlobalParams(externalGlobalParams);
-    }
-  }, [externalGlobalParams, globalParams, setGlobalParams]);
+  }, [
+    externalSelectedWorkflow, 
+    externalSelectedRefiner, 
+    externalWorkflowParams, 
+    externalRefinerParams, 
+    externalGlobalParams,
+    updateFromAdvancedPanel
+  ]);
 
   useExternalImageUrls(setPreviewUrls);
 

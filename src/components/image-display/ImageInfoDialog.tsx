@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Image } from 'lucide-react';
@@ -87,7 +88,6 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
       }
     }
     
-    // Remove the check for _type property as it doesn't exist
     return image.params;
   };
   
@@ -103,7 +103,6 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
       }
     }
     
-    // Remove the check for _type property as it doesn't exist
     return image.refinerParams;
   };
   
@@ -115,7 +114,6 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
       return image.refiner;
     }
     
-    // Remove the check for _type property as it doesn't exist
     return 'none';
   };
   
