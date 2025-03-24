@@ -87,8 +87,8 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     const newParams = { ...params, debugMode: true };
     const debugUrl = createUrlWithParams(newParams);
     
-    // Navigate to the debug URL
-    console.log('[ImageDisplay] Navigating to debug mode:', debugUrl);
+    // Navigate to the debug URL, preserving all existing parameters
+    console.log('[ImageDisplay] Navigating to debug mode with URL:', debugUrl);
     
     // Force a small delay to prevent race conditions
     setTimeout(() => {
