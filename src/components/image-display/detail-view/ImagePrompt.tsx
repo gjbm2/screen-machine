@@ -57,8 +57,8 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
               className="h-6 w-6 p-0 rounded-full" 
               onClick={(e) => {
                 e.stopPropagation();
-                onReferenceImageClick();
                 console.log("Reference image icon clicked in ImagePrompt");
+                onReferenceImageClick();
               }}
             >
               <ImageIcon className="h-3.5 w-3.5 text-blue-500" />

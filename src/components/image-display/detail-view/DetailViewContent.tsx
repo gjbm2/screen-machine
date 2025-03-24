@@ -16,6 +16,7 @@ interface DetailViewContentProps {
     params?: Record<string, any>;
     referenceImageUrl?: string;
     timestamp?: number;
+    title?: string;
   }>;
   activeIndex: number;
   onSetActiveIndex: (index: number) => void;
@@ -31,6 +32,7 @@ interface DetailViewContentProps {
     batchId: string;
     batchIndex: number;
     prompt?: string;
+    title?: string;
   }>;
   isNavigatingAllImages?: boolean;
   onNavigateGlobal?: (imageIndex: number) => void;
@@ -124,6 +126,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   // Handle opening reference image dialog directly
   const handleReferenceImageClick = () => {
     console.log("Reference image button clicked in DetailViewContent");
+    console.log("Opening reference image dialog with:", referenceImageUrl);
     setShowReferenceImage(true);
   };
 
@@ -186,7 +189,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onClose={onClose}
       />
 
-      {/* Reference image dialog for direct reference image button click */}
+      {/* Reference image dialog with the same processing as in ImageInfoDialog */}
       {hasReferenceImages && (
         <ReferenceImageDialog
           isOpen={showReferenceImage}
