@@ -31,10 +31,10 @@ export const useDisplayPage = () => {
   // Get display state from the core hook
   const {
     imageUrl,
-    setImageUrl, // Make sure this is used to update the image URL
+    setImageUrl,
     error,
     imageKey,
-    setImageKey, // This should be incremented when the image changes
+    setImageKey, // Make sure this is destructured to use it
     lastModified,
     lastChecked,
     outputFiles,

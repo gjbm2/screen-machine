@@ -94,6 +94,7 @@ export const useDisplayState = (params: DisplayParams) => {
     error,
     setError,
     imageKey,
+    setImageKey, // Make sure setImageKey is included in the return object
     lastModified,
     lastChecked,
     outputFiles,
@@ -113,6 +114,6 @@ export const useDisplayState = (params: DisplayParams) => {
     checkImageModified,
     handleManualCheck: handleManualCheckOriginal,
     getImagePositionStyle,
-    extractMetadataFromImage  // Added this to the return object
+    extractMetadataFromImage
   };
 };
