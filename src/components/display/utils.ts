@@ -1,18 +1,19 @@
-
 import { DisplayParams } from './types';
 
 // Function to validate and process the output parameter
 export const processOutputParam = (outputParam: string | null): string | null => {
   if (!outputParam) return null;
   
-  // Check if it's an absolute URL
-  if (outputParam.startsWith('http://') || outputParam.startsWith('https://')) {
-    // Escape special characters for URL parameters
-    return outputParam;
+  try {
+    // First decode the output parameter which may be encoded
+    const decodedOutput = decodeURIComponent(outputParam);
+    
+    // Return the decoded URL
+    return decodedOutput;
+  } catch (e) {
+    console.error('Error processing output parameter:', e);
+    return outputParam; // Return original if decoding fails
   }
-  
-  // Otherwise, treat as relative path from /output/
-  return `/output/${encodeURIComponent(outputParam)}`;
 };
 
 // Function to fetch available output files
@@ -175,32 +176,38 @@ export const getNextCheckTime = (lastChecked: Date | null, refreshInterval: numb
   return formatDateTime(nextCheck);
 };
 
-// Create URL with encoded parameters
+/**
+ * Creates a URL with the given parameters, properly encoding special characters
+ */
 export const createUrlWithParams = (params: DisplayParams): string => {
   const queryParams = new URLSearchParams();
   
-  // Only add parameters that are set
-  if (params.output) queryParams.set('output', params.output);
-  queryParams.set('show', params.showMode);
-  if (params.position) queryParams.set('position', params.position);
-  queryParams.set('refresh', params.refreshInterval.toString());
-  queryParams.set('background', params.backgroundColor);
-  if (params.debugMode) queryParams.set('debug', 'true');
-  
-  // Add optional parameters
-  if (params.data !== undefined) {
-    if (params.data) {
-      queryParams.set('data', params.data);
-    } else {
-      queryParams.set('data', '');
-    }
+  // Only add parameters that have values
+  if (params.output) {
+    // Special handling for the output parameter to properly encode it
+    // This is crucial for URLs that contain query parameters themselves
+    queryParams.set('output', encodeURIComponent(params.output));
   }
   
-  if (params.caption) queryParams.set('caption', params.caption);
+  if (params.showMode) queryParams.set('show', params.showMode);
+  if (params.position) queryParams.set('position', params.position);
+  if (params.refreshInterval) queryParams.set('refresh', params.refreshInterval.toString());
+  if (params.backgroundColor) queryParams.set('background', params.backgroundColor);
+  if (params.debugMode) queryParams.set('debug', params.debugMode.toString());
+  
+  // Handle caption and related parameters
+  if (params.caption) queryParams.set('caption', encodeURIComponent(params.caption));
   if (params.captionPosition) queryParams.set('caption-position', params.captionPosition);
   if (params.captionSize) queryParams.set('caption-size', params.captionSize);
   if (params.captionColor) queryParams.set('caption-color', params.captionColor);
-  if (params.captionFont) queryParams.set('caption-font', params.captionFont);
+  if (params.captionFont) queryParams.set('caption-font', encodeURIComponent(params.captionFont));
+  
+  // Handle data tag if present
+  if (params.data !== undefined) {
+    queryParams.set('data', params.data || '');
+  }
+  
+  // Handle transition parameter
   if (params.transition) queryParams.set('transition', params.transition);
   
   return `/display?${queryParams.toString()}`;

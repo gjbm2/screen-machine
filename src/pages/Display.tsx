@@ -14,19 +14,20 @@ const Display = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
+  // Process searchParams, decoding URI components where needed
   const params: DisplayParams = {
-    output: searchParams.get('output'),
+    output: searchParams.get('output') ? decodeURIComponent(searchParams.get('output') || '') : null,
     showMode: (searchParams.get('show') || 'fit') as DisplayParams['showMode'],
     position: (searchParams.get('position') || 'center') as DisplayParams['position'],
     refreshInterval: Number(searchParams.get('refresh') || '5'),
     backgroundColor: searchParams.get('background') || '000000',
     debugMode: searchParams.get('debug') === 'true',
     data: searchParams.has('data') ? searchParams.get('data') : undefined,
-    caption: searchParams.get('caption'),
+    caption: searchParams.get('caption') ? decodeURIComponent(searchParams.get('caption') || '') : null,
     captionPosition: searchParams.get('caption-position') as DisplayParams['captionPosition'] || 'bottom-center',
     captionSize: searchParams.get('caption-size') || '16px',
     captionColor: searchParams.get('caption-color') || 'ffffff',
-    captionFont: searchParams.get('caption-font') || 'Arial, sans-serif',
+    captionFont: searchParams.get('caption-font') ? decodeURIComponent(searchParams.get('caption-font') || '') : 'Arial, sans-serif',
     transition: searchParams.get('transition') as DisplayParams['transition'] || 'cut',
   };
 

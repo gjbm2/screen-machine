@@ -18,35 +18,57 @@ export const useImageState = () => {
   const preloadImageRef = useRef<HTMLImageElement | null>(null);
   // Add a ref to track the last URL we extracted metadata from
   const lastMetadataUrlRef = useRef<string | null>(null);
+  // Add a ref to track if we're currently loading metadata
+  const isExtractingMetadataRef = useRef<boolean>(false);
 
   const checkImageModified = async (url: string) => {
     try {
       setLastChecked(new Date());
       
-      const response = await fetch(url, { method: 'HEAD' });
-      const lastModified = response.headers.get('last-modified');
+      // For URL with query parameters, we need to handle them specially
+      const checkUrl = url.includes('?') ? url : url;
       
-      setLastModified(lastModified);
-      
-      if (lastModified && lastModified !== lastModifiedRef.current) {
-        console.log('Image modified, updating from:', lastModifiedRef.current, 'to:', lastModified);
+      // Try with HEAD request first
+      try {
+        const response = await fetch(checkUrl, { method: 'HEAD' });
+        const lastModified = response.headers.get('last-modified');
         
-        if (lastModifiedRef.current !== null) {
-          setImageChanged(true);
-          toast.info("Image has been updated on the server");
+        setLastModified(lastModified);
+        
+        if (lastModified && lastModified !== lastModifiedRef.current) {
+          console.log('Image modified, updating from:', lastModifiedRef.current, 'to:', lastModified);
+          
+          if (lastModifiedRef.current !== null) {
+            setImageChanged(true);
+            toast.info("Image has been updated on the server");
+            lastModifiedRef.current = lastModified;
+            // Reset the last metadata URL to force metadata extraction for the changed image
+            lastMetadataUrlRef.current = null;
+            return true;
+          }
+          
           lastModifiedRef.current = lastModified;
-          // Reset the last metadata URL to force metadata extraction for the changed image
+        }
+        return false;
+      } catch (e) {
+        // If HEAD request fails (e.g., CORS issues), fall back to checking if the image loads
+        console.warn('HEAD request failed, falling back to image reload check:', e);
+        
+        // We consider the image changed if we previously had no lastModified date
+        // This isn't perfect but helps with URLs that don't support HEAD requests
+        if (lastModifiedRef.current === null) {
+          setImageChanged(true);
+          toast.info("Image may have been updated");
+          lastModifiedRef.current = new Date().toISOString();
           lastMetadataUrlRef.current = null;
           return true;
         }
-        
-        lastModifiedRef.current = lastModified;
       }
-      return false;
     } catch (err) {
       console.error('Error checking image modification:', err);
       return false;
     }
+    return false;
   };
 
   const handleManualCheck = async (url: string | null, debugMode: boolean) => {
@@ -65,22 +87,35 @@ export const useImageState = () => {
 
   const extractMetadataFromImage = async (url: string, dataTag?: string) => {
     try {
+      // If we're already extracting metadata, just return the current metadata
+      if (isExtractingMetadataRef.current) {
+        console.log('[useImageState] Already extracting metadata, using current metadata');
+        return metadata;
+      }
+      
       // Only extract metadata if we haven't already extracted it for this URL
       // or if the URL has changed
       if (url !== lastMetadataUrlRef.current) {
-        console.log('Extracting metadata for new URL:', url);
-        const newMetadata = await extractImageMetadata(url, dataTag);
-        setMetadata(newMetadata);
-        // Update the last metadata URL
-        lastMetadataUrlRef.current = url;
-        return newMetadata;
+        console.log('[useImageState] Extracting metadata for new URL:', url);
+        isExtractingMetadataRef.current = true;
+        
+        try {
+          const newMetadata = await extractImageMetadata(url, dataTag);
+          setMetadata(newMetadata);
+          // Update the last metadata URL
+          lastMetadataUrlRef.current = url;
+          return newMetadata;
+        } finally {
+          isExtractingMetadataRef.current = false;
+        }
       } else {
-        console.log('Using cached metadata for URL:', url);
+        console.log('[useImageState] Using cached metadata for URL:', url);
         return metadata;
       }
     } catch (err) {
       console.error('Error extracting metadata:', err);
       toast.error("Failed to extract metadata");
+      isExtractingMetadataRef.current = false;
       return {};
     }
   };
@@ -105,6 +140,7 @@ export const useImageState = () => {
     intervalRef,
     preloadImageRef,
     lastMetadataUrlRef,
+    isExtractingMetadataRef,
     checkImageModified,
     handleManualCheck,
     extractMetadataFromImage
