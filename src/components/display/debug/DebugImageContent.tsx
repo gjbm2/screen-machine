@@ -3,7 +3,7 @@ import React from 'react';
 import { CardContent } from "@/components/ui/card";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { MoveDiagonal } from "lucide-react";
-import { ShowMode, PositionMode } from '../types';
+import { ShowMode, PositionMode, CaptionPosition } from '../types';
 import { getPositioningStyles } from './ImagePositionStyles';
 import { CaptionRenderer } from './CaptionRenderer';
 
@@ -14,7 +14,7 @@ interface DebugImageContentProps {
   position: PositionMode;
   backgroundColor: string;
   caption?: string | null;
-  captionPosition?: string;
+  captionPosition?: CaptionPosition;
   captionSize?: string;
   captionColor?: string;
   captionFont?: string;
@@ -38,7 +38,7 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
   position,
   backgroundColor,
   caption,
-  captionPosition,
+  captionPosition = 'bottom-center',
   captionSize,
   captionColor,
   captionFont,
