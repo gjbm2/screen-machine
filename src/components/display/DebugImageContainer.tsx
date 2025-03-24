@@ -5,6 +5,7 @@ import { ShowMode, PositionMode, CaptionPosition } from './types';
 import { useDebugImageContainer } from './debug/useDebugImageContainer';
 import { DebugImageHeader } from './debug/DebugImageHeader';
 import { DebugImageContent } from './debug/DebugImageContent';
+import { SCREEN_SIZES } from './debug/ScreenSizeSelector';
 
 interface DebugImageContainerProps {
   imageUrl: string | null;
