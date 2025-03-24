@@ -61,21 +61,13 @@ export const usePromptSubmission = ({
       }
     }
     
-    // CRITICAL: Prioritize the explicitly passed batch_size from UI
-    // We get a fresh value every time from the UI which should take precedence
-    const userSelectedBatchSize = globalParams?.batch_size;
+    // Instead of trying to extract batch_size specifically, we'll use the complete
+    // globalParams object if it's provided, otherwise fall back to currentGlobalParams
+    const effectiveGlobalParams = globalParams ? { ...globalParams } : { ...currentGlobalParams };
     
-    // Create a fresh globalParams object with the correct batch_size
-    const effectiveGlobalParams = {
-      ...currentGlobalParams, // Base with current settings
-      ...(globalParams || {}),  // Override with any provided params
-      // Explicitly set batch_size using the UI value if available
-      ...(userSelectedBatchSize !== undefined ? { batch_size: userSelectedBatchSize } : {})
-    };
-    
-    // IMPORTANT DEBUG: Log the batch size being used - this helps trace the value
-    console.log("[usePromptSubmission] UI-provided batch size:", userSelectedBatchSize);
-    console.log("[usePromptSubmission] Using batch size:", effectiveGlobalParams.batch_size);
+    // Log the batch size being used for debugging
+    console.log("[usePromptSubmission] Using provided globalParams:", !!globalParams);
+    console.log("[usePromptSubmission] Effective global params batch_size:", effectiveGlobalParams.batch_size);
     console.log("[usePromptSubmission] Full effective global params:", effectiveGlobalParams);
     
     const effectiveWorkflow = workflow || currentWorkflow;
@@ -87,7 +79,7 @@ export const usePromptSubmission = ({
       imageFiles: uniqueImageFiles,
       workflow: effectiveWorkflow,
       params: effectiveWorkflowParams,
-      globalParams: effectiveGlobalParams, // Use the properly merged globalParams
+      globalParams: effectiveGlobalParams,
       batchId: lastBatchIdUsed,
       refiner, 
       refinerParams
