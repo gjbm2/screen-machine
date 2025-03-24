@@ -166,17 +166,19 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           <ReferenceImageDialog
             isOpen={showReferenceImagesDialog}
             onOpenChange={setShowReferenceImagesDialog}
-            imageUrl={currentImage.referenceImageUrl}
+            imageUrls={typeof currentImage.referenceImageUrl === 'string' 
+              ? [currentImage.referenceImageUrl] 
+              : currentImage.referenceImageUrl}
           />
         )}
 
         {/* Image info dialog */}
         {currentImage && (
           <ImageInfoDialog
-            isOpen={showInfoDialog}
+            open={showInfoDialog}
             onOpenChange={setShowInfoDialog}
             image={currentImage}
-            dimensions={imageDimensions}
+            onDownload={() => window.open(currentImage.url, '_blank')}
           />
         )}
 

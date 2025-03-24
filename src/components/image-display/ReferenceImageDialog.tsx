@@ -7,16 +7,14 @@ import { Button } from '@/components/ui/button';
 interface ReferenceImageDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  imageUrl: string | string[];
+  imageUrls: string[];
 }
 
 const ReferenceImageDialog: React.FC<ReferenceImageDialogProps> = ({
   isOpen,
   onOpenChange,
-  imageUrl
+  imageUrls
 }) => {
-  // Convert single image to array format
-  const imageUrls = Array.isArray(imageUrl) ? imageUrl : imageUrl.split(',').filter(url => url.trim() !== '');
   const [currentIndex, setCurrentIndex] = useState(0);
   
   const hasMultipleImages = imageUrls.length > 1;

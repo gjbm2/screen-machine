@@ -177,17 +177,17 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         <ReferenceImageDialog
           isOpen={showReferenceImage}
           onOpenChange={setShowReferenceImage}
-          imageUrl={referenceImageUrl} // Pass the entire URL string
+          imageUrls={referenceImageUrl ? (typeof referenceImageUrl === 'string' ? [referenceImageUrl] : referenceImageUrl) : []}
         />
       )}
 
       {/* Image info dialog */}
       {activeImage && (
         <ImageInfoDialog
-          isOpen={showImageInfo}
+          open={showImageInfo}
           onOpenChange={setShowImageInfo}
           image={activeImage}
-          dimensions={imageDimensions}
+          onDownload={() => window.open(activeImage.url, '_blank')}
         />
       )}
     </div>
