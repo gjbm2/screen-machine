@@ -1,17 +1,15 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { ShowMode, PositionMode, CaptionPosition } from './types';
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { RefreshCw, Move, CornerBottomRight } from "lucide-react";
+import { RefreshCw, Move, CornerRightDown } from "lucide-react";
 import { processCaptionWithMetadata } from './utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 
-// Define standard screen sizes with both landscape and portrait options
 const SCREEN_SIZES = [
   { name: 'Current Viewport', width: window.innerWidth, height: window.innerHeight },
   { name: 'HD (1280x720)', width: 1280, height: 720 },
@@ -67,23 +65,19 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   
-  // For draggable functionality
   const [containerPosition, setContainerPosition] = useState({ x: window.innerWidth / 2 - 300, y: 200 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   
-  // For resizable functionality
   const [containerSize, setContainerSize] = useState({ width: 600, height: 400 });
   const [isResizing, setIsResizing] = useState(false);
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
   
-  // Get the current screen dimensions based on selection
   const selectedSize = SCREEN_SIZES.find(size => size.name === selectedScreenSize) || SCREEN_SIZES[0];
   const viewportRatio = selectedSize.width / selectedSize.height;
   
-  // Handle image load to get dimensions
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     setImageDimensions({
@@ -92,7 +86,6 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
     });
   };
   
-  // Update container dimensions when content changes
   useEffect(() => {
     if (contentRef.current) {
       const rect = contentRef.current.getBoundingClientRect();
@@ -101,12 +94,10 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
     }
   }, [containerSize, selectedScreenSize]);
   
-  // Reset all settings and go back to display page
   const handleReset = () => {
     navigate('/display');
   };
 
-  // Draggable handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target instanceof Element && e.target.closest('.card-header-drag-handle')) {
       setIsDragging(true);
@@ -139,7 +130,6 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
     setIsResizing(false);
   };
   
-  // Handle resize start
   const handleResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -153,7 +143,6 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
     });
   };
 
-  // Set up global mouse event listeners
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -164,31 +153,24 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
     };
   }, [isDragging, dragOffset, isResizing, resizeStart]);
   
-  // Calculate positioning styles for images based on position parameter
   const getPositioningStyles = (pos: PositionMode, mode: ShowMode): React.CSSProperties => {
-    // Start with basic positioning
     let styles: React.CSSProperties = {
       position: 'absolute',
     };
     
-    // Handle different display modes
     if (mode === 'actual' && imageDimensions.width > 0 && imageDimensions.height > 0) {
-      // Calculate the actual display size based on screen dimensions
       const screenWidth = selectedSize.width;
       const screenHeight = selectedSize.height;
       
-      // Use natural image dimensions directly
       styles.width = `${imageDimensions.width}px`;
       styles.height = `${imageDimensions.height}px`;
       styles.objectFit = 'none';
       
-      // Position according to the selected position
       if (pos.includes('top')) {
         styles.top = '0';
       } else if (pos.includes('bottom')) {
         styles.bottom = '0';
       } else {
-        // Center vertically
         styles.top = '50%';
         styles.transform = styles.transform ? styles.transform + ' translateY(-50%)' : 'translateY(-50%)';
       }
@@ -198,12 +180,10 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       } else if (pos.includes('right')) {
         styles.right = '0';
       } else {
-        // Center horizontally
         styles.left = '50%';
         styles.transform = styles.transform ? styles.transform.replace('translateY', 'translate') : 'translateX(-50%)';
       }
       
-      // Handle center case
       if (pos === 'center') {
         styles.transform = 'translate(-50%, -50%)';
       }
@@ -211,7 +191,6 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       return styles;
     }
     
-    // Handle other display modes
     switch (mode) {
       case 'fill':
         styles = {
@@ -249,13 +228,11 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         };
     }
     
-    // Apply positioning
     if (pos.includes('top')) {
       styles.top = '0';
     } else if (pos.includes('bottom')) {
       styles.bottom = '0';
     } else {
-      // Center vertically
       styles.top = '50%';
       styles.transform = 'translateY(-50%)';
     }
@@ -265,41 +242,33 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
     } else if (pos.includes('right')) {
       styles.right = '0';
     } else {
-      // Center horizontally
       styles.left = '50%';
-      styles.transform = styles.transform ? 'translate(-50%, -50%)' : 'translateX(-50%)';
-    }
-    
-    // Handle center case
-    if (pos === 'center') {
-      styles.top = '50%';
-      styles.left = '50%';
-      styles.transform = 'translate(-50%, -50%)';
+      styles.transform = captionPosition === 'bottom-center' || captionPosition === 'top-center' ? 
+        'translateX(-50%)' : styles.transform || 'none';
+      
+      if (captionPosition && !captionPosition.includes('-')) {
+        styles.transform = 'translate(-50%, -50%)';
+      }
     }
     
     return styles;
   };
-  
-  // Calculate caption font size scaling for preview
+
   const getCaptionScaledFontSize = (baseSize: string) => {
-    // Extract numeric portion and unit
     const matches = baseSize.match(/^(\d+(?:\.\d+)?)([a-z%]+)?$/i);
     if (!matches) return baseSize;
     
     const size = parseFloat(matches[1]);
     const unit = matches[2] || 'px';
     
-    // Scale based on container width compared to selected screen size
     const screenWidth = selectedSize.width;
     const scaleFactor = containerWidth / screenWidth;
     
-    // Apply scaling but limit to reasonable bounds
     const scaledSize = Math.max(8, Math.min(32, size * scaleFactor));
     
     return `${scaledSize}${unit}`;
   };
 
-  // Calculate caption styles with scaling
   const getCaptionStyles = (): React.CSSProperties => {
     const scaledFontSize = getCaptionScaledFontSize(captionSize);
     
@@ -317,7 +286,6 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       whiteSpace: caption?.includes('\n') ? 'pre-line' : 'normal',
     };
     
-    // Position caption
     if (captionPosition?.includes('top')) {
       styles.top = '10px';
     } else if (captionPosition?.includes('bottom')) {
@@ -336,8 +304,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       styles.transform = captionPosition === 'bottom-center' || captionPosition === 'top-center' ? 
         'translateX(-50%)' : styles.transform || 'none';
       
-      // Handle full center
-      if (captionPosition === 'center') {
+      if (captionPosition && !captionPosition.includes('-')) {
         styles.transform = 'translate(-50%, -50%)';
       }
     }
@@ -407,7 +374,6 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         </div>
       </CardHeader>
       <CardContent className="overflow-hidden p-0 relative">
-        {/* Maintain aspect ratio of selected viewport */}
         <AspectRatio 
           ratio={viewportRatio} 
           className="overflow-hidden"
@@ -445,12 +411,11 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
           </div>
         </AspectRatio>
         
-        {/* Resize handle */}
         <div
           className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize z-20 flex items-center justify-center"
           onMouseDown={handleResizeStart}
         >
-          <CornerBottomRight className="h-4 w-4 text-gray-400" />
+          <CornerRightDown className="h-4 w-4 text-gray-400" />
         </div>
         
         <div className="text-xs text-gray-500 mt-2 pl-4 pb-2">
