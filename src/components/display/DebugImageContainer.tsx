@@ -1,12 +1,12 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
 import { ShowMode, PositionMode, CaptionPosition } from './types';
 import { useDebugImageContainer } from './debug/useDebugImageContainer';
 import { DebugImageHeader } from './debug/DebugImageHeader';
 import { DebugImageContent } from './debug/DebugImageContent';
-import { SCREEN_SIZES } from './debug/ScreenSizeSelector';
+import { SCREEN_SIZES, ScreenSize } from './debug/ScreenSizeSelector';
 
 interface DebugImageContainerProps {
   imageUrl: string | null;
@@ -68,12 +68,13 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
     containerRef,
     contentRef,
     containerSize,
-    selectedSize,
     viewportRatio,
     handleImageLoad,
     handleMouseDown,
     handleResizeStart
   } = useDebugImageContainer();
+
+  const [selectedSize, setSelectedSize] = useState<ScreenSize>(SCREEN_SIZES[0]);
   
   const handleReset = () => {
     navigate('/display');
@@ -86,6 +87,25 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       onFocus();
     }
     handleMouseDown(e);
+  };
+
+  // Handle selecting a screen size
+  const handleSizeSelection = (sizeName: string) => {
+    console.log('[DebugImageContainer] Size selection requested:', sizeName);
+    const newSize = SCREEN_SIZES.find(size => size.name === sizeName);
+    
+    if (newSize) {
+      console.log('[DebugImageContainer] Setting new size:', newSize);
+      setSelectedSize(newSize);
+      
+      if (contentRef.current && !isFixedPanel) {
+        // Apply the new size immediately for non-fixed containers
+        containerRef.current?.style.setProperty('width', `${newSize.width}px`);
+        containerRef.current?.style.setProperty('height', `${newSize.height}px`);
+      }
+    } else {
+      console.error('[DebugImageContainer] Size not found:', sizeName);
+    }
   };
 
   // Handle window resize for fixed panel mode
@@ -110,6 +130,17 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       return () => window.removeEventListener('resize', handleResize);
     }
   }, [isFixedPanel, contentRef, containerWidth, containerHeight, handleImageLoad, imageRef]);
+
+  // Update selectedSize when Current Viewport changes
+  useEffect(() => {
+    if (selectedSize.name === 'Current Viewport') {
+      setSelectedSize({
+        name: 'Current Viewport',
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    }
+  }, [window.innerWidth, window.innerHeight]);
 
   const cardStyles = isFixedPanel 
     ? "h-full w-full overflow-hidden flex flex-col" 
@@ -137,13 +168,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         showMode={showMode}
         position={position}
         selectedSize={selectedSize}
-        setSelectedSize={(size) => {
-          if (typeof size === 'string') {
-            const foundSize = SCREEN_SIZES.find(s => s.name === size);
-            return foundSize || selectedSize;
-          }
-          return size;
-        }}
+        setSelectedSize={handleSizeSelection}
         imageChanged={imageChanged}
         onSettingsChange={onSettingsChange}
         onReset={handleReset}

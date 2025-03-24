@@ -61,7 +61,12 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
     if (!screenContainerRef.current || !contentRef.current) return;
     
     const selectedSizeObj = SCREEN_SIZES.find(size => size.name === selectedSize);
-    if (!selectedSizeObj) return;
+    if (!selectedSizeObj) {
+      console.error('[DebugImageContent] Size not found:', selectedSize);
+      return;
+    }
+    
+    console.log('[DebugImageContent] Applying size:', selectedSizeObj);
     
     // Get parent dimensions
     const parentWidth = contentRef.current.clientWidth;
@@ -91,6 +96,8 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
     screenContainerRef.current.style.height = `${height}px`;
     
     setContainerDimensions({ width, height });
+    
+    console.log('[DebugImageContent] Container dimensions set to:', { width, height });
   }, [selectedSize, contentRef, containerWidth]);
   
   // Prepare the image display style based on the current mode

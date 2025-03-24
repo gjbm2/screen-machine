@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, Trash2, Settings } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShowMode, PositionMode } from '../types';
-import { ScreenSizeSelector, SCREEN_SIZES } from './ScreenSizeSelector';
+import { ScreenSizeSelector, ScreenSize } from './ScreenSizeSelector';
 
 interface DebugImageHeaderProps {
   showMode: ShowMode;
   position: PositionMode;
-  selectedSize: { name: string; width: number; height: number };
-  setSelectedSize: (size: { name: string; width: number; height: number } | string) => void;
+  selectedSize: ScreenSize;
+  setSelectedSize: (size: string) => void;
   imageChanged?: boolean;
   onSettingsChange?: () => void;
   onReset: () => void;
@@ -37,16 +37,7 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
   
   const handleScreenSizeSelect = (sizeName: string) => {
     console.log('[DebugImageHeader] Size selected:', sizeName);
-    
-    // Find the selected size object from the size array
-    const selectedSizeObj = SCREEN_SIZES.find(size => size.name === sizeName);
-    
-    if (selectedSizeObj) {
-      console.log('[DebugImageHeader] Found size object:', selectedSizeObj);
-      setSelectedSize(selectedSizeObj);
-    } else {
-      console.error('[DebugImageHeader] Could not find size object for:', sizeName);
-    }
+    setSelectedSize(sizeName);
   };
 
   return (

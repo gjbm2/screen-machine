@@ -3,7 +3,13 @@ import React, { useEffect, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
-export const SCREEN_SIZES = [
+export interface ScreenSize {
+  name: string;
+  width: number;
+  height: number;
+}
+
+export const SCREEN_SIZES: ScreenSize[] = [
   { name: 'Current Viewport', width: window.innerWidth, height: window.innerHeight },
   { name: 'HD (1280x720)', width: 1280, height: 720 },
   { name: 'HD Portrait (720x1280)', width: 720, height: 1280 },
@@ -31,7 +37,7 @@ export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
   containerRef
 }) => {
   // Track current size object to update dynamically
-  const [currentSizes, setCurrentSizes] = useState(SCREEN_SIZES);
+  const [currentSizes, setCurrentSizes] = useState<ScreenSize[]>(SCREEN_SIZES);
   
   // Update Current Viewport size when window is resized
   useEffect(() => {
@@ -59,16 +65,18 @@ export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
   console.log('[ScreenSizeSelector] Current selection:', selectedSize);
   console.log('[ScreenSizeSelector] Available sizes:', currentSizes.map(s => s.name));
 
+  const handleSizeChange = (val: string) => {
+    console.log('[ScreenSizeSelector] Selected new size:', val);
+    onSelect(val);
+    if (onSettingsChange) onSettingsChange();
+  };
+
   return (
     <div className="flex items-center space-x-2">
       <Label htmlFor="screen-size" className="text-xs sr-only">Screen Size:</Label>
       <Select 
         value={selectedSize} 
-        onValueChange={(val) => {
-          console.log('[ScreenSizeSelector] Selected new size:', val);
-          onSelect(val);
-          if (onSettingsChange) onSettingsChange();
-        }}
+        onValueChange={handleSizeChange}
       >
         <SelectTrigger id="screen-size" className="h-7 text-xs px-2 w-[150px]">
           <SelectValue placeholder="Select screen size" />
