@@ -1,8 +1,8 @@
 
-export type ShowMode = 'fit' | 'fill' | 'actual' | 'stretch';
+export type ShowMode = 'fit' | 'fill' | 'actual' | 'stretch' | 'contain';
 export type PositionMode = 'top-left' | 'top-center' | 'top-right' | 'center-left' | 'center' | 'center-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
-export type CaptionPosition = 'top-left' | 'top-center' | 'top-right' | 'middle-left' | 'middle-center' | 'middle-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
-export type TransitionType = 'cut' | 'fade-fast' | 'fade-slow';
+export type CaptionPosition = 'top-left' | 'top-center' | 'top-right' | 'middle-left' | 'middle-center' | 'middle-right' | 'bottom-left' | 'bottom-center' | 'bottom-right' | 'bottom';
+export type TransitionType = 'cut' | 'fade' | 'fade-fast' | 'fade-slow';
 
 export interface DisplayParams {
   output: string | null;
