@@ -82,6 +82,30 @@ export const processGenerationResults = (
       const existingRefiner = existingImage.refiner;
       const existingRefinerParams = existingImage.refinerParams || {};
       
+      // Process refiner value - ensure it's always a simple string
+      let refinerValue: string | undefined;
+      if (responseImage.refiner) {
+        // If response refiner is a string, use it directly
+        if (typeof responseImage.refiner === 'string') {
+          refinerValue = responseImage.refiner;
+        } 
+        // If response refiner is an object with value, extract the value
+        else if (typeof responseImage.refiner === 'object' && responseImage.refiner.value) {
+          refinerValue = String(responseImage.refiner.value);
+        }
+      } 
+      // If no response refiner, but we have existing refiner
+      else if (existingRefiner) {
+        // If existing refiner is a string, use it
+        if (typeof existingRefiner === 'string') {
+          refinerValue = existingRefiner;
+        } 
+        // If existing refiner is an object with value, extract the value
+        else if (typeof existingRefiner === 'object' && existingRefiner.value) {
+          refinerValue = String(existingRefiner.value);
+        }
+      }
+      
       // Preserve or update parameters
       updatedImages[existingImageIndex] = {
         ...existingImage,
@@ -94,8 +118,8 @@ export const processGenerationResults = (
         title: `${window.imageCounter + 1}. ${responseImage.prompt || existingImage.prompt} (${responseImage.workflow || existingImage.workflow})`,
         // Preserve params from placeholder or use response params
         params: responseImage.params || existingParams,
-        // Preserve refiner from placeholder or use response refiner
-        refiner: responseImage.refiner || existingRefiner,
+        // Use processed refiner value
+        refiner: refinerValue,
         // Preserve refinerParams from placeholder or use response refiner_params
         refinerParams: responseImage.refiner_params || existingRefinerParams,
         containerId: containerId
@@ -111,6 +135,16 @@ export const processGenerationResults = (
         window.imageCounter += 1;
       }
     } else {
+      // Process refiner value for new images too
+      let refinerValue: string | undefined;
+      if (responseImage.refiner) {
+        if (typeof responseImage.refiner === 'string') {
+          refinerValue = responseImage.refiner;
+        } else if (typeof responseImage.refiner === 'object' && responseImage.refiner.value) {
+          refinerValue = String(responseImage.refiner.value);
+        }
+      }
+      
       // Create a new image entry if we don't have a placeholder
       // This happens if we get more images back than we expected
       const newImage: GeneratedImage = {
@@ -123,8 +157,8 @@ export const processGenerationResults = (
         timestamp: responseImage.timestamp || Date.now(),
         title: `${window.imageCounter + 1}. ${responseImage.prompt} (${responseImage.workflow || 'unknown'})`,
         params: responseImage.params || {},
-        refiner: responseImage.refiner,
-        refinerParams: responseImage.refiner_params,
+        refiner: refinerValue,
+        refinerParams: responseImage.refiner_params || {},
         containerId: containerId
       };
       
