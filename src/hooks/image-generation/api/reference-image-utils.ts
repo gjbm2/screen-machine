@@ -17,12 +17,12 @@ export const processUploadedFiles = (
         const objectUrl = URL.createObjectURL(file);
         uploadedImageUrls.push(objectUrl);
         uploadedFiles.push(file);
-        console.log('[image-utils] Created object URL for file:', objectUrl);
+        console.log('[reference-image-utils] Created object URL for file:', objectUrl);
       }
     }
   }
   
-  console.log('[image-utils] Processed files:', uploadedFiles.length, 'and URLs:', uploadedImageUrls);
+  console.log('[reference-image-utils] Processed files:', uploadedFiles.length, 'and URLs:', uploadedImageUrls);
   
   return { uploadedFiles, uploadedImageUrls };
 };
