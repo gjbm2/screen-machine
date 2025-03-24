@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -113,7 +114,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         position,
         refreshInterval,
         backgroundColor,
-        debugMode: false,
+        debugMode: true, // Keep debug mode enabled
         caption: caption || null,
         captionPosition,
         captionSize,
@@ -137,7 +138,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       position,
       refreshInterval,
       backgroundColor,
-      debugMode: false,
+      debugMode: false, // This is for non-debug mode URL
       caption: caption || null,
       captionPosition,
       captionSize,
@@ -159,7 +160,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       position,
       refreshInterval,
       backgroundColor,
-      debugMode: true,
+      debugMode: true, // Ensure we keep debug mode enabled
       caption: caption || null,
       captionPosition,
       captionSize,
@@ -301,7 +302,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     if (isResizing) {
       const newWidth = Math.max(300, resizeStart.width + (e.clientX - resizeStart.x));
       const newHeight = Math.max(400, resizeStart.height + (e.clientY - resizeStart.y));
-      setPanelSize({ width: `${newWidth}px`, height: `${newHeight}px` });
+      setPanelSize({ 
+        width: `${newWidth}px`, 
+        height: `${newHeight}px` 
+      });
     }
   };
 
