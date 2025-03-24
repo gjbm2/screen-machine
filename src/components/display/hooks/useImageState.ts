@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { extractImageMetadata } from '../utils';
@@ -18,8 +19,10 @@ export const useImageState = () => {
   const lastMetadataUrlRef = useRef<string | null>(null);
   const isExtractingMetadataRef = useRef<boolean>(false);
 
+  // Debug log when metadata state changes
   useEffect(() => {
     console.log('[useImageState] Metadata state changed:', metadata);
+    console.log('[useImageState] Metadata keys:', Object.keys(metadata));
   }, [metadata]);
 
   const checkImageModified = async (url: string) => {
@@ -41,6 +44,7 @@ export const useImageState = () => {
             setImageChanged(true);
             toast.info("Image has been updated on the server");
             lastModifiedRef.current = lastModified;
+            // Reset metadata URL to force re-extraction
             lastMetadataUrlRef.current = null;
             return true;
           }
@@ -70,6 +74,14 @@ export const useImageState = () => {
     if (url) {
       setImageChanged(false);
       const hasChanged = await checkImageModified(url);
+      
+      // Force metadata re-extraction on manual check
+      if (hasChanged || debugMode) {
+        console.log('[useImageState] Manual check - forcing metadata extraction');
+        lastMetadataUrlRef.current = null;
+        await extractMetadataFromImage(url);
+      }
+      
       if (!hasChanged) {
         toast.info("Image has not changed since last check");
       }
@@ -83,25 +95,42 @@ export const useImageState = () => {
   const extractMetadataFromImage = async (url: string, dataTag?: string) => {
     try {
       console.log('[useImageState] Starting metadata extraction for URL:', url);
+      console.log('[useImageState] Current lastMetadataUrlRef:', lastMetadataUrlRef.current);
       
-      if (isExtractingMetadataRef.current) {
-        console.log('[useImageState] Already extracting metadata, using current metadata');
+      // Skip extraction if we already processed this URL and there's data
+      if (lastMetadataUrlRef.current === url && Object.keys(metadata).length > 0) {
+        console.log('[useImageState] Already extracted metadata for this URL, reusing:', metadata);
         return metadata;
       }
       
+      if (isExtractingMetadataRef.current) {
+        console.log('[useImageState] Already extracting metadata, waiting...');
+        // Wait for completion if already extracting
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (Object.keys(metadata).length > 0) {
+          return metadata;
+        }
+      }
+      
+      // Clear existing metadata before new extraction
       setMetadata({});
       
       console.log('[useImageState] Extracting metadata for URL:', url);
       isExtractingMetadataRef.current = true;
       
       try {
-        const newMetadata = await extractImageMetadata(url);
+        // Add a random query parameter to bypass cache
+        const cacheBustUrl = `${url}${url.includes('?') ? '&' : '?'}cacheBust=${Date.now()}`;
+        console.log('[useImageState] Using cache-busted URL:', cacheBustUrl);
+        
+        const newMetadata = await extractImageMetadata(cacheBustUrl);
         console.log('[useImageState] Extracted metadata:', newMetadata);
         
         if (Object.keys(newMetadata).length === 0) {
           console.warn('[useImageState] No metadata extracted from image');
         }
         
+        // Update metadata state
         setMetadata(newMetadata);
         lastMetadataUrlRef.current = url;
         

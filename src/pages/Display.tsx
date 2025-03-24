@@ -4,8 +4,11 @@ import { useDisplayPage } from '@/components/display/hooks/useDisplayPage';
 import { DisplayContainer } from '@/components/display/DisplayContainer';
 import { DisplayMode } from '@/components/display/DisplayMode';
 import { ErrorMessage } from '@/components/display/ErrorMessage';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const Display = () => {
+  const isMobile = useIsMobile();
+  
   const {
     params,
     previewParams,
@@ -29,6 +32,13 @@ const Display = () => {
     getImagePositionStyle,
     handleImageError
   } = useDisplayPage();
+
+  // Add debug logging to help diagnose metadata issues
+  React.useEffect(() => {
+    console.log('Display rendered with metadata:', metadata);
+    console.log('Image URL is:', imageUrl);
+    console.log('Is mobile device:', isMobile);
+  }, [metadata, imageUrl, isMobile]);
 
   if (error) {
     return <ErrorMessage message={error} backgroundColor={previewParams.backgroundColor} />;

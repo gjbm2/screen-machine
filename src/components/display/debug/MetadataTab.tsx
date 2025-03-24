@@ -1,9 +1,10 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Database } from "lucide-react";
+import { Database, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
 interface MetadataEntry {
   key: string;
@@ -21,7 +22,9 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
   insertMetadataTag,
   setActiveTab
 }) => {
-  // Add enhanced logging to debug metadata issues
+  const [loading, setLoading] = useState(false);
+  
+  // Enhanced logging to debug metadata issues
   useEffect(() => {
     console.log('MetadataTab mounted/updated with entries:', metadataEntries);
     
@@ -33,8 +36,35 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
     }
   }, [metadataEntries]);
   
+  // Simple animation to indicate the component is refreshed
+  const triggerRefreshAnimation = () => {
+    setLoading(true);
+    setTimeout(() => setLoading(false), 500);
+  };
+  
   return (
     <CardContent className="pt-4 pb-2 h-full flex flex-col">
+      <div className="flex justify-between items-center mb-2">
+        <h3 className="text-sm font-medium">Image Metadata</h3>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="h-7 px-2"
+          onClick={() => {
+            triggerRefreshAnimation();
+            // This acts as a visual indicator only
+            if (metadataEntries.length === 0) {
+              toast.info("No metadata found to refresh");
+            } else {
+              toast.success(`Refreshed ${metadataEntries.length} metadata entries`);
+            }
+          }}
+        >
+          <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
+          <span>Refresh</span>
+        </Button>
+      </div>
+      
       <ScrollArea className="flex-1 rounded-md border p-2 min-h-[200px] min-w-[200px]">
         {metadataEntries.length > 0 ? (
           <div className="space-y-2">

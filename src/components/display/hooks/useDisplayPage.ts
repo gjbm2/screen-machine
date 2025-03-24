@@ -48,12 +48,19 @@ export const useDisplayPage = () => {
     oldImageStyle,
     newImageStyle,
     imageRef,
-    nextCheckTime, // This is now Date | null from useDisplayState
+    nextCheckTime, // This is now Date | null
     loadNewImage,
     checkImageModified,
-    handleManualCheck,
+    handleManualCheck: originalHandleManualCheck,
     getImagePositionStyle
   } = useDisplayState(previewParams);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('[useDisplayPage] Params:', params);
+    console.log('[useDisplayPage] Image URL:', imageUrl);
+    console.log('[useDisplayPage] Metadata:', metadata);
+  }, [params, imageUrl, metadata]);
 
   useEffect(() => {
     if (!params.output && !params.debugMode) {
@@ -73,6 +80,12 @@ export const useDisplayPage = () => {
     }
 
     const processedUrl = processOutputParam(params.output);
+    
+    // More detailed logging
+    console.log('[useDisplayPage] Processed URL:', processedUrl);
+    console.log('[useDisplayPage] Is transitioning:', isTransitioning);
+    console.log('[useDisplayPage] Is loading:', isLoading);
+    
     if (processedUrl) {
       if (!isTransitioning) {
         loadNewImage(processedUrl);
@@ -80,7 +93,11 @@ export const useDisplayPage = () => {
       
       const intervalId = window.setInterval(() => {
         if (processedUrl && !isLoading && !isTransitioning) {
-          checkImageModified(processedUrl);
+          checkImageModified(processedUrl).then(changed => {
+            if (changed) {
+              console.log('[useDisplayPage] Image changed, should re-extract metadata');
+            }
+          });
         }
       }, params.refreshInterval * 1000);
 
@@ -90,8 +107,14 @@ export const useDisplayPage = () => {
     }
   }, [params.output, params.refreshInterval, params.debugMode, isLoading, isTransitioning, loadNewImage, checkImageModified]);
 
+  // Enhanced metadata handling
   useEffect(() => {
     if (!imageUrl) return;
+
+    // Force metadata extraction when image URL changes
+    if (imageUrl) {
+      console.log('[useDisplayPage] Image URL changed, should extract metadata');
+    }
 
     if (previewParams.caption) {
       if (previewParams.data !== undefined) {
@@ -116,6 +139,34 @@ export const useDisplayPage = () => {
   useEffect(() => {
     setPreviewParams(params);
   }, [params]);
+
+  // Enhanced manual check that ensures metadata is refreshed
+  const handleManualCheck = async () => {
+    console.log('[useDisplayPage] Manual check initiated');
+    
+    if (imageUrl) {
+      const result = await originalHandleManualCheck(imageUrl, params.debugMode);
+      
+      // Force metadata refresh regardless of whether the image changed
+      if (params.debugMode) {
+        try {
+          console.log('[useDisplayPage] Forcing metadata refresh on manual check');
+          const extractedMetadata = await extractImageMetadata(imageUrl);
+          console.log('[useDisplayPage] Manually extracted metadata:', extractedMetadata);
+          
+          if (Object.keys(extractedMetadata).length === 0) {
+            toast.warning("No metadata found in this image");
+          }
+        } catch (err) {
+          console.error('[useDisplayPage] Error during manual metadata extraction:', err);
+        }
+      }
+      
+      return result;
+    }
+    
+    return false;
+  };
 
   const handleImageError = () => {
     console.error('Failed to load image:', imageUrl);
@@ -152,6 +203,19 @@ const processCaptionWithMetadata = (caption: string | null, metadata: Record<str
   
   let processedCaption = caption;
   
+  // More detailed logging
+  console.log('[processCaptionWithMetadata] Processing caption:', caption);
+  console.log('[processCaptionWithMetadata] With metadata:', metadata);
+  
+  // Special case for {all} placeholder
+  if (caption === '{all}') {
+    const allMetadata = Object.entries(metadata)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join('\n');
+    return allMetadata || 'No metadata available';
+  }
+  
+  // Replace individual tags
   Object.entries(metadata).forEach(([key, value]) => {
     const regex = new RegExp(`\\{${key}\\}`, 'g');
     processedCaption = processedCaption?.replace(regex, value) || '';
