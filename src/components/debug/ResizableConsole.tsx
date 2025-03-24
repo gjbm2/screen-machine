@@ -11,12 +11,14 @@ interface ResizableConsoleProps {
   logs: string[];
   isVisible: boolean;
   onClose: () => void;
+  onClear: () => void;
 }
 
 const ResizableConsole: React.FC<ResizableConsoleProps> = ({ 
   logs, 
   isVisible,
-  onClose
+  onClose,
+  onClear
 }) => {
   const [size, setSize] = useState(25); // Default size in viewport height percentage
   const [isMaximized, setIsMaximized] = useState(false);
@@ -82,6 +84,7 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
   
   const handleClearLogs = () => {
     setCombinedLogs([]);
+    onClear();
   };
   
   if (!isVisible && !isExiting) {

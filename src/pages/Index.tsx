@@ -3,34 +3,30 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
 import PromptForm from '@/components/prompt-form/PromptForm';
-import ResizableConsole from '@/components/debug/ResizableConsole';
-import HeaderSection from '@/components/main/HeaderSection';
-import { useImageGeneration } from '@/hooks/image-generation/use-image-generation';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import AboutDialog from '@/components/about/AboutDialog';
-import AdvancedOptions from '@/components/AdvancedOptions';
 import IntroText from '@/components/IntroText';
-import Footer from '@/components/Footer';
+import MainLayout from '@/components/layout/MainLayout';
+import AdvancedOptionsContainer from '@/components/advanced/AdvancedOptionsContainer';
+import { useImageGeneration } from '@/hooks/image-generation/use-image-generation';
+import { useConsoleManagement } from '@/hooks/use-console-management';
 
 const Index = () => {
-  const [consoleVisible, setConsoleVisible] = useState(false);
-  const [consoleLogs, setConsoleLogs] = useState<any[]>([]);
-  const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   
-  // This will store console logs for debug purposes
-  const consoleLogsRef = React.useRef<any[]>([]);
+  // Use our custom hook for console management
+  const { 
+    consoleVisible, 
+    consoleLogs, 
+    toggleConsole, 
+    clearConsole,
+    addLog: addConsoleLog 
+  } = useConsoleManagement();
   
   // Add logging for debugging the advanced panel issue
   useEffect(() => {
     console.log('Advanced options panel open state:', advancedOptionsOpen);
   }, [advancedOptionsOpen]);
 
-  const addConsoleLog = useCallback((log: any) => {
-    setConsoleLogs((prevLogs) => [...prevLogs, log]);
-    consoleLogsRef.current = [...consoleLogsRef.current, log];
-  }, []);
-
+  // Image generation hook
   const {
     generatedImages,
     activeGenerations,
@@ -58,31 +54,19 @@ const Index = () => {
     handleDeleteContainer
   } = useImageGeneration(addConsoleLog);
 
-  const toggleConsole = () => {
-    setConsoleVisible(!consoleVisible);
-  };
-
-  // Simplified and fixed handler for opening advanced options
+  // Handler for opening advanced options
   const handleOpenAdvancedOptions = useCallback(() => {
     console.log('Opening advanced options panel');
     setAdvancedOptionsOpen(true);
   }, []);
 
-  // Simplified and fixed handler for closing advanced options
+  // Handler for advanced options open state change
   const handleAdvancedOptionsOpenChange = useCallback((open: boolean) => {
     console.log('Advanced options panel open state changing to:', open);
     setAdvancedOptionsOpen(open);
   }, []);
 
-  // Create a proper handler for global param changes
-  const handleGlobalParamChange = useCallback((paramId: string, value: any) => {
-    console.log('Global param change:', paramId, value);
-    setCurrentGlobalParams(prev => ({
-      ...prev,
-      [paramId]: value
-    }));
-  }, [setCurrentGlobalParams]);
-
+  // Handler for prompt submission
   const handlePromptSubmit = async (
     prompt: string,
     imageFiles?: File[] | string[],
@@ -122,20 +106,16 @@ const Index = () => {
     }
   };
 
-  const handleClearConsole = useCallback(() => {
-    setConsoleLogs([]);
-  }, []);
-
   return (
-    <main className="flex flex-col min-h-screen p-4 md:p-6 max-w-screen-2xl mx-auto">
-      <HeaderSection 
+    <>
+      <MainLayout
         onToggleConsole={toggleConsole}
-        isConsoleVisible={consoleVisible}
+        consoleVisible={consoleVisible}
         onOpenAdvancedOptions={handleOpenAdvancedOptions}
-        onOpenAboutDialog={() => setShowAboutDialog(true)}
-      />
-      
-      <ScrollArea className="flex-1 max-h-full overflow-y-auto pr-4">
+        consoleLogs={consoleLogs}
+        onClearConsole={clearConsole}
+        isFirstRun={isFirstRun}
+      >
         {isFirstRun && <IntroText />}
         
         <PromptForm 
@@ -162,40 +142,25 @@ const Index = () => {
           onDeleteContainer={handleDeleteContainer}
           fullscreenRefreshTrigger={fullscreenRefreshTrigger}
         />
-        
-        <Footer />
-      </ScrollArea>
+      </MainLayout>
       
-      {consoleVisible && (
-        <ResizableConsole 
-          logs={consoleLogs}
-          isVisible={consoleVisible}
-          onClose={toggleConsole}
-          onClear={handleClearConsole}
-        />
-      )}
-      
-      <AboutDialog 
-        open={showAboutDialog} 
-        onOpenChange={setShowAboutDialog}
-      />
-      
-      <AdvancedOptions
-        workflows={[]}
-        selectedWorkflow={currentWorkflow}
-        onWorkflowChange={setCurrentWorkflow}
-        params={currentParams}
-        onParamChange={setCurrentParams}
-        globalParams={currentGlobalParams}
-        onGlobalParamChange={handleGlobalParamChange}
-        selectedRefiner={'none'}
-        onRefinerChange={() => {}}
-        refinerParams={{}}
-        onRefinerParamChange={() => {}}
+      <AdvancedOptionsContainer
         isOpen={advancedOptionsOpen}
         onOpenChange={handleAdvancedOptionsOpenChange}
+        workflows={[]}
+        selectedWorkflow={currentWorkflow}
+        currentParams={currentParams}
+        currentGlobalParams={currentGlobalParams}
+        onWorkflowChange={setCurrentWorkflow}
+        onParamsChange={setCurrentParams}
+        onGlobalParamChange={(paramId: string, value: any) => {
+          setCurrentGlobalParams(prev => ({
+            ...prev,
+            [paramId]: value
+          }));
+        }}
       />
-    </main>
+    </>
   );
 };
 
