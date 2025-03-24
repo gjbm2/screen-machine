@@ -110,16 +110,22 @@ export const generateImage = async (
       console.log(`[image-generator] Using reference images: ${uploadedImageUrls.join(', ')}`);
     }
 
-    // CRITICAL: Directly use the batch size from globalParams, don't override or use defaults
-    const batchSize = globalParams?.batch_size || 1;
+    // CRITICAL: Ensure batch_size is a valid number and exists in globalParams
+    let batchSize = 1; // Default to 1
+    
+    if (globalParams && typeof globalParams.batch_size === 'number' && 
+        !isNaN(globalParams.batch_size) && globalParams.batch_size > 0) {
+      batchSize = globalParams.batch_size;
+    } else if (globalParams) {
+      // Fix the batch size if it's invalid
+      globalParams.batch_size = 1;
+      batchSize = 1;
+      console.warn(`[image-generator] Invalid batch_size in globalParams, using default: 1`);
+    }
     
     // Log the batch size to verify we're using the right value
-    console.log(`[image-generator] Received batch_size: ${batchSize}`);
-    if (globalParams?.batch_size !== undefined) {
-      console.log(`[image-generator] Original globalParams.batch_size: ${globalParams.batch_size}`);
-    } else {
-      console.log(`[image-generator] WARNING: globalParams.batch_size is undefined, using default: 1`);
-    }
+    console.log(`[image-generator] Using batch_size: ${batchSize}`);
+    console.log(`[image-generator] Original globalParams.batch_size: ${globalParams.batch_size}`);
     
     // Log full global params for debugging
     console.log(`[image-generator] Full received globalParams:`, globalParams);
@@ -178,13 +184,14 @@ export const generateImage = async (
     // Use setTimeout to allow the UI to update before starting the API call
     setTimeout(async () => {
       try {
-        // Make the API call - CRITICAL: Pass globalParams directly without modifying its batch_size
+        // Make the API call - CRITICAL: Ensure globalParams.batch_size is set correctly
         const payload: GenerateImagePayload = {
           prompt,
           workflow,
           params,
           global_params: {
             ...globalParams,
+            batch_size: batchSize // Ensure batch_size is explicitly set in global_params
           },
           refiner,
           refiner_params: refinerParams,

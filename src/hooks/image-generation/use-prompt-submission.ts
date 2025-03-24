@@ -61,9 +61,17 @@ export const usePromptSubmission = ({
       }
     }
     
-    // CRITICAL: Always use explicitly provided global parameters from function args
-    // Never modify, cache or transform these values - they should flow directly to the API
-    const effectiveGlobalParams = globalParams || {};
+    // CRITICAL FIX: Always ensure we have batch_size by merging provided globalParams with defaults
+    // Never use || {} which can replace the entire object if globalParams is undefined
+    const effectiveGlobalParams = {
+      // Start with a default batch size of 1
+      batch_size: 1,
+      // Then apply any current global params from context
+      ...currentGlobalParams,
+      // Finally, override with explicitly provided global params from function args
+      // This ensures the batch_size from PromptForm.tsx is preserved
+      ...(globalParams || {})
+    };
     
     // IMPORTANT DEBUG: Log the batch size being used for this generation request
     console.log("[usePromptSubmission] Using batch size:", effectiveGlobalParams.batch_size);
@@ -77,7 +85,7 @@ export const usePromptSubmission = ({
       imageFiles: uniqueImageFiles,
       workflow: effectiveWorkflow,
       params: effectiveWorkflowParams,
-      globalParams: effectiveGlobalParams, // Use provided globalParams directly
+      globalParams: effectiveGlobalParams, // Use the properly merged globalParams
       batchId: lastBatchIdUsed,
       refiner, 
       refinerParams
@@ -102,6 +110,7 @@ export const usePromptSubmission = ({
   }, [
     currentWorkflow, 
     currentParams, 
+    currentGlobalParams,
     lastBatchIdUsed,
     setIsFirstRun,
     setLastBatchIdUsed,
