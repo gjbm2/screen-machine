@@ -5,14 +5,7 @@ import { DisplayParams } from '../types';
 export const createUrlWithParams = (params: DisplayParams): string => {
   const queryParams = new URLSearchParams();
   
-  // Handle output parameter properly - encode only if it doesn't start with / or output/
-  if (params.output) {
-    const outputValue = params.output.startsWith('/') || params.output.startsWith('output/') ? 
-      params.output : 
-      encodeURIComponent(params.output);
-    queryParams.set('output', outputValue);
-  }
-  
+  if (params.output) queryParams.set('output', params.output);
   if (params.showMode !== 'fit') queryParams.set('show', params.showMode);
   if (params.position !== 'center') queryParams.set('position', params.position);
   if (params.refreshInterval !== 5) queryParams.set('refresh', params.refreshInterval.toString());
