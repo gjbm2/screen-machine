@@ -110,10 +110,10 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             </DropdownMenuItem>
             
             <DropdownMenuItem asChild>
-              <a href="/display" target="_blank" rel="noopener noreferrer">
+              <Link to="/display" target="_blank" rel="noopener noreferrer">
                 <FileText className="h-4 w-4 mr-2" />
                 <span>Display Editor</span>
-              </a>
+              </Link>
             </DropdownMenuItem>
             
             <DropdownMenuSeparator />

@@ -46,6 +46,12 @@ const AdvancedOptionsContainer: React.FC<AdvancedOptionsContainerProps> = ({
     onParamsChange(updatedParams);
   }, [currentParams, onParamsChange]);
 
+  // Handle panel open/close
+  const handleOpenChange = useCallback((open: boolean) => {
+    console.log('Advanced options container - handleOpenChange:', open);
+    onOpenChange(open);
+  }, [onOpenChange]);
+
   return (
     <AdvancedOptions
       workflows={workflows}
@@ -60,7 +66,7 @@ const AdvancedOptionsContainer: React.FC<AdvancedOptionsContainerProps> = ({
       refinerParams={{}}
       onRefinerParamChange={() => {}}
       isOpen={isOpen}
-      onOpenChange={onOpenChange}
+      onOpenChange={handleOpenChange}
     />
   );
 };

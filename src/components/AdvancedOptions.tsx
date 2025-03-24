@@ -57,9 +57,9 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   const [currentRefinerParams, setCurrentRefinerParams] = useState<WorkflowParam[]>([]);
   const isMobile = useIsMobile();
   
+  // Handle open/close events
   const handleOpenChange = (open: boolean) => {
     console.log("Advanced options panel - handleOpenChange called with:", open);
-    // Directly call onOpenChange without setTimeout
     onOpenChange(open);
   };
   
@@ -86,7 +86,17 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
 
   return (
     <Sheet open={isOpen} onOpenChange={handleOpenChange}>
-      <SheetContent className={`${sheetWidth} overflow-y-auto`} onPointerDownOutside={(e) => e.preventDefault()}>
+      <SheetContent 
+        className={`${sheetWidth} overflow-y-auto`}
+        onPointerDownOutside={(e) => {
+          // This prevents the click outside from propagating but allows the dialog to close
+          e.preventDefault();
+        }}
+        onEscapeKeyDown={(e) => {
+          // Allow escape key to close the sheet but prevent propagation
+          e.stopPropagation();
+        }}
+      >
         <SheetHeader className="text-left p-0">
           <div className="flex justify-between items-center mb-4">
             <div>
