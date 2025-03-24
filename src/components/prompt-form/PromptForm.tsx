@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -8,6 +9,7 @@ import AdvancedOptions from '@/components/AdvancedOptions';
 import { PromptFormProps } from './types';
 import useExternalImageUrls from '@/hooks/use-external-images';
 import ImagePreviewSection from './ImagePreviewSection';
+import { WorkflowProps } from './types';
 
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
@@ -193,7 +195,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           handleSubmit={handleSubmit}
           prompt={prompt}
           isButtonDisabled={isButtonDisabled}
-          workflows={workflows}
+          workflows={workflows as WorkflowProps[]}
           isCompact={false}
           hasUploadedImages={previewUrls.length > 0}
         />

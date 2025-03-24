@@ -40,3 +40,9 @@ export interface PromptFormProps {
   isFirstRun?: boolean;
   onOpenAdvancedOptions?: () => void;
 }
+
+export interface ImagePreviewSectionProps {
+  previewUrls: string[];
+  handleRemoveImage: (index: number) => void;
+  clearAllImages: () => void;
+}
