@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import scriptsData from '@/data/scripts.json';
+import AboutDialog from '@/components/about/AboutDialog';
 
 interface HeaderSectionProps {
   onToggleConsole: () => void;
@@ -29,6 +30,8 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   onOpenAboutDialog,
   onRunScript
 }) => {
+  const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
+  
   const handleRunScript = (filename: string) => {
     if (onRunScript) {
       onRunScript(filename);
@@ -45,10 +48,24 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       }, 50);
     }
   };
+  
+  const handleOpenAboutDialog = () => {
+    if (onOpenAboutDialog) {
+      onOpenAboutDialog();
+    } else {
+      setAboutDialogOpen(true);
+    }
+  };
 
   return (
     <div className="flex justify-between items-center">
-      <Header onOpenAboutDialog={onOpenAboutDialog} />
+      <Header 
+        onToggleConsole={onToggleConsole} 
+        onOpenAdvancedOptions={handleOpenAdvancedFromMenu}
+        onToggleVerboseDebug={() => {}}
+        verboseDebugEnabled={false}
+        onOpenAboutDialog={onOpenAboutDialog}
+      />
       
       <div className="flex items-center space-x-1">
         {/* Only show console button outside the menu if visible */}
@@ -69,8 +86,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             </TooltipContent>
           </Tooltip>
         )}
-        
-        {/* Advanced Options button was removed from here */}
         
         {/* Burger menu */}
         <DropdownMenu>
@@ -98,7 +113,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               </DropdownMenuItem>
             )}
             
-            <DropdownMenuItem onClick={onOpenAboutDialog}>
+            <DropdownMenuItem onClick={handleOpenAboutDialog}>
               <Info className="h-4 w-4 mr-2" />
               <span>About</span>
             </DropdownMenuItem>
@@ -130,6 +145,14 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      
+      {/* Controlled dialog when not using onOpenAboutDialog */}
+      {!onOpenAboutDialog && (
+        <AboutDialog 
+          open={aboutDialogOpen} 
+          onOpenChange={setAboutDialogOpen} 
+        />
+      )}
     </div>
   );
 };
