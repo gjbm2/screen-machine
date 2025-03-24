@@ -8,18 +8,34 @@ interface LoadingPlaceholderProps {
   imageNumber?: number;
   workflowName?: string;
   hasReferenceImages?: boolean;
+  isCompact?: boolean; // Added this prop
 }
 
 const LoadingPlaceholder: React.FC<LoadingPlaceholderProps> = ({ 
   prompt, 
   imageNumber, 
   workflowName,
-  hasReferenceImages
+  hasReferenceImages,
+  isCompact = false // Added with default value
 }) => {
   // Determine what text to display
   let displayText = prompt;
   if (!displayText && (imageNumber !== undefined || workflowName)) {
     displayText = `${imageNumber !== undefined ? `Image ${imageNumber}` : ''} ${workflowName ? `- ${workflowName}` : ''}`.trim();
+  }
+
+  // Use simpler view for compact mode
+  if (isCompact) {
+    return (
+      <div className="aspect-square rounded-md overflow-hidden bg-secondary/10 flex flex-col items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mb-2"></div>
+        {displayText && (
+          <p className="text-xs text-center text-muted-foreground px-2 max-w-full overflow-hidden truncate">
+            {displayText}
+          </p>
+        )}
+      </div>
+    );
   }
 
   return (
