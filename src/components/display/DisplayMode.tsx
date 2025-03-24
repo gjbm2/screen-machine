@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { DebugPanel } from '@/components/display/debug/DebugPanel';
 import { DebugImageContainer } from '@/components/display/DebugImageContainer';
@@ -56,6 +55,17 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   const [showPreview, setShowPreview] = useState(!isMobile);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   
+  // Log when this component renders in debug mode
+  useEffect(() => {
+    console.log('[DisplayMode] Rendering with params:', {
+      debugMode: params.debugMode,
+      imageUrl,
+      imageKey,
+      isMobile,
+      showPreview
+    });
+  }, [params.debugMode, imageUrl, imageKey, isMobile, showPreview]);
+  
   // When switching to mobile view, we want to show the preview by default
   useEffect(() => {
     if (isMobile) {
@@ -65,10 +75,13 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   
   // Toggle preview/settings view on mobile
   const toggleView = () => {
+    console.log('[DisplayMode] Toggling view, current state:', showPreview);
     setShowPreview(prev => !prev);
   };
 
+  // If we're in debug mode, render the debug interface
   if (params.debugMode) {
+    console.log('[DisplayMode] Rendering debug interface');
     return (
       <div className="fixed inset-0 flex flex-col sm:flex-row overflow-hidden">
         {/* Mobile View Switcher - fixed position with higher z-index */}
@@ -150,6 +163,8 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
     );
   }
 
+  // Otherwise, render the normal image display
+  console.log('[DisplayMode] Rendering normal image display');
   return (
     <ImageDisplay
       params={previewParams}

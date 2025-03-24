@@ -54,21 +54,32 @@ export const useDisplayParams = () => {
   console.log('[useDisplayParams] Parsed params:', params);
   console.log('[useDisplayParams] Caption background:', params.captionBgColor);
   
-  // Helper function to redirect to debug mode if needed
+  // Helper function to redirect to debug mode if needed - FIXED TO PREVENT LOOPS
   const redirectToDebugMode = () => {
     // Skip redirection if we already attempted it or if already in debug mode or no output specified
-    if (redirectAttemptedRef.current || params.debugMode || !params.output) return;
+    if (redirectAttemptedRef.current || params.debugMode || !params.output) {
+      console.log('[useDisplayParams] Skipping redirect - conditions not met:', {
+        alreadyAttempted: redirectAttemptedRef.current,
+        alreadyInDebugMode: params.debugMode,
+        noOutput: !params.output
+      });
+      return;
+    }
     
     // Mark that we've attempted redirection to prevent loops
     redirectAttemptedRef.current = true;
+    console.log('[useDisplayParams] Marked redirection as attempted');
     
     // Only redirect if debugMode parameter is explicitly set to true in URL
     if (searchParams.has('debugMode') && parseBooleanParam(searchParams.get('debugMode'))) {
+      console.log('[useDisplayParams] Debug mode requested, redirecting');
       const newParams = { ...params, debugMode: true };
       const newUrl = createUrlWithParams(newParams);
       
       console.log('[useDisplayParams] Redirecting to debug mode:', newUrl);
-      navigate(newUrl);
+      navigate(newUrl, { replace: true }); // Use replace to avoid building history
+    } else {
+      console.log('[useDisplayParams] Debug mode not requested in URL');
     }
   };
   
@@ -76,7 +87,8 @@ export const useDisplayParams = () => {
   useEffect(() => {
     console.log('[useDisplayParams] Current URL:', window.location.href);
     console.log('[useDisplayParams] URL params:', Object.fromEntries(searchParams.entries()));
-  }, [searchParams]);
+    console.log('[useDisplayParams] Debug mode enabled:', params.debugMode);
+  }, [searchParams, params.debugMode]);
   
   return {
     params,

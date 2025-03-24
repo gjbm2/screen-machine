@@ -13,6 +13,7 @@ export const useDisplayPage = () => {
   const [metadataExtractionAttempted, setMetadataExtractionAttempted] = useState(false);
   const [previousImageUrl, setPreviousImageUrl] = useState<string | null>(null);
   const redirectAttemptedRef = useRef(false);
+  const debugHandledRef = useRef(false);
 
   // Get display state from the core hook
   const {
@@ -78,17 +79,32 @@ export const useDisplayPage = () => {
 
   // Redirect to debug mode if needed (only once per component mount)
   useEffect(() => {
-    if (!redirectAttemptedRef.current && params.output) {
+    console.log('[useDisplayPage] Checking if debug redirection is needed:', {
+      alreadyAttempted: redirectAttemptedRef.current,
+      hasOutput: !!params.output,
+      debugMode: params.debugMode,
+      debugHandled: debugHandledRef.current
+    });
+    
+    if (!redirectAttemptedRef.current && params.output && !debugHandledRef.current) {
       redirectAttemptedRef.current = true;
-      console.log('[useDisplayPage] Attempting to redirect to debug mode if needed');
-      redirectToDebugMode();
+      console.log('[useDisplayPage] Attempting debug redirection check');
+      
+      // If we're in debug mode, mark it as handled to prevent further checks
+      if (params.debugMode) {
+        debugHandledRef.current = true;
+        console.log('[useDisplayPage] Already in debug mode, marking as handled');
+      } else {
+        // Only redirect if not already in debug mode
+        redirectToDebugMode();
+      }
     }
-  }, [params.output, redirectToDebugMode]);
+  }, [params.output, params.debugMode, redirectToDebugMode]);
 
   // Process captions with metadata
   useCaptionProcessor(previewParams, metadata, imageUrl, setProcessedCaption);
 
-  // Fetch debug output files
+  // Fetch debug output files only when in debug mode
   useDebugFiles(params.debugMode, setOutputFiles);
 
   // Poll for image changes
