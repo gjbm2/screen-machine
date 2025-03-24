@@ -49,7 +49,18 @@ const AdvancedOptionsContainer: React.FC<AdvancedOptionsContainerProps> = ({
   // Handle panel open/close
   const handleOpenChange = useCallback((open: boolean) => {
     console.log('Advanced options container - handleOpenChange:', open);
-    onOpenChange(open);
+    
+    // Use a very slight delay to ensure any closing animations complete first
+    // This helps prevent event handling conflicts during transitions
+    setTimeout(() => {
+      onOpenChange(open);
+      
+      // When closing, ensure we restore any body styles that might be preventing interaction
+      if (!open) {
+        document.body.style.pointerEvents = '';
+        document.body.style.cursor = '';
+      }
+    }, 10);
   }, [onOpenChange]);
 
   return (

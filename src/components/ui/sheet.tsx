@@ -55,40 +55,61 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content
-      ref={ref}
-      className={cn(sheetVariants({ side }), className, "min-w-[300px] min-h-[200px]")}
-      {...props}
-      onEscapeKeyDown={(e) => {
-        // Prevent propagation to parent dialogs
-        e.stopPropagation();
-        
-        // Run any existing onEscapeKeyDown handler
-        if (props.onEscapeKeyDown) {
-          props.onEscapeKeyDown(e);
-        }
-      }}
-      onInteractOutside={(e) => {
-        // Ensure click outside events are properly handled
-        e.preventDefault();
-        
-        // Run any existing onInteractOutside handler
-        if (props.onInteractOutside) {
-          props.onInteractOutside(e);
-        }
-      }}
-    >
-      {children}
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
-    </SheetPrimitive.Content>
-  </SheetPortal>
-))
+>(({ side = "right", className, children, ...props }, ref) => {
+  // Add an effect to ensure we clean up any potential stuck event handlers
+  React.useEffect(() => {
+    // This ensures we properly clean up when the sheet is unmounted
+    return () => {
+      // Force any hidden elements to be removed from the DOM
+      document.body.style.pointerEvents = '';
+      document.body.style.cursor = '';
+    };
+  }, []);
+
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        ref={ref}
+        className={cn(sheetVariants({ side }), className, "min-w-[300px] min-h-[200px]")}
+        {...props}
+        onEscapeKeyDown={(e) => {
+          // Prevent propagation to parent dialogs
+          e.stopPropagation();
+          
+          // Run any existing onEscapeKeyDown handler
+          if (props.onEscapeKeyDown) {
+            props.onEscapeKeyDown(e);
+          }
+        }}
+        onInteractOutside={(e) => {
+          // Ensure click outside events are properly handled
+          if (props.onInteractOutside) {
+            props.onInteractOutside(e);
+          }
+        }}
+        onCloseAutoFocus={(e) => {
+          // When closed by any means, ensure body pointer events are restored
+          document.body.style.pointerEvents = '';
+          
+          // Run any existing onCloseAutoFocus handler
+          if (props.onCloseAutoFocus) {
+            props.onCloseAutoFocus(e);
+          }
+          
+          // Prevent default focus behavior to avoid issues
+          e.preventDefault();
+        }}
+      >
+        {children}
+        <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </SheetPrimitive.Close>
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  )
+})
 SheetContent.displayName = SheetPrimitive.Content.displayName
 
 const SheetHeader = ({

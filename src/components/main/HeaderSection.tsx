@@ -34,6 +34,17 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       onRunScript(filename);
     }
   };
+  
+  // Create a specific handler for the advanced options from the dropdown menu
+  const handleOpenAdvancedFromMenu = () => {
+    if (onOpenAdvancedOptions) {
+      // Ensure the dropdown menu is closed before opening the advanced panel
+      // This helps prevent event handling conflicts
+      setTimeout(() => {
+        onOpenAdvancedOptions();
+      }, 50);
+    }
+  };
 
   return (
     <div className="flex justify-between items-center">
@@ -98,7 +109,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             )}
             
             {onOpenAdvancedOptions && (
-              <DropdownMenuItem onClick={onOpenAdvancedOptions}>
+              <DropdownMenuItem onClick={handleOpenAdvancedFromMenu}>
                 <Settings className="h-4 w-4 mr-2" />
                 <span>Advanced</span>
               </DropdownMenuItem>
