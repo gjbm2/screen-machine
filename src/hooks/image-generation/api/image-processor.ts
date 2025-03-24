@@ -1,5 +1,6 @@
 
 import { GeneratedImage } from '../types';
+import { ImageGenerationStatus } from '@/types/workflows';
 import { generateImageTitle } from './title-generator';
 
 /**
@@ -20,19 +21,17 @@ export const createPlaceholderImages = (
   
   // Create a placeholder entry
   const placeholderImage: GeneratedImage = {
-    id: '',
     url: '', 
     prompt,
     workflow,
     timestamp: Date.now(),
     batchId,
     batchIndex: nextIndex,
-    loading: true,
+    status: 'generating' as ImageGenerationStatus,
     params,
     refiner,
     refinerParams,
-    title: generateImageTitle(prompt, workflow),
-    status: 'generating'
+    title: generateImageTitle(prompt, workflow)
   };
   
   // Store reference image URL if there is one
@@ -71,17 +70,15 @@ export const processGenerationResponse = (
   images.forEach((img: any, index: number) => {
     // Find the placeholder for this image
     const placeholderIndex = newImages.findIndex(
-      pi => pi.batchId === batchId && pi.batchIndex === index && (pi.status === 'generating' || pi.loading)
+      pi => pi.batchId === batchId && pi.batchIndex === index && pi.status === 'generating'
     );
     
     if (placeholderIndex >= 0) {
       // Update the placeholder with actual data
       newImages[placeholderIndex] = {
         ...newImages[placeholderIndex],
-        id: newImages[placeholderIndex].id || '',
         url: img.url,
-        loading: false,
-        status: 'completed',
+        status: 'completed' as ImageGenerationStatus,
         timestamp: Date.now(),
       };
       
@@ -97,15 +94,13 @@ export const processGenerationResponse = (
     } else {
       // No placeholder found, this is an additional image
       const newImage: GeneratedImage = {
-        id: '',
         url: img.url,
         prompt,
         workflow,
         timestamp: Date.now(),
         batchId,
         batchIndex: index,
-        loading: false,
-        status: 'completed',
+        status: 'completed' as ImageGenerationStatus,
         params: {},
         title: generateImageTitle(prompt, workflow)
       };
@@ -136,12 +131,10 @@ export const markBatchAsError = (
   prevImages: GeneratedImage[]
 ): GeneratedImage[] => {
   return prevImages.map(img => {
-    if (img.batchId === batchId && (img.status === 'generating' || img.loading)) {
+    if (img.batchId === batchId && img.status === 'generating') {
       return {
         ...img,
-        loading: false,
-        error: true,
-        status: 'error',
+        status: 'error' as ImageGenerationStatus,
         timestamp: Date.now()
       };
     }

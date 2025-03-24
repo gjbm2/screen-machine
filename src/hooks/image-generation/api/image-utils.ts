@@ -1,5 +1,6 @@
 
 import { GeneratedImage } from '../types';
+import { ImageGenerationStatus } from '@/types/workflows';
 import { generateImageTitle } from './title-util';
 
 /**
@@ -17,15 +18,13 @@ export const createPlaceholderImage = (
   nextContainerId?: number
 ): GeneratedImage => {
   const placeholderImage: GeneratedImage = {
-    id: '',
     url: '', 
     prompt,
     workflow,
     timestamp: Date.now(),
     batchId: currentBatchId,
     batchIndex: nextIndex,
-    loading: true,
-    status: 'generating',
+    status: 'generating' as ImageGenerationStatus,
     params,
     refiner,
     refinerParams
@@ -64,8 +63,7 @@ export const updateImageWithResult = (
   return {
     ...placeholder,
     url: imageUrl,
-    loading: false,
-    status: 'completed',
+    status: 'completed' as ImageGenerationStatus,
     timestamp: Date.now(),
     // Reference image URL is automatically preserved via spread operator
   };
@@ -85,9 +83,7 @@ export const updateImageWithError = (
   // Ensure we preserve the referenceImageUrl for error images too
   return {
     ...placeholder,
-    loading: false,
-    error: true,
-    status: 'error',
+    status: 'error' as ImageGenerationStatus,
     timestamp: Date.now()
     // Reference image URL is automatically preserved via spread operator
   };
