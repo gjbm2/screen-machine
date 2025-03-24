@@ -87,6 +87,8 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
           captionSize={previewParams.captionSize}
           captionColor={previewParams.captionColor}
           captionFont={previewParams.captionFont}
+          captionBgColor={previewParams.captionBgColor}
+          captionBgOpacity={previewParams.captionBgOpacity}
           metadata={metadata}
           onSettingsChange={() => {}} 
         />

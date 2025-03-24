@@ -36,7 +36,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   resetSettings
 }) => {
   return (
-    <CardContent className="pt-4 pb-2">
+    <CardContent className="pt-4 pb-2 overflow-y-auto max-h-[50vh]">
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">

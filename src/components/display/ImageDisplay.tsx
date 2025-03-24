@@ -82,10 +82,14 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
     const scaledFontSize = getScaledFontSize(params.captionSize || '16px');
 
+    // Calculate background opacity - convert to hex
+    const bgOpacityHex = Math.round((params.captionBgOpacity || 0.7) * 255).toString(16).padStart(2, '0');
+    const bgColor = `${params.captionBgColor || '#000000'}${bgOpacityHex}`;
+
     const styles: React.CSSProperties = {
       position: 'absolute',
       padding: '8px 16px',
-      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+      backgroundColor: bgColor,
       color: `#${params.captionColor}`,
       fontSize: scaledFontSize,
       fontFamily: params.captionFont,
