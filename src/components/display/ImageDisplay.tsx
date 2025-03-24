@@ -71,7 +71,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     const scaleFactor = containerSize.width / baseWidth;
     
     // Apply scaling but limit to reasonable bounds
-    const scaledSize = Math.max(10, Math.min(72, size * scaleFactor));
+    const scaledSize = Math.max(10, Math.min(96, size * scaleFactor)); // Increased max size to 96px
     
     return `${scaledSize}${unit}`;
   };
@@ -82,17 +82,33 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
     const scaledFontSize = getScaledFontSize(params.captionSize || '16px');
 
-    // Calculate background opacity - convert to hex
-    const bgOpacityHex = Math.round((params.captionBgOpacity || 0.7) * 255).toString(16).padStart(2, '0');
-    const bgColor = `${params.captionBgColor || '#000000'}${bgOpacityHex}`;
+    // Fix background color handling - ensure it has proper format
+    const bgColor = params.captionBgColor || '#000000';
+    const formattedBgColor = bgColor.startsWith('#') ? bgColor : `#${bgColor}`;
+    
+    // Calculate background opacity as hex value for rgba
+    const bgOpacityValue = params.captionBgOpacity !== undefined ? params.captionBgOpacity : 0.7;
+    const bgOpacityHex = Math.round(bgOpacityValue * 255).toString(16).padStart(2, '0');
+    
+    // Combine color and opacity
+    const bgColorWithOpacity = `${formattedBgColor}${bgOpacityHex}`;
+
+    console.log('[ImageDisplay] Caption styles:', {
+      bgColor,
+      formattedBgColor,
+      bgOpacityValue,
+      bgOpacityHex,
+      bgColorWithOpacity,
+      fontSize: scaledFontSize
+    });
 
     const styles: React.CSSProperties = {
       position: 'absolute',
       padding: '8px 16px',
-      backgroundColor: bgColor,
-      color: `#${params.captionColor}`,
+      backgroundColor: bgColorWithOpacity,
+      color: `#${params.captionColor || 'ffffff'}`,
       fontSize: scaledFontSize,
-      fontFamily: params.captionFont,
+      fontFamily: params.captionFont || 'Arial, sans-serif',
       maxWidth: '80%',
       textAlign: 'center',
       borderRadius: '4px',

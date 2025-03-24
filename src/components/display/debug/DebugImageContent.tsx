@@ -205,6 +205,9 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
     return style;
   };
   
+  // Ensure captionBgColor has # prefix
+  const formattedCaptionBgColor = captionBgColor.startsWith('#') ? captionBgColor : `#${captionBgColor}`;
+  
   return (
     <CardContent 
       className="p-0 flex-1 overflow-auto flex items-center justify-center"
@@ -238,7 +241,7 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
                 fontSize={captionSize}
                 color={captionColor}
                 fontFamily={captionFont}
-                backgroundColor={captionBgColor}
+                backgroundColor={formattedCaptionBgColor}
                 backgroundOpacity={captionBgOpacity}
                 containerWidth={containerDimensions.width}
                 screenWidth={window.innerWidth}

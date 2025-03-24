@@ -12,7 +12,7 @@ import { FileText } from "lucide-react";
 
 // Font sizes and font families for dropdowns
 const FONT_SIZES = [
-  '10px', '12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '36px', '48px'
+  '10px', '12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '36px', '48px', '64px', '72px', '96px'
 ];
 
 const FONT_FAMILIES = [

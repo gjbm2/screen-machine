@@ -10,10 +10,12 @@ export const useImagePoller = (
   isLoading: boolean,
   isTransitioning: boolean,
   loadNewImage: (url: string) => void,
-  checkImageModified: (url: string) => Promise<boolean>
+  checkImageModified: (url: string) => Promise<boolean>,
+  extractMetadataFromImage: (url: string) => Promise<Record<string, string>>
 ) => {
   // Use a ref to track the current interval ID
   const intervalIdRef = useRef<number | null>(null);
+  const lastCheckedUrl = useRef<string | null>(null);
   
   // Handle initial image loading and periodic checking
   useEffect(() => {
@@ -49,7 +51,13 @@ export const useImagePoller = (
             if (changed) {
               console.log('[useImagePoller] Image changed, reloading...');
               loadNewImage(processedUrl);
+              // Automatically extract metadata when image changes
+              extractMetadataFromImage(processedUrl).catch(err => {
+                console.error('[useImagePoller] Error extracting metadata:', err);
+              });
             }
+          }).catch(err => {
+            console.error('[useImagePoller] Error checking image modifications:', err);
           });
         }
       }, params.refreshInterval * 1000);
@@ -61,7 +69,19 @@ export const useImagePoller = (
         }
       };
     }
-  }, [params.output, params.refreshInterval, params.debugMode, isLoading, isTransitioning, loadNewImage, checkImageModified]);
+  }, [params.output, params.refreshInterval, params.debugMode, isLoading, isTransitioning, loadNewImage, checkImageModified, extractMetadataFromImage]);
+
+  // Extract metadata whenever the image URL changes
+  useEffect(() => {
+    if (imageUrl && imageUrl !== lastCheckedUrl.current && !isLoading && !isTransitioning) {
+      console.log('[useImagePoller] New image URL detected, extracting metadata:', imageUrl);
+      lastCheckedUrl.current = imageUrl;
+      
+      extractMetadataFromImage(imageUrl).catch(err => {
+        console.error('[useImagePoller] Error extracting metadata on URL change:', err);
+      });
+    }
+  }, [imageUrl, isLoading, isTransitioning, extractMetadataFromImage]);
 
   // Enhanced manual check that handles metadata refresh
   const handleManualCheck = async (
