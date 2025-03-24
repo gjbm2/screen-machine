@@ -17,6 +17,7 @@ export interface GeneratedImage {
   timestamp?: number;
   referenceImageUrl?: string | string[];
   title?: string;
+  status?: 'generating' | 'completed' | 'error' | 'failed';
 }
 
 // Define types for image generation configuration

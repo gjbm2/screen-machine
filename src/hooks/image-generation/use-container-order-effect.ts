@@ -15,7 +15,7 @@ export const useContainerOrderEffect = ({
   useEffect(() => {
     // Find any containers with 'generating' status
     const generatingBatchIds = generatedImages
-      .filter(img => img.status === 'generating')
+      .filter(img => img.status === 'generating' || img.loading)
       .map(img => img.batchId);
     
     // Get unique batch IDs that are generating
