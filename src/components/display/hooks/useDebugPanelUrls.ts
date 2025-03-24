@@ -1,3 +1,4 @@
+
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
 import { createUrlWithParams, processOutputParam } from '../utils/paramUtils';
@@ -156,8 +157,18 @@ export const useDebugPanelUrls = ({
     const url = createUrlWithParams(newParams);
     console.log('[useDebugPanelUrls] Committing settings, navigating to view mode:', url);
     
-    // Use direct window.location change to force a full page reload
-    window.location.href = `/display${url}`;
+    // Use navigate instead of window.location to preserve state
+    if (processedOutput) {
+      navigate(`/display${url}`);
+    } else {
+      console.warn('[useDebugPanelUrls] No output URL provided for view mode, using default');
+      toast({
+        title: "Error",
+        description: "No image URL specified.",
+        variant: "destructive"
+      });
+      return;
+    }
     
     toast({
       title: "View Mode Activated",
