@@ -16,16 +16,18 @@ const BatchControl: React.FC<BatchControlProps> = ({
   decrementBatchSize,
   isCompact = false
 }) => {
-  console.log(`[BatchControl] Current batch size: ${batchSize}`);
+  // Log the current value immediately when rendered
+  console.log(`[BatchControl] Current batch size in component: ${batchSize}`);
   
   const handleIncrement = () => {
     incrementBatchSize();
-    console.log(`[BatchControl] Incremented batch size to: ${batchSize + 1}`);
+    // We can't log the updated value immediately as state updates are async
+    console.log(`[BatchControl] Increment requested (current: ${batchSize})`);
   };
   
   const handleDecrement = () => {
     decrementBatchSize();
-    console.log(`[BatchControl] Decremented batch size to: ${batchSize > 1 ? batchSize - 1 : 1}`);
+    console.log(`[BatchControl] Decrement requested (current: ${batchSize})`);
   };
   
   return (

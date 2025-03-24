@@ -81,13 +81,15 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
     const refinerToUse = selectedRefiner === "none" ? undefined : selectedRefiner;
     
-    // Create a fresh global params object with the current batch size
+    // CRITICAL: Create a fresh global params object with the current batch size
+    // This ensures we're always using the most up-to-date batch size value
     const currentGlobalParams = {
       ...globalParams,
       batch_size: batchSize // Use the current batch size value directly
     };
 
-    console.log(`PromptForm: Submitting with current batch size: ${batchSize}`);
+    console.log(`PromptForm: Submitting generation with batch size: ${batchSize}`);
+    console.log('PromptForm: Full global params:', currentGlobalParams);
 
     onSubmit(
       prompt,
