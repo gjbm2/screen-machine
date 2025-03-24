@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import GenerationFailedPlaceholder from '../GenerationFailedPlaceholder';
 import LoadingPlaceholder from '../LoadingPlaceholder';
@@ -26,28 +25,40 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
       return;
     }
 
-    // Modified sorting logic to properly handle generating images
-    // - Generating images should appear at the top
-    // - Completed images should follow in timestamp order (newest first)
-    const sorted = [...images].sort((a, b) => {
-      // First prioritize by status - generating images always first
-      if (a.status === 'generating' && b.status !== 'generating') return -1;
-      if (a.status !== 'generating' && b.status === 'generating') return 1;
-      
-      // If both are generating, sort by timestamp (newest first)
-      if (a.status === 'generating' && b.status === 'generating') {
-        return (b.timestamp || 0) - (a.timestamp || 0);
-      }
-      
-      // For all other images, sort by timestamp (newest first)
-      return (b.timestamp || 0) - (a.timestamp || 0);
-    });
+    // Track batchIds of generating images to avoid duplicates
+    const generatingBatchIds = new Set<string>();
     
-    console.log('[SmallGridView] Sorted images:', sorted.map(img => ({
-      status: img.status,
-      timestamp: img.timestamp,
-      batchId: img.batchId
-    })));
+    // Modified sorting logic to properly handle generating images
+    // - Generating images should appear at the top (only once per batchId)
+    // - Completed images should follow in timestamp order (newest first)
+    const sorted = images
+      .filter(img => {
+        // For generating images, only keep one per batchId
+        if (img.status === 'generating') {
+          if (generatingBatchIds.has(img.batchId)) {
+            return false; // Skip duplicates
+          }
+          generatingBatchIds.add(img.batchId);
+          return true;
+        }
+        return true; // Keep all non-generating images
+      })
+      .sort((a, b) => {
+        // First prioritize by status - generating images always first
+        if (a.status === 'generating' && b.status !== 'generating') return -1;
+        if (a.status !== 'generating' && b.status === 'generating') return 1;
+        
+        // If both are generating, sort by timestamp (newest first)
+        if (a.status === 'generating' && b.status === 'generating') {
+          return (b.timestamp || 0) - (a.timestamp || 0);
+        }
+        
+        // For all other images, sort by timestamp (newest first)
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      });
+    
+    console.log('[SmallGridView] Unique generating images:', Array.from(generatingBatchIds));
+    console.log('[SmallGridView] Total sorted images:', sorted.length);
     
     setSortedImages(sorted);
   }, [images]);
@@ -56,7 +67,7 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
     <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-0.5">
       {sortedImages.map((image, idx) => (
         <div 
-          key={`${image.batchId}-${image.batchIndex}`} 
+          key={`${image.batchId}-${image.batchIndex || idx}`} 
           className="aspect-square rounded-md overflow-hidden cursor-pointer"
           onClick={() => onSmallImageClick(image)}
         >
