@@ -80,6 +80,7 @@ export const useDisplayPage = () => {
   useEffect(() => {
     if (!redirectAttemptedRef.current && params.output) {
       redirectAttemptedRef.current = true;
+      console.log('[useDisplayPage] Attempting to redirect to debug mode if needed');
       redirectToDebugMode();
     }
   }, [params.output, redirectToDebugMode]);
