@@ -4,18 +4,28 @@ import typedWorkflows from '@/data/typedWorkflows';
 import refinersData from '@/data/refiners.json';
 import { getPublishDestinations } from '@/services/PublishService';
 
-const usePromptForm = () => {
-  const [selectedWorkflow, setSelectedWorkflow] = useState('text-to-image');
-  const [selectedRefiner, setSelectedRefiner] = useState('none');
-  const [selectedPublish, setSelectedPublish] = useState('none');
-  const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({});
-  const [globalParams, setGlobalParams] = useState<Record<string, any>>({
+const usePromptForm = (initialValues = {}) => {
+  // Use initialValues if provided, otherwise use defaults
+  const [selectedWorkflow, setSelectedWorkflow] = useState(initialValues.selectedWorkflow || 'text-to-image');
+  const [selectedRefiner, setSelectedRefiner] = useState(initialValues.selectedRefiner || 'none');
+  const [selectedPublish, setSelectedPublish] = useState(initialValues.selectedPublish || 'none');
+  const [workflowParams, setWorkflowParams] = useState<Record<string, any>>(initialValues.workflowParams || {});
+  const [globalParams, setGlobalParams] = useState<Record<string, any>>(initialValues.globalParams || {
     batch_size: 1, // Default batch size is now 1
   });
-  const [refinerParams, setRefinerParams] = useState<Record<string, any>>({});
+  const [refinerParams, setRefinerParams] = useState<Record<string, any>>(initialValues.refinerParams || {});
+  
+  // Flag to prevent external state from overriding local changes
+  const [isLocalChange, setIsLocalChange] = useState(false);
 
   // Initialize workflow parameters based on the selected workflow
   useEffect(() => {
+    if (isLocalChange) {
+      // Don't reinitialize params during local changes
+      setIsLocalChange(false);
+      return;
+    }
+    
     // Find the selected workflow
     const workflow = typedWorkflows.find(w => w.id === selectedWorkflow);
     
@@ -32,21 +42,24 @@ const usePromptForm = () => {
       // Set workflow parameters with default values
       setWorkflowParams(defaultParams);
     }
-  }, [selectedWorkflow]);
+  }, [selectedWorkflow, isLocalChange]);
 
   const handleWorkflowChange = (workflowId: string) => {
     console.log(`usePromptForm: Setting workflow to ${workflowId}`);
+    setIsLocalChange(true); // Mark as local change
     setSelectedWorkflow(workflowId);
     resetWorkflowParams();
   };
 
   const handleRefinerChange = (refinerId: string) => {
     console.log(`usePromptForm: Setting refiner to ${refinerId}`);
+    setIsLocalChange(true); // Mark as local change
     setSelectedRefiner(refinerId);
     resetRefinerParams();
   };
 
   const handlePublishChange = (publishId: string) => {
+    setIsLocalChange(true); // Mark as local change
     setSelectedPublish(publishId);
     console.log(`Selected publish destination changed to: ${publishId}`);
   };

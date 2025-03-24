@@ -71,15 +71,15 @@ const Index = () => {
     setAdvancedOptionsOpen(open);
   }, []);
 
-  // Handler for refiner changes
-  const handleRefinerChange = useCallback((refiner: string) => {
-    console.log('Index: Refiner changed to:', refiner);
+  // Handler for refiner changes from advanced panel
+  const handleAdvancedRefinerChange = useCallback((refiner: string) => {
+    console.log('Index: Advanced panel refiner changed to:', refiner);
     setSelectedRefiner(refiner);
   }, []);
 
-  // Handler for refiner param changes
-  const handleRefinerParamChange = useCallback((paramId: string, value: any) => {
-    console.log('Index: Refiner param changed:', paramId, value);
+  // Handler for refiner param changes from advanced panel
+  const handleAdvancedRefinerParamChange = useCallback((paramId: string, value: any) => {
+    console.log('Index: Advanced panel refiner param changed:', paramId, value);
     setRefinerParams(prev => ({
       ...prev,
       [paramId]: value
@@ -229,8 +229,8 @@ const Index = () => {
         // Pass refiner props
         selectedRefiner={selectedRefiner}
         refinerParams={refinerParams}
-        onRefinerChange={handleRefinerChange}
-        onRefinerParamChange={handleRefinerParamChange}
+        onRefinerChange={handleAdvancedRefinerChange}
+        onRefinerParamChange={handleAdvancedRefinerParamChange}
       />
     </>
   );

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -26,6 +27,18 @@ const PromptForm: React.FC<PromptFormProps> = ({
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
   const lastReceivedPrompt = useRef(currentPrompt);
+  
+  // Track if there's been a local selection change to prevent external override
+  const [hasLocalSelectionChanged, setHasLocalSelectionChanged] = useState(false);
+  
+  // Initialize usePromptForm with external values
+  const initialValues = {
+    selectedWorkflow: externalSelectedWorkflow,
+    selectedRefiner: externalSelectedRefiner,
+    workflowParams: externalWorkflowParams,
+    refinerParams: externalRefinerParams,
+    globalParams: externalGlobalParams
+  };
 
   const {
     selectedWorkflow,
@@ -50,8 +63,9 @@ const PromptForm: React.FC<PromptFormProps> = ({
     setWorkflowParams,
     setRefinerParams,
     setGlobalParams,
-  } = usePromptForm();
+  } = usePromptForm(initialValues);
 
+  // Update prompt when external prompt changes
   useEffect(() => {
     if (currentPrompt && currentPrompt !== lastReceivedPrompt.current) {
       console.log('PromptForm: Updating prompt from prop:', currentPrompt);
@@ -60,20 +74,23 @@ const PromptForm: React.FC<PromptFormProps> = ({
     }
   }, [currentPrompt]);
 
+  // Only sync with external workflow if we haven't made local changes
   useEffect(() => {
-    if (externalSelectedWorkflow && externalSelectedWorkflow !== selectedWorkflow) {
-      console.log('PromptForm: Updating workflow from external state:', externalSelectedWorkflow);
+    if (!hasLocalSelectionChanged && externalSelectedWorkflow && externalSelectedWorkflow !== selectedWorkflow) {
+      console.log('PromptForm: Syncing workflow from external state:', externalSelectedWorkflow);
       setSelectedWorkflow(externalSelectedWorkflow);
     }
-  }, [externalSelectedWorkflow, selectedWorkflow, setSelectedWorkflow]);
+  }, [externalSelectedWorkflow, selectedWorkflow, setSelectedWorkflow, hasLocalSelectionChanged]);
 
+  // Only sync with external refiner if we haven't made local changes
   useEffect(() => {
-    if (externalSelectedRefiner && externalSelectedRefiner !== selectedRefiner) {
-      console.log('PromptForm: Updating refiner from external state:', externalSelectedRefiner);
+    if (!hasLocalSelectionChanged && externalSelectedRefiner && externalSelectedRefiner !== selectedRefiner) {
+      console.log('PromptForm: Syncing refiner from external state:', externalSelectedRefiner);
       setSelectedRefiner(externalSelectedRefiner);
     }
-  }, [externalSelectedRefiner, selectedRefiner, setSelectedRefiner]);
+  }, [externalSelectedRefiner, selectedRefiner, setSelectedRefiner, hasLocalSelectionChanged]);
 
+  // Sync with external params regardless of selection state
   useEffect(() => {
     if (externalWorkflowParams && JSON.stringify(externalWorkflowParams) !== JSON.stringify(workflowParams)) {
       console.log('PromptForm: Updating workflow params from external state:', externalWorkflowParams);
@@ -96,6 +113,20 @@ const PromptForm: React.FC<PromptFormProps> = ({
   }, [externalGlobalParams, globalParams, setGlobalParams]);
 
   useExternalImageUrls(setPreviewUrls);
+
+  // Custom workflow change handler that marks local changes
+  const handleLocalWorkflowChange = (workflowId: string) => {
+    console.log('PromptForm: Local workflow change to:', workflowId);
+    setHasLocalSelectionChanged(true);
+    handleWorkflowChange(workflowId);
+  };
+
+  // Custom refiner change handler that marks local changes
+  const handleLocalRefinerChange = (refinerId: string) => {
+    console.log('PromptForm: Local refiner change to:', refinerId);
+    setHasLocalSelectionChanged(true);
+    handleRefinerChange(refinerId);
+  };
 
   const handleSubmit = () => {
     if (prompt.trim() === '' && imageFiles.length === 0 && previewUrls.length === 0) {
@@ -133,6 +164,9 @@ const PromptForm: React.FC<PromptFormProps> = ({
     console.log('PromptForm: Full global params:', currentGlobalParams);
     console.log('PromptForm: Selected refiner:', refinerToUse);
     console.log('PromptForm: Refiner params:', refinerParams);
+
+    // After submitting, allow external state to sync again
+    setHasLocalSelectionChanged(false);
 
     onSubmit(
       prompt,
@@ -233,8 +267,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
           selectedRefiner={selectedRefiner}
           selectedPublish={selectedPublish}
           onImageUpload={handleImageUpload}
-          onWorkflowChange={handleWorkflowChange}
-          onRefinerChange={handleRefinerChange}
+          onWorkflowChange={handleLocalWorkflowChange}
+          onRefinerChange={handleLocalRefinerChange}
           onPublishChange={handlePublishChange}
           toggleAdvancedOptions={toggleAdvancedOptions}
           handleSubmit={handleSubmit}
