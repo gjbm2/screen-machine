@@ -100,7 +100,8 @@ export const useImageState = () => {
         isExtractingMetadataRef.current = true;
         
         try {
-          const newMetadata = await extractImageMetadata(url, dataTag);
+          // Fixed: Passing only the url parameter to extractImageMetadata
+          const newMetadata = await extractImageMetadata(url);
           setMetadata(newMetadata);
           // Update the last metadata URL
           lastMetadataUrlRef.current = url;
