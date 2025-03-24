@@ -32,10 +32,20 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
   showingPreview,
   isMobile
 }) => {
+  // Add debug logging for the selected size
+  console.log('[DebugImageHeader] Selected size:', selectedSize);
+  
   const handleScreenSizeSelect = (sizeName: string) => {
+    console.log('[DebugImageHeader] Size selected:', sizeName);
+    
+    // Find the selected size object from the size array
     const selectedSizeObj = SCREEN_SIZES.find(size => size.name === sizeName);
+    
     if (selectedSizeObj) {
+      console.log('[DebugImageHeader] Found size object:', selectedSizeObj);
       setSelectedSize(selectedSizeObj);
+    } else {
+      console.error('[DebugImageHeader] Could not find size object for:', sizeName);
     }
   };
 

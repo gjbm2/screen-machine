@@ -11,6 +11,7 @@ export const useDisplayPage = () => {
   const { params, redirectToDebugMode } = useDisplayParams();
   const [previewParams, setPreviewParams] = useState(params);
   const [metadataExtractionAttempted, setMetadataExtractionAttempted] = useState(false);
+  const [previousImageUrl, setPreviousImageUrl] = useState<string | null>(null);
 
   // Get display state from the core hook
   const {
@@ -45,26 +46,33 @@ export const useDisplayPage = () => {
     console.log('[useDisplayPage] Image URL:', imageUrl);
     console.log('[useDisplayPage] Metadata:', metadata);
     
-    // Only extract metadata once per imageUrl and only if needed
+    // Check if the image URL has changed
+    const imageUrlChanged = imageUrl !== previousImageUrl;
+    
+    // Only extract metadata if the image URL has changed or if we haven't attempted it yet for this URL
     if (imageUrl && 
-        Object.keys(metadata).length === 0 && 
-        !metadataExtractionAttempted && 
-        !isLoading) {
-      console.log('[useDisplayPage] No metadata found, triggering extraction once');
+        (imageUrlChanged || Object.keys(metadata).length === 0) && 
+        !isLoading && 
+        !isTransitioning) {
       
+      console.log('[useDisplayPage] Image URL changed or no metadata found, retrieving metadata');
+      setPreviousImageUrl(imageUrl);
       setMetadataExtractionAttempted(true);
+      
+      // Always try to extract metadata when image changes or loads
       extractMetadataFromImage(imageUrl).catch(err => 
         console.error('[useDisplayPage] Error extracting metadata:', err)
       );
     }
-  }, [params, imageUrl, metadata, extractMetadataFromImage, metadataExtractionAttempted, isLoading]);
+  }, [params, imageUrl, metadata, extractMetadataFromImage, isLoading, isTransitioning, previousImageUrl]);
 
   // Reset metadata extraction flag when image URL changes
   useEffect(() => {
-    if (imageUrl) {
+    if (imageUrl !== previousImageUrl) {
+      setPreviousImageUrl(imageUrl);
       setMetadataExtractionAttempted(false);
     }
-  }, [imageUrl]);
+  }, [imageUrl, previousImageUrl]);
 
   // Redirect to debug mode if needed
   useEffect(() => {
@@ -94,7 +102,15 @@ export const useDisplayPage = () => {
 
   // Wrap the manual check to use the enhanced version
   const handleManualCheck = async () => {
-    return imagePollerHandleManualCheck(imageUrl, originalHandleManualCheck, params);
+    const result = await imagePollerHandleManualCheck(imageUrl, originalHandleManualCheck, params);
+    
+    // If there's a new image loaded, extract metadata
+    if (result && result.newImageLoaded && imageUrl) {
+      console.log('[useDisplayPage] New image loaded after manual check, extracting metadata');
+      await extractMetadataFromImage(imageUrl);
+    }
+    
+    return result;
   };
 
   const handleImageError = () => {

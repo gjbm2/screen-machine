@@ -25,9 +25,23 @@ export const CaptionRenderer: React.FC<CaptionRendererProps> = ({
   containerWidth,
   screenWidth
 }) => {
+  // Ensure background color has # prefix
+  const bgColor = backgroundColor.startsWith('#') ? backgroundColor : `#${backgroundColor}`;
+  
   // Calculate background opacity as hex for rgba
   const bgOpacityHex = Math.round(backgroundOpacity * 255).toString(16).padStart(2, '0');
-  const bgColorWithOpacity = `${backgroundColor}${bgOpacityHex}`;
+  const bgColorWithOpacity = `${bgColor}${bgOpacityHex}`;
+  
+  console.log('[CaptionRenderer] Rendering caption with:', {
+    position,
+    fontSize,
+    color,
+    fontFamily,
+    bgColor,
+    backgroundOpacity,
+    bgOpacityHex,
+    bgColorWithOpacity
+  });
   
   // Base styles for the caption
   const baseStyles: React.CSSProperties = {

@@ -65,6 +65,10 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
   setCaptionBgOpacity,
   insertAllMetadata
 }) => {
+  // For debugging
+  console.log('[CaptionTab] Current captionBgColor:', captionBgColor);
+  console.log('[CaptionTab] Current captionBgOpacity:', captionBgOpacity);
+  
   // Color picker component to reuse
   const ColorPicker = ({ 
     label, 
@@ -137,6 +141,12 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
     );
   };
 
+  // Ensure background color has # prefix
+  const bgColorWithHash = captionBgColor.startsWith('#') ? captionBgColor : `#${captionBgColor}`;
+  
+  // Convert opacity (0-1) to hex (00-FF)
+  const bgOpacityHex = Math.round(captionBgOpacity * 255).toString(16).padStart(2, '0');
+  
   return (
     <div className="p-4 overflow-y-auto h-full">
       <div className="space-y-4 flex flex-col h-full">
@@ -186,8 +196,10 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
           <div 
             className="p-3 rounded-md min-h-[60px] text-sm whitespace-pre-line"
             style={{
-              backgroundColor: `${captionBgColor}${Math.round(captionBgOpacity * 255).toString(16).padStart(2, '0')}`,
+              backgroundColor: `${bgColorWithHash}${bgOpacityHex}`,
               color: `#${captionColor}`,
+              fontFamily: captionFont,
+              fontSize: captionSize
             }}
           >
             {previewCaption || <span className="text-gray-400">No caption</span>}
