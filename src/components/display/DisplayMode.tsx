@@ -50,18 +50,16 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   getImagePositionStyle
 }) => {
   const isMobile = useIsMobile();
-  const [showPreview, setShowPreview] = useState(true);
+  const [showPreview, setShowPreview] = useState(!isMobile);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   
-  const imageStyle = getImagePositionStyle(
-    previewParams.position,
-    previewParams.showMode,
-    previewContainerRef.current?.clientWidth || window.innerWidth,
-    previewContainerRef.current?.clientHeight || window.innerHeight,
-    imageRef.current?.naturalWidth || 0,
-    imageRef.current?.naturalHeight || 0
-  );
-
+  // When switching to mobile view, we want to show the preview by default
+  useEffect(() => {
+    if (isMobile) {
+      setShowPreview(true);
+    }
+  }, [isMobile]);
+  
   // Toggle preview/settings view on mobile
   const toggleView = () => {
     setShowPreview(prev => !prev);
@@ -69,10 +67,10 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
 
   if (params.debugMode) {
     return (
-      <div className="fixed inset-0 flex flex-col sm:flex-row overflow-hidden">        
+      <div className="fixed inset-0 flex flex-col sm:flex-row overflow-hidden">
         {/* Settings Panel */}
         <div 
-          className={`${isMobile ? (showPreview ? 'hidden' : 'w-full h-full') : 'w-2/5'} overflow-auto`}
+          className={`${isMobile ? (showPreview ? 'hidden' : 'w-full h-full') : 'w-2/5'} flex-shrink-0 overflow-hidden flex flex-col`}
         >
           <DebugPanel 
             params={params}
@@ -96,7 +94,7 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
         {/* Preview Panel */}
         <div 
           ref={previewContainerRef}
-          className={`${isMobile ? (showPreview ? 'w-full h-full' : 'hidden') : 'w-3/5'} overflow-auto bg-gray-100 dark:bg-gray-900`}
+          className={`${isMobile ? (showPreview ? 'w-full h-full' : 'hidden') : 'w-3/5'} flex-grow bg-gray-100 dark:bg-gray-900 overflow-hidden flex flex-col`}
         >
           <DebugImageContainer 
             imageUrl={imageUrl}
@@ -131,7 +129,14 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
       params={previewParams}
       imageUrl={imageUrl}
       imageKey={imageKey}
-      imageStyle={imageStyle}
+      imageStyle={getImagePositionStyle(
+        previewParams.position,
+        previewParams.showMode,
+        window.innerWidth,
+        window.innerHeight,
+        imageRef.current?.naturalWidth || 0,
+        imageRef.current?.naturalHeight || 0
+      )}
       processedCaption={processedCaption}
       metadata={metadata}
       isTransitioning={isTransitioning}

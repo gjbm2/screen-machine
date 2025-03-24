@@ -88,6 +88,25 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
     handleMouseDown(e);
   };
 
+  // Handle window resize for fixed panel mode
+  useEffect(() => {
+    if (isFixedPanel && contentRef.current) {
+      const handleResize = () => {
+        if (contentRef.current) {
+          const newWidth = contentRef.current.offsetWidth;
+          const newHeight = contentRef.current.offsetHeight;
+          if (newWidth !== containerWidth || newHeight !== containerHeight) {
+            // Force re-render to update content dimensions
+            handleImageLoad({ target: imageRef.current } as React.SyntheticEvent<HTMLImageElement>);
+          }
+        }
+      };
+      
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+  }, [isFixedPanel, contentRef, containerWidth, containerHeight, handleImageLoad, imageRef]);
+
   const cardStyles = isFixedPanel 
     ? "h-full w-full overflow-hidden flex flex-col" 
     : "absolute z-10 cursor-grab overflow-visible resizable-container";

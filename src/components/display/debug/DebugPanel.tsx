@@ -111,8 +111,8 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   };
 
   const cardStyles = isFixedPanel 
-    ? "h-full w-full overflow-auto" 
-    : "absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg min-w-[400px] min-h-[400px] resizable-container";
+    ? "h-full w-full overflow-auto flex flex-col" 
+    : "absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg min-w-[400px] min-h-[400px] resizable-container flex flex-col";
 
   const innerStyles = isFixedPanel 
     ? { 
@@ -143,12 +143,14 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         copyUrl={copyUrl}
         resetDisplay={resetDisplay}
         copied={copied}
+        lastChecked={lastChecked}
+        formatTime={formatTime}
         togglePreview={togglePreview}
         showingPreview={showingPreview}
         isMobile={isMobile}
       />
       
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col overflow-hidden">
         <DebugPanelTabs activeTab={activeTab} />
         
         <DebugPanelContent 
@@ -196,10 +198,8 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       </Tabs>
       
       <DebugPanelFooter 
-        lastChecked={lastChecked}
         applySettings={applySettings}
         commitSettings={commitSettings}
-        formatTime={formatTime}
       />
       
       {!isFixedPanel && <div className="resize-handle" onMouseDown={handleResizeStart} />}
