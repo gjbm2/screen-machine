@@ -112,6 +112,7 @@ export const useDisplayState = (params: DisplayParams) => {
     loadNewImage,
     checkImageModified,
     handleManualCheck: handleManualCheckOriginal,
-    getImagePositionStyle
+    getImagePositionStyle,
+    extractMetadataFromImage  // Added this to the return object
   };
 };
