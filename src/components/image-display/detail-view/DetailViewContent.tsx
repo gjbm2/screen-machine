@@ -137,14 +137,6 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
     return Array.isArray(referenceImageUrl) ? referenceImageUrl : [];
   }, [referenceImageUrl]);
 
-  // Handle opening reference image dialog directly - Made consistent with logic in ImageInfoDialog
-  const handleReferenceImageClick = () => {
-    console.log("Reference image button clicked in DetailViewContent");
-    console.log("Opening reference image dialog with:", referenceImageUrl);
-    console.log("Processed reference images:", referenceImages);
-    setShowReferenceImage(true);
-  };
-
   const hasReferenceImages = referenceImages.length > 0; // Fixed this logic to match ImageInfoDialog
 
   return (
@@ -186,7 +178,6 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
         onOpenInNewTab={handleOpenInNewTab}
         hidePrompt={hidePrompt}
         onInfoClick={handleInfoClick}
-        onReferenceImageClick={hasReferenceImages ? handleReferenceImageClick : undefined}
         onClose={onClose}
       />
 

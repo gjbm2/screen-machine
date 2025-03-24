@@ -47,28 +47,10 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
         {displayText}
       </span>
       
-      {hasReferenceImages && onReferenceImageClick && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              type="button" 
-              variant="ghost" 
-              size="sm" 
-              className="h-6 w-6 p-0 rounded-full" 
-              onClick={(e) => {
-                e.stopPropagation();
-                console.log("Reference image icon clicked in ImagePrompt");
-                onReferenceImageClick();
-              }}
-            >
-              <ImageIcon className="h-3.5 w-3.5 text-blue-500" />
-              <span className="sr-only">View reference images</span>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>View reference image</p>
-          </TooltipContent>
-        </Tooltip>
+      {hasReferenceImages && (
+        <div className="flex items-center justify-center h-6 w-6">
+          <ImageIcon className="h-3.5 w-3.5 text-blue-500" />
+        </div>
       )}
       
       {onInfoClick && (
