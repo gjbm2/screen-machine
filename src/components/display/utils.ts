@@ -98,7 +98,11 @@ export const extractImageMetadata = async (url: string): Promise<Record<string, 
         console.error('Browser extraction also failed:', browserError);
       }
       
-      throw apiError; // Re-throw the original API error if browser extraction also fails
+      // Return an empty record if all methods fail
+      return {
+        'error': 'Failed to extract metadata',
+        'message': apiError instanceof Error ? apiError.message : String(apiError)
+      };
     }
   } catch (error) {
     console.error('Error extracting metadata:', error);

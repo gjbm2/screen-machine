@@ -9,7 +9,7 @@ export const useMetadataExtractor = () => {
   const isExtractingMetadataRef = useRef<boolean>(false);
   const extractionTimeoutRef = useRef<number | null>(null);
 
-  const extractMetadataFromImage = async (url: string, dataTag?: string) => {
+  const extractMetadataFromImage = async (url: string, dataTag?: string): Promise<Record<string, string>> => {
     try {
       console.log('[useMetadataExtractor] Starting metadata extraction for URL:', url);
       console.log('[useMetadataExtractor] Current lastMetadataUrlRef:', lastMetadataUrlRef.current);
@@ -30,7 +30,7 @@ export const useMetadataExtractor = () => {
         }
         
         // Set a timeout to check again if metadata was successfully extracted
-        return new Promise((resolve) => {
+        return new Promise<Record<string, string>>((resolve) => {
           extractionTimeoutRef.current = window.setTimeout(() => {
             if (Object.keys(metadata).length > 0) {
               console.log('[useMetadataExtractor] Returning cached metadata after waiting');

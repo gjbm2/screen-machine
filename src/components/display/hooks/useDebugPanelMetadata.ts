@@ -64,7 +64,7 @@ export const useDebugPanelMetadata = ({
   }, [metadata, imageUrl, setMetadataEntries]);
 
   // Memoize handleRefreshMetadata to prevent recreating on every render
-  const handleRefreshMetadata = useCallback(async () => {
+  const handleRefreshMetadata = useCallback(async (): Promise<Record<string, string>> => {
     console.log('[useDebugPanelMetadata] handleRefreshMetadata called');
     if (!imageUrl) {
       toast.error("No image URL to extract metadata from");
