@@ -31,9 +31,8 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
         const currentWidth = container.clientWidth;
         const currentHeight = container.clientHeight;
         
-        // If dimensions are getting too small, cancel the mouse tracking
+        // If dimensions are getting too small, enforce minimum size
         if (currentWidth < minWidth || currentHeight < minHeight) {
-          console.log(`ResizeHandle: Dimensions got too small: ${currentWidth}x${currentHeight}`);
           console.log(`ResizeHandle: Enforcing minimum size: ${minWidth}x${minHeight}`);
           
           // Set minimum dimensions
