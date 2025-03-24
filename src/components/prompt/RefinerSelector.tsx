@@ -42,18 +42,6 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
     }
   };
   
-  const handleRefinerSelect = (refinerId: string, e: React.MouseEvent) => {
-    // Prevent event bubbling and properly handle the refiner change
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Change refiner selection
-    if (refinerId !== selectedRefiner) {
-      console.log(`RefinerSelector: Changing refiner to: ${refinerId}`);
-      onRefinerChange(refinerId);
-    }
-  };
-  
   return (
     <div className="flex items-center h-[48px]">
       <HoverCard openDelay={0} closeDelay={100}>
@@ -84,7 +72,11 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
                   variant={refiner.id === selectedRefiner ? "secondary" : "ghost"}
                   size="sm"
                   className="justify-start text-sm h-auto py-2"
-                  onClick={(e) => handleRefinerSelect(refiner.id, e)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onRefinerChange(refiner.id);
+                  }}
                   type="button"
                 >
                   <div className="mr-2 flex-shrink-0">
