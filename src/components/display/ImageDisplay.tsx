@@ -4,6 +4,7 @@ import { DisplayParams } from './types';
 import { useNavigate } from 'react-router-dom';
 import { createUrlWithParams } from './utils';
 import { CaptionRenderer } from './debug/CaptionRenderer';
+import { toast } from 'sonner';
 
 interface ImageDisplayProps {
   params: DisplayParams;
@@ -38,6 +39,18 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [containerSize, setContainerSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [doubleClickAttempted, setDoubleClickAttempted] = useState(false);
   const doubleClickTimeoutRef = useRef<number | null>(null);
+  const [hasLoadError, setHasLoadError] = useState(false);
+
+  // Debug when image URL changes
+  useEffect(() => {
+    console.log('[ImageDisplay] Image URL changed:', imageUrl);
+    console.log('[ImageDisplay] Image Key:', imageKey);
+    
+    // Reset error state when image URL changes
+    if (imageUrl) {
+      setHasLoadError(false);
+    }
+  }, [imageUrl, imageKey]);
 
   // Update container size on window resize
   useEffect(() => {
@@ -88,6 +101,33 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }, 10);
   };
 
+  // Handle image error with more details
+  const handleImageLoadError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    console.error('[ImageDisplay] Image failed to load:', imageUrl);
+    setHasLoadError(true);
+    
+    // Show toast with more info
+    toast.error(`Failed to load image: ${imageUrl?.split('/').pop() || 'unknown'}`);
+    
+    // Try to get more details about the error
+    if (imageUrl) {
+      fetch(imageUrl, { method: 'HEAD' })
+        .then(response => {
+          console.log('[ImageDisplay] Image HEAD request status:', response.status);
+          if (!response.ok) {
+            toast.error(`Image not found (${response.status})`);
+          }
+        })
+        .catch(err => {
+          console.error('[ImageDisplay] Network error checking image:', err);
+          toast.error(`Network error: ${err.message}`);
+        });
+    }
+    
+    // Call the original error handler
+    onImageError();
+  };
+
   // Metadata display styles
   const metadataStyle: React.CSSProperties = {
     position: 'absolute',
@@ -120,7 +160,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
       style={{ position: 'relative', width: '100%', height: '100%' }}
       onDoubleClick={handleDoubleClick}
     >
-      {imageUrl && (
+      {imageUrl ? (
         <>
           <img
             key={imageKey}
@@ -128,7 +168,8 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
             src={imageUrl}
             alt=""
             style={isTransitioning ? newImageStyle : imageStyle}
-            onError={onImageError}
+            onError={handleImageLoadError}
+            onLoad={() => console.log('[ImageDisplay] Image loaded successfully:', imageUrl)}
           />
           
           {/* Transitioning old image (for fades) */}
@@ -165,6 +206,29 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
             </div>
           )}
         </>
+      ) : (
+        <div 
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            width: '100%', 
+            height: '100%',
+            color: '#666',
+            flexDirection: 'column',
+            textAlign: 'center',
+            padding: '20px'
+          }}
+        >
+          <div style={{ marginBottom: '10px', fontSize: '1.5rem' }}>
+            {hasLoadError ? 'Failed to load image' : 'No image to display'}
+          </div>
+          {hasLoadError && imageUrl && (
+            <div style={{ fontSize: '0.9rem', maxWidth: '80%', wordBreak: 'break-all' }}>
+              Attempted to load: {imageUrl}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

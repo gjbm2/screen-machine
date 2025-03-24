@@ -17,12 +17,18 @@ export const useDisplayPage = () => {
   const [previewParams, setPreviewParams] = useState(params);
   const mountedRef = useRef(true); // Track if component is mounted
   const outputProcessedRef = useRef(false); // Track if output has been processed
+  const initialRenderRef = useRef(true); // Track initial render
 
   // Debug logging for params
   useEffect(() => {
     console.log("[useDisplayPage] Debug mode active:", params.debugMode);
     console.log("[useDisplayPage] Params:", params);
     console.log("[useDisplayPage] Output param:", params.output);
+    
+    // Log a clear message if output parameter exists
+    if (params.output) {
+      console.log("[useDisplayPage] ⚠️ Output parameter detected:", params.output);
+    }
   }, [params]);
 
   // Process output parameter
@@ -58,12 +64,15 @@ export const useDisplayPage = () => {
   } = useDisplayState(previewParams);
 
   // Handle output parameter directly to ensure image displays
+  // This is critical for when images are selected in debug mode
   useEffect(() => {
     if (!mountedRef.current) return;
     
-    // Only process if we have an output parameter and it hasn't been processed already for this value
-    if (params.output && (!outputProcessedRef.current || imageUrl !== params.output)) {
-      console.log('[useDisplayPage] Processing output parameter directly:', params.output);
+    // Always process the output parameter on initial render or when it changes
+    if (params.output) {
+      console.log('[useDisplayPage] 🖼️ Processing output parameter:', params.output);
+      console.log('[useDisplayPage] Current imageUrl:', imageUrl);
+      console.log('[useDisplayPage] Processing needed:', !outputProcessedRef.current || imageUrl !== params.output);
       
       // Set the image URL directly
       setImageUrl(params.output);
@@ -79,9 +88,10 @@ export const useDisplayPage = () => {
     }
   }, [params.output, setImageUrl, setImageKey, imageUrl]);
 
-  // Reset output processed flag when output param changes
+  // Reset output processed flag when output param changes to null
   useEffect(() => {
     if (params.output === null) {
+      console.log('[useDisplayPage] Output param is null, resetting processed flag');
       outputProcessedRef.current = false;
     }
   }, [params.output]);
@@ -89,7 +99,10 @@ export const useDisplayPage = () => {
   // Set mounted ref to false on unmount
   useEffect(() => {
     mountedRef.current = true;
+    console.log('[useDisplayPage] Component mounted');
+    
     return () => {
+      console.log('[useDisplayPage] Component unmounting');
       mountedRef.current = false;
     };
   }, []);
@@ -168,6 +181,22 @@ export const useDisplayPage = () => {
     if (!mountedRef.current) return;
     setPreviewParams(params);
   }, [params]);
+
+  // Special handling for initial render with output parameter
+  useEffect(() => {
+    if (initialRenderRef.current && params.output) {
+      console.log('[useDisplayPage] 🔄 Initial render with output param:', params.output);
+      initialRenderRef.current = false;
+      
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        if (mountedRef.current) {
+          setImageUrl(params.output);
+          setImageKey(prev => prev + 1);
+        }
+      }, 100);
+    }
+  }, [params.output, setImageUrl, setImageKey]);
 
   return {
     params,
