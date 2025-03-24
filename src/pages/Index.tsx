@@ -1,165 +1,167 @@
 
-import React, { useState } from "react";
-import MainLayout from "@/components/layout/MainLayout";
-import IntroSection from "@/components/main/IntroSection";
-import HeaderSection from "@/components/main/HeaderSection";
-import PromptForm from "@/components/prompt-form/PromptForm";
-import ImageDisplay from "@/components/image-display/ImageDisplay";
-import { Link } from "react-router-dom";
-import useIntroText from "@/hooks/use-intro-text";
-import { useConsoleManagement } from "@/hooks/use-console-management";
+import React, { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
+import ImageDisplay from '@/components/image-display/ImageDisplay';
+import PromptForm from '@/components/prompt-form/PromptForm';
+import IntroText from '@/components/IntroText';
+import MainLayout from '@/components/layout/MainLayout';
+import AdvancedOptionsContainer from '@/components/advanced/AdvancedOptionsContainer';
+import { useImageGeneration } from '@/hooks/image-generation/use-image-generation';
+import { useConsoleManagement } from '@/hooks/use-console-management';
 
-export default function Index() {
-  const { randomIntroText } = useIntroText();
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [currentPrompt, setCurrentPrompt] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [generatedImages, setGeneratedImages] = useState<any[]>([]);
-  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
-  const [imageContainerOrder, setImageContainerOrder] = useState<string[]>([]);
+const Index = () => {
+  const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   
-  // Console management
-  const {
-    consoleVisible,
-    setConsoleVisible,
-    consoleLogs,
-    clearConsoleLogs,
-    addConsoleLog
+  // Use our custom hook for console management
+  const { 
+    consoleVisible, 
+    consoleLogs, 
+    toggleConsole, 
+    clearConsole,
+    addLog: addConsoleLog 
   } = useConsoleManagement();
   
-  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
-  
-  const handleToggleConsole = () => {
-    setConsoleVisible(!consoleVisible);
-  };
-  
-  const handleOpenAdvancedOptions = () => {
-    setShowAdvancedOptions(!showAdvancedOptions);
-  };
-  
-  const handleSubmit = (
+  // Add logging for debugging the advanced panel issue
+  useEffect(() => {
+    console.log('Advanced options panel open state:', advancedOptionsOpen);
+  }, [advancedOptionsOpen]);
+
+  // Image generation hook
+  const {
+    generatedImages,
+    activeGenerations,
+    imageUrl,
+    currentPrompt,
+    uploadedImageUrls,
+    currentWorkflow,
+    currentParams,
+    currentGlobalParams,
+    imageContainerOrder,
+    isFirstRun,
+    fullscreenRefreshTrigger,
+    setCurrentPrompt,
+    setUploadedImageUrls,
+    setCurrentWorkflow,
+    setCurrentParams,
+    setCurrentGlobalParams,
+    setImageContainerOrder,
+    handleSubmitPrompt,
+    handleUseGeneratedAsInput,
+    handleCreateAgain,
+    handleDownloadImage,
+    handleDeleteImage,
+    handleReorderContainers,
+    handleDeleteContainer
+  } = useImageGeneration(addConsoleLog);
+
+  // Handler for opening advanced options
+  const handleOpenAdvancedOptions = useCallback(() => {
+    console.log('Opening advanced options panel');
+    setAdvancedOptionsOpen(true);
+  }, []);
+
+  // Handler for advanced options open state change
+  const handleAdvancedOptionsOpenChange = useCallback((open: boolean) => {
+    console.log('Advanced options panel open state changing to:', open);
+    setAdvancedOptionsOpen(open);
+  }, []);
+
+  // Handler for prompt submission
+  const handlePromptSubmit = async (
     prompt: string,
-    images?: File[] | string[],
+    imageFiles?: File[] | string[],
     workflow?: string,
-    workflowParams?: Record<string, any>,
+    params?: Record<string, any>,
     globalParams?: Record<string, any>,
     refiner?: string,
     refinerParams?: Record<string, any>
   ) => {
-    // Mock implementation for the handleSubmit function
-    console.log("Submit form with prompt:", prompt);
-    setCurrentPrompt(prompt);
-    setIsLoading(true);
-    
-    // Simulate a loading state for 2 seconds
-    setTimeout(() => {
-      setIsLoading(false);
-      // Create a mock batch ID
-      const batchId = `batch-${Date.now()}`;
-      // Add the new batch to the order
-      setImageContainerOrder(prev => [batchId, ...prev]);
+    try {
+      setCurrentPrompt(prompt);
       
-      // Create mock generated images
-      const mockImages = [
-        {
-          batchId,
-          batchIndex: 0,
-          prompt,
-          url: "https://via.placeholder.com/512x512?text=Generated+Image",
-          status: "completed",
-          timestamp: Date.now()
-        }
-      ];
+      if (workflow) {
+        setCurrentWorkflow(workflow);
+      }
       
-      setGeneratedImages(prev => [...mockImages, ...prev]);
-    }, 2000);
-  };
-  
-  const handleUseGeneratedAsInput = (url: string) => {
-    setImageUrl(url);
-  };
-  
-  const handleCreateAgain = (batchId?: string) => {
-    console.log("Create again with batch ID:", batchId);
-  };
-  
-  const handleReorderContainers = (sourceIndex: number, destinationIndex: number) => {
-    // Implementation for reordering containers
-    setImageContainerOrder(prev => {
-      const newOrder = [...prev];
-      const [removed] = newOrder.splice(sourceIndex, 1);
-      newOrder.splice(destinationIndex, 0, removed);
-      return newOrder;
-    });
-  };
-  
-  const handleDeleteImage = (batchId: string, index: number) => {
-    // Implementation for deleting an image
-    console.log(`Delete image in batch ${batchId} at index ${index}`);
-  };
-  
-  const handleDeleteContainer = (batchId: string) => {
-    // Implementation for deleting a container
-    setImageContainerOrder(prev => prev.filter(id => id !== batchId));
-    setGeneratedImages(prev => prev.filter(img => img.batchId !== batchId));
+      if (params) {
+        setCurrentParams(params);
+      }
+      
+      if (globalParams) {
+        setCurrentGlobalParams(globalParams);
+      }
+      
+      if (imageFiles && imageFiles.length > 0) {
+        const fileUrls = imageFiles
+          .filter((file): file is string => typeof file === 'string')
+          .map(url => url);
+          
+        setUploadedImageUrls(fileUrls);
+      }
+      
+      await handleSubmitPrompt(prompt, imageFiles);
+    } catch (error) {
+      console.error('Error submitting prompt:', error);
+      toast.error('Error generating image');
+    }
   };
 
   return (
-    <MainLayout
-      onToggleConsole={handleToggleConsole}
-      consoleVisible={consoleVisible}
-      onOpenAdvancedOptions={handleOpenAdvancedOptions}
-      consoleLogs={consoleLogs}
-      onClearConsole={clearConsoleLogs}
-    >
-      <div className="container mx-auto px-4 max-w-screen-xl">
-        <HeaderSection 
-          onToggleConsole={handleToggleConsole}
-          isConsoleVisible={consoleVisible}
+    <>
+      <MainLayout
+        onToggleConsole={toggleConsole}
+        consoleVisible={consoleVisible}
+        onOpenAdvancedOptions={handleOpenAdvancedOptions}
+        consoleLogs={consoleLogs}
+        onClearConsole={clearConsole}
+        isFirstRun={isFirstRun}
+      >
+        {isFirstRun && <IntroText />}
+        
+        <PromptForm 
+          onSubmit={handlePromptSubmit}
+          isLoading={activeGenerations.length > 0}
+          currentPrompt={currentPrompt}
+          isFirstRun={isFirstRun}
           onOpenAdvancedOptions={handleOpenAdvancedOptions}
         />
         
-        <div className="flex flex-wrap gap-2 mb-6 mt-2">
-          <Link 
-            to="/display" 
-            className="text-blue-600 hover:text-blue-800 hover:underline text-sm flex items-center"
-          >
-            Display Mode
-          </Link>
-          <span className="text-gray-400">|</span>
-          <Link 
-            to="/metadata" 
-            className="text-blue-600 hover:text-blue-800 hover:underline text-sm flex items-center"
-          >
-            Metadata Extractor
-          </Link>
-        </div>
-        
-        <IntroSection introText={randomIntroText} />
-        
-        <PromptForm
-          onSubmit={handleSubmit}
-          isLoading={isLoading}
-          currentPrompt={currentPrompt || ""}
-          isFirstRun={true}
-          onOpenAdvancedOptions={handleOpenAdvancedOptions}
-        />
-        
-        <ImageDisplay
+        <ImageDisplay 
           imageUrl={imageUrl}
           prompt={currentPrompt}
-          isLoading={isLoading}
-          uploadedImages={uploadedImages}
+          isLoading={activeGenerations.length > 0}
+          uploadedImages={uploadedImageUrls}
           generatedImages={generatedImages}
           imageContainerOrder={imageContainerOrder}
-          workflow={null}
+          workflow={currentWorkflow}
+          generationParams={currentParams}
           onUseGeneratedAsInput={handleUseGeneratedAsInput}
           onCreateAgain={handleCreateAgain}
           onReorderContainers={handleReorderContainers}
           onDeleteImage={handleDeleteImage}
           onDeleteContainer={handleDeleteContainer}
+          fullscreenRefreshTrigger={fullscreenRefreshTrigger}
         />
-      </div>
-    </MainLayout>
+      </MainLayout>
+      
+      <AdvancedOptionsContainer
+        isOpen={advancedOptionsOpen}
+        onOpenChange={handleAdvancedOptionsOpenChange}
+        workflows={[]}
+        selectedWorkflow={currentWorkflow}
+        currentParams={currentParams}
+        currentGlobalParams={currentGlobalParams}
+        onWorkflowChange={setCurrentWorkflow}
+        onParamsChange={setCurrentParams}
+        onGlobalParamChange={(paramId: string, value: any) => {
+          setCurrentGlobalParams(prev => ({
+            ...prev,
+            [paramId]: value
+          }));
+        }}
+      />
+    </>
   );
-}
+};
+
+export default Index;
