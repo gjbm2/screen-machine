@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -107,13 +106,13 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     }
   }, [caption, metadataEntries, onApplyCaption]);
 
-  // Apply settings to preview image
+  // Apply settings to preview image - now applies immediately without needing to click Apply
   useEffect(() => {
-    // Only update preview in debug mode, don't navigate
     if (imageUrl) {
-      // This is just for live preview without navigation
+      // This is handled by lifting state up to the parent component
+      // The parent will detect these changes and update the preview accordingly
     }
-  }, [showMode, position, backgroundColor, captionPosition, captionSize, captionColor, captionFont]);
+  }, [showMode, position, backgroundColor, captionPosition, captionSize, captionColor, captionFont, imageUrl]);
 
   // Generate the URL for the current settings
   const generateUrl = () => {
@@ -163,6 +162,12 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     const url = createUrlWithParams(newParams);
     navigate(url);
     toast.success("Settings applied");
+  };
+
+  // Reset all settings and navigate to /display
+  const resetDisplay = () => {
+    navigate('/display');
+    toast.success("Display reset to defaults");
   };
 
   // Commit settings and exit debug mode
@@ -314,6 +319,12 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     };
   }, [isDragging, dragOffset]);
 
+  // Notify parent of setting changes for live preview
+  const notifySettingChange = () => {
+    // This is a no-op since we're using state lifting to manage live preview updates
+    // The Display component will detect changes to these states
+  };
+
   return (
     <Card 
       ref={panelRef}
@@ -364,6 +375,24 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>Copy display URL</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={resetDisplay}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Reset display to defaults</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

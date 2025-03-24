@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { DebugPanel } from '@/components/display/DebugPanel';
 import { DebugImageContainer } from '@/components/display/DebugImageContainer';
@@ -31,6 +31,9 @@ const Display = () => {
     transition: searchParams.get('transition') as DisplayParams['transition'] || 'cut',
   };
 
+  // Track preview state
+  const [previewParams, setPreviewParams] = useState<DisplayParams>(params);
+  
   const {
     imageUrl,
     error,
@@ -54,7 +57,7 @@ const Display = () => {
     checkImageModified,
     handleManualCheck,
     getImagePositionStyle
-  } = useDisplayState(params);
+  } = useDisplayState(previewParams);
 
   // Redirect to debug mode if no output is specified
   useEffect(() => {
@@ -100,20 +103,20 @@ const Display = () => {
   useEffect(() => {
     if (!imageUrl) return;
 
-    if (params.caption) {
-      if (params.data !== undefined) {
+    if (previewParams.caption) {
+      if (previewParams.data !== undefined) {
         // Ensure this is called only when metadata is already available
         if (Object.keys(metadata).length > 0) {
-          const newCaption = processCaptionWithMetadata(params.caption, metadata);
+          const newCaption = processCaptionWithMetadata(previewParams.caption, metadata);
           setProcessedCaption(newCaption);
         }
       } else {
-        setProcessedCaption(params.caption);
+        setProcessedCaption(previewParams.caption);
       }
     } else {
       setProcessedCaption(null);
     }
-  }, [params.caption, params.data, metadata, imageUrl, setProcessedCaption]);
+  }, [previewParams.caption, previewParams.data, metadata, imageUrl, setProcessedCaption]);
 
   // Fetch output files for debug mode
   useEffect(() => {
@@ -122,15 +125,42 @@ const Display = () => {
     }
   }, [params.debugMode, setOutputFiles]);
 
+  // Update preview params from debug panel changes
+  useEffect(() => {
+    setPreviewParams(params);
+  }, [params]);
+
   const handleImageError = () => {
     console.error('Failed to load image:', imageUrl);
     toast.error("Failed to load image");
   };
 
-  const imageStyle = getImagePositionStyle(params.position, params.showMode);
+  // Calculate image styles with dimensions if available
+  const calculateImageStyle = useCallback(() => {
+    const containerWidth = window.innerWidth;
+    const containerHeight = window.innerHeight;
+    let imageWidth = 0;
+    let imageHeight = 0;
+    
+    if (imageRef.current) {
+      imageWidth = imageRef.current.naturalWidth;
+      imageHeight = imageRef.current.naturalHeight;
+    }
+    
+    return getImagePositionStyle(
+      previewParams.position, 
+      previewParams.showMode,
+      containerWidth,
+      containerHeight,
+      imageWidth,
+      imageHeight
+    );
+  }, [previewParams.position, previewParams.showMode, getImagePositionStyle, imageRef]);
+
+  const imageStyle = calculateImageStyle();
 
   const containerStyle: React.CSSProperties = {
-    backgroundColor: `#${params.backgroundColor}`,
+    backgroundColor: `#${previewParams.backgroundColor}`,
     width: '100vw',
     height: '100vh',
     margin: 0,
@@ -143,7 +173,7 @@ const Display = () => {
   };
 
   if (error) {
-    return <ErrorMessage message={error} backgroundColor={params.backgroundColor} />;
+    return <ErrorMessage message={error} backgroundColor={previewParams.backgroundColor} />;
   }
 
   return (
@@ -166,23 +196,24 @@ const Display = () => {
           <DebugImageContainer 
             imageUrl={imageUrl}
             imageKey={imageKey}
-            showMode={params.showMode}
-            position={params.position}
-            backgroundColor={params.backgroundColor}
+            showMode={previewParams.showMode}
+            position={previewParams.position}
+            backgroundColor={previewParams.backgroundColor}
             onImageError={handleImageError}
             imageRef={imageRef}
             imageChanged={imageChanged}
             caption={processedCaption}
-            captionPosition={params.captionPosition}
-            captionSize={params.captionSize}
-            captionColor={params.captionColor}
-            captionFont={params.captionFont}
+            captionPosition={previewParams.captionPosition}
+            captionSize={previewParams.captionSize}
+            captionColor={previewParams.captionColor}
+            captionFont={previewParams.captionFont}
             metadata={metadata}
+            onSettingsChange={() => {}} // This is a placeholder for future setting change handlers
           />
         </>
       ) : (
         <ImageDisplay
-          params={params}
+          params={previewParams}
           imageUrl={imageUrl}
           imageKey={imageKey}
           imageStyle={imageStyle}
