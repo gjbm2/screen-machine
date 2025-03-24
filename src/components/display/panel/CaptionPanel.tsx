@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
-import { CaptionPosition } from '../../types';
+import { CaptionPosition } from '../types';
 import { FileText } from "lucide-react";
 
 // Font sizes and font families for dropdowns

@@ -45,7 +45,7 @@ export const useDisplayParams = () => {
       params.data = JSON.parse(searchParams.get('data') || '{}');
     } catch (e) {
       console.error('Failed to parse data parameter:', e);
-      params.data = { _type: 'undefined', value: 'undefined' };
+      params.data = { error: 'Failed to parse data' };
     }
   }
   
