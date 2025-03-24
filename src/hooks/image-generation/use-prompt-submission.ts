@@ -10,6 +10,7 @@ export interface PromptSubmissionProps {
   setIsFirstRun: React.Dispatch<React.SetStateAction<boolean>>;
   setLastBatchIdUsed: React.Dispatch<React.SetStateAction<string | null>>;
   generateImages: (config: ImageGenerationConfig) => Promise<string | null>;
+  isVerboseDebug?: boolean;
 }
 
 export const usePromptSubmission = ({
@@ -19,7 +20,8 @@ export const usePromptSubmission = ({
   lastBatchIdUsed,
   setIsFirstRun,
   setLastBatchIdUsed,
-  generateImages
+  generateImages,
+  isVerboseDebug = false
 }: PromptSubmissionProps) => {
   
   const handleSubmitPrompt = useCallback(async (
@@ -32,6 +34,14 @@ export const usePromptSubmission = ({
     refinerParams?: Record<string, any>
   ) => {
     setIsFirstRun(false);
+    
+    if (isVerboseDebug) {
+      console.info("[VERBOSE] ⬇️ START PROMPT SUBMISSION ⬇️");
+      console.info("[VERBOSE] Prompt:", prompt);
+      console.info("[VERBOSE] Workflow:", workflow || currentWorkflow);
+      console.info("[VERBOSE] Global params received:", globalParams);
+      console.info("[VERBOSE] Batch size from globalParams:", globalParams?.batch_size);
+    }
     
     // Ensure we have unique image files (no duplicates)
     let uniqueImageFiles: File[] | string[] | undefined = undefined;
@@ -61,17 +71,17 @@ export const usePromptSubmission = ({
       }
     }
     
-    // CRITICAL FIX: Ensure batch_size is properly passed through
-    // Create a clean global params object with the batch_size from the provided globalParams
-    const effectiveGlobalParams = globalParams ? { ...globalParams } : {};
+    // CRITICAL: Always use explicitly provided global parameters from function args
+    // Never modify, cache or transform these values - they should flow directly to the API
+    const effectiveGlobalParams = globalParams || {};
     
-    // Explicit debug logging to trace batch size
-    console.log("[usePromptSubmission] Raw globalParams received:", globalParams);
-    console.log("[usePromptSubmission] Using batch size:", effectiveGlobalParams.batch_size);
-    
-    if (effectiveGlobalParams.batch_size === undefined && globalParams?.batch_size !== undefined) {
-      console.warn("[usePromptSubmission] batch_size was undefined but existed in original globalParams");
-      effectiveGlobalParams.batch_size = globalParams.batch_size;
+    // IMPORTANT DEBUG: Log the batch size being used for this generation request
+    if (isVerboseDebug) {
+      console.info("[VERBOSE] Using batch size:", effectiveGlobalParams.batch_size);
+      console.info("[VERBOSE] Original global params:", currentGlobalParams);
+      console.info("[VERBOSE] Effective global params being sent:", effectiveGlobalParams);
+    } else {
+      console.log("[usePromptSubmission] Using batch size:", effectiveGlobalParams.batch_size);
     }
     
     const effectiveWorkflow = workflow || currentWorkflow;
@@ -83,20 +93,33 @@ export const usePromptSubmission = ({
       imageFiles: uniqueImageFiles,
       workflow: effectiveWorkflow,
       params: effectiveWorkflowParams,
-      globalParams: effectiveGlobalParams, // Use the properly prepared global params
+      globalParams: effectiveGlobalParams, // Use provided globalParams directly
       batchId: lastBatchIdUsed,
       refiner, 
-      refinerParams
+      refinerParams,
+      isVerboseDebug
     };
     
-    console.log("[usePromptSubmission] Final global params being sent:", config.globalParams);
-    console.log("[usePromptSubmission] Using workflow:", config.workflow);
-    console.log("[usePromptSubmission] Using refiner:", config.refiner);
+    if (isVerboseDebug) {
+      console.info("[VERBOSE] Final config being passed to generateImages:");
+      console.info("[VERBOSE] - Global params:", config.globalParams);
+      console.info("[VERBOSE] - Batch size:", config.globalParams.batch_size);
+      console.info("[VERBOSE] - Workflow:", config.workflow);
+      console.info("[VERBOSE] - Refiner:", config.refiner || "none");
+    } else {
+      console.log("[usePromptSubmission] Final global params being sent:", config.globalParams);
+      console.log("[usePromptSubmission] Using workflow:", config.workflow);
+      console.log("[usePromptSubmission] Using refiner:", config.refiner);
+    }
     
     // Call generateImages and store the returned batchId
     try {
       // Generate images and possibly get a batch ID
       const result = await generateImages(config);
+      
+      if (isVerboseDebug) {
+        console.info("[VERBOSE] Generation result:", result);
+      }
       
       // Only update lastBatchIdUsed if we got a valid string back
       if (result !== null && typeof result === 'string') {
@@ -104,14 +127,23 @@ export const usePromptSubmission = ({
       }
     } catch (error) {
       console.error("Error during image generation:", error);
+      if (isVerboseDebug) {
+        console.info("[VERBOSE] ❌ Error during image generation:", error);
+      }
+    }
+    
+    if (isVerboseDebug) {
+      console.info("[VERBOSE] ⬆️ END PROMPT SUBMISSION ⬆️");
     }
   }, [
     currentWorkflow, 
     currentParams, 
+    currentGlobalParams,
     lastBatchIdUsed,
     setIsFirstRun,
     setLastBatchIdUsed,
-    generateImages
+    generateImages,
+    isVerboseDebug
   ]);
 
   return {

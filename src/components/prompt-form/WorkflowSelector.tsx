@@ -1,51 +1,68 @@
 
 import React from 'react';
+import { Button } from '@/components/ui/button';
+import { Check, ChevronDown, Zap } from 'lucide-react';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useVerboseDebug } from '@/hooks/use-verbose-debug';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface WorkflowSelectorProps {
-  selectedWorkflow: string;
   workflows: any[];
+  selectedWorkflow: string;
   onWorkflowChange: (workflowId: string) => void;
-  disabled?: boolean;
+  isCompact?: boolean;
 }
 
 const WorkflowSelector: React.FC<WorkflowSelectorProps> = ({
-  selectedWorkflow,
   workflows,
+  selectedWorkflow,
   onWorkflowChange,
-  disabled = false
+  isCompact = false
 }) => {
-  const { logVerbose } = useVerboseDebug();
-  
-  const handleChange = (value: string) => {
-    logVerbose(`Workflow changed to: ${value}`);
-    onWorkflowChange(value);
-  };
+  const selectedWorkflowObj = workflows.find(w => w.id === selectedWorkflow);
   
   return (
-    <Select
-      value={selectedWorkflow}
-      onValueChange={handleChange}
-      disabled={disabled}
-    >
-      <SelectTrigger className="h-8 text-xs">
-        <SelectValue placeholder="Select workflow" />
-      </SelectTrigger>
-      <SelectContent>
-        {workflows.map(workflow => (
-          <SelectItem key={workflow.id} value={workflow.id}>
-            {workflow.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          className="h-8 border border-input hover:bg-primary/10"
+        >
+          <Zap className="h-4 w-4 mr-2" />
+          {!isCompact && (
+            <span className="truncate max-w-[120px]">
+              {selectedWorkflowObj?.name || 'Select Workflow'}
+            </span>
+          )}
+          <ChevronDown className="h-3 w-3 ml-2 opacity-50" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuRadioGroup
+          value={selectedWorkflow}
+          onValueChange={onWorkflowChange}
+        >
+          {workflows.map((workflow) => (
+            <DropdownMenuRadioItem
+              key={workflow.id}
+              value={workflow.id}
+              className="cursor-pointer"
+            >
+              <div className="flex items-center justify-between w-full">
+                <span>{workflow.name}</span>
+                {workflow.id === selectedWorkflow && (
+                  <Check className="h-4 w-4 ml-2" />
+                )}
+              </div>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
 

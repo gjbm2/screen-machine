@@ -1,4 +1,3 @@
-
 import { DisplayParams } from '../types';
 
 // Create a URL with display parameters
@@ -83,82 +82,75 @@ export const getDefaultParams = (): DisplayParams => {
   };
 };
 
-// Function to validate and process the output parameter
+// This function processes the output parameter to ensure it's properly formatted
 export const processOutputParam = (output: string | null): string | null => {
   if (!output) return null;
   
-  console.log('[processOutputParam] Processing output param:', output);
+  console.log("[processOutputParam] Processing output path:", output);
   
-  // Handle complex URLs with query parameters specially
-  if (output.includes('?') && (output.startsWith('http://') || output.startsWith('https://'))) {
-    console.log('[processOutputParam] Detected complex URL with query params, preserving as-is');
-    return output; // Return complex URLs as-is to avoid breaking query parameters
-  }
-  
-  // First, we need to ensure we handle URLs and relative paths consistently
-  try {
-    // Check if it's a valid URL
-    new URL(output);
-    console.log('[processOutputParam] Valid URL detected, using as-is:', output);
+  // If it's already a fully formed URL, return it as is
+  if (output.startsWith('http://') || output.startsWith('https://')) {
+    console.log("[processOutputParam] Already a full URL, returning as is");
     return output;
-  } catch (e) {
-    // Not a valid URL, so handle as a path
-    
-    // Remove any duplicate slashes
-    let processedPath = output.replace(/\/+/g, '/');
-    
-    // Ensure it has a leading slash
-    if (!processedPath.startsWith('/')) {
-      // If it starts with 'output/', add a leading slash
-      if (processedPath.startsWith('output/')) {
-        processedPath = `/${processedPath}`;
-        console.log('[processOutputParam] Added leading slash to output path:', processedPath);
-      } else {
-        // Otherwise assume it's a relative path in the output directory
-        processedPath = `/output/${processedPath}`;
-        console.log('[processOutputParam] Added output directory prefix:', processedPath);
-      }
+  }
+  
+  // Now normalize the path for local files
+  // First, strip any leading slashes for consistency
+  let normalizedPath = output.replace(/^\/+/, '');
+  
+  // Ensure output folder is prefixed correctly
+  if (!normalizedPath.startsWith('output/')) {
+    // If it doesn't have output/ prefix but is a known output file, add the prefix
+    if (!normalizedPath.includes('/')) {
+      console.log("[processOutputParam] Adding output/ prefix to filename");
+      normalizedPath = `output/${normalizedPath}`;
     }
-    
-    console.log('[processOutputParam] Final processed path:', processedPath);
-    return processedPath;
-  }
-};
-
-// New helper function to ensure consistent path format for display
-export const normalizePathForDisplay = (path: string): string => {
-  if (!path) return '';
-  
-  // Handle URLs
-  if (path.startsWith('http')) {
-    return path;
   }
   
-  // Remove any duplicate slashes
-  let normalizedPath = path.replace(/\/+/g, '/');
+  // Always ensure a leading slash for absolute path from server root
+  normalizedPath = `/${normalizedPath}`;
   
-  // Ensure it has a leading slash
-  if (!normalizedPath.startsWith('/')) {
-    normalizedPath = `/${normalizedPath}`;
-  }
-  
-  console.log('[normalizePathForDisplay] Normalized path:', normalizedPath);
+  console.log("[processOutputParam] Normalized path:", normalizedPath);
   return normalizedPath;
 };
 
-// New helper function to handle decoding of complex URLs from URL parameters
+// Decode complex output parameters (handles encoded URLs and special chars)
 export const decodeComplexOutputParam = (output: string | null): string | null => {
   if (!output) return null;
   
   try {
-    // If the output looks like an encoded URL, decode it
-    if (output.includes('%3A%2F%2F')) {
-      console.log('[decodeComplexOutputParam] Decoding encoded URL:', output);
-      return decodeURIComponent(output);
-    }
-    return output;
-  } catch (error) {
-    console.error('[decodeComplexOutputParam] Error decoding URL:', error);
-    return output;
+    // Try to decode the parameter in case it was URL encoded
+    const decoded = decodeURIComponent(output);
+    console.log("[decodeComplexOutputParam] Decoded output param:", decoded);
+    return decoded;
+  } catch (e) {
+    console.error("[decodeComplexOutputParam] Error decoding output parameter:", e);
+    return output; // Return the original if decoding fails
   }
+};
+
+// Normalize a path for display (ensures consistent formatting)
+export const normalizePathForDisplay = (path: string): string => {
+  console.log("[normalizePathForDisplay] Original path:", path);
+  
+  // If it's already a fully formed URL, return it as is
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    console.log("[normalizePathForDisplay] Already a full URL");
+    return path;
+  }
+  
+  // Remove any extra slashes at the beginning
+  let normalizedPath = path.replace(/^\/+/, '');
+  
+  // Always ensure output/ directory is referenced correctly
+  if (!normalizedPath.startsWith('output/') && !normalizedPath.includes('/')) {
+    normalizedPath = `output/${normalizedPath}`;
+    console.log("[normalizePathForDisplay] Added output/ prefix");
+  }
+  
+  // Always ensure leading slash for absolute path
+  normalizedPath = `/${normalizedPath}`;
+  
+  console.log("[normalizePathForDisplay] Final normalized path:", normalizedPath);
+  return normalizedPath;
 };

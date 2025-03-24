@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
-import { Terminal, Menu, Info, FileText, Settings } from 'lucide-react';
+import { Terminal, Menu, Info, FileText, Settings, Bug } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import scriptsData from '@/data/scripts.json';
-import AboutDialog from '@/components/about/AboutDialog';
 
 interface HeaderSectionProps {
   onToggleConsole: () => void;
@@ -21,6 +20,8 @@ interface HeaderSectionProps {
   onOpenAdvancedOptions?: () => void;
   onOpenAboutDialog?: () => void;
   onRunScript?: (scriptFilename: string) => void;
+  isVerboseDebug?: boolean;
+  onToggleVerboseDebug?: () => void;
 }
 
 const HeaderSection: React.FC<HeaderSectionProps> = ({ 
@@ -28,10 +29,10 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   isConsoleVisible,
   onOpenAdvancedOptions,
   onOpenAboutDialog,
-  onRunScript
+  onRunScript,
+  isVerboseDebug = false,
+  onToggleVerboseDebug
 }) => {
-  const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
-  
   const handleRunScript = (filename: string) => {
     if (onRunScript) {
       onRunScript(filename);
@@ -48,24 +49,10 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       }, 50);
     }
   };
-  
-  const handleOpenAboutDialog = () => {
-    if (onOpenAboutDialog) {
-      onOpenAboutDialog();
-    } else {
-      setAboutDialogOpen(true);
-    }
-  };
 
   return (
     <div className="flex justify-between items-center">
-      <Header 
-        onToggleConsole={onToggleConsole} 
-        onOpenAdvancedOptions={handleOpenAdvancedFromMenu}
-        onToggleVerboseDebug={() => {}}
-        verboseDebugEnabled={false}
-        onOpenAboutDialog={onOpenAboutDialog}
-      />
+      <Header onOpenAboutDialog={onOpenAboutDialog} />
       
       <div className="flex items-center space-x-1">
         {/* Only show console button outside the menu if visible */}
@@ -83,6 +70,25 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             </TooltipTrigger>
             <TooltipContent>
               <p>Toggle Command Console</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        
+        {/* Show verbose debug button when enabled */}
+        {isVerboseDebug && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={onToggleVerboseDebug}
+                className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50 mr-2"
+              >
+                <Bug className="h-5 w-5 text-emerald-500" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Verbose Debug Mode Active (Click to Toggle)</p>
             </TooltipContent>
           </Tooltip>
         )}
@@ -113,7 +119,14 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               </DropdownMenuItem>
             )}
             
-            <DropdownMenuItem onClick={handleOpenAboutDialog}>
+            {onToggleVerboseDebug && (
+              <DropdownMenuItem onClick={onToggleVerboseDebug}>
+                <Bug className={`h-4 w-4 mr-2 ${isVerboseDebug ? 'text-emerald-500' : ''}`} />
+                <span>{isVerboseDebug ? 'Disable Verbose Debug' : 'Enable Verbose Debug'}</span>
+              </DropdownMenuItem>
+            )}
+            
+            <DropdownMenuItem onClick={onOpenAboutDialog}>
               <Info className="h-4 w-4 mr-2" />
               <span>About</span>
             </DropdownMenuItem>
@@ -145,14 +158,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      
-      {/* Controlled dialog when not using onOpenAboutDialog */}
-      {!onOpenAboutDialog && (
-        <AboutDialog 
-          open={aboutDialogOpen} 
-          onOpenChange={setAboutDialogOpen} 
-        />
-      )}
     </div>
   );
 };
