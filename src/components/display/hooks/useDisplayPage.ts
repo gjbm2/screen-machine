@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
@@ -9,6 +10,7 @@ import { useDebugFiles } from '@/components/display/hooks/useDebugFiles';
 export const useDisplayPage = () => {
   const { params, redirectToDebugMode } = useDisplayParams();
   const [previewParams, setPreviewParams] = useState(params);
+  const [metadataExtractionAttempted, setMetadataExtractionAttempted] = useState(false);
 
   // Get display state from the core hook
   const {
@@ -43,18 +45,31 @@ export const useDisplayPage = () => {
     console.log('[useDisplayPage] Image URL:', imageUrl);
     console.log('[useDisplayPage] Metadata:', metadata);
     
-    if (imageUrl && Object.keys(metadata).length === 0) {
-      console.log('[useDisplayPage] No metadata found, manually triggering extraction');
+    // Only extract metadata once per imageUrl and only if needed
+    if (imageUrl && 
+        Object.keys(metadata).length === 0 && 
+        !metadataExtractionAttempted && 
+        !isLoading) {
+      console.log('[useDisplayPage] No metadata found, triggering extraction once');
+      
+      setMetadataExtractionAttempted(true);
       extractMetadataFromImage(imageUrl).catch(err => 
         console.error('[useDisplayPage] Error extracting metadata:', err)
       );
     }
-  }, [params, imageUrl, metadata, extractMetadataFromImage]);
+  }, [params, imageUrl, metadata, extractMetadataFromImage, metadataExtractionAttempted, isLoading]);
+
+  // Reset metadata extraction flag when image URL changes
+  useEffect(() => {
+    if (imageUrl) {
+      setMetadataExtractionAttempted(false);
+    }
+  }, [imageUrl]);
 
   // Redirect to debug mode if needed
   useEffect(() => {
     redirectToDebugMode();
-  }, [params.output, params.debugMode]);
+  }, [params.output, params.debugMode, redirectToDebugMode]);
 
   // Process captions with metadata
   useCaptionProcessor(previewParams, metadata, imageUrl, setProcessedCaption);
