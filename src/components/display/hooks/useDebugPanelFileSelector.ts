@@ -13,7 +13,7 @@ export const useDebugPanelFileSelector = ({
   imageUrl
 }: UseDebugPanelFileSelectorProps) => {
   
-  // Create a callback that returns a function to match the expected type
+  // Create a callback that returns a function with the right signature
   const selectFileHandler = useCallback((file: string) => {
     return () => {
       console.log('[useDebugPanelFileSelector] Selecting file:', file);

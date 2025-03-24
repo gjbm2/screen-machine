@@ -15,7 +15,7 @@ interface FilesTabProps {
   imageUrl: string | null;
   customUrl: string;
   setCustomUrl: (url: string) => void;
-  selectFile: (file: string) => void; // This expects a direct function
+  selectFile: (file: string) => void;
   isCurrentFile: (file: string) => boolean;
   formatFileName: (file: string) => string;
 }

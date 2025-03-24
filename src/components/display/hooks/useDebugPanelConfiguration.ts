@@ -9,7 +9,7 @@ import { useDebugPanelPreview } from './useDebugPanelPreview';
 interface UseDebugPanelConfigurationProps {
   caption: string | null;
   setCaption: (caption: string | null) => void;
-  selectFile: (file: string) => () => void;
+  selectFile: (file: string) => void; // Updated to match the actual implementation
   isCurrentFile: (file: string, imageUrl: string | null) => boolean;
   imageUrl: string | null;
   metadata: Record<string, string>;
