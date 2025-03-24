@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -21,8 +21,16 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
   insertMetadataTag,
   setActiveTab
 }) => {
-  // Add a console log to debug metadata
-  console.log('Rendering MetadataTab with entries:', metadataEntries);
+  // Add enhanced logging to debug metadata issues
+  useEffect(() => {
+    console.log('MetadataTab mounted/updated with entries:', metadataEntries);
+    
+    if (metadataEntries.length === 0) {
+      console.log('No metadata entries found. This might indicate an extraction issue.');
+    } else {
+      console.log('Metadata entries found:', metadataEntries.length);
+    }
+  }, [metadataEntries]);
   
   return (
     <CardContent className="pt-4 pb-2 h-full flex flex-col">
