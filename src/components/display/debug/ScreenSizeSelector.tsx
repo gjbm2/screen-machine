@@ -53,5 +53,4 @@ export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
   );
 };
 
-// Static property to make the screen sizes accessible
-ScreenSizeSelector.SCREEN_SIZES = SCREEN_SIZES;
+// Remove the static property approach as it's causing TypeScript errors
