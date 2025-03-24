@@ -15,7 +15,7 @@ interface FilesTabProps {
   imageUrl: string | null;
   customUrl: string;
   setCustomUrl: (url: string) => void;
-  selectFile: (file: string) => void; // Changed to match actual implementation
+  selectFile: (file: string) => void; // This expects a direct function
   isCurrentFile: (file: string) => boolean;
   formatFileName: (file: string) => string;
 }
@@ -64,7 +64,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({
                 <div 
                   key={index}
                   className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${isCurrentFile(file) ? 'bg-blue-50 border border-blue-200' : ''}`}
-                  onClick={() => selectFile(file)} // Direct call
+                  onClick={() => selectFile(file)} 
                 >
                   <div className="flex items-center">
                     <ImageIcon className="h-4 w-4 mr-2 text-gray-500" />
