@@ -78,18 +78,19 @@ export const useImageState = () => {
     return false;
   };
 
-  const handleManualCheck = async (url: string | null) => {
-    if (url) {
-      console.log('[useImageState] Manual check for URL:', url);
+  const handleManualCheck = async () => {
+    if (imageUrl) {
+      console.log('[useImageState] Manual check for URL:', imageUrl);
       setImageChanged(false);
       
       // Force metadata re-extraction on manual check by clearing the last URL
       lastMetadataUrlRef.current = null;
       
-      const hasChanged = await checkImageModified(url);
+      // Fixed: Now we pass the imageUrl to checkImageModified
+      const hasChanged = await checkImageModified(imageUrl);
       
       // Extract metadata regardless of whether the image has changed
-      await extractMetadataFromImage(url);
+      await extractMetadataFromImage(imageUrl);
       
       if (!hasChanged) {
         toast.info("Image has not changed since last check");
