@@ -53,6 +53,13 @@ export const CaptionRenderer: React.FC<CaptionRendererProps> = ({
   // Pre-process caption to handle newlines
   const captionLines = caption.split('\n');
 
+  // Calculate background opacity as a CSS rgba value
+  const bgColorNoHash = captionBgColor.replace('#', '');
+  const r = parseInt(bgColorNoHash.substring(0, 2) || '00', 16);
+  const g = parseInt(bgColorNoHash.substring(2, 4) || '00', 16);
+  const b = parseInt(bgColorNoHash.substring(4, 6) || '00', 16);
+  const bgColorWithOpacity = `rgba(${r}, ${g}, ${b}, ${captionBgOpacity})`;
+
   return (
     <div 
       className={`absolute p-2 ${positionClasses} ${textAlignment}`}
@@ -66,8 +73,7 @@ export const CaptionRenderer: React.FC<CaptionRendererProps> = ({
       <div 
         className="inline-block px-3 py-1" 
         style={{
-          backgroundColor: captionBgColor,
-          opacity: captionBgOpacity,
+          backgroundColor: bgColorWithOpacity,
           borderRadius: '4px',
         }}
       >

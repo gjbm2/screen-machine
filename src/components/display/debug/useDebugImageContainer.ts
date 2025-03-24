@@ -1,6 +1,5 @@
 
 import { useState, useRef, useEffect } from 'react';
-import { ShowMode, PositionMode } from '../types';
 import { SCREEN_SIZES } from './ScreenSizeSelector';
 
 export const useDebugImageContainer = () => {
@@ -8,38 +7,37 @@ export const useDebugImageContainer = () => {
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
-  
-  const [containerPosition, setContainerPosition] = useState({ x: window.innerWidth / 2 - 300, y: 200 });
+  const [containerPosition, setContainerPosition] = useState({ x: 400, y: 4 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  
-  const [containerSize, setContainerSize] = useState({ width: 600, height: 400 });
+  const [containerSize, setContainerSize] = useState({ width: 480, height: 520 });
   const [isResizing, setIsResizing] = useState(false);
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
   
-  const selectedSize = SCREEN_SIZES.find(size => size.name === selectedScreenSize) || SCREEN_SIZES[0];
-  const viewportRatio = selectedSize.width / selectedSize.height;
+  // Get the selected screen size object
+  const selectedSize = SCREEN_SIZES.find(s => s.name === selectedScreenSize) || SCREEN_SIZES[0];
   
+  // Calculate aspect ratio
+  const viewportRatio = selectedSize.width / selectedSize.height;
+
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
+    const img = e.target as HTMLImageElement;
     setImageDimensions({
       width: img.naturalWidth,
       height: img.naturalHeight
     });
-  };
-  
-  useEffect(() => {
+    
+    // Update content dimensions after image is loaded
     if (contentRef.current) {
-      const rect = contentRef.current.getBoundingClientRect();
-      setContainerWidth(rect.width);
-      setContainerHeight(rect.height);
+      setContainerWidth(contentRef.current.offsetWidth);
+      setContainerHeight(contentRef.current.offsetHeight);
     }
-  }, [containerSize, selectedScreenSize]);
+  };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target instanceof Element && e.target.closest('.card-header-drag-handle')) {
+    if (!isResizing) {
       setIsDragging(true);
       const rect = containerRef.current?.getBoundingClientRect();
       if (rect) {
@@ -51,25 +49,6 @@ export const useDebugImageContainer = () => {
     }
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
-    if (isDragging) {
-      const newX = e.clientX - dragOffset.x;
-      const newY = e.clientY - dragOffset.y;
-      setContainerPosition({ x: newX, y: newY });
-    }
-    
-    if (isResizing) {
-      const newWidth = Math.max(300, resizeStart.width + (e.clientX - resizeStart.x));
-      const newHeight = Math.max(200, resizeStart.height + (e.clientY - resizeStart.y));
-      setContainerSize({ width: newWidth, height: newHeight });
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-    setIsResizing(false);
-  };
-  
   const handleResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -84,6 +63,49 @@ export const useDebugImageContainer = () => {
   };
 
   useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging) {
+        const newX = Math.max(0, e.clientX - dragOffset.x);
+        const newY = Math.max(0, e.clientY - dragOffset.y);
+        
+        const maxX = window.innerWidth - containerSize.width;
+        const maxY = window.innerHeight - containerSize.height;
+        
+        setContainerPosition({ 
+          x: Math.min(newX, maxX), 
+          y: Math.min(newY, maxY) 
+        });
+      }
+      
+      if (isResizing) {
+        const MIN_WIDTH = 320;
+        const MIN_HEIGHT = 320;
+        
+        // Calculate new width and height
+        const newWidth = Math.max(MIN_WIDTH, resizeStart.width + (e.clientX - resizeStart.x));
+        
+        // Ensure we maintain aspect ratio when resizing
+        const newHeight = Math.round(newWidth / viewportRatio) + 60; // Add some padding for header
+        
+        // Ensure we don't resize beyond viewport
+        const maxWidth = window.innerWidth - containerPosition.x;
+        const maxHeight = window.innerHeight - containerPosition.y;
+        
+        const constrainedWidth = Math.min(newWidth, maxWidth);
+        const constrainedHeight = Math.min(newHeight, maxHeight);
+        
+        setContainerSize({
+          width: constrainedWidth,
+          height: constrainedHeight
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      setIsResizing(false);
+    };
+
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     
@@ -91,7 +113,24 @@ export const useDebugImageContainer = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragOffset, isResizing, resizeStart]);
+  }, [isDragging, dragOffset, isResizing, resizeStart, containerPosition, viewportRatio]);
+
+  // Update container dimensions when screen size changes
+  useEffect(() => {
+    if (contentRef.current) {
+      setContainerWidth(contentRef.current.offsetWidth);
+      setContainerHeight(contentRef.current.offsetHeight);
+      
+      // Update container size based on aspect ratio
+      const width = containerSize.width;
+      const height = Math.round(width / viewportRatio) + 60; // Add some padding for header
+      
+      setContainerSize({
+        width,
+        height
+      });
+    }
+  }, [selectedScreenSize, viewportRatio]);
 
   // This method will update the selectedScreenSize state with a name string
   const updateSelectedScreenSize = (name: string) => {
