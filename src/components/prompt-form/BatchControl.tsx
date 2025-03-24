@@ -10,6 +10,11 @@ const BatchControl: React.FC<BatchControlProps> = ({
   decrementBatchSize,
   isCompact = false
 }) => {
+  // Log the current batch size when it changes to help debug
+  React.useEffect(() => {
+    console.log('BatchControl: Current batch size:', batchSize);
+  }, [batchSize]);
+
   return (
     <div className="flex items-center gap-1 shrink-0">
       {!isCompact && <span className="text-xs text-muted-foreground mr-1">Images</span>}
@@ -18,7 +23,10 @@ const BatchControl: React.FC<BatchControlProps> = ({
           type="button"
           variant="ghost"
           size="icon"
-          onClick={decrementBatchSize}
+          onClick={() => {
+            console.log('BatchControl: Decrementing batch size');
+            decrementBatchSize();
+          }}
           disabled={batchSize <= 1}
           className={`${isCompact ? 'h-[28px] w-[22px]' : 'h-[28px] w-[28px]'} rounded-none border-r`}
         >
@@ -31,7 +39,10 @@ const BatchControl: React.FC<BatchControlProps> = ({
           type="button"
           variant="ghost"
           size="icon"
-          onClick={incrementBatchSize}
+          onClick={() => {
+            console.log('BatchControl: Incrementing batch size');
+            incrementBatchSize();
+          }}
           disabled={batchSize >= 9}
           className={`${isCompact ? 'h-[28px] w-[22px]' : 'h-[28px] w-[28px]'} rounded-none border-l`}
         >

@@ -50,13 +50,18 @@ class ApiService {
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
       
-      // IMPORTANT: Make sure batch_size is included in global_params and use the current value
-      if (!jsonData.global_params.batch_size) {
-        jsonData.global_params.batch_size = 1; // Default to 1 if not specified
+      // CRITICAL: Ensure the batch_size is properly passed through
+      // Never default here; use what was explicitly provided
+      if (global_params && typeof global_params.batch_size !== 'undefined') {
+        jsonData.global_params.batch_size = global_params.batch_size;
+      } else {
+        // Only use a default if nothing was provided at all
+        jsonData.global_params.batch_size = 1;
       }
       
       // Log the params to debug batch size issues
-      console.log("[api] Generating image with params:", {
+      console.log("[api] Generating image with live batch_size:", jsonData.global_params.batch_size);
+      console.log("[api] Full API payload:", {
         prompt,
         workflow,
         params: workflowParams,
@@ -168,7 +173,7 @@ class ApiService {
   
   // Mock implementation for testing/preview
   private mockGenerateImage(params: GenerateImageParams) {
-    // Make sure we correctly extract batch size from global_params
+    // CRITICAL: Always use the provided batch size, don't rely on defaults or cached values
     const batchSize = params.global_params?.batch_size || 1;
     console.info('[MOCK LOG] [mock-backend]', `Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
     console.info('[MOCK LOG] [mock-backend]', `Using workflow: ${params.workflow}`);

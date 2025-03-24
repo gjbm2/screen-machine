@@ -61,17 +61,21 @@ export const usePromptSubmission = ({
       }
     }
     
-    // We need to ensure we're using the exact latest provided parameters every time
-    // This is crucial for ensuring the batch size and other params are current
-    const effectiveGlobalParams = globalParams || currentGlobalParams;
+    // CRITICAL: We must always use the explicitly provided parameters
+    // Never use cached values from component state
+    const effectiveGlobalParams = globalParams || {};
+    const effectiveWorkflow = workflow || currentWorkflow;
+    const effectiveWorkflowParams = workflowParams || currentParams;
+    
+    console.log("[usePromptSubmission] Using live batch size:", effectiveGlobalParams.batch_size);
     
     // Create the configuration for image generation, prioritizing newly provided params
     const config: ImageGenerationConfig = {
       prompt,
       imageFiles: uniqueImageFiles,
-      workflow: workflow || currentWorkflow,
-      params: workflowParams || currentParams,
-      // Use the most current global params
+      workflow: effectiveWorkflow,
+      params: effectiveWorkflowParams,
+      // Use the explicitly provided global params
       globalParams: effectiveGlobalParams,
       batchId: lastBatchIdUsed,
       refiner, // Add explicit refiner support
@@ -97,11 +101,10 @@ export const usePromptSubmission = ({
   }, [
     currentWorkflow, 
     currentParams, 
-    currentGlobalParams, 
-    generateImages,
     lastBatchIdUsed,
     setIsFirstRun,
-    setLastBatchIdUsed
+    setLastBatchIdUsed,
+    generateImages
   ]);
 
   return {
