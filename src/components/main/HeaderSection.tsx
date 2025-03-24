@@ -51,26 +51,24 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       <Header onOpenAboutDialog={onOpenAboutDialog} />
       
       <div className="flex items-center space-x-1">
-        {/* Only show console button outside the menu if visible */}
-        {isConsoleVisible && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={onToggleConsole}
-                className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50 mr-2"
-              >
-                <Terminal className="h-5 w-5 text-primary" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Toggle Command Console</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-        
-        {/* Advanced Options button was removed from here */}
+        {/* Console toggle button - now always visible outside the menu */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={onToggleConsole}
+              className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50 mr-2"
+              aria-pressed={isConsoleVisible}
+              aria-label="Toggle Console"
+            >
+              <Terminal className={`h-5 w-5 ${isConsoleVisible ? 'text-primary' : 'text-muted-foreground'}`} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Toggle Command Console</p>
+          </TooltipContent>
+        </Tooltip>
         
         {/* Burger menu */}
         <DropdownMenu>
@@ -84,13 +82,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            {!isConsoleVisible && (
-              <DropdownMenuItem onClick={onToggleConsole}>
-                <Terminal className="h-4 w-4 mr-2" />
-                <span>Console View</span>
-              </DropdownMenuItem>
-            )}
-            
             {onOpenAdvancedOptions && (
               <DropdownMenuItem onClick={handleOpenAdvancedFromMenu}>
                 <Settings className="h-4 w-4 mr-2" />

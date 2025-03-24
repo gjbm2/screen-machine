@@ -73,9 +73,14 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
                   size="sm"
                   className="justify-start text-sm h-auto py-2"
                   onClick={(e) => {
+                    // Prevent event bubbling and properly handle the refiner change
                     e.preventDefault();
                     e.stopPropagation();
-                    onRefinerChange(refiner.id);
+                    // Change refiner selection
+                    if (refiner.id !== selectedRefiner) {
+                      console.log(`Changing refiner to: ${refiner.id}`);
+                      onRefinerChange(refiner.id);
+                    }
                   }}
                   type="button"
                 >
