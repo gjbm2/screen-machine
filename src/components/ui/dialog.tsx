@@ -36,35 +36,74 @@ const DialogContent = React.forwardRef<
     description?: string;
     hideCloseButton?: boolean;
   }
->(({ className, children, fullscreen = false, noPadding = false, description, hideCloseButton = false, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg overflow-y-auto",
-        fullscreen ? "w-[95vw] h-[95vh] max-w-none max-h-[95vh]" : "w-full max-w-4xl max-h-[90vh]",
-        noPadding ? "p-0" : "p-6",
-        className
-      )}
-      aria-describedby={description ? "dialog-description" : undefined}
-      {...props}
-    >
-      {description && (
-        <div id="dialog-description" className="sr-only">
-          {description}
-        </div>
-      )}
-      {children}
-      {!hideCloseButton && (
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-90 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-foreground/10 backdrop-blur-sm text-foreground hover:bg-foreground/20 p-2 rounded-full z-10">
-          <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
-      )}
-    </DialogPrimitive.Content>
-  </DialogPortal>
-))
+>(({ className, children, fullscreen = false, noPadding = false, description, hideCloseButton = false, ...props }, ref) => {
+  // Add an effect to ensure we clean up any potential stuck event handlers
+  React.useEffect(() => {
+    // This ensures we properly clean up when the dialog is unmounted
+    return () => {
+      // Force any hidden elements to be removed from the DOM
+      document.body.style.pointerEvents = '';
+      document.body.style.cursor = '';
+    };
+  }, []);
+
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          "fixed left-[50%] top-[50%] z-50 grid translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg overflow-y-auto",
+          fullscreen ? "w-[95vw] h-[95vh] max-w-none max-h-[95vh]" : "w-full max-w-4xl max-h-[90vh]",
+          noPadding ? "p-0" : "p-6",
+          className
+        )}
+        aria-describedby={description ? "dialog-description" : undefined}
+        onEscapeKeyDown={(e) => {
+          // Prevent propagation to parent dialogs
+          e.stopPropagation();
+          
+          // Run any existing onEscapeKeyDown handler
+          if (props.onEscapeKeyDown) {
+            props.onEscapeKeyDown(e);
+          }
+        }}
+        onInteractOutside={(e) => {
+          // Ensure click outside events are properly handled
+          if (props.onInteractOutside) {
+            props.onInteractOutside(e);
+          }
+        }}
+        onCloseAutoFocus={(e) => {
+          // When closed by any means, ensure body pointer events are restored
+          document.body.style.pointerEvents = '';
+          
+          // Run any existing onCloseAutoFocus handler
+          if (props.onCloseAutoFocus) {
+            props.onCloseAutoFocus(e);
+          }
+          
+          // Prevent default focus behavior to avoid issues
+          e.preventDefault();
+        }}
+        {...props}
+      >
+        {description && (
+          <div id="dialog-description" className="sr-only">
+            {description}
+          </div>
+        )}
+        {children}
+        {!hideCloseButton && (
+          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-90 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-foreground/10 backdrop-blur-sm text-foreground hover:bg-foreground/20 p-2 rounded-full z-10">
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        )}
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  )
+})
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 const DialogHeader = ({
