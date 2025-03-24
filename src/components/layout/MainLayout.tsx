@@ -1,11 +1,10 @@
 
-import React, { useState, useCallback } from 'react';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import HeaderSection from '@/components/main/HeaderSection';
-import ResizableConsole from '@/components/debug/ResizableConsole';
-import AboutDialog from '@/components/about/AboutDialog';
+import React from 'react';
+import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import { useConsoleManagement } from '@/hooks/use-console-management';
+import { ResizableConsole } from '@/components/debug/ResizableConsole';
+import ConsoleView from '@/components/console/ConsoleView';
+import { useVerboseDebug } from '@/hooks/use-verbose-debug';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -26,36 +25,32 @@ const MainLayout: React.FC<MainLayoutProps> = ({
   onClearConsole,
   isFirstRun = false
 }) => {
-  const [showAboutDialog, setShowAboutDialog] = useState(false);
-  
+  const { verboseDebug, toggleVerboseDebug } = useVerboseDebug();
+
   return (
-    <main className="flex flex-col min-h-screen p-4 md:p-6 max-w-screen-2xl mx-auto">
-      <HeaderSection 
-        onToggleConsole={onToggleConsole}
-        isConsoleVisible={consoleVisible}
+    <div className="flex flex-col min-h-screen">
+      <Header 
+        onToggleConsole={onToggleConsole} 
         onOpenAdvancedOptions={onOpenAdvancedOptions}
-        onOpenAboutDialog={() => setShowAboutDialog(true)}
+        onToggleVerboseDebug={toggleVerboseDebug}
+        verboseDebugEnabled={verboseDebug}
       />
       
-      <ScrollArea className="flex-1 max-h-full overflow-y-auto pr-4">
+      <main className="flex-1 container mx-auto px-4 py-4">
         {children}
-        <Footer />
-      </ScrollArea>
+      </main>
+      
+      <Footer />
       
       {consoleVisible && (
-        <ResizableConsole 
-          logs={consoleLogs}
-          isVisible={consoleVisible}
-          onClose={onToggleConsole}
-          onClear={onClearConsole}
-        />
+        <ResizableConsole>
+          <ConsoleView 
+            logs={consoleLogs}
+            onClear={onClearConsole}
+          />
+        </ResizableConsole>
       )}
-      
-      <AboutDialog 
-        open={showAboutDialog} 
-        onOpenChange={setShowAboutDialog}
-      />
-    </main>
+    </div>
   );
 };
 

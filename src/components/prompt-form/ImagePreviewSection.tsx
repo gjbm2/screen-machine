@@ -2,70 +2,57 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "@/components/ui/carousel";
-import { ImagePreviewSectionProps } from './types';
+import { ScrollArea } from '@/components/ui/scroll-area';
+
+export interface ImagePreviewSectionProps {
+  previewUrls: string[];
+  onRemoveImage: (index: number) => void;
+  onClearAllImages: () => void;
+}
 
 const ImagePreviewSection: React.FC<ImagePreviewSectionProps> = ({
   previewUrls,
-  handleRemoveImage,
-  clearAllImages
+  onRemoveImage,
+  onClearAllImages
 }) => {
   if (previewUrls.length === 0) {
     return null;
   }
 
-  // Remove duplicate URLs if any exist
-  const uniqueUrls = [...new Set(previewUrls)];
-  
   return (
-    <div className="relative p-4 pb-2">
-      <Carousel className="w-full">
-        <CarouselContent>
-          {uniqueUrls.map((url, index) => (
-            <CarouselItem key={`preview-${index}-${url.slice(-8)}`} className="basis-full md:basis-1/2 lg:basis-1/3">
-              <div className="relative rounded-lg overflow-hidden h-48 border border-border/30">
-                <img 
-                  src={url} 
-                  alt={`Uploaded image ${index + 1}`} 
-                  className="w-full h-full object-contain"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleRemoveImage(index)}
-                  className="absolute top-2 right-2 bg-foreground/20 text-background hover:bg-foreground/30 p-1 rounded-full"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </CarouselItem>
+    <div className="mt-4">
+      <div className="flex justify-between items-center mb-2">
+        <h3 className="text-sm font-medium">Upload Images</h3>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClearAllImages}
+          className="h-6 text-xs text-muted-foreground"
+        >
+          Clear All
+        </Button>
+      </div>
+      <ScrollArea className="h-[100px]">
+        <div className="flex flex-wrap gap-2">
+          {previewUrls.map((url, index) => (
+            <div key={index} className="relative group">
+              <img
+                src={url}
+                alt={`Preview ${index + 1}`}
+                className="h-[80px] w-auto rounded object-cover border"
+              />
+              <Button
+                variant="destructive"
+                size="icon"
+                className="absolute top-1 right-1 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => onRemoveImage(index)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
           ))}
-        </CarouselContent>
-        {uniqueUrls.length > 1 && (
-          <>
-            <CarouselPrevious className="left-1" />
-            <CarouselNext className="right-1" />
-          </>
-        )}
-      </Carousel>
-      {uniqueUrls.length > 1 && (
-        <div className="flex justify-end mt-2">
-          <Button 
-            type="button" 
-            variant="outline" 
-            size="sm" 
-            onClick={clearAllImages}
-            className="text-xs"
-          >
-            Clear All Images
-          </Button>
         </div>
-      )}
+      </ScrollArea>
     </div>
   );
 };

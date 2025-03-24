@@ -1,61 +1,72 @@
 
 import React from 'react';
+import { Button } from "@/components/ui/button";
+import { menuItems } from '@/data/menu-items';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Menu, Code, Sliders, Bug } from 'lucide-react';
+import AboutDialog from './about/AboutDialog';
 
 interface HeaderProps {
-  onOpenAboutDialog?: () => void;
+  onToggleConsole: () => void;
+  onOpenAdvancedOptions: () => void;
+  onToggleVerboseDebug: () => void;
+  verboseDebugEnabled: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ onOpenAboutDialog }) => {
-  const [open, setOpen] = React.useState(false);
-
-  // Handle external trigger for opening the dialog
-  React.useEffect(() => {
-    if (onOpenAboutDialog) {
-      const handler = () => setOpen(true);
-      // Store the reference to the handler function
-      onOpenAboutDialog = handler;
-      return () => {
-        // Cleanup to avoid memory leaks
-        onOpenAboutDialog = undefined;
-      };
-    }
-  }, [onOpenAboutDialog]);
-
+const Header: React.FC<HeaderProps> = ({ 
+  onToggleConsole, 
+  onOpenAdvancedOptions,
+  onToggleVerboseDebug,
+  verboseDebugEnabled
+}) => {
   return (
-    <header className="flex justify-between items-center py-4 px-4 sm:px-6 md:px-8 animate-fade-in">
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger asChild>
-          <div className="text-xl font-medium tracking-tight cursor-pointer hover:text-primary transition-colors">
-            imagine
-          </div>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>About Imagine</DialogTitle>
-            <DialogDescription>
-              <div className="space-y-4 mt-4">
-                <p>
-                  Imagine is an AI-powered image generation tool that turns your text prompts into stunning visuals.
-                </p>
-                <p>
-                  Simply describe what you want to see or upload reference images, and watch as artificial intelligence transforms your ideas into art within seconds.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Version 1.0.0 • Made with ❤️ by your team
-                </p>
-              </div>
-            </DialogDescription>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
+    <header className="border-b">
+      <div className="container mx-auto flex justify-between items-center p-2">
+        <div className="flex items-center space-x-4">
+          <h1 className="text-xl font-bold">
+            Image Generator
+          </h1>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Options</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              
+              <DropdownMenuItem onClick={onOpenAdvancedOptions}>
+                <Sliders className="mr-2 h-4 w-4" />
+                <span>Advanced Options</span>
+              </DropdownMenuItem>
+              
+              <DropdownMenuItem onClick={onToggleConsole}>
+                <Code className="mr-2 h-4 w-4" />
+                <span>Toggle Console</span>
+              </DropdownMenuItem>
+              
+              <DropdownMenuItem onClick={onToggleVerboseDebug}>
+                <Bug className="mr-2 h-4 w-4" />
+                <span>{verboseDebugEnabled ? 'Disable' : 'Enable'} Verbose Debug</span>
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
+              <AboutDialog />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
     </header>
   );
 };

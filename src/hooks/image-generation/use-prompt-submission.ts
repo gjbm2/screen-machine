@@ -61,12 +61,18 @@ export const usePromptSubmission = ({
       }
     }
     
-    // CRITICAL: Always use explicitly provided global parameters from function args
-    // Never modify, cache or transform these values - they should flow directly to the API
-    const effectiveGlobalParams = globalParams || {};
+    // CRITICAL FIX: Ensure batch_size is properly passed through
+    // Create a clean global params object with the batch_size from the provided globalParams
+    const effectiveGlobalParams = globalParams ? { ...globalParams } : {};
     
-    // IMPORTANT DEBUG: Log the batch size being used for this generation request
+    // Explicit debug logging to trace batch size
+    console.log("[usePromptSubmission] Raw globalParams received:", globalParams);
     console.log("[usePromptSubmission] Using batch size:", effectiveGlobalParams.batch_size);
+    
+    if (effectiveGlobalParams.batch_size === undefined && globalParams?.batch_size !== undefined) {
+      console.warn("[usePromptSubmission] batch_size was undefined but existed in original globalParams");
+      effectiveGlobalParams.batch_size = globalParams.batch_size;
+    }
     
     const effectiveWorkflow = workflow || currentWorkflow;
     const effectiveWorkflowParams = workflowParams || currentParams;
@@ -77,7 +83,7 @@ export const usePromptSubmission = ({
       imageFiles: uniqueImageFiles,
       workflow: effectiveWorkflow,
       params: effectiveWorkflowParams,
-      globalParams: effectiveGlobalParams, // Use provided globalParams directly
+      globalParams: effectiveGlobalParams, // Use the properly prepared global params
       batchId: lastBatchIdUsed,
       refiner, 
       refinerParams

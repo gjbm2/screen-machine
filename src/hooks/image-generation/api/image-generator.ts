@@ -110,19 +110,27 @@ export const generateImage = async (
       console.log(`[image-generator] Using reference images: ${uploadedImageUrls.join(', ')}`);
     }
 
-    // CRITICAL: Directly use the batch size from globalParams, don't override or use defaults
-    const batchSize = globalParams?.batch_size || 1;
-    
-    // Log the batch size to verify we're using the right value
-    console.log(`[image-generator] Received batch_size: ${batchSize}`);
-    if (globalParams?.batch_size !== undefined) {
-      console.log(`[image-generator] Original globalParams.batch_size: ${globalParams.batch_size}`);
-    } else {
-      console.log(`[image-generator] WARNING: globalParams.batch_size is undefined, using default: 1`);
+    // CRITICAL FIX: Ensure we properly extract the batch size with fallback to 1
+    // Extract batch size from globalParams, ensuring it's a number
+    let batchSize = 1; // Default fallback
+    if (globalParams && typeof globalParams === 'object') {
+      if (typeof globalParams.batch_size === 'number') {
+        batchSize = globalParams.batch_size;
+      } else if (globalParams.batch_size !== undefined) {
+        // Try to convert to number if it's not already
+        const parsedSize = parseInt(String(globalParams.batch_size), 10);
+        if (!isNaN(parsedSize)) {
+          batchSize = parsedSize;
+        }
+      }
     }
     
-    // Log full global params for debugging
-    console.log(`[image-generator] Full received globalParams:`, globalParams);
+    // Enhanced debugging for batch size
+    console.log(`[image-generator] Extracted batch_size: ${batchSize}`);
+    console.log(`[image-generator] Original globalParams:`, globalParams);
+    
+    // Ensure batch_size is a valid number between 1 and 9
+    batchSize = Math.max(1, Math.min(9, batchSize));
     
     addConsoleLog({
       type: 'info',
@@ -178,13 +186,14 @@ export const generateImage = async (
     // Use setTimeout to allow the UI to update before starting the API call
     setTimeout(async () => {
       try {
-        // Make the API call - CRITICAL: Pass globalParams directly without modifying its batch_size
+        // CRITICAL FIX: Ensure global_params includes a valid batch_size
         const payload: GenerateImagePayload = {
           prompt,
           workflow,
           params,
           global_params: {
             ...globalParams,
+            batch_size: batchSize  // Ensure batch_size is properly set with the correct value
           },
           refiner,
           refiner_params: refinerParams,
