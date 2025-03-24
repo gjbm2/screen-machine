@@ -12,6 +12,7 @@ import { CaptionTab } from './debug/CaptionTab';
 import { ResizeHandle } from './ResizeHandle';
 import { useDebugPanel } from './debug/useDebugPanel';
 import { DisplayParams } from './types';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface DebugPanelProps {
   params: DisplayParams;
@@ -40,6 +41,8 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   metadata,
   onApplyCaption
 }) => {
+  const isMobile = useIsMobile();
+  
   // Add a debug effect to verify component rendering and props
   useEffect(() => {
     console.log('DebugPanel rendered with props:', {
@@ -47,9 +50,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       lastModified,
       imageKey,
       outputFiles: outputFiles.length,
-      metadataKeys: Object.keys(metadata)
+      metadataKeys: Object.keys(metadata),
+      isMobile
     });
-  }, [imageUrl, lastModified, imageKey, outputFiles, metadata]);
+  }, [imageUrl, lastModified, imageKey, outputFiles, metadata, isMobile]);
 
   const {
     activeTab,
@@ -107,10 +111,39 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     console.log('DebugPanel metadataEntries:', metadataEntries);
   }, [metadataEntries]);
 
+  // Set default position for mobile
+  useEffect(() => {
+    if (isMobile) {
+      // Center the panel for mobile users
+      const centerPanel = () => {
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const idealWidth = Math.min(viewportWidth - 20, 350);
+        const idealHeight = Math.min(viewportHeight - 40, 500);
+        const idealX = (viewportWidth - idealWidth) / 2;
+        const idealY = 20;
+        
+        // Update the panel size and position for mobile
+        if (panelRef.current) {
+          panelRef.current.style.width = `${idealWidth}px`;
+          panelRef.current.style.height = `${idealHeight}px`;
+        }
+      };
+      
+      centerPanel();
+      window.addEventListener('resize', centerPanel);
+      return () => window.removeEventListener('resize', centerPanel);
+    }
+  }, [isMobile, panelRef]);
+
+  // Calculate minimum dimensions based on device
+  const minWidth = isMobile ? '300px' : '400px';
+  const minHeight = isMobile ? '450px' : '500px';
+
   return (
     <Card 
       ref={panelRef}
-      className="absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg"
+      className={`absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg resizable-container ${isMobile ? 'mobile-debug-panel' : ''}`}
       style={{ 
         left: `${position2.x}px`, 
         top: `${position2.y}px`,
@@ -121,8 +154,8 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         position: 'absolute',
         display: 'flex',
         flexDirection: 'column',
-        minWidth: '300px',  // Add minimum width
-        minHeight: '400px'  // Add minimum height
+        minWidth,
+        minHeight
       }}
       onMouseDown={handleMouseDown}
     >
@@ -202,7 +235,11 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         formatTime={formatTime}
       />
       
-      <ResizeHandle onMouseDown={handleResizeStart} />
+      <ResizeHandle 
+        onMouseDown={handleResizeStart}
+        minWidth={parseInt(minWidth)}
+        minHeight={parseInt(minHeight)} 
+      />
     </Card>
   );
 };
