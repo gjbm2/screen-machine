@@ -9,10 +9,29 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-const Header = () => {
+interface HeaderProps {
+  onOpenAboutDialog?: () => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ onOpenAboutDialog }) => {
+  const [open, setOpen] = React.useState(false);
+
+  // Handle external trigger for opening the dialog
+  React.useEffect(() => {
+    if (onOpenAboutDialog) {
+      const handler = () => setOpen(true);
+      // Store the reference to the handler function
+      onOpenAboutDialog = handler;
+      return () => {
+        // Cleanup to avoid memory leaks
+        onOpenAboutDialog = undefined;
+      };
+    }
+  }, [onOpenAboutDialog]);
+
   return (
     <header className="flex justify-between items-center py-4 px-4 sm:px-6 md:px-8 animate-fade-in">
-      <Dialog>
+      <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
           <div className="text-xl font-medium tracking-tight cursor-pointer hover:text-primary transition-colors">
             imagine

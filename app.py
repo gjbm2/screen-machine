@@ -11,6 +11,8 @@ import requests
 from werkzeug.utils import secure_filename
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
 import routes.generate
+import subprocess
+import logging
 
 app = Flask(__name__, static_folder='build')
 CORS(app)  # Enable CORS for all routes
@@ -62,6 +64,65 @@ workflows_data = load_json_data('workflows.json')
 refiners_data = load_json_data('refiners.json')
 refiner_params_data = load_json_data('refiner-params.json')
 global_options_data = load_json_data('global-options.json')
+
+# Add a new endpoint for running scripts
+@app.route('/api/run-script', methods=['POST'])
+def run_script():
+    try:
+        data = request.json
+        if not data or 'filename' not in data:
+            return jsonify({"success": False, "error": "No filename provided"}), 400
+        
+        filename = data['filename']
+        # Prevent path traversal attacks
+        filename = os.path.basename(filename)
+        
+        # Determine the script type and location
+        script_path = None
+        # First check in routes directory
+        routes_path = os.path.join('routes', filename)
+        if os.path.exists(routes_path):
+            script_path = routes_path
+            info(f"Found script in routes directory: {script_path}")
+        
+        if not script_path:
+            return jsonify({"success": False, "error": f"Script not found: {filename}"}), 404
+        
+        # Log the script execution
+        info(f"Executing script: {script_path}")
+        
+        # For now, we'll just read the content of the script and return it
+        # In a real implementation, you would execute the script based on its type
+        with open(script_path, 'r') as file:
+            script_content = file.read()
+        
+        # Different handling based on file extension
+        if filename.endswith('.bat'):
+            info(f"Would execute batch file: {script_path}")
+            return jsonify({
+                "success": True,
+                "message": f"Batch script would be executed: {filename}",
+                "content_preview": script_content[:100] + '...' if len(script_content) > 100 else script_content
+            })
+        elif filename.endswith('.json'):
+            info(f"Would process JSON workflow: {script_path}")
+            return jsonify({
+                "success": True,
+                "message": f"JSON workflow would be processed: {filename}",
+                "content_preview": script_content[:100] + '...' if len(script_content) > 100 else script_content
+            })
+        else:
+            info(f"Would process text file: {script_path}")
+            return jsonify({
+                "success": True,
+                "message": f"Text file would be processed: {filename}",
+                "content_preview": script_content[:100] + '...' if len(script_content) > 100 else script_content
+            })
+            
+    except Exception as e:
+        error_msg = f"Error executing script: {str(e)}"
+        error(error_msg)
+        return jsonify({"success": False, "error": error_msg}), 500
 
 # Add a new route for publishing images
 @app.route('/api/publish-image', methods=['POST'])
