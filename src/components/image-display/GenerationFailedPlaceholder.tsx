@@ -9,13 +9,15 @@ interface GenerationFailedPlaceholderProps {
   onRetry?: () => void;
   onRemove?: () => void;
   isCompact?: boolean;
+  errorMessage?: string; // Added error message property for more detailed errors
 }
 
 const GenerationFailedPlaceholder: React.FC<GenerationFailedPlaceholderProps> = ({ 
   prompt, 
   onRetry,
   onRemove,
-  isCompact = false
+  isCompact = false,
+  errorMessage = null
 }) => {
   // Use simpler UI for small/compact view
   if (isCompact) {
@@ -60,6 +62,11 @@ const GenerationFailedPlaceholder: React.FC<GenerationFailedPlaceholderProps> = 
         {prompt && (
           <p className="text-sm text-center text-muted-foreground px-4 mb-4 max-w-lg">
             Failed to generate: {prompt}
+          </p>
+        )}
+        {errorMessage && (
+          <p className="text-xs text-center text-red-500 px-4 mb-4 max-w-lg">
+            Error: {errorMessage}
           </p>
         )}
         <div className="flex space-x-2">
