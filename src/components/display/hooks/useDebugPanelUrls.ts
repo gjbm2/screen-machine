@@ -130,10 +130,7 @@ export const useDebugPanelUrls = ({
     // Validate that we have an output URL
     if (!outputToUse) {
       console.error('[useDebugPanelUrls] No output URL for view mode, cannot commit');
-      toast("Error", {
-        description: "No image URL specified. Please select an image file or enter a URL.",
-        variant: "destructive"
-      });
+      toast.error("No image URL specified. Please select an image file or enter a URL.");
       return;
     }
     
