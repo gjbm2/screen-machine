@@ -22,10 +22,9 @@ export interface GeneratedImage {
   seed?: number;
   params?: Record<string, any>;
   referenceImageUrl?: string;
-  status: 'generating' | 'completed' | 'error' | 'failed' | 'to_update';
+  status: 'generating' | 'completed' | 'error';
   containerId?: number;
   error?: string;
   refiner?: string;
   refinerParams?: Record<string, any>;
-  title?: string;
 }

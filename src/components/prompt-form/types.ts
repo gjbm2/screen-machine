@@ -17,9 +17,3 @@ export interface PromptFormProps {
   onOpenAdvancedOptions?: () => void;
   isVerboseDebug?: boolean;
 }
-
-export interface ImagePreviewSectionProps {
-  previewUrls: string[];
-  handleRemoveImage: (index: number) => void;
-  clearAllImages: () => void;
-}
