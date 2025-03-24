@@ -116,12 +116,12 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         showMode={showMode}
         position={position}
         selectedScreenSize={selectedSize.name}
-        setSelectedScreenSize={(size: string | { name: string; width: number; height: number }) => {
+        setSelectedScreenSize={(size) => {
           // Handle the size object correctly by extracting the name
           if (typeof size === 'object' && size.name) {
             return size.name;
           }
-          return size;
+          return size as string;
         }}
         imageChanged={imageChanged}
         onSettingsChange={onSettingsChange}
