@@ -56,8 +56,20 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
     }
   }, [effectiveReferenceImageUrl, activeImage]);
   
-  // Determine if this image has reference images - ensuring consistency with other components
-  const hasReferenceImages = Boolean(effectiveReferenceImageUrl);
+  // Process reference images array from string to determine if we have any
+  const hasReferenceImages = React.useMemo(() => {
+    if (!effectiveReferenceImageUrl) return false;
+    
+    if (typeof effectiveReferenceImageUrl === 'string') {
+      const urls = effectiveReferenceImageUrl
+        .split(',')
+        .map(url => url.trim())
+        .filter(url => url !== '');
+      return urls.length > 0;
+    }
+    
+    return Array.isArray(effectiveReferenceImageUrl) ? effectiveReferenceImageUrl.length > 0 : false;
+  }, [effectiveReferenceImageUrl]);
   
   return (
     <div className="flex-shrink-0 p-2 space-y-1 bg-background select-none border-t min-h-[100px]">

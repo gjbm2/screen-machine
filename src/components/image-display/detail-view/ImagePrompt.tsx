@@ -38,6 +38,25 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
         ? `${window.imageCounter}. ${workflowName || 'Generated image'}`
         : workflowName || 'Generated image'));
   
+  // Modified function to handle reference image click by first opening the info dialog
+  const handleReferenceImageClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    console.log("Reference image icon clicked in ImagePrompt");
+    
+    // First open info dialog
+    if (onInfoClick) {
+      onInfoClick();
+      
+      // Then trigger the reference image dialog with a slight delay
+      // to ensure the info dialog has time to open first
+      setTimeout(() => {
+        if (onReferenceImageClick) {
+          onReferenceImageClick();
+        }
+      }, 100);
+    }
+  };
+  
   return (
     <div className="flex items-center gap-1 text-gray-700 min-w-0 w-full overflow-hidden">
       <span 
@@ -55,11 +74,7 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
               variant="ghost" 
               size="sm" 
               className="h-6 w-6 p-0 rounded-full" 
-              onClick={(e) => {
-                e.stopPropagation();
-                console.log("Reference image icon clicked in ImagePrompt");
-                onReferenceImageClick();
-              }}
+              onClick={handleReferenceImageClick}
             >
               <ImageIcon className="h-3.5 w-3.5 text-blue-500" />
               <span className="sr-only">View reference images</span>
