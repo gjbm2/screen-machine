@@ -1,4 +1,3 @@
-
 import React, { useEffect, useCallback, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { DebugPanel } from '@/components/display/DebugPanel';
@@ -160,7 +159,7 @@ const Display = () => {
   const imageStyle = calculateImageStyle();
 
   const containerStyle: React.CSSProperties = {
-    backgroundColor: `#${previewParams.backgroundColor}`,
+    backgroundColor: params.debugMode ? '#f3f3f3' : `#${previewParams.backgroundColor}`,
     width: '100vw',
     height: '100vh',
     margin: 0,
@@ -170,6 +169,7 @@ const Display = () => {
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    backgroundImage: params.debugMode ? 'url("data:image/svg+xml,%3Csvg width=\'20\' height=\'20\' viewBox=\'0 0 20 20\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'%239e9e9e\' fill-opacity=\'0.1\' fill-rule=\'evenodd\'%3E%3Ccircle cx=\'3\' cy=\'3\' r=\'1\'/%3E%3Ccircle cx=\'13\' cy=\'13\' r=\'1\'/%3E%3C/g%3E%3C/svg%3E")' : 'none',
   };
 
   if (error) {
@@ -232,3 +232,4 @@ const Display = () => {
 };
 
 export default Display;
+
