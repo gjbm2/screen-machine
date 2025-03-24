@@ -130,6 +130,8 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
                 fontFamily={captionFont}
                 backgroundColor={captionBgColor}
                 backgroundOpacity={captionBgOpacity}
+                containerWidth={containerRef.current?.clientWidth || window.innerWidth}
+                screenWidth={window.innerWidth}
               />
             )}
           </>
