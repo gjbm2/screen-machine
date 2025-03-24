@@ -1,4 +1,3 @@
-
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -120,9 +119,9 @@ export const generateImage = async (
         workflow,
         params,
         globalParams,
+        batchSize,
         hasReferenceImage: uploadedFiles.length > 0 || uploadedImageUrls.length > 0,
-        referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
-        batchSize
+        referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined
       }
     });
     
@@ -169,7 +168,7 @@ export const generateImage = async (
           params,
           global_params: {
             ...globalParams,
-            batch_size: batchSize, // Make sure batch_size is explicitly included
+            batch_size: batchSize, // Ensure batch_size is explicitly included with current value
           },
           refiner,
           refiner_params: refinerParams,
@@ -177,11 +176,9 @@ export const generateImage = async (
           batch_id: currentBatchId
         };
         
-        // Log the payload to debug batch size issues
-        console.log("[image-generator] API payload:", {
-          ...payload,
-          global_params: payload.global_params
-        });
+        // Enhanced logging to debug batch size issues
+        console.log("[image-generator] API payload batch_size:", payload.global_params.batch_size);
+        console.log("[image-generator] Full API payload:", JSON.stringify(payload, null, 2));
         
         const response = await apiService.generateImage(payload);
         

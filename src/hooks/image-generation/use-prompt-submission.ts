@@ -24,7 +24,10 @@ export const usePromptSubmission = ({
   
   const handleSubmitPrompt = useCallback(async (
     prompt: string, 
-    imageFiles?: File[] | string[]
+    imageFiles?: File[] | string[],
+    workflow?: string,
+    workflowParams?: Record<string, any>,
+    globalParams?: Record<string, any>
   ) => {
     setIsFirstRun(false);
     
@@ -56,16 +59,18 @@ export const usePromptSubmission = ({
       }
     }
     
-    // IMPORTANT: Use the last batchId if available for "Go again" functionality
-    // This is crucial to ensure new images are added to the same container
+    // Create the configuration for image generation, prioritizing newly provided params
     const config: ImageGenerationConfig = {
       prompt,
       imageFiles: uniqueImageFiles,
-      workflow: currentWorkflow,
-      params: currentParams,
-      globalParams: currentGlobalParams,
+      workflow: workflow || currentWorkflow,
+      params: workflowParams || currentParams,
+      // Prioritize the newly provided globalParams which includes the current batch size
+      globalParams: globalParams || currentGlobalParams,
       batchId: lastBatchIdUsed
     };
+    
+    console.log("[usePromptSubmission] Using global params:", config.globalParams);
     
     // Call generateImages and store the returned batchId
     try {
