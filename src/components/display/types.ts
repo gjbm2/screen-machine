@@ -1,7 +1,7 @@
 
 export type ShowMode = 'fit' | 'fill' | 'actual' | 'stretch';
 export type PositionMode = 'top-left' | 'top-center' | 'top-right' | 'center-left' | 'center' | 'center-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
-export type CaptionPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
+export type CaptionPosition = 'top-left' | 'top-center' | 'top-right' | 'middle-left' | 'middle-center' | 'middle-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
 export type TransitionType = 'cut' | 'fade-fast' | 'fade-slow';
 
 export interface DisplayParams {
@@ -11,7 +11,7 @@ export interface DisplayParams {
   refreshInterval: number;
   backgroundColor: string;
   debugMode: boolean;
-  data?: string | undefined;
+  data?: any;
   caption: string | null;
   captionPosition: CaptionPosition;
   captionSize: string;
