@@ -87,15 +87,38 @@ export const useDebugPanelUrls = ({
   };
   
   const commitSettings = () => {
-    const url = generateUrl();
-    console.log('[useDebugPanelUrls] Committing settings, navigating to:', url);
+    // Process the customUrl to ensure it's properly formatted
+    const processedOutput = processOutputParam(customUrl);
+    
+    // Create new params object with all current settings, but WITHOUT debug mode
+    const newParams: DisplayParams = {
+      ...params,
+      output: processedOutput,
+      showMode,
+      position,
+      refreshInterval,
+      backgroundColor,
+      caption,
+      captionPosition,
+      captionSize,
+      captionColor,
+      captionFont,
+      captionBgColor,
+      captionBgOpacity,
+      transition,
+      debugMode: false // Explicitly set debugMode to false
+    };
+    
+    // Generate clean URL from params (without debug mode)
+    const url = createUrlWithParams(newParams);
+    console.log('[useDebugPanelUrls] Committing settings, navigating to view mode:', url);
     
     // Navigate to the main display page with these settings
-    navigate(url);
+    navigate(`/display${url}`);
     
     toast({
-      title: "Settings Applied",
-      description: "Display settings have been updated.",
+      title: "View Mode Activated",
+      description: "Settings applied and debug mode disabled.",
     });
   };
   
