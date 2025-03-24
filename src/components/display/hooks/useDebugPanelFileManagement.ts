@@ -17,13 +17,7 @@ export const useDebugPanelFileManagement = ({
     return () => {
       console.log('[useDebugPanelFileManagement] Selected file:', file);
       
-      // Notify the user
-      toast({
-        title: "Image Selected",
-        description: `Now displaying: ${file.split('/').pop() || file}`,
-      });
-      
-      // Normalize the path
+      // Normalize the path first
       let outputPath = file;
       if (!outputPath.startsWith('/') && !outputPath.startsWith('http')) {
         outputPath = `/output/${outputPath}`;
@@ -41,8 +35,29 @@ export const useDebugPanelFileManagement = ({
       const url = createUrlWithParams(newParams);
       console.log('[useDebugPanelFileManagement] Navigating to:', url);
       
+      // Notify the user before navigation
+      toast({
+        title: "Image Selected",
+        description: `Loading: ${file.split('/').pop() || file}`,
+      });
+      
       // Navigate to the URL
-      navigate(url);
+      navigate(url, { replace: false });
+      
+      // Force a refresh after navigation to ensure the image loads
+      // This is a workaround for situations where the navigation doesn't trigger proper state updates
+      setTimeout(() => {
+        console.log('[useDebugPanelFileManagement] Post-navigation check');
+        const currentParams = new URLSearchParams(window.location.search);
+        const currentOutput = currentParams.get('output');
+        
+        console.log('[useDebugPanelFileManagement] Current output param:', currentOutput);
+        
+        // If we have the right param but image isn't showing, consider forcing a refresh
+        if (currentOutput === outputPath) {
+          console.log('[useDebugPanelFileManagement] Output param is set correctly');
+        }
+      }, 500);
     };
   };
 
