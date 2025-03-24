@@ -1,5 +1,5 @@
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { extractImageMetadata } from '../utils';
 
@@ -16,41 +16,55 @@ export const useDebugPanelMetadata = ({
 }: UseDebugPanelMetadataProps) => {
   const previousImageUrlRef = useRef<string | null>(null);
   const previousMetadataRef = useRef<Record<string, string>>({});
+  const metadataProcessingRef = useRef<boolean>(false);
 
-  // Update metadata entries when metadata changes
+  // Update metadata entries when metadata changes, with optimization
   useEffect(() => {
-    console.log('[useDebugPanelMetadata] Processing metadata:', metadata);
-    console.log('[useDebugPanelMetadata] Previous image URL:', previousImageUrlRef.current);
-    console.log('[useDebugPanelMetadata] Current image URL:', imageUrl);
+    // Skip if we're already processing or if nothing has changed
+    if (metadataProcessingRef.current) {
+      return;
+    }
     
     const metadataChanged = JSON.stringify(metadata) !== JSON.stringify(previousMetadataRef.current);
-    console.log('[useDebugPanelMetadata] Metadata changed:', metadataChanged);
+    const imageUrlChanged = imageUrl !== previousImageUrlRef.current;
     
-    if ((imageUrl !== previousImageUrlRef.current) || metadataChanged) {
+    console.log('[useDebugPanelMetadata] Processing metadata check:', { 
+      metadataChanged, 
+      imageUrlChanged, 
+      metadataKeys: Object.keys(metadata).length 
+    });
+    
+    if (imageUrlChanged || metadataChanged) {
       console.log('[useDebugPanelMetadata] Image URL or metadata changed, processing entries');
-      previousImageUrlRef.current = imageUrl;
-      previousMetadataRef.current = { ...metadata };
+      metadataProcessingRef.current = true;
       
-      // Process metadata into a format suitable for the UI
-      if (metadata && typeof metadata === 'object') {
-        console.log('[useDebugPanelMetadata] Converting metadata object to entries');
+      try {
+        previousImageUrlRef.current = imageUrl;
+        previousMetadataRef.current = { ...metadata };
         
-        const entries = Object.entries(metadata).map(([key, value]) => ({
-          key,
-          value: String(value) // Ensure value is a string
-        }));
-        
-        console.log('[useDebugPanelMetadata] Processed metadata entries:', entries);
-        setMetadataEntries(entries);
-      } else {
-        console.warn('[useDebugPanelMetadata] Invalid metadata format:', metadata);
-        setMetadataEntries([]);
+        // Process metadata into a format suitable for the UI
+        if (metadata && typeof metadata === 'object') {
+          console.log('[useDebugPanelMetadata] Converting metadata object to entries');
+          
+          const entries = Object.entries(metadata).map(([key, value]) => ({
+            key,
+            value: String(value) // Ensure value is a string
+          }));
+          
+          console.log('[useDebugPanelMetadata] Processed metadata entries count:', entries.length);
+          setMetadataEntries(entries);
+        } else {
+          console.warn('[useDebugPanelMetadata] Invalid metadata format:', metadata);
+          setMetadataEntries([]);
+        }
+      } finally {
+        metadataProcessingRef.current = false;
       }
     }
   }, [metadata, imageUrl, setMetadataEntries]);
 
-  // Handle manual metadata refresh
-  const handleRefreshMetadata = async () => {
+  // Memoize handleRefreshMetadata to prevent recreating on every render
+  const handleRefreshMetadata = useCallback(async () => {
     console.log('[useDebugPanelMetadata] handleRefreshMetadata called');
     if (!imageUrl) {
       toast.error("No image URL to extract metadata from");
@@ -130,7 +144,7 @@ export const useDebugPanelMetadata = ({
       toast.error(`Failed to refresh metadata: ${err instanceof Error ? err.message : 'Unknown error'}`);
       return {};
     }
-  };
+  }, [imageUrl]);
 
   return {
     handleRefreshMetadata
