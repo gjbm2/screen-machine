@@ -40,6 +40,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [doubleClickAttempted, setDoubleClickAttempted] = useState(false);
   const doubleClickTimeoutRef = useRef<number | null>(null);
   const [hasLoadError, setHasLoadError] = useState(false);
+  const [isLoading, setIsLoading] = useState(imageUrl !== null);
 
   // Debug when image URL changes
   useEffect(() => {
@@ -49,6 +50,9 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     // Reset error state when image URL changes
     if (imageUrl) {
       setHasLoadError(false);
+      setIsLoading(true);
+    } else {
+      setIsLoading(false);
     }
   }, [imageUrl, imageKey]);
 
@@ -101,17 +105,32 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }, 10);
   };
 
+  // Handle successful image load
+  const handleImageLoad = () => {
+    console.log('[ImageDisplay] Image loaded successfully:', imageUrl);
+    setIsLoading(false);
+    setHasLoadError(false);
+  };
+
   // Handle image error with more details
   const handleImageLoadError = (e: React.SyntheticEvent<HTMLImageElement>) => {
     console.error('[ImageDisplay] Image failed to load:', imageUrl);
     setHasLoadError(true);
+    setIsLoading(false);
     
     // Show toast with more info
     toast.error(`Failed to load image: ${imageUrl?.split('/').pop() || 'unknown'}`);
     
     // Try to get more details about the error
     if (imageUrl) {
-      fetch(imageUrl, { method: 'HEAD' })
+      // Verify if the URL path is correctly formatted
+      console.log('[ImageDisplay] Checking URL format:', imageUrl);
+      
+      // For relative paths, make sure they start with /
+      const formattedPath = imageUrl.startsWith('/') ? imageUrl : `/${imageUrl}`;
+      console.log('[ImageDisplay] Formatted path for fetch:', formattedPath);
+      
+      fetch(formattedPath, { method: 'HEAD' })
         .then(response => {
           console.log('[ImageDisplay] Image HEAD request status:', response.status);
           if (!response.ok) {
@@ -145,6 +164,17 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     maxHeight: '80vh',
   };
 
+  // Loading indicator styles
+  const loadingStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    fontSize: '1.2rem',
+    color: '#666',
+    zIndex: 5,
+  };
+
   // Get dimensions for scaling captions appropriately
   const imageDimensions = {
     width: imageRef.current?.naturalWidth || 0,
@@ -162,6 +192,10 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     >
       {imageUrl ? (
         <>
+          {isLoading && !hasLoadError && (
+            <div style={loadingStyle}>Loading image...</div>
+          )}
+          
           <img
             key={imageKey}
             ref={imageRef}
@@ -169,7 +203,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
             alt=""
             style={isTransitioning ? newImageStyle : imageStyle}
             onError={handleImageLoadError}
-            onLoad={() => console.log('[ImageDisplay] Image loaded successfully:', imageUrl)}
+            onLoad={handleImageLoad}
           />
           
           {/* Transitioning old image (for fades) */}
