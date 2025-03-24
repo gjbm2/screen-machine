@@ -1,15 +1,9 @@
 
-import { useState, useEffect } from 'react';
 import { DisplayParams } from '../types';
 import { useDebugPanelState } from './useDebugPanelState';
 import { useDebugPanelFiles } from './useDebugPanelFiles';
 import { useDebugPanelPosition } from './useDebugPanelPosition';
-import { useDebugPanelCaption } from './useDebugPanelCaption';
-import { useDebugPanelMetadata } from './useDebugPanelMetadata';
-import { useDebugPanelPreview } from './useDebugPanelPreview';
-import { useDebugPanelMetadataTag } from './useDebugPanelMetadataTag';
-import { useDebugPanelFileSelector } from './useDebugPanelFileSelector';
-import { useDebugPanelResize } from './useDebugPanelResize';
+import { useDebugPanelConfiguration } from './useDebugPanelConfiguration';
 
 interface DebugPanelHookProps {
   params: DisplayParams;
@@ -19,6 +13,7 @@ interface DebugPanelHookProps {
 }
 
 export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: DebugPanelHookProps) => {
+  // Core state management
   const {
     activeTab,
     setActiveTab,
@@ -57,13 +52,14 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     resetSettings
   } = useDebugPanelState({ params });
 
+  // Panel position and resize management
   const {
     position: position2,
     isDragging,
     panelRef,
     panelSize,
     handleMouseDown,
-    handleResizeStart: positionResizeHandler,
+    handleResizeStart,
     isResizing,
     setIsResizing,
     resizeStart,
@@ -73,6 +69,7 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     setPanelSize
   } = useDebugPanelPosition();
 
+  // Files and URLs management
   const {
     generateUrl,
     applySettings,
@@ -101,67 +98,30 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     setCopied
   });
 
-  const { 
-    insertMetadataTag: getMetadataTagHandler,
-    insertAllMetadata: getAllMetadataHandler
-  } = useDebugPanelCaption({
-    caption,
-    metadataEntries,
-    setPreviewCaption,
-    onApplyCaption,
-    imageUrl
-  });
-
-  const {
-    handleRefreshMetadata
-  } = useDebugPanelMetadata({
-    imageUrl,
-    metadata,
-    setMetadataEntries
-  });
-
-  // Use our new hooks to organize functionality
-  useDebugPanelPreview({
-    showMode, 
-    position, 
-    backgroundColor, 
-    captionPosition, 
-    captionSize, 
-    captionColor, 
-    captionFont, 
-    captionBgColor, 
-    captionBgOpacity, 
-    previewCaption,
-    onApplyCaption,
-    imageUrl
-  });
-
+  // Caption, metadata, and config related functionality
   const {
     insertMetadataTag,
-    insertAllMetadata
-  } = useDebugPanelMetadataTag({
-    caption,
-    getMetadataTagHandler,
-    getAllMetadataHandler,
-    setCaption
-  });
-
-  const {
+    insertAllMetadata,
     selectFileHandler,
-    isCurrentFileHandler
-  } = useDebugPanelFileSelector({
+    isCurrentFileHandler,
+    handleRefreshMetadata,
+    handleResizeStartInternal
+  } = useDebugPanelConfiguration({
+    caption,
+    setCaption,
     selectFile,
     isCurrentFile,
-    imageUrl
-  });
-
-  const {
-    handleResizeStartInternal
-  } = useDebugPanelResize({
-    positionResizeHandler
+    imageUrl,
+    metadata,
+    setMetadataEntries,
+    previewCaption,
+    setPreviewCaption,
+    onApplyCaption,
+    handleResizeStart
   });
 
   return {
+    // State
     activeTab,
     setActiveTab,
     customUrl,
@@ -193,10 +153,14 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     copied,
     metadataEntries,
     previewCaption,
+    
+    // Position and sizing
     position2,
     isDragging,
     panelRef,
     panelSize,
+    
+    // Actions
     applySettings,
     resetDisplay,
     commitSettings,
