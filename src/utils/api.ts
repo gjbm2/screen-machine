@@ -37,11 +37,8 @@ class ApiService {
     try {
       const { prompt, workflow, params: workflowParams, global_params, refiner, refiner_params, imageFiles, batch_id } = params;
       
-      // CRITICAL BATCH SIZE FIX: Always validate and preserve batch_size
-      // Get batch size directly from params, defaulting to 1 if missing
-      const batchSize = global_params?.batch_size ?? 1;
-      
-      // Validate batch size is a positive number
+      // CRITICAL: Validate that batch_size is present and a number before proceeding
+      const batchSize = global_params?.batch_size;
       if (typeof batchSize !== 'number' || isNaN(batchSize) || batchSize < 1) {
         console.error(`[api] Invalid batch_size received:`, batchSize);
         console.error(`[api] Full global_params:`, global_params);
@@ -61,10 +58,7 @@ class ApiService {
         prompt,
         workflow,
         params: workflowParams || {},
-        global_params: {
-          ...(global_params || {}),
-          batch_size: batchSize // Ensure batch_size is explicitly set
-        },
+        global_params: global_params || { batch_size: 1 }, // Ensure there's always a batch_size
         batch_id,
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
