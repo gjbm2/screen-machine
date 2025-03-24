@@ -165,11 +165,11 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     resetDisplay,
     commitSettings,
     copyUrl,
-    selectFile, // Use direct selectFile, not the wrapped handler for prop passing
+    selectFile: selectFileHandler, // Use wrapped handler to match expected type
     formatFileName,
     resetSettings,
     insertMetadataTag,
-    isCurrentFile, // Use direct isCurrentFile, not the wrapped handler for prop passing
+    isCurrentFile: isCurrentFileHandler, // Use wrapped handler to match expected type
     formatTime,
     insertAllMetadata,
     handleMouseDown,
