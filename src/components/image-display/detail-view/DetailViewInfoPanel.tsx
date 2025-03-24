@@ -42,6 +42,16 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
   // Use the referenceImageUrl from props first, then from activeImage as fallback
   const effectiveReferenceImageUrl = referenceImageUrl || activeImage?.referenceImageUrl;
   
+  useEffect(() => {
+    // Log reference image information for debugging
+    console.log('DetailViewInfoPanel - activeImage:', activeImage);
+    if (effectiveReferenceImageUrl) {
+      console.log('DetailViewInfoPanel: Reference image URL:', effectiveReferenceImageUrl);
+    } else {
+      console.log('DetailViewInfoPanel has no referenceImageUrl');
+    }
+  }, [effectiveReferenceImageUrl, activeImage]);
+  
   // Determine if this image has reference images
   const hasReferenceImages = Boolean(effectiveReferenceImageUrl);
   

@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import ImageActions from '@/components/ImageActions';
+import ReferenceImageSection from './ReferenceImageSection';
 
 interface ImageActionsPanelProps {
   show: boolean;
@@ -28,8 +29,11 @@ const ImageActionsPanel: React.FC<ImageActionsPanelProps> = ({
   referenceImageUrl,
   title // Add to component props
 }) => {
-  // Remove isReferenceDialogOpen state
-  // Remove handleReferenceImageClick function
+  const [isReferenceDialogOpen, setIsReferenceDialogOpen] = useState(false);
+
+  const handleReferenceImageClick = () => {
+    setIsReferenceDialogOpen(true);
+  };
 
   if (!show) return null;
 
