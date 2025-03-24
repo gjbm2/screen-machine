@@ -23,7 +23,14 @@ export const useDebugPanelFileManagement = ({
       
       if (!outputPath) {
         console.error('[useDebugPanelFileManagement] Failed to process output path');
-        toast.error("Failed to process file path");
+        
+        // Fix: Replace toast.error with standard toast with variant
+        toast({
+          title: "Error",
+          description: "Failed to process file path",
+          variant: "destructive"
+        });
+        
         return;
       }
       
