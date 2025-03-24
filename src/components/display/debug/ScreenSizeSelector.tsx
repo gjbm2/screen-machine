@@ -55,12 +55,17 @@ export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, [selectedSize, containerRef, currentSizes]);
 
+  // Debug logging to see what's happening
+  console.log('[ScreenSizeSelector] Current selection:', selectedSize);
+  console.log('[ScreenSizeSelector] Available sizes:', currentSizes.map(s => s.name));
+
   return (
     <div className="flex items-center space-x-2">
       <Label htmlFor="screen-size" className="text-xs sr-only">Screen Size:</Label>
       <Select 
         value={selectedSize} 
         onValueChange={(val) => {
+          console.log('[ScreenSizeSelector] Selected new size:', val);
           onSelect(val);
           if (onSettingsChange) onSettingsChange();
         }}

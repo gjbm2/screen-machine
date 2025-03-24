@@ -122,7 +122,10 @@ export const useDebugPanelFiles = ({
   };
 
   const copyUrl = () => {
+    // Get the full URL including the domain name and path, without debug mode
     const url = window.location.origin + generateUrl(false);
+    console.log('[useDebugPanelFiles] Copying URL:', url);
+    
     navigator.clipboard.writeText(url)
       .then(() => {
         setCopied(true);

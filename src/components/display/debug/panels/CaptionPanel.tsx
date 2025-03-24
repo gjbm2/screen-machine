@@ -10,6 +10,24 @@ import { Button } from "@/components/ui/button";
 import { CaptionPosition } from '../../types';
 import { FileText } from "lucide-react";
 
+// Font sizes and font families for dropdowns
+const FONT_SIZES = [
+  '10px', '12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '36px', '48px'
+];
+
+const FONT_FAMILIES = [
+  'Arial, sans-serif',
+  'Helvetica, sans-serif',
+  'Times New Roman, serif',
+  'Georgia, serif',
+  'Courier New, monospace',
+  'Verdana, sans-serif',
+  'Tahoma, sans-serif',
+  'Trebuchet MS, sans-serif',
+  'Impact, sans-serif',
+  'Comic Sans MS, cursive'
+];
+
 interface CaptionPanelProps {
   caption: string;
   previewCaption: string | null;
@@ -57,6 +75,22 @@ export const CaptionPanel: React.FC<CaptionPanelProps> = ({
   // Add # for input[type=color]
   const formatColorForPicker = (color: string) => color.startsWith('#') ? color : `#${color}`;
   
+  // Ensure background color has # prefix for proper styling
+  const bgColorWithHash = captionBgColor.startsWith('#') ? captionBgColor : `#${captionBgColor}`;
+  
+  // Calculate background opacity as hex for rgba
+  const bgOpacityHex = Math.round(captionBgOpacity * 255).toString(16).padStart(2, '0');
+  
+  // Debug logs
+  console.log('[CaptionPanel] Current caption settings:', {
+    captionBgColor,
+    bgColorWithHash,
+    captionBgOpacity,
+    bgOpacityHex,
+    captionSize,
+    captionFont
+  });
+  
   return (
     <CardContent className="mt-0 flex-1 overflow-auto space-y-4">
       <div className="flex justify-between items-center">
@@ -83,7 +117,15 @@ export const CaptionPanel: React.FC<CaptionPanelProps> = ({
         />
         
         {previewCaption && (
-          <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-md text-sm mt-1 whitespace-pre-wrap">
+          <div 
+            className="bg-gray-100 dark:bg-gray-800 p-3 rounded-md text-sm mt-1 whitespace-pre-wrap"
+            style={{
+              backgroundColor: `${bgColorWithHash}${bgOpacityHex}`,
+              color: `#${captionColor}`,
+              fontFamily: captionFont,
+              fontSize: captionSize
+            }}
+          >
             <div className="font-medium mb-1 text-xs text-muted-foreground">Preview:</div>
             {previewCaption}
           </div>
@@ -116,12 +158,19 @@ export const CaptionPanel: React.FC<CaptionPanelProps> = ({
         
         <div className="space-y-2">
           <Label htmlFor="captionSize">Font Size</Label>
-          <Input
-            id="captionSize"
-            value={captionSize}
-            onChange={(e) => setCaptionSize(e.target.value)}
-            placeholder="16px"
-          />
+          <Select 
+            value={captionSize} 
+            onValueChange={setCaptionSize}
+          >
+            <SelectTrigger id="captionSize">
+              <SelectValue placeholder="Select size" />
+            </SelectTrigger>
+            <SelectContent>
+              {FONT_SIZES.map(size => (
+                <SelectItem key={size} value={size}>{size}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       
@@ -152,12 +201,21 @@ export const CaptionPanel: React.FC<CaptionPanelProps> = ({
         
         <div className="space-y-2">
           <Label htmlFor="captionFont">Font Family</Label>
-          <Input
-            id="captionFont"
-            value={captionFont}
-            onChange={(e) => setCaptionFont(e.target.value)}
-            placeholder="Arial, sans-serif"
-          />
+          <Select 
+            value={captionFont} 
+            onValueChange={setCaptionFont}
+          >
+            <SelectTrigger id="captionFont">
+              <SelectValue placeholder="Select font" />
+            </SelectTrigger>
+            <SelectContent>
+              {FONT_FAMILIES.map(font => (
+                <SelectItem key={font} value={font} style={{ fontFamily: font }}>
+                  {font.split(',')[0]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       
@@ -186,7 +244,10 @@ export const CaptionPanel: React.FC<CaptionPanelProps> = ({
       </div>
       
       <div className="space-y-2">
-        <Label htmlFor="captionBgOpacity">Background Opacity: {captionBgOpacity.toFixed(1)}</Label>
+        <div className="flex justify-between">
+          <Label htmlFor="captionBgOpacity">Background Opacity</Label>
+          <span className="text-sm">{Math.round(captionBgOpacity * 100)}%</span>
+        </div>
         <Slider
           id="captionBgOpacity"
           value={[captionBgOpacity]}
