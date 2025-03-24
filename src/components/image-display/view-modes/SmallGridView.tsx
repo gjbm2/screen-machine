@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import GenerationFailedPlaceholder from '../GenerationFailedPlaceholder';
 import LoadingPlaceholder from '../LoadingPlaceholder';
@@ -25,12 +26,28 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
       return;
     }
 
+    // Modified sorting logic to properly handle generating images
+    // - Generating images should appear at the top
+    // - Completed images should follow in timestamp order (newest first)
     const sorted = [...images].sort((a, b) => {
+      // First prioritize by status - generating images always first
       if (a.status === 'generating' && b.status !== 'generating') return -1;
       if (a.status !== 'generating' && b.status === 'generating') return 1;
       
+      // If both are generating, sort by timestamp (newest first)
+      if (a.status === 'generating' && b.status === 'generating') {
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      }
+      
+      // For all other images, sort by timestamp (newest first)
       return (b.timestamp || 0) - (a.timestamp || 0);
     });
+    
+    console.log('[SmallGridView] Sorted images:', sorted.map(img => ({
+      status: img.status,
+      timestamp: img.timestamp,
+      batchId: img.batchId
+    })));
     
     setSortedImages(sorted);
   }, [images]);

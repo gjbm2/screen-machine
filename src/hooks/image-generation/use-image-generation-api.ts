@@ -28,14 +28,17 @@ export const useImageGenerationApi = (
       // Add this batch ID to the container order (at the beginning)
       setImageContainerOrder(prev => [batchId, ...prev]);
       
-      // Add a placeholder for the generating image
+      // Get current timestamp for consistent usage
+      const currentTimestamp = Date.now();
+      
+      // Add a placeholder for the generating image - ensuring timestamp is most recent
       setGeneratedImages(prev => [
         {
           batchId,
           status: 'generating',
           prompt: config.prompt,
           workflow: config.workflow,
-          timestamp: Date.now(),
+          timestamp: currentTimestamp, // Current timestamp for proper sorting
           params: config.params,
           containerId: nextContainerId,
           referenceImageUrl: config.imageFiles && config.imageFiles.length > 0 && typeof config.imageFiles[0] === 'string' 
