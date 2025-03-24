@@ -71,9 +71,9 @@ export const processOutputParam = (output: string | null): string | null => {
   } catch (e) {
     // Not a URL, check if it starts with / or output/
     if (output.startsWith('/')) return output;
-    if (output.startsWith('output/')) return output;
+    if (output.startsWith('output/')) return `/${output}`; // Add leading slash for relative paths
     
     // Assume it's a relative path in the output directory
-    return `output/${output}`;
+    return `/output/${output}`;
   }
 };

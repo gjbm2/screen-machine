@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
@@ -6,6 +5,7 @@ import { useDisplayParams } from '@/components/display/hooks/useDisplayParams';
 import { useCaptionProcessor } from '@/components/display/hooks/useCaptionProcessor';
 import { useImagePoller } from '@/components/display/hooks/useImagePoller';
 import { useDebugFiles } from '@/components/display/hooks/useDebugFiles';
+import { processOutputParam } from '../utils/paramUtils';
 
 export const useDisplayPage = () => {
   const { params, redirectToDebugMode } = useDisplayParams();
@@ -14,6 +14,17 @@ export const useDisplayPage = () => {
   const [previousImageUrl, setPreviousImageUrl] = useState<string | null>(null);
   const redirectAttemptedRef = useRef(false);
   const debugHandledRef = useRef(false);
+
+  // Process the output parameter to ensure correct URL format
+  useEffect(() => {
+    if (params.output) {
+      const processedOutput = processOutputParam(params.output);
+      if (processedOutput !== params.output) {
+        console.log('[useDisplayPage] Processed output param from:', params.output, 'to:', processedOutput);
+        params.output = processedOutput;
+      }
+    }
+  }, [params.output]);
 
   // Get display state from the core hook
   const {
@@ -111,6 +122,15 @@ export const useDisplayPage = () => {
     }
   }, [params, params.output, params.debugMode, redirectToDebugMode]);
 
+  // Add debug logging for image loading
+  useEffect(() => {
+    if (imageUrl) {
+      console.log('[useDisplayPage] Current image URL:', imageUrl);
+    } else if (params.output) {
+      console.log('[useDisplayPage] No image URL yet, but output param is:', params.output);
+    }
+  }, [imageUrl, params.output]);
+
   // Process captions with metadata
   useCaptionProcessor(previewParams, metadata, imageUrl, setProcessedCaption);
 
@@ -149,6 +169,18 @@ export const useDisplayPage = () => {
   const handleImageError = () => {
     console.error('Failed to load image:', imageUrl);
     toast.error("Failed to load image");
+    
+    // Log more details about the failed image
+    if (imageUrl) {
+      console.error('[handleImageError] Image URL that failed to load:', imageUrl);
+      fetch(imageUrl, { method: 'HEAD' })
+        .then(response => {
+          console.log('[handleImageError] HTTP status for image:', response.status, response.statusText);
+        })
+        .catch(err => {
+          console.error('[handleImageError] Network error when checking image:', err);
+        });
+    }
   };
 
   return {
