@@ -109,26 +109,27 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     : "absolute z-10 opacity-90 hover:opacity-100 transition-opacity shadow-lg min-w-[400px] min-h-[400px] resizable-container";
 
   const innerStyles = isFixedPanel 
-    ? {} 
+    ? { 
+        display: "flex",
+        flexDirection: "column" as const
+      } 
     : { 
+        display: "flex",
+        flexDirection: "column" as const,
         left: `${position2.x}px`, 
         top: `${position2.y}px`,
         width: panelSize.width,
         height: panelSize.height,
         cursor: isDragging ? 'grabbing' : 'auto',
-        resize: 'none',
-        position: 'absolute',
+        resize: 'none' as const,
+        position: 'absolute' as const
       };
 
   return (
     <Card 
       ref={panelRef}
       className={cardStyles}
-      style={{ 
-        ...innerStyles,
-        display: 'flex',
-        flexDirection: 'column'
-      }}
+      style={innerStyles}
       onMouseDown={handlePanelMouseDown}
     >
       <DebugPanelHeader 

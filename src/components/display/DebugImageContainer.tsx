@@ -98,7 +98,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         width: `${containerSize.width}px`,
         height: `${containerSize.height}px`,
         cursor: isDragging ? 'grabbing' : 'grab',
-        resize: 'none'
+        resize: 'none' as const
       };
 
   return (
