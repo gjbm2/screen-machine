@@ -1,0 +1,41 @@
+
+import React from 'react';
+import { CardContent } from "@/components/ui/card";
+import { FilesTab } from '../FilesTab';
+
+interface FilesPanelProps {
+  outputFiles: string[];
+  imageChanged?: boolean;
+  imageUrl: string | null;
+  customUrl: string;
+  setCustomUrl: (url: string) => void;
+  selectFile: (file: string) => void;
+  isCurrentFile: (file: string) => boolean;
+  formatFileName: (file: string) => string;
+}
+
+export const FilesPanel: React.FC<FilesPanelProps> = ({
+  outputFiles,
+  imageChanged,
+  imageUrl,
+  customUrl,
+  setCustomUrl,
+  selectFile,
+  isCurrentFile,
+  formatFileName
+}) => {
+  return (
+    <CardContent className="mt-0 flex-1 overflow-hidden">
+      <FilesTab 
+        outputFiles={outputFiles}
+        imageChanged={imageChanged}
+        imageUrl={imageUrl}
+        customUrl={customUrl}
+        setCustomUrl={setCustomUrl}
+        selectFile={selectFile}
+        isCurrentFile={isCurrentFile}
+        formatFileName={formatFileName}
+      />
+    </CardContent>
+  );
+};
