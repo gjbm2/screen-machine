@@ -27,7 +27,9 @@ export const usePromptSubmission = ({
     imageFiles?: File[] | string[],
     workflow?: string,
     workflowParams?: Record<string, any>,
-    globalParams?: Record<string, any>
+    globalParams?: Record<string, any>,
+    refiner?: string,
+    refinerParams?: Record<string, any>
   ) => {
     setIsFirstRun(false);
     
@@ -59,18 +61,26 @@ export const usePromptSubmission = ({
       }
     }
     
+    // We need to ensure we're using the exact latest provided parameters every time
+    // This is crucial for ensuring the batch size and other params are current
+    const effectiveGlobalParams = globalParams || currentGlobalParams;
+    
     // Create the configuration for image generation, prioritizing newly provided params
     const config: ImageGenerationConfig = {
       prompt,
       imageFiles: uniqueImageFiles,
       workflow: workflow || currentWorkflow,
       params: workflowParams || currentParams,
-      // Prioritize the newly provided globalParams which includes the current batch size
-      globalParams: globalParams || currentGlobalParams,
-      batchId: lastBatchIdUsed
+      // Use the most current global params
+      globalParams: effectiveGlobalParams,
+      batchId: lastBatchIdUsed,
+      refiner, // Add explicit refiner support
+      refinerParams // Add explicit refiner params support
     };
     
     console.log("[usePromptSubmission] Using global params:", config.globalParams);
+    console.log("[usePromptSubmission] Using workflow:", config.workflow);
+    console.log("[usePromptSubmission] Using refiner:", config.refiner);
     
     // Call generateImages and store the returned batchId
     try {

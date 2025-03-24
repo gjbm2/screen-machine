@@ -50,7 +50,7 @@ class ApiService {
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
       
-      // IMPORTANT: Make sure batch_size is included in global_params
+      // IMPORTANT: Make sure batch_size is included in global_params and use the current value
       if (!jsonData.global_params.batch_size) {
         jsonData.global_params.batch_size = 1; // Default to 1 if not specified
       }
@@ -61,11 +61,13 @@ class ApiService {
         workflow,
         params: workflowParams,
         global_params,
-        batchSize: jsonData.global_params.batch_size
+        batchSize: jsonData.global_params.batch_size,
+        refiner: refiner || 'none',
+        refiner_params: refiner_params || {}
       });
       
       // Add refiner if specified
-      if (refiner) {
+      if (refiner && refiner !== 'none') {
         jsonData.refiner = refiner;
         if (refiner_params) {
           jsonData.refiner_params = refiner_params;
@@ -169,6 +171,11 @@ class ApiService {
     // Make sure we correctly extract batch size from global_params
     const batchSize = params.global_params?.batch_size || 1;
     console.info('[MOCK LOG] [mock-backend]', `Generating ${batchSize} mock image(s) with prompt: "${params.prompt}"`);
+    console.info('[MOCK LOG] [mock-backend]', `Using workflow: ${params.workflow}`);
+    
+    if (params.refiner && params.refiner !== 'none') {
+      console.info('[MOCK LOG] [mock-backend]', `Using refiner: ${params.refiner}`);
+    }
     
     // Simulate network delay
     return new Promise((resolve) => {

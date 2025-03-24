@@ -1,3 +1,4 @@
+
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -109,8 +110,11 @@ export const generateImage = async (
       console.log(`[image-generator] Using reference images: ${uploadedImageUrls.join(', ')}`);
     }
 
-    // Get batch size from global params, default to 1
+    // Always extract the current batch size from globalParams, defaulting to 1 if not specified
     const batchSize = globalParams?.batch_size || 1;
+    
+    // Log the current batch size being used
+    console.log(`[image-generator] Current batch size for generation: ${batchSize}`);
     
     addConsoleLog({
       type: 'info',
@@ -121,11 +125,16 @@ export const generateImage = async (
         globalParams,
         batchSize,
         hasReferenceImage: uploadedFiles.length > 0 || uploadedImageUrls.length > 0,
-        referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined
+        referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
+        refiner: refiner || undefined,
+        refinerParams: refinerParams || undefined
       }
     });
     
     console.log(`[image-generator] Generating batch of ${batchSize} images with prompt: "${prompt}"`);
+    if (refiner) {
+      console.log(`[image-generator] Using refiner: ${refiner}`);
+    }
 
     // Prepare reference image URL string - make sure it's not empty
     const referenceImageUrl = uploadedImageUrls.length > 0 ? uploadedImageUrls.join(',') : undefined;
@@ -188,7 +197,8 @@ export const generateImage = async (
           details: { 
             batchId: currentBatchId,
             hasReferenceImages: uploadedImageUrls.length > 0,
-            referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined
+            referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
+            refiner: refiner || undefined
           }
         });
         
