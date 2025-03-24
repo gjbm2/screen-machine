@@ -129,7 +129,7 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
             {caption && (
               <CaptionRenderer 
                 caption={caption}
-                captionPosition={captionPosition}
+                position={captionPosition}
                 fontSize={captionSize}
                 color={captionColor}
                 fontFamily={captionFont}
