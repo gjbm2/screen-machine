@@ -2,7 +2,13 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus, Minus } from 'lucide-react';
-import { BatchControlProps } from './types';
+
+interface BatchControlProps {
+  batchSize: number;
+  incrementBatchSize: () => void;
+  decrementBatchSize: () => void;
+  isCompact?: boolean;
+}
 
 const BatchControl: React.FC<BatchControlProps> = ({
   batchSize,
@@ -10,43 +16,48 @@ const BatchControl: React.FC<BatchControlProps> = ({
   decrementBatchSize,
   isCompact = false
 }) => {
-  // Log the current batch size when it changes to help debug
-  React.useEffect(() => {
-    console.log('BatchControl: Current batch size:', batchSize);
-  }, [batchSize]);
-
+  console.log(`[BatchControl] Current batch size: ${batchSize}`);
+  
+  const handleIncrement = () => {
+    incrementBatchSize();
+    console.log(`[BatchControl] Incremented batch size to: ${batchSize + 1}`);
+  };
+  
+  const handleDecrement = () => {
+    decrementBatchSize();
+    console.log(`[BatchControl] Decremented batch size to: ${batchSize > 1 ? batchSize - 1 : 1}`);
+  };
+  
   return (
-    <div className="flex items-center gap-1 shrink-0">
-      {!isCompact && <span className="text-xs text-muted-foreground mr-1">Images</span>}
-      <div className="flex items-center border rounded-md overflow-hidden">
+    <div className="flex items-center space-x-1">
+      {!isCompact && (
+        <span className="text-xs text-muted-foreground whitespace-nowrap">
+          Batch:
+        </span>
+      )}
+      <div className="flex items-center border rounded-md h-7">
         <Button
-          type="button"
           variant="ghost"
           size="icon"
-          onClick={() => {
-            console.log('BatchControl: Decrementing batch size');
-            decrementBatchSize();
-          }}
+          className="h-7 w-7 rounded-r-none"
+          onClick={handleDecrement}
           disabled={batchSize <= 1}
-          className={`${isCompact ? 'h-[28px] w-[22px]' : 'h-[28px] w-[28px]'} rounded-none border-r`}
+          aria-label="Decrease batch size"
         >
-          <Minus className={`${isCompact ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
+          <Minus className="h-3 w-3" />
         </Button>
-        <div className={`px-1 flex items-center justify-center ${isCompact ? 'min-w-[14px]' : 'min-w-[20px]'}`}>
-          <span className={`${isCompact ? 'text-xs' : 'text-xs'} font-medium`}>{batchSize}</span>
-        </div>
+        <span className="flex-shrink-0 text-xs font-medium px-1 min-w-[18px] text-center">
+          {batchSize}
+        </span>
         <Button
-          type="button"
           variant="ghost"
           size="icon"
-          onClick={() => {
-            console.log('BatchControl: Incrementing batch size');
-            incrementBatchSize();
-          }}
+          className="h-7 w-7 rounded-l-none"
+          onClick={handleIncrement}
           disabled={batchSize >= 9}
-          className={`${isCompact ? 'h-[28px] w-[22px]' : 'h-[28px] w-[28px]'} rounded-none border-l`}
+          aria-label="Increase batch size"
         >
-          <Plus className={`${isCompact ? 'h-2.5 w-2.5' : 'h-3 w-3'}`} />
+          <Plus className="h-3 w-3" />
         </Button>
       </div>
     </div>
