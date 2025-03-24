@@ -32,21 +32,29 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
   isMobile
 }) => {
   return (
-    <CardHeader className="px-2 py-2 flex-row justify-between items-center space-x-2">
-      <div className="text-sm font-medium truncate flex-shrink-1 min-w-0 whitespace-nowrap">
-        Preview {showMode}/{position}
+    <CardHeader className="px-3 py-2 flex-row justify-between items-center gap-2 border-b">
+      <div className="flex items-center gap-2">
+        <div className="text-sm font-medium">
+          Preview
+          <span className="text-xs text-muted-foreground ml-1">
+            {showMode}/{position}
+          </span>
+        </div>
+        
         {isMobile && togglePreview && (
           <Button 
-            size="icon" 
-            variant="ghost" 
-            className="h-6 w-6 ml-2"
+            size="sm" 
+            variant="outline" 
+            className="h-7 text-xs"
             onClick={togglePreview}
           >
-            <Settings className="h-4 w-4" />
+            <Settings className="h-3 w-3 mr-1" />
+            {showingPreview ? "Settings" : "Preview"}
           </Button>
         )}
       </div>
-      <div className="flex items-center gap-1">
+      
+      <div className="flex items-center gap-2">
         <ScreenSizeSelector 
           selectedSize={selectedScreenSize.name} 
           onSelect={(sizeName) => {
@@ -61,7 +69,7 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
         <Button 
           size="icon" 
           variant="ghost" 
-          className="h-6 w-6"
+          className="h-7 w-7"
           onClick={onSettingsChange}
         >
           <Settings2 className="h-4 w-4" />
@@ -70,7 +78,7 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
         <Button 
           size="icon" 
           variant="ghost" 
-          className={`h-6 w-6 ${imageChanged ? 'text-blue-500' : ''}`}
+          className={`h-7 w-7 ${imageChanged ? 'text-green-500' : ''}`}
           onClick={onReset}
         >
           <RefreshCw className="h-4 w-4" />

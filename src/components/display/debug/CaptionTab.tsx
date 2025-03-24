@@ -9,6 +9,7 @@ import { PanelLeft, Info } from "lucide-react";
 import { CaptionPosition } from '../types';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Slider } from "@/components/ui/slider";
 
 interface CaptionTabProps {
   caption: string;
@@ -64,12 +65,6 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
   setCaptionBgOpacity,
   insertAllMetadata
 }) => {
-  // Helper to handle color input changes with validation
-  const handleColorChange = (setter: (value: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9a-fA-F]/g, '').substring(0, 6);
-    setter(value);
-  };
-
   // Color picker component to reuse
   const ColorPicker = ({ 
     label, 
@@ -79,22 +74,19 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
   }: { 
     label: string, 
     color: string, 
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void,
+    onChange: (color: string) => void,
     includeHash?: boolean 
   }) => {
     const displayColor = includeHash ? color : `#${color}`;
-    const inputColor = includeHash ? color.replace('#', '') : color;
     
     return (
       <div className="space-y-1">
         <div className="flex items-center justify-between">
           <Label htmlFor={`caption-${label.toLowerCase()}-color`} className="text-sm">{label}</Label>
-          <div className="flex items-center space-x-2">
-            <div 
-              className="w-5 h-5 rounded-full border border-gray-300" 
-              style={{ backgroundColor: displayColor }}
-            />
-          </div>
+          <div 
+            className="w-5 h-5 rounded-full border border-gray-300" 
+            style={{ backgroundColor: displayColor }}
+          />
         </div>
         <Popover>
           <PopoverTrigger asChild>
@@ -112,11 +104,11 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
                 type="color" 
                 value={displayColor}
                 onChange={(e) => {
-                  const newColor = e.target.value.substring(1);
+                  const newColor = e.target.value;
                   if (includeHash) {
-                    setCaptionBgColor(e.target.value);
+                    onChange(newColor);
                   } else {
-                    setCaptionColor(newColor);
+                    onChange(newColor.substring(1));
                   }
                 }}
                 className="w-full h-8"
@@ -125,9 +117,16 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
                 <span className={includeHash ? "mr-1" : "hidden"}>#</span>
                 <Input
                   id={`caption-${label.toLowerCase()}-color`}
-                  value={inputColor}
-                  onChange={onChange}
-                  placeholder="Hex color (without #)"
+                  value={includeHash ? color.replace(/^#/, '') : color}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^0-9a-fA-F]/g, '').substring(0, 6);
+                    if (includeHash) {
+                      onChange(`#${value}`);
+                    } else {
+                      onChange(value);
+                    }
+                  }}
+                  placeholder="Hex color"
                   maxLength={6}
                 />
               </div>
@@ -139,9 +138,9 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
   };
 
   return (
-    <div className="p-4 overflow-y-auto flex flex-col h-full">
-      <div className="space-y-3 flex-grow">
-        <div className="flex items-center gap-2 mb-3">
+    <div className="p-4 overflow-y-auto h-full">
+      <div className="space-y-4 flex flex-col h-full">
+        <div className="flex items-center gap-2">
           <Button 
             variant="outline" 
             size="sm" 
@@ -168,7 +167,7 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
           </Tooltip>
         </div>
         
-        <div className="space-y-1 mb-3">
+        <div className="space-y-2">
           <Label htmlFor="caption-textarea" className="text-sm">Caption Text</Label>
           <Textarea 
             id="caption-textarea"
@@ -177,7 +176,7 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
             placeholder="Enter caption text or use {tag} for metadata..."
             className="min-h-[80px] resize-none"
           />
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-xs text-gray-500">
             Use {"{tagname}"} to insert metadata values, {"{all}"} for all metadata, or regex patterns like /pattern/flags.
           </div>
         </div>
@@ -195,8 +194,8 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
-          <div className="space-y-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2 flex-1">
+          <div className="space-y-2">
             <Label htmlFor="caption-position" className="text-sm">Caption Position</Label>
             <Select 
               value={captionPosition} 
@@ -216,7 +215,7 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
             </Select>
           </div>
           
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label htmlFor="caption-size" className="text-sm">Font Size</Label>
             <Select 
               value={captionSize} 
@@ -236,10 +235,10 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
           <ColorPicker 
             label="Text Color" 
             color={captionColor}
-            onChange={handleColorChange(setCaptionColor)}
+            onChange={setCaptionColor}
           />
           
-          <div className="space-y-1">
+          <div className="space-y-2">
             <Label htmlFor="caption-font" className="text-sm">Font Family</Label>
             <Select 
               value={captionFont} 
@@ -261,24 +260,22 @@ export const CaptionTab: React.FC<CaptionTabProps> = ({
           <ColorPicker 
             label="Background Color" 
             color={captionBgColor}
-            onChange={(e) => setCaptionBgColor('#' + e.target.value)}
+            onChange={setCaptionBgColor}
             includeHash={true}
           />
 
-          <div className="space-y-1">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="caption-bg-opacity" className="text-sm">Background Opacity</Label>
               <span className="text-xs text-gray-500">{Math.round(captionBgOpacity * 100)}%</span>
             </div>
-            <Input 
+            <Slider 
               id="caption-bg-opacity"
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={captionBgOpacity}
-              onChange={(e) => setCaptionBgOpacity(parseFloat(e.target.value))}
-              className="w-full"
+              min={0}
+              max={1}
+              step={0.05}
+              value={[captionBgOpacity]}
+              onValueChange={(value) => setCaptionBgOpacity(value[0])}
             />
           </div>
         </div>
