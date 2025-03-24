@@ -129,12 +129,13 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
 
   const hasReferenceImages = Boolean(referenceImageUrl);
 
-  // Process reference images array from string or array
+  // Process reference images array from string or array - Updated to match ImageInfoDialog processing
   const referenceImages = React.useMemo(() => {
     if (!referenceImageUrl) return [];
     
     if (typeof referenceImageUrl === 'string') {
-      return referenceImageUrl.split(',')
+      return referenceImageUrl
+        .split(',')
         .map(url => url.trim())
         .filter(url => url !== '');
     }
