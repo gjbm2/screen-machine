@@ -1,5 +1,6 @@
+
 import { useState } from 'react';
-import { DisplayParams, MetadataEntry } from '../types';
+import { DisplayParams, MetadataEntry, ShowMode, PositionMode, CaptionPosition, TransitionType } from '../types';
 import { getDefaultParams } from '../utils/defaultParams';
 
 interface UseDebugPanelStateProps {
@@ -18,7 +19,7 @@ export const useDebugPanelState = ({ params }: UseDebugPanelStateProps) => {
   const [position, setPosition] = useState<PositionMode>(params.position);
   const [refreshInterval, setRefreshInterval] = useState(params.refreshInterval);
   const [backgroundColor, setBackgroundColor] = useState(params.backgroundColor);
-  const [transition, setTransition] = useState<TransitionType>(params.transition || "cut");
+  const [transition, setTransition] = useState<TransitionType>(params.transition || "fade");
   
   // Caption settings
   const [caption, setCaption] = useState(params.caption || "");

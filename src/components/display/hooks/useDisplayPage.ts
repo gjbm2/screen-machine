@@ -14,25 +14,30 @@ import { useEnhancedManualCheck } from '@/components/display/hooks/useEnhancedMa
 import { normalizePathForDisplay } from '../utils/paramUtils';
 
 export const useDisplayPage = () => {
-  const { params, redirectToDebugMode } = useDisplayParams();
-  const [previewParams, setPreviewParams] = useState(params);
+  const { displayParams, updateParam, location } = useDisplayParams();
+  const [previewParams, setPreviewParams] = useState(displayParams);
   const mountedRef = useRef(true); // Track if component is mounted
   const initialRenderRef = useRef(true); // Track initial render
 
+  // Function to redirect to debug mode
+  const redirectToDebugMode = () => {
+    updateParam('debug', 'true');
+  };
+
   // Debug logging for params
   useEffect(() => {
-    console.log("[useDisplayPage] Debug mode active:", params.debugMode);
-    console.log("[useDisplayPage] Params:", params);
-    console.log("[useDisplayPage] Output param:", params.output);
+    console.log("[useDisplayPage] Debug mode active:", displayParams.debugMode);
+    console.log("[useDisplayPage] Params:", displayParams);
+    console.log("[useDisplayPage] Output param:", displayParams.output);
     
     // Log a clear message if output parameter exists
-    if (params.output) {
-      console.log("[useDisplayPage] ⚠️ Output parameter detected:", params.output);
+    if (displayParams.output) {
+      console.log("[useDisplayPage] ⚠️ Output parameter detected:", displayParams.output);
     }
-  }, [params]);
+  }, [displayParams]);
 
   // Process output parameter
-  useOutputProcessor(params);
+  useOutputProcessor(displayParams);
 
   // Get display state from the core hook
   const {
@@ -67,15 +72,15 @@ export const useDisplayPage = () => {
   useEffect(() => {
     if (!mountedRef.current) return;
     
-    if (params.output) {
-      console.log('[useDisplayPage] Processing output parameter:', params.output);
+    if (displayParams.output) {
+      console.log('[useDisplayPage] Processing output parameter:', displayParams.output);
       
       // For fully formed URLs, use directly
-      if (params.output.startsWith('http://') || params.output.startsWith('https://')) {
-        setImageUrl(params.output);
+      if (displayParams.output.startsWith('http://') || displayParams.output.startsWith('https://')) {
+        setImageUrl(displayParams.output);
       } else {
         // For local paths, normalize 
-        const normalizedPath = normalizePathForDisplay(params.output);
+        const normalizedPath = normalizePathForDisplay(displayParams.output);
         setImageUrl(normalizedPath);
       }
       
@@ -83,11 +88,11 @@ export const useDisplayPage = () => {
       setImageKey(prev => prev + 1);
       
       // Toast to notify user
-      const filename = params.output.split('/').pop() || params.output;
+      const filename = displayParams.output.split('/').pop() || displayParams.output;
       const displayName = filename.length > 30 ? filename.substring(0, 27) + '...' : filename;
       toast.success(`Displaying image: ${displayName}`);
     }
-  }, [params.output, setImageUrl, setImageKey]);
+  }, [displayParams.output, setImageUrl, setImageKey]);
 
   // Set mounted ref to false on unmount
   useEffect(() => {
@@ -101,21 +106,21 @@ export const useDisplayPage = () => {
   }, []);
 
   // Debug redirection handling
-  const { checkDebugRedirection } = useDebugRedirection(params, redirectToDebugMode);
+  const { checkDebugRedirection } = useDebugRedirection(displayParams, redirectToDebugMode);
   
   // Check for debug redirection - only if not already in debug mode
   useEffect(() => {
     if (!mountedRef.current) return;
-    if (!params.debugMode) {
+    if (!displayParams.debugMode) {
       checkDebugRedirection();
     }
-  }, [params, params.output, params.debugMode]);
+  }, [displayParams, displayParams.output, displayParams.debugMode]);
 
   // Metadata management
   const { 
     attemptMetadataExtraction, 
     resetMetadataExtractionFlag 
-  } = useMetadataManager(params, imageUrl, extractMetadataFromImage);
+  } = useMetadataManager(displayParams, imageUrl, extractMetadataFromImage);
 
   // Enhanced debug logging for metadata
   useEffect(() => {
@@ -125,7 +130,7 @@ export const useDisplayPage = () => {
     if (!isLoading && !isTransitioning) {
       attemptMetadataExtraction(imageUrl, metadata, isLoading, isTransitioning);
     }
-  }, [params, imageUrl, metadata, isLoading, isTransitioning]);
+  }, [displayParams, imageUrl, metadata, isLoading, isTransitioning]);
 
   // Reset metadata extraction flag when image URL changes
   useEffect(() => {
@@ -137,13 +142,13 @@ export const useDisplayPage = () => {
   useCaptionProcessor(previewParams, metadata, imageUrl, setProcessedCaption);
 
   // Fetch debug output files only when in debug mode
-  useDebugFiles(params.debugMode, setOutputFiles);
+  useDebugFiles(displayParams.debugMode, setOutputFiles);
 
   // Only setup image polling when NOT in debug mode to prevent infinite loops
-  const { handleManualCheck: imagePollerHandleManualCheck } = params.debugMode 
+  const { handleManualCheck: imagePollerHandleManualCheck } = displayParams.debugMode 
     ? { handleManualCheck: null }
     : useImagePoller(
-        params,
+        displayParams,
         imageUrl,
         isLoading,
         isTransitioning,
@@ -161,41 +166,41 @@ export const useDisplayPage = () => {
     imageUrl,
     imagePollerHandleManualCheck,
     originalHandleManualCheck,
-    params,
+    displayParams,
     extractMetadataFromImage
   );
 
   // Update preview params when URL params change
   useEffect(() => {
     if (!mountedRef.current) return;
-    setPreviewParams(params);
-  }, [params]);
+    setPreviewParams(displayParams);
+  }, [displayParams]);
 
   // Special handling for initial render with output parameter
   useEffect(() => {
-    if (initialRenderRef.current && params.output) {
-      console.log('[useDisplayPage] Initial render with output param:', params.output);
+    if (initialRenderRef.current && displayParams.output) {
+      console.log('[useDisplayPage] Initial render with output param:', displayParams.output);
       initialRenderRef.current = false;
       
       // Small delay to ensure DOM is ready
       setTimeout(() => {
         if (mountedRef.current) {
           // For fully formed URLs, use directly
-          if (params.output && params.output.startsWith('http')) {
-            setImageUrl(params.output);
-          } else if (params.output) {
+          if (displayParams.output && displayParams.output.startsWith('http')) {
+            setImageUrl(displayParams.output);
+          } else if (displayParams.output) {
             // For local paths, normalize 
-            const normalizedPath = normalizePathForDisplay(params.output);
+            const normalizedPath = normalizePathForDisplay(displayParams.output);
             setImageUrl(normalizedPath);
           }
           setImageKey(prev => prev + 1);
         }
       }, 100);
     }
-  }, [params.output, setImageUrl, setImageKey]);
+  }, [displayParams.output, setImageUrl, setImageKey]);
 
   return {
-    params,
+    params: displayParams,
     previewParams,
     imageUrl,
     error,
@@ -215,6 +220,7 @@ export const useDisplayPage = () => {
     nextCheckTime,
     handleManualCheck: originalHandleManualCheck,
     getImagePositionStyle,
-    handleImageError: useImageErrorHandler(imageUrl, mountedRef).handleImageError
+    handleImageError: useImageErrorHandler(imageUrl, mountedRef).handleImageError,
+    redirectToDebugMode
   };
 };

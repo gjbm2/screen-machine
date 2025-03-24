@@ -1,3 +1,4 @@
+
 import { useCallback } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { DisplayParams } from '../types';
@@ -32,7 +33,7 @@ export const useDisplayParams = () => {
     refreshInterval: parseInt(getParam('refreshInterval', '0') || '0', 10),
     backgroundColor: getParam('backgroundColor', '#000000') || '#000000',
     caption: decodeComplexOutputParam(getParam('caption', null)),
-    captionPosition: getParam('captionPosition', 'bottom') as DisplayParams['captionPosition'],
+    captionPosition: getParam('captionPosition', 'bottom-center') as DisplayParams['captionPosition'],
     captionSize: getParam('captionSize', 'medium') || 'medium',
     captionColor: getParam('captionColor', '#ffffff') || '#ffffff',
     captionFont: getParam('captionFont', 'sans') || 'sans',

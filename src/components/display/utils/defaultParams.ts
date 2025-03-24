@@ -12,7 +12,7 @@ export const getDefaultParams = (): DisplayParams => {
     refreshInterval: 0,
     backgroundColor: '#000000',
     caption: null,
-    captionPosition: 'bottom',
+    captionPosition: 'bottom-center', // Updated from 'bottom' to valid enum value
     captionSize: 'medium',
     captionColor: '#ffffff',
     captionFont: 'sans',
