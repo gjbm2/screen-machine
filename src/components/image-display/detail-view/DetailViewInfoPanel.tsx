@@ -12,6 +12,7 @@ interface DetailViewInfoPanelProps {
     params?: Record<string, any>;
     timestamp?: number;
     referenceImageUrl?: string;
+    title?: string; // Added title property to the activeImage type
   };
   dimensions: { width: number; height: number };
   referenceImageUrl?: string;
