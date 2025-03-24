@@ -17,24 +17,24 @@ export const SCREEN_SIZES = [
   { name: 'iPhone Landscape (667x375)', width: 667, height: 375 },
 ];
 
-interface ScreenSizeSelectorProps {
-  selectedScreenSize: string;
-  setSelectedScreenSize: (value: string) => void;
+export interface ScreenSizeSelectorProps {
+  selectedSize: string;
+  onSelect: (sizeName: string) => void;
   onSettingsChange?: () => void;
 }
 
 export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
-  selectedScreenSize,
-  setSelectedScreenSize,
+  selectedSize,
+  onSelect,
   onSettingsChange
 }) => {
   return (
     <div className="flex items-center space-x-2">
       <Label htmlFor="screen-size" className="text-sm">Screen Size:</Label>
       <Select 
-        value={selectedScreenSize} 
+        value={selectedSize} 
         onValueChange={(val) => {
-          setSelectedScreenSize(val);
+          onSelect(val);
           if (onSettingsChange) onSettingsChange();
         }}
       >
