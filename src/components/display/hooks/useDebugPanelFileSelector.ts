@@ -13,12 +13,18 @@ export const useDebugPanelFileSelector = ({
   imageUrl
 }: UseDebugPanelFileSelectorProps) => {
   
-  // Create a callback that returns a function with the right signature
+  // Create a handler that can be used in onClick directly (for list items)
   const selectFileHandler = useCallback((file: string) => {
     return () => {
       console.log('[useDebugPanelFileSelector] Selecting file:', file);
       selectFile(file);
     };
+  }, [selectFile]);
+  
+  // Create a direct handler for use with the custom URL input
+  const selectFileDirectly = useCallback((file: string) => {
+    console.log('[useDebugPanelFileSelector] Directly selecting file:', file);
+    selectFile(file);
   }, [selectFile]);
   
   // Create a callback to check if a file is currently selected
@@ -28,6 +34,7 @@ export const useDebugPanelFileSelector = ({
   
   return {
     selectFileHandler,
+    selectFileDirectly,
     isCurrentFileHandler
   };
 };
