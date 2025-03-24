@@ -1,3 +1,4 @@
+
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -109,12 +110,7 @@ export const generateImage = async (
       console.log(`[image-generator] Using reference images: ${uploadedImageUrls.join(', ')}`);
     }
 
-    // SIMPLIFIED: Use batch_size directly from globalParams without extraction
-    // Log the batch size from globalParams directly
-    console.log(`[image-generator] Original globalParams:`, globalParams);
-    console.log(`[image-generator] Using batch_size directly:`, globalParams.batch_size);
-    
-    // Get the batch size for creating placeholders, with fallback
+    // Get batch size from globalParams, with fallback to 1
     const batchSize = globalParams.batch_size || 1;
     
     addConsoleLog({
@@ -128,13 +124,17 @@ export const generateImage = async (
         hasReferenceImage: uploadedFiles.length > 0 || uploadedImageUrls.length > 0,
         referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
         refiner: refiner || undefined,
-        refinerParams: refinerParams || undefined
+        refinerParams: refinerParams || undefined,
+        publishDestination: params.publish_destination || undefined
       }
     });
     
     console.log(`[image-generator] Creating placeholders for batch of ${batchSize} images with prompt: "${prompt}"`);
     if (refiner) {
       console.log(`[image-generator] Using refiner: ${refiner}`);
+    }
+    if (params.publish_destination) {
+      console.log(`[image-generator] Using publish destination: ${params.publish_destination}`);
     }
 
     // Prepare reference image URL string - make sure it's not empty
@@ -171,12 +171,12 @@ export const generateImage = async (
     // Use setTimeout to allow the UI to update before starting the API call
     setTimeout(async () => {
       try {
-        // Make the API call - SIMPLIFIED: Pass globalParams directly without extraction
+        // Make the API call
         const payload: GenerateImagePayload = {
           prompt,
           workflow,
           params,
-          global_params: globalParams, // Pass globalParams directly without modification
+          global_params: globalParams,
           refiner,
           refiner_params: refinerParams,
           imageFiles: uploadedFiles,
@@ -184,8 +184,7 @@ export const generateImage = async (
         };
         
         // Enhanced logging to debug batch size issues
-        console.log("[image-generator] API payload batch_size:", payload.global_params.batch_size);
-        console.log("[image-generator] Full API payload:", payload);
+        console.log("[image-generator] API payload:", payload);
         
         const response = await apiService.generateImage(payload);
         
@@ -196,7 +195,8 @@ export const generateImage = async (
             batchId: currentBatchId,
             hasReferenceImages: uploadedImageUrls.length > 0,
             referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
-            refiner: refiner || undefined
+            refiner: refiner || undefined,
+            publishDestination: params.publish_destination || undefined
           }
         });
         

@@ -1,153 +1,101 @@
 
 import { useState, useEffect } from 'react';
-import { toast } from 'sonner';
-import { Workflow } from '@/types/workflows';
 import workflowsData from '@/data/workflows.json';
-import globalOptionsData from '@/data/global-options.json';
 import refinersData from '@/data/refiners.json';
+import { getPublishDestinations } from '@/services/PublishService';
 
 const usePromptForm = () => {
-  const [prompt, setPrompt] = useState('');
-  const [imageFiles, setImageFiles] = useState<File[]>([]);
-  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
-  const [selectedWorkflow, setSelectedWorkflow] = useState<string>('text-to-image');
-  const [selectedRefiner, setSelectedRefiner] = useState<string>('none');
+  const [selectedWorkflow, setSelectedWorkflow] = useState('text-to-image');
+  const [selectedRefiner, setSelectedRefiner] = useState('none');
+  const [selectedPublish, setSelectedPublish] = useState('none');
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>({});
+  const [globalParams, setGlobalParams] = useState<Record<string, any>>({
+    batch_size: 1, // Default batch size is now 1
+  });
   const [refinerParams, setRefinerParams] = useState<Record<string, any>>({});
-  const [globalParams, setGlobalParams] = useState<Record<string, any>>({});
-  const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
-  const [isButtonDisabled, setIsButtonDisabled] = useState(false);
-  const [batchSize, setBatchSize] = useState(1);
-  const workflows = workflowsData as Workflow[];
-  const refiners = refinersData;
-  
+
+  // Initialize workflow parameters based on the selected workflow
   useEffect(() => {
-    const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
-    if (currentWorkflow) {
+    // Find the selected workflow
+    const workflow = workflowsData.find(w => w.id === selectedWorkflow);
+    
+    if (workflow && workflow.params) {
+      // Create an object with default parameter values
       const defaultParams: Record<string, any> = {};
-      currentWorkflow.params.forEach(param => {
+      
+      workflow.params.forEach(param => {
         if (param.default !== undefined) {
           defaultParams[param.id] = param.default;
         }
       });
+      
+      // Set workflow parameters with default values
       setWorkflowParams(defaultParams);
     }
-  }, [selectedWorkflow, workflows]);
-  
-  useEffect(() => {
-    const defaultGlobalParams: Record<string, any> = {};
-    globalOptionsData.forEach((param: any) => {
-      if (param.default !== undefined) {
-        defaultGlobalParams[param.id] = param.default;
-      }
-    });
-    setGlobalParams(defaultGlobalParams);
-  }, []);
-  
+  }, [selectedWorkflow]);
+
   const handleWorkflowChange = (workflowId: string) => {
     setSelectedWorkflow(workflowId);
-    
-    const currentWorkflow = workflows.find(w => w.id === workflowId);
-    if (currentWorkflow) {
-      const defaultParams: Record<string, any> = {};
-      currentWorkflow.params.forEach(param => {
-        if (param.default !== undefined) {
-          defaultParams[param.id] = param.default;
-        }
-      });
-      setWorkflowParams(defaultParams);
-    }
+    resetWorkflowParams();
   };
-  
+
   const handleRefinerChange = (refinerId: string) => {
     setSelectedRefiner(refinerId);
-    setRefinerParams({});
+    resetRefinerParams();
   };
 
-  const updateWorkflowParam = (paramId: string, value: any) => {
-    setWorkflowParams(prev => ({
-      ...prev,
-      [paramId]: value
-    }));
-  };
-
-  const updateRefinerParam = (paramId: string, value: any) => {
-    setRefinerParams(prev => ({
-      ...prev,
-      [paramId]: value
-    }));
-  };
-
-  const updateGlobalParam = (paramId: string, value: any) => {
-    setGlobalParams(prev => ({
-      ...prev,
-      [paramId]: value
-    }));
+  const handlePublishChange = (publishId: string) => {
+    setSelectedPublish(publishId);
+    console.log(`Selected publish destination changed to: ${publishId}`);
   };
 
   const resetWorkflowParams = () => {
-    const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
-    if (currentWorkflow) {
-      const defaultParams: Record<string, any> = {};
-      currentWorkflow.params.forEach(param => {
-        if (param.default !== undefined) {
-          defaultParams[param.id] = param.default;
-        }
-      });
-      setWorkflowParams(defaultParams);
-    }
+    setWorkflowParams({});
   };
 
   const resetRefinerParams = () => {
     setRefinerParams({});
   };
-  
-  const incrementBatchSize = () => {
-    if (batchSize < 9) {
-      setBatchSize(prev => prev + 1);
-    }
+
+  const updateWorkflowParam = (paramId: string, value: any) => {
+    setWorkflowParams((prev) => ({
+      ...prev,
+      [paramId]: value,
+    }));
   };
-  
-  const decrementBatchSize = () => {
-    if (batchSize > 1) {
-      setBatchSize(prev => prev - 1);
-    }
+
+  const updateRefinerParam = (paramId: string, value: any) => {
+    setRefinerParams((prev) => ({
+      ...prev,
+      [paramId]: value,
+    }));
+  };
+
+  const updateGlobalParam = (paramId: string, value: any) => {
+    setGlobalParams((prev) => ({
+      ...prev,
+      [paramId]: value,
+    }));
   };
 
   return {
-    prompt,
-    imageFiles,
-    previewUrls,
     selectedWorkflow,
     selectedRefiner,
+    selectedPublish,
     workflowParams,
-    refinerParams,
     globalParams,
-    isAdvancedOptionsOpen,
-    isButtonDisabled,
-    batchSize,
-    workflows,
-    refiners,
-    setPrompt,
-    setImageFiles,
-    setPreviewUrls,
-    setSelectedWorkflow,
-    setSelectedRefiner,
-    setWorkflowParams,
-    setRefinerParams,
-    setGlobalParams,
-    setIsAdvancedOptionsOpen,
-    setIsButtonDisabled,
-    setBatchSize,
+    refinerParams,
+    workflows: workflowsData,
+    refiners: refinersData,
+    publishDestinations: getPublishDestinations(),
     handleWorkflowChange,
     handleRefinerChange,
+    handlePublishChange,
+    resetWorkflowParams,
+    resetRefinerParams,
     updateWorkflowParam,
     updateRefinerParam,
     updateGlobalParam,
-    resetWorkflowParams,
-    resetRefinerParams,
-    incrementBatchSize,
-    decrementBatchSize
   };
 };
 

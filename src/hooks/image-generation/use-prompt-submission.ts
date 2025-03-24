@@ -61,17 +61,20 @@ export const usePromptSubmission = ({
       }
     }
     
-    // Instead of trying to extract batch_size specifically, we'll use the complete
-    // globalParams object if it's provided, otherwise fall back to currentGlobalParams
+    // Use the provided globalParams or fall back to currentGlobalParams
     const effectiveGlobalParams = globalParams ? { ...globalParams } : { ...currentGlobalParams };
     
-    // Log the batch size being used for debugging
+    // Log the global params being used for debugging
     console.log("[usePromptSubmission] Using provided globalParams:", !!globalParams);
-    console.log("[usePromptSubmission] Effective global params batch_size:", effectiveGlobalParams.batch_size);
     console.log("[usePromptSubmission] Full effective global params:", effectiveGlobalParams);
     
     const effectiveWorkflow = workflow || currentWorkflow;
     const effectiveWorkflowParams = workflowParams || currentParams;
+    
+    // Check for publish destination in workflow params
+    if (effectiveWorkflowParams.publish_destination) {
+      console.log("[usePromptSubmission] Using publish destination:", effectiveWorkflowParams.publish_destination);
+    }
     
     // Create the configuration for image generation
     const config: ImageGenerationConfig = {

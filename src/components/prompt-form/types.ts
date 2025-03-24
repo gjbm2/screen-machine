@@ -1,5 +1,28 @@
 
-import { ReactNode } from 'react';
+export interface WorkflowProps {
+  id: string;
+  name: string;
+  description: string;
+  params: any[];
+}
+
+export interface ToolbarProps {
+  isLoading: boolean;
+  selectedWorkflow: string;
+  selectedRefiner: string;
+  selectedPublish?: string;
+  onImageUpload: (files: File[]) => void;
+  onWorkflowChange: (workflowId: string) => void;
+  onRefinerChange: (refinerId: string) => void;
+  onPublishChange?: (publishId: string) => void;
+  toggleAdvancedOptions: () => void;
+  handleSubmit: () => void;
+  prompt: string;
+  isButtonDisabled: boolean;
+  workflows: WorkflowProps[];
+  isCompact: boolean;
+  hasUploadedImages?: boolean;
+}
 
 export interface PromptFormProps {
   onSubmit: (
@@ -9,52 +32,11 @@ export interface PromptFormProps {
     params?: Record<string, any>,
     globalParams?: Record<string, any>,
     refiner?: string,
-    refinerParams?: Record<string, any>
+    refinerParams?: Record<string, any>,
+    publish?: string
   ) => void;
-  isLoading: boolean;
+  isLoading?: boolean;
   currentPrompt?: string;
-  selectedWorkflow?: string;
   isFirstRun?: boolean;
-  activeTab?: string;
-  compact?: boolean;
   onOpenAdvancedOptions?: () => void;
-}
-
-export interface FileUploadResult {
-  fileUrl: string;
-  fileName: string;
-  file?: File;
-}
-
-// Missing interfaces that we need to add:
-export interface BatchControlProps {
-  batchSize: number;
-  incrementBatchSize: () => void;
-  decrementBatchSize: () => void;
-  isCompact?: boolean;
-}
-
-export interface ImagePreviewSectionProps {
-  previewUrls: string[];
-  handleRemoveImage: (index: number) => void;
-  clearAllImages: () => void;
-}
-
-export interface ToolbarProps {
-  isLoading: boolean;
-  batchSize: number;
-  selectedWorkflow: string;
-  selectedRefiner: string;
-  onImageUpload: (files: File[]) => void;
-  onWorkflowChange: (workflow: string) => void;
-  onRefinerChange: (refiner: string) => void;
-  incrementBatchSize: () => void;
-  decrementBatchSize: () => void;
-  toggleAdvancedOptions: () => void;
-  handleSubmit: () => void;
-  prompt: string;
-  isButtonDisabled: boolean;
-  workflows: any[];
-  isCompact: boolean;
-  hasUploadedImages?: boolean;
 }

@@ -74,7 +74,8 @@ const Index = () => {
     params?: Record<string, any>,
     globalParams?: Record<string, any>,
     refiner?: string,
-    refinerParams?: Record<string, any>
+    refinerParams?: Record<string, any>,
+    publish?: string
   ) => {
     try {
       setCurrentPrompt(prompt);
@@ -97,6 +98,17 @@ const Index = () => {
           .map(url => url);
           
         setUploadedImageUrls(fileUrls);
+      }
+      
+      // Log the publish destination if provided
+      if (publish) {
+        console.log('Submitting with publish destination:', publish);
+        // Include the publish destination in the parameters
+        if (params) {
+          params.publish_destination = publish;
+        } else {
+          setCurrentParams({ ...currentParams, publish_destination: publish });
+        }
       }
       
       await handleSubmitPrompt(prompt, imageFiles);
