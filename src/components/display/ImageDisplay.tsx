@@ -1,7 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { DisplayParams } from './types';
-import { useNavigate } from 'react-router-dom';
 import { createUrlWithParams } from './utils';
 import { CaptionRenderer } from './debug/CaptionRenderer';
 import { toast } from 'sonner';
@@ -35,7 +33,6 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   imageRef,
   onImageError
 }) => {
-  const navigate = useNavigate();
   const [containerSize, setContainerSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [doubleClickAttempted, setDoubleClickAttempted] = useState(false);
   const doubleClickTimeoutRef = useRef<number | null>(null);
@@ -83,24 +80,18 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     // Log that we're trying to navigate to debug mode
     console.log('[ImageDisplay] Double-click detected, navigating to debug mode');
     
-    // Create URL with existing params plus debug mode enabled
-    const newParams = { ...params, debugMode: true };
-    const debugUrl = createUrlWithParams(newParams);
+    // Get current URL and add debug=true parameter
+    const currentUrl = window.location.href;
+    const hasParams = currentUrl.includes('?');
+    const newUrl = currentUrl + (hasParams ? '&' : '?') + 'debug=true';
     
-    // Navigate to the debug URL, preserving all existing parameters
-    console.log('[ImageDisplay] Navigating to debug mode with URL:', debugUrl);
+    console.log('[ImageDisplay] Redirecting to debug mode:', newUrl);
     
-    // Force a small delay to prevent race conditions
-    setTimeout(() => {
-      navigate(`/display${debugUrl}`);
-      
-      toast.success("Debug Mode Activated");
-      
-      // Reset the flag after navigation (in case component doesn't unmount)
-      setTimeout(() => {
-        setDoubleClickAttempted(false);
-      }, 1000);
-    }, 10);
+    // Use window.location.href to ensure a full page reload
+    window.location.href = newUrl;
+    
+    // Show a toast message
+    toast.success("Debug Mode Activated");
   };
 
   // Handle image error with more details

@@ -79,7 +79,7 @@ export const useDebugPanelUrls = ({
   
   const resetDisplay = () => {
     // Reset to base display URL with no parameters
-    navigate('/display');
+    window.location.href = '/display';
     toast({
       title: "Settings Reset",
       description: "All settings have been reset to default values.",
@@ -113,8 +113,8 @@ export const useDebugPanelUrls = ({
     const url = createUrlWithParams(newParams);
     console.log('[useDebugPanelUrls] Committing settings, navigating to view mode:', url);
     
-    // Navigate to the main display page with these settings
-    navigate(`/display${url}`);
+    // Use direct window.location change to force a full page reload
+    window.location.href = `/display${url}`;
     
     toast({
       title: "View Mode Activated",
