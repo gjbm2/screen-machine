@@ -41,37 +41,73 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
   const [panelSize, setPanelSize] = useState({ width: '480px', height: 'auto' });
   
   const previousImageUrlRef = useRef<string | null>(null);
+  const previousMetadataRef = useRef<Record<string, string>>({});
 
   const defaultParams = getDefaultParams();
 
   useEffect(() => {
-    if (imageUrl !== previousImageUrlRef.current) {
-      console.log("Image URL changed, updating metadata entries");
+    console.log('[useDebugPanel] Processing metadata:', metadata);
+    console.log('[useDebugPanel] Previous image URL:', previousImageUrlRef.current);
+    console.log('[useDebugPanel] Current image URL:', imageUrl);
+    
+    const metadataChanged = JSON.stringify(metadata) !== JSON.stringify(previousMetadataRef.current);
+    console.log('[useDebugPanel] Metadata changed:', metadataChanged);
+    
+    if ((imageUrl !== previousImageUrlRef.current) || metadataChanged) {
+      console.log('[useDebugPanel] Image URL or metadata changed, processing entries');
       previousImageUrlRef.current = imageUrl;
+      previousMetadataRef.current = { ...metadata };
       
-      const entries = Object.entries(metadata).map(([key, value]) => ({
-        key,
-        value
-      }));
-      setMetadataEntries(entries);
+      // Process metadata into a format suitable for the UI
+      if (metadata && typeof metadata === 'object') {
+        console.log('[useDebugPanel] Converting metadata object to entries');
+        
+        const entries = Object.entries(metadata).map(([key, value]) => ({
+          key,
+          value: String(value) // Ensure value is a string
+        }));
+        
+        console.log('[useDebugPanel] Processed metadata entries:', entries);
+        setMetadataEntries(entries);
+      } else {
+        console.warn('[useDebugPanel] Invalid metadata format:', metadata);
+        setMetadataEntries([]);
+      }
     }
   }, [metadata, imageUrl]);
 
   useEffect(() => {
+    console.log('[useDebugPanel] Processing caption template:', caption);
+    console.log('[useDebugPanel] Available metadata entries:', metadataEntries);
+    
     if (caption === '{all}') {
       const allMetadata = metadataEntries
         .map(entry => `${entry.key}: ${entry.value}`)
         .join('\n');
+        
+      console.log('[useDebugPanel] All metadata caption:', allMetadata);
       setPreviewCaption(allMetadata);
       onApplyCaption(allMetadata);
     } else if (caption) {
-      const processed = caption.replace(/\{([^}]+)\}/g, (match, key) => {
-        const entry = metadataEntries.find(e => e.key === key);
-        return entry ? entry.value : match;
-      });
-      setPreviewCaption(processed);
-      onApplyCaption(processed);
+      // Process template tags like {key}
+      try {
+        const processed = caption.replace(/\{([^}]+)\}/g, (match, key) => {
+          const entry = metadataEntries.find(e => e.key === key);
+          const replacement = entry ? entry.value : match;
+          console.log(`[useDebugPanel] Replacing ${match} with:`, replacement);
+          return replacement;
+        });
+        
+        console.log('[useDebugPanel] Processed caption:', processed);
+        setPreviewCaption(processed);
+        onApplyCaption(processed);
+      } catch (err) {
+        console.error('[useDebugPanel] Error processing caption:', err);
+        setPreviewCaption(caption);
+        onApplyCaption(caption);
+      }
     } else {
+      console.log('[useDebugPanel] No caption to process');
       setPreviewCaption(null);
       onApplyCaption(null);
     }
@@ -79,6 +115,7 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
 
   useEffect(() => {
     if (imageUrl) {
+      console.log('[useDebugPanel] Applying caption with preview settings');
       onApplyCaption(previewCaption);
     }
   }, [
@@ -219,6 +256,7 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
   };
 
   const insertMetadataTag = (key: string) => {
+    console.log('[useDebugPanel] Inserting metadata tag:', key);
     setCaption(prevCaption => {
       const textArea = document.getElementById('caption-textarea') as HTMLTextAreaElement;
       if (textArea) {
@@ -264,6 +302,7 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
   };
 
   const insertAllMetadata = () => {
+    console.log('[useDebugPanel] Inserting all metadata');
     setCaption('{all}');
   };
 

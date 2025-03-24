@@ -27,7 +27,7 @@ const Display = () => {
     oldImageStyle,
     newImageStyle,
     imageRef,
-    nextCheckTime,  // This is now Date | null
+    nextCheckTime,
     handleManualCheck,
     getImagePositionStyle,
     handleImageError
@@ -35,9 +35,17 @@ const Display = () => {
 
   // Add debug logging to help diagnose metadata issues
   React.useEffect(() => {
-    console.log('Display rendered with metadata:', metadata);
-    console.log('Image URL is:', imageUrl);
-    console.log('Is mobile device:', isMobile);
+    console.log('[Display] Component rendered with imageUrl:', imageUrl);
+    console.log('[Display] Metadata:', metadata);
+    console.log('[Display] Is mobile device:', isMobile);
+    
+    // Log metadata object keys and structure
+    if (metadata && Object.keys(metadata).length > 0) {
+      console.log('[Display] Metadata keys:', Object.keys(metadata));
+      console.log('[Display] First few entries:', Object.entries(metadata).slice(0, 5));
+    } else {
+      console.log('[Display] No metadata available');
+    }
   }, [metadata, imageUrl, isMobile]);
 
   if (error) {
@@ -54,7 +62,7 @@ const Display = () => {
         imageRef={imageRef}
         lastModified={lastModified}
         lastChecked={lastChecked}
-        nextCheckTime={nextCheckTime}  // This is now Date | null
+        nextCheckTime={nextCheckTime}
         imageChanged={imageChanged}
         outputFiles={outputFiles}
         metadata={metadata}

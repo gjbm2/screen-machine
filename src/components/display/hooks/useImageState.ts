@@ -97,7 +97,12 @@ export const useImageState = () => {
       const hasChanged = await checkImageModified(imageUrl);
       
       // Extract metadata regardless of whether the image has changed
-      await extractMetadataFromImage(imageUrl);
+      try {
+        const newMetadata = await extractMetadataFromImage(imageUrl);
+        console.log('[handleManualCheck] Extracted metadata after check:', newMetadata);
+      } catch (err) {
+        console.error('[handleManualCheck] Error extracting metadata:', err);
+      }
       
       if (!hasChanged) {
         toast.info("Image has not changed since last check");
@@ -115,12 +120,6 @@ export const useImageState = () => {
       console.log('[extractMetadataFromImage] Starting metadata extraction for URL:', url);
       console.log('[extractMetadataFromImage] Current lastMetadataUrlRef:', lastMetadataUrlRef.current);
       
-      // Skip extraction if we already processed this URL and there's data, unless forced
-      if (lastMetadataUrlRef.current === url && Object.keys(metadata).length > 0) {
-        console.log('[extractMetadataFromImage] Already extracted metadata for this URL, reusing:', metadata);
-        return metadata;
-      }
-      
       if (isExtractingMetadataRef.current) {
         console.log('[extractMetadataFromImage] Already extracting metadata, waiting...');
         // Wait for completion if already extracting
@@ -130,10 +129,6 @@ export const useImageState = () => {
         }
       }
       
-      // Clear existing metadata before new extraction
-      setMetadata({});
-      
-      console.log('[extractMetadataFromImage] Extracting metadata for URL:', url);
       isExtractingMetadataRef.current = true;
       
       try {
@@ -142,12 +137,14 @@ export const useImageState = () => {
         console.log('[extractMetadataFromImage] Using cache-busted URL:', cacheBustUrl);
         
         // First attempt - using the utility function with cache busting
+        console.log('[extractMetadataFromImage] Attempting to extract metadata from:', cacheBustUrl);
         const newMetadata = await extractImageMetadata(cacheBustUrl);
         console.log('[extractMetadataFromImage] Extracted metadata (1st attempt):', newMetadata);
         
         if (Object.keys(newMetadata).length > 0) {
           setMetadata(newMetadata);
           lastMetadataUrlRef.current = url;
+          isExtractingMetadataRef.current = false;
           return newMetadata;
         }
         
@@ -181,6 +178,7 @@ export const useImageState = () => {
             console.log('[extractMetadataFromImage] Second attempt successful, metadata:', retryMetadata);
             setMetadata(retryMetadata);
             lastMetadataUrlRef.current = url;
+            isExtractingMetadataRef.current = false;
             return retryMetadata;
           }
           
@@ -189,21 +187,30 @@ export const useImageState = () => {
           console.error('[extractMetadataFromImage] Error in blob approach:', blobErr);
         }
         
-        // Third attempt - try with a different fetch approach
+        // Third attempt - try directly with the API endpoint
         try {
-          const thirdAttemptUrl = `${url}#${Date.now()}`; // Using hash to force a new request
-          console.log('[extractMetadataFromImage] Third attempt with URL:', thirdAttemptUrl);
+          console.log('[extractMetadataFromImage] Attempting direct API call to extract-metadata');
           
-          const thirdAttemptMetadata = await extractImageMetadata(thirdAttemptUrl);
+          const apiUrl = '/api/extract-metadata';
+          const params = new URLSearchParams({ url: cacheBustUrl });
+          const apiResponse = await fetch(`${apiUrl}?${params.toString()}`);
           
-          if (Object.keys(thirdAttemptMetadata).length > 0) {
-            console.log('[extractMetadataFromImage] Third attempt successful, metadata:', thirdAttemptMetadata);
-            setMetadata(thirdAttemptMetadata);
-            lastMetadataUrlRef.current = url;
-            return thirdAttemptMetadata;
+          if (!apiResponse.ok) {
+            throw new Error(`API call failed: ${apiResponse.status}`);
           }
           
-          console.warn('[extractMetadataFromImage] All extraction attempts failed');
+          const apiData = await apiResponse.json();
+          console.log('[extractMetadataFromImage] API response:', apiData);
+          
+          if (apiData && typeof apiData === 'object' && Object.keys(apiData).length > 0) {
+            console.log('[extractMetadataFromImage] API call successful, metadata:', apiData);
+            setMetadata(apiData);
+            lastMetadataUrlRef.current = url;
+            isExtractingMetadataRef.current = false;
+            return apiData;
+          }
+          
+          console.warn('[extractMetadataFromImage] API call returned no metadata');
           
           // If still no metadata, show an error toast
           toast.error("No metadata found in this image");
@@ -217,9 +224,10 @@ export const useImageState = () => {
           
           setMetadata(basicMetadata);
           lastMetadataUrlRef.current = url;
+          isExtractingMetadataRef.current = false;
           return basicMetadata;
-        } catch (thirdErr) {
-          console.error('[extractMetadataFromImage] Error in third approach:', thirdErr);
+        } catch (apiErr) {
+          console.error('[extractMetadataFromImage] Error in API approach:', apiErr);
         }
         
         // All approaches failed
@@ -231,17 +239,17 @@ export const useImageState = () => {
         
         setMetadata(fallbackMetadata);
         lastMetadataUrlRef.current = url;
+        isExtractingMetadataRef.current = false;
         return fallbackMetadata;
       } catch (err) {
         console.error('[extractMetadataFromImage] Error in metadata extraction:', err);
+        isExtractingMetadataRef.current = false;
         const errorMetadata = {
           'error': 'Extraction failed',
           'errorMessage': String(err)
         };
         setMetadata(errorMetadata);
         return errorMetadata;
-      } finally {
-        isExtractingMetadataRef.current = false;
       }
     } catch (err) {
       console.error('[extractMetadataFromImage] Fatal error extracting metadata:', err);
