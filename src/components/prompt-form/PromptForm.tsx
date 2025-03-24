@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -80,12 +81,13 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
     const refinerToUse = selectedRefiner === "none" ? undefined : selectedRefiner;
     
+    // Create a fresh copy of globalParams with the current batch size value
     const updatedGlobalParams = {
       ...globalParams,
-      batch_size: batchSize
+      batch_size: batchSize // Use the current batchSize from state directly
     };
 
-    console.log(`Submitting with batch size: ${batchSize}`, updatedGlobalParams);
+    console.log(`Submitting with current batch size: ${batchSize}`, updatedGlobalParams);
 
     onSubmit(
       prompt,
