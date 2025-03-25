@@ -40,14 +40,27 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const doubleClickTimeoutRef = useRef<number | null>(null);
   const [hasLoadError, setHasLoadError] = useState(false);
 
-  // Log the image URL for debugging
+  // Log the image URL and transition state for debugging
   useEffect(() => {
     console.log('[ImageDisplay] Current image URL:', imageUrl);
     console.log('[ImageDisplay] Is transitioning:', isTransitioning);
     console.log('[ImageDisplay] Is loading metadata:', isLoadingMetadata);
     console.log('[ImageDisplay] Processed caption:', processedCaption);
+    console.log('[ImageDisplay] Old image URL:', oldImageUrl);
+    console.log('[ImageDisplay] Image transition styles:', { 
+      oldImageStyle: { ...oldImageStyle, opacity: oldImageStyle.opacity }, 
+      newImageStyle: { ...newImageStyle, opacity: newImageStyle.opacity },
+      regularImageStyle: { ...imageStyle }
+    });
+    
+    if (isTransitioning) {
+      console.log('[ImageDisplay] Transition in progress - showing both images with styles');
+    } else {
+      console.log('[ImageDisplay] No transition - showing single image with normal style');
+    }
+    
     console.log('[ImageDisplay] Metadata available:', Object.keys(metadata).length > 0);
-  }, [imageUrl, isTransitioning, isLoadingMetadata, processedCaption, metadata]);
+  }, [imageUrl, isTransitioning, isLoadingMetadata, processedCaption, metadata, oldImageUrl, oldImageStyle, newImageStyle, imageStyle]);
 
   // Update container size on window resize
   useEffect(() => {
@@ -172,7 +185,8 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
       onDoubleClick={handleDoubleClick}
     >
       {imageUrl ? (
-        <>
+        <div className="relative w-full h-full">
+          {/* Main image (or new image during transition) */}
           <img
             key={imageKey}
             ref={imageRef}
@@ -194,6 +208,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
             />
           )}
           
+          {/* Only show caption when not transitioning */}
           {shouldShowCaption && (
             <CaptionRenderer
               caption={processedCaption}
@@ -218,7 +233,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
               ))}
             </div>
           )}
-        </>
+        </div>
       ) : (
         <div 
           style={{ 
