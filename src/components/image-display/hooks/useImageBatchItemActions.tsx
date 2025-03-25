@@ -1,70 +1,47 @@
 
-import React from 'react';
+import { useCallback } from 'react';
 
 interface UseImageBatchItemActionsProps {
-  image: {
-    url: string;
-    batchId?: string;
-    batchIndex?: number;
-  };
   batchId: string;
-  index: number;
-  onCreateAgain?: (batchId: string) => void;
-  onUseAsInput?: ((imageUrl: string) => void) | null;
-  onDeleteImage?: (batchId: string, index: number) => void;
-  onFullScreen?: (batchId: string, index: number) => void;
+  batchIndex: number;
+  onOpenFullscreenView: (batchId: string, imageIndex: number) => void;
+  onUseGeneratedAsInput: (url: string) => void;
+  onDeleteImage: (batchId: string, imageIndex: number) => void;
+  onCreateAgain: (batchId: string) => void;
+  imageUrl: string;
 }
 
 export const useImageBatchItemActions = ({
-  image,
   batchId,
-  index,
-  onCreateAgain,
-  onUseAsInput,
+  batchIndex,
+  onOpenFullscreenView,
+  onUseGeneratedAsInput,
   onDeleteImage,
-  onFullScreen
+  onCreateAgain,
+  imageUrl
 }: UseImageBatchItemActionsProps) => {
-  const handleCreateAgain = () => {
-    if (onCreateAgain) {
-      onCreateAgain(batchId);
-    }
-  };
-
-  const handleUseAsInput = () => {
-    if (onUseAsInput && image.url) {
-      onUseAsInput(image.url);
-    }
-  };
-
-  const handleFullScreen = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onFullScreen) {
-      onFullScreen(batchId, index);
-    }
-  };
-
-  const handleDeleteImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onDeleteImage) {
-      // Removed confirmation dialog
-      onDeleteImage(batchId, index);
-    }
-  };
-
-  const handleDeleteFromPanel = () => {
-    if (onDeleteImage) {
-      // Removed confirmation dialog
-      onDeleteImage(batchId, index);
-    }
-  };
-
+  
+  const handleImageClick = useCallback(() => {
+    console.log(`ImageBatchItem clicked with batchId=${batchId}, batchIndex=${batchIndex}`);
+    onOpenFullscreenView(batchId, batchIndex);
+  }, [batchId, batchIndex, onOpenFullscreenView]);
+  
+  const handleUseAsInput = useCallback(() => {
+    onUseGeneratedAsInput(imageUrl);
+  }, [imageUrl, onUseGeneratedAsInput]);
+  
+  const handleDelete = useCallback(() => {
+    onDeleteImage(batchId, batchIndex);
+  }, [batchId, batchIndex, onDeleteImage]);
+  
+  const handleCreateAgain = useCallback(() => {
+    onCreateAgain(batchId);
+  }, [batchId, onCreateAgain]);
+  
   return {
-    handleCreateAgain,
+    handleImageClick,
     handleUseAsInput,
-    handleFullScreen,
-    handleDeleteImage,
-    handleDeleteFromPanel
+    handleDelete,
+    handleCreateAgain
   };
 };
-
-export default useImageBatchItemActions;
