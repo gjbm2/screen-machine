@@ -56,32 +56,23 @@ const DetailViewContainer: React.FC<DetailViewContainerProps> = ({
   hidePrompt = false,
   onClose // New prop for closing
 }) => {
-  // When in fullscreen view with isNavigatingAllImages=true, use the global navigation
   const handleSwipeLeft = () => {
-    if (isNavigatingAllImages && onNavigateGlobal && allImages && currentGlobalIndex !== undefined) {
-      // Navigate between all images globally when in fullscreen mode
+    if (onNavigateGlobal && allImages && currentGlobalIndex !== undefined) {
       if (currentGlobalIndex < allImages.length - 1) {
         onNavigateGlobal(currentGlobalIndex + 1);
       }
-    } else {
-      // Default behavior for batch-specific navigation
-      if (activeIndex < images.length - 1) {
-        onNavigateNext({} as React.MouseEvent);
-      }
+    } else if (activeIndex < images.length - 1) {
+      onNavigateNext({} as React.MouseEvent);
     }
   };
 
   const handleSwipeRight = () => {
-    if (isNavigatingAllImages && onNavigateGlobal && allImages && currentGlobalIndex !== undefined) {
-      // Navigate between all images globally when in fullscreen mode
+    if (onNavigateGlobal && allImages && currentGlobalIndex !== undefined) {
       if (currentGlobalIndex > 0) {
         onNavigateGlobal(currentGlobalIndex - 1);
       }
-    } else {
-      // Default behavior for batch-specific navigation
-      if (activeIndex > 0) {
-        onNavigatePrev({} as React.MouseEvent);
-      }
+    } else if (activeIndex > 0) {
+      onNavigatePrev({} as React.MouseEvent);
     }
   };
   

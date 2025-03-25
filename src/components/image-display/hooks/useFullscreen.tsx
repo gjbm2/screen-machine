@@ -12,13 +12,11 @@ export const useFullscreen = (allImagesFlat: any[]) => {
     setFullScreenImageIndex(imageIndex);
     setShowFullScreenView(true);
     
-    // Find the exact image in our flat list of all images
     const selectedImage = allImagesFlat.find(
       img => img.batchId === batchId && img.batchIndex === imageIndex
     );
     
     if (selectedImage) {
-      // Find the global index of this image in the flat list
       const globalIndex = allImagesFlat.findIndex(
         img => img.batchId === batchId && img.batchIndex === imageIndex
       );
@@ -29,19 +27,12 @@ export const useFullscreen = (allImagesFlat: any[]) => {
     }
   };
   
-  // This function allows navigation between all images regardless of batch
   const handleNavigateGlobal = (index: number) => {
     if (index >= 0 && index < allImagesFlat.length) {
       const targetImage = allImagesFlat[index];
-      
-      // Update the batch ID and image index to match the target image
       setFullScreenBatchId(targetImage.batchId);
       setFullScreenImageIndex(targetImage.batchIndex);
-      
-      // Update the global index tracking
       setCurrentGlobalIndex(index);
-      
-      console.log(`Navigating to global image ${index}:`, targetImage);
     }
   };
 
