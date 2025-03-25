@@ -38,10 +38,18 @@ export const useImageBatchItemActions = ({
     onCreateAgain(batchId);
   }, [batchId, onCreateAgain]);
   
+  // Add aliases for the functions that are expected in useImageBatchItem
+  const handleFullScreen = handleImageClick;
+  const handleDeleteImage = handleDelete;
+  const handleDeleteFromPanel = handleDelete;
+  
   return {
     handleImageClick,
     handleUseAsInput,
     handleDelete,
-    handleCreateAgain
+    handleCreateAgain,
+    handleFullScreen,
+    handleDeleteImage,
+    handleDeleteFromPanel
   };
 };

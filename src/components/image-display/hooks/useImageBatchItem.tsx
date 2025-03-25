@@ -53,13 +53,13 @@ export const useImageBatchItem = ({
     handleDeleteImage,
     handleDeleteFromPanel
   } = useImageBatchItemActions({
-    image,
     batchId,
-    index,
-    onCreateAgain,
-    onUseAsInput,
-    onDeleteImage,
-    onFullScreen
+    batchIndex: index,
+    onOpenFullscreenView: onFullScreen || (() => {}),
+    onUseGeneratedAsInput: onUseAsInput || (() => {}),
+    onDeleteImage: onDeleteImage || (() => {}),
+    onCreateAgain: onCreateAgain || (() => {}),
+    imageUrl: image.url
   });
 
   // Updated to accept a React.MouseEvent parameter
