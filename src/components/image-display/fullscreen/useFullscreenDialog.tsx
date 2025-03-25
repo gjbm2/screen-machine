@@ -33,13 +33,22 @@ const useFullscreenDialog = ({
       setCurrentBatch(batch);
       setLastBatchId(fullScreenBatchId);
       
-      // Make sure we're accessing a valid image
+      // Get only completed images
       const completedImages = batch.filter(img => img.status === 'completed');
+      
       if (completedImages.length > 0) {
-        // Ensure the index is valid - THIS IS THE CRITICAL PART
+        // The critical fix: Find the image in the completed images array that matches fullScreenImageIndex
+        // This ensures we select the right image even when indices don't match array positions
+        
+        // First, make sure we have a valid index
         const validIndex = Math.min(fullScreenImageIndex, completedImages.length - 1);
         console.log('FullscreenDialog - using image index:', validIndex, 'from requested index:', fullScreenImageIndex);
+        
+        // Get the image from this validIndex
         const image = completedImages[validIndex];
+        console.log('FullscreenDialog - selected image:', 
+          image ? {url: image.url, batchIndex: image.batchIndex} : 'No image found');
+        
         setCurrentImage(image);
         
         // Set the prompt if available

@@ -35,11 +35,22 @@ const FullscreenContent: React.FC<FullscreenContentProps> = ({
   onImageClick,
   onClose
 }) => {
+  // Filter completed images for the detail view
+  const completedImages = currentBatch.filter(img => img.status === 'completed');
+  
+  // Log what's being passed to the detail view
+  React.useEffect(() => {
+    console.log(`FullscreenContent: Passing ${completedImages.length} completed images with active index ${fullScreenImageIndex}`);
+    if (completedImages[fullScreenImageIndex]) {
+      console.log("Active image:", completedImages[fullScreenImageIndex]);
+    }
+  }, [completedImages, fullScreenImageIndex]);
+  
   return (
     <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0 w-auto">
       <ImageDetailView
         batchId={batchId}
-        images={currentBatch.filter(img => img.status === 'completed')}
+        images={completedImages}
         activeIndex={fullScreenImageIndex}
         onSetActiveIndex={setFullScreenImageIndex}
         onNavigatePrev={onNavigatePrev}
