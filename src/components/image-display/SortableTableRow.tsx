@@ -14,7 +14,7 @@ interface SortableTableRowProps {
   hasReferenceImage: boolean;
   completedImages: number;
   timestamp: number;
-  title?: string; // Add title field
+  title?: string;
 }
 
 const SortableTableRow: React.FC<SortableTableRowProps> = ({
@@ -25,7 +25,7 @@ const SortableTableRow: React.FC<SortableTableRowProps> = ({
   hasReferenceImage,
   completedImages,
   timestamp,
-  title // Add to component props
+  title
 }) => {
   const {
     attributes,
