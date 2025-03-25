@@ -33,22 +33,41 @@ const useFullscreenDialog = ({
       setCurrentBatch(batch);
       setLastBatchId(fullScreenBatchId);
       
-      // Make sure we're accessing a valid image
+      // Filter completed images
       const completedImages = batch.filter(img => img.status === 'completed');
+      console.log('FullscreenDialog - batch has', batch.length, 'images,', completedImages.length, 'completed images');
+      console.log('FullscreenDialog - requested image batchIndex:', fullScreenImageIndex);
+      
       if (completedImages.length > 0) {
-        // Ensure the index is valid - THIS IS THE CRITICAL PART
-        const validIndex = Math.min(fullScreenImageIndex, completedImages.length - 1);
-        console.log('FullscreenDialog - using image index:', validIndex, 'from requested index:', fullScreenImageIndex);
-        const image = completedImages[validIndex];
-        setCurrentImage(image);
+        // Find the image with the matching batchIndex
+        const targetImage = completedImages.find(img => img.batchIndex === fullScreenImageIndex);
         
-        // Set the prompt if available
-        if (image?.prompt) {
-          console.log('Setting prompt to:', image.prompt);
-          setPrompt(image.prompt);
+        if (targetImage) {
+          console.log('FullscreenDialog - found matching image with batchIndex', fullScreenImageIndex);
+          setCurrentImage(targetImage);
+          
+          // Set the prompt if available
+          if (targetImage?.prompt) {
+            console.log('Setting prompt to:', targetImage.prompt);
+            setPrompt(targetImage.prompt);
+          } else {
+            console.log('No prompt available, clearing prompt');
+            setPrompt('');
+          }
         } else {
-          console.log('No prompt available, clearing prompt');
-          setPrompt('');
+          // If we can't find the exact image, use a valid index as fallback
+          console.log('FullscreenDialog - could not find exact match for batchIndex', fullScreenImageIndex, 'using fallback');
+          const validIndex = Math.min(0, completedImages.length - 1);
+          const fallbackImage = completedImages[validIndex];
+          setCurrentImage(fallbackImage);
+          
+          if (fallbackImage?.prompt) {
+            console.log('Setting prompt from fallback to:', fallbackImage.prompt);
+            setPrompt(fallbackImage.prompt);
+          } else {
+            console.log('No prompt available from fallback, clearing prompt');
+            setPrompt('');
+          }
         }
       }
     } else {
