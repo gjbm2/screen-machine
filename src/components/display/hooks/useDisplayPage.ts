@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
@@ -16,13 +15,12 @@ import { normalizePathForDisplay } from '../utils/paramUtils';
 export const useDisplayPage = () => {
   const { displayParams, updateParam, location } = useDisplayParams();
   const [previewParams, setPreviewParams] = useState(displayParams);
-  const mountedRef = useRef(true); // Track if component is mounted
-  const initialRenderRef = useRef(true); // Track initial render
-  const hasProcessedOutputRef = useRef(false); // Track if we've processed the output param
-  const hasCheckedExplicitExitRef = useRef(false); // Track if we've checked localStorage
-  const forceViewModeRef = useRef(false); // Track if we should force view mode
+  const mountedRef = useRef(true);
+  const initialRenderRef = useRef(true);
+  const hasProcessedOutputRef = useRef(false);
+  const hasCheckedExplicitExitRef = useRef(false);
+  const forceViewModeRef = useRef(false);
 
-  // Function to redirect to debug mode
   const redirectToDebugMode = () => {
     if (forceViewModeRef.current) {
       console.log('[useDisplayPage] Skipping debug mode redirect because forceViewMode is true');
@@ -31,7 +29,6 @@ export const useDisplayPage = () => {
     updateParam('debug', 'true');
   };
 
-  // Check if user explicitly exited debug mode
   useEffect(() => {
     if (!hasCheckedExplicitExitRef.current && mountedRef.current) {
       hasCheckedExplicitExitRef.current = true;
@@ -42,11 +39,8 @@ export const useDisplayPage = () => {
         
         if (userExplicitlyExited === 'true') {
           console.log('[useDisplayPage] Found explicit debug exit flag in localStorage');
-          // Set the forced view mode flag
           forceViewModeRef.current = true;
           
-          // Clear the flag immediately to prevent it from affecting future navigation
-          // unless this is an initial load of the page after committing settings
           if (displayParams.debugMode === false) {
             console.log('[useDisplayPage] Current page is in view mode, clearing localStorage flag');
             localStorage.removeItem('userExplicitlyExitedDebug');
@@ -60,23 +54,19 @@ export const useDisplayPage = () => {
     }
   }, [displayParams.debugMode]);
 
-  // Debug logging for params
   useEffect(() => {
     console.log("[useDisplayPage] Debug mode active:", displayParams.debugMode);
     console.log("[useDisplayPage] ForceViewMode flag:", forceViewModeRef.current);
     console.log("[useDisplayPage] Params:", displayParams);
     console.log("[useDisplayPage] Output param:", displayParams.output);
     
-    // Log a clear message if output parameter exists
     if (displayParams.output) {
       console.log("[useDisplayPage] ⚠️ Output parameter detected:", displayParams.output);
     }
   }, [displayParams]);
 
-  // Process output parameter
   useOutputProcessor(displayParams);
 
-  // Get display state from the core hook
   const {
     imageUrl,
     setImageUrl,
@@ -105,10 +95,8 @@ export const useDisplayPage = () => {
     extractMetadataFromImage
   } = useDisplayState(previewParams);
 
-  // Debug redirection handling
   const { checkDebugRedirection, userExplicitlyExitedDebugRef } = useDebugRedirection(displayParams, redirectToDebugMode);
-  
-  // Check for explicit exit flag from localStorage and sync to our ref
+
   useEffect(() => {
     if (mountedRef.current) {
       try {
@@ -118,7 +106,6 @@ export const useDisplayPage = () => {
           userExplicitlyExitedDebugRef.current = true;
           forceViewModeRef.current = true;
           
-          // Only remove the flag if we're actually in view mode
           if (!displayParams.debugMode) {
             localStorage.removeItem('userExplicitlyExitedDebug');
             console.log('[useDisplayPage] Removed localStorage flag - now in view mode');
@@ -130,7 +117,6 @@ export const useDisplayPage = () => {
     }
   }, [userExplicitlyExitedDebugRef, displayParams.debugMode]);
 
-  // Handle output parameter directly to ensure image displays
   useEffect(() => {
     if (!mountedRef.current) return;
     
@@ -138,33 +124,27 @@ export const useDisplayPage = () => {
       console.log('[useDisplayPage] Processing output parameter:', displayParams.output);
       hasProcessedOutputRef.current = true;
       
-      // For fully formed URLs, use directly
       if (displayParams.output.startsWith('http://') || displayParams.output.startsWith('https://')) {
         console.log('[useDisplayPage] Setting direct URL:', displayParams.output);
         setImageUrl(displayParams.output);
       } else {
-        // For local paths, normalize 
         const normalizedPath = normalizePathForDisplay(displayParams.output);
         console.log('[useDisplayPage] Setting normalized path:', normalizedPath);
         setImageUrl(normalizedPath);
       }
       
-      // Increment the image key to force a reload
       setImageKey(prev => prev + 1);
       
-      // Toast to notify user
       const filename = displayParams.output.split('/').pop() || displayParams.output;
       const displayName = filename.length > 30 ? filename.substring(0, 27) + '...' : filename;
       toast.success(`Displaying image: ${displayName}`);
     }
   }, [displayParams.output, setImageUrl, setImageKey]);
 
-  // Reset output processing flag on route change
   useEffect(() => {
     hasProcessedOutputRef.current = false;
   }, [location.pathname, location.search]);
 
-  // Set mounted ref to false on unmount
   useEffect(() => {
     mountedRef.current = true;
     console.log('[useDisplayPage] Component mounted');
@@ -175,51 +155,40 @@ export const useDisplayPage = () => {
     };
   }, []);
 
-  // Check for debug redirection - only if user has not explicitly exited and we're not forcing view mode
   useEffect(() => {
     if (!mountedRef.current) return;
     if (forceViewModeRef.current || userExplicitlyExitedDebugRef.current) {
       console.log('[useDisplayPage] Skipping debug redirection check - user explicitly exited debug mode or force view mode is set');
     } else if (displayParams.output) {
-      // If we have an output parameter but we're not in debug mode,
-      // only redirect if this isn't a result of a commit action
       checkDebugRedirection();
     } else {
-      // No output parameter, always check for redirection
       checkDebugRedirection();
     }
   }, [displayParams, displayParams.output, displayParams.debugMode, userExplicitlyExitedDebugRef]);
 
-  // Metadata management
   const { 
     attemptMetadataExtraction, 
     resetMetadataExtractionFlag 
   } = useMetadataManager(displayParams, imageUrl, extractMetadataFromImage);
 
-  // Enhanced debug logging for metadata
   useEffect(() => {
     if (!mountedRef.current) return;
     
-    // Only attempt metadata extraction if not loading and not transitioning
     if (!isLoading && !isTransitioning) {
       attemptMetadataExtraction(imageUrl, metadata, isLoading, isTransitioning);
     }
   }, [displayParams, imageUrl, metadata, isLoading, isTransitioning]);
 
-  // Reset metadata extraction flag when image URL changes
   useEffect(() => {
     if (!mountedRef.current) return;
     resetMetadataExtractionFlag();
   }, [imageUrl]);
 
-  // Process captions with metadata
   useCaptionProcessor(previewParams, metadata, imageUrl, setProcessedCaption);
 
-  // Fetch debug output files only when in debug mode
   useDebugFiles(displayParams.debugMode, setOutputFiles);
 
-  // Setup image polling in both view mode and debug mode when URL is present
-  const { handleManualCheck: imagePollerHandleManualCheck } = displayParams.output 
+  const { handleManualCheck: imagePollerHandleManualCheck, isChecking } = displayParams.output 
     ? useImagePoller(
         displayParams,
         imageUrl,
@@ -229,12 +198,10 @@ export const useDisplayPage = () => {
         checkImageModified,
         extractMetadataFromImage
       )
-    : { handleManualCheck: null };
+    : { handleManualCheck: null, isChecking: false };
 
-  // Handle image errors
   const { handleImageError } = useImageErrorHandler(imageUrl, mountedRef);
 
-  // Enhanced manual check - handle the case when imagePollerHandleManualCheck is null
   const { handleManualCheck } = useEnhancedManualCheck(
     mountedRef,
     imageUrl,
@@ -244,27 +211,22 @@ export const useDisplayPage = () => {
     extractMetadataFromImage
   );
 
-  // Update preview params when URL params change
   useEffect(() => {
     if (!mountedRef.current) return;
     setPreviewParams(displayParams);
   }, [displayParams]);
 
-  // Special handling for initial render with output parameter
   useEffect(() => {
     if (initialRenderRef.current && displayParams.output) {
       console.log('[useDisplayPage] Initial render with output param:', displayParams.output);
       initialRenderRef.current = false;
       
-      // Small delay to ensure DOM is ready
       setTimeout(() => {
         if (mountedRef.current) {
-          // For fully formed URLs, use directly
           if (displayParams.output && displayParams.output.startsWith('http')) {
             console.log('[useDisplayPage] Initial render - setting direct URL:', displayParams.output);
             setImageUrl(displayParams.output);
           } else if (displayParams.output) {
-            // For local paths, normalize 
             const normalizedPath = normalizePathForDisplay(displayParams.output);
             console.log('[useDisplayPage] Initial render - setting normalized path:', normalizedPath);
             setImageUrl(normalizedPath);
@@ -297,6 +259,7 @@ export const useDisplayPage = () => {
     handleManualCheck: originalHandleManualCheck,
     getImagePositionStyle,
     handleImageError: useImageErrorHandler(imageUrl, mountedRef).handleImageError,
-    redirectToDebugMode
+    redirectToDebugMode,
+    isChecking
   };
 };
