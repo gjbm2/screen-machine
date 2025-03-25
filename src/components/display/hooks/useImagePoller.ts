@@ -22,6 +22,8 @@ export const useImagePoller = (
   // Track component mounted state for cleanup
   const mountedRef = useRef<boolean>(true);
   
+  // Important fix: Always call these hooks in the same order, regardless of conditions
+  
   // Handle initial image loading - always call these hooks regardless of conditions
   const { initialLoadCompleted } = useInitialImageLoad(
     processedUrl,
