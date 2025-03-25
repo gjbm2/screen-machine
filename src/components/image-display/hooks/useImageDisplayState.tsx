@@ -20,7 +20,8 @@ export const useImageDisplayState = (
     setFullScreenImageIndex,
     currentGlobalIndex,
     openFullScreenView,
-    handleNavigateGlobal
+    handleNavigateGlobal,
+    handleNavigateWithBatchAwareness
   } = useFullscreen(allImagesFlat);
 
   useEffect(() => {
@@ -142,6 +143,7 @@ export const useImageDisplayState = (
     currentGlobalIndex,
     openFullScreenView,
     handleNavigateGlobal,
+    handleNavigateWithBatchAwareness,
     handleToggleExpand,
     batches,
     hasBatches,

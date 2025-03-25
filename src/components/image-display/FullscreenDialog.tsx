@@ -20,6 +20,7 @@ interface FullscreenDialogProps {
   allImagesFlat: any[];
   currentGlobalIndex: number | null;
   handleNavigateGlobal: (index: number) => void;
+  handleNavigateWithBatchAwareness: (direction: 'next' | 'prev') => void;
   fullscreenRefreshTrigger?: number;
 }
 
@@ -36,6 +37,7 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   allImagesFlat,
   currentGlobalIndex,
   handleNavigateGlobal,
+  handleNavigateWithBatchAwareness,
   fullscreenRefreshTrigger = 0
 }) => {
   const [lastBatchId, setLastBatchId] = useState<string | null>(null);
@@ -140,15 +142,11 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
             setFullScreenImageIndex={setFullScreenImageIndex}
             onNavigatePrev={(e) => {
               e.stopPropagation();
-              if (currentGlobalIndex !== null && currentGlobalIndex > 0) {
-                handleNavigateGlobal(currentGlobalIndex - 1);
-              }
+              handleNavigateWithBatchAwareness('prev');
             }}
             onNavigateNext={(e) => {
               e.stopPropagation();
-              if (currentGlobalIndex !== null && currentGlobalIndex < allImagesFlat.length - 1) {
-                handleNavigateGlobal(currentGlobalIndex + 1);
-              }
+              handleNavigateWithBatchAwareness('next');
             }}
             onDeleteImage={handleDeleteImage}
             onCreateAgain={handleCreateAgain}
