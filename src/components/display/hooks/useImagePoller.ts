@@ -1,5 +1,5 @@
 
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { DisplayParams } from '@/components/display/types';
 import { processOutputParam } from '@/components/display/utils';
 import { useInitialImageLoad } from './useInitialImageLoad';
@@ -19,12 +19,45 @@ export const useImagePoller = (
   // Process the URL once
   const processedUrl = params.output ? processOutputParam(params.output) : null;
   
-  // Track component mounted state for cleanup
+  // Track component mounted state for cleanup - always declare all refs first
   const mountedRef = useRef<boolean>(true);
   
-  // Important fix: Always call these hooks in the same order, regardless of conditions
+  // Set mountedRef cleanup
+  useEffect(() => {
+    mountedRef.current = true;
+    console.log('[useImagePoller] Component mounted');
+    
+    return () => {
+      console.log('[useImagePoller] Component unmounting');
+      mountedRef.current = false;
+    };
+  }, []);
   
-  // Handle initial image loading - always call these hooks regardless of conditions
+  // Call our hooks - always call them in the same order
+  const { lastCheckedUrl, isLoadingMetadata } = useImageChangeDetector(
+    imageUrl,
+    isLoading,
+    isTransitioning,
+    extractMetadataFromImage
+  );
+  
+  // Set up polling for image changes
+  const effectiveRefreshInterval = params.refreshInterval ?? 5;
+  const isPollingEnabled = !!processedUrl && effectiveRefreshInterval > 0;
+  
+  // Always call this hook
+  const { pollNow, isChecking, lastCheckTime } = useImageCheckPoller(
+    processedUrl,
+    effectiveRefreshInterval,
+    isLoading,
+    isTransitioning,
+    checkImageModified,
+    loadNewImage,
+    extractMetadataFromImage,
+    isPollingEnabled
+  );
+  
+  // Handle initial image loading - always call this hook
   const { initialLoadCompleted } = useInitialImageLoad(
     processedUrl,
     isTransitioning,
@@ -38,40 +71,18 @@ export const useImagePoller = (
     params.debugMode || false
   );
   
-  // Detect image changes - always call this hook
-  const { lastCheckedUrl, isLoadingMetadata } = useImageChangeDetector(
-    imageUrl,
-    isLoading,
-    isTransitioning,
-    extractMetadataFromImage
-  );
-  
-  // Set up polling for image changes - call this hook with stable params
-  const effectiveRefreshInterval = params.refreshInterval ?? 5;
-  const isPollingEnabled = !!processedUrl && effectiveRefreshInterval > 0;
-  
-  // Always call the hook, conditional behavior happens inside the hook
-  const { pollNow, isChecking, lastCheckTime } = useImageCheckPoller(
-    processedUrl,
-    effectiveRefreshInterval,
-    isLoading,
-    isTransitioning,
-    checkImageModified,
-    loadNewImage,
-    extractMetadataFromImage,
-    isPollingEnabled
-  );
-  
   // Handle manual updates - always call this hook
   const { handleManualUpdate } = useManualImageUpdater(mountedRef);
   
   // Enhanced manual check that handles metadata refresh
   const handleManualCheck = async (
-    imageUrl: string | null,
-    originalHandleManualCheck: () => Promise<boolean>,
-    params: DisplayParams
+    currentImageUrl: string | null = null,
+    originalHandleManualCheck: (() => Promise<boolean>) | null = null,
+    currentParams: DisplayParams = params
   ): Promise<boolean> => {
-    return handleManualUpdate(imageUrl, originalHandleManualCheck, params);
+    return handleManualUpdate(currentImageUrl || imageUrl, 
+      originalHandleManualCheck || (async () => await Promise.resolve(false)), 
+      currentParams);
   };
 
   return {
