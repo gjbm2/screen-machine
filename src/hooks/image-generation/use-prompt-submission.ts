@@ -1,8 +1,8 @@
 
-import { useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { ImageGenerationConfig } from './types';
 
-export interface PromptSubmissionProps {
+interface UsePromptSubmissionProps {
   currentWorkflow: string;
   currentParams: Record<string, any>;
   currentGlobalParams: Record<string, any>;
@@ -20,7 +20,7 @@ export const usePromptSubmission = ({
   setIsFirstRun,
   setLastBatchIdUsed,
   generateImages
-}: PromptSubmissionProps) => {
+}: UsePromptSubmissionProps) => {
   
   const handleSubmitPrompt = useCallback(async (
     prompt: string, 
@@ -29,90 +29,60 @@ export const usePromptSubmission = ({
     workflowParams?: Record<string, any>,
     globalParams?: Record<string, any>,
     refiner?: string,
-    refinerParams?: Record<string, any>
+    refinerParams?: Record<string, any>,
+    batchId?: string
   ) => {
-    setIsFirstRun(false);
-    
-    // Ensure we have unique image files (no duplicates)
-    let uniqueImageFiles: File[] | string[] | undefined = undefined;
-    
-    if (imageFiles && imageFiles.length > 0) {
-      // Separate files and strings into different arrays
-      const fileObjects: File[] = [];
-      const urlStrings: string[] = [];
-      
-      imageFiles.forEach(item => {
-        if (typeof item === 'string') {
-          urlStrings.push(item);
-        } else if (item instanceof File) {
-          fileObjects.push(item);
-        }
-      });
-      
-      // If we have only files or only strings, use the appropriate array
-      if (fileObjects.length > 0 && urlStrings.length === 0) {
-        uniqueImageFiles = [...new Set(fileObjects)];
-      } else if (urlStrings.length > 0 && fileObjects.length === 0) {
-        uniqueImageFiles = [...new Set(urlStrings)];
-      } else {
-        // If we have a mix, convert all Files to URLs first
-        const allUrls = [...urlStrings];
-        uniqueImageFiles = [...new Set(allUrls)];
-      }
-    }
-    
-    // Use the provided parameters or fall back to current settings
-    const effectiveWorkflow = workflow || currentWorkflow;
-    const effectiveWorkflowParams = workflowParams || currentParams;
-    const effectiveGlobalParams = globalParams ? { ...globalParams } : { ...currentGlobalParams };
-    
-    // Log the parameters being used
-    console.log("[usePromptSubmission] Using workflow:", effectiveWorkflow);
-    console.log("[usePromptSubmission] Using workflow params:", effectiveWorkflowParams);
-    console.log("[usePromptSubmission] Using global params:", effectiveGlobalParams);
-    console.log("[usePromptSubmission] Using refiner:", refiner);
-    console.log("[usePromptSubmission] Using refiner params:", refinerParams);
-    
-    // Check for publish destination in workflow params
-    const publishDestination = effectiveWorkflowParams.publish_destination;
-    if (publishDestination) {
-      console.log("[usePromptSubmission] Using publish destination:", publishDestination);
-    }
-    
-    // Create the configuration for image generation
-    const config: ImageGenerationConfig = {
-      prompt,
-      imageFiles: uniqueImageFiles,
-      workflow: effectiveWorkflow,
-      params: effectiveWorkflowParams,
-      globalParams: effectiveGlobalParams,
-      batchId: lastBatchIdUsed,
-      refiner, 
-      refinerParams
-    };
-    
-    // Call generateImages and store the returned batchId
     try {
-      // Generate images and possibly get a batch ID
+      // No longer first run after submitting a prompt
+      setIsFirstRun(false);
+      
+      // Use provided workflow or fall back to current workflow
+      const effectiveWorkflow = workflow || currentWorkflow;
+      
+      // Use provided params or fall back to current params
+      const effectiveWorkflowParams = workflowParams || currentParams;
+      
+      // Use provided global params or fall back to current global params
+      const effectiveGlobalParams = globalParams || currentGlobalParams;
+      
+      // Normalize image files
+      const uniqueImageFiles = imageFiles?.filter(f => f !== null && f !== undefined) || [];
+      
+      // Create the configuration for image generation
+      const config: ImageGenerationConfig = {
+        prompt,
+        imageFiles: uniqueImageFiles,
+        workflow: effectiveWorkflow,
+        params: effectiveWorkflowParams,
+        globalParams: effectiveGlobalParams,
+        batchId: batchId || lastBatchIdUsed,
+        refiner, 
+        refinerParams
+      };
+      
+      // Generate images with this config
       const result = await generateImages(config);
       
-      // Only update lastBatchIdUsed if we got a valid string back
-      if (result !== null && typeof result === 'string') {
+      // Save the last used batch ID
+      if (result) {
         setLastBatchIdUsed(result);
       }
+      
+      return result;
     } catch (error) {
-      console.error("Error during image generation:", error);
+      console.error('Error submitting prompt:', error);
+      throw error;
     }
   }, [
     currentWorkflow, 
     currentParams, 
-    currentGlobalParams,
-    lastBatchIdUsed,
-    setIsFirstRun,
-    setLastBatchIdUsed,
+    currentGlobalParams, 
+    lastBatchIdUsed, 
+    setIsFirstRun, 
+    setLastBatchIdUsed, 
     generateImages
   ]);
-
+  
   return {
     handleSubmitPrompt
   };

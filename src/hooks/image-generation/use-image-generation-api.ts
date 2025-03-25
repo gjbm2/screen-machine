@@ -18,38 +18,17 @@ export const useImageGenerationApi = (
   // Function to generate new images based on config
   const generateImages = useCallback(async (config: ImageGenerationConfig): Promise<string | null> => {
     try {
-      // Generate a unique batch ID for this generation
-      const batchId = nanoid();
+      // Use provided batch ID or generate a new one
+      const batchId = config.batchId || nanoid();
       setLastBatchId(batchId);
       
       // Add to active generations
       setActiveGenerations(prev => [...prev, batchId]);
       
-      // Add this batch ID to the container order (at the beginning)
-      setImageContainerOrder(prev => [batchId, ...prev]);
-      
-      // Get current timestamp for consistent usage
-      const currentTimestamp = Date.now();
-      
-      // Add a placeholder for the generating image - ensuring timestamp is most recent
-      setGeneratedImages(prev => [
-        {
-          batchId,
-          status: 'generating',
-          prompt: config.prompt,
-          workflow: config.workflow,
-          timestamp: currentTimestamp, // Current timestamp for proper sorting
-          params: config.params,
-          containerId: nextContainerId,
-          referenceImageUrl: config.imageFiles && config.imageFiles.length > 0 && typeof config.imageFiles[0] === 'string' 
-            ? config.imageFiles[0] 
-            : undefined
-        },
-        ...prev
-      ]);
-      
-      // Increment the container ID for the next batch
-      setNextContainerId(prev => prev + 1);
+      // Only add this batch ID to the container order if it's a new batch (not reusing existing batch)
+      if (!config.batchId) {
+        setImageContainerOrder(prev => [batchId, ...prev]);
+      }
       
       // Log this generation to the console
       addConsoleLog({
@@ -60,6 +39,9 @@ export const useImageGenerationApi = (
           workflow: config.workflow,
           params: config.params,
           globalParams: config.globalParams,
+          refiner: config.refiner,
+          refinerParams: config.refinerParams,
+          isReusingBatch: !!config.batchId
         }
       });
       
@@ -70,6 +52,8 @@ export const useImageGenerationApi = (
         workflow: config.workflow,
         params: config.params,
         globalParams: config.globalParams,
+        refiner: config.refiner,
+        refinerParams: config.refinerParams,
         batchId: batchId,
         nextContainerId
       };

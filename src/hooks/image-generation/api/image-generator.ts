@@ -1,3 +1,4 @@
+
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -64,6 +65,7 @@ export const generateImage = async (
   console.log('- refiner:', refiner);
   console.log('- refinerParams:', refinerParams);
   console.log('- publish destination:', params.publish_destination);
+  console.log('- batchId:', batchId);
 
   // Create or use the provided batch ID
   const currentBatchId = batchId || nanoid();
@@ -132,7 +134,9 @@ export const generateImage = async (
         referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
         refiner: refiner || undefined,
         refinerParams: refinerParams || undefined,
-        publishDestination: params.publish_destination || undefined
+        publishDestination: params.publish_destination || undefined,
+        batchId: currentBatchId,
+        containerId: existingContainerId
       }
     });
     
