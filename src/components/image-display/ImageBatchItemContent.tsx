@@ -1,19 +1,16 @@
 
 import React from 'react';
+import { Image, Info } from 'lucide-react';
 import { ViewMode } from './ImageDisplay';
-import ImagePrompt from './detail-view/ImagePrompt';
 
 interface ImageBatchItemContentProps {
   imageUrl: string;
   prompt?: string;
   index: number;
-  onClick?: () => void;
+  onClick: (e: React.MouseEvent) => void; // Updated to accept a MouseEvent parameter
   viewMode?: ViewMode;
-  className?: string;
   hasReferenceImages?: boolean;
-  title?: string;
-  batchIndex?: number;
-  batchSize?: number;
+  title?: string; // Add title field
 }
 
 const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
@@ -22,40 +19,43 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
   index,
   onClick,
   viewMode = 'normal',
-  className = '',
   hasReferenceImages = false,
-  title,
-  batchIndex,
-  batchSize = 0
+  title // Add to component props
 }) => {
-  // For small view, we don't include the prompt (to save space)
-  const showPrompt = viewMode !== 'small';
-  
+  // Simple truncate function
+  const truncateText = (text: string, maxLength: number) => {
+    if (!text) return '';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  };
+
+  // Log for debugging
+  if (hasReferenceImages) {
+    console.log(`Image ${index} has reference images: ${hasReferenceImages}`);
+  }
+
+  // Use title if available, otherwise use prompt or default
+  const displayText = title || prompt || `Generated image ${index + 1}`;
+
   return (
     <div 
-      className={`flex flex-col gap-1 relative w-full h-full ${className}`}
+      className={`w-full relative cursor-pointer ${viewMode === 'normal' ? 'aspect-square' : 'h-20'}`}
       onClick={onClick}
     >
-      {/* Image container */}
-      <div className="aspect-square overflow-hidden rounded-md relative">
-        <img
-          src={imageUrl}
-          alt={prompt || `Generated image ${index + 1}`}
-          className="w-full h-full object-cover hover:scale-105 transition-transform cursor-pointer"
-        />
-      </div>
+      <img
+        src={imageUrl}
+        alt={displayText}
+        className="w-full h-full object-cover"
+      />
       
-      {/* Prompt below image (only in normal and large views) */}
-      {showPrompt && (
-        <div className="mt-1 px-0.5">
-          <ImagePrompt 
-            prompt={prompt || ''} 
-            hasReferenceImages={hasReferenceImages} 
-            imageNumber={index + 1}
-            title={title}
-            batchIndex={batchIndex}
-            batchSize={batchSize}
-          />
+      {hasReferenceImages && (
+        <div className="absolute top-1 left-1 bg-black/60 rounded-md p-0.5 text-white text-xs">
+          <Image size={14} />
+        </div>
+      )}
+      
+      {viewMode === 'small' && (
+        <div className="absolute bottom-0 left-0 right-0 p-1 text-[10px] leading-tight bg-black/60 text-white truncate">
+          {truncateText(displayText, 30)}
         </div>
       )}
     </div>

@@ -11,9 +11,7 @@ interface FullscreenHeaderProps {
   onInfoClick: () => void;
   onClose: (e: React.MouseEvent) => void;
   imageNumber: number;
-  title?: string;
-  batchIndex?: number;
-  batchSize?: number;
+  title?: string; 
 }
 
 const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
@@ -24,10 +22,14 @@ const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
   onInfoClick,
   onClose,
   imageNumber,
-  title,
-  batchIndex,
-  batchSize
+  title
 }) => {
+  // Always use the title for display
+  const displayText = title || prompt;
+  
+  // Add debug logging
+  console.log(`FullscreenHeader rendering with prompt: "${prompt}", workflowName: ${workflowName}, and title: ${title}`);
+  
   return (
     <div className="px-4 py-2 border-b h-10 flex-shrink-0 flex items-center">
       <div className="flex items-center justify-between w-full min-w-0 overflow-hidden">
@@ -40,9 +42,7 @@ const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
             workflowName={workflowName}
             onInfoClick={onInfoClick}
             title={title}
-            useTitle={true}
-            batchIndex={batchIndex}
-            batchSize={batchSize}
+            useTitle={true} // Always use the title
           />
         </div>
         

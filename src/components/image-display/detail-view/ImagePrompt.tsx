@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Info, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,9 +12,7 @@ interface ImagePromptProps {
   workflowName?: string;
   onInfoClick?: () => void;
   title?: string;
-  useTitle?: boolean; // Flag to prioritize title over prompt
-  batchIndex?: number; // Added for showing image index within batch
-  batchSize?: number; // Added to determine if we should show the batch index
+  useTitle?: boolean; // Add flag to prioritize title over prompt
 }
 
 const ImagePrompt: React.FC<ImagePromptProps> = ({
@@ -24,28 +23,20 @@ const ImagePrompt: React.FC<ImagePromptProps> = ({
   workflowName,
   onInfoClick,
   title,
-  useTitle = false,
-  batchIndex,
-  batchSize = 0
+  useTitle = false // Default to false for backward compatibility
 }) => {
+  // Log whether this component has reference images
+  console.log("ImagePrompt has reference images:", hasReferenceImages);
+  console.log("ImagePrompt received prompt:", prompt);
+  console.log("ImagePrompt received workflowName:", workflowName);
+  console.log("ImagePrompt received title:", title);
+  
   // Use title with high priority if useTitle flag is set
-  let displayText = useTitle && title 
+  const displayText = useTitle && title 
     ? title 
     : (title || prompt || (typeof window.imageCounter !== 'undefined' 
         ? `${window.imageCounter}. ${workflowName || 'Generated image'}`
         : workflowName || 'Generated image'));
-  
-  // If we have an image number and optional batch index, format the prefix
-  if (imageNumber) {
-    // Format like "2.1. " if batch size > 1 and we have a batch index
-    // Otherwise just use "2. " format
-    const prefix = batchSize > 1 && batchIndex !== undefined
-      ? `${imageNumber}.${batchIndex + 1}. `  // +1 to show batch index starting from 1, not 0
-      : `${imageNumber}. `;
-      
-    // Prepend the prefix to the display text
-    displayText = prefix + displayText;
-  }
   
   return (
     <div className="flex items-center gap-1 text-gray-700 min-w-0 w-full overflow-hidden">
