@@ -131,7 +131,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       <DebugImageHeader
         showMode={showMode}
         position={position}
-        selectedSize={selectedSize.name}
+        selectedSize={selectedSize}
         setSelectedSize={handleSizeSelection}
         imageChanged={imageChanged}
         onSettingsChange={onSettingsChange}
