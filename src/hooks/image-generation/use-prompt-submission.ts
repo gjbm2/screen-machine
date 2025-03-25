@@ -60,8 +60,8 @@ export const usePromptSubmission = ({
         workflow: effectiveWorkflow,
         params: effectiveWorkflowParams,
         globalParams: effectiveGlobalParams,
-        // Only use the provided batchId if explicitly passed, never reuse lastBatchIdUsed
-        batchId: batchId || undefined,
+        // Use the provided batchId if available
+        batchId: batchId,
         refiner, 
         refinerParams
       };
