@@ -3,7 +3,7 @@
  * Processes uploaded files and returns arrays of files and URLs
  */
 export const processUploadedFiles = (
-  imageFiles?: File[] | string[]
+  imageFiles?: (File | string)[]
 ): { uploadedFiles: File[], uploadedImageUrls: string[] } => {
   let uploadedFiles: File[] = [];
   let uploadedImageUrls: string[] = [];
