@@ -14,6 +14,7 @@ interface DetailViewContainerProps {
     params?: Record<string, any>;
     referenceImageUrl?: string;
     timestamp?: number;
+    batchIndex?: number;
   }>;
   activeIndex: number;
   onSetActiveIndex: (index: number) => void;
@@ -63,6 +64,17 @@ const DetailViewContainer: React.FC<DetailViewContainerProps> = ({
   const handleSwipeRight = () => {
     onNavigatePrev({} as React.MouseEvent);
   };
+  
+  // For debugging
+  React.useEffect(() => {
+    console.log(`DetailViewContainer: Displaying image at index ${activeIndex} out of ${images.length} images`);
+    if (images[activeIndex]) {
+      console.log("Current image:", images[activeIndex].url);
+      if (images[activeIndex].batchIndex !== undefined) {
+        console.log("Batch index:", images[activeIndex].batchIndex);
+      }
+    }
+  }, [activeIndex, images]);
   
   return (
     <DetailViewTouchHandler 
