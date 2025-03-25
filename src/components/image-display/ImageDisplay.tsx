@@ -1,3 +1,4 @@
+
 import React from 'react';
 import FullscreenDialog from './FullscreenDialog';
 import ViewModeContent from './ViewModeContent';
@@ -52,7 +53,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     fullScreenImageIndex,
     setFullScreenImageIndex,
     currentGlobalIndex,
+    openFullScreenView,
     handleNavigateGlobal,
+    handleNavigateWithBatchAwareness,
     handleToggleExpand,
     batches,
     hasBatches,
@@ -78,19 +81,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const handleFullScreenClick = (image: any) => {
     if (image && image.batchId) {
       openFullScreenView(image.batchId, image.batchIndex || 0);
-    }
-  };
-
-  const openFullScreenView = (batchId: string, imageIndex: number = 0) => {
-    const selectedImageBatch = batches[batchId]?.filter(img => img.status === 'completed');
-    if (selectedImageBatch && imageIndex < selectedImageBatch.length) {
-      const globalIndex = allImagesFlat.findIndex(
-        img => img.batchId === batchId && img.batchIndex === (selectedImageBatch[imageIndex]?.batchIndex || 0)
-      );
-      
-      if (globalIndex !== -1) {
-        handleNavigateGlobal(globalIndex);
-      }
     }
   };
   
@@ -141,6 +131,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
             allImagesFlat={allImagesFlat}
             currentGlobalIndex={currentGlobalIndex}
             handleNavigateGlobal={handleNavigateGlobal}
+            handleNavigateWithBatchAwareness={handleNavigateWithBatchAwareness}
             fullscreenRefreshTrigger={fullscreenRefreshTrigger}
           />
         </div>

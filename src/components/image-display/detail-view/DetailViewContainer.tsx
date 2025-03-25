@@ -57,23 +57,11 @@ const DetailViewContainer: React.FC<DetailViewContainerProps> = ({
   onClose // New prop for closing
 }) => {
   const handleSwipeLeft = () => {
-    if (onNavigateGlobal && allImages && currentGlobalIndex !== undefined) {
-      if (currentGlobalIndex < allImages.length - 1) {
-        onNavigateGlobal(currentGlobalIndex + 1);
-      }
-    } else if (activeIndex < images.length - 1) {
-      onNavigateNext({} as React.MouseEvent);
-    }
+    onNavigateNext({} as React.MouseEvent);
   };
 
   const handleSwipeRight = () => {
-    if (onNavigateGlobal && allImages && currentGlobalIndex !== undefined) {
-      if (currentGlobalIndex > 0) {
-        onNavigateGlobal(currentGlobalIndex - 1);
-      }
-    } else if (activeIndex > 0) {
-      onNavigatePrev({} as React.MouseEvent);
-    }
+    onNavigatePrev({} as React.MouseEvent);
   };
   
   return (
