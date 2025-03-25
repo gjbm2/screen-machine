@@ -41,23 +41,6 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   fullscreenRefreshTrigger = 0
 }) => {
   const [lastBatchId, setLastBatchId] = useState<string | null>(null);
-  
-  // Monitor fullscreenRefreshTrigger for new image generation
-  useEffect(() => {
-    if (showFullScreenView && fullscreenRefreshTrigger > 0 && lastBatchId) {
-      // Find the most recently generated image in the last used batch
-      const batch = batches[lastBatchId];
-      if (batch) {
-        const completedImages = batch.filter(img => img.status === 'completed');
-        if (completedImages.length > 0) {
-          // Get the most recent image and navigate to it
-          const mostRecentImage = completedImages[0];
-          console.log('FullscreenDialog - Navigating to newly generated image with batchIndex:', mostRecentImage.batchIndex);
-          setFullScreenImageIndex(mostRecentImage.batchIndex);
-        }
-      }
-    }
-  }, [fullscreenRefreshTrigger, lastBatchId, batches, showFullScreenView, setFullScreenImageIndex]);
 
   const {
     prompt,
