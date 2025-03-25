@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import ReferenceImageDialog from './ReferenceImageDialog';
@@ -69,16 +68,8 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     return null;
   }
 
-  // Additional logging to track what prompt is being displayed
-  console.log(`FullscreenDialog - Current prompt: "${prompt}", Current image:`, 
-    currentImage ? {
-      url: currentImage.url,
-      prompt: currentImage.prompt,
-      workflow: currentImage.workflow,
-      batchId: currentImage.batchId,
-      batchIndex: currentImage.batchIndex,
-      title: currentImage.title
-    } : 'No current image');
+  // Get batch size - count completed images in the current batch
+  const batchSize = currentBatch ? currentBatch.filter(img => img.status === 'completed').length : 0;
 
   const handleImageClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -131,6 +122,8 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           onClose={handleClose}
           imageNumber={fullScreenImageIndex + 1}
           title={currentImage?.title}
+          batchIndex={currentImage?.batchIndex}
+          batchSize={batchSize}
         />
 
         {/* Content component */}
