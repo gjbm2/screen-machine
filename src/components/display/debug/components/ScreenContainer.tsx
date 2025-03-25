@@ -31,34 +31,57 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
       return;
     }
     
-    // Get parent dimensions
-    const parentWidth = contentRef.current.clientWidth;
-    const parentHeight = contentRef.current.clientHeight;
+    // Get parent dimensions - this is the available space we have
+    const parentEl = contentRef.current;
+    const parentRect = parentEl.getBoundingClientRect();
+    const parentWidth = parentRect.width;
+    const parentHeight = parentRect.height;
+    
+    console.log('[ScreenContainer] Parent dimensions:', {
+      parentWidth, parentHeight, 
+      parentOffsetWidth: parentEl.offsetWidth, 
+      parentOffsetHeight: parentEl.offsetHeight
+    });
     
     // Calculate aspect ratio of the selected size
     const aspectRatio = selectedSizeObj.width / selectedSizeObj.height;
     
-    // Apply maximum bounds to ensure the container fits within the viewport
-    // with extra padding to prevent touching the edges
-    const maxWidth = Math.min(parentWidth - 40, window.innerWidth * 0.8);
-    const maxHeight = Math.min(parentHeight - 40, window.innerHeight * 0.8);
+    // Always leave some margin around all sides
+    const horizontalMargin = 30;
+    const verticalMargin = 30;
     
-    // Calculate dimensions that preserve aspect ratio and fit within bounds
+    // Maximum available space
+    const maxAvailableWidth = parentWidth - horizontalMargin;
+    const maxAvailableHeight = parentHeight - verticalMargin;
+    
+    // Determine how to scale the content to fit
     let width, height;
     
-    if (maxWidth / aspectRatio <= maxHeight) {
-      // Width is the limiting factor
-      width = maxWidth;
+    // Check if we need to scale by width or height
+    if (aspectRatio > maxAvailableWidth / maxAvailableHeight) {
+      // Width-constrained
+      width = maxAvailableWidth;
       height = width / aspectRatio;
     } else {
-      // Height is the limiting factor
-      height = maxHeight;
+      // Height-constrained
+      height = maxAvailableHeight;
+      width = height * aspectRatio;
+    }
+    
+    // Final safety check to ensure we're always within bounds
+    if (width > maxAvailableWidth) {
+      width = maxAvailableWidth;
+      height = width / aspectRatio;
+    }
+    
+    if (height > maxAvailableHeight) {
+      height = maxAvailableHeight;
       width = height * aspectRatio;
     }
     
     console.log('[ScreenContainer] Calculated dimensions:', {
-      parentWidth, parentHeight, maxWidth, maxHeight,
-      finalWidth: width, finalHeight: height,
+      maxAvailableWidth, maxAvailableHeight,
+      calculatedWidth: width, calculatedHeight: height,
       selectedSize, aspectRatio
     });
     

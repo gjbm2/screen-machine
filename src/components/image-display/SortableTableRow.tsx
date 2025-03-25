@@ -9,8 +9,8 @@ import { formatDistanceToNow } from 'date-fns';
 interface SortableTableRowProps {
   id: string;
   onClick: () => void;
-  index: number;
   prompt: string;
+  workflow: string;
   hasReferenceImage: boolean;
   completedImages: number;
   timestamp: number;
@@ -20,8 +20,8 @@ interface SortableTableRowProps {
 const SortableTableRow: React.FC<SortableTableRowProps> = ({
   id,
   onClick,
-  index,
   prompt,
+  workflow,
   hasReferenceImage,
   completedImages,
   timestamp,
@@ -53,22 +53,22 @@ const SortableTableRow: React.FC<SortableTableRowProps> = ({
     <TableRow 
       ref={setNodeRef} 
       style={style}
-      className="hover:bg-muted/60 cursor-grab active:cursor-grabbing"
+      className="hover:bg-muted/60 cursor-grab active:cursor-grabbing text-xs"
       onClick={onClick}
       {...attributes}
       {...listeners}
     >
-      <TableCell className="font-medium">{index}</TableCell>
-      <TableCell>
-        <div className="flex items-start max-w-[200px] md:max-w-[300px]">
+      <TableCell className="py-1 px-2">
+        <div className="flex items-start max-w-[180px] md:max-w-[240px]">
           {hasReferenceImage && (
-            <Image className="h-4 w-4 text-primary mr-2 mt-1 flex-shrink-0" />
+            <Image className="h-3 w-3 text-primary mr-1 mt-1 flex-shrink-0" />
           )}
           <span className="break-words whitespace-normal text-xs">{prompt}</span>
         </div>
       </TableCell>
-      <TableCell className="text-center">{completedImages}</TableCell>
-      <TableCell>{formatTimeAgo(timestamp)}</TableCell>
+      <TableCell className="py-1 px-2 text-xs">{workflow}</TableCell>
+      <TableCell className="text-center py-1 px-2">{completedImages}</TableCell>
+      <TableCell className="py-1 px-2">{formatTimeAgo(timestamp)}</TableCell>
     </TableRow>
   );
 };
