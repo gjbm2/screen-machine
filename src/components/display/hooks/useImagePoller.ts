@@ -37,7 +37,7 @@ export const useImagePoller = (
   );
   
   // Detect image changes - always call this hook
-  const { lastCheckedUrl } = useImageChangeDetector(
+  const { lastCheckedUrl, isLoadingMetadata } = useImageChangeDetector(
     imageUrl,
     isLoading,
     isTransitioning,
@@ -75,6 +75,7 @@ export const useImagePoller = (
   return {
     handleManualCheck,
     isChecking,
-    lastCheckTime
+    lastCheckTime,
+    isLoadingMetadata
   };
 };

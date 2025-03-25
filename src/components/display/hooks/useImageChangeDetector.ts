@@ -1,5 +1,5 @@
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export const useImageChangeDetector = (
   imageUrl: string | null,
@@ -11,6 +11,8 @@ export const useImageChangeDetector = (
   const lastCheckedUrl = useRef<string | null>(null);
   // Track component mounted state
   const mountedRef = useRef<boolean>(true);
+  // Track metadata loading state
+  const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
   
   // Set mounted ref to false on unmount
   useEffect(() => {
@@ -33,16 +35,26 @@ export const useImageChangeDetector = (
       console.log('[useImageChangeDetector] New image URL detected, extracting metadata:', imageUrl);
       lastCheckedUrl.current = imageUrl;
       
-      extractMetadata(imageUrl).catch(err => {
-        if (mountedRef.current) {
-          console.error('[useImageChangeDetector] Error extracting metadata on URL change:', err);
-        }
-      });
+      // Set loading state to true before extraction
+      setIsLoadingMetadata(true);
+      
+      extractMetadata(imageUrl)
+        .catch(err => {
+          if (mountedRef.current) {
+            console.error('[useImageChangeDetector] Error extracting metadata on URL change:', err);
+          }
+        })
+        .finally(() => {
+          if (mountedRef.current) {
+            setIsLoadingMetadata(false);
+          }
+        });
     }
   }, [imageUrl, isLoading, isTransitioning, extractMetadata]);
   
   return {
     lastCheckedUrl,
-    mountedRef
+    mountedRef,
+    isLoadingMetadata
   };
 };
