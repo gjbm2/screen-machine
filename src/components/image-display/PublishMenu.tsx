@@ -21,13 +21,15 @@ interface PublishMenuProps {
   };
   isRolledUp?: boolean;
   showLabel?: boolean;
+  inFullscreenView?: boolean;
 }
 
 const PublishMenu: React.FC<PublishMenuProps> = ({ 
   imageUrl, 
   generationInfo,
   isRolledUp = false,
-  showLabel = true
+  showLabel = true,
+  inFullscreenView = false
 }) => {
   const publishDestinations = getPublishDestinations();
   
@@ -46,9 +48,15 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
     return IconComponent ? <IconComponent className="h-4 w-4 mr-2" /> : <Share className="h-4 w-4 mr-2" />;
   };
 
-  const buttonClass = isRolledUp
+  // Adjust button class based on context
+  let buttonClass = isRolledUp
     ? 'bg-white/20 hover:bg-white/30 text-white h-8 w-auto p-1.5 rounded-full text-xs'
     : 'bg-white/20 hover:bg-white/30 text-white h-9 px-3 py-2 rounded-full text-xs';
+
+  // If in fullscreen view, adjust the button styling to match other action buttons
+  if (inFullscreenView) {
+    buttonClass = 'bg-white/90 hover:bg-white text-black shadow-sm p-2 text-xs rounded-full flex items-center gap-1.5';
+  }
 
   return (
     <DropdownMenu>
