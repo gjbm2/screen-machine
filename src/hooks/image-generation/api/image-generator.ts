@@ -1,4 +1,3 @@
-
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -11,7 +10,7 @@ import { generateImageTitle } from './title-util';
 
 export interface ImageGenerationParams {
   prompt: string;
-  imageFiles?: File[] | string[];
+  imageFiles?: (File | string)[];
   workflow?: string;
   params?: Record<string, any>;
   globalParams?: Record<string, any>;
