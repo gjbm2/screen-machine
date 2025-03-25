@@ -1,7 +1,7 @@
 
 import { GeneratedImage } from '../types';
 import { ImageGenerationStatus } from '@/types/workflows';
-import { generateImageTitle } from './title-generator';
+import { generateImageTitle } from './title-util';
 
 /**
  * Creates placeholder images for a batch of generations
