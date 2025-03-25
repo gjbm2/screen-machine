@@ -38,8 +38,9 @@ export const useImageBatchItemActions = ({
   
   const handleCreateAgain = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    // Pass the batchId to create again in the same batch
     onCreateAgain(batchId);
-    // We no longer auto-roll up the batch when creating again
+    // We no longer roll up the batch when creating again (removed this behavior)
   }, [batchId, onCreateAgain]);
   
   // Add aliases for the functions that are expected in useImageBatchItem

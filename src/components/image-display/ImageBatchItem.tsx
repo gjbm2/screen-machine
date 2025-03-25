@@ -58,6 +58,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     isHovered,
     setIsHovered,
     showActionButtons,
+    setShowActionButtons,
     handleCreateAgain,
     handleUseAsInput,
     handleFullScreen,
@@ -84,7 +85,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
 
   return (
     <div 
-      className={`relative rounded-md overflow-hidden group ${viewMode === 'small' ? 'mb-1' : 'w-full'}`}
+      className={`relative rounded-md overflow-hidden group ${viewMode === 'small' ? 'mb-1' : 'w-full h-full'}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -104,12 +105,16 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         viewMode={viewMode} 
       />
       
-      <ImageNavigationButtons 
-        index={index}
-        total={total}
-        onNavigatePrev={onNavigatePrev}
-        onNavigateNext={onNavigateNext}
-      />
+      {/* Navigation buttons should always be visible when available, not hidden by hover overlay */}
+      <div className="absolute top-0 bottom-0 left-0 right-0 pointer-events-none z-20">
+        <ImageNavigationButtons 
+          index={index}
+          total={total}
+          onNavigatePrev={onNavigatePrev}
+          onNavigateNext={onNavigateNext}
+          alwaysVisible={!isRolledUp}
+        />
+      </div>
       
       {/* Fullscreen button in top right of the image on hover */}
       {showActions && viewMode === 'normal' && onFullScreen && isHovered && !isMobile && (

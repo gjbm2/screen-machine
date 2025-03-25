@@ -74,7 +74,7 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
   return (
     <div 
       ref={touchRef}
-      className={`grid ${getGridColumnsClass()} gap-2`}
+      className={`grid ${getGridColumnsClass()} gap-2 w-full`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
