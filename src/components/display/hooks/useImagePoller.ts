@@ -1,5 +1,5 @@
 
-import { useRef, useEffect, useState } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 import { DisplayParams } from '@/components/display/types';
 import { processOutputParam } from '@/components/display/utils';
 import { useInitialImageLoad } from './useInitialImageLoad';
@@ -31,7 +31,7 @@ export const useImagePoller = (
       console.log('[useImagePoller] Component unmounting');
       mountedRef.current = false;
     };
-  }, []);
+  }, []); // Empty dependency array is correct here
   
   // Call our hooks - always call them in the same order
   const { lastCheckedUrl, isLoadingMetadata } = useImageChangeDetector(
@@ -75,7 +75,7 @@ export const useImagePoller = (
   const { handleManualUpdate } = useManualImageUpdater(mountedRef);
   
   // Enhanced manual check that handles metadata refresh
-  const handleManualCheck = async (
+  const handleManualCheck = useCallback(async (
     currentImageUrl: string | null = null,
     originalHandleManualCheck: (() => Promise<boolean>) | null = null,
     currentParams: DisplayParams = params
@@ -85,7 +85,7 @@ export const useImagePoller = (
       originalHandleManualCheck || (async () => await Promise.resolve(false)), 
       currentParams
     );
-  };
+  }, [handleManualUpdate, imageUrl, params]);
 
   return {
     handleManualCheck,
