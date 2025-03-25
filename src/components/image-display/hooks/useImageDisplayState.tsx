@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import useFullscreen from './useFullscreen';
 import useImageSort from './useImageSort';
@@ -89,25 +88,16 @@ export const useImageDisplayState = (
   
   const handleSmallImageClick = (image: any) => {
     if (image?.url && image.batchId) {
-      // Find the actual index within the batch for this image
-      const batchImages = batches[image.batchId]?.filter(img => img.status === 'completed') || [];
-      const batchIndex = batchImages.findIndex(img => img.batchIndex === image.batchIndex);
-      
-      // Use the precise index if found, otherwise default to the first image (0)
-      const indexToUse = batchIndex !== -1 ? batchIndex : 0;
-      
-      console.log(`Opening fullscreen for image in batch ${image.batchId} at batch index ${indexToUse}`);
-      openFullScreenView(image.batchId, indexToUse);
+      console.log(`Opening fullscreen for image in batch ${image.batchId} with direct batchIndex ${image.batchIndex}`);
+      openFullScreenView(image.batchId, image.batchIndex);
     }
   };
 
   const handleTableRowClick = (batchId: string) => {
     const batchImages = batches[batchId]?.filter(img => img.status === 'completed');
     if (batchImages && batchImages.length > 0) {
-      // Always open the first image in fullscreen view, regardless of batch size
       openFullScreenView(batchId, 0);
     } else {
-      // If no completed images, just expand the container
       setExpandedContainers(prev => ({
         ...prev,
         [batchId]: true
@@ -116,7 +106,6 @@ export const useImageDisplayState = (
   };
   
   const getAllImages = () => {
-    // Return all individual images instead of just one per batch
     return generatedImages
       .filter(img => img.status === 'completed' || img.status === 'generating' || img.status === 'failed' || img.status === 'error')
       .sort((a, b) => {
