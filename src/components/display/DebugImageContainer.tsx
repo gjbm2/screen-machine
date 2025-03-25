@@ -7,6 +7,7 @@ import { useDebugImageContainer } from './debug/hooks/useDebugImageContainer';
 import { DebugImageHeader } from './debug/DebugImageHeader';
 import { DebugImageContent } from './debug/DebugImageContent';
 import { getContainerStyles } from './debug/utils/DebugContainerStyles';
+import { ScreenSize } from './debug/ScreenSizeSelector';
 
 interface DebugImageContainerProps {
   imageUrl: string | null;
