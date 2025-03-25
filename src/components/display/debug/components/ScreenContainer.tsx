@@ -39,20 +39,25 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
     const aspectRatio = selectedSizeObj.width / selectedSizeObj.height;
     
     // Determine max dimensions that fit within the parent
+    // Add extra padding to ensure we don't get too close to the edges
     let maxWidth = parentWidth - 40; // Padding
     let maxHeight = parentHeight - 40; // Padding
     
-    // Calculate dimensions based on aspect ratio
+    // Calculate dimensions based on aspect ratio while ensuring they fit in the viewport
     let width, height;
     
     // Calculate which dimension is the limiting factor
     if (maxWidth / aspectRatio <= maxHeight) {
-      width = maxWidth;
+      width = Math.min(maxWidth, window.innerWidth * 0.9);
       height = width / aspectRatio;
     } else {
-      height = maxHeight;
+      height = Math.min(maxHeight, window.innerHeight * 0.9);
       width = height * aspectRatio;
     }
+    
+    // Apply a maximum size constraint to prevent exceeding viewport
+    width = Math.min(width, window.innerWidth * 0.9);
+    height = Math.min(height, window.innerHeight * 0.9);
     
     // Set dimensions on the container
     screenContainerRef.current.style.width = `${width}px`;

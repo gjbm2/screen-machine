@@ -112,7 +112,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
     }
   }, [isFixedPanel, contentRef, containerWidth, containerHeight, handleImageLoad, imageRef]);
 
-  // Get container styles
+  // Get container styles - with fixed max height/width for panels
   const { cardStyles, innerStyles } = getContainerStyles({
     isFixedPanel,
     containerPosition,
@@ -130,7 +130,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       <DebugImageHeader
         showMode={showMode}
         position={position}
-        selectedSize={selectedSize}
+        selectedSize={selectedSize.name}
         setSelectedSize={handleSizeSelection}
         imageChanged={imageChanged}
         onSettingsChange={onSettingsChange}

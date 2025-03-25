@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
@@ -13,14 +14,18 @@ import { useEnhancedManualCheck } from '@/components/display/hooks/useEnhancedMa
 import { normalizePathForDisplay } from '../utils/paramUtils';
 
 export const useDisplayPage = () => {
+  // Get URL parameters and state management
   const { displayParams, updateParam, location } = useDisplayParams();
   const [previewParams, setPreviewParams] = useState(displayParams);
+  
+  // Refs for managing component lifecycle and state
   const mountedRef = useRef(true);
   const initialRenderRef = useRef(true);
   const hasProcessedOutputRef = useRef(false);
   const hasCheckedExplicitExitRef = useRef(false);
   const forceViewModeRef = useRef(false);
 
+  // Function to redirect to debug mode
   const redirectToDebugMode = () => {
     if (forceViewModeRef.current) {
       console.log('[useDisplayPage] Skipping debug mode redirect because forceViewMode is true');
@@ -29,6 +34,7 @@ export const useDisplayPage = () => {
     updateParam('debug', 'true');
   };
 
+  // Check if user explicitly exited debug mode before
   useEffect(() => {
     if (!hasCheckedExplicitExitRef.current && mountedRef.current) {
       hasCheckedExplicitExitRef.current = true;
@@ -54,6 +60,7 @@ export const useDisplayPage = () => {
     }
   }, [displayParams.debugMode]);
 
+  // Log debug information when params change
   useEffect(() => {
     console.log("[useDisplayPage] Debug mode active:", displayParams.debugMode);
     console.log("[useDisplayPage] ForceViewMode flag:", forceViewModeRef.current);
@@ -65,8 +72,10 @@ export const useDisplayPage = () => {
     }
   }, [displayParams]);
 
+  // Process output parameter if present
   useOutputProcessor(displayParams);
 
+  // Initialize display state with core functionality
   const {
     imageUrl,
     setImageUrl,
@@ -95,8 +104,10 @@ export const useDisplayPage = () => {
     extractMetadataFromImage
   } = useDisplayState(previewParams);
 
+  // Debug mode redirection handling
   const { checkDebugRedirection, userExplicitlyExitedDebugRef } = useDebugRedirection(displayParams, redirectToDebugMode);
 
+  // Sync user explicit exit flag with localStorage
   useEffect(() => {
     if (mountedRef.current) {
       try {
@@ -117,6 +128,7 @@ export const useDisplayPage = () => {
     }
   }, [userExplicitlyExitedDebugRef, displayParams.debugMode]);
 
+  // Process output parameter on first detection
   useEffect(() => {
     if (!mountedRef.current) return;
     
@@ -141,10 +153,12 @@ export const useDisplayPage = () => {
     }
   }, [displayParams.output, setImageUrl, setImageKey]);
 
+  // Reset output processing flag when URL changes
   useEffect(() => {
     hasProcessedOutputRef.current = false;
   }, [location.pathname, location.search]);
 
+  // Component lifecycle management
   useEffect(() => {
     mountedRef.current = true;
     console.log('[useDisplayPage] Component mounted');
@@ -155,6 +169,7 @@ export const useDisplayPage = () => {
     };
   }, []);
 
+  // Determine if debug redirection should occur
   useEffect(() => {
     if (!mountedRef.current) return;
     if (forceViewModeRef.current || userExplicitlyExitedDebugRef.current) {
@@ -164,30 +179,36 @@ export const useDisplayPage = () => {
     } else {
       checkDebugRedirection();
     }
-  }, [displayParams, displayParams.output, displayParams.debugMode, userExplicitlyExitedDebugRef]);
+  }, [displayParams, displayParams.output, displayParams.debugMode, userExplicitlyExitedDebugRef, checkDebugRedirection]);
 
+  // Metadata extraction management
   const { 
     attemptMetadataExtraction, 
     resetMetadataExtractionFlag 
   } = useMetadataManager(displayParams, imageUrl, extractMetadataFromImage);
 
+  // Extract metadata when image loads
   useEffect(() => {
     if (!mountedRef.current) return;
     
     if (!isLoading && !isTransitioning) {
       attemptMetadataExtraction(imageUrl, metadata, isLoading, isTransitioning);
     }
-  }, [displayParams, imageUrl, metadata, isLoading, isTransitioning]);
+  }, [displayParams, imageUrl, metadata, isLoading, isTransitioning, attemptMetadataExtraction]);
 
+  // Reset metadata extraction flag when image URL changes
   useEffect(() => {
     if (!mountedRef.current) return;
     resetMetadataExtractionFlag();
-  }, [imageUrl]);
+  }, [imageUrl, resetMetadataExtractionFlag]);
 
+  // Process caption based on metadata
   useCaptionProcessor(previewParams, metadata, imageUrl, setProcessedCaption);
 
+  // Load debug files if in debug mode
   useDebugFiles(displayParams.debugMode, setOutputFiles);
 
+  // Set up image polling if output parameter is present
   const { handleManualCheck: imagePollerHandleManualCheck, isChecking } = displayParams.output 
     ? useImagePoller(
         displayParams,
@@ -200,8 +221,10 @@ export const useDisplayPage = () => {
       )
     : { handleManualCheck: null, isChecking: false };
 
+  // Handle image loading errors
   const { handleImageError } = useImageErrorHandler(imageUrl, mountedRef);
 
+  // Enhanced manual check handling
   const { handleManualCheck } = useEnhancedManualCheck(
     mountedRef,
     imageUrl,
@@ -211,11 +234,13 @@ export const useDisplayPage = () => {
     extractMetadataFromImage
   );
 
+  // Sync preview params with display params
   useEffect(() => {
     if (!mountedRef.current) return;
     setPreviewParams(displayParams);
   }, [displayParams]);
 
+  // Handle initial render with output parameter
   useEffect(() => {
     if (initialRenderRef.current && displayParams.output) {
       console.log('[useDisplayPage] Initial render with output param:', displayParams.output);
@@ -237,6 +262,7 @@ export const useDisplayPage = () => {
     }
   }, [displayParams.output, setImageUrl, setImageKey]);
 
+  // Return all necessary state and functions
   return {
     params: displayParams,
     previewParams,
@@ -256,9 +282,9 @@ export const useDisplayPage = () => {
     newImageStyle,
     imageRef,
     nextCheckTime,
-    handleManualCheck: originalHandleManualCheck,
+    handleManualCheck,
     getImagePositionStyle,
-    handleImageError: useImageErrorHandler(imageUrl, mountedRef).handleImageError,
+    handleImageError,
     redirectToDebugMode,
     isChecking
   };
