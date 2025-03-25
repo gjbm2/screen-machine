@@ -11,6 +11,7 @@ export const useManualImageUpdater = (
     currentParams: DisplayParams
   ): Promise<boolean> => {
     console.log('[useManualImageUpdater] Manual update started');
+    console.log('[useManualImageUpdater] Current transition type:', currentParams.transition);
     
     if (!mountedRef.current) {
       console.log('[useManualImageUpdater] Component unmounted, skipping');
@@ -24,7 +25,7 @@ export const useManualImageUpdater = (
     
     try {
       // Call the original handler
-      console.log('[useManualImageUpdater] Calling original handler');
+      console.log('[useManualImageUpdater] Calling original handler with transition type:', currentParams.transition);
       return await originalHandleManualCheck();
     } catch (err) {
       console.error('[useManualImageUpdater] Error in manual update:', err);
