@@ -68,54 +68,57 @@ export const DebugImageContent: React.FC<DebugImageContentProps> = ({
   useEffect(() => {
     console.log('[DebugImageContent] Current imageUrl:', imageUrl);
     console.log('[DebugImageContent] Current imageKey:', imageKey);
-  }, [imageUrl, imageKey]);
+    console.log('[DebugImageContent] Selected size:', selectedSize);
+  }, [imageUrl, imageKey, selectedSize]);
 
   return (
     <CardContent 
-      className="p-0 flex-1 overflow-auto flex items-center justify-center"
+      className="p-0 flex-1 overflow-auto flex items-center justify-center relative"
       ref={contentRef}
     >
-      <ScreenContainer
-        selectedSize={selectedSize}
-        contentRef={contentRef}
-        containerWidth={containerWidth}
-        backgroundColor={backgroundColor}
-        onDimensionsChange={setContainerDimensions}
-      >
-        <ImageDisplay
-          imageUrl={imageUrl}
-          imageKey={imageKey}
-          showMode={showMode}
-          position={position}
+      <div className="absolute inset-0 flex items-center justify-center overflow-auto p-4">
+        <ScreenContainer
+          selectedSize={selectedSize}
+          contentRef={contentRef}
+          containerWidth={containerWidth}
           backgroundColor={backgroundColor}
-          onImageError={onImageError}
-          onImageLoad={onImageLoad}
-          imageDimensions={imageDimensions}
-          imageRef={imageRef}
-          getImageStyle={getImageStyleWithContext}
-        />
-        
-        {caption && (
-          <CaptionRenderer 
-            caption={caption}
-            position={captionPosition}
-            fontSize={captionSize}
-            color={captionColor}
-            fontFamily={captionFont}
-            backgroundColor={formattedCaptionBgColor}
-            backgroundOpacity={captionBgOpacity}
-            containerWidth={containerDimensions.width}
-            screenWidth={window.innerWidth}
-            screenSize={
-              selectedSize !== 'Current Viewport' 
-                ? SCREEN_SIZES.find(size => size.name === selectedSize) 
-                : undefined
-            }
+          onDimensionsChange={setContainerDimensions}
+        >
+          <ImageDisplay
+            imageUrl={imageUrl}
+            imageKey={imageKey}
+            showMode={showMode}
+            position={position}
+            backgroundColor={backgroundColor}
+            onImageError={onImageError}
+            onImageLoad={onImageLoad}
+            imageDimensions={imageDimensions}
+            imageRef={imageRef}
+            getImageStyle={getImageStyleWithContext}
           />
-        )}
-        
-        {onResizeStart && <ResizeHandle onMouseDown={onResizeStart} />}
-      </ScreenContainer>
+          
+          {caption && (
+            <CaptionRenderer 
+              caption={caption}
+              position={captionPosition}
+              fontSize={captionSize}
+              color={captionColor}
+              fontFamily={captionFont}
+              backgroundColor={formattedCaptionBgColor}
+              backgroundOpacity={captionBgOpacity}
+              containerWidth={containerDimensions.width}
+              screenWidth={window.innerWidth}
+              screenSize={
+                selectedSize !== 'Current Viewport' 
+                  ? SCREEN_SIZES.find(size => size.name === selectedSize) 
+                  : undefined
+              }
+            />
+          )}
+          
+          {onResizeStart && <ResizeHandle onMouseDown={onResizeStart} />}
+        </ScreenContainer>
+      </div>
     </CardContent>
   );
 };
