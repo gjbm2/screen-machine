@@ -60,7 +60,18 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   hidePrompt,
   onClose // New prop for closing
 }) => {
-  const activeImage = images[activeIndex];
+  // Log the activeIndex and images length to verify which image we're trying to display
+  console.log('DetailViewContent: activeIndex =', activeIndex, 'images.length =', images.length);
+  
+  // Make sure activeIndex is within bounds
+  const validatedActiveIndex = Math.max(0, Math.min(activeIndex, images.length - 1));
+  
+  // Log if there was a correction
+  if (validatedActiveIndex !== activeIndex) {
+    console.log('DetailViewContent: activeIndex corrected from', activeIndex, 'to', validatedActiveIndex);
+  }
+  
+  const activeImage = images[validatedActiveIndex];
   const [showReferenceImage, setShowReferenceImage] = useState(false);
   const [showImageInfo, setShowImageInfo] = useState(false);
   const referenceImageUrl = activeImage?.referenceImageUrl;
@@ -105,7 +116,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   };
   
   const handleDeleteImage = () => {
-    onDeleteImage(batchId, activeIndex);
+    onDeleteImage(batchId, validatedActiveIndex);
     if (onClose) {
       onClose();
     }
@@ -142,7 +153,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   return (
     <div className="flex flex-col h-full overflow-hidden min-h-0 min-w-0">
       <ImageKeyboardNavigation 
-        activeIndex={activeIndex}
+        activeIndex={validatedActiveIndex}
         imagesLength={images.length}
         onNavigatePrev={onNavigatePrev}
         onNavigateNext={onNavigateNext}
