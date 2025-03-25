@@ -64,6 +64,7 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
             image={mainImage}
             batchId={batchId}
             index={mainImage.batchIndex || 0}
+            total={completedImages.length}
             onCreateAgain={onCreateAgain}
             onDeleteImage={onDeleteImage}
             onUseAsInput={(url) => {
@@ -78,15 +79,20 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
                 onFullScreenClick(mainImage);
               }
             }}
-            displaySize="large"
             viewMode="normal"
+            onImageClick={(url) => onImageClick(url, mainImage.prompt || '')}
+            showActions={true}
+            isRolledUp={false}
           />
         ) : generatingImages.length > 0 ? (
-          <LoadingPlaceholder />
+          <LoadingPlaceholder prompt={generatingImages[0]?.prompt || null} />
         ) : failedImages.length > 0 ? (
-          <GenerationFailedPlaceholder onRetry={onCreateAgain} />
+          <GenerationFailedPlaceholder 
+            prompt={failedImages[0]?.prompt || null} 
+            onRetry={onCreateAgain}
+          />
         ) : (
-          <NewVariantPlaceholder onClick={onCreateAgain} />
+          <NewVariantPlaceholder batchId={batchId} onClick={onCreateAgain} />
         )}
       </div>
       
@@ -97,7 +103,7 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
           <ScrollArea className="w-full" type="scroll">
             <div className={`flex gap-1 py-1 overflow-x-auto ${thumbnailsAlignment === 'left' ? 'justify-start' : 'justify-end'}`}>
               {thumbnailsAlignment === 'left' 
-                ? [...completedImages].reverse().map((image, idx) => (
+                ? [...completedImages].map((image, idx) => (
                     <div 
                       key={`${image.batchId}-${image.batchIndex || idx}`}
                       className={`w-16 h-16 cursor-pointer rounded overflow-hidden flex-shrink-0 border-2 relative 
@@ -111,7 +117,7 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
                       />
                     </div>
                   ))
-                : completedImages.map((image, idx) => (
+                : [...completedImages].reverse().map((image, idx) => (
                     <div 
                       key={`${image.batchId}-${image.batchIndex || idx}`}
                       className={`w-16 h-16 cursor-pointer rounded overflow-hidden flex-shrink-0 border-2 relative 

@@ -4,19 +4,19 @@ import { Card } from '@/components/ui/card';
 import { Image } from 'lucide-react';
 
 interface LoadingPlaceholderProps {
-  prompt: string | null;
+  prompt?: string | null; // Made prompt optional
   imageNumber?: number;
   workflowName?: string;
   hasReferenceImages?: boolean;
-  isCompact?: boolean; // Added this prop
+  isCompact?: boolean;
 }
 
 const LoadingPlaceholder: React.FC<LoadingPlaceholderProps> = ({ 
-  prompt, 
+  prompt = null, // Default to null
   imageNumber, 
   workflowName,
   hasReferenceImages,
-  isCompact = false // Added with default value
+  isCompact = false
 }) => {
   // Determine what text to display
   let displayText = prompt;
