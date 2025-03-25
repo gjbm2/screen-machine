@@ -69,7 +69,7 @@ const FullscreenContent: React.FC<FullscreenContentProps> = ({
       <ImageDetailView
         batchId={batchId}
         images={completedImages}
-        activeIndex={activeArrayIndex}
+        activeIndex={activeArrayIndex} // THIS IS THE CRITICAL FIX: Use activeArrayIndex instead of 0
         onSetActiveIndex={(index) => {
           // When the user selects an image in the detail view,
           // we need to update the fullScreenImageIndex with the batchIndex of the selected image
