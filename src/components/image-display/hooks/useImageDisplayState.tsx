@@ -94,9 +94,11 @@ export const useImageDisplayState = (
 
   const handleTableRowClick = (batchId: string) => {
     const batchImages = batches[batchId]?.filter(img => img.status === 'completed');
-    if (batchImages && batchImages.length === 1) {
+    if (batchImages && batchImages.length > 0) {
+      // Always open the first image in fullscreen view, regardless of batch size
       openFullScreenView(batchId, 0);
     } else {
+      // If no completed images, just expand the container
       setExpandedContainers(prev => ({
         ...prev,
         [batchId]: true

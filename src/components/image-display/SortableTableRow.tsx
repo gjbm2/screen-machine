@@ -49,9 +49,6 @@ const SortableTableRow: React.FC<SortableTableRowProps> = ({
     return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
   };
 
-  // Use title if available, otherwise use prompt
-  const displayText = title || prompt;
-
   return (
     <TableRow 
       ref={setNodeRef} 
@@ -67,7 +64,7 @@ const SortableTableRow: React.FC<SortableTableRowProps> = ({
           {hasReferenceImage && (
             <Image className="h-4 w-4 text-primary mr-2 mt-1 flex-shrink-0" />
           )}
-          <span className="break-words whitespace-normal text-xs">{displayText}</span>
+          <span className="break-words whitespace-normal text-xs">{prompt}</span>
         </div>
       </TableCell>
       <TableCell className="text-center">{completedImages}</TableCell>
