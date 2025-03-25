@@ -72,31 +72,44 @@ export const processGenerationResults = (
     }
   });
   
+  // CRITICAL FIX: Create a unique index map to track used batchIndexes
+  const usedBatchIndexes = new Set<number>();
+  
   // Then update or add new images
-  response.images.forEach((responseImage: any, index: number) => {
-    console.log('Processing response image:', { index, responseImage });
+  response.images.forEach((responseImage: any, arrayIndex: number) => {
+    console.log('Processing response image:', { arrayIndex, responseImage });
     
-    // CRITICAL FIX: Ensure each image gets a unique batchIndex
+    // CRITICAL FIX: Determine a unique batchIndex for this image
     let batchIndex: number;
     
     // First check if the response includes a proper batch_index
     if (responseImage.batch_index !== undefined) {
       batchIndex = Number(responseImage.batch_index);
       console.log(`Using response-provided batch_index: ${batchIndex}`);
-    } else {
-      // If no batch_index in response, we need to ensure uniqueness
-      // If we have placeholder at this array position, use its batchIndex
-      if (index < batchPlaceholders.length) {
-        batchIndex = batchPlaceholders[index].batchIndex;
-        console.log(`Using placeholder batchIndex: ${batchIndex} for image at array position ${index}`);
-      } else {
-        // Last resort - use the array index itself to ensure uniqueness
-        batchIndex = index;
-        console.log(`Using array index as batchIndex: ${batchIndex}`);
-      }
+    } 
+    // Next try to match with a placeholder at same array position
+    else if (arrayIndex < batchPlaceholders.length) {
+      batchIndex = batchPlaceholders[arrayIndex].batchIndex;
+      console.log(`Using placeholder batchIndex: ${batchIndex} for image at array position ${arrayIndex}`);
+    } 
+    // Finally, use the array index as the batchIndex
+    else {
+      batchIndex = arrayIndex;
+      console.log(`Using array index as batchIndex: ${batchIndex}`);
     }
     
-    console.log(`Using batchIndex ${batchIndex} for image at array position ${index}`);
+    // CRITICAL FIX: If this batchIndex is already used, increment it until we find an unused one
+    // This ensures each image gets a unique batchIndex
+    let originalBatchIndex = batchIndex;
+    while (usedBatchIndexes.has(batchIndex)) {
+      batchIndex++;
+      console.log(`BUG FIX: Incrementing duplicate batchIndex from ${originalBatchIndex} to ${batchIndex}`);
+    }
+    
+    // Mark this batchIndex as used
+    usedBatchIndexes.add(batchIndex);
+    
+    console.log(`FINAL: Using batchIndex ${batchIndex} for image at array position ${arrayIndex}`);
     
     // Check if this image already exists
     const existingImageIndex = updatedImages.findIndex(
