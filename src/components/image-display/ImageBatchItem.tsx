@@ -4,7 +4,6 @@ import { ViewMode } from './ImageDisplay';
 import ImageActionButtons from './ImageActionButtons';
 import ImageNavigationButtons from './ImageNavigationButtons';
 import BatchCountDisplay from './BatchCountDisplay';
-import ImageActionsPanel from './ImageActionsPanel';
 import ImageBatchItemContent from './ImageBatchItemContent';
 import { useImageBatchItem } from './hooks/useImageBatchItem';
 
@@ -20,7 +19,7 @@ interface ImageBatchItemProps {
     status?: string;
     refiner?: string;
     referenceImageUrl?: string;
-    title?: string; // Add title field
+    title?: string;
   };
   batchId: string;
   index: number;
@@ -61,9 +60,9 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     handleUseAsInput,
     handleFullScreen,
     handleDeleteImage,
-    handleDeleteFromPanel,
+    handleDownload,
     handleImageClick,
-    shouldShowActionsMenu,
+    shouldShowActionButtons,
     isMobile
   } = useImageBatchItem({
     image,
@@ -94,21 +93,13 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         onClick={handleImageClick}
         viewMode={viewMode}
         hasReferenceImages={hasReferenceImages}
-        title={image.title} // Pass the title through
+        title={image.title}
       />
       
       <BatchCountDisplay 
         index={index} 
         total={total} 
         viewMode={viewMode} 
-      />
-      
-      <ImageActionButtons 
-        onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
-        onFullScreen={onFullScreen ? handleFullScreen : undefined}
-        viewMode={viewMode}
-        forceShow={isMobile && showActionButtons}
-        isRolledUp={isRolledUp}
       />
       
       <ImageNavigationButtons 
@@ -118,20 +109,17 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         onNavigateNext={onNavigateNext}
       />
       
-      {shouldShowActionsMenu && showActions && (
-        <ImageActionsPanel
-          show={shouldShowActionsMenu}
-          imageUrl={image.url}
-          onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
+      {/* Display image actions on hover in normal mode for desktop or on tap for mobile */}
+      {showActions && viewMode === 'normal' && (
+        <ImageActionButtons 
+          onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
+          onFullScreen={onFullScreen ? handleFullScreen : undefined}
           onUseAsInput={onUseAsInput ? handleUseAsInput : undefined}
-          onDeleteImage={onDeleteImage ? handleDeleteFromPanel : undefined}
-          generationInfo={{
-            prompt: image.prompt || '',
-            workflow: image.workflow || '',
-            params: image.params
-          }}
-          title={image.title} // Pass the title
-          referenceImageUrl={image.referenceImageUrl} // Pass the referenceImageUrl
+          onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
+          onDownload={handleDownload}
+          viewMode={viewMode}
+          forceShow={isMobile && showActionButtons}
+          isRolledUp={isRolledUp}
         />
       )}
     </div>
