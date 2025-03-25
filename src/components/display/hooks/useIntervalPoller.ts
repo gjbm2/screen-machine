@@ -1,84 +1,41 @@
 
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export const useIntervalPoller = (
   enabled: boolean,
-  intervalTime: number,
-  onPoll: () => void,
+  intervalSeconds: number,
+  callback: () => void,
   dependencies: any[] = []
 ) => {
-  // Use a ref to track the current interval ID
-  const intervalIdRef = useRef<number | null>(null);
-  // Track component mounted state
-  const mountedRef = useRef<boolean>(true);
+  const [isPolling, setIsPolling] = useState(false);
+  const callbackRef = useRef<() => void>(callback);
   
-  // Set mounted ref to false on unmount
+  // Update the callback ref when callback changes
   useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      
-      // Clear interval on unmount
-      if (intervalIdRef.current !== null) {
-        console.log('[useIntervalPoller] Clearing interval on unmount');
-        window.clearInterval(intervalIdRef.current);
-        intervalIdRef.current = null;
-      }
-    };
-  }, []);
+    callbackRef.current = callback;
+  }, [callback]);
   
-  // Setup and manage the interval
+  // Set up the interval that will call the latest callback from the ref
   useEffect(() => {
-    // Skip if polling is disabled, onPoll is not provided, or interval time is invalid
-    if (!enabled || typeof onPoll !== 'function' || intervalTime <= 0) {
-      // Clear any existing interval if disabled
-      if (intervalIdRef.current !== null) {
-        console.log('[useIntervalPoller] Clearing interval because polling is disabled');
-        window.clearInterval(intervalIdRef.current);
-        intervalIdRef.current = null;
-      }
-      return;
-    }
-    
-    console.log('[useIntervalPoller] Setting up polling interval:', intervalTime);
-    
-    // Clear any existing interval
-    if (intervalIdRef.current !== null) {
-      window.clearInterval(intervalIdRef.current);
-      intervalIdRef.current = null;
-    }
-    
-    // Create new interval, ensuring it doesn't poll too fast (minimum 1 second)
-    const safeIntervalTime = Math.max(1, intervalTime);
-    intervalIdRef.current = window.setInterval(() => {
-      if (!mountedRef.current) {
-        // Component unmounted, clear interval
-        if (intervalIdRef.current !== null) {
-          console.log('[useIntervalPoller] Component unmounted, clearing interval');
-          window.clearInterval(intervalIdRef.current);
-          intervalIdRef.current = null;
-        }
-        return;
-      }
+    // Only set up polling if enabled and we have a positive interval
+    if (enabled && intervalSeconds > 0) {
+      console.log(`[useIntervalPoller] Starting polling with interval: ${intervalSeconds} seconds`);
+      setIsPolling(true);
       
-      console.log('[useIntervalPoller] Executing poll at:', new Date().toISOString());
+      const intervalId = setInterval(() => {
+        console.log(`[useIntervalPoller] Interval triggered, calling callback`);
+        callbackRef.current();
+      }, intervalSeconds * 1000);
       
-      // Execute the polling callback
-      onPoll();
-    }, safeIntervalTime * 1000);
-    
-    // Clean up on dependency changes or unmount
-    return () => {
-      if (intervalIdRef.current !== null) {
-        console.log('[useIntervalPoller] Clearing interval due to dependency changes');
-        window.clearInterval(intervalIdRef.current);
-        intervalIdRef.current = null;
-      }
-    };
-  }, [enabled, intervalTime, onPoll, ...dependencies]);
+      return () => {
+        console.log(`[useIntervalPoller] Cleaning up interval`);
+        clearInterval(intervalId);
+        setIsPolling(false);
+      };
+    } else {
+      setIsPolling(false);
+    }
+  }, [enabled, intervalSeconds]); // Removed callback from dependencies to prevent resetting
   
-  return {
-    isPolling: intervalIdRef.current !== null,
-    mountedRef
-  };
+  return { isPolling };
 };
