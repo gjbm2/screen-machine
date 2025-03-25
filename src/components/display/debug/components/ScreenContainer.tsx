@@ -38,26 +38,29 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
     // Calculate aspect ratio of the selected size
     const aspectRatio = selectedSizeObj.width / selectedSizeObj.height;
     
-    // Determine max dimensions that fit within the parent
-    // Add extra padding to ensure we don't get too close to the edges
-    let maxWidth = parentWidth - 40; // Padding
-    let maxHeight = parentHeight - 40; // Padding
+    // Apply maximum bounds to ensure the container fits within the viewport
+    // with extra padding to prevent touching the edges
+    const maxWidth = Math.min(parentWidth - 40, window.innerWidth * 0.8);
+    const maxHeight = Math.min(parentHeight - 40, window.innerHeight * 0.8);
     
-    // Calculate dimensions based on aspect ratio while ensuring they fit in the viewport
+    // Calculate dimensions that preserve aspect ratio and fit within bounds
     let width, height;
     
-    // Calculate which dimension is the limiting factor
     if (maxWidth / aspectRatio <= maxHeight) {
-      width = Math.min(maxWidth, window.innerWidth * 0.9);
+      // Width is the limiting factor
+      width = maxWidth;
       height = width / aspectRatio;
     } else {
-      height = Math.min(maxHeight, window.innerHeight * 0.9);
+      // Height is the limiting factor
+      height = maxHeight;
       width = height * aspectRatio;
     }
     
-    // Apply a maximum size constraint to prevent exceeding viewport
-    width = Math.min(width, window.innerWidth * 0.9);
-    height = Math.min(height, window.innerHeight * 0.9);
+    console.log('[ScreenContainer] Calculated dimensions:', {
+      parentWidth, parentHeight, maxWidth, maxHeight,
+      finalWidth: width, finalHeight: height,
+      selectedSize, aspectRatio
+    });
     
     // Set dimensions on the container
     screenContainerRef.current.style.width = `${width}px`;

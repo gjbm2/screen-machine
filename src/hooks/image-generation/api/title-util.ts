@@ -10,9 +10,20 @@ export const getNextImageNumber = (): number => {
     window.imageCounter = 0;
   }
   
-  // Increment counter and return new value
-  window.imageCounter += 1;
+  // Return current value without incrementing
   return window.imageCounter;
+};
+
+// Increment the counter (only call this when initiating a new generation)
+export const incrementImageCounter = (): void => {
+  // Initialize counter if it doesn't exist yet
+  if (typeof window.imageCounter === 'undefined') {
+    window.imageCounter = 0;
+  }
+  
+  // Increment counter
+  window.imageCounter += 1;
+  console.log('[incrementImageCounter] New counter value:', window.imageCounter);
 };
 
 // Generate a formatted title with the current counter, prompt, and workflow
