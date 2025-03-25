@@ -105,6 +105,16 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
                   </div>
                 );
             })}
+            
+            {/* Add placeholder thumbnails for generating images */}
+            {anyGenerating && (
+              <div className="w-14 h-14 rounded-md overflow-hidden">
+                <LoadingPlaceholder 
+                  prompt={null} 
+                  isCompact={true}
+                />
+              </div>
+            )}
           </div>
           
           <div className="flex justify-center">
