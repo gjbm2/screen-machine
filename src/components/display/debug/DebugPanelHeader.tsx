@@ -3,7 +3,7 @@ import React from 'react';
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { RefreshCw, Copy, Check, Eye, Trash2, Settings } from "lucide-react";
+import { RefreshCw, Copy, Check, Eye, Trash2, Settings, Loader2 } from "lucide-react";
 
 interface DebugPanelHeaderProps {
   onCheckNow: () => void;
@@ -16,6 +16,7 @@ interface DebugPanelHeaderProps {
   showingPreview?: boolean;
   isMobile?: boolean;
   isTopFixed?: boolean;
+  isChecking?: boolean;
 }
 
 export const DebugPanelHeader: React.FC<DebugPanelHeaderProps> = ({
@@ -28,7 +29,8 @@ export const DebugPanelHeader: React.FC<DebugPanelHeaderProps> = ({
   togglePreview,
   showingPreview,
   isMobile,
-  isTopFixed = true
+  isTopFixed = true,
+  isChecking = false
 }) => {
   return (
     <CardHeader className={`pb-2 flex flex-col gap-2 bg-card z-30 border-b ${
@@ -63,8 +65,17 @@ export const DebugPanelHeader: React.FC<DebugPanelHeaderProps> = ({
       
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center gap-1 text-muted-foreground">
-          <RefreshCw className="h-3 w-3 mr-1" />
-          <span>Last checked: {formatTime(lastChecked)}</span>
+          {isChecking ? (
+            <>
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              <span>Checking for updates...</span>
+            </>
+          ) : (
+            <>
+              <RefreshCw className="h-3 w-3 mr-1" />
+              <span>Last checked: {formatTime(lastChecked)}</span>
+            </>
+          )}
           
           <TooltipProvider>
             <Tooltip>
@@ -74,8 +85,9 @@ export const DebugPanelHeader: React.FC<DebugPanelHeaderProps> = ({
                   size="icon"
                   onClick={onCheckNow}
                   className="h-6 w-6 ml-1"
+                  disabled={isChecking}
                 >
-                  <RefreshCw className="h-3 w-3" />
+                  <RefreshCw className={`h-3 w-3 ${isChecking ? 'animate-spin' : ''}`} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>

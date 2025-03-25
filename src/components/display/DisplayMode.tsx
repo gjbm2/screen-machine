@@ -29,6 +29,7 @@ interface DisplayModeProps {
   onHandleManualCheck: () => void;
   onImageError: () => void;
   getImagePositionStyle: (position: DisplayParams['position'], showMode: DisplayParams['showMode'], containerWidth: number, containerHeight: number, imageWidth: number, imageHeight: number) => React.CSSProperties;
+  isChecking?: boolean;
 }
 
 export const DisplayMode: React.FC<DisplayModeProps> = ({
@@ -50,7 +51,8 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   newImageStyle,
   onHandleManualCheck,
   onImageError,
-  getImagePositionStyle
+  getImagePositionStyle,
+  isChecking = false
 }) => {
   const isMobile = useIsMobile();
   const [showPreview, setShowPreview] = useState(!isMobile);
@@ -128,6 +130,7 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
             togglePreview={toggleView}
             showingPreview={showPreview}
             isMobile={isMobile}
+            isChecking={isChecking}
           />
         </div>
         

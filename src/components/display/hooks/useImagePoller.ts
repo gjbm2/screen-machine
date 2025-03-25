@@ -50,7 +50,7 @@ export const useImagePoller = (
   // Log the polling state
   console.log('[useImagePoller] Polling enabled:', isPollingEnabled, 'Refresh interval:', params.refreshInterval);
   
-  const { pollNow } = useImageCheckPoller(
+  const { pollNow, isChecking, lastCheckTime } = useImageCheckPoller(
     processedUrl,
     params.refreshInterval,
     isLoading,
@@ -74,6 +74,8 @@ export const useImagePoller = (
   };
 
   return {
-    handleManualCheck
+    handleManualCheck,
+    isChecking,
+    lastCheckTime
   };
 };

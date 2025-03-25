@@ -1,5 +1,5 @@
 
-import { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 import { useIntervalPoller } from './useIntervalPoller';
 
 export const useImageCheckPoller = (
@@ -14,6 +14,8 @@ export const useImageCheckPoller = (
 ) => {
   // Create refs to avoid dependency cycles
   const mountedRef = useRef<boolean>(true);
+  const [isChecking, setIsChecking] = useState(false);
+  const [lastCheckTime, setLastCheckTime] = useState<Date | null>(null);
   
   // Set up the mounted ref
   useEffect(() => {
@@ -30,8 +32,13 @@ export const useImageCheckPoller = (
     }
     
     console.log('[useImageCheckPoller] Checking for image updates...');
+    setIsChecking(true);
+    
     checkImageModified(outputUrl).then(changed => {
       if (!mountedRef.current) return; // Skip if component unmounted
+      
+      setIsChecking(false);
+      setLastCheckTime(new Date());
       
       if (changed) {
         console.log('[useImageCheckPoller] Image changed, reloading...');
@@ -47,6 +54,8 @@ export const useImageCheckPoller = (
       }
     }).catch(err => {
       if (mountedRef.current) {
+        setIsChecking(false);
+        setLastCheckTime(new Date());
         console.error('[useImageCheckPoller] Error checking image modifications:', err);
       }
     });
@@ -63,6 +72,8 @@ export const useImageCheckPoller = (
   return {
     mountedRef,
     pollNow: handlePoll,
-    isPolling
+    isPolling,
+    isChecking,
+    lastCheckTime
   };
 };

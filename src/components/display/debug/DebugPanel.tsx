@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card } from "@/components/ui/card";
 import { Tabs } from "@/components/ui/tabs";
@@ -26,6 +25,7 @@ interface DebugPanelProps {
   togglePreview?: () => void;
   showingPreview?: boolean;
   isMobile?: boolean;
+  isChecking?: boolean;
 }
 
 export const DebugPanel: React.FC<DebugPanelProps> = ({
@@ -44,7 +44,8 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   isFixedPanel = false,
   togglePreview,
   showingPreview,
-  isMobile
+  isMobile,
+  isChecking = false
 }) => {
   const {
     activeTab,
@@ -146,6 +147,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         togglePreview={togglePreview}
         showingPreview={showingPreview}
         isMobile={isMobile}
+        isChecking={isChecking}
       />
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col overflow-hidden">
