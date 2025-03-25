@@ -12,15 +12,17 @@ export interface ScreenSize {
 // Define screen sizes with sensible defaults that work well within viewports
 export const SCREEN_SIZES: ScreenSize[] = [
   { name: 'Current Viewport', width: window.innerWidth * 0.8, height: window.innerHeight * 0.8 },
+  { name: 'iPhone (375x667)', width: 375, height: 667 },
+  { name: 'iPhone Landscape (667x375)', width: 667, height: 375 },
+  { name: 'iPad (768x1024)', width: 768, height: 1024 },
+  { name: 'iPad Landscape (1024x768)', width: 1024, height: 768 },
   { name: 'HD (1280x720)', width: 1280, height: 720 },
   { name: 'HD Portrait (720x1280)', width: 720, height: 1280 },
   { name: 'Full HD (1920x1080)', width: 1920, height: 1080 },
   { name: 'Full HD Portrait (1080x1920)', width: 1080, height: 1920 },
-  { name: 'iPad (768x1024)', width: 768, height: 1024 },
-  { name: 'iPad Landscape (1024x768)', width: 1024, height: 768 },
-  { name: 'iPhone (375x667)', width: 375, height: 667 },
-  { name: 'iPhone Landscape (667x375)', width: 667, height: 375 },
-  // Ultra-high resolutions removed to prevent viewport issues
+  // High resolution options with controlled sizes
+  { name: '2K (2560x1440)', width: 2560, height: 1440 },
+  { name: '4K (3840x2160)', width: 3840, height: 2160 },
 ];
 
 export interface ScreenSizeSelectorProps {
