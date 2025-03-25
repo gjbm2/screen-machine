@@ -61,6 +61,8 @@ export const useIntervalPoller = (
         return;
       }
       
+      console.log('[useIntervalPoller] Executing poll at:', new Date().toISOString());
+      
       // Execute the polling callback
       onPoll();
     }, safeIntervalTime * 1000);

@@ -2,7 +2,7 @@
 import React from 'react';
 import { SortField, SortDirection } from '../ImageDisplay';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowUp, ArrowDown, Image } from 'lucide-react';
+import { ArrowUp, ArrowDown } from 'lucide-react';
 import SortableTableRow from '../SortableTableRow';
 
 interface TableViewProps {
@@ -26,22 +26,9 @@ const TableView: React.FC<TableViewProps> = ({
     <div className="w-full overflow-x-auto">
       <Table>
         <TableHeader>
-          <TableRow>
+          <TableRow className="text-xs">
             <TableHead 
-              className="w-[80px] cursor-pointer" 
-              onClick={() => onSortClick('index')}
-            >
-              <div className="flex items-center space-x-1">
-                <span>No.</span>
-                {sortField === 'index' && (
-                  sortDirection === 'asc' ? 
-                  <ArrowUp className="h-3 w-3" /> : 
-                  <ArrowDown className="h-3 w-3" />
-                )}
-              </div>
-            </TableHead>
-            <TableHead 
-              className="cursor-pointer max-w-[200px] md:max-w-[300px]"
+              className="cursor-pointer max-w-[200px] md:max-w-[300px] py-1 px-2"
               onClick={() => onSortClick('prompt')}
             >
               <div className="flex items-center space-x-1">
@@ -54,7 +41,14 @@ const TableView: React.FC<TableViewProps> = ({
               </div>
             </TableHead>
             <TableHead 
-              className="w-[80px] text-center cursor-pointer"
+              className="w-[80px] cursor-pointer py-1 px-2"
+            >
+              <div className="flex items-center space-x-1">
+                <span>Workflow</span>
+              </div>
+            </TableHead>
+            <TableHead 
+              className="w-[60px] text-center cursor-pointer py-1 px-2"
               onClick={() => onSortClick('batchSize')}
             >
               <div className="flex items-center justify-center space-x-1">
@@ -67,7 +61,7 @@ const TableView: React.FC<TableViewProps> = ({
               </div>
             </TableHead>
             <TableHead 
-              className="w-[120px] cursor-pointer"
+              className="w-[80px] cursor-pointer py-1 px-2"
               onClick={() => onSortClick('timestamp')}
             >
               <div className="flex items-center space-x-1">
@@ -90,16 +84,13 @@ const TableView: React.FC<TableViewProps> = ({
             const completedImages = batchImages.filter(img => img.status === 'completed');
             const hasReferenceImage = !!firstImage.referenceImageUrl;
             
-            // Extract numeric image ID from containerId or fallback to 0
-            const imageNumber = firstImage.containerId || 0;
-            
             return (
               <SortableTableRow 
                 key={batchId}
                 id={batchId}
                 onClick={() => onTableRowClick(batchId)}
-                index={imageNumber}
                 prompt={firstImage.prompt}
+                workflow={firstImage.workflow || '—'}
                 hasReferenceImage={hasReferenceImage}
                 completedImages={completedImages.length}
                 timestamp={firstImage.timestamp}
