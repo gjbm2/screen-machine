@@ -41,7 +41,14 @@ const useFullscreenDialog = ({
       
       if (completedImages.length > 0) {
         // Find the image with the matching batchIndex
-        const targetImage = completedImages.find(img => img.batchIndex === fullScreenImageIndex);
+        // CRITICAL FIX: Log all batchIndexes to verify what we're searching through
+        console.log('FullscreenDialog - Available batchIndexes:', completedImages.map(img => ({
+          batchIndex: img.batchIndex,
+          type: typeof img.batchIndex
+        })));
+        
+        // Find the image with the matching batchIndex - convert both sides to numbers to ensure correct comparison
+        const targetImage = completedImages.find(img => Number(img.batchIndex) === Number(fullScreenImageIndex));
         
         if (targetImage) {
           console.log('FullscreenDialog - found matching image with batchIndex', fullScreenImageIndex);
@@ -58,8 +65,10 @@ const useFullscreenDialog = ({
         } else {
           // If we can't find the exact image, use a valid index as fallback
           console.log('FullscreenDialog - could not find exact match for batchIndex', fullScreenImageIndex, 'using fallback');
-          const validIndex = Math.min(0, completedImages.length - 1);
+          // CRITICAL FIX: Use first image (index 0) only as a last resort, not the default behavior
+          const validIndex = Math.max(0, Math.min(completedImages.length - 1));
           const fallbackImage = completedImages[validIndex];
+          console.log('FullscreenDialog - using fallback image with batchIndex:', fallbackImage?.batchIndex);
           setCurrentImage(fallbackImage);
           
           if (fallbackImage?.prompt) {
