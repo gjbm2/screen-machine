@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -91,8 +90,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <SelectValue placeholder="Select display mode" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="fit">Fit</SelectItem>
                 <SelectItem value="fill">Fill</SelectItem>
+                <SelectItem value="fit">Fit</SelectItem>
                 <SelectItem value="stretch">Stretch</SelectItem>
                 <SelectItem value="actual">Actual Size</SelectItem>
               </SelectContent>

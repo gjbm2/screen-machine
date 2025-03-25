@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -49,8 +48,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <SelectValue placeholder="Select mode" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="fit">Fit</SelectItem>
                 <SelectItem value="fill">Fill</SelectItem>
+                <SelectItem value="fit">Fit</SelectItem>
                 <SelectItem value="actual">Actual Size</SelectItem>
                 <SelectItem value="stretch">Stretch</SelectItem>
               </SelectContent>
