@@ -5,15 +5,15 @@ import { AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface GenerationFailedPlaceholderProps {
-  prompt?: string | null; // Made prompt optional
+  prompt: string | null;
   onRetry?: () => void;
   onRemove?: () => void;
   isCompact?: boolean;
-  errorMessage?: string;
+  errorMessage?: string; // Added error message property for more detailed errors
 }
 
 const GenerationFailedPlaceholder: React.FC<GenerationFailedPlaceholderProps> = ({ 
-  prompt = null, // Default to null
+  prompt, 
   onRetry,
   onRemove,
   isCompact = false,

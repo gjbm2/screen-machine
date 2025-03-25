@@ -101,7 +101,6 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
         <PublishMenu 
           imageUrl={imageUrl}
           generationInfo={generationInfo}
-          inFullscreenView={true}
         />
         
         {/* Separator */}
