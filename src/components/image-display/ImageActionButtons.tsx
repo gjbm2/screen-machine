@@ -53,7 +53,7 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
   // Only show on hover/force for normal view
   const baseVisibilityClass = viewMode === 'small' 
     ? 'opacity-100' 
-    : 'opacity-0 group-hover:opacity-100 transition-opacity duration-100';
+    : 'opacity-100'; // Changed from 'opacity-0 group-hover:opacity-100 transition-opacity duration-100' to always show buttons
   
   const visibilityClass = forceShow || isHovered ? 'opacity-100' : baseVisibilityClass;
 
