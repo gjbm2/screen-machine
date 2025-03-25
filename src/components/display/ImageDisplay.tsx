@@ -186,6 +186,17 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     >
       {imageUrl ? (
         <div className="relative w-full h-full">
+          {/* Important: Reversed the order - the old image needs to be rendered first */}
+          {/* Transitioning old image (for fades) */}
+          {isTransitioning && oldImageUrl && (
+            <img
+              src={oldImageUrl}
+              alt=""
+              style={oldImageStyle}
+              crossOrigin="anonymous"
+            />
+          )}
+          
           {/* Main image (or new image during transition) */}
           <img
             key={imageKey}
@@ -197,16 +208,6 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
             onLoad={() => console.log('[ImageDisplay] Image loaded successfully:', imageUrl)}
             crossOrigin="anonymous"
           />
-          
-          {/* Transitioning old image (for fades) */}
-          {isTransitioning && oldImageUrl && (
-            <img
-              src={oldImageUrl}
-              alt=""
-              style={oldImageStyle}
-              crossOrigin="anonymous"
-            />
-          )}
           
           {/* Only show caption when not transitioning */}
           {shouldShowCaption && (
