@@ -28,20 +28,12 @@ export const createPlaceholderBatch = (
   console.log('[placeholder-utils] With refiner:', refiner);
   console.log('[placeholder-utils] With refinerParams:', refinerParams);
   
-  // CRITICAL FIX: Ensure each placeholder gets a unique and sequential batchIndex
   for (let i = 0; i < batchSize; i++) {
-    // IMPORTANT: Each image must have a unique batchIndex
-    // If this index already exists in the batch, find the next available index
-    let batchIndex = i;
-    while (existingBatchIndexes.has(batchIndex)) {
-      batchIndex++;
-      console.log('[placeholder-utils] Adjusting batchIndex to avoid conflict, now using:', batchIndex);
+    // If this index already exists in the batch, skip it
+    if (existingBatchIndexes.has(i)) {
+      console.log('[placeholder-utils] Skipping existing batch index', i);
+      continue;
     }
-    
-    // Mark this index as used to prevent duplicates
-    existingBatchIndexes.add(batchIndex);
-    
-    console.log('[placeholder-utils] Creating placeholder with batchIndex:', batchIndex);
     
     const placeholder: GeneratedImage = {
       url: '', // Adding empty url to satisfy the GeneratedImage type
@@ -50,7 +42,7 @@ export const createPlaceholderBatch = (
       prompt,
       workflow,
       timestamp: Date.now(),
-      batchIndex: batchIndex, // Use the unique batchIndex
+      batchIndex: i,
       params,
       refiner,
       refinerParams,
@@ -61,8 +53,7 @@ export const createPlaceholderBatch = (
     placeholders.push(placeholder);
   }
   
-  console.log('[placeholder-utils] Created', placeholders.length, 'placeholders with batchIndexes:', 
-    placeholders.map(p => p.batchIndex));
+  console.log('[placeholder-utils] Created', placeholders.length, 'placeholders');
   
   return placeholders;
 };
