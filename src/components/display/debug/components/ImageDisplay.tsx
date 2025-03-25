@@ -41,19 +41,13 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   // Log the actual image URL we're trying to load
   console.log('[ImageDisplay] Attempting to load image from URL:', imageUrl);
   
-  // Compute final style with all needed properties
-  const finalStyle = {
-    ...getImageStyle(),
-    maxWidth: '100%',
-    maxHeight: '100%',
-  };
-  
   return (
     <img
       ref={imageRef}
       key={`image-${imageKey}`}
       src={imageUrl}
       alt="Preview"
+      className="max-w-full max-h-full"
       onLoad={(e) => {
         console.log('[ImageDisplay] Image loaded successfully:', imageUrl);
         onImageLoad(e);
@@ -62,8 +56,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
         console.error('[ImageDisplay] Error loading image:', imageUrl, e);
         onImageError();
       }}
-      style={finalStyle}
-      crossOrigin="anonymous"
+      style={getImageStyle()}
     />
   );
 };

@@ -35,8 +35,7 @@ export const useTransitionEffect = () => {
       console.log('[useTransitionEffect] Fast fade transition: duration =', duration);
     }
     
-    // IMPORTANT FIX: Ensure the old image is displayed on top initially with z-index 10
-    // The new image should be behind it with z-index 5
+    // Set up the old image to be visible initially
     setOldImageStyle({
       position: 'absolute',
       top: 0,
@@ -45,11 +44,11 @@ export const useTransitionEffect = () => {
       bottom: 0,
       transition: `opacity ${duration}s ease-in-out`,
       opacity: 1,
-      zIndex: 10, // Higher z-index to be visible initially
+      zIndex: 2,
       ...getPositionStyle(position, showMode)
     });
     
-    // Set up the new image to be invisible initially but ready to fade in
+    // Set up the new image to be invisible initially
     setNewImageStyle({
       position: 'absolute',
       top: 0,
@@ -57,7 +56,7 @@ export const useTransitionEffect = () => {
       right: 0,
       bottom: 0,
       opacity: 0,
-      zIndex: 5, // Lower z-index initially
+      zIndex: 1,
       ...getPositionStyle(position, showMode)
     });
     
@@ -74,39 +73,28 @@ export const useTransitionEffect = () => {
     setTimeout(() => {
       console.log('[useTransitionEffect] Starting fade transition animation');
       
-      // IMPORTANT FIX: When fading, change the z-index of the new image to be above the old one
-      // First make sure the new image is ready with transition property
-      setNewImageStyle(prev => ({
+      // Fade out the old image
+      setOldImageStyle(prev => ({
         ...prev,
-        transition: `opacity ${duration}s ease-in-out`,
-        zIndex: 10 // Move new image to front during transition
+        opacity: 0
       }));
       
-      // Small additional delay to ensure the transition property is applied
+      // Fade in the new image
+      setNewImageStyle(prev => ({
+        ...prev,
+        opacity: 1,
+        transition: `opacity ${duration}s ease-in-out`
+      }));
+      
+      // After the transition duration, clean up and notify completion
       setTimeout(() => {
-        // Now fade out the old image
-        setOldImageStyle(prev => ({
-          ...prev,
-          opacity: 0,
-          zIndex: 5 // Move old image to back during transition
-        }));
+        console.log('[useTransitionEffect] Fade transition complete');
+        setIsTransitioning(false);
+        setOldImageUrl(null);
         
-        // And fade in the new image
-        setNewImageStyle(prev => ({
-          ...prev,
-          opacity: 1
-        }));
-        
-        // After the transition duration, clean up and notify completion
-        setTimeout(() => {
-          console.log('[useTransitionEffect] Fade transition complete');
-          setIsTransitioning(false);
-          setOldImageUrl(null);
-          
-          // Execute the completion callback
-          onComplete();
-        }, duration * 1000);
-      }, 50);
+        // Execute the completion callback
+        onComplete();
+      }, duration * 1000);
     }, 50);
   };
 

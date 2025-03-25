@@ -18,7 +18,7 @@ export const getDefaultParams = (): DisplayParams => {
     captionFont: 'Helvetica, Arial, sans-serif', // Default font family is Helvetica
     captionBgColor: '#000000',
     captionBgOpacity: 0.5,
-    transition: 'fade-fast',
+    transition: 'fade',
     debugMode: false
   };
 };
