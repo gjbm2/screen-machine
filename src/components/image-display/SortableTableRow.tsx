@@ -58,7 +58,7 @@ const SortableTableRow: React.FC<SortableTableRowProps> = ({
       {...attributes}
       {...listeners}
     >
-      <TableCell className="py-1 px-2">
+      <TableCell className="py-0.5 px-1">
         <div className="flex items-start max-w-[180px] md:max-w-[240px]">
           {hasReferenceImage && (
             <Image className="h-3 w-3 text-primary mr-1 mt-1 flex-shrink-0" />
@@ -66,9 +66,9 @@ const SortableTableRow: React.FC<SortableTableRowProps> = ({
           <span className="break-words whitespace-normal text-xs">{prompt}</span>
         </div>
       </TableCell>
-      <TableCell className="py-1 px-2 text-xs">{workflow}</TableCell>
-      <TableCell className="text-center py-1 px-2">{completedImages}</TableCell>
-      <TableCell className="py-1 px-2">{formatTimeAgo(timestamp)}</TableCell>
+      <TableCell className="py-0.5 px-1 text-xs">{workflow}</TableCell>
+      <TableCell className="text-center py-0.5 px-1">{completedImages}</TableCell>
+      <TableCell className="py-0.5 px-1 text-xs">{formatTimeAgo(timestamp)}</TableCell>
     </TableRow>
   );
 };

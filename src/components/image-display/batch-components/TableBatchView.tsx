@@ -26,7 +26,7 @@ const TableBatchView: React.FC<TableBatchViewProps> = ({
             {completedImages.map((image, index) => (
               <TableRow key={`${batchId}-${index}`} className="text-xs">
                 <TableCell className="p-0.5">
-                  <div className="w-12 h-12 overflow-hidden rounded">
+                  <div className="w-10 h-10 overflow-hidden rounded">
                     <img 
                       src={image.url}
                       alt={image.prompt}
@@ -42,7 +42,7 @@ const TableBatchView: React.FC<TableBatchViewProps> = ({
                   <Button 
                     variant="ghost" 
                     size="icon" 
-                    className="h-6 w-6"
+                    className="h-5 w-5"
                     onClick={() => onDeleteImage(batchId, image.batchIndex)}
                   >
                     <Trash2 className="h-3 w-3" />
