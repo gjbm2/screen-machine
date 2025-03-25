@@ -10,7 +10,11 @@ export const useCaptionProcessor = (
 ) => {
   // Process captions by replacing metadata tags
   useEffect(() => {
-    if (!imageUrl) return;
+    if (!imageUrl) {
+      console.log('[useCaptionProcessor] No image URL, clearing caption');
+      setProcessedCaption(null);
+      return;
+    }
 
     if (previewParams.caption) {
       console.log('[useCaptionProcessor] Processing caption:', previewParams.caption);
@@ -22,6 +26,7 @@ export const useCaptionProcessor = (
       console.log('[useCaptionProcessor] Processed caption result:', newCaption);
       setProcessedCaption(newCaption);
     } else {
+      console.log('[useCaptionProcessor] No caption in params, clearing caption');
       setProcessedCaption(null);
     }
   }, [previewParams.caption, metadata, imageUrl, setProcessedCaption]);
