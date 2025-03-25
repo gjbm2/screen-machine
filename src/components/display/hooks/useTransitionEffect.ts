@@ -44,19 +44,20 @@ export const useTransitionEffect = () => {
       bottom: 0,
       transition: `opacity ${duration}s ease-in-out`,
       opacity: 1,
-      zIndex: 1, // Change this to 1 (lower z-index)
+      zIndex: 1,
       ...getPositionStyle(position, showMode)
     });
     
-    // Set up the new image to be invisible initially
+    // Set up the new image to be invisible initially - CRITICAL FIX: add transition property here
     setNewImageStyle({
       position: 'absolute',
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
+      transition: `opacity ${duration}s ease-in-out`, // Add transition property from the start
       opacity: 0,
-      zIndex: 2, // Change this to 2 (higher z-index)
+      zIndex: 2,
       ...getPositionStyle(position, showMode)
     });
     
@@ -79,11 +80,10 @@ export const useTransitionEffect = () => {
         opacity: 0
       }));
       
-      // Fade in the new image
+      // Fade in the new image - no need to add transition again as it's already there
       setNewImageStyle(prev => ({
         ...prev,
-        opacity: 1,
-        transition: `opacity ${duration}s ease-in-out`
+        opacity: 1
       }));
       
       // After the transition duration, clean up and notify completion
