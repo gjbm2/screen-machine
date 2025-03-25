@@ -55,10 +55,10 @@ export const useImageBatchItem = ({
   } = useImageBatchItemActions({
     batchId,
     batchIndex: index,
-    onOpenFullscreenView: onFullScreen || (() => {}),
-    onUseGeneratedAsInput: onUseAsInput || (() => {}),
-    onDeleteImage: onDeleteImage || (() => {}),
-    onCreateAgain: onCreateAgain || (() => {}),
+    onOpenFullscreenView: onFullScreen || ((batchId: string, index: number) => {}),
+    onUseGeneratedAsInput: onUseAsInput || ((url: string) => {}),
+    onDeleteImage: onDeleteImage || ((batchId: string, index: number) => {}),
+    onCreateAgain: onCreateAgain || ((batchId: string) => {}),
     imageUrl: image.url
   });
 
