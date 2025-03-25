@@ -1,16 +1,16 @@
-
 import React from 'react';
-import { Image, Info } from 'lucide-react';
 import { ViewMode } from './ImageDisplay';
+import ReferenceImageIndicator from './ReferenceImageIndicator';
+import { AspectRatio } from '@/components/ui/aspect-ratio';
 
 interface ImageBatchItemContentProps {
   imageUrl: string;
   prompt?: string;
   index: number;
-  onClick: (e: React.MouseEvent) => void; // Updated to accept a MouseEvent parameter
-  viewMode?: ViewMode;
+  onClick: (e: React.MouseEvent) => void;
+  viewMode: ViewMode;
   hasReferenceImages?: boolean;
-  title?: string; // Add title field
+  title?: string;
 }
 
 const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
@@ -18,44 +18,31 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
   prompt,
   index,
   onClick,
-  viewMode = 'normal',
+  viewMode,
   hasReferenceImages = false,
-  title // Add to component props
+  title
 }) => {
-  // Simple truncate function
-  const truncateText = (text: string, maxLength: number) => {
-    if (!text) return '';
-    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
-  };
-
-  // Log for debugging
-  if (hasReferenceImages) {
-    console.log(`Image ${index} has reference images: ${hasReferenceImages}`);
-  }
-
-  // Use title if available, otherwise use prompt or default
-  const displayText = title || prompt || `Generated image ${index + 1}`;
+  // When in normal view, the container will be 4:3 (set by parent component)
+  // For small view, keep using square aspect ratio
+  const aspectRatio = viewMode === 'small' ? 1 : undefined;
 
   return (
-    <div 
-      className={`w-full relative cursor-pointer ${viewMode === 'normal' ? 'aspect-square' : 'h-20'}`}
-      onClick={onClick}
-    >
-      <img
-        src={imageUrl}
-        alt={displayText}
-        className="w-full h-full object-cover"
-      />
-      
-      {hasReferenceImages && (
-        <div className="absolute top-1 left-1 bg-black/60 rounded-md p-0.5 text-white text-xs">
-          <Image size={14} />
+    <div className="w-full h-full" onClick={onClick}>
+      {imageUrl ? (
+        <div className="relative w-full h-full">
+          <img
+            src={imageUrl}
+            alt={prompt || `Generated image ${index + 1}`}
+            title={title || prompt}
+            className="w-full h-full object-contain bg-black"
+          />
+          {hasReferenceImages && (
+            <ReferenceImageIndicator position={viewMode === 'small' ? 'top-right' : 'bottom-left'} />
+          )}
         </div>
-      )}
-      
-      {viewMode === 'small' && (
-        <div className="absolute bottom-0 left-0 right-0 p-1 text-[10px] leading-tight bg-black/60 text-white truncate">
-          {truncateText(displayText, 30)}
+      ) : (
+        <div className="w-full h-full bg-secondary/10 flex items-center justify-center text-muted-foreground text-sm">
+          No image
         </div>
       )}
     </div>

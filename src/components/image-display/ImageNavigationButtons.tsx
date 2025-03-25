@@ -1,42 +1,67 @@
 
 import React from 'react';
+import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface ImageNavigationButtonsProps {
   index: number;
   total: number;
-  onNavigatePrev?: (e: React.MouseEvent) => void;
-  onNavigateNext?: (e: React.MouseEvent) => void;
+  onNavigatePrev?: () => void;
+  onNavigateNext?: () => void;
+  alwaysVisible?: boolean;
 }
 
 const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
   index,
   total,
   onNavigatePrev,
-  onNavigateNext
+  onNavigateNext,
+  alwaysVisible = false
 }) => {
-  if (total <= 1) return null;
+  // Only show navigation if we have more than one image
+  if (total <= 1 || (!onNavigatePrev && !onNavigateNext)) {
+    return null;
+  }
+  
+  const baseButtonClass = "absolute top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center z-30 pointer-events-auto";
+  
+  // Add visibility classes based on whether buttons should always be visible
+  const visibilityClass = alwaysVisible 
+    ? "opacity-70 hover:opacity-100" 
+    : "opacity-0 group-hover:opacity-70 group-hover:hover:opacity-100 transition-opacity duration-200";
   
   return (
-    <>
-      {index > 0 && onNavigatePrev && (
-        <button 
-          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 text-white transition-colors z-10"
-          onClick={onNavigatePrev}
+    <div className="w-full h-full relative">
+      {onNavigatePrev && (
+        <Button
+          type="button" 
+          variant="ghost"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigatePrev();
+          }}
+          className={`${baseButtonClass} ${visibilityClass} left-2`}
+          aria-label="Previous image"
         >
-          <ChevronLeft className="h-3 w-3" />
-        </button>
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
       )}
       
-      {index < total - 1 && onNavigateNext && (
-        <button 
-          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 text-white transition-colors z-10"
-          onClick={onNavigateNext}
+      {onNavigateNext && (
+        <Button 
+          type="button"
+          variant="ghost"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigateNext();
+          }}
+          className={`${baseButtonClass} ${visibilityClass} right-2`}
+          aria-label="Next image"
         >
-          <ChevronRight className="h-3 w-3" />
-        </button>
+          <ChevronRight className="h-5 w-5" />
+        </Button>
       )}
-    </>
+    </div>
   );
 };
 
