@@ -1,4 +1,3 @@
-
 // API service for all backend requests
 import { toast } from 'sonner';
 
@@ -13,7 +12,7 @@ interface GenerateImageParams {
   global_params?: Record<string, any>;
   refiner?: string;
   refiner_params?: Record<string, any>;
-  imageFiles?: File[];
+  imageFiles?: (File | string)[];
   batch_id?: string;
 }
 
@@ -80,7 +79,10 @@ class ApiService {
       // Append image files if any
       if (imageFiles && imageFiles.length > 0) {
         imageFiles.forEach(file => {
-          formData.append('image', file);
+          // Only append File objects, not string URLs
+          if (file instanceof File) {
+            formData.append('image', file);
+          }
         });
       }
       
