@@ -1,3 +1,4 @@
+
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
 import { createUrlWithParams, processOutputParam } from '../utils/paramUtils';
@@ -138,9 +139,9 @@ export const useDebugPanelUrls = ({
     const processedOutput = processOutputParam(outputToUse);
     console.log('[useDebugPanelUrls] Processed output for view mode:', processedOutput);
     
-    // Clear any stale local storage flags that might affect navigation
+    // Store a flag in localStorage to indicate this was an explicit exit from debug mode
+    // This is critical for preventing the automatic redirection back to debug mode
     try {
-      // Store a flag in localStorage to indicate this was an explicit exit from debug mode
       localStorage.setItem('userExplicitlyExitedDebug', 'true');
       console.log('[useDebugPanelUrls] Set localStorage flag for explicit debug exit');
     } catch (e) {

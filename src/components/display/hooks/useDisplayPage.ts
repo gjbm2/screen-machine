@@ -20,9 +20,14 @@ export const useDisplayPage = () => {
   const initialRenderRef = useRef(true); // Track initial render
   const hasProcessedOutputRef = useRef(false); // Track if we've processed the output param
   const hasCheckedExplicitExitRef = useRef(false); // Track if we've checked localStorage
+  const forceViewModeRef = useRef(false); // Track if we should force view mode
 
   // Function to redirect to debug mode
   const redirectToDebugMode = () => {
+    if (forceViewModeRef.current) {
+      console.log('[useDisplayPage] Skipping debug mode redirect because forceViewMode is true');
+      return;
+    }
     updateParam('debug', 'true');
   };
 
@@ -33,22 +38,32 @@ export const useDisplayPage = () => {
       
       try {
         const userExplicitlyExited = localStorage.getItem('userExplicitlyExitedDebug');
+        console.log('[useDisplayPage] Checking localStorage for explicit exit flag:', userExplicitlyExited);
+        
         if (userExplicitlyExited === 'true') {
           console.log('[useDisplayPage] Found explicit debug exit flag in localStorage');
+          // Set the forced view mode flag
+          forceViewModeRef.current = true;
+          
           // Clear the flag immediately to prevent it from affecting future navigation
-          localStorage.removeItem('userExplicitlyExitedDebug');
-          // Don't redirect to debug mode
-          return;
+          // unless this is an initial load of the page after committing settings
+          if (displayParams.debugMode === false) {
+            console.log('[useDisplayPage] Current page is in view mode, clearing localStorage flag');
+            localStorage.removeItem('userExplicitlyExitedDebug');
+          } else {
+            console.log('[useDisplayPage] Not clearing localStorage flag yet since page is still in debug mode');
+          }
         }
       } catch (e) {
         console.error('[useDisplayPage] Error checking localStorage flag:', e);
       }
     }
-  }, []);
+  }, [displayParams.debugMode]);
 
   // Debug logging for params
   useEffect(() => {
     console.log("[useDisplayPage] Debug mode active:", displayParams.debugMode);
+    console.log("[useDisplayPage] ForceViewMode flag:", forceViewModeRef.current);
     console.log("[useDisplayPage] Params:", displayParams);
     console.log("[useDisplayPage] Output param:", displayParams.output);
     
@@ -93,7 +108,7 @@ export const useDisplayPage = () => {
   // Debug redirection handling
   const { checkDebugRedirection, userExplicitlyExitedDebugRef } = useDebugRedirection(displayParams, redirectToDebugMode);
   
-  // Check for explicit exit flag from localStorage 
+  // Check for explicit exit flag from localStorage and sync to our ref
   useEffect(() => {
     if (mountedRef.current) {
       try {
@@ -101,13 +116,19 @@ export const useDisplayPage = () => {
         if (userExplicitlyExited === 'true') {
           console.log('[useDisplayPage] Setting explicit exit flag from localStorage');
           userExplicitlyExitedDebugRef.current = true;
-          localStorage.removeItem('userExplicitlyExitedDebug');
+          forceViewModeRef.current = true;
+          
+          // Only remove the flag if we're actually in view mode
+          if (!displayParams.debugMode) {
+            localStorage.removeItem('userExplicitlyExitedDebug');
+            console.log('[useDisplayPage] Removed localStorage flag - now in view mode');
+          }
         }
       } catch (e) {
         console.error('[useDisplayPage] Error checking localStorage:', e);
       }
     }
-  }, [userExplicitlyExitedDebugRef]);
+  }, [userExplicitlyExitedDebugRef, displayParams.debugMode]);
 
   // Handle output parameter directly to ensure image displays
   useEffect(() => {
@@ -154,13 +175,18 @@ export const useDisplayPage = () => {
     };
   }, []);
 
-  // Check for debug redirection - only if user has not explicitly exited
+  // Check for debug redirection - only if user has not explicitly exited and we're not forcing view mode
   useEffect(() => {
     if (!mountedRef.current) return;
-    if (!userExplicitlyExitedDebugRef.current) {
+    if (forceViewModeRef.current || userExplicitlyExitedDebugRef.current) {
+      console.log('[useDisplayPage] Skipping debug redirection check - user explicitly exited debug mode or force view mode is set');
+    } else if (displayParams.output) {
+      // If we have an output parameter but we're not in debug mode,
+      // only redirect if this isn't a result of a commit action
       checkDebugRedirection();
     } else {
-      console.log('[useDisplayPage] Skipping debug redirection check - user explicitly exited debug mode');
+      // No output parameter, always check for redirection
+      checkDebugRedirection();
     }
   }, [displayParams, displayParams.output, displayParams.debugMode, userExplicitlyExitedDebugRef]);
 
