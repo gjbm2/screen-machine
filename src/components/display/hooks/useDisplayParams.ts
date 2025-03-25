@@ -30,7 +30,7 @@ export const useDisplayParams = () => {
     output: decodeComplexOutputParam(getParam('output', null)),
     showMode: getParam('showMode', 'contain') as DisplayParams['showMode'],
     position: getParam('position', 'center') as DisplayParams['position'],
-    refreshInterval: parseInt(getParam('refreshInterval', '0') || '0', 10),
+    refreshInterval: parseInt(getParam('refreshInterval', '5') || '5', 10), // Default to 5 seconds
     backgroundColor: getParam('backgroundColor', '#000000') || '#000000',
     caption: decodeComplexOutputParam(getParam('caption', null)),
     captionPosition: getParam('captionPosition', 'bottom-center') as DisplayParams['captionPosition'],

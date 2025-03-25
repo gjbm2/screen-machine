@@ -45,8 +45,8 @@ export const useImagePoller = (
   );
   
   // Set up polling for image changes - Enable polling regardless of debug mode
-  // Ensure that refreshInterval defaults to 5 if not set
-  const effectiveRefreshInterval = params.refreshInterval ?? 5;
+  // Ensure that refreshInterval defaults to 5 if not set and has a minimum of 1 second
+  const effectiveRefreshInterval = params.refreshInterval === undefined ? 5 : Math.max(1, params.refreshInterval);
   const isPollingEnabled = !!processedUrl && effectiveRefreshInterval > 0;
   
   // Log the polling state for debugging

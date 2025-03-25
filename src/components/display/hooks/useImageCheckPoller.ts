@@ -28,10 +28,10 @@ export const useImageCheckPoller = (
     isLoadingRef.current = isLoading;
     isTransitioningRef.current = isTransitioning;
     enabledRef.current = enabled;
-    refreshIntervalRef.current = refreshInterval;
+    refreshIntervalRef.current = Math.max(1, refreshInterval);
     
     // Log refresh interval changes for debugging
-    console.log('[useImageCheckPoller] Refresh interval updated:', refreshInterval, 'seconds');
+    console.log('[useImageCheckPoller] Refresh interval updated:', Math.max(1, refreshInterval), 'seconds');
   }, [outputUrl, isLoading, isTransitioning, enabled, refreshInterval]);
   
   // Set up the mounted ref
@@ -107,7 +107,7 @@ export const useImageCheckPoller = (
   // Pass minimal dependencies to avoid recreation
   const { isPolling } = useIntervalPoller(
     !!outputUrl, // Only run if we have a URL
-    refreshInterval || 5, // Default to 5 seconds if not specified
+    Math.max(1, refreshInterval || 5), // Default to 5 seconds if not specified, minimum 1 second
     handlePoll,
     [outputUrl] // Only include outputUrl in dependencies
   );

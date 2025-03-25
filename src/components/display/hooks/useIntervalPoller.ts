@@ -17,7 +17,7 @@ export const useIntervalPoller = (
   useEffect(() => {
     callbackRef.current = callback;
     enabledRef.current = enabled;
-    intervalSecondsRef.current = intervalSeconds;
+    intervalSecondsRef.current = Math.max(1, intervalSeconds); // Ensure minimum 1 second
   }, [callback, enabled, intervalSeconds]);
   
   // Set up the interval that will call the latest callback from the ref
