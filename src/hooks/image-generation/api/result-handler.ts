@@ -38,11 +38,26 @@ export const processGenerationResults = (
   
   // Create a map of existing images by batch index to preserve any we may have
   const existingImagesByIndex = new Map<number, GeneratedImage>();
-  prevImages.forEach(img => {
-    if (img.batchId === batchId && typeof img.batchIndex === 'number') {
-      existingImagesByIndex.set(img.batchIndex, img);
-    }
+  
+  // Find all placeholders from this batch to ensure we have correct batch indexes
+  const batchPlaceholders = prevImages.filter(img => 
+    img.batchId === batchId && img.status === 'generating' && typeof img.batchIndex === 'number'
+  );
+  
+  // Debug log the placeholders we found
+  console.log('Found placeholders for batch:', batchPlaceholders.map(p => ({
+    batchId: p.batchId,
+    batchIndex: p.batchIndex,
+    status: p.status
+  })));
+  
+  // Store the placeholders by their index for easy lookup
+  batchPlaceholders.forEach(img => {
+    existingImagesByIndex.set(img.batchIndex, img);
   });
+  
+  // Debug log the existing images map
+  console.log('Existing images map keys:', Array.from(existingImagesByIndex.keys()));
   
   // Process all images in the response
   const updatedImages = [...prevImages];
@@ -61,8 +76,25 @@ export const processGenerationResults = (
   response.images.forEach((responseImage: any, index: number) => {
     console.log('Processing response image:', { index, responseImage });
     
-    // Get the batch index from the response or use the array index
-    const batchIndex = responseImage.batch_index ?? index;
+    // CRITICAL FIX: Use the correct batch index based on the original placeholders 
+    // or fallback to array index if no placeholder exists
+    
+    // First check if the response includes a proper batch_index
+    let batchIndex: number;
+    if (responseImage.batch_index !== undefined) {
+      batchIndex = Number(responseImage.batch_index);
+    } else {
+      // If no batch_index in response, we need to maintain uniqueness
+      // If we have placeholders, use their indexes in order
+      if (batchPlaceholders.length > index) {
+        batchIndex = batchPlaceholders[index].batchIndex;
+      } else {
+        // Last resort - use array index, but ensure uniqueness with a sanity check
+        batchIndex = index;
+      }
+    }
+    
+    console.log(`Using batchIndex ${batchIndex} for image at array position ${index}`);
     
     // Check if this image already exists
     const existingImageIndex = updatedImages.findIndex(
@@ -120,7 +152,7 @@ export const processGenerationResults = (
         prompt: responseImage.prompt || existingImage.prompt,
         workflow: responseImage.workflow || existingImage.workflow,
         timestamp: responseImage.timestamp || Date.now(),
-        batchIndex: batchIndex,
+        batchIndex: batchIndex, // CRITICAL: Use our determined batchIndex
         title: `${window.imageCounter + 1}. ${responseImage.prompt || existingImage.prompt} (${responseImage.workflow || existingImage.workflow})`,
         // Preserve params from placeholder or use response params
         params: responseImage.params || existingParams,
@@ -132,9 +164,7 @@ export const processGenerationResults = (
       };
       
       // Log what we're preserving for debugging
-      console.log('Preserving/updating params:', updatedImages[existingImageIndex].params);
-      console.log('Preserving/updating refiner:', updatedImages[existingImageIndex].refiner);
-      console.log('Preserving/updating refinerParams:', updatedImages[existingImageIndex].refinerParams);
+      console.log(`Updated image at index ${existingImageIndex} with batchIndex ${batchIndex}`);
       
       // Increment the counter
       if (window.imageCounter !== undefined) {
@@ -161,7 +191,7 @@ export const processGenerationResults = (
         prompt: responseImage.prompt,
         workflow: responseImage.workflow || 'unknown',
         batchId: batchId,
-        batchIndex: batchIndex,
+        batchIndex: batchIndex, // CRITICAL: Use our determined batchIndex
         status: imageStatus as ImageGenerationStatus,
         timestamp: responseImage.timestamp || Date.now(),
         title: `${window.imageCounter + 1}. ${responseImage.prompt} (${responseImage.workflow || 'unknown'})`,
@@ -171,6 +201,7 @@ export const processGenerationResults = (
         containerId: containerId
       };
       
+      console.log(`Adding new image with batchIndex ${batchIndex}`);
       updatedImages.push(newImage);
       
       // Increment the counter
