@@ -1,5 +1,5 @@
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { DisplayParams } from '@/components/display/types';
 import { processOutputParam } from '@/components/display/utils';
 import { useInitialImageLoad } from './useInitialImageLoad';
@@ -71,7 +71,7 @@ export const useImagePoller = (
     params.debugMode || false
   );
   
-  // Handle manual updates - always call this hook
+  // Handle manual updates - always call this hook last
   const { handleManualUpdate } = useManualImageUpdater(mountedRef);
   
   // Enhanced manual check that handles metadata refresh
@@ -80,9 +80,11 @@ export const useImagePoller = (
     originalHandleManualCheck: (() => Promise<boolean>) | null = null,
     currentParams: DisplayParams = params
   ): Promise<boolean> => {
-    return handleManualUpdate(currentImageUrl || imageUrl, 
+    return handleManualUpdate(
+      currentImageUrl || imageUrl, 
       originalHandleManualCheck || (async () => await Promise.resolve(false)), 
-      currentParams);
+      currentParams
+    );
   };
 
   return {
