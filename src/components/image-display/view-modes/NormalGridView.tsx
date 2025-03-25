@@ -13,6 +13,7 @@ interface NormalGridViewProps {
   onDeleteContainer: (batchId: string) => void;
   onFullScreenClick: (image: any) => void;
   imageUrl: string | null;
+  mostRecentBatchId?: string;
 }
 
 const NormalGridView: React.FC<NormalGridViewProps> = ({
@@ -25,12 +26,21 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
   onDeleteImage,
   onDeleteContainer,
   onFullScreenClick,
-  imageUrl
+  imageUrl,
+  mostRecentBatchId
 }) => {
   return (
     <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1">
       {imageContainerOrder.map((batchId) => {
         if (!batches[batchId]) return null;
+        
+        // If this is the most recent batch, ensure it's expanded, otherwise collapsed
+        const isMostRecent = batchId === mostRecentBatchId;
+        
+        // If the expandedContainers state doesn't match our desired state, update it
+        if (isMostRecent && !expandedContainers[batchId]) {
+          setTimeout(() => toggleExpand(batchId), 0);
+        }
         
         return (
           <div key={batchId} id={batchId} className={expandedContainers[batchId] ? "col-span-full" : ""}>
@@ -56,6 +66,7 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
                   onFullScreenClick(image);
                 }
               }}
+              thumbnailsAlignment="left" // Set thumbnails to be left-aligned
             />
           </div>
         );

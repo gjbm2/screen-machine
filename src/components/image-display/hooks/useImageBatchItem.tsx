@@ -77,7 +77,7 @@ export const useImageBatchItem = ({
     saveAs(image.url, filename);
   };
 
-  // Updated to accept a React.MouseEvent parameter
+  // Handle image click to navigate to fullscreen view
   const handleImageClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.image-action-button') ||
         (e.target as HTMLElement).closest('button')) {
