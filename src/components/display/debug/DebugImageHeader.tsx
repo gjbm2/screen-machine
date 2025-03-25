@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, Trash2, Settings } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShowMode, PositionMode } from '../types';
-import { ScreenSizeSelector, ScreenSize } from './ScreenSizeSelector';
+import { ScreenSizeSelector } from './ScreenSizeSelector';
 
 interface DebugImageHeaderProps {
   showMode: ShowMode;
   position: PositionMode;
-  selectedSize: ScreenSize;
+  selectedSize: string;  // Changed from ScreenSize to string
   setSelectedSize: (size: string) => void;
   imageChanged?: boolean;
   onSettingsChange?: () => void;
@@ -65,7 +65,7 @@ export const DebugImageHeader: React.FC<DebugImageHeaderProps> = ({
       
       <div className="flex items-center gap-1.5">
         <ScreenSizeSelector 
-          selectedSize={selectedSize.name} 
+          selectedSize={selectedSize} 
           onSelect={handleScreenSizeSelect}
           onSettingsChange={onSettingsChange}
         />

@@ -12,7 +12,7 @@ export const useDebugImageContainer = () => {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [containerSize, setContainerSize] = useState({ width: 400, height: 400 });
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
-  const [selectedSize, setSelectedSize] = useState<ScreenSize>(SCREEN_SIZES[0]);
+  const [selectedSize, setSelectedSize] = useState<string>('Current Viewport');
   const [viewportRatio, setViewportRatio] = useState(window.innerWidth / window.innerHeight);
   
   const containerRef = useRef<HTMLDivElement>(null);
@@ -86,19 +86,7 @@ export const useDebugImageContainer = () => {
   
   const handleSizeSelection = (sizeName: string) => {
     console.log('[DebugImageContainer] Size selection requested:', sizeName);
-    const newSize = SCREEN_SIZES.find(size => size.name === sizeName);
-    
-    if (newSize) {
-      console.log('[DebugImageContainer] Setting new size:', newSize);
-      setSelectedSize(newSize);
-      
-      if (contentRef.current && containerRef.current) {
-        containerRef.current.style.setProperty('width', `${newSize.width}px`);
-        containerRef.current.style.setProperty('height', `${newSize.height}px`);
-      }
-    } else {
-      console.error('[DebugImageContainer] Size not found:', sizeName);
-    }
+    setSelectedSize(sizeName);
   };
 
   // Clean up event listeners
@@ -122,20 +110,11 @@ export const useDebugImageContainer = () => {
         setContainerHeight(contentRef.current.offsetHeight);
       }
       setViewportRatio(window.innerWidth / window.innerHeight);
-      
-      // Update current viewport dimensions
-      if (selectedSize.name === 'Current Viewport') {
-        setSelectedSize({
-          name: 'Current Viewport',
-          width: window.innerWidth,
-          height: window.innerHeight
-        });
-      }
     };
     
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [contentRef, selectedSize.name]);
+  }, [contentRef]);
 
   return {
     imageDimensions,
