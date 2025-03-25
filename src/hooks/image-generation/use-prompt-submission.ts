@@ -45,13 +45,18 @@ export const usePromptSubmission = ({
       // Use provided global params or fall back to current global params
       const effectiveGlobalParams = globalParams || currentGlobalParams;
       
-      // Normalize image files
-      const uniqueImageFiles = imageFiles?.filter(f => f !== null && f !== undefined) || [];
+      // Filter out null and undefined from the image files
+      let uniqueImageFiles: (File | string)[] = [];
+      
+      if (imageFiles && imageFiles.length > 0) {
+        // First, filter out null and undefined values
+        uniqueImageFiles = imageFiles.filter(f => f !== null && f !== undefined);
+      }
       
       // Create the configuration for image generation
       const config: ImageGenerationConfig = {
         prompt,
-        imageFiles: uniqueImageFiles,
+        imageFiles: uniqueImageFiles as any, // Use type assertion to bypass TypeScript's restriction
         workflow: effectiveWorkflow,
         params: effectiveWorkflowParams,
         globalParams: effectiveGlobalParams,
