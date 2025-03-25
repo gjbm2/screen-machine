@@ -28,6 +28,7 @@ const Display = () => {
     newImageStyle,
     imageRef,
     nextCheckTime,
+    isChecking,
     handleManualCheck,
     getImagePositionStyle,
     handleImageError
@@ -38,6 +39,7 @@ const Display = () => {
     console.log('[Display] Component rendered with imageUrl:', imageUrl);
     console.log('[Display] Metadata:', metadata);
     console.log('[Display] Is mobile device:', isMobile);
+    console.log('[Display] Is checking for updates:', isChecking);
     
     // Log metadata object keys and structure
     if (metadata && Object.keys(metadata).length > 0) {
@@ -46,7 +48,7 @@ const Display = () => {
     } else {
       console.log('[Display] No metadata available');
     }
-  }, [metadata, imageUrl, isMobile]);
+  }, [metadata, imageUrl, isMobile, isChecking]);
 
   if (error) {
     return <ErrorMessage message={error} backgroundColor={previewParams.backgroundColor} />;
@@ -74,6 +76,7 @@ const Display = () => {
         onHandleManualCheck={handleManualCheck}
         onImageError={handleImageError}
         getImagePositionStyle={getImagePositionStyle}
+        isChecking={isChecking}
       />
     </DisplayContainer>
   );
