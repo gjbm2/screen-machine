@@ -68,7 +68,7 @@ const FullscreenContent: React.FC<FullscreenContentProps> = ({
     <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0 w-auto">
       {/* Debug info display */}
       <div className="text-xs text-center py-1 bg-black/10 text-foreground">
-        Image {activeArrayIndex} of {completedImages.length} (batch {batchId}, index {fullScreenImageIndex})
+        Image {activeArrayIndex + 1} of {completedImages.length} (batch {batchId}, index {fullScreenImageIndex})
       </div>
       
       <ImageDetailView
