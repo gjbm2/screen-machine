@@ -10,7 +10,9 @@ export const useImageModificationCheck = () => {
   
   const checkImageModified = async (url: string) => {
     try {
-      setLastChecked(new Date());
+      // Always update the last checked timestamp when performing a check
+      const currentTime = new Date();
+      setLastChecked(currentTime);
       
       const checkUrl = url;
       

@@ -45,14 +45,16 @@ export const useImagePoller = (
   );
   
   // Set up polling for image changes - Enable polling regardless of debug mode
-  const isPollingEnabled = !!processedUrl && !isLoading;
+  // Ensure that refreshInterval defaults to 5 if not set
+  const effectiveRefreshInterval = params.refreshInterval || 5;
+  const isPollingEnabled = !!processedUrl;
   
   // Log the polling state
-  console.log('[useImagePoller] Polling enabled:', isPollingEnabled, 'Refresh interval:', params.refreshInterval);
+  console.log('[useImagePoller] Polling enabled:', isPollingEnabled, 'Refresh interval:', effectiveRefreshInterval);
   
   const { pollNow, isChecking, lastCheckTime } = useImageCheckPoller(
     processedUrl,
-    params.refreshInterval,
+    effectiveRefreshInterval,
     isLoading,
     isTransitioning,
     checkImageModified,
