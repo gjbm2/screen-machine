@@ -90,9 +90,8 @@ const MainImageView: React.FC<MainImageViewProps> = ({
 
   const optimalSize = calculateOptimalSize();
 
-  // Only show navigation controls when we have multiple images and are navigating globally
-  const showPrevButton = isNavigatingAllImages && currentGlobalIndex !== undefined && currentGlobalIndex > 0 && allImages && allImages.length > 1;
-  const showNextButton = isNavigatingAllImages && currentGlobalIndex !== undefined && allImages && currentGlobalIndex < allImages.length - 1;
+  const showPrevButton = currentGlobalIndex !== undefined && currentGlobalIndex > 0 && allImages && allImages.length > 1;
+  const showNextButton = currentGlobalIndex !== undefined && allImages && currentGlobalIndex < allImages.length - 1;
 
   // Handle image click - forward to parent component handler
   const handleImageContainerClick = (e: React.MouseEvent) => {
@@ -128,18 +127,18 @@ const MainImageView: React.FC<MainImageViewProps> = ({
         />
       </div>
       
-      {isNavigatingAllImages && allImages && allImages.length > 1 && onNavigateGlobal && (
+      {allImages && allImages.length > 1 && onNavigateGlobal && (
         <NavigationControls 
           onPrevious={(e) => {
             e.stopPropagation();
-            if (showPrevButton && currentGlobalIndex !== undefined) {
-              onNavigateGlobal(currentGlobalIndex - 1);
+            if (showPrevButton) {
+              onNavigateGlobal((currentGlobalIndex as number) - 1);
             }
           }}
           onNext={(e) => {
             e.stopPropagation();
-            if (showNextButton && currentGlobalIndex !== undefined) {
-              onNavigateGlobal(currentGlobalIndex + 1);
+            if (showNextButton) {
+              onNavigateGlobal((currentGlobalIndex as number) + 1);
             }
           }}
           size="large"

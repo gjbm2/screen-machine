@@ -1,8 +1,7 @@
 
 import React from 'react';
-import { X, Info, Image } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { X } from 'lucide-react';
+import ImagePrompt from '../detail-view/ImagePrompt';
 
 interface FullscreenHeaderProps {
   prompt: string;
@@ -12,8 +11,7 @@ interface FullscreenHeaderProps {
   onInfoClick: () => void;
   onClose: (e: React.MouseEvent) => void;
   imageNumber: number;
-  totalImages?: number;
-  title?: string;
+  title?: string; 
 }
 
 const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
@@ -24,75 +22,38 @@ const FullscreenHeader: React.FC<FullscreenHeaderProps> = ({
   onInfoClick,
   onClose,
   imageNumber,
-  totalImages,
   title
 }) => {
+  // Always use the title for display
+  const displayText = title || prompt;
+  
+  // Add debug logging
+  console.log(`FullscreenHeader rendering with prompt: "${prompt}", workflowName: ${workflowName}, and title: ${title}`);
+  
   return (
-    <div className="flex items-center justify-between p-3 text-sm border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-10">
-      <div className="flex flex-col max-w-[80%] min-w-0">
-        {title && (
-          <div className="font-semibold truncate mb-0.5">
-            {title}
-          </div>
-        )}
-        <div className="text-muted-foreground text-xs truncate">
-          {prompt}
+    <div className="px-4 py-2 border-b h-10 flex-shrink-0 flex items-center">
+      <div className="flex items-center justify-between w-full min-w-0 overflow-hidden">
+        <div className="flex-grow min-w-0 overflow-hidden">
+          <ImagePrompt 
+            prompt={prompt}
+            hasReferenceImages={hasReferenceImages}
+            onReferenceImageClick={onReferenceImageClick}
+            imageNumber={imageNumber}
+            workflowName={workflowName}
+            onInfoClick={onInfoClick}
+            title={title}
+            useTitle={true} // Always use the title
+          />
         </div>
-        {workflowName && (
-          <div className="text-xs text-muted-foreground mt-0.5">
-            <span className="text-foreground font-medium">Model:</span> {workflowName}
-            {totalImages && (
-              <span className="ml-2">
-                <span className="text-foreground font-medium">Image:</span> {imageNumber} of {totalImages}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-      
-      <div className="flex items-center gap-1.5">
-        {hasReferenceImages && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon"
-                className="h-8 w-8"
-                onClick={onReferenceImageClick}
-              >
-                <Image className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              View reference images
-            </TooltipContent>
-          </Tooltip>
-        )}
         
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="icon"
-              className="h-8 w-8"
-              onClick={onInfoClick}
-            >
-              <Info className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            Image information
-          </TooltipContent>
-        </Tooltip>
-        
-        <Button 
-          variant="ghost" 
-          size="icon"
-          className="h-8 w-8"
+        {/* Close button */}
+        <button 
           onClick={onClose}
+          className="inline-flex items-center justify-center p-1 hover:bg-gray-100 rounded-md flex-shrink-0 ml-2"
+          aria-label="Close dialog"
         >
-          <X className="h-4 w-4" />
-        </Button>
+          <X size={16} />
+        </button>
       </div>
     </div>
   );
