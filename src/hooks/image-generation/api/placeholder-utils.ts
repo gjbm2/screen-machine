@@ -1,6 +1,7 @@
 
 import { GeneratedImage } from '../types';
 import { getExistingBatchIndexes } from './batch-utils';
+import { nanoid } from '@/lib/utils';
 
 /**
  * Creates a batch of placeholder images for a generation
@@ -35,6 +36,9 @@ export const createPlaceholderBatch = (
       continue;
     }
     
+    // Generate a unique placeholder ID for tracking
+    const placeholderId = nanoid();
+    
     const placeholder: GeneratedImage = {
       url: '', // Adding empty url to satisfy the GeneratedImage type
       batchId,
@@ -42,7 +46,8 @@ export const createPlaceholderBatch = (
       prompt,
       workflow,
       timestamp: Date.now(),
-      batchIndex: i,
+      batchIndex: i, // Use sequential batch index
+      placeholderId, // Add unique ID for tracking
       params,
       refiner,
       refinerParams,
@@ -50,6 +55,7 @@ export const createPlaceholderBatch = (
       containerId
     };
     
+    console.log(`[placeholder-utils] Created placeholder with batchIndex ${i} and placeholderId ${placeholderId}`);
     placeholders.push(placeholder);
   }
   
