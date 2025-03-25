@@ -127,7 +127,8 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           workflowName={currentImage?.workflow}
           onInfoClick={handleShowInfoPanel}
           onClose={handleClose}
-          imageNumber={fullScreenImageIndex + 1}
+          imageNumber={currentGlobalIndex !== null ? currentGlobalIndex + 1 : 0}
+          totalImages={allImagesFlat.length}
           title={currentImage?.title}
         />
 
