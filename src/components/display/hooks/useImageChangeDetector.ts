@@ -7,7 +7,7 @@ export const useImageChangeDetector = (
   isTransitioning: boolean,
   extractMetadata: (url: string) => Promise<Record<string, string>>
 ) => {
-  // Track the last checked URL
+  // Track the last checked URL - always define all hooks first, before any conditional logic
   const lastCheckedUrl = useRef<string | null>(null);
   // Track component mounted state
   const mountedRef = useRef<boolean>(true);
