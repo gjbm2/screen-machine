@@ -38,6 +38,7 @@ interface ImageDetailViewProps {
 }
 
 const ImageDetailView: React.FC<ImageDetailViewProps> = (props) => {
+  console.log('ImageDetailView received activeIndex:', props.activeIndex);
   return <DetailViewContainer {...props} />;
 };
 
