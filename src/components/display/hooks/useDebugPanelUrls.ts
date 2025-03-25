@@ -1,3 +1,4 @@
+
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
 import { createUrlWithParams, processOutputParam } from '../utils/paramUtils';
@@ -72,6 +73,9 @@ export const useDebugPanelUrls = ({
   };
   
   const applySettings = () => {
+    // Actually apply settings by updating the URL
+    console.log('[useDebugPanelUrls] Applying settings...');
+    
     // Use the actual current image URL from params instead of customUrl when available
     const outputToUse = params.output || customUrl;
     console.log('[useDebugPanelUrls] Using output for applying settings:', outputToUse);
@@ -86,7 +90,7 @@ export const useDebugPanelUrls = ({
       output: processedOutput,
       showMode,
       position,
-      refreshInterval: 0,
+      refreshInterval,
       backgroundColor,
       caption,
       captionPosition,
@@ -96,7 +100,7 @@ export const useDebugPanelUrls = ({
       captionBgColor,
       captionBgOpacity,
       transition,
-      debugMode: true
+      debugMode: true // Maintain debug mode
     };
     
     // Generate URL for debug mode
@@ -119,7 +123,7 @@ export const useDebugPanelUrls = ({
     });
   };
   
-  const commitSettings = (): string | null => {
+  const commitSettings = () => {
     // Use the actual current image URL from params instead of customUrl when available
     const outputToUse = params.output || customUrl;
     console.log('[useDebugPanelUrls] Using output for view mode:', outputToUse);
@@ -128,7 +132,7 @@ export const useDebugPanelUrls = ({
     if (!outputToUse) {
       console.error('[useDebugPanelUrls] No output URL for view mode, cannot commit');
       toast.error("No image URL specified. Please select an image file or enter a URL.");
-      return null;
+      return;
     }
     
     // Process the output to ensure it's properly formatted
@@ -150,7 +154,7 @@ export const useDebugPanelUrls = ({
       output: processedOutput,
       showMode,
       position,
-      refreshInterval: 0,
+      refreshInterval,
       backgroundColor,
       caption,
       captionPosition,
@@ -160,21 +164,27 @@ export const useDebugPanelUrls = ({
       captionBgColor,
       captionBgOpacity,
       transition,
-      debugMode: false
+      debugMode: false // Explicitly set debugMode to false
     };
     
     // Generate URL from params
     const url = createUrlWithParams(newParams);
     console.log('[useDebugPanelUrls] Committing settings, navigating to view mode:', url);
     
-    // Return the full URL
+    // Important: Use navigate with replace and full URL to ensure clean transition
+    // This avoids navigation issues that might be occurring with window.location.href
     const fullUrl = `/display${url}`;
-    console.log('[useDebugPanelUrls] Navigation URL:', fullUrl);
+    console.log('[useDebugPanelUrls] Navigating to:', fullUrl);
     
-    // Set the flag first
+    // Set the flag first, then navigate
     localStorage.setItem('debugModeExitTime', Date.now().toString());
     
-    return fullUrl;
+    // Force hard reload to reset all state
+    window.location.replace(fullUrl);
+    
+    toast("View Mode Activated", {
+      description: "Settings applied and debug mode disabled."
+    });
   };
   
   const copyUrl = () => {

@@ -4,6 +4,7 @@ import { DisplayParams } from '@/components/display/types';
 import { processOutputParam } from '@/components/display/utils';
 import { useInitialImageLoad } from './useInitialImageLoad';
 import { useImageChangeDetector } from './useImageChangeDetector';
+import { useImageCheckPoller } from './useImageCheckPoller';
 import { useManualImageUpdater } from './useManualImageUpdater';
 
 export const useImagePoller = (
@@ -32,10 +33,10 @@ export const useImagePoller = (
         await extractMetadataFromImage(url);
       }
     },
-    false
+    false // Remove dependency on debug mode for initial load
   );
   
-  // Detect image changes - but we won't use the polling feature
+  // Detect image changes
   const { lastCheckedUrl } = useImageChangeDetector(
     imageUrl,
     isLoading,
@@ -43,28 +44,40 @@ export const useImagePoller = (
     extractMetadataFromImage
   );
   
+  // Set up polling for image changes - Enable polling regardless of debug mode
+  // Ensure that refreshInterval defaults to 5 if not set
+  const effectiveRefreshInterval = params.refreshInterval ?? 5;
+  const isPollingEnabled = !!processedUrl && effectiveRefreshInterval > 0;
+  
+  // Log the polling state for debugging
+  console.log('[useImagePoller] Polling enabled:', isPollingEnabled, 'Refresh interval:', effectiveRefreshInterval);
+  
+  const { pollNow, isChecking, lastCheckTime } = useImageCheckPoller(
+    processedUrl,
+    effectiveRefreshInterval,
+    isLoading,
+    isTransitioning,
+    checkImageModified,
+    loadNewImage,
+    extractMetadataFromImage,
+    isPollingEnabled
+  );
+  
   // Handle manual updates
   const { handleManualUpdate } = useManualImageUpdater(mountedRef);
   
-  // Create a manual check function that will be exposed to the UI
+  // Enhanced manual check that handles metadata refresh
   const handleManualCheck = async (
     imageUrl: string | null,
     originalHandleManualCheck: () => Promise<boolean>,
     params: DisplayParams
   ): Promise<boolean> => {
-    console.log('[useImagePoller] Manual check initiated for:', imageUrl);
-    
-    if (!imageUrl) {
-      console.log('[useImagePoller] No image URL to check');
-      return false;
-    }
-    
     return handleManualUpdate(imageUrl, originalHandleManualCheck, params);
   };
 
   return {
     handleManualCheck,
-    isChecking: false,
-    lastCheckTime: null
+    isChecking,
+    lastCheckTime
   };
 };

@@ -15,20 +15,6 @@ export const DebugPanelFooter: React.FC<DebugPanelFooterProps> = ({
   commitSettings,
   isBottomFixed = true
 }) => {
-  const [isCommitting, setIsCommitting] = React.useState(false);
-  
-  const handleCommit = () => {
-    if (isCommitting) return;
-    
-    setIsCommitting(true);
-    commitSettings();
-    
-    // Reset after a timeout in case the navigation doesn't happen
-    setTimeout(() => {
-      setIsCommitting(false);
-    }, 3000);
-  };
-  
   return (
     <CardFooter 
       className={`flex justify-end gap-3 pt-4 pb-4 bg-card z-[60] border-t ${
@@ -44,12 +30,11 @@ export const DebugPanelFooter: React.FC<DebugPanelFooterProps> = ({
         Apply Changes
       </Button>
       <Button 
-        onClick={handleCommit}
+        onClick={commitSettings}
         className="gap-1"
-        disabled={isCommitting}
       >
         <ExternalLink className="h-4 w-4" />
-        {isCommitting ? 'Committing...' : 'Commit'}
+        Commit
       </Button>
     </CardFooter>
   );
