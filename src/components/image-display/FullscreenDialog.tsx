@@ -20,7 +20,6 @@ interface FullscreenDialogProps {
   allImagesFlat: any[];
   currentGlobalIndex: number | null;
   handleNavigateGlobal: (index: number) => void;
-  handleNavigateWithBatchAwareness: (direction: 'next' | 'prev') => void;
   fullscreenRefreshTrigger?: number;
 }
 
@@ -37,7 +36,6 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
   allImagesFlat,
   currentGlobalIndex,
   handleNavigateGlobal,
-  handleNavigateWithBatchAwareness,
   fullscreenRefreshTrigger = 0
 }) => {
   const [lastBatchId, setLastBatchId] = useState<string | null>(null);
@@ -108,17 +106,6 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
     setShowFullScreenView(false);
   };
   
-  // Get the count of images within the current batch for display in header
-  const getCurrentBatchImageCount = () => {
-    if (fullScreenBatchId && batches[fullScreenBatchId]) {
-      return batches[fullScreenBatchId].filter(img => img.status === 'completed').length;
-    }
-    return 0;
-  };
-  
-  // Get the image count within the batch
-  const batchImageCount = getCurrentBatchImageCount();
-  
   return (
     <Dialog 
       open={showFullScreenView} 
@@ -140,8 +127,8 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
           workflowName={currentImage?.workflow}
           onInfoClick={handleShowInfoPanel}
           onClose={handleClose}
-          imageNumber={fullScreenImageIndex + 1}
-          totalImages={batchImageCount}
+          imageNumber={currentGlobalIndex !== null ? currentGlobalIndex + 1 : 0}
+          totalImages={allImagesFlat.length}
           title={currentImage?.title}
         />
 
@@ -154,11 +141,15 @@ const FullscreenDialog: React.FC<FullscreenDialogProps> = ({
             setFullScreenImageIndex={setFullScreenImageIndex}
             onNavigatePrev={(e) => {
               e.stopPropagation();
-              handleNavigateWithBatchAwareness('prev');
+              if (currentGlobalIndex !== null && currentGlobalIndex > 0) {
+                handleNavigateGlobal(currentGlobalIndex - 1);
+              }
             }}
             onNavigateNext={(e) => {
               e.stopPropagation();
-              handleNavigateWithBatchAwareness('next');
+              if (currentGlobalIndex !== null && currentGlobalIndex < allImagesFlat.length - 1) {
+                handleNavigateGlobal(currentGlobalIndex + 1);
+              }
             }}
             onDeleteImage={handleDeleteImage}
             onCreateAgain={handleCreateAgain}
