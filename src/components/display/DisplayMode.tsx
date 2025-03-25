@@ -30,6 +30,7 @@ interface DisplayModeProps {
   onImageError: () => void;
   getImagePositionStyle: (position: DisplayParams['position'], showMode: DisplayParams['showMode'], containerWidth: number, containerHeight: number, imageWidth: number, imageHeight: number) => React.CSSProperties;
   isChecking?: boolean;
+  isLoadingMetadata?: boolean;
 }
 
 export const DisplayMode: React.FC<DisplayModeProps> = ({
@@ -52,7 +53,8 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   onHandleManualCheck,
   onImageError,
   getImagePositionStyle,
-  isChecking = false
+  isChecking = false,
+  isLoadingMetadata = false
 }) => {
   const isMobile = useIsMobile();
   const [showPreview, setShowPreview] = useState(!isMobile);
@@ -65,9 +67,10 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
       imageUrl,
       imageKey,
       isMobile,
-      showPreview
+      showPreview,
+      isLoadingMetadata
     });
-  }, [params.debugMode, imageUrl, imageKey, isMobile, showPreview]);
+  }, [params.debugMode, imageUrl, imageKey, isMobile, showPreview, isLoadingMetadata]);
   
   // When switching to mobile view, we want to show the preview by default
   useEffect(() => {
@@ -190,6 +193,7 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
       newImageStyle={newImageStyle}
       imageRef={imageRef}
       onImageError={onImageError}
+      isLoadingMetadata={isLoadingMetadata}
     />
   );
 };

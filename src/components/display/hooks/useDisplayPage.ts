@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
@@ -209,7 +208,7 @@ export const useDisplayPage = () => {
   useDebugFiles(displayParams.debugMode, setOutputFiles);
 
   // Set up image polling if output parameter is present
-  const { handleManualCheck: imagePollerHandleManualCheck, isChecking } = displayParams.output 
+  const { handleManualCheck: imagePollerHandleManualCheck, isChecking, isLoadingMetadata } = displayParams.output 
     ? useImagePoller(
         displayParams,
         imageUrl,
@@ -219,7 +218,7 @@ export const useDisplayPage = () => {
         checkImageModified,
         extractMetadataFromImage
       )
-    : { handleManualCheck: null, isChecking: false };
+    : { handleManualCheck: null, isChecking: false, isLoadingMetadata: false };
 
   // Handle image loading errors
   const { handleImageError } = useImageErrorHandler(imageUrl, mountedRef);
@@ -286,6 +285,7 @@ export const useDisplayPage = () => {
     getImagePositionStyle,
     handleImageError,
     redirectToDebugMode,
-    isChecking
+    isChecking,
+    isLoadingMetadata
   };
 };

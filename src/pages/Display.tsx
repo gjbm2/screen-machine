@@ -31,7 +31,8 @@ const Display = () => {
     isChecking,
     handleManualCheck,
     getImagePositionStyle,
-    handleImageError
+    handleImageError,
+    isLoadingMetadata
   } = useDisplayPage();
 
   // Add debug logging to help diagnose metadata issues
@@ -40,6 +41,7 @@ const Display = () => {
     console.log('[Display] Metadata:', metadata);
     console.log('[Display] Is mobile device:', isMobile);
     console.log('[Display] Is checking for updates:', isChecking);
+    console.log('[Display] Is loading metadata:', isLoadingMetadata);
     
     // Log metadata object keys and structure
     if (metadata && Object.keys(metadata).length > 0) {
@@ -48,7 +50,7 @@ const Display = () => {
     } else {
       console.log('[Display] No metadata available');
     }
-  }, [metadata, imageUrl, isMobile, isChecking]);
+  }, [metadata, imageUrl, isMobile, isChecking, isLoadingMetadata]);
 
   if (error) {
     return <ErrorMessage message={error} backgroundColor={previewParams.backgroundColor} />;
@@ -77,6 +79,7 @@ const Display = () => {
         onImageError={handleImageError}
         getImagePositionStyle={getImagePositionStyle}
         isChecking={isChecking}
+        isLoadingMetadata={isLoadingMetadata}
       />
     </DisplayContainer>
   );

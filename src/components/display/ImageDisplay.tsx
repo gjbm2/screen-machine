@@ -17,6 +17,7 @@ interface ImageDisplayProps {
   newImageStyle: React.CSSProperties;
   imageRef: React.RefObject<HTMLImageElement>;
   onImageError: () => void;
+  isLoadingMetadata?: boolean;
 }
 
 export const ImageDisplay: React.FC<ImageDisplayProps> = ({
@@ -31,7 +32,8 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   oldImageStyle,
   newImageStyle,
   imageRef,
-  onImageError
+  onImageError,
+  isLoadingMetadata = false
 }) => {
   const [containerSize, setContainerSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [doubleClickAttempted, setDoubleClickAttempted] = useState(false);
@@ -41,7 +43,8 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   // Log the image URL for debugging
   useEffect(() => {
     console.log('[ImageDisplay] Current image URL:', imageUrl);
-  }, [imageUrl]);
+    console.log('[ImageDisplay] Is loading metadata:', isLoadingMetadata);
+  }, [imageUrl, isLoadingMetadata]);
 
   // Update container size on window resize
   useEffect(() => {
@@ -148,6 +151,9 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const captionBgColor = params.captionBgColor || '#000000';
   const formattedBgColor = captionBgColor.startsWith('#') ? captionBgColor : `#${captionBgColor}`;
 
+  // Only show caption when not loading metadata
+  const shouldShowCaption = processedCaption && !isLoadingMetadata;
+
   return (
     <div 
       style={{ position: 'relative', width: '100%', height: '100%' }}
@@ -176,7 +182,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
             />
           )}
           
-          {processedCaption && (
+          {shouldShowCaption && (
             <CaptionRenderer
               caption={processedCaption}
               position={params.captionPosition || 'bottom-center'}
