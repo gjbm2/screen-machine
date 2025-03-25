@@ -8,7 +8,7 @@ import { ViewMode } from '../ImageDisplay';
 
 interface RolledUpBatchViewProps {
   batchId: string;
-  images: Array<any>; // Added images prop to match what ImageBatch is sending
+  images: Array<any>; 
   onCreateAgain: () => void;
   onDeleteImage: (batchId: string, index: number) => void;
   onImageClick: (url: string, prompt: string) => void;
@@ -25,17 +25,33 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
   onFullScreenClick,
   viewMode
 }) => {
+  // Ensure images array exists before filtering
+  if (!images || !Array.isArray(images)) {
+    console.error('RolledUpBatchView: images prop is not an array:', images);
+    return (
+      <Card className="rounded-t-none">
+        <CardContent className="p-2">
+          <div className="grid gap-1 grid-cols-1">
+            <div className="p-4 text-center text-muted-foreground">
+              Invalid image data
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  
   // Process images to get completed, generating, and failed ones
-  const completedImages = images.filter(img => img.status === 'completed')
+  const completedImages = images.filter(img => img?.status === 'completed')
     .sort((a, b) => {
       // Sort by timestamp (newest first)
-      const timeA = a.timestamp || 0;
-      const timeB = b.timestamp || 0;
+      const timeA = a?.timestamp || 0;
+      const timeB = b?.timestamp || 0;
       return timeB - timeA;
     });
   
-  const anyGenerating = images.some(img => img.status === 'generating');
-  const failedImages = images.filter(img => img.status === 'failed');
+  const anyGenerating = images.some(img => img?.status === 'generating');
+  const failedImages = images.filter(img => img?.status === 'failed');
   
   // Default to first image (index 0) or handle empty array
   const activeImageIndex = completedImages.length > 0 ? 0 : 0;
@@ -45,7 +61,7 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
   };
   
   const handleRemoveFailedImage = () => {
-    if (failedImages.length > 0 && failedImages[0].batchIndex !== undefined) {
+    if (failedImages.length > 0 && failedImages[0]?.batchIndex !== undefined) {
       onDeleteImage(batchId, failedImages[0].batchIndex);
     }
   };
@@ -83,14 +99,22 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
               isRolledUp={true}
             />
           ) : anyGenerating ? (
-            <LoadingPlaceholder prompt={failedImages.length > 0 ? failedImages[0]?.prompt : null} />
+            <LoadingPlaceholder 
+              prompt={images.find(img => img?.status === 'generating')?.prompt || null}
+              isCompact={false}
+            />
           ) : failedImages.length > 0 ? (
             <GenerationFailedPlaceholder 
               prompt={failedImages[0]?.prompt || null} 
               onRetry={handleRetry}
               onRemove={handleRemoveFailedImage}
+              errorMessage={failedImages[0]?.errorMessage}
             />
-          ) : null}
+          ) : (
+            <div className="p-4 text-center text-muted-foreground">
+              No images available
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

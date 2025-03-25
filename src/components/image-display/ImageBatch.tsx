@@ -35,11 +35,14 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   onFullScreenClick,
   thumbnailsAlignment = 'left'
 }) => {
-  const hasCompletedImages = images.some(img => img.status === 'completed');
-  const hasGeneratingImages = images.some(img => img.status === 'generating');
+  const hasCompletedImages = Array.isArray(images) && images.some(img => img?.status === 'completed');
+  const hasGeneratingImages = Array.isArray(images) && images.some(img => img?.status === 'generating');
   
   // Skip empty batches
-  if (images.length === 0) return null;
+  if (!Array.isArray(images) || images.length === 0) {
+    console.warn(`Skipping empty batch with ID: ${batchId}`);
+    return null;
+  }
   
   // Handler for CreateAgain in this specific batch
   const handleCreateAgain = () => {
