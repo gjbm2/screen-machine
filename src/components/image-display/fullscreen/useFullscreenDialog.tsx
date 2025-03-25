@@ -36,9 +36,10 @@ const useFullscreenDialog = ({
       // Make sure we're accessing a valid image
       const completedImages = batch.filter(img => img.status === 'completed');
       if (completedImages.length > 0) {
-        // Ensure the index is valid
-        const imageIndex = Math.min(fullScreenImageIndex, completedImages.length - 1);
-        const image = completedImages[imageIndex];
+        // Ensure the index is valid - THIS IS THE CRITICAL PART
+        const validIndex = Math.min(fullScreenImageIndex, completedImages.length - 1);
+        console.log('FullscreenDialog - using image index:', validIndex, 'from requested index:', fullScreenImageIndex);
+        const image = completedImages[validIndex];
         setCurrentImage(image);
         
         // Set the prompt if available
