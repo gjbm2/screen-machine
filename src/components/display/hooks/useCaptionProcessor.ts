@@ -18,15 +18,9 @@ export const useCaptionProcessor = (
       console.log('[useCaptionProcessor] Metadata keys available:', Object.keys(metadata));
       
       // Always process caption with metadata, regardless of data flag
-      if (Object.keys(metadata).length > 0) {
-        const newCaption = processCaptionWithMetadata(previewParams.caption, metadata);
-        console.log('[useCaptionProcessor] Processed caption result:', newCaption);
-        setProcessedCaption(newCaption);
-      } else {
-        console.warn('[useCaptionProcessor] No metadata available for caption processing');
-        // Use the caption as-is if no metadata is available
-        setProcessedCaption(previewParams.caption);
-      }
+      const newCaption = processCaptionWithMetadata(previewParams.caption, metadata);
+      console.log('[useCaptionProcessor] Processed caption result:', newCaption);
+      setProcessedCaption(newCaption);
     } else {
       setProcessedCaption(null);
     }
@@ -46,6 +40,11 @@ export const processCaptionWithMetadata = (caption: string | null, metadata: Rec
   
   // Special case for {all} placeholder
   if (caption === '{all}') {
+    if (Object.keys(metadata).length === 0) {
+      console.log('[processCaptionWithMetadata] No metadata available for {all} tag');
+      return 'No metadata available';
+    }
+    
     const allMetadata = Object.entries(metadata)
       .map(([key, value]) => `${key}: ${value}`)
       .join('\n');
@@ -70,6 +69,12 @@ export const processCaptionWithMetadata = (caption: string | null, metadata: Rec
   const unreplacedTagsMatch = processedCaption.match(/\{([^}]+)\}/g);
   if (unreplacedTagsMatch) {
     console.warn('[processCaptionWithMetadata] Unreplaced tags found:', unreplacedTagsMatch);
+    
+    // Replace unreplaced tags with their tag names to make it clearer
+    unreplacedTagsMatch.forEach(tag => {
+      const tagName = tag.substring(1, tag.length - 1);
+      processedCaption = processedCaption?.replace(tag, `[${tagName}]`) || '';
+    });
   }
   
   return processedCaption;

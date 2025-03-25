@@ -68,9 +68,10 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
       imageKey,
       isMobile,
       showPreview,
-      isLoadingMetadata
+      isLoadingMetadata,
+      processedCaption
     });
-  }, [params.debugMode, imageUrl, imageKey, isMobile, showPreview, isLoadingMetadata]);
+  }, [params.debugMode, imageUrl, imageKey, isMobile, showPreview, isLoadingMetadata, processedCaption]);
   
   // When switching to mobile view, we want to show the preview by default
   useEffect(() => {
@@ -172,6 +173,9 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
 
   // Otherwise, render the normal image display
   console.log('[DisplayMode] Rendering normal image display with imageUrl:', imageUrl);
+  console.log('[DisplayMode] Caption:', processedCaption);
+  console.log('[DisplayMode] isLoadingMetadata:', isLoadingMetadata);
+  
   return (
     <ImageDisplay
       params={previewParams}
