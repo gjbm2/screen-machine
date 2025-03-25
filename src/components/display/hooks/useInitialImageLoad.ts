@@ -32,6 +32,7 @@ export const useInitialImageLoad = (
     console.log('[useInitialImageLoad] URL:', outputUrl);
     console.log('[useInitialImageLoad] Is transitioning:', isTransitioning);
     console.log('[useInitialImageLoad] Is loading:', isLoading);
+    console.log('[useInitialImageLoad] Initial load completed:', initialLoadCompleted.current);
     
     // Initial load
     if (outputUrl && !isTransitioning && !initialLoadCompleted.current) {
