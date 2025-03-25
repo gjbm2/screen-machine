@@ -35,7 +35,9 @@ export const useImageCheckPoller = (
       
       if (changed) {
         console.log('[useImageCheckPoller] Image changed, reloading...');
+        // Load the new image with the transition effect
         loadNewImage(outputUrl);
+        
         // Automatically extract metadata when image changes
         extractMetadata(outputUrl).catch(err => {
           if (mountedRef.current) {
@@ -50,10 +52,10 @@ export const useImageCheckPoller = (
     });
   }, [outputUrl, isLoading, isTransitioning, checkImageModified, loadNewImage, extractMetadata, enabled]);
   
-  // Use the interval poller
+  // Use the interval poller with the specified refresh interval
   const { isPolling } = useIntervalPoller(
     enabled && !!outputUrl,
-    refreshInterval,
+    refreshInterval || 5, // Default to 5 seconds if not specified
     handlePoll,
     [outputUrl, isLoading, isTransitioning, refreshInterval, handlePoll]
   );

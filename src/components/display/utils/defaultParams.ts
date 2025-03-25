@@ -9,10 +9,10 @@ export const getDefaultParams = (): DisplayParams => {
     output: null,
     showMode: 'contain',
     position: 'center',
-    refreshInterval: 0,
+    refreshInterval: 5, // Updated from 0 to 5 seconds
     backgroundColor: '#000000',
     caption: null,
-    captionPosition: 'bottom-center', // Updated from 'bottom' to valid enum value
+    captionPosition: 'bottom-center',
     captionSize: 'medium',
     captionColor: '#ffffff',
     captionFont: 'sans',

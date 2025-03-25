@@ -2,7 +2,7 @@
 import React from 'react';
 import { SortField, SortDirection } from '../ImageDisplay';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUp, ArrowDown, Image } from 'lucide-react';
 import SortableTableRow from '../SortableTableRow';
 
 interface TableViewProps {
@@ -90,21 +90,15 @@ const TableView: React.FC<TableViewProps> = ({
             const completedImages = batchImages.filter(img => img.status === 'completed');
             const hasReferenceImage = !!firstImage.referenceImageUrl;
             
-            // Extract image number from title if available
-            let imageNumber = 0;
-            if (firstImage.title) {
-              const match = firstImage.title.match(/^(\d+)\./);
-              if (match && match[1]) {
-                imageNumber = parseInt(match[1], 10);
-              }
-            }
+            // Extract numeric image ID from containerId or fallback to 0
+            const imageNumber = firstImage.containerId || 0;
             
             return (
               <SortableTableRow 
                 key={batchId}
                 id={batchId}
                 onClick={() => onTableRowClick(batchId)}
-                index={imageNumber}  // Use the extracted image number here
+                index={imageNumber}
                 prompt={firstImage.prompt}
                 hasReferenceImage={hasReferenceImage}
                 completedImages={completedImages.length}
