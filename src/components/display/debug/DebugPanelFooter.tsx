@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Save, ExternalLink } from "lucide-react";
@@ -15,11 +15,12 @@ export const DebugPanelFooter: React.FC<DebugPanelFooterProps> = ({
   commitSettings,
   isBottomFixed = true
 }) => {
-  const [isCommitting, setIsCommitting] = useState(false);
+  const [isCommitting, setIsCommitting] = React.useState(false);
   
   const handleCommit = () => {
+    if (isCommitting) return;
+    
     setIsCommitting(true);
-    // Call the commitSettings function
     commitSettings();
     
     // Reset after a timeout in case the navigation doesn't happen

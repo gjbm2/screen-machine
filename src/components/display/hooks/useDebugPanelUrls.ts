@@ -1,4 +1,3 @@
-
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
 import { createUrlWithParams, processOutputParam } from '../utils/paramUtils';
@@ -123,7 +122,7 @@ export const useDebugPanelUrls = ({
     });
   };
   
-  const commitSettings = () => {
+  const commitSettings = (): string | null => {
     // Use the actual current image URL from params instead of customUrl when available
     const outputToUse = params.output || customUrl;
     console.log('[useDebugPanelUrls] Using output for view mode:', outputToUse);
@@ -132,7 +131,7 @@ export const useDebugPanelUrls = ({
     if (!outputToUse) {
       console.error('[useDebugPanelUrls] No output URL for view mode, cannot commit');
       toast.error("No image URL specified. Please select an image file or enter a URL.");
-      return;
+      return null;
     }
     
     // Process the output to ensure it's properly formatted
@@ -171,20 +170,14 @@ export const useDebugPanelUrls = ({
     const url = createUrlWithParams(newParams);
     console.log('[useDebugPanelUrls] Committing settings, navigating to view mode:', url);
     
-    // Important: Use navigate with replace and full URL to ensure clean transition
-    // This avoids navigation issues that might be occurring with window.location.href
+    // Return the full URL
     const fullUrl = `/display${url}`;
-    console.log('[useDebugPanelUrls] Navigating to:', fullUrl);
+    console.log('[useDebugPanelUrls] Navigation URL:', fullUrl);
     
-    // Set the flag first, then navigate
+    // Set the flag first
     localStorage.setItem('debugModeExitTime', Date.now().toString());
     
-    // Force hard reload to reset all state
-    window.location.replace(fullUrl);
-    
-    toast("View Mode Activated", {
-      description: "Settings applied and debug mode disabled."
-    });
+    return fullUrl;
   };
   
   const copyUrl = () => {
