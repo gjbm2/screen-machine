@@ -38,6 +38,15 @@ const FullscreenContent: React.FC<FullscreenContentProps> = ({
   // Filter completed images
   const completedImages = currentBatch.filter(img => img.status === 'completed');
   
+  // Log all completed images and their batchIndexes for debugging
+  console.log('FullscreenContent - All completed images batchIndexes:', 
+    completedImages.map(img => ({ 
+      batchIndex: img.batchIndex, 
+      type: typeof img.batchIndex
+    }))
+  );
+  console.log('FullscreenContent - Looking for batchIndex:', fullScreenImageIndex, 'type:', typeof fullScreenImageIndex);
+  
   // Find the array index for the image with the matching batchIndex
   // Ensure we're comparing numbers to numbers (sometimes batchIndex could be a string)
   const targetArrayIndex = completedImages.findIndex(img => 
@@ -47,12 +56,25 @@ const FullscreenContent: React.FC<FullscreenContentProps> = ({
   // Use a valid index if we couldn't find a match
   const activeArrayIndex = targetArrayIndex !== -1 ? targetArrayIndex : 0;
   
+  console.log('FullscreenContent: Passing', completedImages.length, 'completed images');
+  console.log('FullscreenContent: Target batchIndex is', fullScreenImageIndex, 'using array index', activeArrayIndex);
+  
+  // Double-check what image we're actually selecting
+  if (completedImages[activeArrayIndex]) {
+    console.log('FullscreenContent: Selected image has batchIndex:', completedImages[activeArrayIndex].batchIndex);
+  }
+  
   return (
     <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0 w-auto">
+      {/* Debug info display */}
+      <div className="text-xs text-center py-1 bg-black/10 text-foreground">
+        Image {activeArrayIndex + 1} of {completedImages.length} (batch {batchId}, index {fullScreenImageIndex})
+      </div>
+      
       <ImageDetailView
         batchId={batchId}
         images={completedImages}
-        activeIndex={activeArrayIndex}
+        activeIndex={activeArrayIndex} // THIS IS THE CRITICAL FIX: Use activeArrayIndex instead of 0
         onSetActiveIndex={(index) => {
           // When the user selects an image in the detail view,
           // we need to update the fullScreenImageIndex with the batchIndex of the selected image

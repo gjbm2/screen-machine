@@ -94,9 +94,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         onClick={handleImageClick}
         viewMode={viewMode}
         hasReferenceImages={hasReferenceImages}
-        title={image.title}
-        batchIndex={image.batchIndex}
-        batchSize={total > 1 ? total : 0}
+        title={image.title} // Pass the title through
       />
       
       <BatchCountDisplay 
@@ -132,8 +130,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
             workflow: image.workflow || '',
             params: image.params
           }}
-          title={image.title}
-          referenceImageUrl={image.referenceImageUrl}
+          title={image.title} // Pass the title
+          referenceImageUrl={image.referenceImageUrl} // Pass the referenceImageUrl
         />
       )}
     </div>
