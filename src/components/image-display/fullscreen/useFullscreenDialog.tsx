@@ -24,7 +24,6 @@ const useFullscreenDialog = ({
   const [showReferenceImagesDialog, setShowReferenceImagesDialog] = useState(false);
   const [showInfoDialog, setShowInfoDialog] = useState(false);
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
-  const [localImageIndex, setLocalImageIndex] = useState(0);
 
   // This effect updates the current batch and image when the fullScreenBatchId or fullScreenImageIndex changes
   useEffect(() => {
@@ -34,44 +33,22 @@ const useFullscreenDialog = ({
       setCurrentBatch(batch);
       setLastBatchId(fullScreenBatchId);
       
-      // Get only completed images
+      // Make sure we're accessing a valid image
       const completedImages = batch.filter(img => img.status === 'completed');
-      
-      // Log for debugging
-      console.log(`FullscreenDialog - batch has ${batch.length} images, ${completedImages.length} completed images`);
-      console.log(`FullscreenDialog - requested image batchIndex: ${fullScreenImageIndex}`);
-      
       if (completedImages.length > 0) {
-        // CRITICAL FIX: Find the image by its batchIndex, not by array position
-        const targetImage = completedImages.find(img => img.batchIndex === fullScreenImageIndex);
+        // Ensure the index is valid - THIS IS THE CRITICAL PART
+        const validIndex = Math.min(fullScreenImageIndex, completedImages.length - 1);
+        console.log('FullscreenDialog - using image index:', validIndex, 'from requested index:', fullScreenImageIndex);
+        const image = completedImages[validIndex];
+        setCurrentImage(image);
         
-        if (targetImage) {
-          console.log(`FullscreenDialog - found matching image with batchIndex ${targetImage.batchIndex}`);
-          setCurrentImage(targetImage);
-          
-          // Find the position of this image in the completedImages array for the DetailView component
-          const positionInCompletedArray = completedImages.findIndex(img => img.batchIndex === fullScreenImageIndex);
-          setLocalImageIndex(positionInCompletedArray >= 0 ? positionInCompletedArray : 0);
-          
-          // Set the prompt if available
-          if (targetImage?.prompt) {
-            console.log('Setting prompt to:', targetImage.prompt);
-            setPrompt(targetImage.prompt);
-          } else {
-            console.log('No prompt available, clearing prompt');
-            setPrompt('');
-          }
+        // Set the prompt if available
+        if (image?.prompt) {
+          console.log('Setting prompt to:', image.prompt);
+          setPrompt(image.prompt);
         } else {
-          // If the exact batchIndex wasn't found, use the first image as fallback
-          console.log(`FullscreenDialog - no image with batchIndex ${fullScreenImageIndex} found, using first image`);
-          setCurrentImage(completedImages[0]);
-          setLocalImageIndex(0);
-          
-          if (completedImages[0]?.prompt) {
-            setPrompt(completedImages[0].prompt);
-          } else {
-            setPrompt('');
-          }
+          console.log('No prompt available, clearing prompt');
+          setPrompt('');
         }
       }
     } else {
@@ -79,7 +56,6 @@ const useFullscreenDialog = ({
       setCurrentBatch(null);
       setCurrentImage(null);
       setPrompt('');
-      setLocalImageIndex(0);
     }
   }, [fullScreenBatchId, batches, fullScreenImageIndex, setLastBatchId]);
   
@@ -153,8 +129,7 @@ const useFullscreenDialog = ({
     handleImageLoad,
     handleShowInfoPanel,
     handleShowReferenceImages,
-    hasReferenceImages,
-    localImageIndex // Export this new value
+    hasReferenceImages
   };
 };
 
