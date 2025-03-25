@@ -29,14 +29,20 @@ export const createPlaceholderBatch = (
   console.log('[placeholder-utils] With refiner:', refiner);
   console.log('[placeholder-utils] With refinerParams:', refinerParams);
   
-  for (let i = 0; i < batchSize; i++) {
-    // If this index already exists in the batch, skip it
-    if (existingBatchIndexes.has(i)) {
-      console.log('[placeholder-utils] Skipping existing batch index', i);
-      continue;
+  // Find the highest existing batch index
+  let highestIndex = -1;
+  existingBatchIndexes.forEach(index => {
+    if (index > highestIndex) {
+      highestIndex = index;
     }
-    
-    // Generate a unique placeholder ID for tracking
+  });
+  
+  console.log('[placeholder-utils] Highest existing batch index:', highestIndex);
+  
+  // Create placeholders with new indexes starting after the highest existing index
+  for (let i = 0; i < batchSize; i++) {
+    // Start assigning from the next available index after the highest existing one
+    const nextIndex = highestIndex + 1 + i;
     const placeholderId = nanoid();
     
     const placeholder: GeneratedImage = {
@@ -46,7 +52,7 @@ export const createPlaceholderBatch = (
       prompt,
       workflow,
       timestamp: Date.now(),
-      batchIndex: i, // Use sequential batch index
+      batchIndex: nextIndex, // Use next available index
       placeholderId, // Add unique ID for tracking
       params,
       refiner,
@@ -55,7 +61,7 @@ export const createPlaceholderBatch = (
       containerId
     };
     
-    console.log(`[placeholder-utils] Created placeholder with batchIndex ${i} and placeholderId ${placeholderId}`);
+    console.log(`[placeholder-utils] Created placeholder with batchIndex ${nextIndex} and placeholderId ${placeholderId}`);
     placeholders.push(placeholder);
   }
   
