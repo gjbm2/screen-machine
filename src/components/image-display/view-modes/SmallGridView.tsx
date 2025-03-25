@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import GenerationFailedPlaceholder from '../GenerationFailedPlaceholder';
 import LoadingPlaceholder from '../LoadingPlaceholder';
@@ -25,31 +26,9 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
       return;
     }
 
-    // Create a map to collect all images by batchId and batchIndex for proper filtering
-    const imagesByBatchAndIndex = new Map<string, any>();
-    
-    // First pass: add all images to the map with a composite key of batchId-batchIndex
-    // This ensures we only keep one image per unique batchId-batchIndex combination
-    images.forEach(img => {
-      const key = `${img.batchId}-${img.batchIndex || 0}`;
-      // For generating images, always keep them
-      // For other images, only keep if not already in the map or replace if newer
-      if (img.status === 'generating' || !imagesByBatchAndIndex.has(key)) {
-        imagesByBatchAndIndex.set(key, img);
-      } else {
-        // If we already have this image, keep the one with the newest timestamp
-        const existingImg = imagesByBatchAndIndex.get(key);
-        if ((img.timestamp || 0) > (existingImg.timestamp || 0)) {
-          imagesByBatchAndIndex.set(key, img);
-        }
-      }
-    });
-    
-    // Convert map values back to array and sort
-    const uniqueImages = Array.from(imagesByBatchAndIndex.values());
-    
-    // Sort the unique images
-    const sorted = uniqueImages.sort((a, b) => {
+    // Simply sort all images without attempting to filter by batch
+    // This ensures we show one entry for each IMAGE, not each batch
+    const sorted = [...images].sort((a, b) => {
       // First prioritize by status - generating images always first
       if (a.status === 'generating' && b.status !== 'generating') return -1;
       if (a.status !== 'generating' && b.status === 'generating') return 1;

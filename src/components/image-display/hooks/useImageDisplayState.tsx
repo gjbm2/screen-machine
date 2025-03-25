@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import useFullscreen from './useFullscreen';
 import useImageSort from './useImageSort';
@@ -104,6 +105,7 @@ export const useImageDisplayState = (
   };
   
   const getAllImages = () => {
+    // Return all individual images instead of just one per batch
     return generatedImages
       .filter(img => img.status === 'completed' || img.status === 'generating' || img.status === 'failed' || img.status === 'error')
       .sort((a, b) => {

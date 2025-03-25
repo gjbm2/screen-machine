@@ -18,14 +18,15 @@ export const useImageGenerationApi = (
   // Function to generate new images based on config
   const generateImages = useCallback(async (config: ImageGenerationConfig): Promise<string | null> => {
     try {
-      // Use provided batch ID or generate a new one
+      // Always use provided batch ID or generate a new one
       const batchId = config.batchId || nanoid();
       setLastBatchId(batchId);
       
       // Add to active generations
       setActiveGenerations(prev => [...prev, batchId]);
       
-      // Only add this batch ID to the container order if it's a new batch (not reusing existing batch)
+      // Always add this batch ID to the container order if it's a new batch
+      // (which it will be except when using "Go Again" functionality)
       if (!config.batchId) {
         setImageContainerOrder(prev => [batchId, ...prev]);
       }
