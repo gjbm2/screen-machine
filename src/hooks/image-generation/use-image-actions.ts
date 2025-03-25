@@ -18,7 +18,8 @@ export const useImageActions = (
     params?: Record<string, any> | undefined,
     globalParams?: Record<string, any> | undefined,
     refiner?: string | undefined,
-    refinerParams?: Record<string, any> | undefined
+    refinerParams?: Record<string, any> | undefined,
+    batchId?: string | undefined
   ) => void,
   generatedImages: GeneratedImage[]
 ) => {
@@ -102,7 +103,8 @@ export const useImageActions = (
           workflow: workflowToUse,
           params: paramsToUse,
           refiner: refinerToUse,
-          refinerParams: refinerParamsToUse
+          refinerParams: refinerParamsToUse,
+          batchId: batchId
         });
         
         // Submit the prompt with ALL original parameters including the batchId
@@ -113,7 +115,8 @@ export const useImageActions = (
           paramsToUse,
           undefined, // No global params needed as they're not stored per image
           refinerToUse,
-          refinerParamsToUse
+          refinerParamsToUse,
+          batchId // Explicitly pass the batchId to ensure the new image is generated in the same batch
         );
       }
     }
