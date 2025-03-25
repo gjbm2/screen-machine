@@ -28,12 +28,23 @@ export const createPlaceholderBatch = (
   console.log('[placeholder-utils] With refiner:', refiner);
   console.log('[placeholder-utils] With refinerParams:', refinerParams);
   
+  // CRITICAL FIX: Ensure each placeholder gets a unique batchIndex
+  // Track available indexes for this batch
+  let nextAvailableIndex = 0;
+  const usedIndexes = new Set<number>(existingBatchIndexes);
+  
   for (let i = 0; i < batchSize; i++) {
-    // If this index already exists in the batch, skip it
-    if (existingBatchIndexes.has(i)) {
-      console.log('[placeholder-utils] Skipping existing batch index', i);
-      continue;
+    // Find a unique batchIndex
+    while (usedIndexes.has(nextAvailableIndex)) {
+      nextAvailableIndex++;
     }
+    
+    // Use this unique index
+    const uniqueBatchIndex = nextAvailableIndex;
+    usedIndexes.add(uniqueBatchIndex);
+    nextAvailableIndex++;
+    
+    console.log(`[placeholder-utils] Creating placeholder with batchIndex=${uniqueBatchIndex}`);
     
     const placeholder: GeneratedImage = {
       url: '', // Adding empty url to satisfy the GeneratedImage type
@@ -42,7 +53,7 @@ export const createPlaceholderBatch = (
       prompt,
       workflow,
       timestamp: Date.now(),
-      batchIndex: i,
+      batchIndex: uniqueBatchIndex, // Use our unique index
       params,
       refiner,
       refinerParams,
@@ -53,7 +64,9 @@ export const createPlaceholderBatch = (
     placeholders.push(placeholder);
   }
   
-  console.log('[placeholder-utils] Created', placeholders.length, 'placeholders');
+  // Log the generated placeholders for debugging
+  console.log('[placeholder-utils] Created', placeholders.length, 'placeholders with batchIndexes:', 
+    placeholders.map(p => p.batchIndex));
   
   return placeholders;
 };

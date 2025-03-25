@@ -1,4 +1,3 @@
-
 import { GeneratedImage } from '../types';
 import { ImageGenerationStatus } from '@/types/workflows';
 
@@ -36,10 +35,7 @@ export const processGenerationResults = (
     containerId = placeholder.containerId;
   }
   
-  // Create a map of existing images by batch index to preserve any we may have
-  const existingImagesByIndex = new Map<number, GeneratedImage>();
-  
-  // Find all placeholders from this batch to ensure we have correct batch indexes
+  // CRITICAL FIX: Find all placeholders for this batch to ensure we have correct batch indexes
   const batchPlaceholders = prevImages.filter(img => 
     img.batchId === batchId && img.status === 'generating' && typeof img.batchIndex === 'number'
   );
@@ -51,13 +47,16 @@ export const processGenerationResults = (
     status: p.status
   })));
   
+  // Create a map of existing images by batch index to preserve indexes
+  const existingImagesByIndex = new Map<number, GeneratedImage>();
+  
   // Store the placeholders by their index for easy lookup
   batchPlaceholders.forEach(img => {
     existingImagesByIndex.set(img.batchIndex, img);
   });
   
   // Debug log the existing images map
-  console.log('Existing images map keys:', Array.from(existingImagesByIndex.keys()));
+  console.log('Existing images map keys (batchIndexes):', Array.from(existingImagesByIndex.keys()));
   
   // Process all images in the response
   const updatedImages = [...prevImages];
@@ -72,31 +71,57 @@ export const processGenerationResults = (
     }
   });
   
+  // CRITICAL FIX: Track which batchIndexes we've used from placeholders
+  const usedPlaceholderIndexes = new Set<number>();
+  
   // Then update or add new images
-  response.images.forEach((responseImage: any, index: number) => {
-    console.log('Processing response image:', { index, responseImage });
+  response.images.forEach((responseImage: any, arrayIndex: number) => {
+    console.log('Processing response image at array position:', arrayIndex, responseImage);
     
-    // CRITICAL FIX: Ensure each image gets a unique batchIndex
+    // CRITICAL FIX: Determine a unique batchIndex for this image
     let batchIndex: number;
     
     // First check if the response includes a proper batch_index
     if (responseImage.batch_index !== undefined) {
       batchIndex = Number(responseImage.batch_index);
       console.log(`Using response-provided batch_index: ${batchIndex}`);
-    } else {
-      // If no batch_index in response, we need to ensure uniqueness
-      // If we have placeholder at this array position, use its batchIndex
-      if (index < batchPlaceholders.length) {
-        batchIndex = batchPlaceholders[index].batchIndex;
-        console.log(`Using placeholder batchIndex: ${batchIndex} for image at array position ${index}`);
-      } else {
-        // Last resort - use the array index itself to ensure uniqueness
-        batchIndex = index;
-        console.log(`Using array index as batchIndex: ${batchIndex}`);
+    } 
+    // Otherwise, use a placeholder's batchIndex if available
+    else if (arrayIndex < batchPlaceholders.length) {
+      // Find a placeholder that hasn't been used yet
+      let unusedPlaceholder = null;
+      for (const placeholder of batchPlaceholders) {
+        if (!usedPlaceholderIndexes.has(placeholder.batchIndex)) {
+          unusedPlaceholder = placeholder;
+          break;
+        }
       }
+      
+      // If we found an unused placeholder, use its batchIndex
+      if (unusedPlaceholder) {
+        batchIndex = unusedPlaceholder.batchIndex;
+        usedPlaceholderIndexes.add(batchIndex);
+        console.log(`Using unused placeholder batchIndex: ${batchIndex} for image at array position ${arrayIndex}`);
+      } 
+      // If all placeholders are used, generate a new unique batchIndex
+      else {
+        // Find the highest batchIndex and add 1
+        const highestIndex = Math.max(
+          ...Array.from(usedPlaceholderIndexes),
+          ...batchPlaceholders.map(p => p.batchIndex),
+          -1
+        );
+        batchIndex = highestIndex + 1;
+        console.log(`All placeholders used. Generated new batchIndex: ${batchIndex} for image at array position ${arrayIndex}`);
+      }
+    } 
+    // Last resort - use array index if no placeholders are available
+    else {
+      batchIndex = arrayIndex;
+      console.log(`No placeholders available. Using array index as batchIndex: ${batchIndex}`);
     }
     
-    console.log(`Using batchIndex ${batchIndex} for image at array position ${index}`);
+    console.log(`FINAL: Using batchIndex ${batchIndex} for image at array position ${arrayIndex}`);
     
     // Check if this image already exists
     const existingImageIndex = updatedImages.findIndex(
@@ -154,7 +179,7 @@ export const processGenerationResults = (
         prompt: responseImage.prompt || existingImage.prompt,
         workflow: responseImage.workflow || existingImage.workflow,
         timestamp: responseImage.timestamp || Date.now(),
-        batchIndex: batchIndex, // CRITICAL: Use our determined batchIndex
+        batchIndex: batchIndex, // Use our determined batchIndex
         title: `${window.imageCounter + 1}. ${responseImage.prompt || existingImage.prompt} (${responseImage.workflow || existingImage.workflow})`,
         // Preserve params from placeholder or use response params
         params: responseImage.params || existingParams,
@@ -193,7 +218,7 @@ export const processGenerationResults = (
         prompt: responseImage.prompt,
         workflow: responseImage.workflow || 'unknown',
         batchId: batchId,
-        batchIndex: batchIndex, // CRITICAL: Use our determined batchIndex
+        batchIndex: batchIndex, // Use our determined batchIndex
         status: imageStatus as ImageGenerationStatus,
         timestamp: responseImage.timestamp || Date.now(),
         title: `${window.imageCounter + 1}. ${responseImage.prompt} (${responseImage.workflow || 'unknown'})`,
@@ -212,6 +237,28 @@ export const processGenerationResults = (
       }
     }
   });
+  
+  // Final validation: Ensure all images in the batch have unique batchIndexes
+  const batchImages = updatedImages.filter(img => img.batchId === batchId && img.status !== 'to_update');
+  const batchIndexMap = new Map<number, boolean>();
+  let hasIndexConflict = false;
+  
+  // Check for batchIndex conflicts
+  batchImages.forEach(img => {
+    if (batchIndexMap.has(img.batchIndex)) {
+      hasIndexConflict = true;
+      console.error(`CRITICAL ERROR: Found duplicate batchIndex ${img.batchIndex} in batch ${batchId}`);
+    } else {
+      batchIndexMap.set(img.batchIndex, true);
+    }
+  });
+  
+  // Log batch images with their batchIndexes
+  console.log('Final batch images batchIndexes:', batchImages.map(img => ({
+    batchId: img.batchId,
+    batchIndex: img.batchIndex,
+    status: img.status
+  })));
   
   // Clean up any "to_update" images that didn't get updated
   return updatedImages.filter(img => img.status !== 'to_update');
