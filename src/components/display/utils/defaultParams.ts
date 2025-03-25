@@ -7,15 +7,15 @@ import { DisplayParams } from '../types';
 export const getDefaultParams = (): DisplayParams => {
   return {
     output: null,
-    showMode: 'contain',
+    showMode: 'fill',
     position: 'center',
-    refreshInterval: 5, // Updated from 0 to 5 seconds
+    refreshInterval: 5, // Default refresh interval is 5 seconds
     backgroundColor: '#000000',
     caption: null,
     captionPosition: 'bottom-center',
     captionSize: 'medium',
     captionColor: '#ffffff',
-    captionFont: 'sans',
+    captionFont: 'Helvetica, Arial, sans-serif', // Default font family is Helvetica
     captionBgColor: '#000000',
     captionBgOpacity: 0.5,
     transition: 'fade',
