@@ -70,32 +70,35 @@ export const useTransitionEffect = () => {
   const executeTransition = (duration: number, onComplete: () => void) => {
     console.log('[useTransitionEffect] Executing transition with duration:', duration);
     
-    // Small delay to ensure DOM updates before starting transition
-    setTimeout(() => {
-      console.log('[useTransitionEffect] Starting fade transition animation');
-      
-      // Fade out the old image
-      setOldImageStyle(prev => ({
-        ...prev,
-        opacity: 0
-      }));
-      
-      // Fade in the new image - no need to add transition again as it's already there
-      setNewImageStyle(prev => ({
-        ...prev,
-        opacity: 1
-      }));
-      
-      // After the transition duration, clean up and notify completion
-      setTimeout(() => {
-        console.log('[useTransitionEffect] Fade transition complete');
-        setIsTransitioning(false);
-        setOldImageUrl(null);
+    // First ensure the DOM is updated with initial styles
+    requestAnimationFrame(() => {
+      // Then wait for one more frame to ensure styles are applied
+      requestAnimationFrame(() => {
+        console.log('[useTransitionEffect] Starting fade transition animation');
         
-        // Execute the completion callback
-        onComplete();
-      }, duration * 1000);
-    }, 50);
+        // Fade out the old image
+        setOldImageStyle(prev => ({
+          ...prev,
+          opacity: 0
+        }));
+        
+        // Fade in the new image
+        setNewImageStyle(prev => ({
+          ...prev,
+          opacity: 1
+        }));
+        
+        // After the transition duration, clean up and notify completion
+        setTimeout(() => {
+          console.log('[useTransitionEffect] Fade transition complete');
+          setIsTransitioning(false);
+          setOldImageUrl(null);
+          
+          // Execute the completion callback
+          onComplete();
+        }, duration * 1000);
+      });
+    });
   };
 
   return {
