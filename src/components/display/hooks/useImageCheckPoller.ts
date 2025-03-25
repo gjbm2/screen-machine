@@ -1,3 +1,4 @@
+
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { useIntervalPoller } from './useIntervalPoller';
 
@@ -43,7 +44,7 @@ export const useImageCheckPoller = (
     };
   }, [enabled]);
   
-  // Create the polling callback
+  // Create the polling callback - use useCallback with empty deps since we use refs
   const handlePoll = useCallback(() => {
     const currentOutputUrl = outputUrlRef.current;
     const currentIsLoading = isLoadingRef.current;
@@ -103,11 +104,12 @@ export const useImageCheckPoller = (
   }, []); // Empty dependencies since we use refs
   
   // Use the interval poller with the specified refresh interval
+  // Pass minimal dependencies to avoid recreation
   const { isPolling } = useIntervalPoller(
-    !!outputUrl, // Run the poller if we have a URL, regardless of enabled state
-    refreshIntervalRef.current || 5, // Default to 5 seconds if not specified
+    !!outputUrl, // Only run if we have a URL
+    refreshInterval || 5, // Default to 5 seconds if not specified
     handlePoll,
-    [outputUrl] // Only include outputUrl as a dependency since we use refs for everything else
+    [outputUrl] // Only include outputUrl in dependencies
   );
   
   // Manual poll function for external triggers
