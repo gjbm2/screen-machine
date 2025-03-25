@@ -24,7 +24,7 @@ export const usePromptSubmission = ({
   
   const handleSubmitPrompt = useCallback(async (
     prompt: string, 
-    imageFiles?: File[] | string[],
+    imageFiles?: (File | string)[],
     workflow?: string,
     workflowParams?: Record<string, any>,
     globalParams?: Record<string, any>,
@@ -56,11 +56,12 @@ export const usePromptSubmission = ({
       // Create the configuration for image generation
       const config: ImageGenerationConfig = {
         prompt,
-        imageFiles: uniqueImageFiles as any, // Use type assertion to bypass TypeScript's restriction
+        imageFiles: uniqueImageFiles,
         workflow: effectiveWorkflow,
         params: effectiveWorkflowParams,
         globalParams: effectiveGlobalParams,
-        batchId: batchId || lastBatchIdUsed,
+        // Only use the provided batchId if explicitly passed, never reuse lastBatchIdUsed
+        batchId: batchId || undefined,
         refiner, 
         refinerParams
       };
@@ -82,7 +83,6 @@ export const usePromptSubmission = ({
     currentWorkflow, 
     currentParams, 
     currentGlobalParams, 
-    lastBatchIdUsed, 
     setIsFirstRun, 
     setLastBatchIdUsed, 
     generateImages
