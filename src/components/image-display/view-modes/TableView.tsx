@@ -90,16 +90,26 @@ const TableView: React.FC<TableViewProps> = ({
             const completedImages = batchImages.filter(img => img.status === 'completed');
             const hasReferenceImage = !!firstImage.referenceImageUrl;
             
+            // Extract image number from title if available
+            let imageNumber = 0;
+            if (firstImage.title) {
+              const match = firstImage.title.match(/^(\d+)\./);
+              if (match && match[1]) {
+                imageNumber = parseInt(match[1], 10);
+              }
+            }
+            
             return (
               <SortableTableRow 
                 key={batchId}
                 id={batchId}
                 onClick={() => onTableRowClick(batchId)}
-                index={firstImage.containerId || 0}
+                index={imageNumber || firstImage.containerId || 0}
                 prompt={firstImage.prompt}
                 hasReferenceImage={hasReferenceImage}
                 completedImages={completedImages.length}
                 timestamp={firstImage.timestamp}
+                title={firstImage.title}
               />
             );
           })}
