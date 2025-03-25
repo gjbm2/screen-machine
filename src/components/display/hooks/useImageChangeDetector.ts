@@ -22,11 +22,14 @@ export const useImageChangeDetector = (
   
   // Extract metadata whenever the image URL changes
   useEffect(() => {
+    // Always check if component is mounted first
+    if (!mountedRef.current) return;
+    
+    // Only proceed if we have a valid URL and it's different from last time
     if (imageUrl && 
         imageUrl !== lastCheckedUrl.current && 
         !isLoading && 
-        !isTransitioning && 
-        mountedRef.current) {
+        !isTransitioning) {
       console.log('[useImageChangeDetector] New image URL detected, extracting metadata:', imageUrl);
       lastCheckedUrl.current = imageUrl;
       

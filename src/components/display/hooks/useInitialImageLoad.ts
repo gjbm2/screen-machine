@@ -24,16 +24,15 @@ export const useInitialImageLoad = (
   
   // Handle initial image loading
   useEffect(() => {
-    if (!outputUrl && !debugMode) {
-      return;
-    }
-
+    // Always check if component is mounted first
+    if (!mountedRef.current) return;
+    
     // Logging for debugging
     console.log('[useInitialImageLoad] URL:', outputUrl);
     console.log('[useInitialImageLoad] Is transitioning:', isTransitioning);
     console.log('[useInitialImageLoad] Is loading:', isLoading);
     
-    // Initial load
+    // Initial load - avoid conditional hook calls
     if (outputUrl && !isTransitioning && !initialLoadCompleted.current) {
       console.log('[useInitialImageLoad] Initial image load for:', outputUrl);
       loadImage(outputUrl);
