@@ -130,7 +130,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       <DebugImageHeader
         showMode={showMode}
         position={position}
-        selectedSize={selectedSize.name}
+        selectedSize={selectedSize}
         setSelectedSize={handleSizeSelection}
         imageChanged={imageChanged}
         onSettingsChange={onSettingsChange}
@@ -160,7 +160,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
         imageDimensions={imageDimensions}
         imageRef={imageRef}
         viewportRatio={viewportRatio.toString()}
-        selectedSize={selectedSize.name}
+        selectedSize={selectedSize}
         onResizeStart={isFixedPanel ? undefined : handleResizeStart}
       />
     </Card>
