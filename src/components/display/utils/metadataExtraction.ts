@@ -1,136 +1,132 @@
 
-// Specialized module for image metadata extraction
+// Metadata extraction utilities
+import { toast } from 'sonner';
 
-/**
- * Extracts metadata from an image file using the API endpoint
- */
-export const extractMetadataUsingApi = async (url: string): Promise<Record<string, string>> => {
+// Function to extract metadata using browser fetch API
+export const extractMetadataUsingBrowser = async (url: string): Promise<Record<string, string>> => {
+  console.log('[metadataExtraction] Attempting browser-based extraction for:', url);
+  
   try {
-    console.log('[extractMetadataUsingApi] Attempting API extraction for:', url);
-    
-    const response = await fetch('/api/extract-metadata', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ imageUrl: url }),
-    });
-
-    // Check if the response is valid JSON
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      console.error('[extractMetadataUsingApi] Expected JSON response but got', contentType);
-      throw new Error(`Expected JSON response but got ${contentType}`);
-    }
-
-    // Parse the response
-    const data = await response.json();
+    // Load the image
+    const response = await fetch(url, { cache: "no-store" });
     
     if (!response.ok) {
-      console.error('[extractMetadataUsingApi] API error response:', data);
-      throw new Error(data.error || `Failed to extract metadata: ${response.status}`);
+      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
     }
     
-    console.log('[extractMetadataUsingApi] API response data:', data);
+    // Try to extract basic image information
+    const blob = await response.blob();
+    const tempImage = new Image();
     
-    if (!data.success) {
-      throw new Error(data.error || 'Failed to extract metadata');
-    }
-    
-    // Convert all values to strings for consistency
-    const stringMetadata: Record<string, string> = {};
-    Object.entries(data.metadata).forEach(([key, value]) => {
-      stringMetadata[key] = String(value);
+    // Create a promise to wait for image load
+    const imageLoadPromise = new Promise<void>((resolve, reject) => {
+      tempImage.onload = () => resolve();
+      tempImage.onerror = () => reject(new Error("Failed to load image"));
+      tempImage.src = URL.createObjectURL(blob);
     });
     
-    console.log('[extractMetadataUsingApi] Extracted metadata:', stringMetadata);
-    return stringMetadata;
+    await imageLoadPromise;
+    
+    // Extract basic metadata
+    const metadata: Record<string, string> = {
+      'width': tempImage.naturalWidth.toString(),
+      'height': tempImage.naturalHeight.toString(),
+      'size': `${(blob.size / 1024).toFixed(2)} KB`,
+      'type': blob.type,
+      'url': url
+    };
+    
+    // Clean up the object URL
+    URL.revokeObjectURL(tempImage.src);
+    
+    console.log('[metadataExtraction] Browser extraction successful:', metadata);
+    return metadata;
   } catch (error) {
-    console.error('[extractMetadataUsingApi] API extraction failed:', error);
-    throw error; // Rethrow to be handled by the caller
+    console.error('[metadataExtraction] Browser extraction failed:', error);
+    return {
+      'error': 'Browser extraction failed',
+      'message': error instanceof Error ? error.message : String(error)
+    };
   }
 };
 
-/**
- * Extracts metadata directly in the browser using canvas and image analysis
- */
-export const extractMetadataUsingBrowser = async (url: string): Promise<Record<string, string>> => {
+// Function to extract metadata using API endpoint (if available)
+export const extractMetadataUsingApi = async (url: string): Promise<Record<string, string>> => {
+  console.log('[metadataExtraction] Attempting API-based extraction for:', url);
+  
   try {
-    console.log('[extractMetadataUsingBrowser] Starting browser extraction for:', url);
-    
-    // Add some basic metadata even if we fail to load the image
-    const metadata: Record<string, string> = {
-      'source': 'browser-extraction'
-    };
-    
-    // Create a new image with crossOrigin set
-    const img = new Image();
-    img.crossOrigin = 'anonymous'; // Set this before the src to avoid CORS issues
-    
-    const imageLoaded = new Promise<HTMLImageElement>((resolve, reject) => {
-      img.onload = () => resolve(img);
-      img.onerror = (err) => {
-        console.error('[extractMetadataUsingBrowser] Image load error:', err);
-        reject(new Error('Failed to load image'));
-      };
-      
-      // Set the source after setting up event handlers
-      img.src = url;
-    });
-    
-    try {
-      const loadedImg = await imageLoaded;
-      console.log('[extractMetadataUsingBrowser] Image loaded successfully');
-      
-      // Add basic image dimensions
-      metadata.width = loadedImg.naturalWidth.toString();
-      metadata.height = loadedImg.naturalHeight.toString();
-      metadata.aspectRatio = (loadedImg.naturalWidth / loadedImg.naturalHeight).toFixed(2);
-      
-      // Create a canvas to analyze image data
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      if (ctx) {
-        canvas.width = loadedImg.naturalWidth;
-        canvas.height = loadedImg.naturalHeight;
-        ctx.drawImage(loadedImg, 0, 0);
-        
-        try {
-          // Get image data as binary
-          const dataUrl = canvas.toDataURL('image/png');
-          
-          // Add more metadata about the image type
-          const fileExtension = url.split('.').pop()?.toLowerCase() || '';
-          if (fileExtension) {
-            metadata.fileType = fileExtension;
-          }
-          
-          // Check for PNG metadata chunks if it's a PNG
-          if (url.toLowerCase().endsWith('.png') || url.includes('.png')) {
-            metadata.format = 'PNG';
-            // PNG metadata extraction would go here
-          } else if (url.toLowerCase().endsWith('.jpg') || url.toLowerCase().endsWith('.jpeg') || url.includes('.jpg') || url.includes('.jpeg')) {
-            metadata.format = 'JPEG';
-          }
-        } catch (err) {
-          console.warn('[extractMetadataUsingBrowser] Error analyzing image data:', err);
-        }
-      }
-    } catch (err) {
-      console.error('[extractMetadataUsingBrowser] Error loading image:', err);
-      // Continue with the metadata we have so far
+    // Check if URL is external and show warning
+    const isExternalUrl = url.startsWith('http') && !url.includes(window.location.hostname);
+    if (isExternalUrl) {
+      console.warn('[metadataExtraction] External URL detected, metadata extraction may be limited:', url);
     }
     
-    console.log('[extractMetadataUsingBrowser] Extracted metadata:', metadata);
-    return metadata;
+    // Prepare the API endpoint
+    const apiEndpoint = '/api/extract-metadata';
     
-  } catch (err) {
-    console.error('[extractMetadataUsingBrowser] Browser extraction failed:', err);
-    // Return some minimal metadata to avoid undefined errors
-    return { 
-      'error': 'Failed to extract metadata',
-      'message': err instanceof Error ? err.message : String(err)
+    // Prepare the request payload
+    const payload = {
+      url: url,
+      type: 'image'
+    };
+    
+    // Make the API request
+    const response = await fetch(apiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000) // 10 second timeout
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API extraction failed: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    if (!data || !data.metadata) {
+      throw new Error('API response did not include valid metadata');
+    }
+    
+    console.log('[metadataExtraction] API extraction successful:', data.metadata);
+    return data.metadata;
+  } catch (error) {
+    // If the API doesn't exist or fails, throw an error to trigger fallback
+    console.error('[metadataExtraction] API extraction failed:', error);
+    throw error;
+  }
+};
+
+// Unified function to extract metadata - tries API first, then falls back to browser
+export const extractMetadata = async (url: string): Promise<Record<string, string>> => {
+  try {
+    console.log('[metadataExtraction] Starting extraction for:', url);
+    
+    // Try API extraction first
+    try {
+      return await extractMetadataUsingApi(url);
+    } catch (apiError) {
+      console.warn('[metadataExtraction] API extraction failed, falling back to browser:', apiError);
+      
+      // Fall back to browser extraction
+      const browserMetadata = await extractMetadataUsingBrowser(url);
+      
+      if (Object.keys(browserMetadata).length > 0 && !browserMetadata.error) {
+        return browserMetadata;
+      }
+      
+      throw new Error('All extraction methods failed');
+    }
+  } catch (error) {
+    console.error('[metadataExtraction] All extraction methods failed:', error);
+    toast.error('Failed to extract image metadata');
+    
+    return {
+      'error': 'Extraction failed',
+      'message': error instanceof Error ? error.message : String(error),
+      'url': url
     };
   }
 };
