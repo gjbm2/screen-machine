@@ -7,7 +7,6 @@ import { useDebugImageContainer } from './debug/hooks/useDebugImageContainer';
 import { DebugImageHeader } from './debug/DebugImageHeader';
 import { DebugImageContent } from './debug/DebugImageContent';
 import { getContainerStyles } from './debug/utils/DebugContainerStyles';
-import { ScreenSize } from './debug/ScreenSizeSelector';
 
 interface DebugImageContainerProps {
   imageUrl: string | null;
@@ -131,7 +130,7 @@ export const DebugImageContainer: React.FC<DebugImageContainerProps> = ({
       <DebugImageHeader
         showMode={showMode}
         position={position}
-        selectedSize={selectedSize}
+        selectedSize={selectedSize.name}
         setSelectedSize={handleSizeSelection}
         imageChanged={imageChanged}
         onSettingsChange={onSettingsChange}

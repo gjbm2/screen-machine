@@ -39,53 +39,55 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
     
     console.log('[ScreenContainer] Parent dimensions:', {
       parentWidth, parentHeight, 
-      parentOffsetWidth: parentEl.offsetWidth, 
-      parentOffsetHeight: parentEl.offsetHeight
+      selectedSize, 
+      selectedSizeWidth: selectedSizeObj.width,
+      selectedSizeHeight: selectedSizeObj.height
     });
     
     // Calculate aspect ratio of the selected size
     const aspectRatio = selectedSizeObj.width / selectedSizeObj.height;
     
-    // Always leave some margin around all sides
-    const horizontalMargin = 30;
-    const verticalMargin = 30;
+    // Always leave some margin around all sides - more for larger screens
+    const horizontalMargin = Math.min(parentWidth * 0.1, 40); // 10% of width up to 40px
+    const verticalMargin = Math.min(parentHeight * 0.1, 40);  // 10% of height up to 40px
     
     // Maximum available space
-    const maxAvailableWidth = parentWidth - horizontalMargin;
-    const maxAvailableHeight = parentHeight - verticalMargin;
+    const maxAvailableWidth = parentWidth - horizontalMargin * 2;
+    const maxAvailableHeight = parentHeight - verticalMargin * 2;
     
     // Determine how to scale the content to fit
     let width, height;
     
-    // Check if we need to scale by width or height
-    if (aspectRatio > maxAvailableWidth / maxAvailableHeight) {
-      // Width-constrained
-      width = maxAvailableWidth;
-      height = width / aspectRatio;
-    } else {
-      // Height-constrained
-      height = maxAvailableHeight;
-      width = height * aspectRatio;
-    }
+    // We need to use the minimum ratio to ensure it fits entirely in both dimensions
+    const widthRatio = maxAvailableWidth / selectedSizeObj.width;
+    const heightRatio = maxAvailableHeight / selectedSizeObj.height;
     
-    // Final safety check to ensure we're always within bounds
-    if (width > maxAvailableWidth) {
-      width = maxAvailableWidth;
-      height = width / aspectRatio;
-    }
+    // Use the minimum ratio to ensure we're constrained by whichever dimension is more limiting
+    const ratio = Math.min(widthRatio, heightRatio);
     
-    if (height > maxAvailableHeight) {
-      height = maxAvailableHeight;
-      width = height * aspectRatio;
-    }
+    width = selectedSizeObj.width * ratio;
+    height = selectedSizeObj.height * ratio;
     
     console.log('[ScreenContainer] Calculated dimensions:', {
       maxAvailableWidth, maxAvailableHeight,
       calculatedWidth: width, calculatedHeight: height,
-      selectedSize, aspectRatio
+      selectedSize, aspectRatio, ratio
     });
     
-    // Set dimensions on the container
+    // Set dimensions on the container with a safety check
+    if (width > maxAvailableWidth || height > maxAvailableHeight) {
+      console.warn('[ScreenContainer] Calculated dimensions exceed available space, applying additional constraints');
+      if (width > maxAvailableWidth) {
+        width = maxAvailableWidth;
+        height = width / aspectRatio;
+      }
+      if (height > maxAvailableHeight) {
+        height = maxAvailableHeight;
+        width = height * aspectRatio;
+      }
+    }
+    
+    // Apply the dimensions
     screenContainerRef.current.style.width = `${width}px`;
     screenContainerRef.current.style.height = `${height}px`;
     
