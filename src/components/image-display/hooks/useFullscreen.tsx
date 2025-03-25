@@ -29,19 +29,106 @@ export const useFullscreen = (allImagesFlat: any[]) => {
     }
   };
   
-  // This function allows navigation between all images regardless of batch
-  const handleNavigateGlobal = (index: number) => {
-    if (index >= 0 && index < allImagesFlat.length) {
-      const targetImage = allImagesFlat[index];
-      
-      // Update the batch ID and image index to match the target image
-      setFullScreenBatchId(targetImage.batchId);
-      setFullScreenImageIndex(targetImage.batchIndex);
-      
-      // Update the global index tracking
-      setCurrentGlobalIndex(index);
-      
-      console.log(`Navigating to global image ${index}:`, targetImage);
+  // Group images by batch ID to support batch-aware navigation
+  const getImagesByBatch = () => {
+    const batchMap: Record<string, any[]> = {};
+    
+    allImagesFlat.forEach(image => {
+      if (!batchMap[image.batchId]) {
+        batchMap[image.batchId] = [];
+      }
+      batchMap[image.batchId].push(image);
+    });
+    
+    // Sort images within each batch by batchIndex
+    Object.keys(batchMap).forEach(batchId => {
+      batchMap[batchId].sort((a, b) => a.batchIndex - b.batchIndex);
+    });
+    
+    return batchMap;
+  };
+  
+  // Get ordered batch IDs
+  const getOrderedBatchIds = () => {
+    const uniqueBatchIds = Array.from(new Set(allImagesFlat.map(img => img.batchId)));
+    // Sort batch IDs by the timestamp of their first image (newest first)
+    return uniqueBatchIds.sort((a, b) => {
+      const aTimestamp = allImagesFlat.find(img => img.batchId === a)?.timestamp || 0;
+      const bTimestamp = allImagesFlat.find(img => img.batchId === b)?.timestamp || 0;
+      return bTimestamp - aTimestamp; // Newest first
+    });
+  };
+  
+  // Navigate between images while respecting batch boundaries
+  const handleNavigateWithBatchAwareness = (direction: 'next' | 'prev') => {
+    if (!fullScreenBatchId || allImagesFlat.length === 0) return;
+    
+    const batchMap = getImagesByBatch();
+    const orderedBatchIds = getOrderedBatchIds();
+    const currentBatchImages = batchMap[fullScreenBatchId] || [];
+    const currentBatchIndex = orderedBatchIds.indexOf(fullScreenBatchId);
+    
+    if (direction === 'next') {
+      // Check if we can go to the next image in the current batch
+      if (fullScreenImageIndex < currentBatchImages.length - 1) {
+        // Move to the next image in the current batch
+        const nextImageIndex = fullScreenImageIndex + 1;
+        setFullScreenImageIndex(nextImageIndex);
+        
+        // Update global index
+        const nextGlobalImage = allImagesFlat.findIndex(
+          img => img.batchId === fullScreenBatchId && img.batchIndex === nextImageIndex
+        );
+        if (nextGlobalImage !== -1) {
+          setCurrentGlobalIndex(nextGlobalImage);
+        }
+      } else if (currentBatchIndex < orderedBatchIds.length - 1) {
+        // Move to the first image of the next batch
+        const nextBatchId = orderedBatchIds[currentBatchIndex + 1];
+        if (batchMap[nextBatchId] && batchMap[nextBatchId].length > 0) {
+          setFullScreenBatchId(nextBatchId);
+          setFullScreenImageIndex(0);
+          
+          // Update global index
+          const nextGlobalImage = allImagesFlat.findIndex(
+            img => img.batchId === nextBatchId && img.batchIndex === 0
+          );
+          if (nextGlobalImage !== -1) {
+            setCurrentGlobalIndex(nextGlobalImage);
+          }
+        }
+      }
+    } else if (direction === 'prev') {
+      // Check if we can go to the previous image in the current batch
+      if (fullScreenImageIndex > 0) {
+        // Move to the previous image in the current batch
+        const prevImageIndex = fullScreenImageIndex - 1;
+        setFullScreenImageIndex(prevImageIndex);
+        
+        // Update global index
+        const prevGlobalImage = allImagesFlat.findIndex(
+          img => img.batchId === fullScreenBatchId && img.batchIndex === prevImageIndex
+        );
+        if (prevGlobalImage !== -1) {
+          setCurrentGlobalIndex(prevGlobalImage);
+        }
+      } else if (currentBatchIndex > 0) {
+        // Move to the last image of the previous batch
+        const prevBatchId = orderedBatchIds[currentBatchIndex - 1];
+        if (batchMap[prevBatchId] && batchMap[prevBatchId].length > 0) {
+          const lastImageIndex = batchMap[prevBatchId].length - 1;
+          setFullScreenBatchId(prevBatchId);
+          setFullScreenImageIndex(lastImageIndex);
+          
+          // Update global index
+          const prevGlobalImage = allImagesFlat.findIndex(
+            img => img.batchId === prevBatchId && img.batchIndex === lastImageIndex
+          );
+          if (prevGlobalImage !== -1) {
+            setCurrentGlobalIndex(prevGlobalImage);
+          }
+        }
+      }
     }
   };
 
@@ -53,7 +140,8 @@ export const useFullscreen = (allImagesFlat: any[]) => {
     setFullScreenImageIndex,
     currentGlobalIndex,
     openFullScreenView,
-    handleNavigateGlobal
+    handleNavigateGlobal: setCurrentGlobalIndex,
+    handleNavigateWithBatchAwareness
   };
 };
 
