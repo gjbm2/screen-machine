@@ -6,11 +6,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 interface ReferenceImageIndicatorProps {
   imageUrl: string;
   onRemove?: () => void;
+  position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 }
 
 const ReferenceImageIndicator: React.FC<ReferenceImageIndicatorProps> = ({ 
   imageUrl, 
-  onRemove 
+  onRemove,
+  position = 'bottom-left' // Default position
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 

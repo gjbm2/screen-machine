@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ViewMode } from './ImageDisplay';
 import ReferenceImageIndicator from './ReferenceImageIndicator';
@@ -37,7 +38,10 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
             className="w-full h-full object-contain bg-black"
           />
           {hasReferenceImages && (
-            <ReferenceImageIndicator position={viewMode === 'small' ? 'top-right' : 'bottom-left'} />
+            <ReferenceImageIndicator 
+              imageUrl={imageUrl} 
+              position={viewMode === 'small' ? 'top-right' : 'bottom-left'} 
+            />
           )}
         </div>
       ) : (
