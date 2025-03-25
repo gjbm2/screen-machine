@@ -20,7 +20,7 @@ export interface GeneratedImage {
 
 export interface ImageGenerationConfig {
   prompt: string;
-  imageFiles?: File[] | string[];
+  imageFiles?: (File | string)[];  // Updated to accept a mixed array
   workflow?: string;
   params?: Record<string, any>;
   globalParams?: Record<string, any>;
