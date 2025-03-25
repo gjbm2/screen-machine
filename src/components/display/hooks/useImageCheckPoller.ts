@@ -19,6 +19,7 @@ export const useImageCheckPoller = (
   const isLoadingRef = useRef(isLoading);
   const isTransitioningRef = useRef(isTransitioning);
   const enabledRef = useRef(enabled);
+  const refreshIntervalRef = useRef(refreshInterval);
   
   // Keep refs updated with latest values
   useEffect(() => {
@@ -26,15 +27,21 @@ export const useImageCheckPoller = (
     isLoadingRef.current = isLoading;
     isTransitioningRef.current = isTransitioning;
     enabledRef.current = enabled;
-  }, [outputUrl, isLoading, isTransitioning, enabled]);
+    refreshIntervalRef.current = refreshInterval;
+    
+    // Log refresh interval changes for debugging
+    console.log('[useImageCheckPoller] Refresh interval updated:', refreshInterval, 'seconds');
+  }, [outputUrl, isLoading, isTransitioning, enabled, refreshInterval]);
   
   // Set up the mounted ref
   useEffect(() => {
     mountedRef.current = true;
+    console.log('[useImageCheckPoller] Component mounted, polling enabled:', enabled);
     return () => {
       mountedRef.current = false;
+      console.log('[useImageCheckPoller] Component unmounted, cleaning up');
     };
-  }, []);
+  }, [enabled]);
   
   // Create the polling callback
   const handlePoll = useCallback(() => {
@@ -44,6 +51,11 @@ export const useImageCheckPoller = (
     const currentEnabled = enabledRef.current;
     
     if (!currentOutputUrl || currentIsLoading || currentIsTransitioning) {
+      console.log('[useImageCheckPoller] Skipping poll - conditions not met:', {
+        hasUrl: !!currentOutputUrl,
+        isLoading: currentIsLoading,
+        isTransitioning: currentIsTransitioning
+      });
       return;
     }
     
@@ -52,17 +64,23 @@ export const useImageCheckPoller = (
     
     // Always update the last check time, even if not enabled
     const currentTime = new Date();
+    console.log('[useImageCheckPoller] Setting last check time:', currentTime.toISOString());
     setLastCheckTime(currentTime);
     
     if (!currentEnabled) {
       setIsChecking(false);
+      console.log('[useImageCheckPoller] Polling disabled, skipping actual check');
       return;
     }
+    
+    // Log the URL we're checking
+    console.log('[useImageCheckPoller] Checking URL for modifications:', currentOutputUrl);
     
     checkImageModified(currentOutputUrl).then(changed => {
       if (!mountedRef.current) return; // Skip if component unmounted
       
       setIsChecking(false);
+      console.log('[useImageCheckPoller] Check result - image changed:', changed);
       
       if (changed) {
         console.log('[useImageCheckPoller] Image changed, reloading...');
@@ -82,19 +100,34 @@ export const useImageCheckPoller = (
         console.error('[useImageCheckPoller] Error checking image modifications:', err);
       }
     });
-  }, [checkImageModified, loadNewImage, extractMetadata]); // Minimal dependencies that rarely change
+  }, []); // Empty dependencies since we use refs
   
   // Use the interval poller with the specified refresh interval
   const { isPolling } = useIntervalPoller(
     !!outputUrl, // Run the poller if we have a URL, regardless of enabled state
-    refreshInterval || 5, // Default to 5 seconds if not specified
+    refreshIntervalRef.current || 5, // Default to 5 seconds if not specified
     handlePoll,
-    [outputUrl, isLoading, isTransitioning, refreshInterval]
+    [outputUrl] // Only include outputUrl as a dependency since we use refs for everything else
   );
+  
+  // Manual poll function for external triggers
+  const pollNow = useCallback(() => {
+    console.log('[useImageCheckPoller] Manual poll triggered');
+    handlePoll();
+  }, [handlePoll]);
+  
+  // Log polling status on changes
+  useEffect(() => {
+    console.log('[useImageCheckPoller] Polling status changed:', { 
+      isPolling,
+      enabled,
+      refreshInterval: refreshIntervalRef.current
+    });
+  }, [isPolling, enabled]);
   
   return {
     mountedRef,
-    pollNow: handlePoll,
+    pollNow,
     isPolling,
     isChecking,
     lastCheckTime

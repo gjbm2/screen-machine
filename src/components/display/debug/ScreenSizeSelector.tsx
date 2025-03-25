@@ -40,33 +40,66 @@ export const ScreenSizeSelector: React.FC<ScreenSizeSelectorProps> = ({
 }) => {
   // Track current size object to update dynamically
   const [currentSizes, setCurrentSizes] = useState<ScreenSize[]>(SCREEN_SIZES);
+  const [lastWindowSize, setLastWindowSize] = useState({ 
+    width: window.innerWidth, 
+    height: window.innerHeight 
+  });
   
   // Update Current Viewport size when window is resized
   useEffect(() => {
     const handleResize = () => {
-      const updatedSizes = [...currentSizes];
-      updatedSizes[0] = { 
-        name: 'Current Viewport', 
-        // Constrain to 80% of viewport to ensure it always fits
-        width: window.innerWidth * 0.8, 
-        height: window.innerHeight * 0.8 
-      };
-      setCurrentSizes(updatedSizes);
-      
-      // If container exists and Current Viewport is selected, apply the new size
-      if (containerRef?.current && selectedSize === 'Current Viewport') {
-        containerRef.current.style.width = `${updatedSizes[0].width}px`;
-        containerRef.current.style.height = `${updatedSizes[0].height}px`;
+      // Only update if the window size has changed significantly
+      if (Math.abs(window.innerWidth - lastWindowSize.width) > 50 || 
+          Math.abs(window.innerHeight - lastWindowSize.height) > 50) {
+        
+        // Update last known window size
+        setLastWindowSize({
+          width: window.innerWidth,
+          height: window.innerHeight
+        });
+        
+        const updatedSizes = [...currentSizes];
+        updatedSizes[0] = { 
+          name: 'Current Viewport', 
+          // Constrain to 80% of viewport to ensure it always fits
+          width: window.innerWidth * 0.8, 
+          height: window.innerHeight * 0.8 
+        };
+        
+        console.log('[ScreenSizeSelector] Window resized, updating Current Viewport size:', {
+          width: updatedSizes[0].width,
+          height: updatedSizes[0].height
+        });
+        
+        setCurrentSizes(updatedSizes);
+        
+        // If container exists and Current Viewport is selected, apply the new size
+        if (containerRef?.current && selectedSize === 'Current Viewport') {
+          console.log('[ScreenSizeSelector] Updating container size');
+          containerRef.current.style.width = `${updatedSizes[0].width}px`;
+          containerRef.current.style.height = `${updatedSizes[0].height}px`;
+        }
       }
     };
     
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [selectedSize, containerRef, currentSizes]);
+  }, [selectedSize, containerRef, currentSizes, lastWindowSize]);
 
   // Debug logging to see what's happening
-  console.log('[ScreenSizeSelector] Current selection:', selectedSize);
-  console.log('[ScreenSizeSelector] Available sizes:', currentSizes.map(s => s.name));
+  useEffect(() => {
+    console.log('[ScreenSizeSelector] Current selection:', selectedSize);
+    console.log('[ScreenSizeSelector] Available sizes:', currentSizes.map(s => s.name));
+    
+    // Log the actual size of the selected option
+    const selectedSizeObject = currentSizes.find(s => s.name === selectedSize);
+    if (selectedSizeObject) {
+      console.log('[ScreenSizeSelector] Selected size dimensions:', {
+        width: selectedSizeObject.width,
+        height: selectedSizeObject.height
+      });
+    }
+  }, [selectedSize, currentSizes]);
 
   const handleSizeChange = (val: string) => {
     console.log('[ScreenSizeSelector] Selected new size:', val);
