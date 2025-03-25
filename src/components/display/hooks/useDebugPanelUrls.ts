@@ -171,9 +171,16 @@ export const useDebugPanelUrls = ({
     const url = createUrlWithParams(newParams);
     console.log('[useDebugPanelUrls] Committing settings, navigating to view mode:', url);
     
-    // Use direct window.location change for view mode to ensure a clean state
-    // This forces a complete page reload which should clear any React state
-    window.location.href = `/display${url}`;
+    // Important: Use navigate with replace and full URL to ensure clean transition
+    // This avoids navigation issues that might be occurring with window.location.href
+    const fullUrl = `/display${url}`;
+    console.log('[useDebugPanelUrls] Navigating to:', fullUrl);
+    
+    // Set the flag first, then navigate
+    localStorage.setItem('debugModeExitTime', Date.now().toString());
+    
+    // Force hard reload to reset all state
+    window.location.replace(fullUrl);
     
     toast("View Mode Activated", {
       description: "Settings applied and debug mode disabled."
