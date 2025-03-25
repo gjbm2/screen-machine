@@ -91,15 +91,19 @@ export const useImageBatchItem = ({
   };
 
   // Calculate if action menu should be shown
-  const shouldShowActionsMenu = ((isMobile && showActionPanel) || (!isMobile && (isHovered || showActionPanel))) && 
-                                image.url && 
-                                viewMode === 'normal';
+  // Update this logic to ensure buttons always show on hover in desktop mode
+  const shouldShowActionsMenu = ((isMobile && showActionPanel) || 
+                               (!isMobile && (isHovered || showActionPanel))) && 
+                               image.url && 
+                               viewMode === 'normal';
 
   return {
     isHovered,
     setIsHovered,
     showActionPanel,
+    setShowActionPanel,
     showActionButtons,
+    setShowActionButtons,
     handleCreateAgain,
     handleUseAsInput,
     handleFullScreen,

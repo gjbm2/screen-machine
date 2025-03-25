@@ -28,9 +28,10 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
     : 'h-8 w-8 p-1'; // Regular size for unrolled mode
 
   // Only show in small view and on hover/force for normal view
+  // Ensure buttons are always visible on hover in desktop mode
   const baseVisibilityClass = viewMode === 'small' 
     ? 'opacity-100' 
-    : 'opacity-0 group-hover:opacity-100 transition-opacity duration-200';
+    : 'opacity-0 group-hover:opacity-100 transition-opacity duration-100';
   
   const visibilityClass = forceShow ? 'opacity-100' : baseVisibilityClass;
 
