@@ -41,6 +41,11 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   // Skip empty batches
   if (images.length === 0) return null;
   
+  // Handler for CreateAgain in this specific batch
+  const handleCreateAgain = () => {
+    onCreateAgain();
+  };
+  
   return (
     <div className="relative border rounded overflow-hidden bg-background shadow-sm mb-2">
       <div className="flex items-center justify-between px-2 py-1 bg-muted/30">
@@ -74,7 +79,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
         <ExpandedBatchView
           batchId={batchId}
           images={images}
-          onCreateAgain={onCreateAgain}
+          onCreateAgain={handleCreateAgain}
           onDeleteImage={onDeleteImage}
           onImageClick={onImageClick}
           onFullScreenClick={onFullScreenClick}
@@ -84,7 +89,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
         <RolledUpBatchView
           batchId={batchId}
           images={images}
-          onCreateAgain={onCreateAgain}
+          onCreateAgain={handleCreateAgain}
           onDeleteImage={onDeleteImage}
           onImageClick={onImageClick}
           onFullScreenClick={onFullScreenClick}
