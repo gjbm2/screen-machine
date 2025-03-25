@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Save, ExternalLink } from "lucide-react";
@@ -15,6 +15,19 @@ export const DebugPanelFooter: React.FC<DebugPanelFooterProps> = ({
   commitSettings,
   isBottomFixed = true
 }) => {
+  const [isCommitting, setIsCommitting] = useState(false);
+  
+  const handleCommit = () => {
+    setIsCommitting(true);
+    // Call the commitSettings function
+    commitSettings();
+    
+    // Reset after a timeout in case the navigation doesn't happen
+    setTimeout(() => {
+      setIsCommitting(false);
+    }, 3000);
+  };
+  
   return (
     <CardFooter 
       className={`flex justify-end gap-3 pt-4 pb-4 bg-card z-[60] border-t ${
@@ -30,11 +43,12 @@ export const DebugPanelFooter: React.FC<DebugPanelFooterProps> = ({
         Apply Changes
       </Button>
       <Button 
-        onClick={commitSettings}
+        onClick={handleCommit}
         className="gap-1"
+        disabled={isCommitting}
       >
         <ExternalLink className="h-4 w-4" />
-        Commit
+        {isCommitting ? 'Committing...' : 'Commit'}
       </Button>
     </CardFooter>
   );

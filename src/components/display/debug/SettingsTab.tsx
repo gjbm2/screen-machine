@@ -35,6 +35,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   setTransition,
   resetSettings
 }) => {
+  // Ensure refresh interval is at least 1 second
+  const effectiveRefreshInterval = Math.max(1, refreshInterval);
+  
   return (
     <CardContent className="pt-4 pb-2 overflow-y-auto max-h-[50vh]">
       <div className="space-y-4">
@@ -84,14 +87,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="refresh-interval" className="text-sm">Refresh Interval (seconds)</Label>
-            <span className="text-xs text-gray-500">{refreshInterval}s</span>
+            <span className="text-xs text-gray-500">{effectiveRefreshInterval}s</span>
           </div>
           <Slider 
             id="refresh-interval"
             min={1} 
             max={60} 
             step={1}
-            value={[refreshInterval]}
+            value={[effectiveRefreshInterval]}
             onValueChange={(value) => setRefreshInterval(value[0])}
           />
         </div>
