@@ -1,3 +1,4 @@
+
 // API service for all backend requests
 import { toast } from 'sonner';
 
@@ -14,6 +15,7 @@ interface GenerateImageParams {
   refiner_params?: Record<string, any>;
   imageFiles?: (File | string)[];
   batch_id?: string;
+  placeholders?: Array<{batch_index: number, placeholder_id: string}>;
 }
 
 class ApiService {
@@ -34,13 +36,14 @@ class ApiService {
   // Generate images through the API
   async generateImage(params: GenerateImageParams) {
     try {
-      const { prompt, workflow, params: workflowParams, global_params, refiner, refiner_params, imageFiles, batch_id } = params;
+      const { prompt, workflow, params: workflowParams, global_params, refiner, refiner_params, imageFiles, batch_id, placeholders } = params;
       
       console.log(`[api] Received request with workflow: ${workflow}`);
       console.log(`[api] Received workflowParams:`, workflowParams);
       console.log(`[api] Received global_params:`, global_params);
       console.log(`[api] Received refiner:`, refiner);
       console.log(`[api] Received refiner_params:`, refiner_params);
+      console.log(`[api] Received placeholders:`, placeholders);
       
       // Create form data for multipart request
       const formData = new FormData();
@@ -54,6 +57,11 @@ class ApiService {
         batch_id,
         has_reference_image: (imageFiles && imageFiles.length > 0) || false
       };
+      
+      // Add placeholders if available
+      if (placeholders && placeholders.length > 0) {
+        jsonData.placeholders = placeholders;
+      }
       
       // Log publish destination if present
       if (workflowParams?.publish_destination) {
@@ -202,20 +210,32 @@ class ApiService {
           return placeholderImages[Math.floor(Math.random() * placeholderImages.length)];
         };
         
-        // Create mock images based on the requested batch size
-        const mockImages = Array(batchSize).fill(0).map((_, index) => ({
-          id: `mock-${Date.now()}-${index}`,
-          url: getRandomImage(),
-          prompt: params.prompt,
-          workflow: params.workflow,
-          timestamp: Date.now(),
-          batch_id: params.batch_id || `batch-${Date.now()}`,
-          batch_index: index,
-          params: params.params,
-          refiner: params.refiner,
-          refiner_params: params.refiner_params,
-          status: 'completed'
-        }));
+        // Create mock images based on the requested batch size and include placeholder IDs if provided
+        const mockImages = Array(batchSize).fill(0).map((_, index) => {
+          // Get placeholder ID if available
+          const placeholderId = params.placeholders && params.placeholders[index] 
+            ? params.placeholders[index].placeholder_id 
+            : undefined;
+          
+          const batchIndex = params.placeholders && params.placeholders[index]
+            ? params.placeholders[index].batch_index
+            : index;
+            
+          return {
+            id: `mock-${Date.now()}-${index}`,
+            url: getRandomImage(),
+            prompt: params.prompt,
+            workflow: params.workflow,
+            timestamp: Date.now(),
+            batch_id: params.batch_id || `batch-${Date.now()}`,
+            batch_index: batchIndex,
+            placeholder_id: placeholderId, // Include the placeholder ID if available
+            params: params.params,
+            refiner: params.refiner,
+            refiner_params: params.refiner_params,
+            status: 'completed'
+          };
+        });
         
         console.info('[MOCK LOG] [mock-backend]', `Generated ${mockImages.length} mock image(s) successfully!`);
         

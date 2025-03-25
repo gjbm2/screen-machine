@@ -1,3 +1,4 @@
+
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -150,9 +151,12 @@ export const generateImage = async (
     // Determine which container ID to use
     const containerIdToUse = getContainerIdForBatch(batchId, existingContainerId, nextContainerId);
     
-    // Create placeholders for the batch
+    // Create placeholders for the batch and store them for tracking
+    let placeholders: GeneratedImage[] = [];
+    
     setGeneratedImages(prevImages => {
-      const newPlaceholders = createPlaceholderBatch(
+      // Create placeholders with unique IDs
+      placeholders = createPlaceholderBatch(
         prompt,
         workflow,
         currentBatchId,
@@ -165,12 +169,18 @@ export const generateImage = async (
         containerIdToUse
       );
       
-      return [...prevImages, ...newPlaceholders];
+      return [...prevImages, ...placeholders];
     });
 
     // Use setTimeout to allow the UI to update before starting the API call
     setTimeout(async () => {
       try {
+        // Prepare placeholder IDs to send to API
+        const placeholderIds = placeholders.map(p => ({
+          batch_index: p.batchIndex,
+          placeholder_id: p.placeholderId
+        }));
+        
         // Make the API call with all parameters
         const payload = {
           prompt,
@@ -180,7 +190,8 @@ export const generateImage = async (
           refiner,
           refiner_params: refinerParams,
           imageFiles: uploadedFiles,
-          batch_id: currentBatchId
+          batch_id: currentBatchId,
+          placeholders: placeholderIds // Send placeholder IDs to API
         };
         
         // Enhanced logging to debug

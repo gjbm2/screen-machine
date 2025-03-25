@@ -1,4 +1,3 @@
-
 import { GeneratedImage } from '../types';
 import { ImageGenerationStatus } from '@/types/workflows';
 
@@ -36,30 +35,19 @@ export const processGenerationResults = (
     containerId = placeholder.containerId;
   }
   
-  // Create a map of existing images by batch index to preserve any we may have
-  const existingImagesByIndex = new Map<number, GeneratedImage>();
-  
-  // Find all placeholders from this batch to ensure we have correct batch indexes
+  // Get all placeholders for this batch
   const batchPlaceholders = prevImages.filter(img => 
-    img.batchId === batchId && img.status === 'generating' && typeof img.batchIndex === 'number'
+    img.batchId === batchId && img.status === 'generating'
   );
   
-  // Debug log the placeholders we found
   console.log('Found placeholders for batch:', batchPlaceholders.map(p => ({
     batchId: p.batchId,
     batchIndex: p.batchIndex,
+    placeholderId: p.placeholderId,
     status: p.status
   })));
   
-  // Store the placeholders by their index for easy lookup
-  batchPlaceholders.forEach(img => {
-    existingImagesByIndex.set(img.batchIndex, img);
-  });
-  
-  // Debug log the existing images map
-  console.log('Existing images map keys:', Array.from(existingImagesByIndex.keys()));
-  
-  // Process all images in the response
+  // Clone the images array to update it
   const updatedImages = [...prevImages];
   
   // First mark existing placeholders as "to be updated"
@@ -72,36 +60,85 @@ export const processGenerationResults = (
     }
   });
   
+  // Track which placeholders have been matched
+  const matchedPlaceholders = new Set<string>();
+  
   // Then update or add new images
   response.images.forEach((responseImage: any, index: number) => {
     console.log('Processing response image:', { index, responseImage });
     
-    // CRITICAL FIX: Use the correct batch index based on the original placeholders 
-    // or fallback to array index if no placeholder exists
-    
-    // First check if the response includes a proper batch_index
+    // First check if the response includes a batch_index
     let batchIndex: number;
+    let placeholderId: string | undefined;
+    
     if (responseImage.batch_index !== undefined) {
+      // Response includes batch_index, use it
       batchIndex = Number(responseImage.batch_index);
-    } else {
-      // If no batch_index in response, we need to maintain uniqueness
-      // If we have placeholders, use their indexes in order
-      if (batchPlaceholders.length > index) {
-        batchIndex = batchPlaceholders[index].batchIndex;
+      
+      // Try to find a placeholder with this batch index
+      const matchingPlaceholder = batchPlaceholders.find(p => p.batchIndex === batchIndex);
+      if (matchingPlaceholder) {
+        placeholderId = matchingPlaceholder.placeholderId;
+      }
+    } else if (responseImage.placeholder_id) {
+      // Response includes placeholderId, find the corresponding placeholder
+      const matchingPlaceholder = batchPlaceholders.find(p => p.placeholderId === responseImage.placeholder_id);
+      if (matchingPlaceholder) {
+        placeholderId = matchingPlaceholder.placeholderId;
+        batchIndex = matchingPlaceholder.batchIndex;
       } else {
-        // Last resort - use array index, but ensure uniqueness with a sanity check
+        // If no placeholder with this ID exists, use index as fallback
+        batchIndex = index;
+      }
+    } else {
+      // No identifiers in response, try to match by position
+      if (index < batchPlaceholders.length) {
+        // Get the next unused placeholder
+        const availablePlaceholders = batchPlaceholders.filter(p => 
+          !matchedPlaceholders.has(p.placeholderId || '')
+        );
+        
+        if (availablePlaceholders.length > 0) {
+          // Use the first available placeholder
+          placeholderId = availablePlaceholders[0].placeholderId;
+          batchIndex = availablePlaceholders[0].batchIndex;
+          
+          // Mark this placeholder as matched
+          if (placeholderId) {
+            matchedPlaceholders.add(placeholderId);
+          }
+        } else {
+          // No available placeholders, use index
+          batchIndex = index;
+        }
+      } else {
+        // More response images than placeholders, use index
         batchIndex = index;
       }
     }
     
     console.log(`Using batchIndex ${batchIndex} for image at array position ${index}`);
     
-    // Check if this image already exists
-    const existingImageIndex = updatedImages.findIndex(
-      img => img.batchId === batchId 
-        && img.status === 'to_update'
-        && img.batchIndex === batchIndex
-    );
+    // Check if we have a matching placeholder
+    let existingImageIndex = -1;
+    
+    if (placeholderId) {
+      // Find by placeholderId first (most reliable)
+      existingImageIndex = updatedImages.findIndex(
+        img => img.batchId === batchId && 
+              img.status === 'to_update' && 
+              img.placeholderId === placeholderId
+      );
+    }
+    
+    if (existingImageIndex === -1) {
+      // If not found by placeholderId, try batch index
+      existingImageIndex = updatedImages.findIndex(
+        img => img.batchId === batchId && 
+              img.status === 'to_update' && 
+              img.batchIndex === batchIndex
+      );
+    }
     
     // Check if we have a status field, if not assume 'completed'
     const imageStatus = responseImage.status || 'completed';
@@ -152,7 +189,10 @@ export const processGenerationResults = (
         prompt: responseImage.prompt || existingImage.prompt,
         workflow: responseImage.workflow || existingImage.workflow,
         timestamp: responseImage.timestamp || Date.now(),
-        batchIndex: batchIndex, // CRITICAL: Use our determined batchIndex
+        // Keep existing batch index to maintain position
+        batchIndex: existingImage.batchIndex,
+        // Keep existing placeholder ID
+        placeholderId: existingImage.placeholderId,
         title: `${window.imageCounter + 1}. ${responseImage.prompt || existingImage.prompt} (${responseImage.workflow || existingImage.workflow})`,
         // Preserve params from placeholder or use response params
         params: responseImage.params || existingParams,
@@ -164,7 +204,7 @@ export const processGenerationResults = (
       };
       
       // Log what we're preserving for debugging
-      console.log(`Updated image at index ${existingImageIndex} with batchIndex ${batchIndex}`);
+      console.log(`Updated image at index ${existingImageIndex} with batchIndex ${existingImage.batchIndex}`);
       
       // Increment the counter
       if (window.imageCounter !== undefined) {
@@ -184,14 +224,14 @@ export const processGenerationResults = (
         }
       }
       
-      // Create a new image entry if we don't have a placeholder
-      // This happens if we get more images back than we expected
+      // Create a new image entry
       const newImage: GeneratedImage = {
         url: responseImage.url,
         prompt: responseImage.prompt,
         workflow: responseImage.workflow || 'unknown',
         batchId: batchId,
-        batchIndex: batchIndex, // CRITICAL: Use our determined batchIndex
+        batchIndex: batchIndex,
+        placeholderId: responseImage.placeholder_id, // Store placeholder ID if available
         status: imageStatus as ImageGenerationStatus,
         timestamp: responseImage.timestamp || Date.now(),
         title: `${window.imageCounter + 1}. ${responseImage.prompt} (${responseImage.workflow || 'unknown'})`,
