@@ -153,9 +153,16 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const captionBgColor = params.captionBgColor || '#000000';
   const formattedBgColor = captionBgColor.startsWith('#') ? captionBgColor : `#${captionBgColor}`;
 
-  // The issue was here - we should show caption if it exists, regardless of metadata loading state
-  // Remove the isLoadingMetadata condition that was preventing captions from appearing
+  // This is the key change - we show the caption if it exists, regardless of isLoadingMetadata
   const shouldShowCaption = processedCaption !== null;
+  
+  // Debug the caption rendering decision
+  useEffect(() => {
+    console.log('[ImageDisplay] Should show caption decision:', { 
+      processedCaption, 
+      shouldShowCaption
+    });
+  }, [processedCaption, shouldShowCaption]);
 
   return (
     <div 
