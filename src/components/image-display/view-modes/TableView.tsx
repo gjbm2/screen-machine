@@ -104,7 +104,7 @@ const TableView: React.FC<TableViewProps> = ({
                 key={batchId}
                 id={batchId}
                 onClick={() => onTableRowClick(batchId)}
-                index={imageNumber || firstImage.containerId || 0}
+                index={imageNumber}  // Use the extracted image number here
                 prompt={firstImage.prompt}
                 hasReferenceImage={hasReferenceImage}
                 completedImages={completedImages.length}

@@ -19,7 +19,7 @@ export const createPlaceholderImages = (
 ): GeneratedImage => {
   const nextIndex = existingBatchIndexes.size;
   
-  // Create a placeholder entry
+  // Create a placeholder entry with a generated title - this is our first and only call to generateImageTitle
   const placeholderImage: GeneratedImage = {
     url: '', 
     prompt,
@@ -74,7 +74,7 @@ export const processGenerationResponse = (
     );
     
     if (placeholderIndex >= 0) {
-      // Update the placeholder with actual data
+      // Update the placeholder with actual data, preserving the existing title
       newImages[placeholderIndex] = {
         ...newImages[placeholderIndex],
         url: img.url,
@@ -82,8 +82,9 @@ export const processGenerationResponse = (
         timestamp: Date.now(),
       };
       
-      // Make sure the title is preserved
+      // Only if there's no title already, generate one (this should never happen if placeholder was created properly)
       if (!newImages[placeholderIndex].title) {
+        console.log("[image-processor] No title found for image, generating one");
         newImages[placeholderIndex].title = generateImageTitle(prompt, workflow);
       }
       
@@ -93,6 +94,7 @@ export const processGenerationResponse = (
       }
     } else {
       // No placeholder found, this is an additional image
+      // In this case we need to generate a new title since we don't have a placeholder
       const newImage: GeneratedImage = {
         url: img.url,
         prompt,
