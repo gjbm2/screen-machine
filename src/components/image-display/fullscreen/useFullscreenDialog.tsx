@@ -98,7 +98,7 @@ const useFullscreenDialog = ({
         console.log('FullscreenDialog - updating to newly completed image, found images:', completedImages.length);
         
         if (completedImages.length > 0) {
-          // Get the first completed image
+          // Get the first completed image (most recently completed one)
           const image = completedImages[0];
           setCurrentImage(image);
           
