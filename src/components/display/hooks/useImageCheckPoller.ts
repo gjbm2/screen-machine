@@ -105,7 +105,7 @@ export const useImageCheckPoller = (
   // Use the interval poller with the specified refresh interval
   const { isPolling } = useIntervalPoller(
     !!outputUrl, // Run the poller if we have a URL, regardless of enabled state
-    refreshIntervalRef.current || 5, // Default to 5 seconds if not specified
+    refreshInterval || 5, // Default to 5 seconds if not specified
     handlePoll,
     [outputUrl] // Only include outputUrl as a dependency since we use refs for everything else
   );
