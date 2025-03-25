@@ -82,10 +82,19 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
             ) : null}
           </div>
 
-          <div className="flex flex-wrap gap-1 justify-start pt-1">
-            {/* Order the thumbnails with most recent (highest timestamp) first */}
+          <div className="flex flex-wrap gap-1 justify-end pt-1">
+            {/* Order the thumbnails with most recent (highest timestamp) first, showing newest on the right */}
+            {anyGenerating && (
+              <div className="w-14 h-14 rounded-md overflow-hidden">
+                <LoadingPlaceholder 
+                  prompt={null} 
+                  isCompact={true}
+                />
+              </div>
+            )}
+            
             {[...completedImages]
-              .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+              .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
               .map((image, idx) => {
                 // Find the actual index in the original completedImages array for correct navigation
                 const originalIndex = completedImages.findIndex(img => img.url === image.url);
@@ -105,16 +114,6 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
                   </div>
                 );
             })}
-            
-            {/* Add placeholder thumbnails for generating images */}
-            {anyGenerating && (
-              <div className="w-14 h-14 rounded-md overflow-hidden">
-                <LoadingPlaceholder 
-                  prompt={null} 
-                  isCompact={true}
-                />
-              </div>
-            )}
           </div>
           
           <div className="flex justify-center">

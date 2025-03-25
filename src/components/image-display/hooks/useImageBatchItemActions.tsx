@@ -26,16 +26,20 @@ export const useImageBatchItemActions = ({
     onOpenFullscreenView(batchId, batchIndex);
   }, [batchId, batchIndex, onOpenFullscreenView]);
   
-  const handleUseAsInput = useCallback(() => {
+  const handleUseAsInput = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
     onUseGeneratedAsInput(imageUrl);
   }, [imageUrl, onUseGeneratedAsInput]);
   
-  const handleDelete = useCallback(() => {
+  const handleDelete = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
     onDeleteImage(batchId, batchIndex);
   }, [batchId, batchIndex, onDeleteImage]);
   
-  const handleCreateAgain = useCallback(() => {
+  const handleCreateAgain = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
     onCreateAgain(batchId);
+    // We no longer auto-roll up the batch when creating again
   }, [batchId, onCreateAgain]);
   
   // Add aliases for the functions that are expected in useImageBatchItem

@@ -81,30 +81,22 @@ export const useImageBatchItem = ({
   const handleImageClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.image-action-button') ||
         (e.target as HTMLElement).closest('button')) {
-      e.stopPropagation();
-      return;
+      return; // Don't trigger image click when clicking on action buttons
     }
     
-    // Always go to fullscreen when clicked, regardless of view mode
-    if (image.url && onFullScreen) {
+    // Always go to fullscreen when clicked in normal view (for both desktop and mobile)
+    if (image.url && onFullScreen && viewMode === 'normal') {
       onFullScreen(batchId, index);
       return;
     }
     
-    if (viewMode === 'normal') {
-      if (isMobile) {
-        // Toggle action buttons on mobile
-        setShowActionButtons(!showActionButtons);
-      }
-    }
-
-    // Only call onImageClick for unrolled view in mobile
-    if (isMobile && !isRolledUp && viewMode === 'normal' && image.url) {
+    // For small view, just call the general onImageClick
+    if (image.url) {
       onImageClick(image.url);
     }
   };
 
-  // Show action buttons on hover for desktop
+  // Show action buttons on hover for desktop, or on tap for mobile
   const shouldShowActionButtons = isMobile 
     ? showActionButtons 
     : (isHovered && viewMode === 'normal');

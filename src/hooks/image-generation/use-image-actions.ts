@@ -142,9 +142,12 @@ export const useImageActions = (
         img => !(img.batchId === batchId && img.batchIndex === index)
       );
       
-      // If we deleted the last image in a batch, remove the batch ID from the order
+      // Check if this batch has any remaining images
       const batchHasRemainingImages = updatedImages.some(img => img.batchId === batchId);
+      
+      // If we deleted the last image in a batch, remove the batch ID from the order
       if (!batchHasRemainingImages) {
+        console.log('Deleting the last image in batch. Removing batch container:', batchId);
         setImageContainerOrder(prev => prev.filter(id => id !== batchId));
       }
       
