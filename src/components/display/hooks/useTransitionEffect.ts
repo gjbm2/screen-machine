@@ -44,7 +44,7 @@ export const useTransitionEffect = () => {
       bottom: 0,
       transition: `opacity ${duration}s ease-in-out`,
       opacity: 1,
-      zIndex: 2,
+      zIndex: 1, // Change this to 1 (lower z-index)
       ...getPositionStyle(position, showMode)
     });
     
@@ -56,7 +56,7 @@ export const useTransitionEffect = () => {
       right: 0,
       bottom: 0,
       opacity: 0,
-      zIndex: 1,
+      zIndex: 2, // Change this to 2 (higher z-index)
       ...getPositionStyle(position, showMode)
     });
     
