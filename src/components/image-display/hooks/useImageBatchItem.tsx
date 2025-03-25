@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ViewMode } from '../ImageDisplay';
 import { useImageBatchItemActions } from './useImageBatchItemActions';
+import { saveAs } from 'file-saver';
 
 interface UseImageBatchItemProps {
   image: {
@@ -16,6 +17,7 @@ interface UseImageBatchItemProps {
     status?: string;
     refiner?: string;
     referenceImageUrl?: string;
+    title?: string;
   };
   batchId: string;
   index: number;
@@ -41,7 +43,6 @@ export const useImageBatchItem = ({
   isRolledUp
 }: UseImageBatchItemProps) => {
   const [isHovered, setIsHovered] = useState(false);
-  const [showActionPanel, setShowActionPanel] = useState(false);
   const [showActionButtons, setShowActionButtons] = useState(false);
   const isMobile = useIsMobile();
 
@@ -62,6 +63,20 @@ export const useImageBatchItem = ({
     imageUrl: image.url
   });
 
+  // Handle download action
+  const handleDownload = (e: React.MouseEvent) => {
+    if (!image.url) return;
+    e.stopPropagation();
+    
+    // Use title if available, otherwise generate filename from timestamp
+    const titleToUse = image.title || null;
+    const filename = titleToUse 
+      ? `${titleToUse.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.png`
+      : `image_${Date.now()}.png`;
+    
+    saveAs(image.url, filename);
+  };
+
   // Updated to accept a React.MouseEvent parameter
   const handleImageClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.image-action-button') ||
@@ -78,8 +93,7 @@ export const useImageBatchItem = ({
     
     if (viewMode === 'normal') {
       if (isMobile) {
-        // Toggle action panel and buttons on mobile
-        setShowActionPanel(!showActionPanel);
+        // Toggle action buttons on mobile
         setShowActionButtons(!showActionButtons);
       }
     }
@@ -90,27 +104,23 @@ export const useImageBatchItem = ({
     }
   };
 
-  // Calculate if action menu should be shown
-  // Update this logic to ensure buttons always show on hover in desktop mode
-  const shouldShowActionsMenu = ((isMobile && showActionPanel) || 
-                               (!isMobile && (isHovered || showActionPanel))) && 
-                               image.url && 
-                               viewMode === 'normal';
+  // Show action buttons on hover for desktop
+  const shouldShowActionButtons = isMobile 
+    ? showActionButtons 
+    : (isHovered && viewMode === 'normal');
 
   return {
     isHovered,
     setIsHovered,
-    showActionPanel,
-    setShowActionPanel,
     showActionButtons,
     setShowActionButtons,
     handleCreateAgain,
     handleUseAsInput,
     handleFullScreen,
     handleDeleteImage,
-    handleDeleteFromPanel,
+    handleDownload,
     handleImageClick,
-    shouldShowActionsMenu,
+    shouldShowActionButtons,
     isMobile
   };
 };
