@@ -64,12 +64,12 @@ export const useDebugPanelFiles = (props: UseDebugPanelFilesProps) => {
       // Log the URL
       console.log('[useDebugPanelFiles] Committing with URL:', commitUrl);
       
-      // Directly force a full reload with the new URL
-      // Using replace to avoid history issues
-      if (commitUrl) {
+      // Set localStorage flag to prevent auto-debug on the destination page
+      localStorage.setItem('userExplicitlyExitedDebug', 'true');
+      
+      // Directly force a full reload with the new URL if we have one
+      if (commitUrl && typeof commitUrl === 'string') {
         console.log('[useDebugPanelFiles] Redirecting to:', commitUrl);
-        // Set localStorage flag to prevent auto-debug on the destination page
-        localStorage.setItem('userExplicitlyExitedDebug', 'true');
         
         // Use window.location.replace for a clean redirect without browser history entry
         window.location.replace(commitUrl);
