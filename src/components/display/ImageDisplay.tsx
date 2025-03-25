@@ -36,30 +36,25 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   isLoadingMetadata = false
 }) => {
   const [containerSize, setContainerSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const [doubleClickAttempted, setDoubleClickAttempted] = useState(false);
+  const doubleClickTimeoutRef = useRef<number | null>(null);
   const [hasLoadError, setHasLoadError] = useState(false);
-  
-  // Log detailed information about transition state for debugging
+
+  // Log the image URL and transition state for debugging
   useEffect(() => {
     console.log('[ImageDisplay] Current image URL:', imageUrl);
     console.log('[ImageDisplay] Is transitioning:', isTransitioning);
     console.log('[ImageDisplay] Is loading metadata:', isLoadingMetadata);
     console.log('[ImageDisplay] Processed caption:', processedCaption);
     console.log('[ImageDisplay] Old image URL:', oldImageUrl);
+    console.log('[ImageDisplay] Image transition styles:', { 
+      oldImageStyle: { ...oldImageStyle, opacity: oldImageStyle.opacity }, 
+      newImageStyle: { ...newImageStyle, opacity: newImageStyle.opacity },
+      regularImageStyle: { ...imageStyle }
+    });
     
     if (isTransitioning) {
-      console.log('[ImageDisplay] -----TRANSITION ACTIVE-----');
-      console.log('[ImageDisplay] Old image style:', {
-        opacity: oldImageStyle.opacity,
-        zIndex: oldImageStyle.zIndex,
-        position: oldImageStyle.position,
-        transition: oldImageStyle.transition
-      });
-      console.log('[ImageDisplay] New image style:', {
-        opacity: newImageStyle.opacity,
-        zIndex: newImageStyle.zIndex,
-        position: newImageStyle.position,
-        transition: newImageStyle.transition
-      });
+      console.log('[ImageDisplay] Transition in progress - showing both images with styles');
     } else {
       console.log('[ImageDisplay] No transition - showing single image with normal style');
     }
@@ -79,6 +74,9 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     window.addEventListener('resize', handleResize);
     return () => {
       window.removeEventListener('resize', handleResize);
+      if (doubleClickTimeoutRef.current) {
+        window.clearTimeout(doubleClickTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -188,40 +186,24 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     >
       {imageUrl ? (
         <div className="relative w-full h-full">
-          {/* IMPORTANT: In transition mode, render both images with correct order */}
-          {isTransitioning ? (
-            <>
-              {/* New image (fades in from below) */}
-              <img
-                key={`new-${imageKey}`}
-                ref={imageRef}
-                src={imageUrl}
-                alt=""
-                style={newImageStyle}
-                onError={handleImageLoadError}
-                crossOrigin="anonymous"
-              />
-              
-              {/* Old image on top (fades out) */}
-              {oldImageUrl && (
-                <img
-                  key={`old-${imageKey-1}`}
-                  src={oldImageUrl}
-                  alt=""
-                  style={oldImageStyle}
-                  crossOrigin="anonymous"
-                />
-              )}
-            </>
-          ) : (
-            /* Regular display mode - just the current image */
+          {/* Main image (or new image during transition) */}
+          <img
+            key={imageKey}
+            ref={imageRef}
+            src={imageUrl}
+            alt=""
+            style={isTransitioning ? newImageStyle : imageStyle}
+            onError={handleImageLoadError}
+            onLoad={() => console.log('[ImageDisplay] Image loaded successfully:', imageUrl)}
+            crossOrigin="anonymous"
+          />
+          
+          {/* Transitioning old image (for fades) */}
+          {isTransitioning && oldImageUrl && (
             <img
-              key={imageKey}
-              ref={imageRef}
-              src={imageUrl}
+              src={oldImageUrl}
               alt=""
-              style={imageStyle}
-              onError={handleImageLoadError}
+              style={oldImageStyle}
               crossOrigin="anonymous"
             />
           )}
@@ -233,7 +215,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
               position={params.captionPosition || 'bottom-center'}
               fontSize={params.captionSize || '16px'}
               color={params.captionColor || 'ffffff'}
-              fontFamily={params.captionFont || 'Helvetica, Arial, sans-serif'}
+              fontFamily={params.captionFont || 'Arial, sans-serif'}
               backgroundColor={formattedBgColor}
               backgroundOpacity={params.captionBgOpacity !== undefined ? params.captionBgOpacity : 0.7}
               containerWidth={containerSize.width}

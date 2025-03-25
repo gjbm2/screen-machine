@@ -16,13 +16,7 @@ export const DisplayContainer: React.FC<DisplayContainerProps> = ({
   
   // Update the background color whenever params change
   useEffect(() => {
-    // Ensure proper handling of the hash symbol
-    const formattedColor = params.backgroundColor.startsWith('#') 
-      ? params.backgroundColor 
-      : `#${params.backgroundColor}`;
-      
-    setBgColor(formattedColor);
-    console.log('[DisplayContainer] Setting background color to:', formattedColor);
+    setBgColor(`#${params.backgroundColor.replace('#', '')}`);
   }, [params.backgroundColor]);
   
   const containerStyle: React.CSSProperties = {
