@@ -72,9 +72,6 @@ export const useDebugPanelUrls = ({
   };
   
   const applySettings = () => {
-    // Actually apply settings by updating the URL
-    console.log('[useDebugPanelUrls] Applying settings...');
-    
     // Use the actual current image URL from params instead of customUrl when available
     const outputToUse = params.output || customUrl;
     console.log('[useDebugPanelUrls] Using output for applying settings:', outputToUse);
@@ -89,7 +86,7 @@ export const useDebugPanelUrls = ({
       output: processedOutput,
       showMode,
       position,
-      refreshInterval,
+      refreshInterval: 0,
       backgroundColor,
       caption,
       captionPosition,
@@ -99,7 +96,7 @@ export const useDebugPanelUrls = ({
       captionBgColor,
       captionBgOpacity,
       transition,
-      debugMode: true // Maintain debug mode
+      debugMode: true
     };
     
     // Generate URL for debug mode
@@ -153,7 +150,7 @@ export const useDebugPanelUrls = ({
       output: processedOutput,
       showMode,
       position,
-      refreshInterval,
+      refreshInterval: 0,
       backgroundColor,
       caption,
       captionPosition,
@@ -163,7 +160,7 @@ export const useDebugPanelUrls = ({
       captionBgColor,
       captionBgOpacity,
       transition,
-      debugMode: false // Explicitly set debugMode to false
+      debugMode: false
     };
     
     // Generate URL from params

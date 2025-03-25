@@ -1,4 +1,3 @@
-
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { useIntervalPoller } from './useIntervalPoller';
 
@@ -106,7 +105,7 @@ export const useImageCheckPoller = (
   // Use the interval poller with the specified refresh interval
   // Pass minimal dependencies to avoid recreation
   const { isPolling } = useIntervalPoller(
-    !!outputUrl, // Only run if we have a URL
+    false, // Disable polling by setting to false
     Math.max(1, refreshInterval || 5), // Default to 5 seconds if not specified, minimum 1 second
     handlePoll,
     [outputUrl] // Only include outputUrl in dependencies
@@ -130,7 +129,7 @@ export const useImageCheckPoller = (
   return {
     mountedRef,
     pollNow,
-    isPolling,
+    isPolling: false, // Always return false to disable polling
     isChecking,
     lastCheckTime
   };
