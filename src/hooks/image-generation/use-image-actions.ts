@@ -13,7 +13,12 @@ export const useImageActions = (
   setUploadedImageUrls: React.Dispatch<React.SetStateAction<string[]>>,
   handleSubmitPrompt: (
     prompt: string, 
-    imageFiles?: File[] | string[] | undefined
+    imageFiles?: File[] | string[] | undefined,
+    workflow?: string | undefined,
+    params?: Record<string, any> | undefined,
+    globalParams?: Record<string, any> | undefined,
+    refiner?: string | undefined,
+    refinerParams?: Record<string, any> | undefined
   ) => void,
   generatedImages: GeneratedImage[]
 ) => {
@@ -77,12 +82,39 @@ export const useImageActions = (
           console.log('Using reference images for regeneration:', referenceImages);
         }
         
-        // Submit the prompt
-        // Use an empty string prompt if no prompt exists
+        // Extract all parameters from the original image
         const promptToUse = batchImage.prompt || '';
+        const workflowToUse = batchImage.workflow;
         
-        // CRITICAL FIX: Pass the batchId to ensure we use the same container
-        handleSubmitPrompt(promptToUse, referenceImages);
+        // Get workflow params from the original image
+        const paramsToUse = batchImage.params || {};
+        
+        // Extract publish destination if it exists
+        const publishDestination = paramsToUse.publish_destination;
+        console.log('Using publish destination:', publishDestination);
+        
+        // Extract refiner and refiner params
+        const refinerToUse = batchImage.refiner;
+        const refinerParamsToUse = batchImage.refinerParams || {};
+        
+        console.log('Regenerating with full parameters:', {
+          prompt: promptToUse,
+          workflow: workflowToUse,
+          params: paramsToUse,
+          refiner: refinerToUse,
+          refinerParams: refinerParamsToUse
+        });
+        
+        // Submit the prompt with ALL original parameters including the batchId
+        handleSubmitPrompt(
+          promptToUse, 
+          referenceImages,
+          workflowToUse,
+          paramsToUse,
+          undefined, // No global params needed as they're not stored per image
+          refinerToUse,
+          refinerParamsToUse
+        );
       }
     }
   };
