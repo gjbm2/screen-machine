@@ -43,10 +43,11 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   // Log the image URL for debugging
   useEffect(() => {
     console.log('[ImageDisplay] Current image URL:', imageUrl);
+    console.log('[ImageDisplay] Is transitioning:', isTransitioning);
     console.log('[ImageDisplay] Is loading metadata:', isLoadingMetadata);
     console.log('[ImageDisplay] Processed caption:', processedCaption);
     console.log('[ImageDisplay] Metadata available:', Object.keys(metadata).length > 0);
-  }, [imageUrl, isLoadingMetadata, processedCaption, metadata]);
+  }, [imageUrl, isTransitioning, isLoadingMetadata, processedCaption, metadata]);
 
   // Update container size on window resize
   useEffect(() => {
@@ -153,16 +154,17 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const captionBgColor = params.captionBgColor || '#000000';
   const formattedBgColor = captionBgColor.startsWith('#') ? captionBgColor : `#${captionBgColor}`;
 
-  // This is the key change - we show the caption if it exists, regardless of isLoadingMetadata
-  const shouldShowCaption = processedCaption !== null;
+  // Only show caption if it exists AND we're not transitioning
+  const shouldShowCaption = processedCaption !== null && !isTransitioning;
   
   // Debug the caption rendering decision
   useEffect(() => {
     console.log('[ImageDisplay] Should show caption decision:', { 
       processedCaption, 
+      isTransitioning,
       shouldShowCaption
     });
-  }, [processedCaption, shouldShowCaption]);
+  }, [processedCaption, isTransitioning, shouldShowCaption]);
 
   return (
     <div 

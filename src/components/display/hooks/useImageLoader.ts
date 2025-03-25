@@ -38,7 +38,7 @@ export const useImageLoader = (
         setImageKey(prev => prev + 1);
         setImageChanged(false);
         
-        // Extract metadata only if needed
+        // Extract metadata immediately for cut transitions
         if (params.data !== undefined || params.caption) {
           try {
             console.log('[useImageLoader] Extracting metadata for new image (cut transition)');
@@ -60,23 +60,20 @@ export const useImageLoader = (
         // Preload the new image
         const preloadImg = new Image();
         preloadImg.onload = async () => {
-          setImageUrl(url);
-          setImageKey(prev => prev + 1);
-          
-          // Extract metadata for the new image only if needed
+          // Get metadata first, but don't update the caption yet
+          let newMetadata = {};
           if (params.data !== undefined || params.caption) {
             try {
               console.log('[useImageLoader] Extracting metadata for new image (fade transition)');
-              const newMetadata = await extractMetadataFromImage(url, params.data || undefined);
-              
-              // Process caption with new metadata if caption exists
-              if (params.caption) {
-                updateCaption(params.caption, newMetadata);
-              }
+              newMetadata = await extractMetadataFromImage(url, params.data || undefined);
             } catch (err) {
               console.error('[useImageLoader] Error extracting metadata:', err);
             }
           }
+          
+          // Set the new image URL and increment key
+          setImageUrl(url);
+          setImageKey(prev => prev + 1);
           
           // Initialize the transition, passing the transition type
           const duration = initializeTransition(
@@ -89,7 +86,14 @@ export const useImageLoader = (
           
           // Execute the transition
           executeTransition(duration, () => {
+            // This callback runs after transition is complete
             setImageChanged(false);
+            
+            // Only update caption after transition is complete
+            if (params.caption && Object.keys(newMetadata).length > 0) {
+              console.log('[useImageLoader] Updating caption after transition complete');
+              updateCaption(params.caption, newMetadata);
+            }
           });
           
           setIsLoading(false);
