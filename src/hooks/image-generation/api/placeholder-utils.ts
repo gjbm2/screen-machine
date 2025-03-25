@@ -28,23 +28,20 @@ export const createPlaceholderBatch = (
   console.log('[placeholder-utils] With refiner:', refiner);
   console.log('[placeholder-utils] With refinerParams:', refinerParams);
   
-  // CRITICAL FIX: Ensure each placeholder gets a unique batchIndex
-  // Track available indexes for this batch
-  let nextAvailableIndex = 0;
-  const usedIndexes = new Set<number>(existingBatchIndexes);
-  
+  // CRITICAL FIX: Ensure each placeholder gets a unique and sequential batchIndex
   for (let i = 0; i < batchSize; i++) {
-    // Find a unique batchIndex
-    while (usedIndexes.has(nextAvailableIndex)) {
-      nextAvailableIndex++;
+    // IMPORTANT: Each image must have a unique batchIndex
+    // If this index already exists in the batch, find the next available index
+    let batchIndex = i;
+    while (existingBatchIndexes.has(batchIndex)) {
+      batchIndex++;
+      console.log('[placeholder-utils] Adjusting batchIndex to avoid conflict, now using:', batchIndex);
     }
     
-    // Use this unique index
-    const uniqueBatchIndex = nextAvailableIndex;
-    usedIndexes.add(uniqueBatchIndex);
-    nextAvailableIndex++;
+    // Mark this index as used to prevent duplicates
+    existingBatchIndexes.add(batchIndex);
     
-    console.log(`[placeholder-utils] Creating placeholder with batchIndex=${uniqueBatchIndex}`);
+    console.log('[placeholder-utils] Creating placeholder with batchIndex:', batchIndex);
     
     const placeholder: GeneratedImage = {
       url: '', // Adding empty url to satisfy the GeneratedImage type
@@ -53,7 +50,7 @@ export const createPlaceholderBatch = (
       prompt,
       workflow,
       timestamp: Date.now(),
-      batchIndex: uniqueBatchIndex, // Use our unique index
+      batchIndex: batchIndex, // Use the unique batchIndex
       params,
       refiner,
       refinerParams,
@@ -64,7 +61,6 @@ export const createPlaceholderBatch = (
     placeholders.push(placeholder);
   }
   
-  // Log the generated placeholders for debugging
   console.log('[placeholder-utils] Created', placeholders.length, 'placeholders with batchIndexes:', 
     placeholders.map(p => p.batchIndex));
   
