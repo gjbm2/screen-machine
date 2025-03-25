@@ -7,8 +7,7 @@ export const useIntervalPoller = (
   callback: () => void,
   dependencies: any[] = []
 ) => {
-  const [isPolling, setIsPolling] = useState(false);
-  
   // Always return not polling since we're removing automated functionality
+  // This is a stub implementation that doesn't actually poll
   return { isPolling: false };
 };

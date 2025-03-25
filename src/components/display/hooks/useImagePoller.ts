@@ -35,7 +35,7 @@ export const useImagePoller = (
     false
   );
   
-  // Detect image changes
+  // Detect image changes - but we won't use the polling feature
   const { lastCheckedUrl } = useImageChangeDetector(
     imageUrl,
     isLoading,
@@ -52,6 +52,13 @@ export const useImagePoller = (
     originalHandleManualCheck: () => Promise<boolean>,
     params: DisplayParams
   ): Promise<boolean> => {
+    console.log('[useImagePoller] Manual check initiated for:', imageUrl);
+    
+    if (!imageUrl) {
+      console.log('[useImagePoller] No image URL to check');
+      return false;
+    }
+    
     return handleManualUpdate(imageUrl, originalHandleManualCheck, params);
   };
 
