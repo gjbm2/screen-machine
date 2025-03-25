@@ -29,6 +29,7 @@ const useFullscreenDialog = ({
   useEffect(() => {
     if (fullScreenBatchId && batches[fullScreenBatchId]) {
       console.log('FullscreenDialog - updating to new batch id:', fullScreenBatchId);
+      console.log('FullscreenDialog - with image index:', fullScreenImageIndex);
       const batch = batches[fullScreenBatchId];
       setCurrentBatch(batch);
       setLastBatchId(fullScreenBatchId);
