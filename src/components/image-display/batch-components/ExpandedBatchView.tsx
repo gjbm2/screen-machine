@@ -83,21 +83,28 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
           </div>
 
           <div className="flex flex-wrap gap-1 justify-start pt-1">
-            {completedImages.map((image, idx) => (
-              <div 
-                key={`thumb-${batchId}-${idx}`}
-                className={`w-14 h-14 rounded-md overflow-hidden cursor-pointer border-2 ${
-                  idx === activeImageIndex ? 'border-primary' : 'border-transparent'
-                }`}
-                onClick={() => setActiveImageIndex(idx)}
-              >
-                <img 
-                  src={image.url} 
-                  alt={`Thumbnail ${idx + 1}`}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ))}
+            {/* Order the thumbnails with most recent (highest timestamp) first */}
+            {[...completedImages]
+              .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+              .map((image, idx) => {
+                // Find the actual index in the original completedImages array for correct navigation
+                const originalIndex = completedImages.findIndex(img => img.url === image.url);
+                return (
+                  <div 
+                    key={`thumb-${batchId}-${idx}`}
+                    className={`w-14 h-14 rounded-md overflow-hidden cursor-pointer border-2 ${
+                      originalIndex === activeImageIndex ? 'border-primary' : 'border-transparent'
+                    }`}
+                    onClick={() => setActiveImageIndex(originalIndex)}
+                  >
+                    <img 
+                      src={image.url} 
+                      alt={`Thumbnail ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                );
+            })}
           </div>
           
           <div className="flex justify-center">
