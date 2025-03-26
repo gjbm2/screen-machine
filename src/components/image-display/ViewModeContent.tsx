@@ -1,3 +1,4 @@
+
 import React from 'react';
 import NormalGridView from './view-modes/NormalGridView';
 import SmallGridView from './view-modes/SmallGridView';
@@ -11,7 +12,7 @@ interface ViewModeContentProps {
   viewMode: ViewMode;
   imageContainerOrder: string[];
   batches: Record<string, any[]>;
-  expandedContainers: Record<string, boolean>;
+  expandedContainers: Record<string, boolean>; 
   handleToggleExpand: (batchId: string) => void;
   onUseGeneratedAsInput: (url: string) => void;
   onCreateAgain: (batchId?: string) => void;
@@ -56,9 +57,7 @@ const ViewModeContent: React.FC<ViewModeContentProps> = ({
 }) => {
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: restrictToVerticalAxis
-    })
+    useSensor(KeyboardSensor)
   );
   
   const handleDragEnd = (event: DragEndEvent) => {
@@ -104,7 +103,7 @@ const ViewModeContent: React.FC<ViewModeContentProps> = ({
         
         {viewMode === 'small' && (
           <SmallGridView 
-            imageContainerOrder={imageContainerOrder}
+            sortedContainerIds={sortedContainerIds}
             batches={batches}
             expandedContainers={expandedContainers}
             handleToggleExpand={handleToggleExpand}
@@ -123,23 +122,12 @@ const ViewModeContent: React.FC<ViewModeContentProps> = ({
         
         {viewMode === 'table' && (
           <TableView 
-            imageContainerOrder={imageContainerOrder}
+            sortedContainers={sortedContainerIds}
             batches={batches}
-            expandedContainers={expandedContainers}
-            handleToggleExpand={handleToggleExpand}
-            onUseGeneratedAsInput={onUseGeneratedAsInput}
-            onCreateAgain={onCreateAgain}
-            onDeleteImage={onDeleteImage}
-            onDeleteContainer={onDeleteContainer}
-            onFullScreenClick={onFullScreenClick}
-            imageUrl={imageUrl}
-            getAllImages={getAllImages}
-            handleTableRowClick={handleTableRowClick}
             sortField={sortField}
             sortDirection={sortDirection}
-            handleSortClick={handleSortClick}
-            isLoading={isLoading}
-            activeGenerations={activeGenerations} // Pass activeGenerations prop
+            onSortClick={handleSortClick}
+            onTableRowClick={handleTableRowClick}
           />
         )}
       </SortableContext>
