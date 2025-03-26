@@ -153,6 +153,7 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
     // Expose setters for external state management
     setSelectedWorkflow,
     setSelectedRefiner,
+    setSelectedPublish, // Now we're exposing this function
     setWorkflowParams,
     setRefinerParams,
     setGlobalParams,
