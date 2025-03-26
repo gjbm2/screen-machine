@@ -19,15 +19,19 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
     // First try to find a workflow with default=true
     const defaultWorkflow = typedWorkflows.find(w => w.default === true);
     if (defaultWorkflow) {
+      console.log('Found default workflow:', defaultWorkflow.id);
       return defaultWorkflow.id;
     }
     
     // Fall back to the first workflow or 'text-to-image' if no workflows exist
-    return typedWorkflows.length > 0 ? typedWorkflows[0].id : 'text-to-image';
+    const fallbackId = typedWorkflows.length > 0 ? typedWorkflows[0].id : 'text-to-image';
+    console.log('Using fallback workflow:', fallbackId);
+    return fallbackId;
   };
   
   // Use initialValues if provided, otherwise use defaults
-  const [selectedWorkflow, setSelectedWorkflow] = useState(initialValues.selectedWorkflow || getDefaultWorkflowId());
+  const defaultWorkflowId = getDefaultWorkflowId();
+  const [selectedWorkflow, setSelectedWorkflow] = useState(initialValues.selectedWorkflow || defaultWorkflowId);
   const [selectedRefiner, setSelectedRefiner] = useState(initialValues.selectedRefiner || 'none');
   const [selectedPublish, setSelectedPublish] = useState(initialValues.selectedPublish || 'none');
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>(initialValues.workflowParams || {});
@@ -38,6 +42,9 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
   
   // Initialize workflow parameters based on the selected workflow once on mount
   useEffect(() => {
+    // Log the selected workflow for debugging
+    console.log('usePromptForm: Initializing with workflow:', selectedWorkflow);
+    
     // Find the selected workflow
     const workflow = typedWorkflows.find(w => w.id === selectedWorkflow);
     
