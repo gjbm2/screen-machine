@@ -6,6 +6,7 @@ import { ErrorMessage } from '@/components/display/ErrorMessage';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDisplayParams } from '@/components/display/hooks/useDisplayParams';
 import { DisplayStateProvider, useDisplayStateContext } from '@/components/display/context/DisplayStateContext';
+import { ShowMode, PositionMode, CaptionPosition, TransitionType } from '@/components/display/types';
 
 // Inner component that uses the context
 const DisplayContent = () => {
@@ -85,18 +86,18 @@ const DisplayContent = () => {
   const params = {
     debugMode,
     output: imageUrl,
-    showMode: 'contain',
-    position: 'center',
+    showMode: 'contain' as ShowMode,
+    position: 'center' as PositionMode,
     refreshInterval: 30,
     backgroundColor: '#000000',
     caption: processedCaption,
-    captionPosition: 'bottom-center',
+    captionPosition: 'bottom-center' as CaptionPosition,
     captionSize: 'medium',
     captionColor: '#ffffff',
     captionFont: 'sans',
     captionBgColor: '#000000',
     captionBgOpacity: 0.5,
-    transition: 'fade'
+    transition: 'fade' as TransitionType
   };
 
   return (
@@ -140,3 +141,4 @@ const Display = () => {
 };
 
 export default Display;
+
