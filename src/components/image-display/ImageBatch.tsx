@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import SortableImageContainer from './SortableImageContainer';
 import { ViewMode } from './ImageDisplay';
@@ -82,8 +81,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
         batchId,
         batchIndex: completedImages[activeImageIndex].batchIndex || activeImageIndex
       });
-    } else if (!isExpanded) {
-      toggleExpand(batchId);
     }
   };
 

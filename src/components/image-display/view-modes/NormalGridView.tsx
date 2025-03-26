@@ -27,16 +27,8 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
   onFullScreenClick,
   imageUrl
 }) => {
-  // Maintain expanded state when calling "Create Again"
-  const handleCreateAgain = (batchId?: string) => {
-    // Call the original onCreateAgain
-    onCreateAgain(batchId);
-    
-    // If a batch ID was provided and it's not already expanded, expand it
-    if (batchId && !expandedContainers[batchId]) {
-      toggleExpand(batchId);
-    }
-  };
+  // Removed the handleCreateAgain function that automatically expands containers
+  // Now only the chevron button will trigger expansion/collapse
 
   return (
     <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1">
@@ -57,7 +49,7 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
                   onFullScreenClick(image);
                 }
               }}
-              onCreateAgain={() => handleCreateAgain(batchId)}
+              onCreateAgain={() => onCreateAgain(batchId)}
               onDeleteImage={onDeleteImage}
               onDeleteContainer={() => onDeleteContainer(batchId)}
               activeImageUrl={imageUrl}

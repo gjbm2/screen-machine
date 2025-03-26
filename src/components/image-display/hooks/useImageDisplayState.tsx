@@ -24,27 +24,9 @@ export const useImageDisplayState = (
     handleNavigateWithBatchAwareness
   } = useFullscreen(allImagesFlat);
 
-  useEffect(() => {
-    if (imageContainerOrder.length > 0) {
-      if (isLoading) {
-        const updatedExpandedState: Record<string, boolean> = {};
-        
-        imageContainerOrder.forEach(id => {
-          updatedExpandedState[id] = false;
-        });
-        
-        updatedExpandedState[imageContainerOrder[0]] = true;
-        
-        setExpandedContainers(updatedExpandedState);
-        
-        const container = document.getElementById(imageContainerOrder[0]);
-        if (container) {
-          container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-      }
-    }
-  }, [imageContainerOrder, isLoading]);
-  
+  // Remove the effect that automatically expands the first container when loading
+  // This removes automatic container expansion behavior while preserving manual toggling
+
   useEffect(() => {
     const allImages = generatedImages
       .filter(img => img.status === 'completed' || img.status === 'failed' || img.status === 'error')
