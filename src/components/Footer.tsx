@@ -9,7 +9,7 @@ const Footer: React.FC = () => {
     <footer className="w-full py-4 mt-8 border-t border-gray-100">
       <div className="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <p className="text-xs text-center text-muted-foreground">
-          © {currentYear} Image Generation App. All rights reserved. Version {version}
+          © {currentYear} Greg Marsh. v{version}
         </p>
       </div>
     </footer>
