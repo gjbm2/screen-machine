@@ -99,7 +99,8 @@ export const useImageBatchItem = ({
       return;
     }
     
-    // Don't call onImageClick for rolled-up containers
+    // Only call onImageClick when not rolled up or when it's explicitly for navigation purposes
+    // This allows explicit navigation calls to work even when rolled up
     if (image.url && !isRolledUp) {
       onImageClick(image.url);
     }

@@ -50,7 +50,10 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
       {showPrevButton && (
         <div 
           className={`absolute left-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-start cursor-pointer`}
-          onClick={onPrevious} // Apply the click handler to the entire hotspot div
+          onClick={(e) => {
+            e.stopPropagation();
+            onPrevious(e);
+          }} // Apply the click handler to the entire hotspot div
           onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
           <Button
@@ -68,7 +71,10 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
       {showNextButton && (
         <div 
           className={`absolute right-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-end cursor-pointer`} 
-          onClick={onNext} // Apply the click handler to the entire hotspot div
+          onClick={(e) => {
+            e.stopPropagation();
+            onNext(e);
+          }} // Apply the click handler to the entire hotspot div
           onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
           <Button
