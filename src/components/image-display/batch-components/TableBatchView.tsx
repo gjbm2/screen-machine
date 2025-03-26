@@ -43,7 +43,11 @@ const TableBatchView: React.FC<TableBatchViewProps> = ({
                     variant="ghost" 
                     size="icon" 
                     className="h-5 w-5"
-                    onClick={() => onDeleteImage(batchId, image.batchIndex)}
+                    onClick={() => {
+                      // FIXED: Use the image's actual batchIndex property, log for debugging
+                      console.log(`Deleting table image with batchIndex: ${image.batchIndex} (array index: ${index})`);
+                      onDeleteImage(batchId, image.batchIndex !== undefined ? image.batchIndex : index);
+                    }}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
