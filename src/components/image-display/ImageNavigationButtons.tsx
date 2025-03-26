@@ -23,7 +23,7 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
     return null;
   }
   
-  const baseButtonClass = "absolute top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center z-50 pointer-events-auto";
+  const baseButtonClass = "absolute top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center z-30 pointer-events-auto";
   
   // Add visibility classes based on whether buttons should always be visible
   const visibilityClass = alwaysVisible 
@@ -31,14 +31,14 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
     : "opacity-0 group-hover:opacity-70 group-hover:hover:opacity-100 transition-opacity duration-200";
   
   return (
-    <div className="w-full h-full relative pointer-events-none">
-      {onNavigatePrev && index > 0 && (
+    <div className="w-full h-full relative">
+      {onNavigatePrev && (
         <Button
           type="button" 
           variant="ghost"
           onClick={(e) => {
             e.stopPropagation();
-            if (onNavigatePrev) onNavigatePrev();
+            onNavigatePrev();
           }}
           className={`${baseButtonClass} ${visibilityClass} left-2`}
           aria-label="Previous image"
@@ -47,13 +47,13 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
         </Button>
       )}
       
-      {onNavigateNext && index < total - 1 && (
+      {onNavigateNext && (
         <Button 
           type="button"
           variant="ghost"
           onClick={(e) => {
             e.stopPropagation();
-            if (onNavigateNext) onNavigateNext();
+            onNavigateNext();
           }}
           className={`${baseButtonClass} ${visibilityClass} right-2`}
           aria-label="Next image"
