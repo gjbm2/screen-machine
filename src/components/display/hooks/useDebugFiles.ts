@@ -33,7 +33,7 @@ export const useDebugFiles = (
     try {
       const files = await fetchOutputFiles();
       if (isMountedRef.current) {
-        // Fix: Directly pass the files array instead of a callback function
+        // Fix: Directly pass the files array to setOutputFiles
         setOutputFiles(files);
       }
     } catch (err) {
@@ -72,4 +72,3 @@ export const useDebugFiles = (
     };
   }, [debugMode, fetchFiles]);
 };
-

@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
@@ -10,7 +11,7 @@ import { useDebugRedirection } from '@/components/display/hooks/useDebugRedirect
 import { useOutputProcessor } from '@/components/display/hooks/useOutputProcessor';
 import { useImageErrorHandler } from '@/components/display/hooks/useImageErrorHandler';
 import { useEnhancedManualCheck } from '@/components/display/hooks/useEnhancedManualCheck';
-import { normalizePathForDisplay } from '../utils/paramUtils';
+import { normalizePathForDisplay, decodeComplexOutputParam, fullyDecodeUrl } from '../utils/paramUtils';
 
 export const useDisplayPage = () => {
   // Get URL parameters and state management
@@ -127,7 +128,7 @@ export const useDisplayPage = () => {
     }
   }, [userExplicitlyExitedDebugRef, displayParams.debugMode]);
 
-  // Process output parameter on first detection
+  // Process output parameter on first detection - Fix #2: Ensure external URLs are handled properly
   useEffect(() => {
     if (!mountedRef.current) return;
     
@@ -135,11 +136,13 @@ export const useDisplayPage = () => {
       console.log('[useDisplayPage] Processing output parameter:', displayParams.output);
       hasProcessedOutputRef.current = true;
       
-      if (displayParams.output.startsWith('http://') || displayParams.output.startsWith('https://')) {
-        console.log('[useDisplayPage] Setting direct URL:', displayParams.output);
-        setImageUrl(displayParams.output);
-      } else {
-        const normalizedPath = normalizePathForDisplay(displayParams.output);
+      // Fix #2: Different handling for external URLs vs local paths
+      const decodedOutput = decodeComplexOutputParam(displayParams.output);
+      if (decodedOutput && (decodedOutput.startsWith('http://') || decodedOutput.startsWith('https://'))) {
+        console.log('[useDisplayPage] Setting direct URL:', decodedOutput);
+        setImageUrl(decodedOutput);
+      } else if (decodedOutput) {
+        const normalizedPath = normalizePathForDisplay(decodedOutput);
         console.log('[useDisplayPage] Setting normalized path:', normalizedPath);
         setImageUrl(normalizedPath);
       }
@@ -168,14 +171,13 @@ export const useDisplayPage = () => {
     };
   }, []);
 
-  // Determine if debug redirection should occur
+  // Fix #1: Determine if debug redirection should occur - make sure it redirects when no params
   useEffect(() => {
     if (!mountedRef.current) return;
     if (forceViewModeRef.current || userExplicitlyExitedDebugRef.current) {
       console.log('[useDisplayPage] Skipping debug redirection check - user explicitly exited debug mode or force view mode is set');
-    } else if (displayParams.output) {
-      checkDebugRedirection();
     } else {
+      // Modified condition - always check for redirection
       checkDebugRedirection();
     }
   }, [displayParams, displayParams.output, displayParams.debugMode, userExplicitlyExitedDebugRef, checkDebugRedirection]);

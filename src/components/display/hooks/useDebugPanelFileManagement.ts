@@ -17,7 +17,7 @@ export const useDebugPanelFileManagement = ({
   const selectFile = (file: string) => {
     console.log('[useDebugPanelFileManagement] Selected file:', file);
     
-    // Handle fully formed URLs (especially with query parameters) differently
+    // Fix #2: Handle fully formed URLs (especially with query parameters) differently
     let outputPath;
     if (file.startsWith('http://') || file.startsWith('https://')) {
       // Don't process URLs through normalizePathForDisplay - use directly
