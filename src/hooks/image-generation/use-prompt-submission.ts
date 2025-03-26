@@ -31,7 +31,7 @@ export const usePromptSubmission = ({
     globalParams?: Record<string, any>,
     refiner?: string,
     refinerParams?: Record<string, any>,
-    batchId?: string
+    publishDestination?: string
   ) => {
     try {
       // No longer first run after submitting a prompt
@@ -54,6 +54,8 @@ export const usePromptSubmission = ({
         uniqueImageFiles = imageFiles.filter(f => f !== null && f !== undefined);
       }
       
+      console.log("usePromptSubmission: Starting new prompt submission with publishDestination:", publishDestination);
+      
       // Create the configuration for image generation
       const config: ImageGenerationConfig = {
         prompt,
@@ -61,8 +63,8 @@ export const usePromptSubmission = ({
         workflow: effectiveWorkflow,
         params: effectiveWorkflowParams,
         globalParams: effectiveGlobalParams,
-        // Use the provided batchId if available
-        batchId: batchId,
+        // Important: Don't pass batchId here for a new generation
+        // batchId should only be passed for variants of an existing batch
         refiner, 
         refinerParams
       };
@@ -72,7 +74,7 @@ export const usePromptSubmission = ({
       
       // If this is a new generation (not a variant of an existing batch),
       // collapse all other containers and keep only this one expanded
-      if (result && !batchId && collapseAllExcept) {
+      if (result && collapseAllExcept) {
         collapseAllExcept(result);
       }
       

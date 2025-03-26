@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
@@ -358,6 +357,7 @@ const Index = () => {
       }
       
       // Submit the generation request with all parameters
+      // Important: DO NOT pass a batchId here for a new generation
       await handleSubmitPrompt(
         prompt, 
         imageFiles, 
@@ -365,8 +365,7 @@ const Index = () => {
         effectiveParams, 
         globalParams, 
         refiner, 
-        refinerParams,
-        publish
+        refinerParams
       );
     } catch (error) {
       console.error('Error submitting prompt:', error);
@@ -451,3 +450,4 @@ const Index = () => {
 };
 
 export default Index;
+
