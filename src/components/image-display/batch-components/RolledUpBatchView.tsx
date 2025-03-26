@@ -47,15 +47,12 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
     // Get the previous index, wrapping around to the end if needed
     const prevIndex = (activeImageIndex - 1 + completedImages.length) % completedImages.length;
     
-    // Direct navigation for rolled-up view - we just want to change the displayed image
-    // without triggering fullscreen
-    const prevImage = completedImages[prevIndex];
-    if (prevImage?.url) {
-      // For rolled-up navigation, we directly call onImageClick which should
-      // update the parent component's state without opening fullscreen
+    // We can't directly update activeImageIndex here since it's managed by the parent
+    // But we can dispatch a click event to the image to simulate changing the active image
+    if (completedImages[prevIndex]?.url) {
       onImageClick(
-        prevImage.url, 
-        prevImage.prompt || ''
+        completedImages[prevIndex].url, 
+        completedImages[prevIndex].prompt || ''
       );
     }
   };
@@ -72,14 +69,11 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
     // Get the next index, wrapping around to the beginning if needed
     const nextIndex = (activeImageIndex + 1) % completedImages.length;
     
-    // Direct navigation for rolled-up view
-    const nextImage = completedImages[nextIndex];
-    if (nextImage?.url) {
-      // For rolled-up navigation, we directly call onImageClick which should
-      // update the parent component's state without opening fullscreen
+    // Similar to prev, dispatch a click to change the active image
+    if (completedImages[nextIndex]?.url) {
       onImageClick(
-        nextImage.url, 
-        nextImage.prompt || ''
+        completedImages[nextIndex].url, 
+        completedImages[nextIndex].prompt || ''
       );
     }
   };
@@ -103,7 +97,7 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
               onCreateAgain={handleCreateAgain}
               onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
               onDeleteImage={onDeleteImage}
-              onFullScreen={null} // CRITICAL: Pass null to prevent fullscreen in rolled-up view
+              onFullScreen={() => handleFullScreenClick(completedImages[activeImageIndex])}
               onImageClick={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
               onNavigatePrev={completedImages.length > 1 ? handleNavigatePrev : undefined}
               onNavigateNext={completedImages.length > 1 ? handleNavigateNext : undefined}

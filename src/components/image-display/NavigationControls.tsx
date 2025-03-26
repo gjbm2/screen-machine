@@ -44,26 +44,13 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
   // Get the size classes based on the size prop
   const { hotspot, button, icon } = sizeClasses[size];
 
-  // Enhanced handlers with proper event stopping
-  const handlePrevious = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    onPrevious(e);
-  };
-
-  const handleNext = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    onNext(e);
-  };
-
   return (
     <>
       {/* Previous button - conditionally rendered */}
       {showPrevButton && (
         <div 
-          className={`absolute left-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-start cursor-pointer navigation-button-container`}
-          onClick={handlePrevious} // Use enhanced handler
+          className={`absolute left-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-start cursor-pointer`}
+          onClick={onPrevious} // Apply the click handler to the entire hotspot div
           onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
           <Button
@@ -80,8 +67,8 @@ const NavigationControls: React.FC<NavigationControlsProps> = ({
       {/* Next button - conditionally rendered */}
       {showNextButton && (
         <div 
-          className={`absolute right-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-end cursor-pointer navigation-button-container`} 
-          onClick={handleNext} // Use enhanced handler
+          className={`absolute right-0 top-1/2 -translate-y-1/2 ${hotspot} flex items-center justify-end cursor-pointer`} 
+          onClick={onNext} // Apply the click handler to the entire hotspot div
           onMouseDown={(e) => e.preventDefault()} // Prevent text selection
         >
           <Button
