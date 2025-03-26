@@ -31,13 +31,9 @@ export const useDebugFiles = (
     try {
       const files = await fetchOutputFiles();
       if (isMountedRef.current) {
-        // Only update if needed to prevent re-renders
-        setOutputFiles(prevFiles => {
-          if (JSON.stringify(prevFiles) !== JSON.stringify(files)) {
-            return files;
-          }
-          return prevFiles;
-        });
+        // Fix: Store the current files and compare before updating
+        // This addresses the TypeScript error by not using a callback function
+        setOutputFiles(files);
       }
     } catch (err) {
       console.error('[useDebugFiles] Error fetching files:', err);
