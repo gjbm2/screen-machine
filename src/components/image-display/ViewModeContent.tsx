@@ -28,6 +28,7 @@ interface ViewModeContentProps {
   handleTableRowClick: (batchId: string) => void;
   isLoading: boolean;
   onReorderContainers: (sourceIndex: number, destinationIndex: number) => void;
+  activeGenerations?: string[]; // Add activeGenerations prop
 }
 
 const ViewModeContent: React.FC<ViewModeContentProps> = ({
@@ -50,7 +51,8 @@ const ViewModeContent: React.FC<ViewModeContentProps> = ({
   getSortedContainers,
   handleTableRowClick,
   isLoading,
-  onReorderContainers
+  onReorderContainers,
+  activeGenerations = [] // Default to empty array
 }) => {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -93,6 +95,7 @@ const ViewModeContent: React.FC<ViewModeContentProps> = ({
             onSmallImageClick={handleSmallImageClick}
             onCreateAgain={onCreateAgain}
             onDeleteImage={onDeleteImage}
+            activeGenerations={activeGenerations}
           />
         ) : viewMode === 'table' ? (
           <TableView 
@@ -115,6 +118,7 @@ const ViewModeContent: React.FC<ViewModeContentProps> = ({
             onDeleteContainer={onDeleteContainer}
             onFullScreenClick={onFullScreenClick}
             imageUrl={imageUrl}
+            activeGenerations={activeGenerations}
           />
         )}
       </SortableContext>
