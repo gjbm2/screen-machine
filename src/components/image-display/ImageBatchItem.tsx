@@ -31,8 +31,8 @@ interface ImageBatchItemProps {
   onDeleteImage?: (batchId: string, index: number) => void;
   onFullScreen?: (batchId: string, index: number) => void;
   onImageClick: (url: string) => void;
-  onNavigateNext?: (e: React.MouseEvent) => void;
-  onNavigatePrev?: (e: React.MouseEvent) => void;
+  onNavigateNext?: () => void;
+  onNavigatePrev?: () => void;
   viewMode?: ViewMode;
   showActions?: boolean;
   isRolledUp?: boolean;
@@ -96,7 +96,6 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
       className={`relative rounded-md overflow-hidden group ${viewMode === 'small' ? 'mb-1' : 'w-full h-full'}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={handleImageClick}
     >
       <ImageBatchItemContent 
         imageUrl={image.url}
@@ -131,7 +130,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         <Button
           type="button"
           variant="ghost"
-          className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 text-white h-8 w-8 p-1 rounded-full z-30 image-action-button"
+          className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 text-white h-8 w-8 p-1 rounded-full z-30"
           onClick={handleFullScreen}
           aria-label="View fullscreen"
         >
