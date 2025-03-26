@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ShowMode, PositionMode } from '../../types';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
@@ -30,17 +30,25 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     console.log('[DEBUG ImageDisplay] Component rendered with props:', { imageUrl, imageKey });
     if (imageUrl) {
       console.log('[DEBUG ImageDisplay] Image URL being rendered:', imageUrl);
+      
+      // Test if the image exists
+      const testImg = new Image();
+      testImg.onload = () => console.log('[DEBUG ImageDisplay] Test image verified to load:', imageUrl);
+      testImg.onerror = (e) => console.error('[DEBUG ImageDisplay] Test image verified to FAIL loading:', imageUrl, e);
+      testImg.src = imageUrl;
     }
   }, [imageUrl, imageKey]);
 
-  const [hasError, setHasError] = React.useState(false);
-  const [isImageVisible, setIsImageVisible] = React.useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [isImageVisible, setIsImageVisible] = useState(false);
+  const [errorDetails, setErrorDetails] = useState<string>('');
 
   // Reset error state when image URL changes
   useEffect(() => {
     console.log('[DEBUG ImageDisplay] Image URL changed, resetting error state:', imageUrl);
     setHasError(false);
     setIsImageVisible(false);
+    setErrorDetails('');
   }, [imageUrl]);
 
   // Additional check for image URL sanity
@@ -67,12 +75,6 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
           console.error('[DEBUG ImageDisplay] Error parsing URL:', e);
         }
       }
-      
-      // Test loading the image
-      const testImg = new Image();
-      testImg.onload = () => console.log('[DEBUG ImageDisplay] Test image loaded successfully from URL:', imageUrl);
-      testImg.onerror = (e) => console.error('[DEBUG ImageDisplay] Test image failed to load:', imageUrl, e);
-      testImg.src = imageUrl;
     }
   }, [imageUrl]);
 
@@ -91,7 +93,8 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
         <Alert variant="destructive" className="max-w-md">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            Failed to load image: {imageUrl}
+            Failed to load image: {imageUrl}<br/>
+            {errorDetails && <span className="text-xs block mt-1">{errorDetails}</span>}
           </AlertDescription>
         </Alert>
       </div>
@@ -130,9 +133,11 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
         onImageLoad(e);
       }}
       onError={(e) => {
+        const target = e.target as HTMLImageElement;
         console.error('[DEBUG ImageDisplay] Error loading image:', imageUrl, e);
         setHasError(true);
         setIsImageVisible(false);
+        setErrorDetails(`Source: ${target.src}, Complete: ${target.complete}`);
         onImageError();
       }}
       style={getImageStyle()}

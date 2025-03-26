@@ -20,6 +20,12 @@ export const useOutputProcessor = (params: DisplayParams) => {
     if (params.output.startsWith('http://') || params.output.startsWith('https://')) {
       console.log('[useOutputProcessor] Already a valid URL, keeping as is:', params.output);
       setProcessedUrl(params.output);
+      
+      // Verify URL is accessible
+      const testImg = new Image();
+      testImg.onload = () => console.log('[useOutputProcessor] Test image loaded successfully from external URL:', params.output);
+      testImg.onerror = (e) => console.error('[useOutputProcessor] Test image failed to load from external URL:', e);
+      testImg.src = params.output;
       return;
     }
     
@@ -36,17 +42,13 @@ export const useOutputProcessor = (params: DisplayParams) => {
         // Check if the resulting URL seems valid
         if (decodedUrl.startsWith('http')) {
           console.log('[useOutputProcessor] Decoded URL appears valid');
-          
-          // Set the processed URL immediately without waiting for test image
-          console.log('[useOutputProcessor] Setting processedUrl to decoded URL:', decodedUrl);
           setProcessedUrl(decodedUrl);
           
-          // Optionally test if the URL might be reachable (but don't wait for this)
+          // Verify URL is accessible
           const testImg = new Image();
-          testImg.onload = () => console.log('[useOutputProcessor] Test image loaded from URL');
-          testImg.onerror = (e) => console.error('[useOutputProcessor] Test image failed to load:', e);
+          testImg.onload = () => console.log('[useOutputProcessor] Test image loaded successfully from decoded URL:', decodedUrl);
+          testImg.onerror = (e) => console.error('[useOutputProcessor] Test image failed to load from decoded URL:', e);
           testImg.src = decodedUrl;
-          
           return;
         } else {
           console.warn('[useOutputProcessor] Decoded URL does not start with http');
@@ -58,8 +60,16 @@ export const useOutputProcessor = (params: DisplayParams) => {
     
     // For local paths, normalize the format
     const processedOutput = processOutputParam(params.output);
-    
     console.log('[useOutputProcessor] Processed output param from:', params.output, 'to:', processedOutput);
+    
+    // Verify path is accessible
+    if (processedOutput) {
+      const testImg = new Image();
+      testImg.onload = () => console.log('[useOutputProcessor] Test image loaded successfully from local path:', processedOutput);
+      testImg.onerror = (e) => console.error('[useOutputProcessor] Test image failed to load from local path:', processedOutput, e);
+      testImg.src = processedOutput;
+    }
+    
     setProcessedUrl(processedOutput);
   }, [params.output]);
   

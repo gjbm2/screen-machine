@@ -46,6 +46,18 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onDeleteContainer,
   fullscreenRefreshTrigger
 }) => {
+  // Debug logging for image URL
+  React.useEffect(() => {
+    console.log('[ImageDisplay] Component rendered with imageUrl:', imageUrl);
+    if (imageUrl) {
+      // Test if image loads
+      const testImg = new Image();
+      testImg.onload = () => console.log('[ImageDisplay] Test image verified to load:', imageUrl);
+      testImg.onerror = (e) => console.error('[ImageDisplay] Test image FAILED to load:', imageUrl, e);
+      testImg.src = imageUrl;
+    }
+  }, [imageUrl]);
+
   const {
     viewMode,
     setViewMode,
