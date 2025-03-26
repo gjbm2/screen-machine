@@ -59,6 +59,7 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
                   onFullScreenClick(image);
                 }
               }}
+              hasGeneratingImages={hasGeneratingImages}
             />
           </div>
         );

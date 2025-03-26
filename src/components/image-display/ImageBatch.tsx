@@ -29,6 +29,7 @@ interface ImageBatchProps {
   activeImageUrl: string | null;
   viewMode: ViewMode;
   onFullScreenClick?: (image: any) => void;
+  hasGeneratingImages?: boolean;
 }
 
 const ImageBatch: React.FC<ImageBatchProps> = ({
@@ -42,7 +43,8 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   onDeleteContainer,
   activeImageUrl,
   viewMode,
-  onFullScreenClick
+  onFullScreenClick,
+  hasGeneratingImages
 }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -58,7 +60,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   }
   
   // Properly identify images by status
-  const anyGenerating = images.some(img => img.status === 'generating');
+  const anyGenerating = images.some(img => img.status === 'generating') || hasGeneratingImages;
   const completedImages = images.filter(img => img.status === 'completed');
   const failedImages = images.filter(img => img.status === 'failed' || img.status === 'error');
   const generatingImages = images.filter(img => img.status === 'generating');
