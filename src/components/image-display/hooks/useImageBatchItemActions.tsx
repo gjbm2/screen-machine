@@ -21,14 +21,8 @@ export const useImageBatchItemActions = ({
   imageUrl
 }: UseImageBatchItemActionsProps) => {
   
-  const handleImageClick = useCallback((e: React.MouseEvent) => {
+  const handleImageClick = useCallback(() => {
     console.log(`ImageBatchItem clicked with batchId=${batchId}, batchIndex=${batchIndex}`);
-    // Don't trigger image click when clicking on action buttons or navigation buttons
-    if ((e.target as HTMLElement).closest('.image-action-button') ||
-        (e.target as HTMLElement).closest('button')) {
-      e.stopPropagation();
-      return; 
-    }
     onOpenFullscreenView(batchId, batchIndex);
   }, [batchId, batchIndex, onOpenFullscreenView]);
   
@@ -40,7 +34,6 @@ export const useImageBatchItemActions = ({
   
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    e.preventDefault();
     console.log(`Deleting image in batch ${batchId} at index ${batchIndex}`);
     onDeleteImage(batchId, batchIndex);
   }, [batchId, batchIndex, onDeleteImage]);
