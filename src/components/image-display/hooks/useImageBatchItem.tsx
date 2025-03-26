@@ -93,24 +93,13 @@ export const useImageBatchItem = ({
       return;
     }
     
-    // CRITICAL: For rolled up containers, NEVER trigger fullscreen view
-    if (isRolledUp) {
-      // For rolled up containers, we still allow the regular image click for navigation
-      // but we explicitly prevent fullscreen
-      if (image.url) {
-        onImageClick(image.url);
-      }
-      return;
-    }
-    
-    // Normal behavior for non-rolled up containers
-    // Go to fullscreen view when in normal view
+    // Always go to fullscreen when clicked in normal view (for both desktop and mobile)
     if (image.url && onFullScreen && viewMode === 'normal') {
       onFullScreen(batchId, index);
       return;
     }
     
-    // Regular image click for non-fullscreen cases
+    // For small view, just call the general onImageClick
     if (image.url) {
       onImageClick(image.url);
     }
