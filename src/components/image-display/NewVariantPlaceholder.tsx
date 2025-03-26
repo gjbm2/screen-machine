@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
-import { Plus, CircleLoader } from 'lucide-react';
+import { Plus, Loader } from 'lucide-react';
 import LoadingPlaceholder from './LoadingPlaceholder';
 
 interface NewVariantPlaceholderProps {
@@ -35,7 +35,7 @@ const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({
       <div className="aspect-square relative group flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors">
         {isClicked ? (
           <div className="flex items-center justify-center">
-            <CircleLoader className="h-6 w-6 animate-spin text-primary" />
+            <Loader className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : (
           <div className="flex flex-col items-center text-muted-foreground p-4 text-center">
