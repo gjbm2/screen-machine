@@ -1,3 +1,4 @@
+
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { useIntervalPoller } from './useIntervalPoller';
 
@@ -107,7 +108,7 @@ export const useImageCheckPoller = (
     !!outputUrl, // Run the poller if we have a URL, regardless of enabled state
     refreshInterval || 5, // Default to 5 seconds if not specified
     handlePoll,
-    [outputUrl] // Only include outputUrl as a dependency since we use refs for everything else
+    outputUrl ? [outputUrl] : [] // Ensure we always pass a valid array even when outputUrl is null
   );
   
   // Manual poll function for external triggers
