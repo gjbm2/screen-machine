@@ -16,7 +16,7 @@ interface FilesTabProps {
   customUrl: string;
   setCustomUrl: (url: string) => void;
   selectFile: (file: string) => () => void; // For list items onClick
-  selectFileDirectly: (file: string) => void; // For direct calls
+  selectFileDirectly: (file: string) => () => void; // Updated to return a function
   isCurrentFile: (file: string) => boolean;
   formatFileName: (file: string) => string;
 }
@@ -42,7 +42,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({
   const handleUseCustomUrl = () => {
     if (customUrl && customUrl.trim() !== '') {
       console.log('[FilesTab] Using custom URL:', customUrl);
-      const navigate = selectFile(customUrl);
+      const navigate = selectFileDirectly(customUrl);
       navigate(); // Execute the navigation function
     }
   };
