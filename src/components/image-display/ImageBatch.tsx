@@ -7,6 +7,7 @@ import ExpandedBatchView from './batch-components/ExpandedBatchView';
 import RolledUpBatchView from './batch-components/RolledUpBatchView';
 import TableBatchView from './batch-components/TableBatchView';
 import DeleteBatchDialog from './batch-components/DeleteBatchDialog';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface Image {
   url: string;
@@ -48,6 +49,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
 }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const isMobile = useIsMobile();
   
   // Ensure the activeImageIndex is always within bounds when images array changes
   useEffect(() => {
@@ -56,6 +58,21 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
       setActiveImageIndex(0);
     }
   }, [images, activeImageIndex]);
+  
+  // If this is a new batch with generating images, auto-scroll to it in mobile view
+  useEffect(() => {
+    if (isMobile && hasGeneratingImages) {
+      console.log(`Auto-scrolling to batch ${batchId} with generating images on mobile`);
+      
+      // Scroll this batch into view
+      setTimeout(() => {
+        const element = document.getElementById(batchId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  }, [batchId, hasGeneratingImages, isMobile]);
   
   if (!images || images.length === 0) {
     return null;
@@ -118,6 +135,13 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   const handleImageClick = (url: string, prompt?: string) => {
     if (!url) {
       console.error("Cannot handle image click: URL is empty or undefined");
+      return;
+    }
+    
+    // In mobile view, clicking a rolled up container should expand it
+    if (isMobile && viewMode === 'normal' && !isExpanded) {
+      console.log(`Mobile: Expanding container ${batchId} on click`);
+      toggleExpand(batchId);
       return;
     }
     

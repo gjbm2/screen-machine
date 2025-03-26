@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Plus, Loader } from 'lucide-react';
-import LoadingPlaceholder from './LoadingPlaceholder';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface NewVariantPlaceholderProps {
   batchId: string;
@@ -16,6 +16,7 @@ const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({
   className = ''
 }) => {
   const [isClicked, setIsClicked] = useState(false);
+  const isMobile = useIsMobile();
   
   const handleClick = () => {
     if (isClicked) return; // Prevent multiple clicks
@@ -38,8 +39,10 @@ const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({
           </div>
         ) : (
           <div className="flex flex-col items-center text-muted-foreground p-4 text-center">
-            <Plus className="h-8 w-8 mb-2" />
-            <span className="text-xs">Create new variant</span>
+            <Plus className="h-8 w-8 mb-1" />
+            <span className={`${isMobile ? "text-xs" : "text-sm"}`}>
+              {isMobile ? "New variant" : "Create new variant"}
+            </span>
           </div>
         )}
       </div>
