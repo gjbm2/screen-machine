@@ -28,27 +28,22 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   const isNarrow = width < 600;
   const shouldHideName = hideWorkflowName || isNarrow;
   
-  // Enhanced logging for debugging
-  useEffect(() => {
-    console.log("WorkflowIconSelector: Received props");
-    console.log("- selectedWorkflow:", selectedWorkflow);
-    console.log("- workflows:", workflows.map(w => `${w.id} (${w.name})`).join(", "));
-    console.log("- shouldHideName:", shouldHideName);
-  }, [selectedWorkflow, workflows, shouldHideName]);
-  
   // Find the selected workflow by ID
   const selectedWorkflowObj = workflows.find(w => w.id === selectedWorkflow);
   
-  // Log the current selection for debugging
+  // Enhanced logging only on mount or when essential props change
   useEffect(() => {
-    console.log("WorkflowIconSelector: Current workflow:", selectedWorkflow);
-    console.log("WorkflowIconSelector: Found workflow object:", selectedWorkflowObj);
+    console.log("WorkflowIconSelector: Component mounted with", {
+      selectedWorkflow,
+      workflowCount: workflows.length,
+      availableWorkflows: workflows.map(w => `${w.id} (${w.name})`).join(", "),
+      foundWorkflow: selectedWorkflowObj ? `${selectedWorkflowObj.id} (${selectedWorkflowObj.name})` : "none"
+    });
     
     if (!selectedWorkflowObj) {
       console.warn("WorkflowIconSelector: No workflow found with ID:", selectedWorkflow);
-      console.log("Available workflows:", workflows.map(w => `${w.id} (${w.name})`).join(", "));
     }
-  }, [selectedWorkflow, selectedWorkflowObj, workflows]);
+  }, []);  // Empty deps array - only run on mount
   
   const getWorkflowIcon = (workflowId: string) => {
     switch (workflowId) {
