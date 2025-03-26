@@ -119,13 +119,18 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         />
       </div>
       
-      {/* Fullscreen button in top right of the image on hover */}
+      {/* Fullscreen button in top right of the image on hover - THIS IS THE ONLY WAY TO OPEN FULLSCREEN IN NORMAL VIEW */}
       {showActions && viewMode === 'normal' && onFullScreen && isHovered && !isMobile && (
         <Button
           type="button"
           variant="ghost"
           className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 text-white h-8 w-8 p-1 rounded-full z-30"
-          onClick={handleFullScreen}
+          onClick={(e) => {
+            // Ensure the event doesn't bubble up to the image click handler
+            e.stopPropagation();
+            console.log("FULLSCREEN BUTTON CLICKED - This is the only way to open fullscreen in normal view");
+            handleFullScreen(e);
+          }}
           aria-label="View fullscreen"
         >
           <Maximize className="h-4 w-4" />
