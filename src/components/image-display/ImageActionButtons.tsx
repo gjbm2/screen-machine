@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { 
   Trash2,
@@ -14,7 +13,7 @@ import PublishMenu from './PublishMenu';
 interface ImageActionButtonsProps {
   onDeleteImage?: (e: React.MouseEvent) => void;
   onFullScreen?: (e: React.MouseEvent) => void;
-  onUseAsInput?: (e: React.MouseEvent) => void;
+  onUseAsInput?: ((e: React.MouseEvent) => void) | ((url: string) => void);
   onCreateAgain?: (e: React.MouseEvent) => void;
   onDownload?: (e: React.MouseEvent) => void;
   viewMode?: ViewMode;
@@ -60,6 +59,21 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
   // For normal view, show labels unless in rolled-up mode
   const showLabels = viewMode === 'normal' && !isRolledUp;
 
+  const handleUseAsInput = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onUseAsInput && publishInfo?.imageUrl) {
+      if (typeof onUseAsInput === 'function') {
+        // Check if it's the URL version of the handler
+        if (onUseAsInput.length === 1) {
+          (onUseAsInput as (url: string) => void)(publishInfo.imageUrl);
+        } else {
+          // It's the event version
+          onUseAsInput(e);
+        }
+      }
+    }
+  };
+
   return (
     <div className={`absolute bottom-0 left-0 right-0 bg-black/80 flex justify-center p-2 z-20 ${visibilityClass}`}>
       <div className="flex gap-2 justify-center items-center">
@@ -76,13 +90,13 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
           </Button>
         )}
         
-        {/* Add "Use as Input" button for normal view only */}
-        {onUseAsInput && viewMode === 'normal' && (
+        {/* Add "Use as Input" button for normal view */}
+        {onUseAsInput && viewMode === 'normal' && publishInfo?.imageUrl && (
           <Button 
             type="button" 
             variant="ghost" 
             className={`bg-white/20 hover:bg-white/30 text-white rounded-full ${buttonSizeClass} image-action-button`}
-            onClick={onUseAsInput}
+            onClick={handleUseAsInput}
             aria-label="Use as Input"
           >
             <SquareArrowUpRight className={isRolledUp ? "h-4 w-4" : "h-4 w-4 mr-1"} />
@@ -96,7 +110,7 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
             type="button" 
             variant="ghost" 
             className={`bg-white/20 hover:bg-white/30 text-white rounded-full ${buttonSizeClass} image-action-button`}
-            onClick={onUseAsInput}
+            onClick={onUseAsInput as (e: React.MouseEvent) => void}
             aria-label="Use as Input"
           >
             <SquareArrowUpRight className={isRolledUp ? "h-4 w-4" : "h-4 w-4 mr-1"} />
