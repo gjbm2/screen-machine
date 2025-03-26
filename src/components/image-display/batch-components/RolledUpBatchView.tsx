@@ -47,12 +47,13 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
     // Get the previous index, wrapping around to the end if needed
     const prevIndex = (activeImageIndex - 1 + completedImages.length) % completedImages.length;
     
-    // We can't directly update activeImageIndex here since it's managed by the parent
-    // But we can dispatch a click event to the image to simulate changing the active image
-    if (completedImages[prevIndex]?.url) {
+    // Directly navigate by updating the active image without depending on onImageClick
+    // This bypasses the isRolledUp condition in handleImageClick
+    const prevImage = completedImages[prevIndex];
+    if (prevImage?.url) {
       onImageClick(
-        completedImages[prevIndex].url, 
-        completedImages[prevIndex].prompt || ''
+        prevImage.url, 
+        prevImage.prompt || ''
       );
     }
   };
@@ -69,11 +70,13 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
     // Get the next index, wrapping around to the beginning if needed
     const nextIndex = (activeImageIndex + 1) % completedImages.length;
     
-    // Similar to prev, dispatch a click to change the active image
-    if (completedImages[nextIndex]?.url) {
+    // Directly navigate by updating the active image without depending on onImageClick
+    // This bypasses the isRolledUp condition in handleImageClick
+    const nextImage = completedImages[nextIndex];
+    if (nextImage?.url) {
       onImageClick(
-        completedImages[nextIndex].url, 
-        completedImages[nextIndex].prompt || ''
+        nextImage.url, 
+        nextImage.prompt || ''
       );
     }
   };
