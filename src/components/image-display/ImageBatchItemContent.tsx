@@ -45,7 +45,7 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
       
       {/* Show reference image indicator if image has reference images */}
       {hasReferenceImages && (
-        <ReferenceImageIndicator />
+        <ReferenceImageIndicator imageUrl={imageUrl} />
       )}
     </div>
   );
