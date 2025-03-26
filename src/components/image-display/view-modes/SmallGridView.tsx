@@ -9,7 +9,6 @@ interface SmallGridViewProps {
   onSmallImageClick: (image: any) => void;
   onCreateAgain: (batchId?: string) => void;
   onDeleteImage: (batchId: string, index: number) => void;
-  activeGenerations?: string[]; // Add activeGenerations prop
 }
 
 const SmallGridView: React.FC<SmallGridViewProps> = ({
@@ -17,8 +16,7 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
   isLoading,
   onSmallImageClick,
   onCreateAgain,
-  onDeleteImage,
-  activeGenerations = [] // Default to empty array
+  onDeleteImage
 }) => {
   const [sortedImages, setSortedImages] = useState<any[]>([]);
 
