@@ -1,5 +1,5 @@
-
 import React from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   Trash2,
   Download,
@@ -45,6 +45,13 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
   includePublish = false,
   publishInfo
 }) => {
+  const isMobile = useIsMobile();
+  
+  // Don't show actions on mobile in normal view
+  if (isMobile && viewMode === 'normal') {
+    return null;
+  }
+
   // Make buttons smaller for rolled-up view
   const buttonSizeClass = isRolledUp
     ? 'h-8 w-auto p-1.5 text-xs' // Smaller buttons for rolled-up mode without labels

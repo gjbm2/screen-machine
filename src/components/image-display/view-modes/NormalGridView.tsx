@@ -1,7 +1,5 @@
-
 import React from 'react';
 import ImageBatch from '../ImageBatch';
-import NewVariantPlaceholder from '../NewVariantPlaceholder';
 
 interface NormalGridViewProps {
   imageContainerOrder: string[];
@@ -33,7 +31,6 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
       {imageContainerOrder.map((batchId) => {
         if (!batches[batchId]) return null;
         
-        // Check if we have any generating images in this batch
         const hasGeneratingImages = batches[batchId].some(img => img.status === 'generating');
         
         return (
@@ -44,7 +41,6 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
               isExpanded={!!expandedContainers[batchId]}
               toggleExpand={toggleExpand}
               onImageClick={(url, prompt) => {
-                // Always go to fullscreen when clicking image
                 const image = batches[batchId].find(img => img.status === 'completed');
                 if (image) {
                   onFullScreenClick(image);
@@ -65,13 +61,6 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
           </div>
         );
       })}
-      
-      {/* Add CreateNew placeholder at the end of the grid */}
-      <NewVariantPlaceholder
-        batchId="new"
-        onClick={() => onCreateAgain()}
-        className="mt-1"
-      />
     </div>
   );
 };
