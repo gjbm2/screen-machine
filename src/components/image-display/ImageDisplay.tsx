@@ -68,15 +68,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     getSortedContainers
   } = useImageDisplayState(imageContainerOrder, generatedImages, isLoading);
   
-  const handleCreateAgain = (batchId?: string) => {
-    onCreateAgain(batchId);
-    
-    if (imageContainerOrder.length > 0) {
-      setTimeout(() => {
-        handleToggleExpand(imageContainerOrder[0]);
-      }, 100);
-    }
-  };
+  // Remove the handleCreateAgain override that automatically expanded containers
+  // This ensures containers only expand/collapse via the chevron button
   
   const handleFullScreenClick = (image: any) => {
     if (image && image.batchId) {
@@ -101,7 +94,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               expandedContainers={expandedContainers}
               handleToggleExpand={handleToggleExpand}
               onUseGeneratedAsInput={onUseGeneratedAsInput}
-              onCreateAgain={handleCreateAgain}
+              onCreateAgain={onCreateAgain}
               onDeleteImage={onDeleteImage}
               onDeleteContainer={onDeleteContainer}
               onFullScreenClick={handleFullScreenClick}
