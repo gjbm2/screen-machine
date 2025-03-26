@@ -36,7 +36,7 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
   return (
     <div className="flex flex-col gap-4 mb-4">
       {isLoading && sortedContainerIds.length === 0 && (
-        <LoadingPlaceholder prompt="Generating your image..." /> {/* Added required prompt prop */}
+        <LoadingPlaceholder prompt="Generating your image..." />
       )}
       
       {sortedContainerIds.map(batchId => {
