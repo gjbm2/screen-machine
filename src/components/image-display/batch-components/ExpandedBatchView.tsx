@@ -45,22 +45,23 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
         {completedImages.map((image, index) => (
           <ImageBatchItem
             key={`${batchId}-${image.batchIndex || index}`}
-            image={image} // Pass the entire image object
+            imageUrl={image.url}
+            prompt={image.prompt}
             batchId={batchId}
-            index={image.batchIndex || index}
-            total={completedImages.length}
+            batchIndex={image.batchIndex || index}
             onImageClick={() => onImageClick(image.url, image.prompt)}
             onUseAsInput={() => onImageClick(image.url, image.prompt)}
             onCreateAgain={handleCreateAgain}
-            onFullScreen={() => handleFullScreenClick(image)}
+            onFullScreenClick={() => handleFullScreenClick(image)}
             onDeleteImage={() => onDeleteImage(batchId, image.batchIndex || index)}
+            isPlaceholder={false}
+            hasError={false}
           />
         ))}
         
         {/* Failed image placeholder */}
         {failedImages.length > 0 && (
           <GenerationFailedPlaceholder
-            prompt="" // Pass an empty string prompt
             onRemove={handleRemoveFailedImage}
             onRetry={handleRetry}
           />

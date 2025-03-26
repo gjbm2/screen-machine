@@ -1,4 +1,3 @@
-
 import React from 'react';
 import NormalGridView from './view-modes/NormalGridView';
 import SmallGridView from './view-modes/SmallGridView';
@@ -105,7 +104,7 @@ const ViewModeContent: React.FC<ViewModeContentProps> = ({
         
         {viewMode === 'small' && (
           <SmallGridView 
-            sortedContainerIds={sortedContainerIds} // Change to use sortedContainerIds
+            imageContainerOrder={imageContainerOrder}
             batches={batches}
             expandedContainers={expandedContainers}
             handleToggleExpand={handleToggleExpand}
@@ -124,7 +123,7 @@ const ViewModeContent: React.FC<ViewModeContentProps> = ({
         
         {viewMode === 'table' && (
           <TableView 
-            sortedContainerIds={sortedContainerIds} // Change to use sortedContainerIds
+            imageContainerOrder={imageContainerOrder}
             batches={batches}
             expandedContainers={expandedContainers}
             handleToggleExpand={handleToggleExpand}

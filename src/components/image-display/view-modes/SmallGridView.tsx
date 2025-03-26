@@ -1,73 +1,86 @@
 
-import React from 'react';
-import ImageBatch from '../ImageBatch';
+import React, { useEffect, useState } from 'react';
+import GenerationFailedPlaceholder from '../GenerationFailedPlaceholder';
 import LoadingPlaceholder from '../LoadingPlaceholder';
 
 interface SmallGridViewProps {
-  sortedContainerIds: string[]; // Changed from imageContainerOrder to sortedContainerIds
-  batches: Record<string, any[]>;
-  expandedContainers: Record<string, boolean>;
-  handleToggleExpand: (batchId: string) => void;
-  onUseGeneratedAsInput: (url: string) => void;
+  images: any[];
+  isLoading: boolean;
+  onSmallImageClick: (image: any) => void;
   onCreateAgain: (batchId?: string) => void;
   onDeleteImage: (batchId: string, index: number) => void;
-  onDeleteContainer: (batchId: string) => void;
-  onFullScreenClick: (image: any) => void;
-  imageUrl: string | null;
-  getAllImages: () => any[];
-  handleSmallImageClick: (image: any) => void;
-  isLoading: boolean;
-  activeGenerations?: string[];
 }
 
 const SmallGridView: React.FC<SmallGridViewProps> = ({
-  sortedContainerIds, // Using sortedContainerIds
-  batches,
-  expandedContainers,
-  handleToggleExpand,
-  onUseGeneratedAsInput,
-  onCreateAgain,
-  onDeleteImage,
-  onDeleteContainer,
-  onFullScreenClick,
-  imageUrl,
-  getAllImages,
-  handleSmallImageClick,
+  images,
   isLoading,
-  activeGenerations = []
+  onSmallImageClick,
+  onCreateAgain,
+  onDeleteImage
 }) => {
-  const allImages = getAllImages();
-  
-  return (
-    <div className="flex flex-col gap-4 mb-4">
-      {isLoading && sortedContainerIds.length === 0 && (
-        <LoadingPlaceholder prompt="Generating your image..." />
-      )}
+  const [sortedImages, setSortedImages] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!images || images.length === 0) {
+      setSortedImages([]);
+      return;
+    }
+
+    // Simply sort all images without attempting to filter by batch
+    // This ensures we show one entry for each IMAGE, not each batch
+    const sorted = [...images].sort((a, b) => {
+      // First prioritize by status - generating images always first
+      if (a.status === 'generating' && b.status !== 'generating') return -1;
+      if (a.status !== 'generating' && b.status === 'generating') return 1;
       
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {allImages.map((image, index) => {
-          // Handle the case where image is a placeholder
-          if (image.status === 'generating') {
-            return (
-              <div key={`gen-${index}`} className="aspect-square bg-gray-100 animate-pulse rounded"></div>
-            );
-          }
-          
-          return (
-            <div 
-              key={`${image.batchId}-${image.batchIndex || index}`} 
-              className="cursor-pointer"
-              onClick={() => handleSmallImageClick(image)}
-            >
-              <img 
-                src={image.url} 
-                alt={image.prompt || `Image ${index}`}
-                className="w-full h-auto rounded"
-              />
-            </div>
-          );
-        })}
-      </div>
+      // If both are generating, sort by timestamp (newest first)
+      if (a.status === 'generating' && b.status === 'generating') {
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      }
+      
+      // For all other images, sort by timestamp (newest first)
+      return (b.timestamp || 0) - (a.timestamp || 0);
+    });
+    
+    console.log('[SmallGridView] Total sorted images:', sorted.length);
+    console.log('[SmallGridView] Generating images count:', sorted.filter(img => img.status === 'generating').length);
+    
+    setSortedImages(sorted);
+  }, [images]);
+
+  return (
+    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-0.5">
+      {sortedImages.map((image, idx) => (
+        <div 
+          key={`${image.batchId}-${image.batchIndex || idx}`} 
+          className="aspect-square rounded-md overflow-hidden cursor-pointer"
+          onClick={() => onSmallImageClick(image)}
+        >
+          {image.status === 'completed' ? (
+            <img 
+              src={image.url}
+              alt={image.prompt || `Generated image ${idx + 1}`}
+              className="w-full h-full object-cover"
+            />
+          ) : image.status === 'generating' ? (
+            <LoadingPlaceholder prompt={image.prompt} isCompact={true} />
+          ) : (
+            <GenerationFailedPlaceholder 
+              prompt={null} 
+              onRetry={() => onCreateAgain(image.batchId)}
+              onRemove={() => onDeleteImage(image.batchId || '', image.batchIndex || 0)}
+              isCompact={true}
+            />
+          )}
+        </div>
+      ))}
+      {isLoading && (
+        <div className="aspect-square rounded-md overflow-hidden bg-muted flex items-center justify-center">
+          <div className="animate-pulse flex flex-col items-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
