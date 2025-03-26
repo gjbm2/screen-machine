@@ -55,7 +55,8 @@ export const useImageBatchItem = ({
     handleUseAsInput,
     handleFullScreen,
     handleDeleteImage,
-    handleDeleteFromPanel
+    handleDeleteFromPanel,
+    handleImageClick: internalHandleImageClick
   } = useImageBatchItemActions({
     batchId,
     batchIndex: index,
@@ -89,14 +90,11 @@ export const useImageBatchItem = ({
       return; 
     }
     
-    // Always go to fullscreen when clicked in normal view (for both desktop and mobile)
-    if (imageUrl && onFullScreen && viewMode === 'normal') {
-      onFullScreen(batchId, index);
-      return;
-    }
+    // Use the internal handler which will properly call onFullScreen
+    internalHandleImageClick(e);
     
     // For small view, just call the general onImageClick
-    if (imageUrl) {
+    if (imageUrl && viewMode === 'small') {
       onImageClick(imageUrl);
     }
   };

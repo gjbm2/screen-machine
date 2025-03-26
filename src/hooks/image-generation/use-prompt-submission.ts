@@ -1,6 +1,5 @@
 
-import { useState, useCallback } from 'react';
-import { ImageGenerationConfig } from './types';
+import { useCallback, useState } from 'react';
 
 interface UsePromptSubmissionProps {
   currentWorkflow: string;
@@ -9,7 +8,8 @@ interface UsePromptSubmissionProps {
   lastBatchIdUsed: string | null;
   setIsFirstRun: React.Dispatch<React.SetStateAction<boolean>>;
   setLastBatchIdUsed: React.Dispatch<React.SetStateAction<string | null>>;
-  generateImages: (config: ImageGenerationConfig) => Promise<string | null>;
+  generateImages: (config: any) => Promise<string | null>;
+  collapseAllExcept: (batchId: string) => void;
 }
 
 export const usePromptSubmission = ({
@@ -19,76 +19,74 @@ export const usePromptSubmission = ({
   lastBatchIdUsed,
   setIsFirstRun,
   setLastBatchIdUsed,
-  generateImages
+  generateImages,
+  collapseAllExcept
 }: UsePromptSubmissionProps) => {
-  
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Function to handle submitting the prompt to generate images
   const handleSubmitPrompt = useCallback(async (
-    prompt: string, 
-    imageFiles?: (File | string)[],
+    prompt: string,
+    imageFiles?: File[] | string[],
     workflow?: string,
-    workflowParams?: Record<string, any>,
+    params?: Record<string, any>,
     globalParams?: Record<string, any>,
-    refiner?: string,
-    refinerParams?: Record<string, any>,
-    batchId?: string
+    refiner?: string, 
+    refinerParams?: Record<string, any>
   ) => {
     try {
-      // No longer first run after submitting a prompt
+      setIsSubmitting(true);
+      
+      // Don't allow submitting if we're already submitting
+      if (isSubmitting) {
+        console.warn('Ignoring prompt submission because another one is in progress');
+        return null;
+      }
+      
+      // Mark that the app has been used at least once
       setIsFirstRun(false);
       
-      // Use provided workflow or fall back to current workflow
-      const effectiveWorkflow = workflow || currentWorkflow;
-      
-      // Use provided params or fall back to current params
-      const effectiveWorkflowParams = workflowParams || currentParams;
-      
-      // Use provided global params or fall back to current global params
-      const effectiveGlobalParams = globalParams || currentGlobalParams;
-      
-      // Filter out null and undefined from the image files
-      let uniqueImageFiles: (File | string)[] = [];
-      
-      if (imageFiles && imageFiles.length > 0) {
-        // First, filter out null and undefined values
-        uniqueImageFiles = imageFiles.filter(f => f !== null && f !== undefined);
-      }
-      
-      // Create the configuration for image generation
-      const config: ImageGenerationConfig = {
+      const config = {
         prompt,
-        imageFiles: uniqueImageFiles,
-        workflow: effectiveWorkflow,
-        params: effectiveWorkflowParams,
-        globalParams: effectiveGlobalParams,
-        // Use the provided batchId if available
-        batchId: batchId,
-        refiner, 
-        refinerParams
+        imageFiles,
+        workflow: workflow || currentWorkflow,
+        params: params || currentParams,
+        globalParams: globalParams || currentGlobalParams,
+        refiner: refiner || 'none',
+        refinerParams: refinerParams || {},
       };
       
-      // Generate images with this config
-      const result = await generateImages(config);
+      // Generate the images
+      const batchId = await generateImages(config);
       
-      // Save the last used batch ID
-      if (result) {
-        setLastBatchIdUsed(result);
+      // If we successfully generated a batch, store its ID
+      if (batchId) {
+        setLastBatchIdUsed(batchId);
+        
+        // Now collapse all containers except the one we just created
+        collapseAllExcept(batchId);
       }
       
-      return result;
+      return batchId;
     } catch (error) {
       console.error('Error submitting prompt:', error);
-      throw error;
+      return null;
+    } finally {
+      setIsSubmitting(false);
     }
   }, [
     currentWorkflow, 
     currentParams, 
     currentGlobalParams, 
+    generateImages, 
     setIsFirstRun, 
     setLastBatchIdUsed, 
-    generateImages
+    isSubmitting, 
+    collapseAllExcept
   ]);
-  
+
   return {
-    handleSubmitPrompt
+    handleSubmitPrompt,
+    isSubmitting
   };
 };
