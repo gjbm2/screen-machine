@@ -36,7 +36,7 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
 }) => {
   // Implement proper navigation for rolled-up view
   const handleNavigatePrev = (e: React.MouseEvent) => {
-    // Make sure to stop event propagation
+    // Ensure the click doesn't propagate to parent elements
     e.stopPropagation();
     
     if (completedImages.length <= 1) return;
@@ -55,7 +55,7 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
   };
   
   const handleNavigateNext = (e: React.MouseEvent) => {
-    // Make sure to stop event propagation
+    // Ensure the click doesn't propagate to parent elements
     e.stopPropagation();
     
     if (completedImages.length <= 1) return;
@@ -93,8 +93,8 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
               onDeleteImage={onDeleteImage}
               onFullScreen={() => handleFullScreenClick(completedImages[activeImageIndex])}
               onImageClick={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
-              onNavigatePrev={completedImages.length > 1 ? () => handleNavigatePrev({} as React.MouseEvent) : undefined}
-              onNavigateNext={completedImages.length > 1 ? () => handleNavigateNext({} as React.MouseEvent) : undefined}
+              onNavigatePrev={completedImages.length > 1 ? handleNavigatePrev : undefined}
+              onNavigateNext={completedImages.length > 1 ? handleNavigateNext : undefined}
               viewMode={viewMode}
               showActions={true}
               isRolledUp={true}
