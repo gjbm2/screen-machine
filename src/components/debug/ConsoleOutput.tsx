@@ -14,9 +14,27 @@ const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs }) => {
     }
   }, [logs]);
   
-  // Ensure logs are strings and then sort by timestamp if they have a timestamp format [HH:MM:SS]
-  const sortedLogs = [...logs].sort((a, b) => {
-    // Ensure a and b are strings
+  // Ensure all logs are properly stringified before rendering
+  const processedLogs = logs.map(log => {
+    // If log is an object (detected by type check or by attempting to stringify)
+    if (typeof log === 'object' && log !== null) {
+      try {
+        // Handle objects with type and message properties (common log format)
+        if ('type' in log && 'message' in log) {
+          return `[${log.type}] ${log.message}`;
+        }
+        // Stringify any other objects
+        return JSON.stringify(log);
+      } catch (e) {
+        return String(log); // Fallback to String() if JSON.stringify fails
+      }
+    }
+    return String(log); // Convert any non-string values to strings
+  });
+  
+  // Sort logs by timestamp if they have a timestamp format [HH:MM:SS]
+  const sortedLogs = [...processedLogs].sort((a, b) => {
+    // Ensure a and b are strings (which they should be after processing)
     const strA = String(a);
     const strB = String(b);
     

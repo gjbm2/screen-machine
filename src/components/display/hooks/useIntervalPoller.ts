@@ -64,6 +64,8 @@ export const useIntervalPoller = (
         intervalRef.current = null;
       }
     };
+    // Ensure dependencies is always an array, even if undefined is passed
+    // This fixes the "Cannot read property 'length' of undefined" error
   }, [enabled, intervalMs, callback, ...(Array.isArray(dependencies) ? dependencies : [])]);
   
   return {
