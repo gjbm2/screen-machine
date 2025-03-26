@@ -1,73 +1,69 @@
-
-import React, { useRef, useEffect } from 'react';
+import React from 'react';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { okaidia } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface ConsoleOutputProps {
   logs: string[];
 }
 
 const ConsoleOutput: React.FC<ConsoleOutputProps> = ({ logs }) => {
-  const consoleRef = useRef<HTMLDivElement>(null);
-  
-  useEffect(() => {
-    if (consoleRef.current) {
-      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
-    }
-  }, [logs]);
-  
-  // Ensure all logs are properly stringified before rendering
-  const processedLogs = logs.map(log => {
-    // If log is an object (detected by type check or by attempting to stringify)
-    if (typeof log === 'object' && log !== null) {
-      try {
-        // Handle objects with type and message properties (common log format)
-        if ('type' in log && 'message' in log) {
-          return `[${log.type}] ${log.message}`;
-        }
-        // Stringify any other objects
-        return JSON.stringify(log);
-      } catch (e) {
-        return String(log); // Fallback to String() if JSON.stringify fails
-      }
-    }
-    return String(log); // Convert any non-string values to strings
-  });
-  
-  // Sort logs by timestamp if they have a timestamp format [HH:MM:SS]
-  const sortedLogs = [...processedLogs].sort((a, b) => {
-    // Ensure a and b are strings (which they should be after processing)
-    const strA = String(a);
-    const strB = String(b);
-    
-    const timeRegex = /\[(\d{1,2}):(\d{2}):(\d{2})\]/;
-    const matchA = strA.match(timeRegex);
-    const matchB = strB.match(timeRegex);
-    
-    if (matchA && matchB) {
-      const timeA = new Date();
-      timeA.setHours(parseInt(matchA[1]), parseInt(matchA[2]), parseInt(matchA[3]));
-      
-      const timeB = new Date();
-      timeB.setHours(parseInt(matchB[1]), parseInt(matchB[2]), parseInt(matchB[3]));
-      
-      return timeA.getTime() - timeB.getTime();
-    }
-    
-    return 0; // Keep original order if no timestamp
-  });
-  
   return (
-    <div 
-      ref={consoleRef}
-      className="h-full font-mono text-xs bg-black text-white overflow-y-auto p-2 w-full"
-    >
-      {sortedLogs.length === 0 ? (
-        <p className="text-white/60 p-2">No console logs yet.</p>
+    <div className="font-mono text-xs p-4 bg-gray-900 text-white overflow-auto whitespace-pre-wrap">
+      {logs.length === 0 ? (
+        <div className="text-gray-500 py-2">No logs to display</div>
       ) : (
-        sortedLogs.map((log, index) => (
-          <div key={index} className="py-1 border-b border-white/10 last:border-0">
-            {log}
-          </div>
-        ))
+        logs.map((log, index) => {
+          // Safe check: Ensure the log is not null or undefined
+          if (log === null || log === undefined) {
+            return <div key={index} className="text-red-400">Invalid log entry</div>;
+          }
+
+          // Determine if the log is a JSON object that was stringified
+          let isJson = false;
+          let formattedLog = log;
+          
+          try {
+            // Check if it's a stringified JSON
+            if (typeof log === 'string' && (log.startsWith('{') || log.startsWith('['))) {
+              const parsedLog = JSON.parse(log);
+              formattedLog = JSON.stringify(parsedLog, null, 2);
+              isJson = true;
+            }
+          } catch (e) {
+            // Not a valid JSON, keep as regular string
+            isJson = false;
+          }
+          
+          // Determine if it contains an error message
+          const isError = 
+            log.toLowerCase().includes('error') || 
+            log.toLowerCase().includes('exception') ||
+            log.toLowerCase().includes('failed');
+
+          // Determine if it's a warning
+          const isWarning = 
+            log.toLowerCase().includes('warning') || 
+            log.toLowerCase().includes('warn');
+
+          // Apply appropriate styling based on the log type
+          const logClass = isError 
+            ? "text-red-400" 
+            : isWarning 
+              ? "text-yellow-300" 
+              : "text-green-200";
+
+          return (
+            <div key={index} className={`py-1 ${logClass}`}>
+              {isJson ? (
+                <SyntaxHighlighter language="json" style={okaidia} customStyle={{ background: 'transparent' }}>
+                  {formattedLog}
+                </SyntaxHighlighter>
+              ) : (
+                log
+              )}
+            </div>
+          );
+        })
       )}
     </div>
   );

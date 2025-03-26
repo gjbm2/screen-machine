@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
 import {
@@ -28,7 +28,14 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   const isNarrow = width < 600;
   const shouldHideName = hideWorkflowName || isNarrow;
   
+  // Find the selected workflow by ID
   const selectedWorkflowObj = workflows.find(w => w.id === selectedWorkflow);
+  
+  // Log the current selection for debugging
+  useEffect(() => {
+    console.log("WorkflowIconSelector: Current workflow:", selectedWorkflow);
+    console.log("WorkflowIconSelector: Found workflow object:", selectedWorkflowObj);
+  }, [selectedWorkflow, selectedWorkflowObj]);
   
   const getWorkflowIcon = (workflowId: string) => {
     switch (workflowId) {
