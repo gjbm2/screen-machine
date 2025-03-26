@@ -48,6 +48,20 @@ export const useImageContainer = () => {
     });
   }, []);
 
+  // New function to collapse all containers except one (used when a new image is generated)
+  const collapseAllExcept = useCallback((batchIdToKeepExpanded: string) => {
+    setExpandedContainers(prev => {
+      const newState = { ...prev };
+      
+      // Collapse all containers
+      Object.keys(newState).forEach(key => {
+        newState[key] = (key === batchIdToKeepExpanded);
+      });
+      
+      return newState;
+    });
+  }, []);
+
   return {
     imageContainerOrder,
     setImageContainerOrder,
@@ -57,7 +71,8 @@ export const useImageContainer = () => {
     setNextContainerId,
     handleReorderContainers,
     handleAddNewContainer,
-    handleDeleteContainer
+    handleDeleteContainer,
+    collapseAllExcept
   };
 };
 

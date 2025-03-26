@@ -40,7 +40,8 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     nextContainerId,
     setNextContainerId,
     handleReorderContainers: containerReorder,
-    handleDeleteContainer: internalHandleDeleteContainer
+    handleDeleteContainer: internalHandleDeleteContainer,
+    collapseAllExcept
   } = useImageContainer();
 
   const {
@@ -81,7 +82,8 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     lastBatchIdUsed,
     setIsFirstRun,
     setLastBatchIdUsed,
-    generateImages
+    generateImages,
+    collapseAllExcept 
   });
   
   const {
@@ -132,6 +134,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     handleDownloadImage,
     handleDeleteImage,
     handleReorderContainers,
-    handleDeleteContainer
+    handleDeleteContainer,
+    collapseAllExcept
   };
 };
