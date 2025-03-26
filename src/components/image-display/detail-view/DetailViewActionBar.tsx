@@ -3,7 +3,6 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { CopyPlus, SquareArrowUpRight, Trash2, Download } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import PublishMenu from '../PublishMenu';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 interface DetailViewActionBarProps {
@@ -97,14 +96,6 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
           <Download className="h-3.5 w-3.5" /> 
           {!isMobile && <span>Download</span>}
         </Button>
-        
-        <PublishMenu 
-          imageUrl={imageUrl}
-          generationInfo={generationInfo}
-          isRolledUp={false}
-          showLabel={!isMobile}
-          includePublish={true}
-        />
         
         {/* Separator */}
         <div className="h-8 flex items-center mx-1">
