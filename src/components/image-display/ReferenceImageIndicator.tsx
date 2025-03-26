@@ -4,7 +4,7 @@ import { X } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 interface ReferenceImageIndicatorProps {
-  imageUrl: string; // This is now a required prop
+  imageUrl: string;
   onRemove?: () => void;
   position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 }
@@ -23,25 +23,24 @@ const ReferenceImageIndicator: React.FC<ReferenceImageIndicatorProps> = ({
     }
   };
 
-  // Position classes based on the position prop
-  const positionClasses = {
-    'top-left': 'top-1 left-1',
-    'top-right': 'top-1 right-1',
-    'bottom-left': 'bottom-1 left-1',
-    'bottom-right': 'bottom-1 right-1'
-  }[position];
-
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <div 
-          className={`absolute ${positionClasses} bg-primary/80 rounded-full h-5 w-5 flex items-center justify-center cursor-pointer z-10`}
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsOpen(true);
-          }}
-        >
-          <span className="text-white text-xs">R</span>
+        <div className="relative w-full h-full cursor-pointer flex items-center justify-center">
+          <img 
+            src={imageUrl} 
+            alt="Reference" 
+            className="max-w-full max-h-full object-contain"
+            onClick={() => setIsOpen(true)}
+          />
+          {onRemove && (
+            <button 
+              className="absolute top-0.5 right-0.5 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-10"
+              onClick={handleRemove}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
         </div>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
