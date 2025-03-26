@@ -56,7 +56,7 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
   // Make buttons smaller for rolled-up view
   const buttonSizeClass = isRolledUp
     ? 'h-8 w-8 p-0' // Smaller, icon-only buttons for rolled-up mode
-    : 'h-9 px-3 py-2 text-xs'; // Regular size with labels for unrolled mode
+    : 'h-9 px-2 py-2 text-xs'; // Slightly smaller padding for normal mode to fit more buttons
 
   // Only show on hover/force for normal view
   // For mobile, we force show them when forceShow is true
@@ -66,7 +66,8 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
   
   const visibilityClass = forceShow || isHovered ? 'opacity-100' : baseVisibilityClass;
 
-  // For normal view, show labels unless in rolled-up mode
+  // For normal view, show labels unless in rolled-up mode or on smaller screens
+  // We use a responsive approach to hide labels on smaller screens
   const showLabels = viewMode === 'normal' && !isRolledUp;
 
   const handleUseAsInput = (e: React.MouseEvent) => {
@@ -95,7 +96,7 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
 
   return (
     <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent flex justify-center p-3 z-20 ${visibilityClass}`}>
-      <div className="flex gap-2 justify-center items-center">
+      <div className="flex flex-wrap gap-1 justify-center items-center">
         {onCreateAgain && (
           <Button 
             type="button" 
@@ -104,8 +105,8 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
             onClick={onCreateAgain}
             aria-label="Create Again"
           >
-            <CopyPlus className={isRolledUp ? "h-4 w-4" : "h-4 w-4 mr-1"} />
-            {showLabels && <span>Create Again</span>}
+            <CopyPlus className="h-4 w-4" />
+            {showLabels && <span className="hidden sm:inline ml-1">Create Again</span>}
           </Button>
         )}
         
@@ -118,8 +119,8 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
             onClick={handleUseAsInput}
             aria-label="Use as Input"
           >
-            <SquareArrowUpRight className={isRolledUp ? "h-4 w-4" : "h-4 w-4 mr-1"} />
-            {showLabels && <span>Use as Input</span>}
+            <SquareArrowUpRight className="h-4 w-4" />
+            {showLabels && <span className="hidden sm:inline ml-1">Use as Input</span>}
           </Button>
         )}
         
@@ -135,8 +136,8 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
             }}
             aria-label="Use as Input"
           >
-            <SquareArrowUpRight className={isRolledUp ? "h-4 w-4" : "h-4 w-4 mr-1"} />
-            {showLabels && <span>Use as Input</span>}
+            <SquareArrowUpRight className="h-4 w-4" />
+            {showLabels && <span className="hidden sm:inline ml-1">Use as Input</span>}
           </Button>
         )}
         
@@ -148,8 +149,8 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
             onClick={onDownload}
             aria-label="Download Image"
           >
-            <Download className={isRolledUp ? "h-4 w-4" : "h-4 w-4 mr-1"} />
-            {showLabels && <span>Download</span>}
+            <Download className="h-4 w-4" />
+            {showLabels && <span className="hidden sm:inline ml-1">Download</span>}
           </Button>
         )}
         
@@ -170,8 +171,8 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
             onClick={onDeleteImage}
             aria-label="Delete image"
           >
-            <Trash2 className={isRolledUp ? "h-4 w-4" : "h-4 w-4 mr-1"} />
-            {showLabels && <span>Delete</span>}
+            <Trash2 className="h-4 w-4" />
+            {showLabels && <span className="hidden sm:inline ml-1">Delete</span>}
           </Button>
         )}
       </div>
