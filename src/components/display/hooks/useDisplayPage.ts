@@ -24,6 +24,9 @@ export const useDisplayPage = () => {
   const hasProcessedOutputRef = useRef(false);
   const hasCheckedExplicitExitRef = useRef(false);
   const forceViewModeRef = useRef(false);
+  
+  console.log('[useDisplayPage] Initializing with displayParams:', displayParams);
+  console.log('[useDisplayPage] Has processed output flag:', hasProcessedOutputRef.current);
 
   // Function to redirect to debug mode
   const redirectToDebugMode = () => {
@@ -103,6 +106,8 @@ export const useDisplayPage = () => {
     getImagePositionStyle,
     extractMetadataFromImage
   } = useDisplayState(previewParams);
+  
+  console.log('[useDisplayPage] Current imageUrl from displayState:', imageUrl);
 
   // Debug mode redirection handling
   const { checkDebugRedirection, userExplicitlyExitedDebugRef } = useDebugRedirection(displayParams, redirectToDebugMode);
@@ -128,9 +133,15 @@ export const useDisplayPage = () => {
     }
   }, [userExplicitlyExitedDebugRef, displayParams.debugMode]);
 
-  // Process output parameter on first detection - Fix #2: Ensure external URLs are handled properly
+  // Process output parameter on first detection
   useEffect(() => {
     if (!mountedRef.current) return;
+    
+    console.log('[useDisplayPage] Checking if should process output param:', {
+      output: displayParams.output,
+      hasProcessed: hasProcessedOutputRef.current,
+      locationSearch: location.search
+    });
     
     if (displayParams.output && !hasProcessedOutputRef.current) {
       console.log('[useDisplayPage] Processing output parameter:', displayParams.output);
@@ -138,6 +149,8 @@ export const useDisplayPage = () => {
       
       // Fix #2: Different handling for external URLs vs local paths
       const decodedOutput = decodeComplexOutputParam(displayParams.output);
+      console.log('[useDisplayPage] Decoded output:', decodedOutput);
+      
       if (decodedOutput && (decodedOutput.startsWith('http://') || decodedOutput.startsWith('https://'))) {
         console.log('[useDisplayPage] Setting direct URL:', decodedOutput);
         setImageUrl(decodedOutput);
@@ -147,17 +160,23 @@ export const useDisplayPage = () => {
         setImageUrl(normalizedPath);
       }
       
-      setImageKey(prev => prev + 1);
+      setImageKey(prev => {
+        const newKey = prev + 1;
+        console.log('[useDisplayPage] Incrementing image key to:', newKey);
+        return newKey;
+      });
       
       const filename = displayParams.output.split('/').pop() || displayParams.output;
       const displayName = filename.length > 30 ? filename.substring(0, 27) + '...' : filename;
       toast.success(`Displaying image: ${displayName}`);
     }
-  }, [displayParams.output, setImageUrl, setImageKey]);
+  }, [displayParams.output, setImageUrl, setImageKey, location.search]);
 
   // Reset output processing flag when URL changes
   useEffect(() => {
+    const oldValue = hasProcessedOutputRef.current;
     hasProcessedOutputRef.current = false;
+    console.log('[useDisplayPage] Reset hasProcessedOutputRef from', oldValue, 'to false due to URL change');
   }, [location.pathname, location.search]);
 
   // Component lifecycle management
@@ -249,6 +268,8 @@ export const useDisplayPage = () => {
       
       setTimeout(() => {
         if (mountedRef.current) {
+          console.log('[useDisplayPage] Processing initial render output param:', displayParams.output);
+          
           if (displayParams.output && displayParams.output.startsWith('http')) {
             console.log('[useDisplayPage] Initial render - setting direct URL:', displayParams.output);
             setImageUrl(displayParams.output);
@@ -257,11 +278,32 @@ export const useDisplayPage = () => {
             console.log('[useDisplayPage] Initial render - setting normalized path:', normalizedPath);
             setImageUrl(normalizedPath);
           }
-          setImageKey(prev => prev + 1);
+          setImageKey(prev => {
+            const newKey = prev + 1;
+            console.log('[useDisplayPage] Incrementing initial image key to:', newKey);
+            return newKey;
+          });
         }
       }, 100);
     }
   }, [displayParams.output, setImageUrl, setImageKey]);
+
+  // Debugging code to force image URL reload when it should be present but isn't
+  useEffect(() => {
+    if (mountedRef.current && displayParams.output && !imageUrl) {
+      console.log('[useDisplayPage] DEBUG: Output param present but imageUrl is null:', {
+        output: displayParams.output,
+        imageUrl,
+        hasProcessedOutputRef: hasProcessedOutputRef.current
+      });
+      
+      // If we have output param but no imageUrl, try to force a reload
+      if (hasProcessedOutputRef.current) {
+        console.log('[useDisplayPage] Forcing hasProcessedOutputRef reset to try loading image again');
+        hasProcessedOutputRef.current = false;
+      }
+    }
+  }, [displayParams.output, imageUrl]);
 
   // Return all necessary state and functions
   return {

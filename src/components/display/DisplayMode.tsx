@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { DebugPanel } from '@/components/display/debug/DebugPanel';
 import { DebugImageContainer } from '@/components/display/DebugImageContainer';
@@ -57,18 +56,24 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   isLoadingMetadata = false
 }) => {
   const isMobile = useIsMobile();
+  
+  console.log('[DEBUG DisplayMode] Rendering with params:', {
+    imageUrl,
+    imageKey,
+    params,
+    previewParams
+  });
+
   const [showPreview, setShowPreview] = useState(!isMobile);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const renderCountRef = useRef(0);
   const lastLogTimeRef = useRef(0);
   
-  // Limit logging frequency - only log in development mode and every 100 renders
   useEffect(() => {
     if (import.meta.env.DEV) {
       renderCountRef.current++;
       
       const now = Date.now();
-      // Only log every 10 seconds to avoid console spam
       if (now - lastLogTimeRef.current > 10000) {
         console.log('[DisplayMode] Rendering (log limited, render #' + renderCountRef.current + ')');
         lastLogTimeRef.current = now;
@@ -76,19 +81,16 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
     }
   });
   
-  // When switching to mobile view, we want to show the preview by default
   useEffect(() => {
     if (isMobile) {
       setShowPreview(true);
     }
   }, [isMobile]);
   
-  // Toggle preview/settings view on mobile - memoize to prevent recreation
   const toggleView = useCallback(() => {
     setShowPreview(prev => !prev);
   }, []);
 
-  // Memoize the debug panel to avoid unnecessary re-renders
   const debugPanel = useMemo(() => (
     <div className={`${isMobile ? (showPreview ? 'hidden' : 'w-full h-full') : 'w-2/5'} flex-shrink-0 overflow-hidden flex flex-col`}>
       <DebugPanel 
@@ -116,7 +118,6 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
     isMobile, showPreview, isChecking, toggleView
   ]);
 
-  // Memoize the preview panel
   const previewPanel = useMemo(() => (
     <div 
       ref={previewContainerRef}
@@ -151,7 +152,6 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
     processedCaption, metadata, toggleView, showPreview, isMobile
   ]);
 
-  // Memoize the mobile view switcher
   const mobileViewSwitcher = useMemo(() => (
     isMobile && (
       <div className="fixed top-3 right-3 z-[100]">
@@ -176,38 +176,51 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
     )
   ), [isMobile, toggleView, showPreview]);
 
-  // Memoize the ImageDisplay component to avoid unnecessary re-renders
-  const imageDisplay = useMemo(() => (
-    <ImageDisplay
-      params={previewParams}
-      imageUrl={imageUrl}
-      imageKey={imageKey}
-      imageStyle={getImagePositionStyle(
-        previewParams.position,
-        previewParams.showMode,
-        window.innerWidth,
-        window.innerHeight,
-        imageRef.current?.naturalWidth || 0,
-        imageRef.current?.naturalHeight || 0
-      )}
-      processedCaption={processedCaption}
-      metadata={metadata}
-      isTransitioning={isTransitioning}
-      oldImageUrl={oldImageUrl}
-      oldImageStyle={oldImageStyle}
-      newImageStyle={newImageStyle}
-      imageRef={imageRef}
-      onImageError={onImageError}
-      isLoadingMetadata={isLoadingMetadata}
-    />
-  ), [
+  const imageDisplay = useMemo(() => {
+    console.log('[DEBUG DisplayMode] Creating imageDisplay component with:', {
+      imageUrl,
+      imageKey,
+      isTransitioning,
+      imageRefWidth: imageRef.current?.naturalWidth,
+      imageRefHeight: imageRef.current?.naturalHeight
+    });
+    
+    const imageStyle = getImagePositionStyle(
+      previewParams.position,
+      previewParams.showMode,
+      window.innerWidth,
+      window.innerHeight,
+      imageRef.current?.naturalWidth || 0,
+      imageRef.current?.naturalHeight || 0
+    );
+    
+    console.log('[DEBUG DisplayMode] Calculated image style:', imageStyle);
+    
+    return (
+      <ImageDisplay
+        params={previewParams}
+        imageUrl={imageUrl}
+        imageKey={imageKey}
+        imageStyle={imageStyle}
+        processedCaption={processedCaption}
+        metadata={metadata}
+        isTransitioning={isTransitioning}
+        oldImageUrl={oldImageUrl}
+        oldImageStyle={oldImageStyle}
+        newImageStyle={newImageStyle}
+        imageRef={imageRef}
+        onImageError={onImageError}
+        isLoadingMetadata={isLoadingMetadata}
+      />
+    );
+  }, [
     previewParams, imageUrl, imageKey, getImagePositionStyle, processedCaption, 
     metadata, isTransitioning, oldImageUrl, oldImageStyle, newImageStyle, 
     imageRef, onImageError, isLoadingMetadata
   ]);
 
-  // If we're in debug mode, render the debug interface
   if (params.debugMode) {
+    console.log('[DEBUG DisplayMode] Rendering in debug mode');
     return (
       <div className="fixed inset-0 flex flex-col sm:flex-row overflow-hidden">
         {mobileViewSwitcher}
@@ -217,10 +230,6 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
     );
   }
 
-  // Otherwise, render the normal image display
-  if (import.meta.env.DEV && renderCountRef.current % 10 === 1) {
-    console.log('[DisplayMode] Rendering normal image display');
-  }
-  
+  console.log('[DEBUG DisplayMode] Rendering normal image display with imageUrl:', imageUrl);
   return imageDisplay;
 };

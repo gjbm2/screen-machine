@@ -1,4 +1,3 @@
-
 import { DisplayParams } from '../types';
 
 export const createUrlWithParams = (params: DisplayParams): string => {
@@ -77,21 +76,27 @@ export const createUrlWithParams = (params: DisplayParams): string => {
 export const fullyDecodeUrl = (url: string): string => {
   if (!url) return url;
   
+  console.log('[fullyDecodeUrl] Starting with URL:', url);
+  
   let decodedUrl = url;
   let previousUrl = '';
+  let iterations = 0;
   
   // Keep decoding until there's no more change
-  while (decodedUrl !== previousUrl) {
+  while (decodedUrl !== previousUrl && iterations < 10) {
     previousUrl = decodedUrl;
     try {
       decodedUrl = decodeURIComponent(previousUrl);
+      iterations++;
+      console.log(`[fullyDecodeUrl] Iteration ${iterations}, decoded to:`, decodedUrl);
     } catch (e) {
       // If we encounter an error, return the last valid decoded URL
-      console.warn('[fullyDecodeUrl] Error decoding URL, returning last valid decode:', previousUrl);
+      console.warn('[fullyDecodeUrl] Error decoding URL, returning last valid decode:', previousUrl, e);
       return previousUrl;
     }
   }
   
+  console.log('[fullyDecodeUrl] Final decoded URL:', decodedUrl);
   return decodedUrl;
 };
 
@@ -124,11 +129,18 @@ export const processOutputParam = (output: string): string => {
 };
 
 export const decodeComplexOutputParam = (output: string | null): string | null => {
-  if (!output) return null;
+  if (!output) {
+    console.log('[decodeComplexOutputParam] Output param is null or empty');
+    return null;
+  }
+  
+  console.log('[decodeComplexOutputParam] Starting to decode:', output);
   
   // Use the recursive decoder for complex URLs
   try {
-    return fullyDecodeUrl(output);
+    const decoded = fullyDecodeUrl(output);
+    console.log('[decodeComplexOutputParam] Successfully decoded to:', decoded);
+    return decoded;
   } catch (e) {
     console.error("[decodeComplexOutputParam] Error decoding output parameter:", e);
     return output; // Return the original if decoding fails
@@ -138,18 +150,23 @@ export const decodeComplexOutputParam = (output: string | null): string | null =
 export const normalizePathForDisplay = (path: string): string => {
   if (!path) return path;
   
+  console.log('[normalizePathForDisplay] Normalizing path:', path);
+  
   // Make sure the path starts with a forward slash
   let normalizedPath = path.startsWith('/') ? path : `/${path}`;
   
   // Handle paths that might have the 'output' folder path repeated
   if (normalizedPath.includes('/output/output/')) {
     normalizedPath = normalizedPath.replace('/output/output/', '/output/');
+    console.log('[normalizePathForDisplay] Fixed repeated output folder:', normalizedPath);
   }
   
   // Ensure the output folder is in the path
   if (!normalizedPath.includes('/output/')) {
     normalizedPath = `/output${normalizedPath}`;
+    console.log('[normalizePathForDisplay] Added output folder prefix:', normalizedPath);
   }
   
+  console.log('[normalizePathForDisplay] Final normalized path:', normalizedPath);
   return normalizedPath;
 };
