@@ -8,7 +8,6 @@ import ImageBatchItemContent from './ImageBatchItemContent';
 import { useImageBatchItem } from './hooks/useImageBatchItem';
 import { Button } from '@/components/ui/button';
 import { Maximize } from 'lucide-react';
-import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ImageBatchItemProps {
   image: {
@@ -57,8 +56,6 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   isRolledUp = false,
   isExpandedMain = false
 }) => {
-  const isMobile = useIsMobile();
-  
   const {
     isHovered,
     setIsHovered,
@@ -71,6 +68,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     handleDownload,
     handleImageClick,
     shouldShowActionButtons,
+    isMobile
   } = useImageBatchItem({
     image,
     batchId,
@@ -127,15 +125,15 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           type="button"
           variant="ghost"
           className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 text-white h-8 w-8 p-1 rounded-full z-30"
-          onClick={(e) => handleFullScreen(e)}
+          onClick={handleFullScreen}
           aria-label="View fullscreen"
         >
           <Maximize className="h-4 w-4" />
         </Button>
       )}
       
-      {/* Display image actions on hover in normal mode for desktop only */}
-      {showActions && viewMode === 'normal' && !isMobile && (
+      {/* Display image actions on hover in normal mode for desktop */}
+      {showActions && viewMode === 'normal' && (
         <ImageActionButtons 
           onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
           onFullScreen={null} // Removed from bottom bar since we have it at the top now
@@ -143,9 +141,9 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
           onDownload={handleDownload}
           viewMode={viewMode}
-          forceShow={showActionButtons}
+          forceShow={isMobile && showActionButtons}
           isRolledUp={isRolledUp}
-          isHovered={isHovered}
+          isHovered={isHovered && !isMobile}
           includePublish={true}
           publishInfo={{
             imageUrl: image.url,
