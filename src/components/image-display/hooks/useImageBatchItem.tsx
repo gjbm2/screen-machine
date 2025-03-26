@@ -46,9 +46,6 @@ export const useImageBatchItem = ({
   const [showActionButtons, setShowActionButtons] = useState(false);
   const isMobile = useIsMobile();
 
-  // Ensure image exists and has a url before proceeding
-  const imageUrl = image?.url || '';
-
   // Import action handlers from separate hook
   const { 
     handleCreateAgain,
@@ -63,21 +60,21 @@ export const useImageBatchItem = ({
     onUseGeneratedAsInput: onUseAsInput || ((url: string) => {}),
     onDeleteImage: onDeleteImage || ((batchId: string, index: number) => {}),
     onCreateAgain: onCreateAgain || ((batchId: string) => {}),
-    imageUrl  // Use the safely accessed imageUrl
+    imageUrl: image.url
   });
 
   // Handle download action
   const handleDownload = (e: React.MouseEvent) => {
-    if (!imageUrl) return;
+    if (!image.url) return;
     e.stopPropagation();
     
     // Use title if available, otherwise generate filename from timestamp
-    const titleToUse = image?.title || null;
+    const titleToUse = image.title || null;
     const filename = titleToUse 
       ? `${titleToUse.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.png`
       : `image_${Date.now()}.png`;
     
-    saveAs(imageUrl, filename);
+    saveAs(image.url, filename);
   };
 
   // Updated to accept a React.MouseEvent parameter
@@ -90,14 +87,14 @@ export const useImageBatchItem = ({
     }
     
     // Always go to fullscreen when clicked in normal view (for both desktop and mobile)
-    if (imageUrl && onFullScreen && viewMode === 'normal') {
+    if (image.url && onFullScreen && viewMode === 'normal') {
       onFullScreen(batchId, index);
       return;
     }
     
     // For small view, just call the general onImageClick
-    if (imageUrl) {
-      onImageClick(imageUrl);
+    if (image.url) {
+      onImageClick(image.url);
     }
   };
 
