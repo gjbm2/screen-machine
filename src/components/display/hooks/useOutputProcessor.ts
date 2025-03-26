@@ -4,7 +4,7 @@ import { DisplayParams } from '../types';
 import { processOutputParam, fullyDecodeUrl } from '../utils/paramUtils';
 
 export const useOutputProcessor = (params: DisplayParams) => {
-  const [processedUrl, setProcessedUrl] = useState<string | null>(params.output);
+  const [processedUrl, setProcessedUrl] = useState<string | null>(null);
   
   // Process the output parameter to ensure correct URL format
   useEffect(() => {
@@ -46,9 +46,6 @@ export const useOutputProcessor = (params: DisplayParams) => {
           // Set the processed URL
           console.log('[useOutputProcessor] Setting processedUrl to decoded URL:', decodedUrl);
           setProcessedUrl(decodedUrl);
-          
-          // Also update the params for URL-driven functionality
-          params.output = decodedUrl;
           return;
         } else {
           console.warn('[useOutputProcessor] Decoded URL does not start with http');
@@ -61,15 +58,8 @@ export const useOutputProcessor = (params: DisplayParams) => {
     // For local paths, normalize the format
     const processedOutput = processOutputParam(params.output);
     
-    if (processedOutput !== params.output) {
-      console.log('[useOutputProcessor] Processed output param from:', params.output, 'to:', processedOutput);
-      setProcessedUrl(processedOutput);
-      
-      // Also update the params for URL-driven functionality
-      params.output = processedOutput;
-    } else {
-      setProcessedUrl(params.output);
-    }
+    console.log('[useOutputProcessor] Processed output param from:', params.output, 'to:', processedOutput);
+    setProcessedUrl(processedOutput);
   }, [params.output]);
   
   return { processedUrl };

@@ -8,8 +8,8 @@ export const createUrlWithParams = (params: DisplayParams): string => {
     console.log('[createUrlWithParams] Adding output param:', params.output);
     // For external URLs, use them directly without additional encoding
     if (params.output.startsWith('http://') || params.output.startsWith('https://')) {
-      queryParams.set('output', params.output);
-      console.log('[createUrlWithParams] Added external URL directly:', params.output);
+      queryParams.set('output', encodeURIComponent(params.output));
+      console.log('[createUrlWithParams] Encoded external URL:', encodeURIComponent(params.output));
     } else {
       // For local paths, use single encoding
       queryParams.set('output', encodeURIComponent(params.output));
@@ -144,7 +144,14 @@ export const processOutputParam = (output: string): string => {
   }
   
   // For local file paths, normalize them
-  const normalized = normalizePathForDisplay(output);
+  let normalized = normalizePathForDisplay(output);
+  
+  // Fix potential double path issue (if /output/output/ appears)
+  if (normalized.includes('/output/output/')) {
+    normalized = normalized.replace('/output/output/', '/output/');
+    console.log('[processOutputParam] Fixed double output path:', normalized);
+  }
+  
   console.log('[processOutputParam] Normalized path:', normalized);
   return normalized;
 };
