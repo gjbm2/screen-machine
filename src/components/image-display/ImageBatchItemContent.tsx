@@ -23,31 +23,31 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
   hasReferenceImages = false,
   title
 }) => {
+  // When in normal view, the container will be 4:3 (set by parent component)
+  // For small view, keep using square aspect ratio
+  const aspectRatio = viewMode === 'small' ? 1 : undefined;
+
   return (
     <div className="w-full h-full" onClick={onClick}>
       {imageUrl ? (
         <div className="relative w-full h-full">
-          <AspectRatio ratio={1} className="w-full">
-            <img
-              src={imageUrl}
-              alt={prompt || `Generated image ${index + 1}`}
-              title={title || prompt}
-              className="w-full h-full object-cover bg-[#333333]"
+          <img
+            src={imageUrl}
+            alt={prompt || `Generated image ${index + 1}`}
+            title={title || prompt}
+            className="w-full h-full object-contain bg-[#333333]"
+          />
+          {hasReferenceImages && (
+            <ReferenceImageIndicator 
+              imageUrl={imageUrl} 
+              position={viewMode === 'small' ? 'top-right' : 'bottom-left'} 
             />
-            {hasReferenceImages && (
-              <ReferenceImageIndicator 
-                imageUrl={imageUrl} 
-                position={viewMode === 'small' ? 'top-right' : 'bottom-left'} 
-              />
-            )}
-          </AspectRatio>
+          )}
         </div>
       ) : (
-        <AspectRatio ratio={1} className="w-full">
-          <div className="w-full h-full bg-secondary/10 flex items-center justify-center text-muted-foreground text-sm">
-            No image
-          </div>
-        </AspectRatio>
+        <div className="w-full h-full bg-secondary/10 flex items-center justify-center text-muted-foreground text-sm">
+          No image
+        </div>
       )}
     </div>
   );
