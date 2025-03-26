@@ -44,19 +44,19 @@ export const useDebugRedirection = (
       return;
     }
     
-    // Fix #1: We should enter debug mode in two scenarios:
+    // We should enter debug mode in two scenarios:
     // 1. When there's an output param but we're not in debug mode
     // 2. When there's no output param at all (blank display page)
     if (!redirectAttemptedRef.current && !debugHandledRef.current && !params.debugMode) {
       redirectAttemptedRef.current = true;
       console.log('[useDebugRedirection] Attempting debug redirection check');
       
-      // Modified condition to always redirect to debug mode if there's no output parameter
+      // Always redirect to debug mode if there's no output parameter or first visit
       if (!params.output) {
         // First visit to display page with no output - go to debug mode
         try {
-          redirectToDebugMode();
           console.log('[useDebugRedirection] Redirecting to debug mode - no output param');
+          redirectToDebugMode();
         } catch (err) {
           console.error('[useDebugRedirection] Error during debug redirection:', err);
         }

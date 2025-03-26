@@ -2,7 +2,7 @@
 import { useCallback } from 'react';
 
 interface UseDebugPanelFileSelectorProps {
-  selectFile: (file: string) => void;
+  selectFile: (file: string) => () => void;
   isCurrentFile: (file: string, imageUrl: string | null) => boolean;
   imageUrl: string | null;
 }
@@ -15,16 +15,15 @@ export const useDebugPanelFileSelector = ({
   
   // Create a handler that can be used in onClick directly (for list items)
   const selectFileHandler = useCallback((file: string) => {
-    return () => {
-      console.log('[useDebugPanelFileSelector] Selecting file:', file);
-      selectFile(file);
-    };
+    console.log('[useDebugPanelFileSelector] Creating handler for file:', file);
+    return selectFile(file);
   }, [selectFile]);
   
   // Create a direct handler for use with the custom URL input
   const selectFileDirectly = useCallback((file: string) => {
     console.log('[useDebugPanelFileSelector] Directly selecting file:', file);
-    selectFile(file);
+    const navigate = selectFile(file);
+    navigate(); // Execute the navigation function
   }, [selectFile]);
   
   // Create a callback to check if a file is currently selected

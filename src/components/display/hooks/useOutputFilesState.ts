@@ -31,10 +31,16 @@ export const useOutputFilesState = () => {
     
     try {
       const files = await fetchOutputFiles();
+      // Make sure files is an array even if the API returns something unexpected
+      const safeFiles = Array.isArray(files) ? files : [];
+      
       // Only update state if files actually changed to prevent unnecessary re-renders
-      if (JSON.stringify(files) !== JSON.stringify(outputFiles)) {
-        setOutputFiles(files);
+      if (JSON.stringify(safeFiles) !== JSON.stringify(outputFiles)) {
+        console.log('[useOutputFilesState] Files have changed, updating state with', safeFiles.length, 'files');
+        setOutputFiles(safeFiles);
         setError(null);
+      } else {
+        console.log('[useOutputFilesState] Files unchanged, skipping state update');
       }
     } catch (err) {
       console.error('Error loading output files:', err);
@@ -50,9 +56,13 @@ export const useOutputFilesState = () => {
 
   // Define a function to safely set output files from outside
   const setOutputFilesFromOutside = (files: string[]) => {
+    // Ensure files is an array
+    const safeFiles = Array.isArray(files) ? files : [];
+    
     // Only update if different to prevent unnecessary re-renders
-    if (JSON.stringify(files) !== JSON.stringify(outputFiles)) {
-      setOutputFiles(files);
+    if (JSON.stringify(safeFiles) !== JSON.stringify(outputFiles)) {
+      console.log('[useOutputFilesState] Setting files from outside:', safeFiles);
+      setOutputFiles(safeFiles);
       setError(null);
     }
   };

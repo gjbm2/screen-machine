@@ -1,7 +1,7 @@
 
 import { useNavigate } from 'react-router-dom';
 import { DisplayParams } from '../types';
-import { createUrlWithParams, processOutputParam, normalizePathForDisplay, fullyDecodeUrl } from '../utils/paramUtils';
+import { createUrlWithParams, processOutputParam, fullyDecodeUrl } from '../utils/paramUtils';
 import { toast } from 'sonner';
 
 interface UseDebugPanelFileManagementProps {
@@ -13,14 +13,13 @@ export const useDebugPanelFileManagement = ({
 }: UseDebugPanelFileManagementProps) => {
   const navigate = useNavigate();
 
-  // Updated to ensure it matches the type FilesTab.tsx expects
   const selectFile = (file: string) => {
     console.log('[useDebugPanelFileManagement] Selected file:', file);
     
-    // Fix #2: Handle fully formed URLs (especially with query parameters) differently
+    // Handle fully formed URLs (especially with query parameters) differently
     let outputPath;
     if (file.startsWith('http://') || file.startsWith('https://')) {
-      // Don't process URLs through normalizePathForDisplay - use directly
+      // Don't process external URLs - use directly
       console.log('[useDebugPanelFileManagement] Using external URL directly:', file);
       outputPath = file;
     } else {
@@ -32,7 +31,7 @@ export const useDebugPanelFileManagement = ({
     if (!outputPath) {
       console.error('[useDebugPanelFileManagement] Failed to process output path');
       toast.error("Failed to process file path");
-      return;
+      return () => {}; // Return empty function to match expected type
     }
     
     // Create a URL with the debug mode and selected file
@@ -48,22 +47,27 @@ export const useDebugPanelFileManagement = ({
     // Notify the user before navigation
     toast.success(`Loading: ${formatFileName(file)}`);
     
-    // Navigate to the URL
-    navigate(`/display${url}`, { replace: false });
-    
-    // Force a refresh after navigation to ensure the image loads
-    setTimeout(() => {
-      console.log('[useDebugPanelFileManagement] Post-navigation check');
-      const currentParams = new URLSearchParams(window.location.search);
-      const currentOutput = currentParams.get('output');
+    // Return a function that performs the navigation when called
+    return () => {
+      // Navigate to the URL
+      navigate(`/display${url}`, { replace: false });
       
-      console.log('[useDebugPanelFileManagement] Current output param:', currentOutput);
-      
-      // If we have the right param but image isn't showing, consider forcing a refresh
-      if (currentOutput === outputPath) {
-        console.log('[useDebugPanelFileManagement] Output param is set correctly');
-      }
-    }, 500);
+      // Force a refresh after navigation to ensure the image loads
+      setTimeout(() => {
+        console.log('[useDebugPanelFileManagement] Post-navigation check');
+        const currentParams = new URLSearchParams(window.location.search);
+        const currentOutput = currentParams.get('output');
+        
+        console.log('[useDebugPanelFileManagement] Current output param:', currentOutput);
+        
+        // Add additional logging for debugging
+        if (currentOutput !== outputPath) {
+          console.warn('[useDebugPanelFileManagement] Output parameter mismatch after navigation');
+          console.log('  Expected:', outputPath);
+          console.log('  Actual:', currentOutput);
+        }
+      }, 500);
+    };
   };
 
   const formatFileName = (file: string) => {
@@ -110,13 +114,23 @@ export const useDebugPanelFileManagement = ({
     
     // Compare the base URLs without query parameters for more robust matching
     try {
+      // Handle non-URL strings by checking direct equality
+      if (!normalizedFile.startsWith('http') || !normalizedImageUrl.startsWith('http')) {
+        console.log('[useDebugPanelFileManagement] Using direct string comparison:', {
+          normalizedFile,
+          normalizedImageUrl,
+          isMatch: normalizedImageUrl === normalizedFile
+        });
+        return normalizedImageUrl === normalizedFile;
+      }
+      
       const fileUrlObj = new URL(normalizedFile);
       const imageUrlObj = new URL(normalizedImageUrl);
       
       // Compare pathnames for more accurate matching
       const isPathMatch = fileUrlObj.pathname === imageUrlObj.pathname;
       
-      console.log('[useDebugPanelFileManagement] Comparing:', {
+      console.log('[useDebugPanelFileManagement] Comparing URLs:', {
         filePathname: fileUrlObj.pathname,
         imagePathname: imageUrlObj.pathname,
         isPathMatch

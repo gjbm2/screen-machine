@@ -33,8 +33,12 @@ export const useDebugFiles = (
     try {
       const files = await fetchOutputFiles();
       if (isMountedRef.current) {
-        // Fix: Directly pass the files array to setOutputFiles
-        setOutputFiles(files);
+        // Make sure files is an array even if the API returns something unexpected
+        const safeFiles = Array.isArray(files) ? files : [];
+        console.log('[useDebugFiles] Fetched output files:', safeFiles);
+        
+        // Pass the files array to setOutputFiles
+        setOutputFiles(safeFiles);
       }
     } catch (err) {
       console.error('[useDebugFiles] Error fetching files:', err);

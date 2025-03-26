@@ -7,7 +7,7 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   // Add each parameter to the query string
   if (params.output) {
     console.log('[createUrlWithParams] Adding output param:', params.output);
-    // Fix #2: Handle external URLs differently to prevent double encoding
+    // Handle external URLs differently to prevent double encoding
     if (params.output.startsWith('http')) {
       queryParams.set('output', encodeURIComponent(params.output));
     } else {
@@ -100,7 +100,7 @@ export const processOutputParam = (output: string): string => {
   
   console.log('[processOutputParam] Processing output:', output);
   
-  // Fix #2: For external URLs, decode them fully to handle possible nested encodings
+  // For external URLs, decode them fully to handle possible nested encodings
   if (output.includes('http') || output.includes('%3A%2F%2F')) {
     console.log('[processOutputParam] Processing possible URL:', output);
     // Try to fully decode the URL
