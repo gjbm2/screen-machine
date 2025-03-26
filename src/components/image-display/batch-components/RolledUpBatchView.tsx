@@ -50,15 +50,17 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
         <div className="col-span-2">
           <ImageBatchItem
             key={`${batchId}-${currentImage.batchIndex || activeImageIndex}`}
-            image={currentImage} // Pass the entire image object
+            imageUrl={currentImage.url}
+            prompt={currentImage.prompt}
             batchId={batchId}
-            index={currentImage.batchIndex || activeImageIndex}
-            total={completedImages.length}
+            batchIndex={currentImage.batchIndex || activeImageIndex}
             onImageClick={() => onImageClick(currentImage.url, currentImage.prompt)}
             onUseAsInput={() => onImageClick(currentImage.url, currentImage.prompt)}
             onCreateAgain={handleCreateAgain}
-            onFullScreen={() => handleFullScreenClick(currentImage)}
+            onFullScreenClick={() => handleFullScreenClick(currentImage)}
             onDeleteImage={() => onDeleteImage(batchId, currentImage.batchIndex || activeImageIndex)}
+            isPlaceholder={false}
+            hasError={false}
             isRolledUp={true}
           />
         </div>
@@ -77,10 +79,9 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
         {/* Show failed placeholder if any failed images */}
         {failedImages.length > 0 && (
           <GenerationFailedPlaceholder
-            prompt="" // Pass an empty string prompt
             onRemove={handleRemoveFailedImage}
             onRetry={handleRetry}
-            isCompact={true} // Use isCompact instead of compact
+            compact={true}
           />
         )}
       </div>
