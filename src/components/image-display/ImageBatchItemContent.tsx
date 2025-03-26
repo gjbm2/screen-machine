@@ -29,45 +29,44 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
   // When in unroll mode for the main image, don't force aspect ratio
   const useSquareAspectRatio = viewMode === 'small' || (viewMode === 'normal' && !isExpandedMain);
   
+  // Use 4:3 aspect ratio for the main image in unrolled mode
+  const aspectRatio = isExpandedMain ? 4/3 : 1;
+  
   return (
     <div className="w-full h-full" onClick={onClick}>
       {imageUrl ? (
         <div className="relative w-full h-full">
           {useSquareAspectRatio ? (
-            <AspectRatio ratio={1} className="overflow-hidden">
+            <AspectRatio ratio={aspectRatio} className="overflow-hidden">
               <img
                 src={imageUrl}
                 alt={prompt || `Generated image ${index + 1}`}
                 title={title || prompt}
-                className="w-full h-full object-contain bg-[#333333]"
+                className="w-full h-full object-contain bg-[#f3f3f3]"
               />
               {hasReferenceImages && (
                 <ReferenceImageIndicator 
                   imageUrl={imageUrl} 
-                  // Fix the comparison - don't directly compare viewMode to 'small'
-                  // since in this context viewMode can't be 'small'
                   position="bottom-left" 
                 />
               )}
             </AspectRatio>
           ) : (
-            // For expanded main image, don't force aspect ratio
-            <>
+            // For expanded main image, use 4:3 aspect ratio
+            <AspectRatio ratio={4/3} className="overflow-hidden">
               <img
                 src={imageUrl}
                 alt={prompt || `Generated image ${index + 1}`}
                 title={title || prompt}
-                className="w-full h-full object-contain bg-[#333333]"
+                className="w-full h-full object-contain bg-[#f3f3f3]"
               />
               {hasReferenceImages && (
                 <ReferenceImageIndicator 
                   imageUrl={imageUrl} 
-                  // Fix the comparison - don't directly compare viewMode to 'small'
-                  // since in this context viewMode can't be 'small'
                   position="bottom-left" 
                 />
               )}
-            </>
+            </AspectRatio>
           )}
         </div>
       ) : (
