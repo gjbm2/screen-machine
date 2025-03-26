@@ -35,7 +35,10 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
   viewMode
 }) => {
   // Implement proper navigation for rolled-up view
-  const handleNavigatePrev = () => {
+  const handleNavigatePrev = (e: React.MouseEvent) => {
+    // Ensure the click doesn't propagate to parent elements
+    e.stopPropagation();
+    
     if (completedImages.length <= 1) return;
     
     // Get the previous index, wrapping around to the end if needed
@@ -51,7 +54,10 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
     }
   };
   
-  const handleNavigateNext = () => {
+  const handleNavigateNext = (e: React.MouseEvent) => {
+    // Ensure the click doesn't propagate to parent elements
+    e.stopPropagation();
+    
     if (completedImages.length <= 1) return;
     
     // Get the next index, wrapping around to the beginning if needed
