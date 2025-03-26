@@ -42,7 +42,8 @@ export const FilesTab: React.FC<FilesTabProps> = ({
   const handleUseCustomUrl = () => {
     if (customUrl && customUrl.trim() !== '') {
       console.log('[FilesTab] Using custom URL:', customUrl);
-      selectFileDirectly(customUrl);
+      const navigate = selectFile(customUrl);
+      navigate(); // Execute the navigation function
     }
   };
 
@@ -62,23 +63,26 @@ export const FilesTab: React.FC<FilesTabProps> = ({
         <ScrollArea className="flex-1 rounded-md border p-2 min-h-[200px]">
           {outputFiles.length > 0 ? (
             <div className="space-y-2">
-              {outputFiles.map((file, index) => (
-                <div 
-                  key={index}
-                  className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${isCurrentFile(file) ? 'bg-blue-50 border border-blue-200' : ''}`}
-                  onClick={selectFile(file)} 
-                >
-                  <div className="flex items-center">
-                    <ImageIcon className="h-4 w-4 mr-2 text-gray-500" />
-                    <span className="text-sm truncate max-w-[180px]">{formatFileName(file)}</span>
+              {outputFiles.map((file, index) => {
+                const fileSelectHandler = selectFile(file);
+                return (
+                  <div 
+                    key={index}
+                    className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${isCurrentFile(file) ? 'bg-blue-50 border border-blue-200' : ''}`}
+                    onClick={fileSelectHandler} 
+                  >
+                    <div className="flex items-center">
+                      <ImageIcon className="h-4 w-4 mr-2 text-gray-500" />
+                      <span className="text-sm truncate max-w-[180px]">{formatFileName(file)}</span>
+                    </div>
+                    {isCurrentFile(file) && (
+                      <Badge variant="secondary">
+                        Current
+                      </Badge>
+                    )}
                   </div>
-                  {isCurrentFile(file) && (
-                    <Badge variant="secondary">
-                      Current
-                    </Badge>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-gray-500">
