@@ -28,7 +28,13 @@ export const useImageGenerationApi = (
       // Always add this batch ID to the container order if it's a new batch
       // (which it will be except when using "Go Again" functionality)
       if (!config.batchId) {
+        // Add the new batch to the beginning of the order
         setImageContainerOrder(prev => [batchId, ...prev]);
+        
+        // When starting a new generation without an existing batchId,
+        // we need to ensure this container is expanded and all others
+        // are collapsed. This is now handled in useImageDisplayState's useEffect
+        // but we still need to make sure the order is correct
       }
       
       // Log this generation to the console
