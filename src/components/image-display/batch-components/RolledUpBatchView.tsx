@@ -44,6 +44,11 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
     // in the rolled-up view, but needed for the ImageBatchItem props
   };
 
+  // Find the first generating image (if any) to use its prompt for the loading placeholder
+  const generatingImages = anyGenerating ? 
+    failedImages.filter(img => img.status === 'generating' || !img.url) : [];
+  const firstGeneratingImage = generatingImages.length > 0 ? generatingImages[0] : null;
+
   return (
     <Card className="rounded-t-none">
       <CardContent className="p-2">
@@ -67,7 +72,11 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
               isRolledUp={true}
             />
           ) : anyGenerating ? (
-            <LoadingPlaceholder prompt={failedImages.length > 0 ? failedImages[0]?.prompt : null} />
+            <LoadingPlaceholder 
+              prompt={firstGeneratingImage?.prompt || null} 
+              hasReferenceImages={firstGeneratingImage?.referenceImageUrl ? true : false}
+              workflowName={firstGeneratingImage?.workflow || null}
+            />
           ) : failedImages.length > 0 ? (
             <GenerationFailedPlaceholder 
               prompt={failedImages[0]?.prompt || null} 
