@@ -24,7 +24,6 @@ interface ImageDisplayProps {
   onDeleteImage: (batchId: string, index: number) => void;
   onDeleteContainer: (batchId: string) => void;
   fullscreenRefreshTrigger?: number;
-  activeGenerations?: string[]; // Add activeGenerations prop
 }
 
 const ImageDisplay: React.FC<ImageDisplayProps> = ({
@@ -41,8 +40,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onReorderContainers,
   onDeleteImage,
   onDeleteContainer,
-  fullscreenRefreshTrigger,
-  activeGenerations = [] // Provide default empty array
+  fullscreenRefreshTrigger
 }) => {
   const {
     viewMode,
@@ -69,6 +67,9 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     handleSortClick,
     getSortedContainers
   } = useImageDisplayState(imageContainerOrder, generatedImages, isLoading);
+  
+  // Remove the handleCreateAgain override that automatically expanded containers
+  // This ensures containers only expand/collapse via the chevron button
   
   const handleFullScreenClick = (image: any) => {
     if (image && image.batchId) {
@@ -107,7 +108,6 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               handleTableRowClick={handleTableRowClick}
               isLoading={isLoading}
               onReorderContainers={onReorderContainers}
-              activeGenerations={activeGenerations} // Pass the activeGenerations prop
             />
           </div>
           

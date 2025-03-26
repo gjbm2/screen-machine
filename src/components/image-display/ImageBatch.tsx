@@ -8,7 +8,6 @@ import RolledUpBatchView from './batch-components/RolledUpBatchView';
 import TableBatchView from './batch-components/TableBatchView';
 import DeleteBatchDialog from './batch-components/DeleteBatchDialog';
 import { useIsMobile } from '@/hooks/use-mobile';
-import NewVariantPlaceholder from './NewVariantPlaceholder';
 
 interface Image {
   url: string;
@@ -32,7 +31,6 @@ interface ImageBatchProps {
   viewMode: ViewMode;
   onFullScreenClick?: (image: any) => void;
   hasGeneratingImages?: boolean;
-  activeGenerations?: string[]; // Add activeGenerations prop
 }
 
 const ImageBatch: React.FC<ImageBatchProps> = ({
@@ -47,8 +45,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   onFullScreenClick,
   activeImageUrl,
   viewMode,
-  hasGeneratingImages = false,
-  activeGenerations = [] // Default to empty array
+  hasGeneratingImages = false
 }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -190,7 +187,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
           onImageClick={onImageClick}
           onDeleteImage={onDeleteImage}
           toggleExpand={toggleExpand}
-          activeGenerations={activeGenerations} // Pass activeGenerations to ExpandedBatchView
         />
       ) : (
         <RolledUpBatchView 
@@ -207,7 +203,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
           onImageClick={onImageClick}
           onDeleteImage={onDeleteImage}
           viewMode={viewMode}
-          activeGenerations={activeGenerations} // Pass activeGenerations to RolledUpBatchView
         />
       )}
       
