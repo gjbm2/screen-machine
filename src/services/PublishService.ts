@@ -34,16 +34,39 @@ export const publishImage = async (
   // Handle device sharing (handled by frontend)
   if (destination.type === 'share') {
     try {
-      // First try Web Share API
+      // Check if Web Share API is available
       if (navigator.share) {
         try {
-          await navigator.share({
+          // For Web Share API Level 2 support - get image as blob and share as file
+          const imageBlob = await fetch(imageUrl).then(response => response.blob());
+          
+          // Create a File object from the Blob
+          // Extract filename from URL or use a default name with timestamp
+          const filename = imageUrl.split('/').pop() || `generated-image-${Date.now()}.png`;
+          const imageFile = new File([imageBlob], filename, { type: imageBlob.type });
+          
+          // Share object with title, text, URL and files array
+          const shareData: ShareData = {
             title: 'Share generated image',
             text: generationInfo?.prompt || 'Check out this generated image!',
-            url: imageUrl,
-          });
-          toast.success('Shared successfully');
-          return true;
+            files: [imageFile]
+          };
+          
+          // Check if files sharing is supported (Web Share API Level 2)
+          if ('canShare' in navigator && navigator.canShare && navigator.canShare({ files: [imageFile] })) {
+            await navigator.share(shareData);
+            toast.success('Shared successfully');
+            return true;
+          } else {
+            // Fall back to Web Share API Level 1 (URL only)
+            await navigator.share({
+              title: 'Share generated image',
+              text: generationInfo?.prompt || 'Check out this generated image!',
+              url: imageUrl,
+            });
+            toast.success('Shared successfully');
+            return true;
+          }
         } catch (error) {
           console.error('Error sharing:', error);
           
