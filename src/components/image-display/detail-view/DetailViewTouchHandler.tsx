@@ -19,15 +19,6 @@ const DetailViewTouchHandler: React.FC<DetailViewTouchHandlerProps> = ({
   
   const handleTouchStart = (e: React.TouchEvent) => {
     setStartX(e.touches[0].clientX);
-    console.log('Touch start detected at X:', e.touches[0].clientX);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    // Used to capture the touchmove event, but we don't need to prevent default
-    // This helps ensure the component captures all touch events
-    if (startX !== null) {
-      console.log('Touch move detected, delta:', e.touches[0].clientX - startX);
-    }
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
@@ -36,17 +27,13 @@ const DetailViewTouchHandler: React.FC<DetailViewTouchHandlerProps> = ({
     const endX = e.changedTouches[0].clientX;
     const diff = startX - endX;
     
-    console.log('Touch end detected, total swipe distance:', Math.abs(diff));
-    
-    // Reduced threshold (20px) for more responsive swiping
+    // Reduce threshold to make swiping more responsive (from 50px to 20px)
     if (Math.abs(diff) > 20) {
       if (diff > 0) {
         // Swipe left, go to next image
-        console.log('Detected left swipe, navigating next');
         onSwipeLeft();
       } else {
         // Swipe right, go to previous image
-        console.log('Detected right swipe, navigating previous');
         onSwipeRight();
       }
     }
@@ -54,12 +41,31 @@ const DetailViewTouchHandler: React.FC<DetailViewTouchHandlerProps> = ({
     setStartX(null);
   };
 
+  // Prevent scrolling when in this view on mobile devices
+  useEffect(() => {
+    if (!isMobile) return;
+    
+    const preventScroll = (e: Event) => {
+      e.preventDefault();
+    };
+    
+    const element = touchRef.current;
+    if (element) {
+      element.addEventListener('touchmove', preventScroll, { passive: false });
+    }
+    
+    return () => {
+      if (element) {
+        element.removeEventListener('touchmove', preventScroll);
+      }
+    };
+  }, [isMobile]);
+
   return (
     <div 
       ref={touchRef}
-      className="w-full h-full touch-pan-y"
+      className="w-full h-full"
       onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
       {children}

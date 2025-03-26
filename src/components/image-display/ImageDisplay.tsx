@@ -1,25 +1,29 @@
+
 import React from 'react';
-import ImageBatch from './ImageBatch';
 import FullscreenDialog from './FullscreenDialog';
-import { useFullscreen } from './hooks/useFullscreen';
-import { ImageDisplayHeader } from './ImageDisplayHeader';
+import ViewModeContent from './ViewModeContent';
+import ImageDisplayHeader from './ImageDisplayHeader';
+import useImageDisplayState from './hooks/useImageDisplayState';
+
+export type ViewMode = 'normal' | 'small' | 'table';
+export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
+export type SortDirection = 'asc' | 'desc';
 
 interface ImageDisplayProps {
   imageUrl: string | null;
-  prompt: string;
+  prompt: string | null;
   isLoading: boolean;
   uploadedImages: string[];
   generatedImages: any[];
   imageContainerOrder: string[];
-  workflow: string;
-  generationParams: Record<string, any>;
+  workflow: string | null;
+  generationParams?: Record<string, any>;
   onUseGeneratedAsInput: (url: string) => void;
-  onCreateAgain: (batchId: string) => void;
-  onReorderContainers: (newOrder: string[]) => void;
+  onCreateAgain: (batchId?: string) => void;
+  onReorderContainers: (sourceIndex: number, destinationIndex: number) => void;
   onDeleteImage: (batchId: string, index: number) => void;
   onDeleteContainer: (batchId: string) => void;
   fullscreenRefreshTrigger?: number;
-  activeGenerations?: string[]; // Add this with a default
 }
 
 const ImageDisplay: React.FC<ImageDisplayProps> = ({
@@ -36,31 +40,13 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onReorderContainers,
   onDeleteImage,
   onDeleteContainer,
-  fullscreenRefreshTrigger,
-  activeGenerations = [] // Add this with a default
+  fullscreenRefreshTrigger
 }) => {
-  const allImagesFlat = generatedImages.reduce((acc, img) => {
-    if (Array.isArray(img)) {
-      return acc.concat(img);
-    } else {
-      acc.push(img);
-      return acc;
-    }
-  }, []);
-
-  const batches = generatedImages.reduce((acc, img) => {
-    if (Array.isArray(img)) {
-      img.forEach(i => {
-        if (!acc[i.batchId]) {
-          acc[i.batchId] = [];
-        }
-        acc[i.batchId].push(i);
-      });
-    }
-    return acc;
-  }, {});
-
   const {
+    viewMode,
+    setViewMode,
+    expandedContainers,
+    allImagesFlat,
     showFullScreenView,
     setShowFullScreenView,
     fullScreenBatchId,
@@ -69,67 +55,80 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     currentGlobalIndex,
     openFullScreenView,
     handleNavigateGlobal,
-    handleNavigateWithBatchAwareness
-  } = useFullscreen(allImagesFlat);
-
-  const handleReorderContainers = (newOrder: string[]) => {
-    onReorderContainers(newOrder);
+    handleNavigateWithBatchAwareness,
+    handleToggleExpand,
+    batches,
+    hasBatches,
+    handleSmallImageClick,
+    handleTableRowClick,
+    getAllImages,
+    sortField,
+    sortDirection,
+    handleSortClick,
+    getSortedContainers
+  } = useImageDisplayState(imageContainerOrder, generatedImages, isLoading);
+  
+  // Remove the handleCreateAgain override that automatically expanded containers
+  // This ensures containers only expand/collapse via the chevron button
+  
+  const handleFullScreenClick = (image: any) => {
+    if (image && image.batchId) {
+      openFullScreenView(image.batchId, image.batchIndex || 0);
+    }
   };
-
-  // Render the component based on the state
+  
   return (
-    <div className="w-full flex-grow max-w-full relative overflow-hidden flex flex-col min-h-0">
-      <ImageDisplayHeader
-        prompt={prompt}
-        isLoading={isLoading}
-        uploadedImages={uploadedImages}
-      />
-      
-      <div className="flex-grow overflow-auto px-3 md:px-5 py-3 min-h-0">
-        {generatedImages.length === 0 && !isLoading && (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            No images generated yet.
+    <div className="mt-4">
+      {hasBatches && (
+        <div className="mt-2">
+          <ImageDisplayHeader
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+          />
+          
+          <div className="pr-2">
+            <ViewModeContent
+              viewMode={viewMode}
+              imageContainerOrder={imageContainerOrder}
+              batches={batches}
+              expandedContainers={expandedContainers}
+              handleToggleExpand={handleToggleExpand}
+              onUseGeneratedAsInput={onUseGeneratedAsInput}
+              onCreateAgain={onCreateAgain}
+              onDeleteImage={onDeleteImage}
+              onDeleteContainer={onDeleteContainer}
+              onFullScreenClick={handleFullScreenClick}
+              imageUrl={imageUrl}
+              getAllImages={getAllImages}
+              handleSmallImageClick={handleSmallImageClick}
+              sortField={sortField}
+              sortDirection={sortDirection}
+              handleSortClick={handleSortClick}
+              getSortedContainers={getSortedContainers}
+              handleTableRowClick={handleTableRowClick}
+              isLoading={isLoading}
+              onReorderContainers={onReorderContainers}
+            />
           </div>
-        )}
-        
-        {imageContainerOrder.length > 0 && (
-          <div className="space-y-8">
-            {imageContainerOrder.map((batchId) => {
-              const batchImages = generatedImages.filter(img => img.batchId === batchId);
-              return (
-                <ImageBatch
-                  key={batchId}
-                  batchId={batchId}
-                  images={batchImages}
-                  onDelete={onDeleteImage}
-                  onCreateAgain={onCreateAgain}
-                  onFullscreenView={openFullScreenView}
-                  onUseAsInput={onUseGeneratedAsInput}
-                  onDeleteBatch={onDeleteContainer}
-                  activeGenerations={activeGenerations} // Pass the activeGenerations prop
-                />
-              );
-            })}
-          </div>
-        )}
-      </div>
-      
-      <FullscreenDialog
-        showFullScreenView={showFullScreenView}
-        setShowFullScreenView={setShowFullScreenView}
-        fullScreenBatchId={fullScreenBatchId}
-        batches={batches}
-        fullScreenImageIndex={fullScreenImageIndex}
-        setFullScreenImageIndex={setFullScreenImageIndex}
-        onDeleteImage={onDeleteImage}
-        onCreateAgain={onCreateAgain}
-        onUseGeneratedAsInput={onUseGeneratedAsInput}
-        allImagesFlat={allImagesFlat}
-        currentGlobalIndex={currentGlobalIndex}
-        handleNavigateGlobal={handleNavigateGlobal}
-        handleNavigateWithBatchAwareness={handleNavigateWithBatchAwareness}
-        fullscreenRefreshTrigger={fullscreenRefreshTrigger}
-      />
+          
+          <FullscreenDialog 
+            showFullScreenView={showFullScreenView}
+            setShowFullScreenView={setShowFullScreenView}
+            fullScreenBatchId={fullScreenBatchId}
+            batches={batches}
+            fullScreenImageIndex={fullScreenImageIndex}
+            setFullScreenImageIndex={setFullScreenImageIndex}
+            onDeleteImage={onDeleteImage}
+            onCreateAgain={onCreateAgain}
+            onUseGeneratedAsInput={onUseGeneratedAsInput}
+            allImagesFlat={allImagesFlat}
+            currentGlobalIndex={currentGlobalIndex}
+            handleNavigateGlobal={handleNavigateGlobal}
+            handleNavigateWithBatchAwareness={handleNavigateWithBatchAwareness}
+            fullscreenRefreshTrigger={fullscreenRefreshTrigger}
+          />
+        </div>
+      )}
     </div>
   );
 };
