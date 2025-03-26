@@ -99,8 +99,8 @@ export const useImageBatchItem = ({
       return;
     }
     
-    // For small view, just call the general onImageClick
-    if (image.url) {
+    // For small view, just call the general onImageClick - CRITICAL CHANGE: Don't call this for rolled up containers
+    if (image.url && !isRolledUp) {
       onImageClick(image.url);
     }
   };
