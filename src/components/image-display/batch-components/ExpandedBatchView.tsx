@@ -80,8 +80,8 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
                     viewMode="normal"
                   />
                 </div>
-                {/* Thumbnail gallery for completed images - now left-aligned */}
-                <div className="flex justify-start">
+                {/* Thumbnail gallery for completed images - now with max-width container */}
+                <div className="flex justify-start overflow-x-auto max-w-full">
                   <ThumbnailGallery
                     images={completedImages}
                     batchId={batchId}

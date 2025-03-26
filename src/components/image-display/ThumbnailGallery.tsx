@@ -74,19 +74,19 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
   return (
     <div 
       ref={touchRef}
-      className={`grid ${getGridColumnsClass()} gap-2 w-full`}
+      className={`grid ${getGridColumnsClass()} gap-2 w-full max-w-[calc(5*200px)]`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
       {images.map((image, index) => (
         <Card 
           key={`${batchId}-${index}`}
-          className={`overflow-hidden cursor-pointer transition-all w-full ${
+          className={`overflow-hidden cursor-pointer transition-all w-full max-w-[200px] ${
             activeIndex === index ? 'ring-2 ring-primary' : ''
           }`}
           onClick={() => onThumbnailClick(index)}
         >
-          <div className="aspect-square relative group">
+          <div className="aspect-square relative group max-w-[200px]">
             <img
               src={image.url}
               alt={`Batch image ${index + 1}`}
@@ -115,7 +115,7 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
       ))}
       
       {/* New variant placeholder in gallery */}
-      <NewVariantPlaceholder batchId={batchId} onClick={onCreateAgain} />
+      <NewVariantPlaceholder batchId={batchId} onClick={onCreateAgain} className="max-w-[200px]" />
     </div>
   );
 };

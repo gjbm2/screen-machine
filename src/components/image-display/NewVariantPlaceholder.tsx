@@ -6,24 +6,24 @@ import { Plus } from 'lucide-react';
 interface NewVariantPlaceholderProps {
   batchId: string;
   onClick: (batchId: string) => void;
+  className?: string;
 }
 
-const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({ batchId, onClick }) => {
-  const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onClick(batchId);
-  };
-
+const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({
+  batchId,
+  onClick,
+  className = ''
+}) => {
   return (
-    <Card
-      className="overflow-hidden cursor-pointer border-dashed border-2 bg-secondary/10 hover:bg-secondary/20 transition-colors"
-      onClick={handleClick}
+    <Card 
+      className={`overflow-hidden cursor-pointer border-dashed ${className}`}
+      onClick={() => onClick(batchId)}
     >
-      <div className="aspect-square flex flex-col items-center justify-center p-4 text-muted-foreground">
-        <Plus className="h-12 w-12 mb-2 text-primary/60" />
-        <p className="text-sm font-medium">Create Another</p>
-        <p className="text-xs mt-1 text-center">Click to generate a new image based on this prompt</p>
+      <div className="aspect-square relative group flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors">
+        <div className="flex flex-col items-center text-muted-foreground p-4 text-center">
+          <Plus className="h-8 w-8 mb-2" />
+          <span className="text-xs">Create new variant</span>
+        </div>
       </div>
     </Card>
   );
