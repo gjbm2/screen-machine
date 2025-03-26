@@ -1,5 +1,5 @@
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { fetchOutputFiles } from '@/components/display/utils';
 
 export const useDebugFiles = (
@@ -8,11 +8,29 @@ export const useDebugFiles = (
 ) => {
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastFetchRef = useRef<number>(0);
+  const isMountedRef = useRef<boolean>(true);
+  
+  // Create a stable fetch function that's memoized
+  const fetchFiles = useCallback(async () => {
+    if (!isMountedRef.current || !debugMode) return;
+    
+    console.log('[useDebugFiles] Fetching output files');
+    lastFetchRef.current = Date.now();
+    
+    try {
+      const files = await fetchOutputFiles();
+      if (isMountedRef.current) {
+        setOutputFiles(files);
+      }
+    } catch (err) {
+      console.error('[useDebugFiles] Error fetching files:', err);
+    }
+  }, [debugMode, setOutputFiles]);
   
   // Fetch available output files in debug mode
   useEffect(() => {
-    let isMounted = true;
-    const MIN_FETCH_INTERVAL = 5000; // Minimum time between fetches (5 seconds)
+    isMountedRef.current = true;
+    const MIN_FETCH_INTERVAL = 10000; // Increase to 10 seconds minimum between fetches
     
     if (debugMode) {
       const now = Date.now();
@@ -20,47 +38,28 @@ export const useDebugFiles = (
       
       // Only fetch if sufficient time has passed
       if (timeSinceLastFetch > MIN_FETCH_INTERVAL) {
-        console.log('[useDebugFiles] Debug mode active, fetching output files');
-        
-        lastFetchRef.current = now;
-        
-        fetchOutputFiles()
-          .then(files => {
-            if (isMounted) {
-              setOutputFiles(files);
-            }
-          })
-          .catch(err => {
-            console.error('[useDebugFiles] Error fetching files:', err);
-          });
+        console.log('[useDebugFiles] Initial fetch of output files');
+        fetchFiles();
       } else if (!fetchTimeoutRef.current) {
         // Schedule a fetch after the minimum interval
+        console.log('[useDebugFiles] Scheduling delayed fetch in', 
+          (MIN_FETCH_INTERVAL - timeSinceLastFetch) / 1000, 'seconds');
+          
         fetchTimeoutRef.current = setTimeout(() => {
-          if (isMounted && debugMode) {
-            console.log('[useDebugFiles] Scheduled fetch of output files');
-            lastFetchRef.current = Date.now();
-            
-            fetchOutputFiles()
-              .then(files => {
-                if (isMounted) {
-                  setOutputFiles(files);
-                }
-              })
-              .catch(err => {
-                console.error('[useDebugFiles] Error fetching files:', err);
-              });
-          }
           fetchTimeoutRef.current = null;
+          if (isMountedRef.current && debugMode) {
+            fetchFiles();
+          }
         }, MIN_FETCH_INTERVAL - timeSinceLastFetch);
       }
     }
     
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
       if (fetchTimeoutRef.current) {
         clearTimeout(fetchTimeoutRef.current);
         fetchTimeoutRef.current = null;
       }
     };
-  }, [debugMode, setOutputFiles]);
+  }, [debugMode, fetchFiles]);
 };

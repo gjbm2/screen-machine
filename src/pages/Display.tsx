@@ -1,5 +1,5 @@
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useMemo } from 'react';
 import { useDisplayPage } from '@/components/display/hooks/useDisplayPage';
 import { DisplayContainer } from '@/components/display/DisplayContainer';
 import { DisplayMode } from '@/components/display/DisplayMode';
@@ -10,7 +10,7 @@ const Display = () => {
   const isMobile = useIsMobile();
   const logLimiterRef = useRef({ count: 0, lastTime: 0 });
   
-  // Custom logging function to limit console output
+  // Custom logging function to limit console output - memoized to prevent recreation on each render
   const limitedLog = useCallback((message: string, data?: any) => {
     const now = Date.now();
     const timeDiff = now - logLimiterRef.current.lastTime;
@@ -54,16 +54,25 @@ const Display = () => {
     isLoadingMetadata
   } = useDisplayPage();
 
-  // Add controlled debug logging
+  // Add controlled debug logging - with proper dependency array
   useEffect(() => {
     if (import.meta.env.DEV) {
       limitedLog('[Display] Component rendered with imageUrl:', imageUrl);
       limitedLog('[Display] Is mobile device:', isMobile);
     }
+    // Only re-run when these values change
   }, [imageUrl, isMobile, limitedLog]);
 
+  // Memoize the error component to prevent recreating it on every render
+  const errorComponent = useMemo(() => {
+    if (error) {
+      return <ErrorMessage message={error} backgroundColor={previewParams.backgroundColor} />;
+    }
+    return null;
+  }, [error, previewParams.backgroundColor]);
+
   if (error) {
-    return <ErrorMessage message={error} backgroundColor={previewParams.backgroundColor} />;
+    return errorComponent;
   }
 
   return (
