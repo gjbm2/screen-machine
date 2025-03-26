@@ -21,15 +21,22 @@ interface PublishMenuProps {
   };
   isRolledUp?: boolean;
   showLabel?: boolean;
+  includePublish?: boolean;
 }
 
 const PublishMenu: React.FC<PublishMenuProps> = ({ 
   imageUrl, 
   generationInfo,
   isRolledUp = false,
-  showLabel = true
+  showLabel = true,
+  includePublish = true
 }) => {
   const publishDestinations = getPublishDestinations();
+  
+  // If includePublish is false, return null
+  if (!includePublish) {
+    return null;
+  }
   
   const handlePublish = async (destinationId: string) => {
     try {
