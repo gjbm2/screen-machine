@@ -1,24 +1,27 @@
 
 import React from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import ImageBatchItem from '../ImageBatchItem';
-import LoadingPlaceholder from '../LoadingPlaceholder';
+import { Button } from '@/components/ui/button';
+import { Maximize, RefreshCw } from 'lucide-react';
+import NewVariantPlaceholder from '../NewVariantPlaceholder';
 import GenerationFailedPlaceholder from '../GenerationFailedPlaceholder';
+import { ViewMode } from '../ImageDisplay';
+import ImageBatchItem from '../ImageBatchItem';
 
 interface RolledUpBatchViewProps {
   batchId: string;
-  completedImages: Array<any>;
+  completedImages: any[];
   anyGenerating: boolean;
-  failedImages: Array<any>;
+  failedImages: any[];
   activeImageIndex: number;
+  setActiveImageIndex: React.Dispatch<React.SetStateAction<number>>;
   handleCreateAgain: () => void;
   handleFullScreenClick: (image: any) => void;
   handleRemoveFailedImage: () => void;
   handleRetry: () => void;
   onImageClick: (url: string, prompt: string) => void;
   onDeleteImage: (batchId: string, index: number) => void;
-  viewMode: 'normal' | 'small' | 'table';
-  setActiveImageIndex?: (index: number) => void;
+  viewMode: ViewMode;
+  activeGenerations?: string[]; // Add activeGenerations prop
 }
 
 const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
@@ -27,6 +30,7 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
   anyGenerating,
   failedImages,
   activeImageIndex,
+  setActiveImageIndex,
   handleCreateAgain,
   handleFullScreenClick,
   handleRemoveFailedImage,
@@ -34,120 +38,54 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
   onImageClick,
   onDeleteImage,
   viewMode,
-  setActiveImageIndex
+  activeGenerations = [] // Default to empty array
 }) => {
-  // Implement proper navigation for rolled-up view
-  const handleNavigatePrev = (e?: React.MouseEvent) => {
-    // Explicit event stopping for navigation
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-    
-    if (completedImages.length <= 1) return;
-    
-    // Get the previous index, wrapping around to the end if needed
-    const prevIndex = (activeImageIndex - 1 + completedImages.length) % completedImages.length;
-    
-    // If parent provided a setActiveImageIndex function, use it directly
-    if (setActiveImageIndex) {
-      console.log(`Navigating to previous image: ${prevIndex} (direct update)`);
-      setActiveImageIndex(prevIndex);
-      return;
-    }
-    
-    // Fallback to original behavior for backward compatibility
-    if (completedImages[prevIndex]?.url) {
-      console.log(`Navigating to previous image: ${prevIndex} (via onImageClick)`);
-      onImageClick(
-        completedImages[prevIndex].url, 
-        completedImages[prevIndex].prompt || ''
-      );
-    }
-  };
+  // Current image to display in rolled up view
+  const currentImage = completedImages[activeImageIndex] || null;
   
-  const handleNavigateNext = (e?: React.MouseEvent) => {
-    // Explicit event stopping for navigation
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-    
-    if (completedImages.length <= 1) return;
-    
-    // Get the next index, wrapping around to the beginning if needed
-    const nextIndex = (activeImageIndex + 1) % completedImages.length;
-    
-    // If parent provided a setActiveImageIndex function, use it directly
-    if (setActiveImageIndex) {
-      console.log(`Navigating to next image: ${nextIndex} (direct update)`);
-      setActiveImageIndex(nextIndex);
-      return;
-    }
-    
-    // Fallback to original behavior for backward compatibility
-    if (completedImages[nextIndex]?.url) {
-      console.log(`Navigating to next image: ${nextIndex} (via onImageClick)`);
-      onImageClick(
-        completedImages[nextIndex].url, 
-        completedImages[nextIndex].prompt || ''
-      );
-    }
-  };
-
-  // Find the first generating image (if any) to use its prompt for the loading placeholder
-  const generatingImages = anyGenerating ? 
-    failedImages.filter(img => img.status === 'generating' || !img.url) : [];
-  const firstGeneratingImage = generatingImages.length > 0 ? generatingImages[0] : null;
-
-  // Ensure activeImageIndex is within bounds - this is the key fix for the "Cannot read properties of undefined" error
-  const safeActiveIndex = completedImages.length > 0 
-    ? Math.min(Math.max(0, activeImageIndex), completedImages.length - 1) 
-    : 0;
-
   return (
-    <Card className="rounded-t-none">
-      <CardContent className="p-2">
-        <div className="grid gap-1 grid-cols-1">
-          {completedImages.length > 0 ? (
-            <ImageBatchItem
-              key={`${batchId}-${safeActiveIndex}`}
-              image={completedImages[safeActiveIndex]}
-              batchId={batchId}
-              index={safeActiveIndex}
-              total={completedImages.length}
-              onCreateAgain={handleCreateAgain}
-              onUseAsInput={(url) => completedImages[safeActiveIndex]?.prompt !== undefined 
-                ? onImageClick(url, completedImages[safeActiveIndex].prompt || '') 
-                : onImageClick(url, '')}
-              onDeleteImage={onDeleteImage}
-              onFullScreen={() => handleFullScreenClick(completedImages[safeActiveIndex])}
-              onImageClick={(url) => completedImages[safeActiveIndex]?.prompt !== undefined 
-                ? onImageClick(url, completedImages[safeActiveIndex].prompt || '') 
-                : onImageClick(url, '')}
-              onNavigatePrev={completedImages.length > 1 ? handleNavigatePrev : undefined}
-              onNavigateNext={completedImages.length > 1 ? handleNavigateNext : undefined}
-              viewMode={viewMode}
-              showActions={true}
-              isRolledUp={true}
-            />
-          ) : anyGenerating ? (
-            <LoadingPlaceholder 
-              prompt={firstGeneratingImage?.prompt || null} 
-              hasReferenceImages={firstGeneratingImage?.referenceImageUrl ? true : false}
-              workflowName={firstGeneratingImage?.workflow || null}
-              isCompact={viewMode === 'small'}
-            />
-          ) : failedImages.length > 0 ? (
-            <GenerationFailedPlaceholder 
-              prompt={failedImages[0]?.prompt || null} 
-              onRetry={handleRetry}
-              onRemove={handleRemoveFailedImage}
-            />
-          ) : null}
+    <div className="pt-1 grid grid-cols-3 gap-2">
+      {/* Display the current image in the rolled up view */}
+      {currentImage && (
+        <div className="col-span-2">
+          <ImageBatchItem
+            key={`${batchId}-${currentImage.batchIndex || activeImageIndex}`}
+            imageUrl={currentImage.url}
+            prompt={currentImage.prompt}
+            batchId={batchId}
+            batchIndex={currentImage.batchIndex || activeImageIndex}
+            onImageClick={() => onImageClick(currentImage.url, currentImage.prompt)}
+            onUseAsInput={() => onImageClick(currentImage.url, currentImage.prompt)}
+            onCreateAgain={handleCreateAgain}
+            onFullScreenClick={() => handleFullScreenClick(currentImage)}
+            onDeleteImage={() => onDeleteImage(batchId, currentImage.batchIndex || activeImageIndex)}
+            isPlaceholder={false}
+            hasError={false}
+            isRolledUp={true}
+          />
         </div>
-      </CardContent>
-    </Card>
+      )}
+      
+      {/* Display placeholders in small view */}
+      <div className="col-span-1 grid grid-cols-1 gap-2">
+        {/* Show new variant placeholder */}
+        <NewVariantPlaceholder
+          batchId={batchId}
+          onClick={handleCreateAgain}
+          className="h-full"
+          activeGenerations={activeGenerations} // Pass activeGenerations to NewVariantPlaceholder
+        />
+        
+        {/* Show failed placeholder if any failed images */}
+        {failedImages.length > 0 && (
+          <GenerationFailedPlaceholder
+            onRemove={handleRemoveFailedImage}
+            onRetry={handleRetry}
+            compact={true}
+          />
+        )}
+      </div>
+    </div>
   );
 };
 
