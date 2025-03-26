@@ -7,13 +7,14 @@ import RolledUpBatchView from './batch-components/RolledUpBatchView';
 import TableBatchView from './batch-components/TableBatchView';
 import ImageBatchActions from './batch-components/ImageBatchActions';
 import { useImageBatch } from './hooks/useImageBatch';
+import { ImageGenerationStatus } from '@/types/workflows';
 
 interface Image {
   url: string;
   prompt: string;
   workflow: string;
   batchIndex: number;
-  status: string;
+  status: ImageGenerationStatus;
   referenceImageUrl?: string;
 }
 
