@@ -1,36 +1,26 @@
 
-import React, { useState, useEffect } from 'react';
-import SortableImageContainer from './SortableImageContainer';
-import { ViewMode } from './ImageDisplay';
-import { ImageGenerationStatus } from '@/types/workflows';
-import ExpandedBatchView from './batch-components/ExpandedBatchView';
+import React from 'react';
 import RolledUpBatchView from './batch-components/RolledUpBatchView';
-import TableBatchView from './batch-components/TableBatchView';
-import DeleteBatchDialog from './batch-components/DeleteBatchDialog';
-import { useIsMobile } from '@/hooks/use-mobile';
-
-interface Image {
-  url: string;
-  prompt: string;
-  workflow: string;
-  batchIndex: number;
-  status: ImageGenerationStatus;
-  referenceImageUrl?: string;
-}
+import ExpandedBatchView from './batch-components/ExpandedBatchView';
+import NewVariantPlaceholder from './NewVariantPlaceholder';
+import { ViewMode } from './ImageDisplay';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface ImageBatchProps {
   batchId: string;
-  images: Image[];
+  images: any[];
   isExpanded: boolean;
-  toggleExpand: (id: string) => void;
+  toggleExpand: (batchId: string) => void;
   onImageClick: (url: string, prompt: string) => void;
   onCreateAgain: () => void;
   onDeleteImage: (batchId: string, index: number) => void;
-  onDeleteContainer: () => void;
-  activeImageUrl: string | null;
-  viewMode: ViewMode;
+  onDeleteContainer: (batchId: string) => void;
+  activeImageUrl?: string | null;
+  viewMode?: ViewMode;
   onFullScreenClick?: (image: any) => void;
   hasGeneratingImages?: boolean;
+  activeGenerations?: string[]; // Add activeGenerations prop
 }
 
 const ImageBatch: React.FC<ImageBatchProps> = ({
@@ -42,176 +32,75 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   onCreateAgain,
   onDeleteImage,
   onDeleteContainer,
+  activeImageUrl = null,
+  viewMode = 'normal',
   onFullScreenClick,
-  activeImageUrl,
-  viewMode,
-  hasGeneratingImages = false
+  hasGeneratingImages = false,
+  activeGenerations = [] // Default to empty array
 }) => {
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const isMobile = useIsMobile();
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: batchId });
   
-  // Ensure the activeImageIndex is always within bounds when images array changes
-  useEffect(() => {
-    if (images.length > 0 && activeImageIndex >= images.length) {
-      console.log(`ImageBatch: Resetting activeImageIndex from ${activeImageIndex} to 0 because images.length=${images.length}`);
-      setActiveImageIndex(0);
-    }
-  }, [images, activeImageIndex]);
-  
-  // If this is a new batch with generating images, auto-scroll to it in mobile view
-  useEffect(() => {
-    if (isMobile && hasGeneratingImages) {
-      console.log(`Auto-scrolling to batch ${batchId} with generating images on mobile`);
-      
-      // Scroll this batch into view
-      setTimeout(() => {
-        const element = document.getElementById(batchId);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 100);
-    }
-  }, [batchId, hasGeneratingImages, isMobile]);
-  
-  if (!images || images.length === 0) {
-    return null;
-  }
-  
-  const anyGenerating = images.some(img => img.status === 'generating') || hasGeneratingImages;
-  const completedImages = images.filter(img => img.status === 'completed');
-  const failedImages = images.filter(img => img.status === 'failed' || img.status === 'error');
-  const generatingImages = images.filter(img => img.status === 'generating');
-  
-  const allNonCompletedImages = [...failedImages, ...generatingImages];
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
-  if (viewMode === 'small' && completedImages.length === 0 && !anyGenerating && failedImages.length === 0) {
-    return null;
-  }
-
-  const handleCreateAgain = () => {
+  // Function to create a new variant for this batch
+  const handleCreateVariant = () => {
     onCreateAgain();
   };
 
-  const handleRetry = () => {
-    onCreateAgain();
-  };
-
-  const handleFullScreenClick = (image: any) => {
-    // Extra validation to ensure we have a valid image before showing fullscreen
-    if (onFullScreenClick && image && image.url) {
-      console.log("Opening fullscreen view with image:", image.url);
-      onFullScreenClick({
-        ...image,
-        batchId,
-        batchIndex: image.batchIndex || activeImageIndex
-      });
-    } else {
-      console.error("Cannot open fullscreen: Invalid image or missing URL");
-    }
-  };
-
-  const handleRemoveFailedImage = () => {
-    if (failedImages.length > 0) {
-      const firstFailedImage = failedImages[0];
-      onDeleteImage(batchId, firstFailedImage.batchIndex);
-    }
-  };
-
-  const handleDeleteDialogClose = () => {
-    setShowDeleteDialog(false);
-  };
-
-  const handleConfirmDelete = () => {
-    onDeleteContainer();
-    setShowDeleteDialog(false);
-  };
-
-  // Ensure we always have a valid activeImageIndex
-  const safeActiveIndex = completedImages.length > 0 
-    ? Math.min(Math.max(0, activeImageIndex), completedImages.length - 1) 
-    : 0;
-
-  const handleImageClick = (url: string, prompt?: string) => {
-    if (!url) {
-      console.error("Cannot handle image click: URL is empty or undefined");
-      return;
-    }
-    
-    // In mobile view, clicking a rolled up container should expand it
-    if (isMobile && viewMode === 'normal' && !isExpanded) {
-      console.log(`Mobile: Expanding container ${batchId} on click`);
-      toggleExpand(batchId);
-      return;
-    }
-    
-    if (viewMode === 'normal') {
-      onImageClick(url, prompt || '');
-    } else {
-      const image = images.find(img => img.url === url);
-      if (image) {
-        onFullScreenClick?.(image);
-      } else {
-        onImageClick(url, prompt || '');
-      }
-    }
-  };
+  const hasImages = images && images.length > 0;
 
   return (
-    <SortableImageContainer 
-      batchId={batchId}
-      batch={{ images }}
-      isExpanded={isExpanded}
-      toggleExpand={toggleExpand}
-      viewMode={viewMode}
-    >
-      {viewMode === 'table' ? (
-        <TableBatchView 
+    <div ref={setNodeRef} style={style} {...attributes} className="mb-4">
+      {isExpanded ? (
+        <ExpandedBatchView
           batchId={batchId}
-          completedImages={completedImages}
+          images={images}
           onImageClick={onImageClick}
-          onDeleteImage={onDeleteImage}
-        />
-      ) : isExpanded ? (
-        <ExpandedBatchView 
-          batchId={batchId}
-          completedImages={completedImages}
-          anyGenerating={anyGenerating}
-          failedImages={allNonCompletedImages}
-          activeImageIndex={safeActiveIndex}
-          setActiveImageIndex={setActiveImageIndex}
-          handleCreateAgain={handleCreateAgain}
-          handleFullScreenClick={handleFullScreenClick}
-          handleRemoveFailedImage={handleRemoveFailedImage}
-          handleRetry={handleRetry}
-          onImageClick={onImageClick}
-          onDeleteImage={onDeleteImage}
           toggleExpand={toggleExpand}
+          onCreateAgain={onCreateAgain}
+          onDeleteImage={onDeleteImage}
+          onDeleteContainer={onDeleteContainer}
+          dragHandleProps={listeners}
+          onFullScreenClick={onFullScreenClick}
+          viewMode={viewMode}
+          activeGenerations={activeGenerations} // Pass activeGenerations
         />
       ) : (
-        <RolledUpBatchView 
+        <RolledUpBatchView
           batchId={batchId}
-          completedImages={completedImages}
-          anyGenerating={anyGenerating}
-          failedImages={allNonCompletedImages}
-          activeImageIndex={safeActiveIndex}
-          setActiveImageIndex={setActiveImageIndex}
-          handleCreateAgain={handleCreateAgain}
-          handleFullScreenClick={handleFullScreenClick}
-          handleRemoveFailedImage={handleRemoveFailedImage}
-          handleRetry={handleRetry}
+          images={images}
           onImageClick={onImageClick}
+          toggleExpand={toggleExpand}
+          onCreateAgain={onCreateAgain}
           onDeleteImage={onDeleteImage}
+          onDeleteContainer={onDeleteContainer}
+          dragHandleProps={listeners}
+          onFullScreenClick={onFullScreenClick}
           viewMode={viewMode}
+          activeGenerations={activeGenerations} // Pass activeGenerations
         />
       )}
       
-      <DeleteBatchDialog 
-        isOpen={showDeleteDialog}
-        onClose={handleDeleteDialogClose}
-        onConfirm={handleConfirmDelete}
-      />
-    </SortableImageContainer>
+      {isExpanded && !hasGeneratingImages && (
+        <div className="mt-2">
+          <NewVariantPlaceholder 
+            batchId={batchId} 
+            onClick={handleCreateVariant} 
+            className="w-full"
+            activeGenerations={activeGenerations} // Pass activeGenerations
+          />
+        </div>
+      )}
+    </div>
   );
 };
 

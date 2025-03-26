@@ -1,118 +1,145 @@
 
-import React, { useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import React from 'react';
+import { Card } from '@/components/ui/card';
+import { ChevronUp } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import BatchCountDisplay from '../BatchCountDisplay';
 import ImageBatchItem from '../ImageBatchItem';
-import LoadingPlaceholder from '../LoadingPlaceholder';
 import GenerationFailedPlaceholder from '../GenerationFailedPlaceholder';
-import ThumbnailGallery from '../ThumbnailGallery';
-import NewVariantPlaceholder from '../NewVariantPlaceholder';
+import { ViewMode } from '../ImageDisplay';
 
 interface ExpandedBatchViewProps {
   batchId: string;
-  completedImages: Array<any>;
-  anyGenerating: boolean;
-  failedImages: Array<any>;
-  activeImageIndex: number;
-  setActiveImageIndex: (index: number) => void;
-  handleCreateAgain: () => void;
-  handleFullScreenClick: (image: any) => void;
-  handleRemoveFailedImage: () => void;
-  handleRetry: () => void;
+  images: any[];
   onImageClick: (url: string, prompt: string) => void;
-  onDeleteImage: (batchId: string, index: number) => void;
   toggleExpand: (batchId: string) => void;
+  onCreateAgain: () => void;
+  onDeleteImage: (batchId: string, index: number) => void;
+  onDeleteContainer: (batchId: string) => void;
+  dragHandleProps: any;
+  onFullScreenClick?: (image: any) => void;
+  viewMode?: ViewMode;
+  activeGenerations?: string[]; // Add activeGenerations prop
 }
 
 const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
   batchId,
-  completedImages,
-  anyGenerating,
-  failedImages,
-  activeImageIndex,
-  setActiveImageIndex,
-  handleCreateAgain,
-  handleFullScreenClick,
-  handleRemoveFailedImage,
-  handleRetry,
+  images,
   onImageClick,
+  toggleExpand,
+  onCreateAgain,
   onDeleteImage,
-  toggleExpand
+  onDeleteContainer,
+  dragHandleProps,
+  onFullScreenClick,
+  viewMode = 'normal',
+  activeGenerations = [] // Default to empty array
 }) => {
-  const handleThumbnailClick = (index: number) => {
-    setActiveImageIndex(index);
-  };
+  // Filter completed images for display
+  const completedImages = images.filter(img => img.status === 'completed');
+  const generatingImages = images.filter(img => img.status === 'generating');
+  const failedImages = images.filter(img => img.status === 'failed' || img.status === 'error');
+  
+  // Get the first (newest) completed image if available for the batch thumbnail
+  const firstImage = completedImages.length > 0 ? completedImages[0] : null;
+  
+  // Get basic information from the first image
+  const prompt = firstImage?.prompt || 'Unknown';
+  const workflow = firstImage?.workflow || null;
+  const timestamp = firstImage?.timestamp || null;
 
-  // Updated to directly use onImageClick for consistent behavior with fullscreen
-  const handleUseAsInput = (url: string) => {
-    if (completedImages[activeImageIndex]) {
-      onImageClick(url, completedImages[activeImageIndex]?.prompt || '');
+  // Handle image click
+  const handleImageClick = (image: any) => {
+    if (image.url && onImageClick) {
+      onImageClick(image.url, image.prompt || '');
     }
-  };
-
-  const handleFullScreen = () => {
-    if (completedImages[activeImageIndex]) {
-      handleFullScreenClick(completedImages[activeImageIndex]);
+    if (onFullScreenClick) {
+      onFullScreenClick(image);
     }
   };
 
   return (
-    <Card className="rounded-t-none">
-      <CardContent className="p-2">
-        <div className="grid gap-2 grid-cols-1">
-          {/* Main content area - will display either completed image, loading state, or error */}
-          <div className="w-full overflow-hidden rounded-md">
-            {completedImages.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {/* Main image container with 4:3 aspect ratio */}
-                <div className="relative rounded-md overflow-hidden bg-[#f3f3f3]" style={{ aspectRatio: '4/3' }}>
-                  <ImageBatchItem
-                    key={`${batchId}-${activeImageIndex}`}
-                    image={completedImages[activeImageIndex]}
-                    batchId={batchId}
-                    index={activeImageIndex}
-                    total={completedImages.length}
-                    onCreateAgain={() => handleCreateAgain()}
-                    onUseAsInput={(url) => handleUseAsInput(url)}
-                    onDeleteImage={onDeleteImage}
-                    onFullScreen={handleFullScreen}
-                    onImageClick={(url) => handleUseAsInput(url)}
-                    onNavigatePrev={activeImageIndex > 0 ? () => setActiveImageIndex(activeImageIndex - 1) : undefined}
-                    onNavigateNext={activeImageIndex < completedImages.length - 1 ? () => setActiveImageIndex(activeImageIndex + 1) : undefined}
-                    viewMode="normal"
-                    isExpandedMain={true}
-                  />
-                </div>
-                
-                {/* Thumbnail gallery for completed images */}
-                <ThumbnailGallery
-                  images={completedImages}
-                  batchId={batchId}
-                  activeIndex={activeImageIndex}
-                  onThumbnailClick={handleThumbnailClick}
-                  onDeleteImage={onDeleteImage}
-                  onCreateAgain={() => handleCreateAgain()}
-                />
-              </div>
-            ) : anyGenerating ? (
-              <LoadingPlaceholder 
-                prompt={anyGenerating && failedImages.length === 0 ? 
-                  completedImages[0]?.prompt || failedImages[0]?.prompt || null : null} 
-              />
-            ) : failedImages.length > 0 ? (
-              <GenerationFailedPlaceholder 
-                prompt={failedImages[0]?.prompt || null}
-                onRetry={handleRetry}
-                onRemove={handleRemoveFailedImage}
-              />
-            ) : (
-              <NewVariantPlaceholder 
-                batchId={batchId}
-                onClick={handleRetry} 
-              />
-            )}
+    <Card className="overflow-hidden w-full">
+      <div className="bg-card p-2 flex items-center justify-between border-b">
+        <div className="flex items-center">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-8 w-8 p-0 mr-1"
+            onClick={() => toggleExpand(batchId)}
+          >
+            <ChevronUp className="h-4 w-4" />
+          </Button>
+          <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing">
+            <BatchCountDisplay 
+              batchCount={completedImages.length} 
+              totalCount={images.length} 
+              prompt={prompt}
+              workflow={workflow}
+              timestamp={timestamp}
+              hasGenerating={generatingImages.length > 0}
+              hasFailed={failedImages.length > 0}
+            />
           </div>
         </div>
-      </CardContent>
+      </div>
+      
+      <div className="p-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+          {/* Completed Images */}
+          {completedImages.map((image, index) => (
+            <ImageBatchItem
+              key={`${batchId}-${image.batchIndex || index}`}
+              url={image.url}
+              prompt={image.prompt}
+              batchId={batchId}
+              batchIndex={image.batchIndex || index}
+              onImageClick={() => handleImageClick(image)}
+              onUseAsInput={() => {}}
+              onCreateAgain={onCreateAgain}
+              onFullScreenClick={() => {
+                if (onFullScreenClick) onFullScreenClick(image);
+              }}
+              onDeleteImage={() => onDeleteImage(batchId, image.batchIndex || index)}
+              isActive={false}
+              referenceImageUrl={image.referenceImageUrl}
+              isRolledUp={false}
+              activeGenerations={activeGenerations} // Pass activeGenerations
+            />
+          ))}
+          
+          {/* Generating Images - Loading Placeholders */}
+          {generatingImages.map((image, index) => (
+            <ImageBatchItem
+              key={`${batchId}-generating-${index}`}
+              url=""
+              prompt={image.prompt}
+              batchId={batchId}
+              batchIndex={-1}
+              onImageClick={() => {}}
+              onUseAsInput={() => {}}
+              onCreateAgain={() => {}}
+              onFullScreenClick={() => {}}
+              onDeleteImage={() => {}}
+              isPlaceholder={true}
+              isActive={false}
+              isRolledUp={false}
+              activeGenerations={activeGenerations} // Pass activeGenerations
+            />
+          ))}
+          
+          {/* Failed Images */}
+          {failedImages.map((image, index) => (
+            <div key={`${batchId}-failed-${index}`} className="aspect-square">
+              <GenerationFailedPlaceholder 
+                prompt={image.prompt} 
+                onRetry={onCreateAgain}
+                onRemove={() => onDeleteImage(batchId, image.batchIndex || index)}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
     </Card>
   );
 };

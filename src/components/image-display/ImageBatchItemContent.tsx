@@ -1,51 +1,92 @@
 
-import React from 'react';
-import { ViewMode } from './ImageDisplay';
+import React, { useState } from 'react';
+import ImageActions from '../ImageActions';
 import ReferenceImageIndicator from './ReferenceImageIndicator';
 
 interface ImageBatchItemContentProps {
-  imageUrl: string;
-  prompt?: string;
-  index: number;
-  onClick: (e: React.MouseEvent) => void;
-  viewMode: ViewMode;
-  hasReferenceImages?: boolean;
-  title?: string;
-  isExpandedMain?: boolean;
+  url: string;
+  prompt: string;
+  onClick: () => void;
+  onUseAsInput: () => void;
+  onCreateAgain: () => void;
+  onFullScreenClick: () => void;
+  onDeleteImage: () => void;
+  referenceImageUrl?: string | null;
+  isRolledUp?: boolean;
+  batchId?: string;
+  activeGenerations?: string[]; // Add activeGenerations prop
 }
 
 const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
-  imageUrl,
+  url,
   prompt,
-  index,
   onClick,
-  viewMode,
-  hasReferenceImages = false,
-  title,
-  isExpandedMain = false
+  onUseAsInput,
+  onCreateAgain,
+  onFullScreenClick,
+  onDeleteImage,
+  referenceImageUrl = null,
+  isRolledUp = false,
+  batchId,
+  activeGenerations = [] // Default to empty array
 }) => {
-  // For expanded main view, we use object-contain to preserve aspect ratio
-  // within the 4:3 container defined in ExpandedBatchView
-  const imageObjectFit = isExpandedMain ? 'object-contain' : 'object-cover';
-  
-  // Add background color to the image container
-  const containerBgColor = 'bg-[#f3f3f3]';
-  
+  const [showActions, setShowActions] = useState(false);
+
   return (
     <div 
-      className={`w-full h-full ${containerBgColor} ${viewMode === 'normal' ? 'aspect-square' : ''}`}
-      onClick={onClick}
+      className="group relative aspect-square overflow-hidden"
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
     >
       <img 
-        src={imageUrl} 
-        alt={prompt || `Generated image ${index + 1}`} 
-        title={title || prompt || `Generated image ${index + 1}`}
-        className={`w-full h-full ${imageObjectFit}`}
+        src={url} 
+        alt={prompt || 'Generated image'} 
+        className="w-full h-full object-cover"
+        onClick={onClick}
       />
       
-      {/* Show reference image indicator if image has reference images */}
-      {hasReferenceImages && (
-        <ReferenceImageIndicator imageUrl={imageUrl} />
+      {/* Image actions overlay */}
+      <div 
+        className={`absolute inset-0 bg-black/60 flex items-center justify-center transition-opacity duration-200 ${
+          showActions || isRolledUp ? 'opacity-100' : 'opacity-0'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-col gap-2">
+          <div className="text-center text-white text-xs line-clamp-3 w-full max-w-[200px] px-1">
+            {prompt}
+          </div>
+          
+          <div className="flex flex-wrap justify-center">
+            <ImageActions
+              imageUrl={url}
+              onCreateAgain={onCreateAgain}
+              onUseAsInput={onUseAsInput}
+              onDeleteImage={onDeleteImage}
+              small={true}
+              generationInfo={{
+                prompt: prompt,
+                workflow: '',
+                title: prompt
+              }}
+            />
+            
+            {/* Fullscreen button if not in a rolled-up view */}
+            {!isRolledUp && (
+              <button 
+                className="text-white hover:text-primary text-sm p-1"
+                onClick={onFullScreenClick}
+              >
+                View
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Reference image indicator - only if there's a reference image */}
+      {referenceImageUrl && (
+        <ReferenceImageIndicator referenceImageUrl={referenceImageUrl} />
       )}
     </div>
   );
