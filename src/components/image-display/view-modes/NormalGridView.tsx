@@ -1,6 +1,7 @@
 
 import React from 'react';
 import ImageBatch from '../ImageBatch';
+import { LoadingPlaceholder } from '@/components/ui/skeleton';
 
 interface NormalGridViewProps {
   imageContainerOrder: string[];

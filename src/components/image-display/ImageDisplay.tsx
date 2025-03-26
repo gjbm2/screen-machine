@@ -24,6 +24,7 @@ interface ImageDisplayProps {
   onDeleteImage: (batchId: string, index: number) => void;
   onDeleteContainer: (batchId: string) => void;
   fullscreenRefreshTrigger?: number;
+  activeGenerations?: string[]; // Add activeGenerations prop
 }
 
 const ImageDisplay: React.FC<ImageDisplayProps> = ({
@@ -40,7 +41,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onReorderContainers,
   onDeleteImage,
   onDeleteContainer,
-  fullscreenRefreshTrigger
+  fullscreenRefreshTrigger,
+  activeGenerations = [] // Default to empty array
 }) => {
   const {
     viewMode,
@@ -108,6 +110,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
               handleTableRowClick={handleTableRowClick}
               isLoading={isLoading}
               onReorderContainers={onReorderContainers}
+              activeGenerations={activeGenerations} // Pass activeGenerations
             />
           </div>
           

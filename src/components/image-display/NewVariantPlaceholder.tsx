@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Plus, Loader } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -8,23 +8,29 @@ interface NewVariantPlaceholderProps {
   batchId: string;
   onClick: (batchId: string) => void;
   className?: string;
+  activeGenerations?: string[]; // Add activeGenerations to detect when generation completes
 }
 
 const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({
   batchId,
   onClick,
-  className = ''
+  className = '',
+  activeGenerations = []
 }) => {
   const [isClicked, setIsClicked] = useState(false);
   const isMobile = useIsMobile();
   
+  // Reset the clicked state when the batch is no longer in activeGenerations
+  useEffect(() => {
+    if (isClicked && !activeGenerations.includes(batchId)) {
+      setIsClicked(false);
+    }
+  }, [activeGenerations, batchId, isClicked]);
+
   const handleClick = () => {
     if (isClicked) return; // Prevent multiple clicks
     setIsClicked(true);
     onClick(batchId);
-    
-    // No longer resetting isClicked automatically - it will remain showing the spinner
-    // until the parent component re-renders with the new image
   };
 
   return (
