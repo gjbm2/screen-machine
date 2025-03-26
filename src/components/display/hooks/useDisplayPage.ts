@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
@@ -76,6 +77,7 @@ export const useDisplayPage = () => {
 
   // Process output parameter if present
   const { processedUrl } = useOutputProcessor(displayParams);
+  console.log("[useDisplayPage] Processed URL from useOutputProcessor:", processedUrl);
 
   // Initialize display state with core functionality
   const {
@@ -179,28 +181,34 @@ export const useDisplayPage = () => {
       const decodedOutput = decodeComplexOutputParam(displayParams.output);
       console.log('[useDisplayPage] Legacy decoded output:', decodedOutput);
       
-      if (decodedOutput && (decodedOutput.startsWith('http://') || decodedOutput.startsWith('https://'))) {
-        console.log('[useDisplayPage] Legacy setting direct URL:', decodedOutput);
-        setImageUrl(decodedOutput);
-      } else if (decodedOutput) {
-        const normalizedPath = normalizePathForDisplay(decodedOutput);
-        console.log('[useDisplayPage] Legacy setting normalized path:', normalizedPath);
-        setImageUrl(normalizedPath);
+      if (decodedOutput) {
+        if (decodedOutput.startsWith('http://') || decodedOutput.startsWith('https://')) {
+          console.log('[useDisplayPage] Legacy setting direct URL:', decodedOutput);
+          setImageUrl(decodedOutput);
+        } else {
+          const normalizedPath = normalizePathForDisplay(decodedOutput);
+          console.log('[useDisplayPage] Legacy setting normalized path:', normalizedPath);
+          setImageUrl(normalizedPath);
+        }
+        
+        setImageKey(prev => {
+          const newKey = prev + 1;
+          console.log('[useDisplayPage] Legacy incrementing image key to:', newKey);
+          return newKey;
+        });
+        
+        hasProcessedOutputRef.current = true;
       }
-      
-      setImageKey(prev => {
-        const newKey = prev + 1;
-        console.log('[useDisplayPage] Legacy incrementing image key to:', newKey);
-        return newKey;
-      });
     }
   }, [displayParams.output, processedUrl, setImageUrl, setImageKey, location.search]);
 
   // Reset output processing flag when URL changes
   useEffect(() => {
-    const oldValue = hasProcessedOutputRef.current;
-    hasProcessedOutputRef.current = false;
-    console.log('[useDisplayPage] Reset hasProcessedOutputRef from', oldValue, 'to false due to URL change');
+    if (location.search !== '') {
+      const oldValue = hasProcessedOutputRef.current;
+      hasProcessedOutputRef.current = false;
+      console.log('[useDisplayPage] Reset hasProcessedOutputRef from', oldValue, 'to false due to URL change');
+    }
   }, [location.pathname, location.search]);
 
   // Component lifecycle management
@@ -214,13 +222,13 @@ export const useDisplayPage = () => {
     };
   }, []);
 
-  // Fix #1: Determine if debug redirection should occur - make sure it redirects when no params
+  // Determine if debug redirection should occur
   useEffect(() => {
     if (!mountedRef.current) return;
     if (forceViewModeRef.current || userExplicitlyExitedDebugRef.current) {
       console.log('[useDisplayPage] Skipping debug redirection check - user explicitly exited debug mode or force view mode is set');
     } else {
-      // Modified condition - always check for redirection
+      // Always check for redirection
       checkDebugRedirection();
     }
   }, [displayParams, displayParams.output, displayParams.debugMode, userExplicitlyExitedDebugRef, checkDebugRedirection]);
@@ -289,8 +297,18 @@ export const useDisplayPage = () => {
     if (initialRenderRef.current && displayParams.output) {
       console.log('[useDisplayPage] Initial render with output param:', displayParams.output);
       initialRenderRef.current = false;
+      
+      // Force processing of output parameter on initial render
+      if (!hasProcessedOutputRef.current) {
+        console.log('[useDisplayPage] Forcing processing of output parameter on initial render');
+        setImageUrl(null); // Reset to trigger URL change detection
+        setTimeout(() => {
+          setImageUrl(processedUrl || displayParams.output);
+          setImageKey(prev => prev + 1);
+        }, 100);
+      }
     }
-  }, [displayParams.output]);
+  }, [displayParams.output, processedUrl, setImageUrl, setImageKey]);
 
   // Debugging code to force image URL reload when it should be present but isn't
   useEffect(() => {

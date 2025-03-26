@@ -34,18 +34,21 @@ export const useDisplayParams = () => {
   // Decode the output parameter - improved handling
   let decodedOutput = null;
   if (rawOutput) {
-    if (rawOutput.startsWith('http://') || rawOutput.startsWith('https://')) {
-      // Already a valid URL, use as-is
-      decodedOutput = rawOutput;
-      console.log('[useDisplayParams] Output is already a valid URL:', decodedOutput);
-    } else if (rawOutput.includes('%') && (rawOutput.includes('http%3A') || rawOutput.includes('https%3A'))) {
-      // Needs decoding as it appears to be an encoded external URL
+    // Always try to fully decode the output parameter first
+    try {
       decodedOutput = decodeComplexOutputParam(rawOutput);
       console.log('[useDisplayParams] Decoded output param:', decodedOutput);
-    } else {
-      // Local path - normalize it
-      decodedOutput = processOutputParam(rawOutput);
-      console.log('[useDisplayParams] Normalized output path:', decodedOutput);
+      
+      // If it's still not a proper URL or path, try to process it
+      if (decodedOutput && !decodedOutput.startsWith('http://') && !decodedOutput.startsWith('https://')) {
+        const processedPath = processOutputParam(decodedOutput);
+        console.log('[useDisplayParams] Processed path after decoding:', processedPath);
+        decodedOutput = processedPath;
+      }
+    } catch (e) {
+      console.error('[useDisplayParams] Error decoding output param:', e);
+      // Fallback to raw output if decoding fails
+      decodedOutput = rawOutput;
     }
   }
   

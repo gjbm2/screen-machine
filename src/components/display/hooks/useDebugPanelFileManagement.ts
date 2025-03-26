@@ -51,31 +51,21 @@ export const useDebugPanelFileManagement = ({
     return () => {
       console.log('[useDebugPanelFileManagement] Executing navigation function for:', outputPath);
       
-      // Direct URL construction for external URLs to prevent double encoding
+      // Direct URL construction for external URLs to prevent encoding issues
       if (outputPath.startsWith('http')) {
+        // Use a simple approach for external URLs to avoid double encoding
         const directUrl = `/display?output=${encodeURIComponent(outputPath)}&debug=true`;
-        console.log('[useDebugPanelFileManagement] Using direct URL construction for external URL:', directUrl);
-        navigate(directUrl, { replace: true });
+        console.log('[useDebugPanelFileManagement] Using direct URL for external URL:', directUrl);
+        navigate(directUrl);
       } else {
         // Normal navigation for local paths
-        navigate(`/display${url}`, { replace: true });
+        navigate(`/display${url}`);
       }
       
       // Force a refresh after navigation to ensure the image loads
       setTimeout(() => {
-        console.log('[useDebugPanelFileManagement] Post-navigation check');
-        const currentParams = new URLSearchParams(window.location.search);
-        const currentOutput = currentParams.get('output');
-        
-        console.log('[useDebugPanelFileManagement] Current output param:', currentOutput);
-        console.log('[useDebugPanelFileManagement] Expected output param:', outputPath);
-        
-        // Try to force a reload if parameters aren't as expected
-        if (outputPath.startsWith('http') && currentOutput !== outputPath) {
-          console.log('[useDebugPanelFileManagement] Forcing reload for external URL');
-          window.location.reload();
-        }
-      }, 300);
+        window.location.reload();
+      }, 100);
     };
   };
 
