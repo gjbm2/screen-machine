@@ -1,101 +1,64 @@
 
 import React from 'react';
-import { Card } from '@/components/ui/card';
-import { AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RotateCcw, Trash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface GenerationFailedPlaceholderProps {
-  prompt: string | null;
-  onRetry?: () => void;
+  errorMessage: string;
   onRemove?: () => void;
+  onRetry?: () => void;
   isCompact?: boolean;
-  errorMessage?: string; // Added error message property for more detailed errors
 }
 
-const GenerationFailedPlaceholder: React.FC<GenerationFailedPlaceholderProps> = ({ 
-  prompt, 
-  onRetry,
+const GenerationFailedPlaceholder: React.FC<GenerationFailedPlaceholderProps> = ({
+  errorMessage,
   onRemove,
-  isCompact = false,
-  errorMessage = null
+  onRetry,
+  isCompact = false
 }) => {
-  // Use simpler UI for small/compact view
   if (isCompact) {
     return (
-      <div className="aspect-square flex flex-col items-center justify-center bg-secondary/10 relative">
-        <AlertTriangle className="h-8 w-8 text-yellow-500" />
-        
-        <div className="absolute bottom-1 right-1 flex space-x-1">
-          {onRetry && (
-            <Button 
-              variant="outline" 
-              size="icon" 
-              className="h-7 w-7 bg-background/80"
-              onClick={onRetry}
-            >
-              <RefreshCw className="h-3 w-3 text-blue-500" />
-            </Button>
-          )}
-          
-          {onRemove && (
-            <Button 
-              variant="outline" 
-              size="icon" 
-              className="h-7 w-7 bg-background/80" 
-              onClick={onRemove}
-            >
-              <Trash2 className="h-3 w-3 text-red-500" />
-            </Button>
-          )}
-        </div>
+      <div className="flex flex-col items-center justify-center text-center p-2">
+        <AlertTriangle className="h-5 w-5 text-destructive mb-1" />
+        <p className="text-xs text-destructive-foreground truncate max-w-full">
+          Failed
+        </p>
       </div>
     );
   }
 
   return (
-    <Card className="overflow-hidden w-full rounded-b-lg rounded-t-none">
-      <div className="aspect-square flex flex-col items-center justify-center bg-secondary/10">
-        <AlertTriangle className="h-12 w-12 text-yellow-500 mb-4" />
-        <p className="text-sm text-center font-medium text-foreground mb-2">
-          Generation failed
-        </p>
-        {prompt && (
-          <p className="text-sm text-center text-muted-foreground px-4 mb-4 max-w-lg">
-            Failed to generate: {prompt}
-          </p>
+    <div className="flex flex-col items-center justify-center h-full text-center p-4">
+      <AlertTriangle className="h-10 w-10 text-destructive mb-3" />
+      <h3 className="text-lg font-medium text-destructive-foreground mb-2">Generation Failed</h3>
+      <p className="text-sm text-muted-foreground mb-4 max-w-xs">{errorMessage}</p>
+      
+      <div className="flex gap-2">
+        {onRetry && (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={onRetry}
+            className="flex items-center space-x-1"
+          >
+            <RotateCcw className="h-3.5 w-3.5 mr-1" />
+            <span>Try Again</span>
+          </Button>
         )}
-        {errorMessage && (
-          <p className="text-xs text-center text-red-500 px-4 mb-4 max-w-lg">
-            Error: {errorMessage}
-          </p>
+        
+        {onRemove && (
+          <Button 
+            variant="destructive" 
+            size="sm"
+            onClick={onRemove}
+            className="flex items-center space-x-1"
+          >
+            <Trash className="h-3.5 w-3.5 mr-1" />
+            <span>Remove</span>
+          </Button>
         )}
-        <div className="flex space-x-2">
-          {onRetry && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={onRetry}
-              className="flex items-center"
-            >
-              <RefreshCw className="h-3 w-3 mr-1.5 text-blue-500" />
-              Try again
-            </Button>
-          )}
-          
-          {onRemove && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={onRemove}
-              className="flex items-center text-red-500 hover:text-red-600 border-red-200 hover:border-red-300 hover:bg-red-50"
-            >
-              <Trash2 className="h-3 w-3 mr-1.5" />
-              Remove
-            </Button>
-          )}
-        </div>
       </div>
-    </Card>
+    </div>
   );
 };
 
