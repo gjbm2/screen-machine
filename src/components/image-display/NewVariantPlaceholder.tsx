@@ -1,8 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Plus, Loader } from 'lucide-react';
-import LoadingPlaceholder from './LoadingPlaceholder';
 
 interface NewVariantPlaceholderProps {
   batchId: string;
@@ -17,13 +16,24 @@ const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({
 }) => {
   const [isClicked, setIsClicked] = useState(false);
   
+  // Reset the clicked state when the batchId prop changes
+  // This ensures the spinner disappears when a new image is added
+  useEffect(() => {
+    setIsClicked(false);
+  }, [batchId]);
+  
   const handleClick = () => {
     if (isClicked) return; // Prevent multiple clicks
     setIsClicked(true);
     onClick(batchId);
     
-    // No longer resetting isClicked automatically - it will remain showing the spinner
-    // until the parent component re-renders with the new image
+    // Add a safety timeout to reset the spinner state after some time
+    // This prevents permanent spinners if there's an error
+    const timeoutId = setTimeout(() => {
+      setIsClicked(false);
+    }, 15000); // 15 seconds timeout
+    
+    return () => clearTimeout(timeoutId);
   };
 
   return (
