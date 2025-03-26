@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { 
   Trash2,
@@ -63,12 +64,15 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
     e.stopPropagation();
     if (onUseAsInput && publishInfo?.imageUrl) {
       if (typeof onUseAsInput === 'function') {
-        // Check if it's the URL version of the handler
-        if (onUseAsInput.length === 1) {
+        // Check if it accepts a URL parameter
+        if (onUseAsInput.length === 1 && 
+            // This condition checks if the function is the URL variant
+            typeof (onUseAsInput as any).__proto__.apply === 'function') {
+          // It's the URL version
           (onUseAsInput as (url: string) => void)(publishInfo.imageUrl);
         } else {
           // It's the event version
-          onUseAsInput(e);
+          (onUseAsInput as (e: React.MouseEvent) => void)(e);
         }
       }
     }
@@ -110,7 +114,10 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
             type="button" 
             variant="ghost" 
             className={`bg-white/20 hover:bg-white/30 text-white rounded-full ${buttonSizeClass} image-action-button`}
-            onClick={onUseAsInput as (e: React.MouseEvent) => void}
+            onClick={(e) => {
+              // For non-normal view, always treat as event handler
+              (onUseAsInput as (e: React.MouseEvent) => void)(e);
+            }}
             aria-label="Use as Input"
           >
             <SquareArrowUpRight className={isRolledUp ? "h-4 w-4" : "h-4 w-4 mr-1"} />
