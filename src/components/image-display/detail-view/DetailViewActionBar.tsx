@@ -103,6 +103,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
           generationInfo={generationInfo}
           isRolledUp={false}
           showLabel={!isMobile}
+          includePublish={true}
         />
         
         {/* Separator */}
