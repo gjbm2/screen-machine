@@ -45,7 +45,7 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
         <Button 
           type="button" 
           variant="ghost" 
-          className={`bg-white/20 hover:bg-white/30 text-white rounded-full ${buttonSizeClass} image-action-button`}
+          className={`bg-white/20 hover:bg-white/30 text-white rounded-full ${buttonSizeClass}`}
           aria-label="Publish image"
         >
           <Share className={isRolledUp ? "h-4 w-4" : "h-4 w-4 mr-1"} />
