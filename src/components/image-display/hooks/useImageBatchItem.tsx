@@ -79,9 +79,10 @@ export const useImageBatchItem = ({
 
   // Updated to accept a React.MouseEvent parameter
   const handleImageClick = (e: React.MouseEvent) => {
-    // Don't trigger image click when clicking on action buttons
+    // Don't trigger image click when clicking on action buttons or navigation buttons
     if ((e.target as HTMLElement).closest('.image-action-button') ||
         (e.target as HTMLElement).closest('button')) {
+      e.stopPropagation();
       return; 
     }
     
