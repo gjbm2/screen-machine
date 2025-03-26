@@ -8,7 +8,7 @@ import apiService from '@/utils/api';
 import { useQuery } from '@tanstack/react-query';
 
 interface ResizableConsoleProps {
-  logs: string[];
+  logs: any[];
   isVisible: boolean;
   onClose: () => void;
   onClear: () => void;
@@ -24,8 +24,29 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
   const [isMaximized, setIsMaximized] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
-  const [combinedLogs, setCombinedLogs] = useState<string[]>(logs);
+  const [combinedLogs, setCombinedLogs] = useState<string[]>([]);
   const consoleRef = useRef<HTMLDivElement>(null);
+  
+  // Process logs to ensure they're strings
+  const processLogs = (logsToProcess: any[]): string[] => {
+    return logsToProcess.map(log => {
+      if (typeof log === 'string') {
+        return log;
+      } else if (typeof log === 'object' && log !== null) {
+        try {
+          if ('type' in log && 'message' in log && typeof log.message === 'string') {
+            return `[${log.type}] ${log.message}`;
+          } else {
+            return JSON.stringify(log);
+          }
+        } catch (e) {
+          return String(log);
+        }
+      } else {
+        return String(log);
+      }
+    });
+  };
   
   // Fetch backend logs using React Query
   const { data: backendLogsData, isLoading, refetch } = useQuery({
@@ -44,13 +65,20 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
   
   // Combine frontend and backend logs
   useEffect(() => {
+    // Process frontend logs to ensure they're strings
+    const processedFrontendLogs = processLogs(logs);
+    
     if (backendLogsData?.logs) {
+      // Process backend logs to ensure they're strings
+      const backendLogs = Array.isArray(backendLogsData.logs) 
+        ? processLogs(backendLogsData.logs) 
+        : [];
+      
       // Create a combined and sorted log array
-      const backendLogs = backendLogsData.logs;
-      const allLogs = [...logs, ...backendLogs];
+      const allLogs = [...processedFrontendLogs, ...backendLogs];
       setCombinedLogs(allLogs);
     } else {
-      setCombinedLogs(logs);
+      setCombinedLogs(processedFrontendLogs);
     }
   }, [logs, backendLogsData]);
   
