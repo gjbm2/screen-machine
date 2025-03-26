@@ -51,7 +51,6 @@ export const useImageBatchItemActions = ({
     onOpenFullscreenView(batchId, batchIndex);
   }, [batchId, batchIndex, onOpenFullscreenView]);
   
-  // Make these handlers identical to handleDelete to ensure consistent behavior
   const handleDeleteImage = handleDelete;
   const handleDeleteFromPanel = handleDelete;
   
