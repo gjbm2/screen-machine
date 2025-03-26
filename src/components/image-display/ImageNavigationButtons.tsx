@@ -31,13 +31,14 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
     : "opacity-0 group-hover:opacity-70 group-hover:hover:opacity-100 transition-opacity duration-200";
   
   return (
-    <div className="w-full h-full relative pointer-events-none">
+    <div className="w-full h-full relative pointer-events-none navigation-button-container">
       {onNavigatePrev && (
         <Button
           type="button" 
           variant="ghost"
           onClick={(e) => {
             e.stopPropagation();
+            e.preventDefault();
             onNavigatePrev();
           }}
           className={`${baseButtonClass} ${visibilityClass} left-2 pointer-events-auto`}
@@ -53,6 +54,7 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
           variant="ghost"
           onClick={(e) => {
             e.stopPropagation();
+            e.preventDefault();
             onNavigateNext();
           }}
           className={`${baseButtonClass} ${visibilityClass} right-2 pointer-events-auto`}

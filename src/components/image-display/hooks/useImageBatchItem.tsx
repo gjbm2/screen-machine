@@ -79,11 +79,18 @@ export const useImageBatchItem = ({
 
   // Updated to accept a React.MouseEvent parameter
   const handleImageClick = (e: React.MouseEvent) => {
-    // Don't trigger image click when clicking on action buttons or navigation buttons
-    if ((e.target as HTMLElement).closest('.image-action-button') ||
-        (e.target as HTMLElement).closest('button')) {
+    // Enhanced check for navigation buttons and other interactive elements
+    // This better identifies clicks on navigation elements to prevent fullscreen activation
+    const target = e.target as HTMLElement;
+    
+    // Check if the click is on a button or within a button container
+    if (target.tagName === 'BUTTON' || 
+        target.closest('button') || 
+        target.closest('.image-action-button') ||
+        target.closest('.navigation-button-container')) {
+      // Don't proceed with image click handler if we clicked on a button
       e.stopPropagation();
-      return; 
+      return;
     }
     
     // Always go to fullscreen when clicked in normal view (for both desktop and mobile)
