@@ -1,4 +1,3 @@
-
 export interface WorkflowProps {
   id: string;
   name: string;
@@ -29,21 +28,21 @@ export interface PromptFormProps {
   onOpenAdvancedOptions?: () => void;
   selectedWorkflow?: string;
   selectedRefiner?: string;
+  selectedPublish?: string;
   workflowParams?: Record<string, any>;
   refinerParams?: Record<string, any>;
   globalParams?: Record<string, any>;
   onWorkflowChange?: (workflowId: string) => void;
   onRefinerChange?: (refinerId: string) => void;
+  onPublishChange?: (publishId: string) => void;
 }
 
-// Add the ImagePreviewSectionProps interface
 export interface ImagePreviewSectionProps {
   previewUrls: string[];
   handleRemoveImage: (index: number) => void;
   clearAllImages: () => void;
 }
 
-// Add the ToolbarProps interface
 export interface ToolbarProps {
   isLoading: boolean;
   selectedWorkflow: string;
