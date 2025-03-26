@@ -1,4 +1,3 @@
-
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { useIntervalPoller } from './useIntervalPoller';
 
@@ -21,6 +20,8 @@ export const useImageCheckPoller = (
   const isTransitioningRef = useRef(isTransitioning);
   const enabledRef = useRef(enabled);
   const refreshIntervalRef = useRef(refreshInterval);
+  const lastRunTimeRef = useRef<number>(0);
+  const MIN_CHECK_INTERVAL = 10000; // Minimum 10 seconds between checks
   
   // Keep refs updated with latest values
   useEffect(() => {
@@ -30,8 +31,12 @@ export const useImageCheckPoller = (
     enabledRef.current = enabled;
     refreshIntervalRef.current = refreshInterval;
     
-    // Log refresh interval changes for debugging
-    console.log('[useImageCheckPoller] Refresh interval updated:', refreshInterval, 'seconds');
+    // Log refresh interval changes for debugging - but limit frequency
+    const now = Date.now();
+    if (now - lastRunTimeRef.current > 30000) { // Log at most every 30 seconds
+      console.log('[useImageCheckPoller] Refresh interval updated:', refreshInterval, 'seconds');
+      lastRunTimeRef.current = now;
+    }
   }, [outputUrl, isLoading, isTransitioning, enabled, refreshInterval]);
   
   // Set up the mounted ref
@@ -52,20 +57,30 @@ export const useImageCheckPoller = (
     const currentEnabled = enabledRef.current;
     
     if (!currentOutputUrl || currentIsLoading || currentIsTransitioning) {
-      console.log('[useImageCheckPoller] Skipping poll - conditions not met:', {
-        hasUrl: !!currentOutputUrl,
-        isLoading: currentIsLoading,
-        isTransitioning: currentIsTransitioning
-      });
+      const now = Date.now();
+      if (now - lastRunTimeRef.current > 30000) { // Log at most every 30 seconds
+        console.log('[useImageCheckPoller] Skipping poll - conditions not met:', {
+          hasUrl: !!currentOutputUrl,
+          isLoading: currentIsLoading,
+          isTransitioning: currentIsTransitioning
+        });
+        lastRunTimeRef.current = now;
+      }
       return;
     }
+    
+    // Enforce minimum time between checks
+    const now = Date.now();
+    if (now - lastRunTimeRef.current < MIN_CHECK_INTERVAL) {
+      return; // Silently skip if called too frequently
+    }
+    lastRunTimeRef.current = now;
     
     console.log('[useImageCheckPoller] Checking for image updates...');
     setIsChecking(true);
     
     // Always update the last check time, even if not enabled
     const currentTime = new Date();
-    console.log('[useImageCheckPoller] Setting last check time:', currentTime.toISOString());
     setLastCheckTime(currentTime);
     
     if (!currentEnabled) {
@@ -105,8 +120,8 @@ export const useImageCheckPoller = (
   
   // Use the interval poller with the specified refresh interval
   const { isPolling } = useIntervalPoller(
-    !!outputUrl, // Run the poller if we have a URL, regardless of enabled state
-    refreshInterval || 5, // Default to 5 seconds if not specified
+    !!outputUrl && enabled, // Only enable if we have a URL and polling is enabled
+    Math.max(refreshInterval || 30, 30), // Minimum 30 seconds
     handlePoll,
     outputUrl ? [outputUrl] : [] // Ensure we always pass a valid array even when outputUrl is null
   );
@@ -119,11 +134,15 @@ export const useImageCheckPoller = (
   
   // Log polling status on changes
   useEffect(() => {
-    console.log('[useImageCheckPoller] Polling status changed:', { 
-      isPolling,
-      enabled,
-      refreshInterval: refreshIntervalRef.current
-    });
+    const now = Date.now();
+    if (now - lastRunTimeRef.current > 30000) { // Log at most every 30 seconds
+      console.log('[useImageCheckPoller] Polling status changed:', { 
+        isPolling,
+        enabled,
+        refreshInterval: refreshIntervalRef.current
+      });
+      lastRunTimeRef.current = now;
+    }
   }, [isPolling, enabled]);
   
   return {

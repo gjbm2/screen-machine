@@ -3,7 +3,7 @@
 const outputFilesCache = {
   files: [] as string[],
   timestamp: 0,
-  expiryTime: 30000 // 30 seconds cache validity
+  expiryTime: 60000 // 60 seconds cache validity
 };
 
 // Fetch a list of available output files from the server
@@ -19,7 +19,12 @@ export const fetchOutputFiles = async (): Promise<string[]> => {
     }
     
     console.log("[fetchOutputFiles] Fetching fresh output files from API");
-    const response = await fetch('/api/output-files', {
+    
+    // Add cache-busting parameter
+    const cacheBuster = `cacheBust=${Date.now()}`;
+    const url = `/api/output-files?${cacheBuster}`;
+    
+    const response = await fetch(url, {
       cache: 'no-store',
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -50,12 +55,12 @@ export const fetchOutputFiles = async (): Promise<string[]> => {
         return files;
       } else {
         console.warn('[fetchOutputFiles] Invalid content type from API:', contentType);
-        return outputFilesCache.files; // Return cached data on failure
+        throw new Error(`Expected JSON response, got ${contentType}`);
       }
     }
     
     console.warn('[fetchOutputFiles] Could not fetch output files from API, status:', response.status);
-    return outputFilesCache.files; // Return cached data on failure
+    throw new Error(`API request failed with status ${response.status}`);
   } catch (e) {
     console.error('[fetchOutputFiles] Error fetching output files:', e);
     return outputFilesCache.files; // Return cached data on error

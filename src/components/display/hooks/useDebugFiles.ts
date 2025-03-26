@@ -10,11 +10,12 @@ export const useDebugFiles = (
   const lastFetchRef = useRef<number>(0);
   const isMountedRef = useRef<boolean>(true);
   const isInitialFetchDoneRef = useRef<boolean>(false);
-  const MIN_FETCH_INTERVAL = 30000; // Increase to 30 seconds between fetches
+  const isFetchingRef = useRef<boolean>(false);
+  const MIN_FETCH_INTERVAL = 60000; // Increase to 60 seconds between fetches
   
   // Create a stable fetch function that's memoized
   const fetchFiles = useCallback(async () => {
-    if (!isMountedRef.current || !debugMode) return;
+    if (!isMountedRef.current || !debugMode || isFetchingRef.current) return;
     
     const now = Date.now();
     // Enforce minimum interval between fetches
@@ -27,6 +28,7 @@ export const useDebugFiles = (
     console.log('[useDebugFiles] Fetching output files');
     lastFetchRef.current = now;
     isInitialFetchDoneRef.current = true;
+    isFetchingRef.current = true;
     
     try {
       const files = await fetchOutputFiles();
@@ -37,6 +39,8 @@ export const useDebugFiles = (
       }
     } catch (err) {
       console.error('[useDebugFiles] Error fetching files:', err);
+    } finally {
+      isFetchingRef.current = false;
     }
   }, [debugMode, setOutputFiles]);
   
