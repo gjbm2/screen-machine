@@ -110,20 +110,7 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
           </Button>
         )}
         
-        {/* Add "Use as Input" button for normal view */}
-        {onUseAsInput && viewMode === 'normal' && publishInfo?.imageUrl && (
-          <Button 
-            type="button" 
-            variant="ghost" 
-            className={`${actionButtonClass} ${buttonSizeClass} image-action-button`}
-            onClick={handleUseAsInput}
-            aria-label="Use as Input"
-          >
-            <SquareArrowUpRight className="h-4 w-4" />
-            {showLabels && <span className="hidden sm:inline ml-1">Use as Input</span>}
-          </Button>
-        )}
-        
+        {/* Remove "Use as Input" button for normal view */}
         {/* Only show "Use as Input" button if we're NOT in normal view */}
         {onUseAsInput && viewMode !== 'normal' && (
           <Button 

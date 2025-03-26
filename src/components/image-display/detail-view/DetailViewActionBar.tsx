@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { CopyPlus, SquareArrowUpRight, Trash2, Download, Share } from 'lucide-react';
@@ -70,13 +69,11 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
     }
   };
   
-  // Get icon component from Lucide
   const getIconComponent = (iconName: string) => {
     const IconComponent = (LucideIcons as any)[iconName];
     return IconComponent ? <IconComponent className="h-4 w-4 mr-2" /> : <Share className="h-4 w-4 mr-2" />;
   };
   
-  // Handle publish
   const handlePublish = async (destinationId: string) => {
     try {
       await publishImage(imageUrl, destinationId, generationInfo);
@@ -86,7 +83,6 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
     }
   };
 
-  // Button style classes
   const baseButtonClass = "rounded-full font-medium shadow-sm transition-all duration-200";
   const actionButtonClass = `${baseButtonClass} bg-white/90 hover:bg-white text-black`;
   const deleteButtonClass = `${baseButtonClass} bg-destructive/90 hover:bg-destructive text-white`;
@@ -129,7 +125,6 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
           {!isMobile && <span>Download</span>}
         </Button>
         
-        {/* Publish Button */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button 
@@ -138,7 +133,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
               className={`${publishButtonClass} p-2 text-xs flex items-center gap-1.5`}
             >
               <Share className="h-3.5 w-3.5" /> 
-              {!isMobile && <span>Publish</span>}
+              <span>Publish</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -155,7 +150,6 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
           </DropdownMenuContent>
         </DropdownMenu>
         
-        {/* Separator */}
         <div className="h-8 flex items-center mx-1">
           <div className="h-full w-px bg-gray-300"></div>
         </div>

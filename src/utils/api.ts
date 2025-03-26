@@ -195,7 +195,7 @@ class ApiService {
       }
     }
     
-    // Simulate network delay
+    // Simulate network delay - changed from 2 seconds to 10 seconds
     return new Promise((resolve) => {
       setTimeout(() => {
         // Randomly select one of these placeholder images
@@ -246,7 +246,7 @@ class ApiService {
           prompt: params.prompt,
           workflow: params.workflow
         });
-      }, 2000); // 2 second delay to simulate processing
+      }, 10000); // Changed from 2000 to 10000 (10 seconds)
     });
   }
 }
