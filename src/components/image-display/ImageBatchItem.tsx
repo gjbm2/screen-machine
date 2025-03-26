@@ -36,6 +36,7 @@ interface ImageBatchItemProps {
   viewMode?: ViewMode;
   showActions?: boolean;
   isRolledUp?: boolean;
+  isExpandedMain?: boolean;
 }
 
 const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
@@ -52,7 +53,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   onNavigatePrev,
   viewMode = 'normal',
   showActions = true,
-  isRolledUp = false
+  isRolledUp = false,
+  isExpandedMain = false
 }) => {
   const {
     isHovered,
@@ -97,6 +99,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         viewMode={viewMode}
         hasReferenceImages={hasReferenceImages}
         title={image.title}
+        isExpandedMain={isExpandedMain}
       />
       
       <BatchCountDisplay 
