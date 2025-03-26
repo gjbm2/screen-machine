@@ -59,28 +59,28 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
   return (
     <div 
       ref={touchRef}
-      className="flex flex-wrap gap-2 w-full max-w-[calc(5*200px)] justify-start"
+      className="flex flex-nowrap gap-2 w-full overflow-x-auto pb-2"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
       {images.map((image, index) => (
         <Card 
           key={`${batchId}-${index}`}
-          className={`overflow-hidden cursor-pointer transition-all w-full max-w-[200px] ${
+          className={`overflow-hidden cursor-pointer transition-all flex-shrink-0 w-[150px] ${
             activeIndex === index ? 'ring-2 ring-primary' : ''
           }`}
           onClick={() => onThumbnailClick(index)}
         >
-          <div className="aspect-square relative group max-w-[200px]">
+          <div className="aspect-square relative group">
             <img
               src={image.url}
               alt={`Batch image ${index + 1}`}
               className="w-full h-full object-cover"
             />
             
-            {/* Always visible delete button */}
+            {/* Moved delete button to bottom right */}
             <button 
-              className="absolute top-1 left-1 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-20"
+              className="absolute bottom-1 right-1 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-20"
               onClick={(e) => {
                 e.stopPropagation();
                 onDeleteImage(batchId, index);
@@ -89,9 +89,9 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
               <Trash2 className="h-3 w-3" />
             </button>
             
-            {/* Image number indicator - only show if multiple images */}
+            {/* Image number indicator - moved to top left to avoid overlap */}
             {images.length > 1 && (
-              <div className="absolute top-2 left-2 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
+              <div className="absolute top-1 left-1 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
                 {index + 1}/{images.length}
               </div>
             )}
@@ -100,7 +100,7 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
       ))}
       
       {/* New variant placeholder in gallery */}
-      <NewVariantPlaceholder batchId={batchId} onClick={onCreateAgain} className="max-w-[200px]" />
+      <NewVariantPlaceholder batchId={batchId} onClick={onCreateAgain} className="flex-shrink-0 w-[150px]" />
     </div>
   );
 };

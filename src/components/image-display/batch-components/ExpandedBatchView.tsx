@@ -58,12 +58,13 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
   return (
     <Card className="rounded-t-none">
       <CardContent className="p-2">
-        <div className="grid gap-4 grid-cols-1">
+        <div className="grid gap-2 grid-cols-1">
           {/* Main content area - will display either completed image, loading state, or error */}
           <div className="w-full overflow-hidden rounded-md">
             {completedImages.length > 0 ? (
               <div className="flex flex-col gap-2">
-                <div className="aspect-square relative rounded-md overflow-hidden bg-[#333333]">
+                {/* Main image container with 4:3 aspect ratio */}
+                <div className="relative rounded-md overflow-hidden bg-[#f3f3f3]" style={{ aspectRatio: '4/3' }}>
                   <ImageBatchItem
                     key={`${batchId}-${activeImageIndex}`}
                     image={completedImages[activeImageIndex]}
@@ -81,17 +82,16 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
                     isExpandedMain={true}
                   />
                 </div>
-                {/* Thumbnail gallery for completed images - now with max-width container */}
-                <div className="flex justify-start overflow-x-auto max-w-full">
-                  <ThumbnailGallery
-                    images={completedImages}
-                    batchId={batchId}
-                    activeIndex={activeImageIndex}
-                    onThumbnailClick={handleThumbnailClick}
-                    onDeleteImage={onDeleteImage}
-                    onCreateAgain={() => handleCreateAgain()}
-                  />
-                </div>
+                
+                {/* Thumbnail gallery for completed images */}
+                <ThumbnailGallery
+                  images={completedImages}
+                  batchId={batchId}
+                  activeIndex={activeImageIndex}
+                  onThumbnailClick={handleThumbnailClick}
+                  onDeleteImage={onDeleteImage}
+                  onCreateAgain={() => handleCreateAgain()}
+                />
               </div>
             ) : anyGenerating ? (
               <LoadingPlaceholder 
