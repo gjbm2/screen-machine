@@ -45,7 +45,10 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
       
       {/* Show reference image indicator if image has reference images */}
       {hasReferenceImages && (
-        <ReferenceImageIndicator />
+        <ReferenceImageIndicator 
+          imageUrl={imageUrl} // Pass the imageUrl prop to fix the build error
+          position="bottom-left"
+        />
       )}
     </div>
   );
