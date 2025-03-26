@@ -18,6 +18,7 @@ interface RolledUpBatchViewProps {
   onImageClick: (url: string, prompt: string) => void;
   onDeleteImage: (batchId: string, index: number) => void;
   viewMode: 'normal' | 'small' | 'table';
+  setActiveImageIndex?: (index: number) => void;
 }
 
 const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
@@ -32,7 +33,8 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
   handleRetry,
   onImageClick,
   onDeleteImage,
-  viewMode
+  viewMode,
+  setActiveImageIndex
 }) => {
   // Implement proper navigation for rolled-up view
   const handleNavigatePrev = (e?: React.MouseEvent) => {
@@ -47,9 +49,16 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
     // Get the previous index, wrapping around to the end if needed
     const prevIndex = (activeImageIndex - 1 + completedImages.length) % completedImages.length;
     
-    // We can't directly update activeImageIndex here since it's managed by the parent
-    // But we can dispatch a click event to the image to simulate changing the active image
+    // If parent provided a setActiveImageIndex function, use it directly
+    if (setActiveImageIndex) {
+      console.log(`Navigating to previous image: ${prevIndex} (direct update)`);
+      setActiveImageIndex(prevIndex);
+      return;
+    }
+    
+    // Fallback to original behavior for backward compatibility
     if (completedImages[prevIndex]?.url) {
+      console.log(`Navigating to previous image: ${prevIndex} (via onImageClick)`);
       onImageClick(
         completedImages[prevIndex].url, 
         completedImages[prevIndex].prompt || ''
@@ -69,8 +78,16 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
     // Get the next index, wrapping around to the beginning if needed
     const nextIndex = (activeImageIndex + 1) % completedImages.length;
     
-    // Similar to prev, dispatch a click to change the active image
+    // If parent provided a setActiveImageIndex function, use it directly
+    if (setActiveImageIndex) {
+      console.log(`Navigating to next image: ${nextIndex} (direct update)`);
+      setActiveImageIndex(nextIndex);
+      return;
+    }
+    
+    // Fallback to original behavior for backward compatibility
     if (completedImages[nextIndex]?.url) {
+      console.log(`Navigating to next image: ${nextIndex} (via onImageClick)`);
       onImageClick(
         completedImages[nextIndex].url, 
         completedImages[nextIndex].prompt || ''
