@@ -1,19 +1,17 @@
 
-import React from 'react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { ExternalLink, RotateCcw, Trash } from 'lucide-react';
-import { Separator } from '@/components/ui/separator';
+import React, { useState } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import ImageBatchItem from '../ImageBatchItem';
-import GenerationFailedPlaceholder from '../GenerationFailedPlaceholder';
 import LoadingPlaceholder from '../LoadingPlaceholder';
-import { Skeleton } from '@/components/ui/skeleton';
+import GenerationFailedPlaceholder from '../GenerationFailedPlaceholder';
+import ThumbnailGallery from '../ThumbnailGallery';
+import NewVariantPlaceholder from '../NewVariantPlaceholder';
 
 interface ExpandedBatchViewProps {
   batchId: string;
-  completedImages: any[];
+  completedImages: Array<any>;
   anyGenerating: boolean;
-  failedImages: any[];
+  failedImages: Array<any>;
   activeImageIndex: number;
   setActiveImageIndex: (index: number) => void;
   handleCreateAgain: () => void;
@@ -40,133 +38,82 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
   onDeleteImage,
   toggleExpand
 }) => {
-  // Find generating images
-  const generatingImages = failedImages.filter(img => img.status === 'generating');
-  const errorImages = failedImages.filter(img => img.status === 'failed' || img.status === 'error');
-  
-  // First display the main large image
-  const firstCompletedImage = completedImages.length > 0 ? completedImages[0] : null;
-  
-  // Function to navigate between images
-  const handleNavigateNext = () => {
-    if (activeImageIndex < completedImages.length - 1) {
-      setActiveImageIndex(activeImageIndex + 1);
+  const handleThumbnailClick = (index: number) => {
+    setActiveImageIndex(index);
+  };
+
+  // Updated to directly use onImageClick for consistent behavior with fullscreen
+  const handleUseAsInput = (url: string) => {
+    if (completedImages[activeImageIndex]) {
+      onImageClick(url, completedImages[activeImageIndex]?.prompt || '');
     }
   };
-  
-  const handleNavigatePrev = () => {
-    if (activeImageIndex > 0) {
-      setActiveImageIndex(activeImageIndex - 1);
+
+  const handleFullScreen = () => {
+    if (completedImages[activeImageIndex]) {
+      handleFullScreenClick(completedImages[activeImageIndex]);
     }
   };
 
   return (
-    <div className="flex flex-col gap-4 p-3">
-      {/* Main large image or error indicator */}
-      <div className="w-full pt-[100%] relative rounded-md overflow-hidden">
-        {firstCompletedImage ? (
-          <ImageBatchItem
-            image={firstCompletedImage}
-            batchId={batchId}
-            index={0}
-            total={completedImages.length}
-            onCreateAgain={handleCreateAgain}
-            onDeleteImage={onDeleteImage}
-            onFullScreen={handleFullScreenClick}
-            onImageClick={(url) => onImageClick(url, firstCompletedImage.prompt || '')}
-            onNavigateNext={handleNavigateNext}
-            onNavigatePrev={handleNavigatePrev}
-            viewMode="normal"
-            isExpandedMain={true}
-          />
-        ) : errorImages.length > 0 ? (
-          <GenerationFailedPlaceholder 
-            errorMessage="Failed to generate image"
-            onRemove={handleRemoveFailedImage}
-            onRetry={handleRetry}
-          />
-        ) : generatingImages.length > 0 ? (
-          <Card className="absolute inset-0 flex items-center justify-center">
-            <LoadingPlaceholder 
-              prompt={generatingImages[0]?.prompt || null}
-              workflowName={generatingImages[0]?.workflow || undefined}
-              hasReferenceImages={!!generatingImages[0]?.referenceImageUrl}
-            />
-          </Card>
-        ) : (
-          <div className="absolute inset-0 bg-muted flex items-center justify-center text-muted-foreground">
-            No images available
-          </div>
-        )}
-      </div>
-      
-      {/* Thumbnails */}
-      {(completedImages.length > 0 || generatingImages.length > 0) && (
-        <div className="mt-3">
-          <div className="flex flex-wrap gap-2">
-            {/* Completed image thumbnails */}
-            {completedImages.map((image, index) => (
-              <div 
-                key={`${batchId}-completed-${index}`}
-                className={`w-16 h-16 rounded-md overflow-hidden cursor-pointer transition-all duration-150 
-                  ${index === activeImageIndex ? 'ring-2 ring-primary' : 'ring-1 ring-muted'}`}
-                onClick={() => setActiveImageIndex(index)}
-              >
-                <img 
-                  src={image.url} 
-                  alt={`Thumbnail ${index}`}
-                  className="w-full h-full object-cover"
+    <Card className="rounded-t-none">
+      <CardContent className="p-2">
+        <div className="grid gap-2 grid-cols-1">
+          {/* Main content area - will display either completed image, loading state, or error */}
+          <div className="w-full overflow-hidden rounded-md">
+            {completedImages.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {/* Main image container with 4:3 aspect ratio */}
+                <div className="relative rounded-md overflow-hidden bg-[#f3f3f3]" style={{ aspectRatio: '4/3' }}>
+                  <ImageBatchItem
+                    key={`${batchId}-${activeImageIndex}`}
+                    image={completedImages[activeImageIndex]}
+                    batchId={batchId}
+                    index={activeImageIndex}
+                    total={completedImages.length}
+                    onCreateAgain={() => handleCreateAgain()}
+                    onUseAsInput={(url) => handleUseAsInput(url)}
+                    onDeleteImage={onDeleteImage}
+                    onFullScreen={handleFullScreen}
+                    onImageClick={(url) => handleUseAsInput(url)}
+                    onNavigatePrev={activeImageIndex > 0 ? () => setActiveImageIndex(activeImageIndex - 1) : undefined}
+                    onNavigateNext={activeImageIndex < completedImages.length - 1 ? () => setActiveImageIndex(activeImageIndex + 1) : undefined}
+                    viewMode="normal"
+                    isExpandedMain={true}
+                  />
+                </div>
+                
+                {/* Thumbnail gallery for completed images */}
+                <ThumbnailGallery
+                  images={completedImages}
+                  batchId={batchId}
+                  activeIndex={activeImageIndex}
+                  onThumbnailClick={handleThumbnailClick}
+                  onDeleteImage={onDeleteImage}
+                  onCreateAgain={() => handleCreateAgain()}
                 />
               </div>
-            ))}
-            
-            {/* Loading placeholders for generating images */}
-            {generatingImages.map((image, index) => (
-              <div 
-                key={`${batchId}-generating-${index}`}
-                className="w-16 h-16 rounded-md overflow-hidden"
-              >
-                <LoadingPlaceholder 
-                  prompt={null}
-                  imageNumber={index + 1}
-                  isCompact={true}
-                />
-              </div>
-            ))}
+            ) : anyGenerating ? (
+              <LoadingPlaceholder 
+                prompt={anyGenerating && failedImages.length === 0 ? 
+                  completedImages[0]?.prompt || failedImages[0]?.prompt || null : null} 
+              />
+            ) : failedImages.length > 0 ? (
+              <GenerationFailedPlaceholder 
+                prompt={failedImages[0]?.prompt || null}
+                onRetry={handleRetry}
+                onRemove={handleRemoveFailedImage}
+              />
+            ) : (
+              <NewVariantPlaceholder 
+                batchId={batchId}
+                onClick={handleRetry} 
+              />
+            )}
           </div>
         </div>
-      )}
-      
-      {/* Actions */}
-      <div className="flex flex-wrap justify-between items-center gap-2 mt-1">
-        <div className="flex items-center gap-2">
-          <Button 
-            size="sm" 
-            variant="ghost" 
-            className="text-xs"
-            onClick={handleCreateAgain}
-          >
-            <RotateCcw className="h-3.5 w-3.5 mr-1" /> Create again
-          </Button>
-          
-          <Button 
-            size="sm" 
-            variant="ghost"
-            className="text-xs"
-            onClick={() => toggleExpand(batchId)}
-          >
-            Collapse
-          </Button>
-        </div>
-        
-        <div className="flex gap-2 items-center">
-          <span className="text-xs text-muted-foreground">
-            {completedImages.length} {completedImages.length === 1 ? 'image' : 'images'}
-            {generatingImages.length > 0 && ` • ${generatingImages.length} generating`}
-          </span>
-        </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 };
 

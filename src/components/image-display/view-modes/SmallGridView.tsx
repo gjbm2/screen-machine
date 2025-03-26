@@ -66,7 +66,7 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
             <LoadingPlaceholder prompt={image.prompt} isCompact={true} />
           ) : (
             <GenerationFailedPlaceholder 
-              errorMessage="Failed to generate" 
+              prompt={null} 
               onRetry={() => onCreateAgain(image.batchId)}
               onRemove={() => onDeleteImage(image.batchId || '', image.batchIndex || 0)}
               isCompact={true}
