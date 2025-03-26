@@ -103,14 +103,12 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
         )}
         
         {includePublish && publishInfo && (
-          <div className="image-action-button">
-            <PublishMenu 
-              imageUrl={publishInfo.imageUrl}
-              generationInfo={publishInfo.generationInfo}
-              isRolledUp={isRolledUp}
-              showLabel={showLabels}
-            />
-          </div>
+          <PublishMenu 
+            imageUrl={publishInfo.imageUrl}
+            generationInfo={publishInfo.generationInfo}
+            isRolledUp={isRolledUp}
+            showLabel={showLabels}
+          />
         )}
         
         {onFullScreen && (
