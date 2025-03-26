@@ -118,19 +118,21 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         viewMode={viewMode} 
       />
       
-      {/* Navigation buttons should always be visible when available, not hidden by hover overlay */}
-      <div className="absolute top-0 bottom-0 left-0 right-0 pointer-events-none z-30">
-        <ImageNavigationButtons 
-          index={index}
-          total={total}
-          onNavigatePrev={onNavigatePrev}
-          onNavigateNext={onNavigateNext}
-          alwaysVisible={!isRolledUp}
-        />
-      </div>
+      {/* Navigation buttons should be visible when appropriate, but hidden on mobile when rolled up */}
+      {!(isMobile && isRolledUp) && (
+        <div className="absolute top-0 bottom-0 left-0 right-0 pointer-events-none z-30">
+          <ImageNavigationButtons 
+            index={index}
+            total={total}
+            onNavigatePrev={onNavigatePrev}
+            onNavigateNext={onNavigateNext}
+            alwaysVisible={!isRolledUp || (isMobile && !isRolledUp)}
+          />
+        </div>
+      )}
       
-      {/* Fullscreen button in top right of the image on hover - THIS IS THE ONLY WAY TO OPEN FULLSCREEN IN NORMAL VIEW */}
-      {showActions && viewMode === 'normal' && onFullScreen && isHovered && !isMobile && (
+      {/* Fullscreen button in top right of the image on hover - or always visible on mobile when expanded */}
+      {showActions && viewMode === 'normal' && onFullScreen && (isHovered || (isMobile && isExpandedMain)) && (
         <Button
           type="button"
           variant="ghost"
@@ -147,7 +149,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         </Button>
       )}
       
-      {/* Display image actions on hover in normal mode for desktop */}
+      {/* Display image actions based on view mode and mobile status */}
       {showActions && viewMode === 'normal' && (
         <ImageActionButtons 
           onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
@@ -156,7 +158,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
           onDownload={handleDownload}
           viewMode={viewMode}
-          forceShow={isMobile && showActionButtons}
+          forceShow={isMobile ? (!isRolledUp || isExpandedMain) : showActionButtons}
           isRolledUp={isRolledUp}
           isHovered={isHovered && !isMobile}
           includePublish={true}

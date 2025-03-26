@@ -48,8 +48,8 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
 }) => {
   const isMobile = useIsMobile();
   
-  // Don't show actions on mobile in normal view
-  if (isMobile && viewMode === 'normal') {
+  // Logic for showing actions on mobile - now we show them for unrolled containers
+  if (isMobile && viewMode === 'normal' && isRolledUp) {
     return null;
   }
 
@@ -59,7 +59,8 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
     : 'h-9 px-3 py-2 text-xs'; // Regular size with labels for unrolled mode
 
   // Only show on hover/force for normal view
-  const baseVisibilityClass = viewMode === 'small' 
+  // For mobile, we force show them when forceShow is true
+  const baseVisibilityClass = (viewMode === 'small' || (isMobile && viewMode === 'normal' && !isRolledUp))
     ? 'opacity-100' 
     : 'opacity-0 group-hover:opacity-100 transition-opacity duration-100';
   

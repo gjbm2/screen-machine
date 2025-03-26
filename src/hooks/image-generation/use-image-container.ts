@@ -1,10 +1,12 @@
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 export const useImageContainer = () => {
   const [imageContainerOrder, setImageContainerOrder] = useState<string[]>([]);
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
   const [nextContainerId, setNextContainerId] = useState(1);
+  const isMobile = useIsMobile();
 
   const handleReorderContainers = useCallback((sourceIndex: number, destinationIndex: number) => {
     setImageContainerOrder(prev => {
@@ -33,7 +35,18 @@ export const useImageContainer = () => {
     });
     
     setImageContainerOrder(prev => [batchId, ...prev]);
-  }, []);
+    
+    // On mobile, scroll to the new container after a short delay to allow DOM updates
+    if (isMobile) {
+      setTimeout(() => {
+        console.log(`[Mobile] Scrolling to newly added container ${batchId}`);
+        const container = document.getElementById(batchId);
+        if (container) {
+          container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  }, [isMobile]);
 
   const handleDeleteContainer = useCallback((batchId: string, setGeneratedImages: Function) => {
     setImageContainerOrder(prev => prev.filter(id => id !== batchId));
