@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useDisplayPage } from '@/components/display/hooks/useDisplayPage';
 import { DisplayContainer } from '@/components/display/DisplayContainer';
 import { DisplayMode } from '@/components/display/DisplayMode';
@@ -8,6 +8,25 @@ import { useIsMobile } from '@/hooks/use-mobile';
 
 const Display = () => {
   const isMobile = useIsMobile();
+  const logLimiterRef = useRef({ count: 0, lastTime: 0 });
+  
+  // Custom logging function to limit console output
+  const limitedLog = useCallback((message: string, data?: any) => {
+    const now = Date.now();
+    const timeDiff = now - logLimiterRef.current.lastTime;
+    
+    // Only log once per second and reset counter
+    if (timeDiff > 1000) {
+      if (logLimiterRef.current.count > 1) {
+        console.log(`[Display] Suppressed ${logLimiterRef.current.count - 1} similar log messages in the last second`);
+      }
+      console.log(message, data);
+      logLimiterRef.current = { count: 0, lastTime: now };
+    } else {
+      // Count suppressed logs
+      logLimiterRef.current.count++;
+    }
+  }, []);
   
   const {
     params,
@@ -35,22 +54,13 @@ const Display = () => {
     isLoadingMetadata
   } = useDisplayPage();
 
-  // Add debug logging to help diagnose metadata issues
-  React.useEffect(() => {
-    console.log('[Display] Component rendered with imageUrl:', imageUrl);
-    console.log('[Display] Metadata:', metadata);
-    console.log('[Display] Is mobile device:', isMobile);
-    console.log('[Display] Is checking for updates:', isChecking);
-    console.log('[Display] Is loading metadata:', isLoadingMetadata);
-    
-    // Log metadata object keys and structure
-    if (metadata && Object.keys(metadata).length > 0) {
-      console.log('[Display] Metadata keys:', Object.keys(metadata));
-      console.log('[Display] First few entries:', Object.entries(metadata).slice(0, 5));
-    } else {
-      console.log('[Display] No metadata available');
+  // Add controlled debug logging
+  useEffect(() => {
+    if (__DEV__) {
+      limitedLog('[Display] Component rendered with imageUrl:', imageUrl);
+      limitedLog('[Display] Is mobile device:', isMobile);
     }
-  }, [metadata, imageUrl, isMobile, isChecking, isLoadingMetadata]);
+  }, [imageUrl, isMobile, limitedLog]);
 
   if (error) {
     return <ErrorMessage message={error} backgroundColor={previewParams.backgroundColor} />;
