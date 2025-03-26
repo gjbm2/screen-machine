@@ -10,7 +10,7 @@ interface FilesPanelProps {
   customUrl: string;
   setCustomUrl: (url: string) => void;
   selectFile: (file: string) => () => void;
-  selectFileDirectly: (file: string) => void;
+  selectFileDirectly: (file: string) => () => void; // Updated type to match expected return type
   isCurrentFile: (file: string) => boolean;
   formatFileName: (file: string) => string;
 }

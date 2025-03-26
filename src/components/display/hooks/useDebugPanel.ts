@@ -167,7 +167,7 @@ export const useDebugPanel = ({ params, imageUrl, metadata, onApplyCaption }: De
     commitSettings,
     copyUrl,
     selectFile: selectFileHandler, // For onClick handlers
-    selectFileDirectly, // For direct function calls
+    selectFileDirectly, // This should now be properly typed
     formatFileName,
     resetSettings,
     insertMetadataTag,

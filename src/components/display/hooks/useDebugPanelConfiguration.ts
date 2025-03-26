@@ -9,7 +9,7 @@ import { useDebugPanelPreview } from './useDebugPanelPreview';
 interface UseDebugPanelConfigurationProps {
   caption: string | null;
   setCaption: (caption: string | null) => void;
-  selectFile: (file: string) => void; 
+  selectFile: (file: string) => () => void; 
   isCurrentFile: (file: string, imageUrl: string | null) => boolean;
   imageUrl: string | null;
   metadata: Record<string, string>;
@@ -90,7 +90,7 @@ export const useDebugPanelConfiguration = ({
     insertMetadataTag,
     insertAllMetadata,
     selectFileHandler,
-    selectFileDirectly,
+    selectFileDirectly, // The type here must match the one in useDebugPanelFileSelector
     isCurrentFileHandler,
     handleRefreshMetadata,
     handleResizeStartInternal

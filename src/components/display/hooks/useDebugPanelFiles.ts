@@ -49,7 +49,7 @@ export const useDebugPanelFiles = (props: UseDebugPanelFilesProps) => {
     resetDisplay,
     commitSettings,
     copyUrl,
-    selectFile,
+    selectFile,  // This returns a function of type () => void
     formatFileName,
     isCurrentFile,
     formatTime
