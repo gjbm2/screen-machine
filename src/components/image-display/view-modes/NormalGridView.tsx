@@ -1,7 +1,7 @@
 
 import React from 'react';
 import ImageBatch from '../ImageBatch';
-import { Button } from '@/components/ui/card';
+import { Button } from '@/components/ui/button'; // Changed from card to button
 import LoadingPlaceholder from '../LoadingPlaceholder';
 
 interface NormalGridViewProps {
@@ -36,7 +36,7 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
   return (
     <div className="flex flex-col gap-4 mb-4">
       {isLoading && sortedContainerIds.length === 0 && (
-        <LoadingPlaceholder />
+        <LoadingPlaceholder prompt="Generating your image..." />
       )}
       
       {sortedContainerIds.map(batchId => {

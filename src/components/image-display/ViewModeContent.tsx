@@ -122,12 +122,14 @@ const ViewModeContent: React.FC<ViewModeContentProps> = ({
         
         {viewMode === 'table' && (
           <TableView 
-            sortedContainers={sortedContainerIds}
+            sortedContainerIds={sortedContainerIds}
             batches={batches}
             sortField={sortField}
             sortDirection={sortDirection}
             onSortClick={handleSortClick}
             onTableRowClick={handleTableRowClick}
+            onDeleteContainer={onDeleteContainer}
+            onCreateAgain={onCreateAgain}
           />
         )}
       </SortableContext>

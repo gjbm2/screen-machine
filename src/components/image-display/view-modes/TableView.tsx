@@ -1,103 +1,109 @@
 
 import React from 'react';
+import { Table, TableHeader, TableRow, TableHead, TableBody } from '@/components/ui/table';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { SortField, SortDirection } from '../ImageDisplay';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowUp, ArrowDown } from 'lucide-react';
 import SortableTableRow from '../SortableTableRow';
 
 interface TableViewProps {
-  sortedContainers: string[];
+  sortedContainerIds: string[];
   batches: Record<string, any[]>;
   sortField: SortField;
   sortDirection: SortDirection;
   onSortClick: (field: SortField) => void;
   onTableRowClick: (batchId: string) => void;
+  onDeleteContainer: (batchId: string) => void;
+  onCreateAgain: (batchId?: string) => void;
 }
 
 const TableView: React.FC<TableViewProps> = ({
-  sortedContainers,
+  sortedContainerIds,
   batches,
   sortField,
   sortDirection,
   onSortClick,
-  onTableRowClick
+  onTableRowClick,
+  onDeleteContainer,
+  onCreateAgain
 }) => {
+  // This function renders the sort icon based on the current sort state
+  const renderSortIndicator = (field: SortField) => {
+    if (sortField !== field) return null;
+    
+    return sortDirection === 'asc' ? (
+      <ChevronUp className="ml-1 h-4 w-4" />
+    ) : (
+      <ChevronDown className="ml-1 h-4 w-4" />
+    );
+  };
+  
+  // Helper function to generate batch data for each row
+  const getBatchData = (batchId: string) => {
+    const images = batches[batchId] || [];
+    const firstImage = images.find(img => img.status === 'completed') || images[0] || {};
+    const timestamp = firstImage.timestamp || Date.now();
+    
+    return {
+      id: batchId,
+      firstImage,
+      prompt: firstImage.prompt || 'No prompt',
+      imageCount: images.filter(img => img.status === 'completed').length,
+      timestamp
+    };
+  };
+  
+  // Generate table rows from sorted container IDs
+  const tableRows = sortedContainerIds.map(id => getBatchData(id));
+  
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="w-full">
       <Table>
         <TableHeader>
-          <TableRow className="text-xs">
+          <TableRow>
             <TableHead 
-              className="cursor-pointer max-w-[200px] md:max-w-[300px] py-1 px-2"
+              className="w-[60%] cursor-pointer hover:bg-secondary/50"
               onClick={() => onSortClick('prompt')}
             >
-              <div className="flex items-center space-x-1">
-                <span>Prompt</span>
-                {sortField === 'prompt' && (
-                  sortDirection === 'asc' ? 
-                  <ArrowUp className="h-3 w-3" /> : 
-                  <ArrowDown className="h-3 w-3" />
-                )}
+              <div className="flex items-center">
+                Prompt
+                {renderSortIndicator('prompt')}
               </div>
             </TableHead>
             <TableHead 
-              className="w-[80px] cursor-pointer py-1 px-2"
+              className="w-[15%] cursor-pointer hover:bg-secondary/50"
+              onClick={() => onSortClick('count')}
             >
-              <div className="flex items-center space-x-1">
-                <span>Workflow</span>
+              <div className="flex items-center">
+                Images
+                {renderSortIndicator('count')}
               </div>
             </TableHead>
             <TableHead 
-              className="w-[60px] text-center cursor-pointer py-1 px-2"
-              onClick={() => onSortClick('batchSize')}
+              className="w-[15%] cursor-pointer hover:bg-secondary/50"
+              onClick={() => onSortClick('date')}
             >
-              <div className="flex items-center justify-center space-x-1">
-                <span>Batch</span>
-                {sortField === 'batchSize' && (
-                  sortDirection === 'asc' ? 
-                  <ArrowUp className="h-3 w-3" /> : 
-                  <ArrowDown className="h-3 w-3" />
-                )}
+              <div className="flex items-center">
+                Date
+                {renderSortIndicator('date')}
               </div>
             </TableHead>
-            <TableHead 
-              className="w-[80px] cursor-pointer py-1 px-2"
-              onClick={() => onSortClick('timestamp')}
-            >
-              <div className="flex items-center space-x-1">
-                <span>When</span>
-                {sortField === 'timestamp' && (
-                  sortDirection === 'asc' ? 
-                  <ArrowUp className="h-3 w-3" /> : 
-                  <ArrowDown className="h-3 w-3" />
-                )}
-              </div>
-            </TableHead>
+            <TableHead className="w-[10%] text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sortedContainers.map((batchId) => {
-            if (!batches[batchId]) return null;
-            
-            const batchImages = batches[batchId];
-            const firstImage = batchImages[0];
-            const completedImages = batchImages.filter(img => img.status === 'completed');
-            const hasReferenceImage = !!firstImage.referenceImageUrl;
-            
-            return (
-              <SortableTableRow 
-                key={batchId}
-                id={batchId}
-                onClick={() => onTableRowClick(batchId)}
-                prompt={firstImage.prompt}
-                workflow={firstImage.workflow || '—'}
-                hasReferenceImage={hasReferenceImage}
-                completedImages={completedImages.length}
-                timestamp={firstImage.timestamp}
-                title={firstImage.title}
-              />
-            );
-          })}
+          {tableRows.map(batch => (
+            <SortableTableRow
+              key={batch.id}
+              id={batch.id}
+              prompt={batch.prompt}
+              imageCount={batch.imageCount}
+              timestamp={batch.timestamp}
+              firstImage={batch.firstImage}
+              handleTableRowClick={() => onTableRowClick(batch.id)}
+              onDeleteContainer={() => onDeleteContainer(batch.id)}
+              onCreateAgain={() => onCreateAgain(batch.id)}
+            />
+          ))}
         </TableBody>
       </Table>
     </div>
