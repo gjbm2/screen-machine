@@ -27,14 +27,14 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
 }) => {
   // Debug logging
   useEffect(() => {
-    console.log('[ImageDisplay] Image URL changed:', imageUrl);
-    console.log('[ImageDisplay] Image Key:', imageKey);
+    console.log('[ImageDisplay] Component rendered with props:', { imageUrl, imageKey });
   }, [imageUrl, imageKey]);
 
   const [hasError, setHasError] = React.useState(false);
 
   // Reset error state when image URL changes
   useEffect(() => {
+    console.log('[ImageDisplay] Image URL changed, resetting error state:', imageUrl);
     setHasError(false);
   }, [imageUrl]);
 

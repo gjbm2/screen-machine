@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +16,7 @@ interface FilesTabProps {
   customUrl: string;
   setCustomUrl: (url: string) => void;
   selectFile: (file: string) => () => void; // For list items onClick
-  selectFileDirectly: (file: string) => () => void; // Updated to return a function
+  selectFileDirectly: (file: string) => () => void; // Returns a function
   isCurrentFile: (file: string) => boolean;
   formatFileName: (file: string) => string;
 }
@@ -33,26 +33,50 @@ export const FilesTab: React.FC<FilesTabProps> = ({
   formatFileName
 }) => {
   // Debug the current file selections
-  React.useEffect(() => {
-    console.log('[FilesTab] Current imageUrl:', imageUrl);
-    console.log('[FilesTab] Available outputFiles:', outputFiles);
-  }, [imageUrl, outputFiles]);
+  useEffect(() => {
+    console.log('[FilesTab] Component rendered with props:', { 
+      imageUrl, 
+      outputFiles,
+      customUrl
+    });
+  }, [imageUrl, outputFiles, customUrl]);
 
   // Direct URL handler - don't double encode external URLs
   const handleUseCustomUrl = () => {
     if (customUrl && customUrl.trim() !== '') {
       console.log('[FilesTab] Using custom URL:', customUrl);
       try {
+        // Get the navigation function
         const navigate = selectFileDirectly(customUrl);
+        
+        // Execute the navigation function immediately
         if (typeof navigate === 'function') {
-          console.log('[FilesTab] Executing navigation function');
-          navigate(); // Execute the navigation function
+          console.log('[FilesTab] Executing navigation function for custom URL');
+          navigate();
         } else {
           console.error('[FilesTab] Navigation function not returned properly:', navigate);
         }
       } catch (error) {
         console.error('[FilesTab] Error selecting custom URL:', error);
       }
+    }
+  };
+
+  const handleFileClick = (file: string) => {
+    console.log('[FilesTab] File item clicked:', file);
+    try {
+      // Get the navigation function
+      const navigate = selectFile(file);
+      
+      // Execute the navigation function immediately
+      if (typeof navigate === 'function') {
+        console.log('[FilesTab] Executing navigation function for file:', file);
+        navigate();
+      } else {
+        console.error('[FilesTab] File select handler not a function:', navigate);
+      }
+    } catch (error) {
+      console.error('[FilesTab] Error selecting file:', file, error);
     }
   };
 
@@ -72,33 +96,23 @@ export const FilesTab: React.FC<FilesTabProps> = ({
         <ScrollArea className="flex-1 rounded-md border p-2 min-h-[200px]">
           {outputFiles.length > 0 ? (
             <div className="space-y-2">
-              {outputFiles.map((file, index) => {
-                const fileSelectHandler = selectFile(file);
-                return (
-                  <div 
-                    key={index}
-                    className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${isCurrentFile(file) ? 'bg-blue-50 border border-blue-200' : ''}`}
-                    onClick={() => {
-                      console.log('[FilesTab] File item clicked:', file);
-                      if (typeof fileSelectHandler === 'function') {
-                        fileSelectHandler();
-                      } else {
-                        console.error('[FilesTab] File select handler not a function:', fileSelectHandler);
-                      }
-                    }}
-                  >
-                    <div className="flex items-center">
-                      <ImageIcon className="h-4 w-4 mr-2 text-gray-500" />
-                      <span className="text-sm truncate max-w-[180px]">{formatFileName(file)}</span>
-                    </div>
-                    {isCurrentFile(file) && (
-                      <Badge variant="secondary">
-                        Current
-                      </Badge>
-                    )}
+              {outputFiles.map((file, index) => (
+                <div 
+                  key={index}
+                  className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${isCurrentFile(file) ? 'bg-blue-50 border border-blue-200' : ''}`}
+                  onClick={() => handleFileClick(file)}
+                >
+                  <div className="flex items-center">
+                    <ImageIcon className="h-4 w-4 mr-2 text-gray-500" />
+                    <span className="text-sm truncate max-w-[180px]">{formatFileName(file)}</span>
                   </div>
-                );
-              })}
+                  {isCurrentFile(file) && (
+                    <Badge variant="secondary">
+                      Current
+                    </Badge>
+                  )}
+                </div>
+              ))}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-gray-500">

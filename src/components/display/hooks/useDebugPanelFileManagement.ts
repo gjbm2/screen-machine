@@ -42,7 +42,7 @@ export const useDebugPanelFileManagement = ({
     };
     
     const url = createUrlWithParams(newParams);
-    console.log('[useDebugPanelFileManagement] Navigating to:', url);
+    console.log('[useDebugPanelFileManagement] Generated navigation URL:', url);
     
     // Notify the user before navigation
     toast.success(`Loading: ${formatFileName(file)}`);
@@ -61,6 +61,7 @@ export const useDebugPanelFileManagement = ({
         const currentOutput = currentParams.get('output');
         
         console.log('[useDebugPanelFileManagement] Current output param:', currentOutput);
+        console.log('[useDebugPanelFileManagement] Expected output param:', outputPath);
         
         // Add additional logging for debugging
         if (currentOutput !== outputPath && currentOutput !== encodeURIComponent(outputPath)) {
@@ -68,9 +69,6 @@ export const useDebugPanelFileManagement = ({
           console.log('  Expected:', outputPath);
           console.log('  Actual:', currentOutput);
           console.log('  Encoded expected:', encodeURIComponent(outputPath));
-          
-          // Force page reload as a last resort if the URL isn't what we expect
-          window.location.reload();
         }
       }, 300);
     };

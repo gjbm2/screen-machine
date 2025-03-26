@@ -20,10 +20,9 @@ export const useDebugPanelFileSelector = ({
   }, [selectFile]);
   
   // Create a direct handler for use with the custom URL input
-  // This should return a function to match the expected type
   const selectFileDirectly = useCallback((file: string) => {
     console.log('[useDebugPanelFileSelector] Directly selecting file:', file);
-    // Return the navigation function instead of executing it directly
+    // Return the navigation function
     return selectFile(file);
   }, [selectFile]);
   
