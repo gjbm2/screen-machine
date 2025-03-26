@@ -55,6 +55,9 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
     }
   };
 
+  // Get all generating images to show in the thumbnail gallery
+  const generatingImages = failedImages.filter(img => img.status === 'generating');
+  
   return (
     <Card className="rounded-t-none">
       <CardContent className="p-2">
@@ -83,9 +86,10 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
                   />
                 </div>
                 
-                {/* Thumbnail gallery for completed images */}
+                {/* Thumbnail gallery for completed images and generating images */}
                 <ThumbnailGallery
                   images={completedImages}
+                  generatingImages={generatingImages}
                   batchId={batchId}
                   activeIndex={activeImageIndex}
                   onThumbnailClick={handleThumbnailClick}
