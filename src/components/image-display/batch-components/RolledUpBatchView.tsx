@@ -34,14 +34,22 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
   onDeleteImage,
   viewMode
 }) => {
-  const handleNavigatePrev = () => {
-    // This is just a placeholder since navigation is handled by the parent
-    // in the rolled-up view, but needed for the ImageBatchItem props
+  const handleNavigatePrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Navigate to previous image if available
+    if (activeImageIndex > 0) {
+      // This would be handled by the parent component
+      console.log('Navigate to previous image', activeImageIndex - 1);
+    }
   };
   
-  const handleNavigateNext = () => {
-    // This is just a placeholder since navigation is handled by the parent
-    // in the rolled-up view, but needed for the ImageBatchItem props
+  const handleNavigateNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Navigate to next image if available
+    if (activeImageIndex < completedImages.length - 1) {
+      // This would be handled by the parent component
+      console.log('Navigate to next image', activeImageIndex + 1);
+    }
   };
 
   return (
