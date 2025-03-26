@@ -35,7 +35,7 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
             src={imageUrl}
             alt={prompt || `Generated image ${index + 1}`}
             title={title || prompt}
-            className="w-full h-full object-contain bg-black"
+            className="w-full h-full object-contain bg-[#333333]"
           />
           {hasReferenceImages && (
             <ReferenceImageIndicator 

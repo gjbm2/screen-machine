@@ -27,6 +27,12 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
   onFullScreenClick,
   imageUrl
 }) => {
+  // Create a modified version of onCreateAgain that doesn't roll up the container
+  const handleCreateAgain = (batchId?: string) => {
+    // Call the original onCreateAgain but don't manipulate the expanded state
+    onCreateAgain(batchId);
+  };
+
   return (
     <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1">
       {imageContainerOrder.map((batchId) => {
@@ -46,7 +52,7 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
                   onFullScreenClick(image);
                 }
               }}
-              onCreateAgain={() => onCreateAgain(batchId)}
+              onCreateAgain={() => handleCreateAgain(batchId)}
               onDeleteImage={onDeleteImage}
               onDeleteContainer={() => onDeleteContainer(batchId)}
               activeImageUrl={imageUrl}

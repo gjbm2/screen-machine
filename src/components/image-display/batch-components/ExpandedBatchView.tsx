@@ -42,8 +42,8 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
     setActiveImageIndex(index);
   };
 
+  // Updated to directly use onImageClick for consistent behavior with fullscreen
   const handleUseAsInput = (url: string) => {
-    // Call onImageClick directly instead of going to fullscreen
     if (completedImages[activeImageIndex]) {
       onImageClick(url, completedImages[activeImageIndex]?.prompt || '');
     }
@@ -63,7 +63,7 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
           <div className="w-full overflow-hidden rounded-md">
             {completedImages.length > 0 ? (
               <div className="flex flex-col gap-2">
-                <div className="aspect-[4/3] relative rounded-md overflow-hidden bg-black">
+                <div className="aspect-square relative rounded-md overflow-hidden bg-[#333333]">
                   <ImageBatchItem
                     key={`${batchId}-${activeImageIndex}`}
                     image={completedImages[activeImageIndex]}

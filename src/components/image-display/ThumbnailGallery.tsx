@@ -56,25 +56,10 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
     setStartX(null);
   };
 
-  // Calculate grid columns class based on number of images
-  const getGridColumnsClass = () => {
-    const totalItems = images.length + 1; // +1 for new variant placeholder
-    
-    if (totalItems <= 2) {
-      return "grid-cols-2";
-    } else if (totalItems <= 3) {
-      return "grid-cols-3";
-    } else if (totalItems <= 4) {
-      return "grid-cols-4";
-    } else {
-      return "grid-cols-6";
-    }
-  };
-
   return (
     <div 
       ref={touchRef}
-      className="flex flex-wrap gap-2 w-full max-w-[calc(5*200px)]"
+      className="flex flex-wrap gap-2 w-full max-w-[calc(5*200px)] justify-start"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -106,8 +91,8 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
             
             {/* Image number indicator - only show if multiple images */}
             {images.length > 1 && (
-              <div className="absolute bottom-1 right-1 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
-                {index + 1}
+              <div className="absolute top-2 left-2 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
+                {index + 1}/{images.length}
               </div>
             )}
           </div>
