@@ -31,8 +31,8 @@ interface ImageBatchItemProps {
   onDeleteImage?: (batchId: string, index: number) => void;
   onFullScreen?: (batchId: string, index: number) => void;
   onImageClick: (url: string) => void;
-  onNavigateNext?: (e: React.MouseEvent) => void;
-  onNavigatePrev?: (e: React.MouseEvent) => void;
+  onNavigateNext?: () => void;
+  onNavigatePrev?: () => void;
   viewMode?: ViewMode;
   showActions?: boolean;
   isRolledUp?: boolean;
@@ -109,17 +109,15 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
       />
       
       {/* Navigation buttons should always be visible when available, not hidden by hover overlay */}
-      {(onNavigatePrev || onNavigateNext) && (
-        <div className="absolute top-0 bottom-0 left-0 right-0 z-30">
-          <ImageNavigationButtons 
-            index={index}
-            total={total}
-            onNavigatePrev={onNavigatePrev ? () => onNavigatePrev({} as React.MouseEvent) : undefined}
-            onNavigateNext={onNavigateNext ? () => onNavigateNext({} as React.MouseEvent) : undefined}
-            alwaysVisible={isRolledUp} // Always show for rolled up view
-          />
-        </div>
-      )}
+      <div className="absolute top-0 bottom-0 left-0 right-0 pointer-events-none z-20">
+        <ImageNavigationButtons 
+          index={index}
+          total={total}
+          onNavigatePrev={onNavigatePrev}
+          onNavigateNext={onNavigateNext}
+          alwaysVisible={!isRolledUp}
+        />
+      </div>
       
       {/* Fullscreen button in top right of the image on hover */}
       {showActions && viewMode === 'normal' && onFullScreen && isHovered && !isMobile && (
