@@ -86,6 +86,12 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
     }
   };
 
+  // Button style classes
+  const baseButtonClass = "rounded-full font-medium shadow-sm transition-all duration-200";
+  const actionButtonClass = `${baseButtonClass} bg-white/90 hover:bg-white text-black`;
+  const deleteButtonClass = `${baseButtonClass} bg-destructive/90 hover:bg-destructive text-white`;
+  const publishButtonClass = `${baseButtonClass} bg-green-600/90 hover:bg-green-600 text-white`;
+
   return (
     <div className="flex justify-center py-3 bg-background/80 backdrop-blur-sm">
       <div className="flex flex-wrap gap-2 justify-center">
@@ -93,7 +99,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
           <Button 
             type="button" 
             variant="outline" 
-            className="bg-white/90 hover:bg-white text-black shadow-sm p-2 text-xs rounded-full flex items-center gap-1.5"
+            className={`${actionButtonClass} p-2 text-xs flex items-center gap-1.5`}
             onClick={onCreateAgain}
           >
             <CopyPlus className="h-3.5 w-3.5" /> 
@@ -105,7 +111,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
           <Button 
             type="button" 
             variant="outline" 
-            className="bg-white/90 hover:bg-white text-black shadow-sm p-2 text-xs rounded-full flex items-center gap-1.5"
+            className={`${actionButtonClass} p-2 text-xs flex items-center gap-1.5`}
             onClick={onUseAsInput}
           >
             <SquareArrowUpRight className="h-3.5 w-3.5" /> 
@@ -116,7 +122,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
         <Button 
           type="button" 
           variant="outline" 
-          className="bg-white/90 hover:bg-white text-black shadow-sm p-2 text-xs rounded-full flex items-center gap-1.5"
+          className={`${actionButtonClass} p-2 text-xs flex items-center gap-1.5`}
           onClick={handleDownload}
         >
           <Download className="h-3.5 w-3.5" /> 
@@ -129,7 +135,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
             <Button 
               type="button" 
               variant="outline" 
-              className="bg-white/90 hover:bg-white text-black shadow-sm p-2 text-xs rounded-full flex items-center gap-1.5"
+              className={`${publishButtonClass} p-2 text-xs flex items-center gap-1.5`}
             >
               <Share className="h-3.5 w-3.5" /> 
               {!isMobile && <span>Publish</span>}
@@ -158,7 +164,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
           <Button 
             type="button" 
             variant="outline" 
-            className="bg-destructive/90 hover:bg-destructive text-white shadow-sm p-2 text-xs rounded-full flex items-center gap-1.5"
+            className={`${deleteButtonClass} p-2 text-xs flex items-center gap-1.5`}
             onClick={handleDelete}
           >
             <Trash2 className="h-3.5 w-3.5" /> 

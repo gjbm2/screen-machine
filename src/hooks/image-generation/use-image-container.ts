@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 
 export const useImageContainer = () => {
@@ -15,11 +16,14 @@ export const useImageContainer = () => {
   }, []);
 
   const handleAddNewContainer = useCallback((batchId: string) => {
-    // Modified to keep ALL containers expanded by default
+    // When adding a new container, collapse all existing ones and expand the new one
     setExpandedContainers(prev => {
       const newState = { ...prev };
-      // Expand all containers by default instead of collapsing them
-      // Also ensure the new container is expanded
+      // Collapse all existing containers
+      Object.keys(newState).forEach(key => {
+        newState[key] = false;
+      });
+      // Expand only the new container
       newState[batchId] = true;
       return newState;
     });
