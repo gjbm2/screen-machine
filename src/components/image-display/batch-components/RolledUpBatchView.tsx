@@ -47,10 +47,12 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
     // Get the previous index, wrapping around to the end if needed
     const prevIndex = (activeImageIndex - 1 + completedImages.length) % completedImages.length;
     
-    // Directly navigate by updating the active image without depending on onImageClick
-    // This bypasses the isRolledUp condition in handleImageClick
+    // Direct navigation for rolled-up view - we just want to change the displayed image
+    // without triggering fullscreen
     const prevImage = completedImages[prevIndex];
     if (prevImage?.url) {
+      // For rolled-up navigation, we directly call onImageClick which should
+      // update the parent component's state without opening fullscreen
       onImageClick(
         prevImage.url, 
         prevImage.prompt || ''
@@ -70,10 +72,11 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
     // Get the next index, wrapping around to the beginning if needed
     const nextIndex = (activeImageIndex + 1) % completedImages.length;
     
-    // Directly navigate by updating the active image without depending on onImageClick
-    // This bypasses the isRolledUp condition in handleImageClick
+    // Direct navigation for rolled-up view
     const nextImage = completedImages[nextIndex];
     if (nextImage?.url) {
+      // For rolled-up navigation, we directly call onImageClick which should
+      // update the parent component's state without opening fullscreen
       onImageClick(
         nextImage.url, 
         nextImage.prompt || ''
@@ -100,7 +103,7 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
               onCreateAgain={handleCreateAgain}
               onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
               onDeleteImage={onDeleteImage}
-              onFullScreen={() => handleFullScreenClick(completedImages[activeImageIndex])}
+              onFullScreen={null} // CRITICAL: Pass null to prevent fullscreen in rolled-up view
               onImageClick={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
               onNavigatePrev={completedImages.length > 1 ? handleNavigatePrev : undefined}
               onNavigateNext={completedImages.length > 1 ? handleNavigateNext : undefined}
