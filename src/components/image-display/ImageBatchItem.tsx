@@ -22,7 +22,7 @@ interface ImageBatchItemProps {
     refiner?: string;
     referenceImageUrl?: string;
     title?: string;
-  } | undefined; // Add undefined as a possible type
+  };
   batchId: string;
   index: number;
   total: number;
@@ -56,12 +56,6 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   isRolledUp = false,
   isExpandedMain = false
 }) => {
-  // Guard against rendering if image is undefined
-  if (!image) {
-    console.warn(`ImageBatchItem: Image is undefined for batchId=${batchId}, index=${index}`);
-    return null;
-  }
-
   const {
     isHovered,
     setIsHovered,
