@@ -135,15 +135,41 @@ export const useImageActions = (
       // Create a deep copy of prevImages to ensure state is properly updated
       const updatedImages = [...prevImages];
       
-      // Find the index of the image to delete in the array
-      const imageIndex = updatedImages.findIndex(
-        img => img.batchId === batchId && img.batchIndex === index
-      );
+      // IMPROVED: Find the image to delete by batch ID and batch index (or array index if batch index unavailable)
+      // This handles both numeric batchIndex values and string representations
+      const imageIndex = updatedImages.findIndex(img => {
+        // First try to match by exact batchId and batchIndex
+        if (img.batchId === batchId && img.batchIndex === index) {
+          return true;
+        }
+        
+        // If that fails, try to match by batchId and array index for legacy compatibility
+        // This is needed because some components might pass the array index instead of batchIndex
+        const allBatchImages = updatedImages.filter(image => image.batchId === batchId);
+        const imagePosition = allBatchImages.findIndex(image => image === img);
+        return img.batchId === batchId && imagePosition === index;
+      });
       
       if (imageIndex === -1) {
         console.warn(`Image not found for deletion: batchId=${batchId}, index=${index}`);
+        
+        // IMPROVED: Additional debugging information
+        console.log('Available images:', updatedImages.map(img => ({
+          batchId: img.batchId,
+          batchIndex: img.batchIndex,
+          url: img.url?.substring(0, 30) + '...'
+        })));
+        
         return prevImages; // Return unchanged if image not found
       }
+      
+      // Log the image being deleted for debugging
+      console.log('Found image to delete:', {
+        imageIndex,
+        batchId: updatedImages[imageIndex].batchId,
+        batchIndex: updatedImages[imageIndex].batchIndex,
+        url: updatedImages[imageIndex].url?.substring(0, 30) + '...'
+      });
       
       // Remove this specific image
       updatedImages.splice(imageIndex, 1);
