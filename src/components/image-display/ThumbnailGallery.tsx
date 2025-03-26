@@ -87,10 +87,7 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
               className="absolute bottom-1 right-1 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-20"
               onClick={(e) => {
                 e.stopPropagation();
-                // FIXED: Pass the image's actual batchIndex if available, otherwise fall back to the array index
-                const indexToDelete = image.batchIndex !== undefined ? image.batchIndex : index;
-                console.log(`Deleting image with batchIndex: ${indexToDelete} (array index: ${index})`);
-                onDeleteImage(batchId, indexToDelete);
+                onDeleteImage(batchId, index);
               }}
             >
               <Trash2 className="h-3 w-3" />
