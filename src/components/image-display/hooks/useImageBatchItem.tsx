@@ -77,7 +77,8 @@ export const useImageBatchItem = ({
     saveAs(image.url, filename);
   };
 
-  // Updated to accept a React.MouseEvent parameter and NEVER trigger fullscreen
+  // CRITICAL: Completely prevent fullscreen from being triggered on image click
+  // Only set the active image without triggering fullscreen view
   const handleImageClick = (e: React.MouseEvent) => {
     // Enhanced check for navigation buttons and other interactive elements
     // This better identifies clicks on navigation elements to prevent unwanted actions
@@ -96,6 +97,7 @@ export const useImageBatchItem = ({
     // For normal view, NEVER go to fullscreen when clicked directly on image
     // Just call the general onImageClick to handle other behaviors like setting active image
     if (image.url) {
+      // CRITICAL: Only notify about the click, but NEVER open fullscreen
       onImageClick(image.url);
     }
     

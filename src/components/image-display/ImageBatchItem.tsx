@@ -119,7 +119,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         />
       </div>
       
-      {/* Fullscreen button in top right of the image on hover - THIS WILL BE THE ONLY WAY TO ACCESS FULLSCREEN */}
+      {/* CRITICAL: This is the ONLY way to access fullscreen in normal view */}
       {showActions && viewMode === 'normal' && onFullScreen && isHovered && !isMobile && (
         <Button
           type="button"
