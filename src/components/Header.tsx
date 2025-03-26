@@ -39,7 +39,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenAboutDialog }) => {
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>About Imagine</DialogTitle>
+            <DialogTitle>About screen/machine</DialogTitle>
             <DialogDescription>
               <div className="space-y-4 mt-4">
                 <p>
