@@ -62,6 +62,12 @@ export const useDebugPanelFileManagement = ({
         navigate(`/display${url}`);
       }
       
+      // Force a reload after navigation to ensure the image is refreshed
+      setTimeout(() => {
+        console.log('[useDebugPanelFileManagement] Forcing reload of window');
+        window.location.reload();
+      }, 100);
+      
       // Log the navigation
       console.log('[useDebugPanelFileManagement] Navigation completed');
     };
