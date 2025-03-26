@@ -100,22 +100,31 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
     failedImages.filter(img => img.status === 'generating' || !img.url) : [];
   const firstGeneratingImage = generatingImages.length > 0 ? generatingImages[0] : null;
 
+  // Ensure activeImageIndex is within bounds - this is the key fix for the "Cannot read properties of undefined" error
+  const safeActiveIndex = completedImages.length > 0 
+    ? Math.min(Math.max(0, activeImageIndex), completedImages.length - 1) 
+    : 0;
+
   return (
     <Card className="rounded-t-none">
       <CardContent className="p-2">
         <div className="grid gap-1 grid-cols-1">
           {completedImages.length > 0 ? (
             <ImageBatchItem
-              key={`${batchId}-${activeImageIndex}`}
-              image={completedImages[activeImageIndex]}
+              key={`${batchId}-${safeActiveIndex}`}
+              image={completedImages[safeActiveIndex]}
               batchId={batchId}
-              index={activeImageIndex}
+              index={safeActiveIndex}
               total={completedImages.length}
               onCreateAgain={handleCreateAgain}
-              onUseAsInput={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
+              onUseAsInput={(url) => completedImages[safeActiveIndex]?.prompt !== undefined 
+                ? onImageClick(url, completedImages[safeActiveIndex].prompt || '') 
+                : onImageClick(url, '')}
               onDeleteImage={onDeleteImage}
-              onFullScreen={() => handleFullScreenClick(completedImages[activeImageIndex])}
-              onImageClick={(url) => onImageClick(url, completedImages[activeImageIndex]?.prompt || '')}
+              onFullScreen={() => handleFullScreenClick(completedImages[safeActiveIndex])}
+              onImageClick={(url) => completedImages[safeActiveIndex]?.prompt !== undefined 
+                ? onImageClick(url, completedImages[safeActiveIndex].prompt || '') 
+                : onImageClick(url, '')}
               onNavigatePrev={completedImages.length > 1 ? handleNavigatePrev : undefined}
               onNavigateNext={completedImages.length > 1 ? handleNavigateNext : undefined}
               viewMode={viewMode}

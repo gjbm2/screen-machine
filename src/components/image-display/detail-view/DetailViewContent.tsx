@@ -71,6 +71,24 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
     console.log('DetailViewContent: activeIndex corrected from', activeIndex, 'to', validatedActiveIndex);
   }
   
+  // Check if images array is empty and return early with a message
+  if (!images || images.length === 0) {
+    console.error('DetailViewContent: No images available to display');
+    return (
+      <div className="flex flex-col h-full items-center justify-center">
+        <p className="text-gray-500">No images available to display</p>
+        {onClose && (
+          <button 
+            className="mt-4 px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+            onClick={() => onClose()}
+          >
+            Close
+          </button>
+        )}
+      </div>
+    );
+  }
+  
   const activeImage = images[validatedActiveIndex];
   const [showReferenceImage, setShowReferenceImage] = useState(false);
   const [showImageInfo, setShowImageInfo] = useState(false);
@@ -87,8 +105,28 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
       } else {
         console.log("Active image has NO reference image URL");
       }
+    } else {
+      console.error("No active image available at index", validatedActiveIndex);
     }
-  }, [activeImage]);
+  }, [activeImage, validatedActiveIndex]);
+  
+  // If activeImage is undefined, show an error and return
+  if (!activeImage) {
+    console.error(`DetailViewContent: No active image found at index ${validatedActiveIndex}`);
+    return (
+      <div className="flex flex-col h-full items-center justify-center">
+        <p className="text-red-500">Error: Image not found</p>
+        {onClose && (
+          <button 
+            className="mt-4 px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+            onClick={() => onClose()}
+          >
+            Close
+          </button>
+        )}
+      </div>
+    );
+  }
   
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
@@ -110,7 +148,7 @@ const DetailViewContent: React.FC<DetailViewContentProps> = ({
   };
   
   const handleUseAsInput = () => {
-    if (onUseAsInput && activeImage.url) {
+    if (onUseAsInput && activeImage?.url) {
       onUseAsInput(activeImage.url);
     }
   };

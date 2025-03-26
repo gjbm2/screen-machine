@@ -49,8 +49,10 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   
+  // Ensure the activeImageIndex is always within bounds when images array changes
   useEffect(() => {
     if (images.length > 0 && activeImageIndex >= images.length) {
+      console.log(`ImageBatch: Resetting activeImageIndex from ${activeImageIndex} to 0 because images.length=${images.length}`);
       setActiveImageIndex(0);
     }
   }, [images, activeImageIndex]);
@@ -79,12 +81,16 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   };
 
   const handleFullScreenClick = (image: any) => {
-    if (onFullScreenClick) {
+    // Extra validation to ensure we have a valid image before showing fullscreen
+    if (onFullScreenClick && image && image.url) {
+      console.log("Opening fullscreen view with image:", image.url);
       onFullScreenClick({
-        ...completedImages[activeImageIndex],
+        ...image,
         batchId,
-        batchIndex: completedImages[activeImageIndex].batchIndex || activeImageIndex
+        batchIndex: image.batchIndex || activeImageIndex
       });
+    } else {
+      console.error("Cannot open fullscreen: Invalid image or missing URL");
     }
   };
 
@@ -104,15 +110,25 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
     setShowDeleteDialog(false);
   };
 
+  // Ensure we always have a valid activeImageIndex
+  const safeActiveIndex = completedImages.length > 0 
+    ? Math.min(Math.max(0, activeImageIndex), completedImages.length - 1) 
+    : 0;
+
   const handleImageClick = (url: string, prompt?: string) => {
+    if (!url) {
+      console.error("Cannot handle image click: URL is empty or undefined");
+      return;
+    }
+    
     if (viewMode === 'normal') {
-      onImageClick(url, prompt);
+      onImageClick(url, prompt || '');
     } else {
       const image = images.find(img => img.url === url);
       if (image) {
-        onFullScreenClick(image);
+        onFullScreenClick?.(image);
       } else {
-        onImageClick(url, prompt);
+        onImageClick(url, prompt || '');
       }
     }
   };
@@ -138,7 +154,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
           completedImages={completedImages}
           anyGenerating={anyGenerating}
           failedImages={allNonCompletedImages}
-          activeImageIndex={activeImageIndex}
+          activeImageIndex={safeActiveIndex}
           setActiveImageIndex={setActiveImageIndex}
           handleCreateAgain={handleCreateAgain}
           handleFullScreenClick={handleFullScreenClick}
@@ -154,7 +170,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
           completedImages={completedImages}
           anyGenerating={anyGenerating}
           failedImages={allNonCompletedImages}
-          activeImageIndex={activeImageIndex}
+          activeImageIndex={safeActiveIndex}
           setActiveImageIndex={setActiveImageIndex}
           handleCreateAgain={handleCreateAgain}
           handleFullScreenClick={handleFullScreenClick}
