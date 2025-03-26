@@ -19,10 +19,10 @@ export const useImageContainer = () => {
     // When adding a new container, collapse all existing ones and expand the new one
     setExpandedContainers(prev => {
       // Create a new state object that collapses all existing containers
-      const newState = { ...prev };
+      const newState: Record<string, boolean> = {};
       
-      // Collapse all existing containers
-      Object.keys(newState).forEach(key => {
+      // Collapse all containers first
+      Object.keys(prev).forEach(key => {
         newState[key] = false;
       });
       
