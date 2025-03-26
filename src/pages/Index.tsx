@@ -64,15 +64,45 @@ const Index = () => {
     handleDeleteContainer
   } = useImageGeneration(addConsoleLog);
 
+  // Helper function to process URL parameter values
+  const processUrlParam = (value: string): any => {
+    // Remove enclosing quotes if present
+    if ((value.startsWith('"') && value.endsWith('"')) || 
+        (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    
+    try {
+      // Try to parse as JSON if it starts with [ or {
+      if (value.startsWith('[') || value.startsWith('{')) {
+        return JSON.parse(value);
+      } else if (value === 'true') {
+        return true;
+      } else if (value === 'false') {
+        return false;
+      } else if (!isNaN(Number(value))) {
+        return Number(value);
+      } else {
+        return value;
+      }
+    } catch (e) {
+      // If parsing fails, use as string
+      console.error(`Failed to parse param value=${value}`, e);
+      return value;
+    }
+  };
+
   // Parse URL parameters and set initial state
   useEffect(() => {
     // Check for prompt parameter
     const promptParam = searchParams.get('prompt');
     if (promptParam) {
-      setCurrentPrompt(promptParam);
+      // Process the prompt to handle quoted strings
+      const processedPrompt = processUrlParam(promptParam);
+      setCurrentPrompt(processedPrompt);
       addConsoleLog({
         type: 'info',
-        message: `URL parameter: prompt=${promptParam}`
+        message: `URL parameter: prompt=${processedPrompt}`
       });
     }
     
@@ -121,18 +151,7 @@ const Index = () => {
     searchParams.forEach((value, key) => {
       if (!['prompt', 'workflow', 'refiner', 'publish', 'script', 'run'].includes(key) && !key.startsWith('refiner_')) {
         try {
-          // Try to parse as JSON if it starts with [ or {
-          if (value.startsWith('[') || value.startsWith('{')) {
-            workflowParamsObj[key] = JSON.parse(value);
-          } else if (value === 'true') {
-            workflowParamsObj[key] = true;
-          } else if (value === 'false') {
-            workflowParamsObj[key] = false;
-          } else if (!isNaN(Number(value))) {
-            workflowParamsObj[key] = Number(value);
-          } else {
-            workflowParamsObj[key] = value;
-          }
+          workflowParamsObj[key] = processUrlParam(value);
           
           addConsoleLog({
             type: 'info',
@@ -160,18 +179,7 @@ const Index = () => {
       if (key.startsWith('refiner_')) {
         const paramName = key.replace('refiner_', '');
         try {
-          // Try to parse as JSON if it starts with [ or {
-          if (value.startsWith('[') || value.startsWith('{')) {
-            refinerParamsObj[paramName] = JSON.parse(value);
-          } else if (value === 'true') {
-            refinerParamsObj[paramName] = true;
-          } else if (value === 'false') {
-            refinerParamsObj[paramName] = false;
-          } else if (!isNaN(Number(value))) {
-            refinerParamsObj[paramName] = Number(value);
-          } else {
-            refinerParamsObj[paramName] = value;
-          }
+          refinerParamsObj[paramName] = processUrlParam(value);
           
           addConsoleLog({
             type: 'info',
@@ -209,7 +217,9 @@ const Index = () => {
       // We need to wait a moment for all other parameters to be processed
       // before we trigger the generation
       const timer = setTimeout(() => {
-        if (currentPrompt || Object.keys(workflowParamsObj).length > 0) {
+        const currentPromptValue = promptParam ? processUrlParam(promptParam) : currentPrompt;
+        
+        if (currentPromptValue || Object.keys(workflowParamsObj).length > 0) {
           addConsoleLog({
             type: 'info',
             message: `URL parameter: run=true (auto-generating)`
@@ -217,7 +227,7 @@ const Index = () => {
           
           // We'll simulate a submit with the current state
           handlePromptSubmit(
-            currentPrompt || promptParam || '', 
+            currentPromptValue, 
             undefined, 
             workflowParam || currentWorkflow,
             { ...currentParams, ...workflowParamsObj },
