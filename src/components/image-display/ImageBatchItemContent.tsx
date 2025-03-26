@@ -12,6 +12,7 @@ interface ImageBatchItemContentProps {
   viewMode: ViewMode;
   hasReferenceImages?: boolean;
   title?: string;
+  isExpandedMain?: boolean;
 }
 
 const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
@@ -21,27 +22,48 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
   onClick,
   viewMode,
   hasReferenceImages = false,
-  title
+  title,
+  isExpandedMain = false
 }) => {
-  // When in normal view, the container will be 4:3 (set by parent component)
-  // For small view, keep using square aspect ratio
-  const aspectRatio = viewMode === 'small' ? 1 : undefined;
-
+  // For small view and normal view (except main image in unroll mode), use 1:1 aspect ratio
+  // When in unroll mode for the main image, don't force aspect ratio
+  const useSquareAspectRatio = viewMode === 'small' || (viewMode === 'normal' && !isExpandedMain);
+  
   return (
     <div className="w-full h-full" onClick={onClick}>
       {imageUrl ? (
         <div className="relative w-full h-full">
-          <img
-            src={imageUrl}
-            alt={prompt || `Generated image ${index + 1}`}
-            title={title || prompt}
-            className="w-full h-full object-contain bg-[#333333]"
-          />
-          {hasReferenceImages && (
-            <ReferenceImageIndicator 
-              imageUrl={imageUrl} 
-              position={viewMode === 'small' ? 'top-right' : 'bottom-left'} 
-            />
+          {useSquareAspectRatio ? (
+            <AspectRatio ratio={1} className="overflow-hidden">
+              <img
+                src={imageUrl}
+                alt={prompt || `Generated image ${index + 1}`}
+                title={title || prompt}
+                className="w-full h-full object-contain bg-[#333333]"
+              />
+              {hasReferenceImages && (
+                <ReferenceImageIndicator 
+                  imageUrl={imageUrl} 
+                  position={viewMode === 'small' ? 'top-right' : 'bottom-left'} 
+                />
+              )}
+            </AspectRatio>
+          ) : (
+            // For expanded main image, don't force aspect ratio
+            <>
+              <img
+                src={imageUrl}
+                alt={prompt || `Generated image ${index + 1}`}
+                title={title || prompt}
+                className="w-full h-full object-contain bg-[#333333]"
+              />
+              {hasReferenceImages && (
+                <ReferenceImageIndicator 
+                  imageUrl={imageUrl} 
+                  position={viewMode === 'small' ? 'top-right' : 'bottom-left'} 
+                />
+              )}
+            </>
           )}
         </div>
       ) : (

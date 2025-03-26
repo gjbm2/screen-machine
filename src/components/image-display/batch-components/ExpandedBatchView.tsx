@@ -78,6 +78,7 @@ const ExpandedBatchView: React.FC<ExpandedBatchViewProps> = ({
                     onNavigatePrev={activeImageIndex > 0 ? () => setActiveImageIndex(activeImageIndex - 1) : undefined}
                     onNavigateNext={activeImageIndex < completedImages.length - 1 ? () => setActiveImageIndex(activeImageIndex + 1) : undefined}
                     viewMode="normal"
+                    isExpandedMain={true}
                   />
                 </div>
                 {/* Thumbnail gallery for completed images - now with max-width container */}
