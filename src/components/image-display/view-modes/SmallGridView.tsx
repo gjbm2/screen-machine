@@ -1,70 +1,86 @@
 
-import React from 'react';
-import { Grid } from '@/components/ui/grid';
-import ImageBatchItem from '../ImageBatchItem';
+import React, { useEffect, useState } from 'react';
+import GenerationFailedPlaceholder from '../GenerationFailedPlaceholder';
 import LoadingPlaceholder from '../LoadingPlaceholder';
 
 interface SmallGridViewProps {
-  sortedContainerIds: string[];
-  batches: Record<string, any[]>;
-  expandedContainers: Record<string, boolean>;
-  handleToggleExpand: (batchId: string) => void;
-  onUseGeneratedAsInput: (url: string) => void;
+  images: any[];
+  isLoading: boolean;
+  onSmallImageClick: (image: any) => void;
   onCreateAgain: (batchId?: string) => void;
   onDeleteImage: (batchId: string, index: number) => void;
-  onDeleteContainer: (batchId: string) => void;
-  onFullScreenClick: (image: any) => void;
-  imageUrl: string | null;
-  getAllImages: () => any[];
-  handleSmallImageClick: (image: any) => void;
-  isLoading: boolean;
-  activeGenerations?: string[];
 }
 
 const SmallGridView: React.FC<SmallGridViewProps> = ({
-  sortedContainerIds,
-  batches,
-  expandedContainers,
-  handleToggleExpand,
-  onUseGeneratedAsInput,
-  onCreateAgain,
-  onDeleteImage,
-  onDeleteContainer,
-  onFullScreenClick,
-  imageUrl,
-  getAllImages,
-  handleSmallImageClick,
+  images,
   isLoading,
-  activeGenerations = []
+  onSmallImageClick,
+  onCreateAgain,
+  onDeleteImage
 }) => {
-  // Get flattened list of all completed images across all batches
-  const allImages = getAllImages().filter(img => img.status === 'completed');
-  
-  return (
-    <div>
-      {isLoading && sortedContainerIds.length === 0 && (
-        <LoadingPlaceholder prompt="Generating your image..." />
-      )}
+  const [sortedImages, setSortedImages] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!images || images.length === 0) {
+      setSortedImages([]);
+      return;
+    }
+
+    // Simply sort all images without attempting to filter by batch
+    // This ensures we show one entry for each IMAGE, not each batch
+    const sorted = [...images].sort((a, b) => {
+      // First prioritize by status - generating images always first
+      if (a.status === 'generating' && b.status !== 'generating') return -1;
+      if (a.status !== 'generating' && b.status === 'generating') return 1;
       
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-        {allImages.map((image, index) => (
-          <div key={`${image.batchId}-${image.batchIndex || index}`} className="relative">
-            <ImageBatchItem
-              image={image}
-              batchId={image.batchId}
-              index={image.batchIndex || index}
-              total={allImages.length}
-              onImageClick={() => handleSmallImageClick(image)}
-              onCreateAgain={() => onCreateAgain(image.batchId)}
-              onDeleteImage={onDeleteImage}
-              onFullScreen={() => onFullScreenClick(image)}
-              onUseAsInput={() => onUseGeneratedAsInput(image.url)}
-              viewMode="small"
-              showActions={true}
+      // If both are generating, sort by timestamp (newest first)
+      if (a.status === 'generating' && b.status === 'generating') {
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      }
+      
+      // For all other images, sort by timestamp (newest first)
+      return (b.timestamp || 0) - (a.timestamp || 0);
+    });
+    
+    console.log('[SmallGridView] Total sorted images:', sorted.length);
+    console.log('[SmallGridView] Generating images count:', sorted.filter(img => img.status === 'generating').length);
+    
+    setSortedImages(sorted);
+  }, [images]);
+
+  return (
+    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-0.5">
+      {sortedImages.map((image, idx) => (
+        <div 
+          key={`${image.batchId}-${image.batchIndex || idx}`} 
+          className="aspect-square rounded-md overflow-hidden cursor-pointer"
+          onClick={() => onSmallImageClick(image)}
+        >
+          {image.status === 'completed' ? (
+            <img 
+              src={image.url}
+              alt={image.prompt || `Generated image ${idx + 1}`}
+              className="w-full h-full object-cover"
             />
+          ) : image.status === 'generating' ? (
+            <LoadingPlaceholder prompt={image.prompt} isCompact={true} />
+          ) : (
+            <GenerationFailedPlaceholder 
+              prompt={null} 
+              onRetry={() => onCreateAgain(image.batchId)}
+              onRemove={() => onDeleteImage(image.batchId || '', image.batchIndex || 0)}
+              isCompact={true}
+            />
+          )}
+        </div>
+      ))}
+      {isLoading && (
+        <div className="aspect-square rounded-md overflow-hidden bg-muted flex items-center justify-center">
+          <div className="animate-pulse flex flex-col items-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
@@ -12,6 +13,7 @@ import typedWorkflows from '@/data/typedWorkflows';
 const Index = () => {
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   
+  // Use our custom hook for console management
   const { 
     consoleVisible, 
     consoleLogs, 
@@ -20,13 +22,16 @@ const Index = () => {
     addLog: addConsoleLog 
   } = useConsoleManagement();
   
+  // Add state for refiner and refiner params
   const [selectedRefiner, setSelectedRefiner] = useState('none');
   const [refinerParams, setRefinerParams] = useState<Record<string, any>>({});
   
+  // Add logging for debugging the advanced panel issue
   useEffect(() => {
     console.log('Advanced options panel open state:', advancedOptionsOpen);
   }, [advancedOptionsOpen]);
 
+  // Image generation hook
   const {
     generatedImages,
     activeGenerations,
@@ -54,21 +59,25 @@ const Index = () => {
     handleDeleteContainer
   } = useImageGeneration(addConsoleLog);
 
+  // Handler for opening advanced options
   const handleOpenAdvancedOptions = useCallback(() => {
     console.log('Opening advanced options panel');
     setAdvancedOptionsOpen(true);
   }, []);
 
+  // Handler for advanced options open state change
   const handleAdvancedOptionsOpenChange = useCallback((open: boolean) => {
     console.log('Advanced options panel open state changing to:', open);
     setAdvancedOptionsOpen(open);
   }, []);
 
+  // Handler for refiner changes from advanced panel
   const handleRefinerChange = useCallback((refiner: string) => {
     console.log('Index: Refiner changed to:', refiner);
     setSelectedRefiner(refiner);
   }, []);
 
+  // Handler for refiner param changes from advanced panel
   const handleRefinerParamChange = useCallback((paramId: string, value: any) => {
     console.log('Index: Refiner param changed:', paramId, value);
     setRefinerParams(prev => ({
@@ -77,6 +86,7 @@ const Index = () => {
     }));
   }, []);
 
+  // Handler for prompt submission
   const handlePromptSubmit = async (
     prompt: string,
     imageFiles?: File[] | string[],
@@ -97,33 +107,42 @@ const Index = () => {
       console.log('- refinerParams:', refinerParams);
       console.log('- publish:', publish);
       
+      // Update state with the values from prompt form
       setCurrentPrompt(prompt);
       
+      // Update workflow state if provided from prompt form
       if (workflow) {
         setCurrentWorkflow(workflow);
       }
       
+      // Update refiner state if provided from prompt form
       if (refiner) {
         setSelectedRefiner(refiner);
       }
       
+      // Create a copy of the params to avoid mutation issues
       let effectiveParams = params ? { ...params } : { ...currentParams };
       
+      // Add publish destination to params if provided
       if (publish && publish !== 'none') {
         console.log('Adding publish destination to params:', publish);
         effectiveParams.publish_destination = publish;
       }
       
+      // Update params state
       setCurrentParams(effectiveParams);
       
+      // Update global params if provided
       if (globalParams) {
         setCurrentGlobalParams(globalParams);
       }
       
+      // Update refiner params if provided
       if (refinerParams) {
         setRefinerParams(refinerParams);
       }
       
+      // Process image files if provided
       if (imageFiles && imageFiles.length > 0) {
         const fileUrls = imageFiles
           .filter((file): file is string => typeof file === 'string')
@@ -132,6 +151,7 @@ const Index = () => {
         setUploadedImageUrls(fileUrls);
       }
       
+      // Submit the generation request with all parameters
       await handleSubmitPrompt(
         prompt, 
         imageFiles, 
@@ -165,11 +185,13 @@ const Index = () => {
           currentPrompt={currentPrompt}
           isFirstRun={isFirstRun}
           onOpenAdvancedOptions={handleOpenAdvancedOptions}
+          // Pass additional props to reflect current state
           selectedWorkflow={currentWorkflow}
           selectedRefiner={selectedRefiner}
           workflowParams={currentParams}
           refinerParams={refinerParams}
           globalParams={currentGlobalParams}
+          // Add handlers for workflow and refiner changes from prompt form
           onWorkflowChange={setCurrentWorkflow}
           onRefinerChange={handleRefinerChange}
         />
@@ -189,7 +211,6 @@ const Index = () => {
           onDeleteImage={handleDeleteImage}
           onDeleteContainer={handleDeleteContainer}
           fullscreenRefreshTrigger={fullscreenRefreshTrigger}
-          activeGenerations={activeGenerations}
         />
       </MainLayout>
       
@@ -208,6 +229,7 @@ const Index = () => {
             [paramId]: value
           }));
         }}
+        // Pass refiner props
         selectedRefiner={selectedRefiner}
         refinerParams={refinerParams}
         onRefinerChange={handleRefinerChange}
