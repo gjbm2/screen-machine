@@ -56,6 +56,9 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   isRolledUp = false,
   isExpandedMain = false
 }) => {
+  // Add null check for image before passing it to useImageBatchItem
+  const validImage = image || { url: '' };
+  
   const {
     isHovered,
     setIsHovered,
@@ -70,7 +73,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     shouldShowActionButtons,
     isMobile
   } = useImageBatchItem({
-    image,
+    image: validImage,
     batchId,
     index,
     onCreateAgain,
@@ -81,6 +84,11 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     viewMode,
     isRolledUp
   });
+
+  // If image is completely undefined, don't render anything
+  if (!image) {
+    return null;
+  }
 
   // Parse reference images if they exist
   const hasReferenceImages = Boolean(image.referenceImageUrl && image.referenceImageUrl.trim() !== '');
@@ -153,6 +161,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
               params: image.params
             }
           }}
+          publishButtonColor="green" // Change publish button to green
         />
       )}
     </div>
