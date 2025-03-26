@@ -81,36 +81,27 @@ export const useImageDisplayState = (
   const batches = getImageBatches();
   const hasBatches = Object.keys(batches).length > 0 || isLoading;
   
-  // CRITICAL: Modify these handlers to ensure normal view clicks never trigger fullscreen
-  
-  // This is used for small view mode only, not normal mode
   const handleSmallImageClick = (image: any) => {
-    if (image?.url && image.batchId && viewMode === 'small') {
-      // Only proceed with fullscreen if in small mode
+    if (image?.url && image.batchId) {
+      // Find the actual index within the batch for this image
       const batchImages = batches[image.batchId]?.filter(img => img.status === 'completed') || [];
       const batchIndex = batchImages.findIndex(img => img.batchIndex === image.batchIndex);
+      
+      // Use the precise index if found, otherwise default to the first image (0)
       const indexToUse = batchIndex !== -1 ? batchIndex : 0;
+      
+      console.log(`Opening fullscreen for image in batch ${image.batchId} at batch index ${indexToUse}`);
       openFullScreenView(image.batchId, indexToUse);
     }
-    // In normal mode, do nothing to open fullscreen
   };
 
-  // This is used for table view only, not normal view
   const handleTableRowClick = (batchId: string) => {
-    if (viewMode === 'table') {
-      const batchImages = batches[batchId]?.filter(img => img.status === 'completed');
-      if (batchImages && batchImages.length > 0) {
-        // Only open fullscreen in table view
-        openFullScreenView(batchId, 0);
-      } else {
-        setExpandedContainers(prev => ({
-          ...prev,
-          [batchId]: true
-        }));
-      }
-    }
-    // In normal mode, only expand the container
-    else {
+    const batchImages = batches[batchId]?.filter(img => img.status === 'completed');
+    if (batchImages && batchImages.length > 0) {
+      // Always open the first image in fullscreen view, regardless of batch size
+      openFullScreenView(batchId, 0);
+    } else {
+      // If no completed images, just expand the container
       setExpandedContainers(prev => ({
         ...prev,
         [batchId]: true
