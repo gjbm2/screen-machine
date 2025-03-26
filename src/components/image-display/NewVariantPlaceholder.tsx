@@ -38,9 +38,9 @@ const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({
             <Loader className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : (
-          <div className="flex flex-col items-center text-muted-foreground p-4 text-center">
+          <div className="flex flex-col items-center text-muted-foreground p-2 text-center">
             <Plus className="h-8 w-8 mb-1" />
-            <span className={`${isMobile ? "text-xs" : "text-sm"}`}>
+            <span className="text-xs whitespace-nowrap">
               {isMobile ? "New variant" : "Create new variant"}
             </span>
           </div>
