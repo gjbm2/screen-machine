@@ -28,14 +28,19 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   // Debug logging
   useEffect(() => {
     console.log('[ImageDisplay] Component rendered with props:', { imageUrl, imageKey });
+    if (imageUrl) {
+      console.log('[ImageDisplay] Image URL being rendered:', imageUrl);
+    }
   }, [imageUrl, imageKey]);
 
   const [hasError, setHasError] = React.useState(false);
+  const [isImageVisible, setIsImageVisible] = React.useState(false);
 
   // Reset error state when image URL changes
   useEffect(() => {
     console.log('[ImageDisplay] Image URL changed, resetting error state:', imageUrl);
     setHasError(false);
+    setIsImageVisible(false);
   }, [imageUrl]);
 
   if (!imageUrl) {
@@ -69,15 +74,17 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
       key={`image-${imageKey}`}
       src={imageUrl}
       alt="Preview"
-      className="max-w-full max-h-full"
+      className={`max-w-full max-h-full ${isImageVisible ? 'opacity-100' : 'opacity-0'}`}
       onLoad={(e) => {
         console.log('[ImageDisplay] Image loaded successfully:', imageUrl);
         setHasError(false);
+        setIsImageVisible(true);
         onImageLoad(e);
       }}
       onError={(e) => {
         console.error('[ImageDisplay] Error loading image:', imageUrl, e);
         setHasError(true);
+        setIsImageVisible(false);
         onImageError();
       }}
       style={getImageStyle()}

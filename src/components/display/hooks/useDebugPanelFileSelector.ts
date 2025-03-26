@@ -16,6 +16,7 @@ export const useDebugPanelFileSelector = ({
   // Create a handler that can be used in onClick directly (for list items)
   const selectFileHandler = useCallback((file: string) => {
     console.log('[useDebugPanelFileSelector] Creating handler for file:', file);
+    // Return the navigation function that was provided
     return selectFile(file);
   }, [selectFile]);
   
@@ -28,6 +29,13 @@ export const useDebugPanelFileSelector = ({
   
   // Create a callback to check if a file is currently selected
   const isCurrentFileHandler = useCallback((file: string) => {
+    // Debug logging
+    console.log('[useDebugPanelFileSelector] Checking if file is current:', { 
+      file, 
+      imageUrl, 
+      isMatch: isCurrentFile(file, imageUrl)
+    });
+    
     return isCurrentFile(file, imageUrl);
   }, [isCurrentFile, imageUrl]);
   

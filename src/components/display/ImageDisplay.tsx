@@ -39,6 +39,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const [doubleClickAttempted, setDoubleClickAttempted] = useState(false);
   const doubleClickTimeoutRef = useRef<number | null>(null);
   const [hasLoadError, setHasLoadError] = useState(false);
+  const [isImageVisible, setIsImageVisible] = useState(false);
 
   // Log the image URL and transition state for debugging
   useEffect(() => {
@@ -80,6 +81,15 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     };
   }, []);
 
+  // Reset image visibility when URL changes
+  useEffect(() => {
+    if (imageUrl) {
+      console.log('[ImageDisplay] URL changed, resetting image visibility state');
+      setIsImageVisible(false);
+      setHasLoadError(false);
+    }
+  }, [imageUrl]);
+
   const handleDoubleClick = (e: React.MouseEvent) => {
     // Prevent event bubbling and default behavior
     e.stopPropagation();
@@ -111,6 +121,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const handleImageLoadError = (e: React.SyntheticEvent<HTMLImageElement>) => {
     console.error('[ImageDisplay] Image failed to load:', imageUrl);
     setHasLoadError(true);
+    setIsImageVisible(false);
     
     // Show toast with more info
     toast.error(`Failed to load image: ${imageUrl?.split('/').pop() || 'unknown'}`);
@@ -138,6 +149,13 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     
     // Call the original error handler
     onImageError();
+  };
+
+  // Handle successful image load
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    console.log('[ImageDisplay] Image loaded successfully:', imageUrl);
+    setIsImageVisible(true);
+    setHasLoadError(false);
   };
 
   // Metadata display styles
@@ -203,9 +221,13 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
             ref={imageRef}
             src={imageUrl}
             alt=""
-            style={isTransitioning ? newImageStyle : imageStyle}
+            style={{
+              ...isTransitioning ? newImageStyle : imageStyle,
+              opacity: isImageVisible ? 1 : 0,
+              transition: 'opacity 0.3s ease-in-out'
+            }}
             onError={handleImageLoadError}
-            onLoad={() => console.log('[ImageDisplay] Image loaded successfully:', imageUrl)}
+            onLoad={handleImageLoad}
             crossOrigin="anonymous"
           />
           
