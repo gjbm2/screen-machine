@@ -56,6 +56,16 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   isRolledUp = false,
   isExpandedMain = false
 }) => {
+  // Add validation to ensure image has the required properties
+  if (!image || !image.url) {
+    console.error("ImageBatchItem received invalid image data:", image);
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-gray-100 rounded-md">
+        <p className="text-sm text-gray-500">Image data unavailable</p>
+      </div>
+    );
+  }
+
   const {
     isHovered,
     setIsHovered,
