@@ -8,24 +8,13 @@ export const useImageDisplayState = (
   generatedImages: any[],
   isLoading: boolean
 ) => {
-  // Initialize with all containers expanded by default
+  // Initialize state
   const [viewMode, setViewMode] = useState<'normal' | 'small' | 'table'>('normal');
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
   const [allImagesFlat, setAllImagesFlat] = useState<any[]>([]);
 
-  // Initialize all containers as expanded when container order changes
-  useEffect(() => {
-    if (imageContainerOrder.length > 0) {
-      const expanded: Record<string, boolean> = {};
-      imageContainerOrder.forEach(batchId => {
-        expanded[batchId] = true; // Set all containers to expanded by default
-      });
-      setExpandedContainers(prev => ({
-        ...prev,
-        ...expanded
-      }));
-    }
-  }, [imageContainerOrder]);
+  // REMOVING the effect that expands all containers automatically
+  // This was causing all containers to unroll when container order changed
 
   const { 
     showFullScreenView, 

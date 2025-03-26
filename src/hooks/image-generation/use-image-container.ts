@@ -16,6 +16,8 @@ export const useImageContainer = () => {
   }, []);
 
   const handleAddNewContainer = useCallback((batchId: string) => {
+    // Simply add the new container to the beginning of the order
+    // without modifying expanded state
     setImageContainerOrder(prev => [batchId, ...prev]);
   }, []);
 
