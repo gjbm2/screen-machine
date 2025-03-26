@@ -56,7 +56,7 @@ const Display = () => {
 
   // Add controlled debug logging
   useEffect(() => {
-    if (__DEV__) {
+    if (import.meta.env.DEV) {
       limitedLog('[Display] Component rendered with imageUrl:', imageUrl);
       limitedLog('[Display] Is mobile device:', isMobile);
     }
