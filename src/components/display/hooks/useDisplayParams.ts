@@ -31,9 +31,19 @@ export const useDisplayParams = () => {
   const rawOutput = searchParams.get('output');
   console.log('[useDisplayParams] Raw output param from URL:', rawOutput);
   
-  // Decode the output parameter
-  const decodedOutput = decodeComplexOutputParam(rawOutput);
-  console.log('[useDisplayParams] Decoded output param:', decodedOutput);
+  // Decode the output parameter - improved handling
+  let decodedOutput = null;
+  if (rawOutput) {
+    if (rawOutput.startsWith('http://') || rawOutput.startsWith('https://')) {
+      // Already a valid URL, use as-is
+      decodedOutput = rawOutput;
+      console.log('[useDisplayParams] Output is already a valid URL:', decodedOutput);
+    } else {
+      // Needs decoding
+      decodedOutput = decodeComplexOutputParam(rawOutput);
+      console.log('[useDisplayParams] Decoded output param:', decodedOutput);
+    }
+  }
   
   // Construct the display parameters from the URL
   const displayParams: DisplayParams = {
