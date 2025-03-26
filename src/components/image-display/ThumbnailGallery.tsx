@@ -1,21 +1,16 @@
-import React, { useState, useRef, TouchEvent } from 'react';
-import { Card } from '@/components/ui/card';
+
+import React from 'react';
+import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
-import NewVariantPlaceholder from './NewVariantPlaceholder';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ThumbnailGalleryProps {
-  images: Array<{
-    url: string;
-    prompt?: string;
-    workflow: string;
-    batchIndex?: number;
-    params?: Record<string, any>;
-  }>;
+  images: any[];
   batchId: string;
   activeIndex: number;
   onThumbnailClick: (index: number) => void;
   onDeleteImage: (batchId: string, index: number) => void;
-  onCreateAgain: (batchId: string) => void;
+  onCreateAgain?: () => void;
 }
 
 const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
@@ -26,76 +21,48 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
   onDeleteImage,
   onCreateAgain
 }) => {
-  const touchRef = useRef<HTMLDivElement | null>(null);
-  const [startX, setStartX] = useState<number | null>(null);
-
-  if (!images || images.length === 0) {
-    return null;
-  }
-
-  const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
-    setStartX(e.touches[0].clientX);
-  };
-
-  const handleTouchEnd = (e: TouchEvent<HTMLDivElement>) => {
-    if (startX === null) return;
-    
-    const endX = e.changedTouches[0].clientX;
-    const diff = startX - endX;
-    
-    if (Math.abs(diff) > 30) {
-      if (diff > 0 && activeIndex < images.length - 1) {
-        onThumbnailClick(activeIndex + 1);
-      } else if (diff < 0 && activeIndex > 0) {
-        onThumbnailClick(activeIndex - 1);
-      }
-    }
-    
-    setStartX(null);
-  };
-
+  const isMobile = useIsMobile();
+  
+  // If no images, don't render
+  if (!images || images.length <= 1) return null;
+  
+  // Determine grid columns based on device
+  const gridCols = isMobile ? 'grid-cols-4' : 'grid-cols-6 md:grid-cols-8';
+  
   return (
-    <div 
-      ref={touchRef}
-      className="flex flex-wrap gap-2 w-full pb-2"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
+    <div className={`grid ${gridCols} gap-1 mt-1`}>
       {images.map((image, index) => (
-        <Card 
-          key={`${batchId}-${index}`}
-          className={`overflow-hidden cursor-pointer transition-all flex-shrink-0 w-[150px] ${
-            activeIndex === index ? 'ring-2 ring-primary' : ''
-          }`}
+        <div 
+          key={`${batchId}-thumb-${index}`}
+          className={`relative aspect-square cursor-pointer rounded overflow-hidden border-2 ${activeIndex === index ? 'border-primary' : 'border-transparent'}`}
           onClick={() => onThumbnailClick(index)}
         >
-          <div className="aspect-square relative group">
-            <img
-              src={image.url}
-              alt={`Batch image ${index + 1}`}
-              className="w-full h-full object-cover"
-            />
-            
-            <button 
-              className="absolute bottom-1 right-1 bg-black/70 hover:bg-black/90 rounded-full p-1 text-white transition-colors z-20"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDeleteImage(batchId, index);
-              }}
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
-            
-            {images.length > 1 && (
-              <div className="absolute top-1 left-1 bg-black/70 text-white px-2 py-0.5 rounded-full text-xs">
-                {index + 1}/{images.length}
+          {image.url && (
+            <div className="relative group w-full h-full">
+              <img 
+                src={image.url} 
+                alt={image.prompt || `Generated image ${index + 1}`}
+                className="w-full h-full object-cover"
+              />
+              
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-200 opacity-0 group-hover:opacity-100">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute bottom-0 right-0 h-6 w-6 bg-black/70 hover:bg-red-600/80 text-white rounded-tl rounded-br-none"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteImage(batchId, index);
+                  }}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
               </div>
-            )}
-          </div>
-        </Card>
+            </div>
+          )}
+        </div>
       ))}
-      
-      <NewVariantPlaceholder batchId={batchId} onClick={onCreateAgain} className="flex-shrink-0 w-[150px]" />
     </div>
   );
 };
