@@ -47,8 +47,8 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
   };
 
   const buttonClass = isRolledUp
-    ? 'bg-white/20 hover:bg-white/30 text-white h-8 w-auto p-1.5 rounded-full text-xs'
-    : 'bg-white/20 hover:bg-white/30 text-white h-9 px-3 py-2 rounded-full text-xs';
+    ? 'bg-white/20 hover:bg-white/30 text-white h-8 w-auto p-1.5 rounded-full text-xs image-action-button'
+    : 'bg-white/20 hover:bg-white/30 text-white h-9 px-3 py-2 rounded-full text-xs image-action-button';
 
   return (
     <DropdownMenu>
