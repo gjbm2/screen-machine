@@ -111,15 +111,16 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
           />
         )}
         
-        {onFullScreen && (
+        {/* Change the fullscreen button to use onUseAsInput handler instead */}
+        {onUseAsInput && (
           <Button
             type="button"
             variant="ghost"
             className={`bg-white/20 hover:bg-white/30 text-white rounded-full ${buttonSizeClass} image-action-button`}
-            onClick={onFullScreen}
-            aria-label="View fullscreen"
+            onClick={onUseAsInput}
+            aria-label="Use as Input"
           >
-            <span className="sr-only">View fullscreen</span>
+            <span className="sr-only">Use as Input</span>
           </Button>
         )}
         

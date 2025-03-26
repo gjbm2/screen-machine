@@ -43,8 +43,8 @@ export const useImageBatchItemActions = ({
     // We no longer roll up the batch when creating again (removed this behavior)
   }, [batchId, onCreateAgain]);
   
-  // Add aliases for the functions that are expected in useImageBatchItem
-  const handleFullScreen = handleImageClick;
+  // Change the full screen handler to use the same action as handleUseAsInput
+  const handleFullScreen = handleUseAsInput;
   const handleDeleteImage = handleDelete;
   const handleDeleteFromPanel = handleDelete;
   
