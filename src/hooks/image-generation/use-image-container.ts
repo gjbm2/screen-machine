@@ -18,16 +18,21 @@ export const useImageContainer = () => {
   const handleAddNewContainer = useCallback((batchId: string) => {
     // When adding a new container, collapse all existing ones and expand the new one
     setExpandedContainers(prev => {
+      // Create a new state object that collapses all existing containers
       const newState = { ...prev };
+      
       // Collapse all existing containers
       Object.keys(newState).forEach(key => {
         newState[key] = false;
       });
+      
       // Expand only the new container
       newState[batchId] = true;
+      
       return newState;
     });
     
+    // Add the new batch to the beginning of the order
     setImageContainerOrder(prev => [batchId, ...prev]);
   }, []);
 
