@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, TouchEvent } from 'react';
 import { Card } from '@/components/ui/card';
 import { Trash2 } from 'lucide-react';
@@ -10,6 +11,7 @@ interface ThumbnailGalleryProps {
     workflow: string;
     batchIndex?: number;
     params?: Record<string, any>;
+    status?: string;
   }>;
   batchId: string;
   activeIndex: number;
@@ -32,6 +34,9 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
   if (!images || images.length === 0) {
     return null;
   }
+  
+  // Check if any images in this batch are currently generating
+  const isGenerating = images.some(img => img.status === 'generating');
 
   const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
     setStartX(e.touches[0].clientX);
@@ -64,7 +69,7 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
       {images.map((image, index) => (
         <Card 
           key={`${batchId}-${index}`}
-          className={`overflow-hidden cursor-pointer transition-all flex-shrink-0 w-[150px] ${
+          className={`overflow-hidden cursor-pointer transition-all flex-shrink-0 w-[150px] md:w-[150px] ${
             activeIndex === index ? 'ring-2 ring-primary' : ''
           }`}
           onClick={() => onThumbnailClick(index)}
@@ -95,7 +100,12 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
         </Card>
       ))}
       
-      <NewVariantPlaceholder batchId={batchId} onClick={onCreateAgain} className="flex-shrink-0 w-[150px]" />
+      <NewVariantPlaceholder 
+        batchId={batchId} 
+        onClick={onCreateAgain} 
+        className="flex-shrink-0 w-[150px] md:w-[150px]" 
+        isGenerating={isGenerating} 
+      />
     </div>
   );
 };

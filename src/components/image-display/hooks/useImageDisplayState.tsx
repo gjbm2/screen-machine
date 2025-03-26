@@ -13,17 +13,23 @@ export const useImageDisplayState = (
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
   const [allImagesFlat, setAllImagesFlat] = useState<any[]>([]);
 
-  // Initialize all containers as expanded when container order changes
+  // Initialize containers - for any new container that doesn't have a state yet, 
+  // we'll set it to expanded by default
   useEffect(() => {
     if (imageContainerOrder.length > 0) {
-      const expanded: Record<string, boolean> = {};
-      imageContainerOrder.forEach(batchId => {
-        expanded[batchId] = true; // Set all containers to expanded by default
+      setExpandedContainers(prev => {
+        const newState = { ...prev };
+        
+        // Check each container in the order
+        imageContainerOrder.forEach(batchId => {
+          // If this container doesn't have a state yet, set it to expanded
+          if (newState[batchId] === undefined) {
+            newState[batchId] = true;
+          }
+        });
+        
+        return newState;
       });
-      setExpandedContainers(prev => ({
-        ...prev,
-        ...expanded
-      }));
     }
   }, [imageContainerOrder]);
 
@@ -136,6 +142,7 @@ export const useImageDisplayState = (
     viewMode,
     setViewMode,
     expandedContainers,
+    setExpandedContainers,
     allImagesFlat,
     showFullScreenView,
     setShowFullScreenView,

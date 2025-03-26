@@ -1,29 +1,34 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Plus, Loader } from 'lucide-react';
-import LoadingPlaceholder from './LoadingPlaceholder';
 
 interface NewVariantPlaceholderProps {
   batchId: string;
   onClick: (batchId: string) => void;
   className?: string;
+  isGenerating?: boolean;
 }
 
 const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({
   batchId,
   onClick,
-  className = ''
+  className = '',
+  isGenerating = false
 }) => {
   const [isClicked, setIsClicked] = useState(false);
+  
+  // Reset clicked state when isGenerating changes from true to false
+  useEffect(() => {
+    if (!isGenerating && isClicked) {
+      setIsClicked(false);
+    }
+  }, [isGenerating, isClicked]);
   
   const handleClick = () => {
     if (isClicked) return; // Prevent multiple clicks
     setIsClicked(true);
     onClick(batchId);
-    
-    // No longer resetting isClicked automatically - it will remain showing the spinner
-    // until the parent component re-renders with the new image
   };
 
   return (
@@ -32,7 +37,7 @@ const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({
       onClick={handleClick}
     >
       <div className="aspect-square relative group flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors">
-        {isClicked ? (
+        {isClicked || isGenerating ? (
           <div className="flex items-center justify-center">
             <Loader className="h-6 w-6 animate-spin text-primary" />
           </div>
