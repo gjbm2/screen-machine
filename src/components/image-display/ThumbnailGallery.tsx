@@ -1,7 +1,9 @@
+
 import React, { useState, useRef, TouchEvent } from 'react';
 import { Card } from '@/components/ui/card';
 import { Trash2 } from 'lucide-react';
 import NewVariantPlaceholder from './NewVariantPlaceholder';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ThumbnailGalleryProps {
   images: Array<{
@@ -28,6 +30,7 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
 }) => {
   const touchRef = useRef<HTMLDivElement | null>(null);
   const [startX, setStartX] = useState<number | null>(null);
+  const isMobile = useIsMobile();
 
   if (!images || images.length === 0) {
     return null;
@@ -54,6 +57,10 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
     setStartX(null);
   };
 
+  // Set thumbnail width based on mobile status
+  // On mobile: make thumbnails smaller (about half the original size)
+  const thumbnailWidth = isMobile ? 'w-[75px]' : 'w-[150px]';
+
   return (
     <div 
       ref={touchRef}
@@ -64,7 +71,7 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
       {images.map((image, index) => (
         <Card 
           key={`${batchId}-${index}`}
-          className={`overflow-hidden cursor-pointer transition-all flex-shrink-0 w-[150px] ${
+          className={`overflow-hidden cursor-pointer transition-all flex-shrink-0 ${thumbnailWidth} ${
             activeIndex === index ? 'ring-2 ring-primary' : ''
           }`}
           onClick={() => onThumbnailClick(index)}
@@ -95,7 +102,7 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
         </Card>
       ))}
       
-      <NewVariantPlaceholder batchId={batchId} onClick={onCreateAgain} className="flex-shrink-0 w-[150px]" />
+      <NewVariantPlaceholder batchId={batchId} onClick={onCreateAgain} className={`flex-shrink-0 ${thumbnailWidth}`} />
     </div>
   );
 };
