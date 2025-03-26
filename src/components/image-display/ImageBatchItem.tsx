@@ -127,7 +127,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           type="button"
           variant="ghost"
           className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 text-white h-8 w-8 p-1 rounded-full z-30"
-          onClick={handleFullScreen}
+          onClick={(e) => handleFullScreen(e)}
           aria-label="View fullscreen"
         >
           <Maximize className="h-4 w-4" />

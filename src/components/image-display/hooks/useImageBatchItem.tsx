@@ -64,9 +64,9 @@ export const useImageBatchItem = ({
   });
 
   // Handle download action
-  const handleDownload = (e: React.MouseEvent) => {
+  const handleDownload = (e?: React.MouseEvent) => {
     if (!image.url) return;
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     
     // Use title if available, otherwise generate filename from timestamp
     const titleToUse = image.title || null;
