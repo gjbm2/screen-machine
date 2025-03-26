@@ -36,9 +36,15 @@ export const publishImage = async (
     try {
       // Check if Web Share API is available
       if (navigator.share) {
+        // For Web Share API Level 2 support - get image as blob and share as file
         try {
-          // For Web Share API Level 2 support - get image as blob and share as file
-          const imageBlob = await fetch(imageUrl).then(response => response.blob());
+          const response = await fetch(imageUrl);
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+          }
+          
+          const imageBlob = await response.blob();
           
           // Create a File object from the Blob
           // Extract filename from URL or use a default name with timestamp
@@ -72,9 +78,10 @@ export const publishImage = async (
           
           // If share fails or is denied, fall back to clipboard
           if (error instanceof Error && error.name !== 'AbortError') {
-            await fallbackToClipboard(imageUrl);
+            return await fallbackToClipboard(imageUrl);
           }
-          return true;
+          
+          return false;
         }
       } else {
         // Fallback to clipboard if Web Share API not available
