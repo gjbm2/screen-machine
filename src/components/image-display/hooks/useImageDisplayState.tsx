@@ -126,6 +126,7 @@ export const useImageDisplayState = (
     viewMode,
     setViewMode,
     expandedContainers,
+    setExpandedContainers, // Add this to fix the error
     allImagesFlat,
     showFullScreenView,
     setShowFullScreenView,
