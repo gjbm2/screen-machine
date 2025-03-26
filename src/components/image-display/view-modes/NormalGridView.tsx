@@ -1,64 +1,67 @@
 
 import React from 'react';
 import ImageBatch from '../ImageBatch';
+import { Button } from '@/components/ui/card';
+import LoadingPlaceholder from '../LoadingPlaceholder';
 
 interface NormalGridViewProps {
-  imageContainerOrder: string[];
+  sortedContainerIds: string[];
   batches: Record<string, any[]>;
   expandedContainers: Record<string, boolean>;
-  toggleExpand: (batchId: string) => void;
+  handleToggleExpand: (batchId: string) => void;
   onUseGeneratedAsInput: (url: string) => void;
   onCreateAgain: (batchId?: string) => void;
   onDeleteImage: (batchId: string, index: number) => void;
   onDeleteContainer: (batchId: string) => void;
   onFullScreenClick: (image: any) => void;
   imageUrl: string | null;
+  isLoading: boolean;
+  activeGenerations?: string[]; // Add activeGenerations prop
 }
 
 const NormalGridView: React.FC<NormalGridViewProps> = ({
-  imageContainerOrder,
+  sortedContainerIds,
   batches,
   expandedContainers,
-  toggleExpand,
+  handleToggleExpand,
   onUseGeneratedAsInput,
   onCreateAgain,
   onDeleteImage,
   onDeleteContainer,
   onFullScreenClick,
-  imageUrl
+  imageUrl,
+  isLoading,
+  activeGenerations = [] // Default to empty array
 }) => {
   return (
-    <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1">
-      {imageContainerOrder.map((batchId) => {
-        if (!batches[batchId]) return null;
+    <div className="flex flex-col gap-4 mb-4">
+      {isLoading && sortedContainerIds.length === 0 && (
+        <LoadingPlaceholder />
+      )}
+      
+      {sortedContainerIds.map(batchId => {
+        const batchImages = batches[batchId] || [];
         
-        const hasGeneratingImages = batches[batchId].some(img => img.status === 'generating');
+        // Special check for any images that are in 'generating' state
+        const hasGeneratingImages = batchImages.some(img => img.status === 'generating');
         
         return (
-          <div key={batchId} id={batchId} className={expandedContainers[batchId] ? "col-span-full" : ""}>
-            <ImageBatch
-              batchId={batchId}
-              images={batches[batchId]}
-              isExpanded={!!expandedContainers[batchId]}
-              toggleExpand={toggleExpand}
-              onImageClick={(url, prompt) => {
-                // CRITICAL FIX: In normal view, DO NOT call fullscreen when image is clicked
-                // We're not forwarding to fullscreen anymore, just a no-op
-                console.log("Image clicked in normal view - NOT triggering fullscreen");
-              }}
-              onCreateAgain={() => onCreateAgain(batchId)}
-              onDeleteImage={onDeleteImage}
-              onDeleteContainer={() => onDeleteContainer(batchId)}
-              activeImageUrl={imageUrl}
-              viewMode="normal"
-              onFullScreenClick={(image) => {
-                if (image && image.batchId) {
-                  onFullScreenClick(image);
-                }
-              }}
-              hasGeneratingImages={hasGeneratingImages}
-            />
-          </div>
+          <ImageBatch
+            key={batchId}
+            batchId={batchId}
+            images={batchImages}
+            isExpanded={expandedContainers[batchId] || false}
+            toggleExpand={handleToggleExpand}
+            onImageClick={(url, prompt) => onUseGeneratedAsInput(url)}
+            onCreateAgain={() => onCreateAgain(batchId)}
+            onDeleteImage={onDeleteImage}
+            onDeleteContainer={() => onDeleteContainer(batchId)}
+            onFullScreenClick={onFullScreenClick}
+            activeImageUrl={imageUrl}
+            viewMode="normal"
+            hasGeneratingImages={hasGeneratingImages}
+            activeGenerations={activeGenerations} // Pass activeGenerations to ImageBatch
+          />
         );
       })}
     </div>
