@@ -29,6 +29,9 @@ const Index = () => {
   const [selectedRefiner, setSelectedRefiner] = useState('none');
   const [refinerParams, setRefinerParams] = useState<Record<string, any>>({});
   
+  // Add state for publish destination
+  const [selectedPublish, setSelectedPublish] = useState('none');
+  
   // Add logging for debugging the advanced panel issue
   useEffect(() => {
     console.log('Advanced options panel open state:', advancedOptionsOpen);
@@ -125,11 +128,9 @@ const Index = () => {
     // Check for publish parameter
     const publishParam = searchParams.get('publish');
     if (publishParam) {
-      // Update the params to include publish destination
-      setCurrentParams(prev => ({
-        ...prev,
-        publish_destination: publishParam
-      }));
+      // Set the selected publish destination
+      setSelectedPublish(publishParam);
+      
       addConsoleLog({
         type: 'info',
         message: `URL parameter: publish=${publishParam}`
@@ -234,7 +235,7 @@ const Index = () => {
             currentGlobalParams,
             refinerParam || selectedRefiner,
             { ...refinerParams, ...refinerParamsObj },
-            publishParam
+            publishParam || selectedPublish
           );
           
           // Remove the run parameter from URL to prevent re-running on page refresh
@@ -280,6 +281,12 @@ const Index = () => {
     }));
   }, []);
 
+  // Handler for publish changes
+  const handlePublishChange = useCallback((publishId: string) => {
+    console.log('Index: Publish destination changed to:', publishId);
+    setSelectedPublish(publishId);
+  }, []);
+
   // Handler for prompt submission
   const handlePromptSubmit = async (
     prompt: string,
@@ -312,6 +319,11 @@ const Index = () => {
       // Update refiner state if provided from prompt form
       if (refiner) {
         setSelectedRefiner(refiner);
+      }
+      
+      // Update publish state if provided from prompt form
+      if (publish) {
+        setSelectedPublish(publish);
       }
       
       // Create a copy of the params to avoid mutation issues
@@ -353,7 +365,8 @@ const Index = () => {
         effectiveParams, 
         globalParams, 
         refiner, 
-        refinerParams
+        refinerParams,
+        publish
       );
     } catch (error) {
       console.error('Error submitting prompt:', error);
@@ -382,12 +395,14 @@ const Index = () => {
           // Pass additional props to reflect current state
           selectedWorkflow={currentWorkflow}
           selectedRefiner={selectedRefiner}
+          selectedPublish={selectedPublish}
           workflowParams={currentParams}
           refinerParams={refinerParams}
           globalParams={currentGlobalParams}
           // Add handlers for workflow and refiner changes from prompt form
           onWorkflowChange={setCurrentWorkflow}
           onRefinerChange={handleRefinerChange}
+          onPublishChange={handlePublishChange}
         />
         
         <ImageDisplay 
