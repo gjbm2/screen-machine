@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useDisplayState } from '@/components/display/hooks/useDisplayState';
@@ -76,7 +75,7 @@ export const useDisplayPage = () => {
   }, [displayParams]);
 
   // Process output parameter if present
-  useOutputProcessor(displayParams);
+  const { processedUrl } = useOutputProcessor(displayParams);
 
   // Initialize display state with core functionality
   const {
@@ -90,6 +89,7 @@ export const useDisplayPage = () => {
     outputFiles,
     setOutputFiles,
     imageChanged,
+    setImageChanged,
     metadata,
     isLoading,
     processedCaption,
@@ -108,6 +108,32 @@ export const useDisplayPage = () => {
   } = useDisplayState(previewParams);
   
   console.log('[useDisplayPage] Current imageUrl from displayState:', imageUrl);
+  console.log('[useDisplayPage] Processed URL from useOutputProcessor:', processedUrl);
+
+  // Update imageUrl when processedUrl changes
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    
+    if (processedUrl && processedUrl !== imageUrl) {
+      console.log('[useDisplayPage] Setting image URL from processed URL:', processedUrl);
+      setImageUrl(processedUrl);
+      
+      // Update imageKey to force re-render
+      setImageKey(prev => {
+        const newKey = prev + 1;
+        console.log('[useDisplayPage] Incrementing image key to:', newKey);
+        return newKey;
+      });
+      
+      // Set flag to prevent reprocessing
+      hasProcessedOutputRef.current = true;
+      
+      // Show toast notification
+      const filename = processedUrl.split('/').pop() || processedUrl;
+      const displayName = filename.length > 30 ? filename.substring(0, 27) + '...' : filename;
+      toast.success(`Displaying image: ${displayName}`);
+    }
+  }, [processedUrl, imageUrl, setImageUrl, setImageKey]);
 
   // Debug mode redirection handling
   const { checkDebugRedirection, userExplicitlyExitedDebugRef } = useDebugRedirection(displayParams, redirectToDebugMode);
@@ -133,7 +159,7 @@ export const useDisplayPage = () => {
     }
   }, [userExplicitlyExitedDebugRef, displayParams.debugMode]);
 
-  // Process output parameter on first detection
+  // Process output parameter on first detection - keeping for backward compatibility
   useEffect(() => {
     if (!mountedRef.current) return;
     
@@ -143,34 +169,29 @@ export const useDisplayPage = () => {
       locationSearch: location.search
     });
     
-    if (displayParams.output && !hasProcessedOutputRef.current) {
-      console.log('[useDisplayPage] Processing output parameter:', displayParams.output);
-      hasProcessedOutputRef.current = true;
+    if (displayParams.output && !hasProcessedOutputRef.current && !processedUrl) {
+      console.log('[useDisplayPage] Processing output parameter in legacy handler:', displayParams.output);
       
-      // Fix #2: Different handling for external URLs vs local paths
+      // Keep this logic for backwards compatibility
       const decodedOutput = decodeComplexOutputParam(displayParams.output);
-      console.log('[useDisplayPage] Decoded output:', decodedOutput);
+      console.log('[useDisplayPage] Legacy decoded output:', decodedOutput);
       
       if (decodedOutput && (decodedOutput.startsWith('http://') || decodedOutput.startsWith('https://'))) {
-        console.log('[useDisplayPage] Setting direct URL:', decodedOutput);
+        console.log('[useDisplayPage] Legacy setting direct URL:', decodedOutput);
         setImageUrl(decodedOutput);
       } else if (decodedOutput) {
         const normalizedPath = normalizePathForDisplay(decodedOutput);
-        console.log('[useDisplayPage] Setting normalized path:', normalizedPath);
+        console.log('[useDisplayPage] Legacy setting normalized path:', normalizedPath);
         setImageUrl(normalizedPath);
       }
       
       setImageKey(prev => {
         const newKey = prev + 1;
-        console.log('[useDisplayPage] Incrementing image key to:', newKey);
+        console.log('[useDisplayPage] Legacy incrementing image key to:', newKey);
         return newKey;
       });
-      
-      const filename = displayParams.output.split('/').pop() || displayParams.output;
-      const displayName = filename.length > 30 ? filename.substring(0, 27) + '...' : filename;
-      toast.success(`Displaying image: ${displayName}`);
     }
-  }, [displayParams.output, setImageUrl, setImageKey, location.search]);
+  }, [displayParams.output, processedUrl, setImageUrl, setImageKey, location.search]);
 
   // Reset output processing flag when URL changes
   useEffect(() => {
@@ -265,35 +286,16 @@ export const useDisplayPage = () => {
     if (initialRenderRef.current && displayParams.output) {
       console.log('[useDisplayPage] Initial render with output param:', displayParams.output);
       initialRenderRef.current = false;
-      
-      setTimeout(() => {
-        if (mountedRef.current) {
-          console.log('[useDisplayPage] Processing initial render output param:', displayParams.output);
-          
-          if (displayParams.output && displayParams.output.startsWith('http')) {
-            console.log('[useDisplayPage] Initial render - setting direct URL:', displayParams.output);
-            setImageUrl(displayParams.output);
-          } else if (displayParams.output) {
-            const normalizedPath = normalizePathForDisplay(displayParams.output);
-            console.log('[useDisplayPage] Initial render - setting normalized path:', normalizedPath);
-            setImageUrl(normalizedPath);
-          }
-          setImageKey(prev => {
-            const newKey = prev + 1;
-            console.log('[useDisplayPage] Incrementing initial image key to:', newKey);
-            return newKey;
-          });
-        }
-      }, 100);
     }
-  }, [displayParams.output, setImageUrl, setImageKey]);
+  }, [displayParams.output]);
 
   // Debugging code to force image URL reload when it should be present but isn't
   useEffect(() => {
-    if (mountedRef.current && displayParams.output && !imageUrl) {
+    if (mountedRef.current && displayParams.output && !imageUrl && !isLoading) {
       console.log('[useDisplayPage] DEBUG: Output param present but imageUrl is null:', {
         output: displayParams.output,
         imageUrl,
+        processedUrl,
         hasProcessedOutputRef: hasProcessedOutputRef.current
       });
       
@@ -303,7 +305,7 @@ export const useDisplayPage = () => {
         hasProcessedOutputRef.current = false;
       }
     }
-  }, [displayParams.output, imageUrl]);
+  }, [displayParams.output, imageUrl, processedUrl, isLoading]);
 
   // Return all necessary state and functions
   return {

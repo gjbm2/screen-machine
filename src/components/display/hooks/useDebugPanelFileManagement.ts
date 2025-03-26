@@ -51,8 +51,15 @@ export const useDebugPanelFileManagement = ({
     return () => {
       console.log('[useDebugPanelFileManagement] Executing navigation function for:', outputPath);
       
-      // Navigate to the URL
-      navigate(`/display${url}`, { replace: true });
+      // Direct URL construction for external URLs to prevent double encoding
+      if (outputPath.startsWith('http')) {
+        const directUrl = `/display?output=${encodeURIComponent(outputPath)}&debug=true`;
+        console.log('[useDebugPanelFileManagement] Using direct URL construction for external URL:', directUrl);
+        navigate(directUrl, { replace: true });
+      } else {
+        // Normal navigation for local paths
+        navigate(`/display${url}`, { replace: true });
+      }
       
       // Force a refresh after navigation to ensure the image loads
       setTimeout(() => {
@@ -63,12 +70,10 @@ export const useDebugPanelFileManagement = ({
         console.log('[useDebugPanelFileManagement] Current output param:', currentOutput);
         console.log('[useDebugPanelFileManagement] Expected output param:', outputPath);
         
-        // Add additional logging for debugging
-        if (currentOutput !== outputPath && currentOutput !== encodeURIComponent(outputPath)) {
-          console.warn('[useDebugPanelFileManagement] Output parameter mismatch after navigation');
-          console.log('  Expected:', outputPath);
-          console.log('  Actual:', currentOutput);
-          console.log('  Encoded expected:', encodeURIComponent(outputPath));
+        // Try to force a reload if parameters aren't as expected
+        if (outputPath.startsWith('http') && currentOutput !== outputPath) {
+          console.log('[useDebugPanelFileManagement] Forcing reload for external URL');
+          window.location.reload();
         }
       }, 300);
     };

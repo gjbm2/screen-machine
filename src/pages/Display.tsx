@@ -6,7 +6,6 @@ import { ErrorMessage } from '@/components/display/ErrorMessage';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDisplayParams } from '@/components/display/hooks/useDisplayParams';
 import { DisplayStateProvider, useDisplayStateContext } from '@/components/display/context/DisplayStateContext';
-import { ShowMode, PositionMode, CaptionPosition, TransitionType } from '@/components/display/types';
 
 // Inner component that uses the context
 const DisplayContent = () => {
@@ -36,7 +35,7 @@ const DisplayContent = () => {
     handleImageError,
     isChecking,
     isLoadingMetadata,
-    debugMode
+    params
   } = useDisplayStateContext();
   
   // Only log in development mode and limit frequency
@@ -75,31 +74,15 @@ const DisplayContent = () => {
   useEffect(() => {
     limitedLog('[Display] Component rendered with imageUrl:', imageUrl);
     limitedLog('[Display] Is mobile device:', isMobile);
+    limitedLog('[Display] Current params:', params);
     // Only re-run when these values change
-  }, [imageUrl, isMobile, limitedLog]);
+  }, [imageUrl, isMobile, limitedLog, params]);
   
   if (error) {
     return <ErrorMessage message={error} backgroundColor="#000000" />;
   }
   
-  // Get display params from context for the DisplayMode component
-  const params = {
-    debugMode,
-    output: imageUrl,
-    showMode: 'contain' as ShowMode,
-    position: 'center' as PositionMode,
-    refreshInterval: 30,
-    backgroundColor: '#000000',
-    caption: processedCaption,
-    captionPosition: 'bottom-center' as CaptionPosition,
-    captionSize: 'medium',
-    captionColor: '#ffffff',
-    captionFont: 'sans',
-    captionBgColor: '#000000',
-    captionBgOpacity: 0.5,
-    transition: 'fade' as TransitionType
-  };
-
+  // Pass the actual params from context instead of hardcoded values
   return (
     <DisplayContainer params={params}>
       <DisplayMode 
@@ -133,6 +116,8 @@ const DisplayContent = () => {
 const Display = () => {
   const { displayParams } = useDisplayParams();
   
+  console.log('[Display] Main component rendered with displayParams:', displayParams);
+  
   return (
     <DisplayStateProvider params={displayParams}>
       <DisplayContent />
@@ -141,4 +126,3 @@ const Display = () => {
 };
 
 export default Display;
-
