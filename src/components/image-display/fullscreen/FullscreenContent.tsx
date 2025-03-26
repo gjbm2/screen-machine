@@ -1,6 +1,8 @@
 
 import React from 'react';
 import ImageDetailView from '../ImageDetailView';
+import { useIsMobile } from '@/hooks/use-mobile';
+import DetailViewTouchHandler from '../detail-view/DetailViewTouchHandler';
 
 interface FullscreenContentProps {
   batchId: string;
@@ -35,6 +37,8 @@ const FullscreenContent: React.FC<FullscreenContentProps> = ({
   onImageClick,
   onClose
 }) => {
+  const isMobile = useIsMobile();
+  
   // Filter completed images
   const completedImages = currentBatch.filter(img => img.status === 'completed');
   
@@ -64,7 +68,19 @@ const FullscreenContent: React.FC<FullscreenContentProps> = ({
     console.log('FullscreenContent: Selected image has batchIndex:', completedImages[activeArrayIndex].batchIndex);
   }
   
-  return (
+  // Handle swipe events for mobile navigation
+  const handleSwipeLeft = () => {
+    console.log('FullscreenContent: Swipe left detected, navigating to next image');
+    onNavigateNext({} as React.MouseEvent);
+  };
+
+  const handleSwipeRight = () => {
+    console.log('FullscreenContent: Swipe right detected, navigating to previous image');
+    onNavigatePrev({} as React.MouseEvent);
+  };
+  
+  // Create the content to be rendered
+  const contentView = (
     <div className="flex-grow overflow-hidden flex flex-col min-h-0 min-w-0 w-auto">
       <ImageDetailView
         batchId={batchId}
@@ -93,6 +109,21 @@ const FullscreenContent: React.FC<FullscreenContentProps> = ({
       />
     </div>
   );
+  
+  // On mobile, wrap the content with the touch handler for swipe navigation
+  if (isMobile) {
+    return (
+      <DetailViewTouchHandler
+        onSwipeLeft={handleSwipeLeft}
+        onSwipeRight={handleSwipeRight}
+      >
+        {contentView}
+      </DetailViewTouchHandler>
+    );
+  }
+  
+  // On desktop, just return the content without touch handling
+  return contentView;
 };
 
 export default FullscreenContent;
