@@ -28,6 +28,7 @@ export const useImageBatchItemActions = ({
   
   const handleUseAsInput = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    console.log('Using image as input:', imageUrl);
     onUseGeneratedAsInput(imageUrl);
   }, [imageUrl, onUseGeneratedAsInput]);
   
@@ -43,8 +44,12 @@ export const useImageBatchItemActions = ({
     // We no longer roll up the batch when creating again (removed this behavior)
   }, [batchId, onCreateAgain]);
   
-  // Change the full screen handler to use the same action as handleUseAsInput
-  const handleFullScreen = handleUseAsInput;
+  // Use the fullscreen handler for opening the fullscreen view
+  const handleFullScreen = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onOpenFullscreenView(batchId, batchIndex);
+  }, [batchId, batchIndex, onOpenFullscreenView]);
+  
   const handleDeleteImage = handleDelete;
   const handleDeleteFromPanel = handleDelete;
   
