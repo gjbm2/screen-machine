@@ -11,6 +11,7 @@ export const useIntervalPoller = (
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const callbackRef = useRef(callback); // Store callback in ref to avoid dependency issues
   const lastRunRef = useRef<number>(0);
+  const isInitialRunDoneRef = useRef<boolean>(false);
   
   // Update callback ref when callback changes
   useEffect(() => {
@@ -18,11 +19,14 @@ export const useIntervalPoller = (
   }, [callback]);
   
   // Convert seconds to milliseconds for setTimeout
-  const intervalMs = Math.max(5, intervalSeconds) * 1000; // Minimum 5 seconds
+  const intervalMs = Math.max(30, intervalSeconds) * 1000; // Minimum 30 seconds
   
   // Function to start polling
   const startPolling = () => {
-    console.log('[useIntervalPoller] Starting polling with interval:', intervalSeconds, 'seconds');
+    // Only log when actually starting polling, not on every render
+    if (!isPolling) {
+      console.log('[useIntervalPoller] Starting polling with interval:', intervalSeconds, 'seconds');
+    }
     
     // Clear any existing interval first
     if (intervalRef.current) {
@@ -44,7 +48,7 @@ export const useIntervalPoller = (
         
         const now = Date.now();
         // Don't log this every time to reduce console spam
-        if (now - lastRunRef.current > 30000) { // Log only every 30 seconds
+        if (now - lastRunRef.current > 60000) { // Log only every 60 seconds
           console.log('[useIntervalPoller] Polling interval triggered');
         }
         
@@ -64,7 +68,10 @@ export const useIntervalPoller = (
   
   // Function to stop polling
   const stopPolling = () => {
-    console.log('[useIntervalPoller] Stopping polling');
+    // Only log when actually stopping polling
+    if (isPolling) {
+      console.log('[useIntervalPoller] Stopping polling');
+    }
     
     if (intervalRef.current) {
       clearTimeout(intervalRef.current);
@@ -76,16 +83,18 @@ export const useIntervalPoller = (
   
   // Handle the polling lifecycle based on enabled state
   useEffect(() => {
-    // Only log when enabled state changes
+    // Only run this effect when enabled changes or the component mounts
     if (enabled) {
-      console.log('[useIntervalPoller] Polling enabled with interval:', intervalSeconds);
       startPolling();
       
-      // Run the callback immediately on start
-      callbackRef.current();
-      lastRunRef.current = Date.now();
+      // Run the callback immediately on start if not done already
+      if (!isInitialRunDoneRef.current) {
+        console.log('[useIntervalPoller] Running initial poll');
+        callbackRef.current();
+        lastRunRef.current = Date.now();
+        isInitialRunDoneRef.current = true;
+      }
     } else if (isPolling) {
-      console.log('[useIntervalPoller] Polling disabled');
       stopPolling();
     }
     
@@ -96,15 +105,26 @@ export const useIntervalPoller = (
         intervalRef.current = null;
       }
     };
-  }, [enabled, intervalMs, isPolling, intervalSeconds]);
+  }, [enabled, intervalMs]);
   
-  // Additionally watch dependencies for immediate callback execution
+  // Additionally watch dependencies for immediate callback execution,
+  // but only if they actually change and have values
   useEffect(() => {
-    if (enabled && dependencies.length > 0) {
-      // Run callback when dependencies change but don't restart the polling
+    // Skip if dependencies array is empty or component isn't mounted
+    if (!dependencies.length || !enabled) return;
+    
+    // Check if enough time has passed to run again (avoid spam on rapid dependency changes)
+    const now = Date.now();
+    const timeSinceLastRun = now - lastRunRef.current;
+    
+    // Only run if at least 5 seconds have passed since last run
+    if (timeSinceLastRun >= 5000) {
+      console.log('[useIntervalPoller] Dependencies changed, running callback');
       callbackRef.current();
+      lastRunRef.current = now;
+      isInitialRunDoneRef.current = true;
     }
-  }, [...(Array.isArray(dependencies) ? dependencies : [])]);
+  }, dependencies);
   
   return {
     isPolling,

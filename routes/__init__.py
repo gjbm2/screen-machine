@@ -1,5 +1,6 @@
 
 import os
+import time
 from flask import Blueprint, jsonify, current_app, request
 
 routes_blueprint = Blueprint('routes', __name__)
@@ -8,7 +9,7 @@ routes_blueprint = Blueprint('routes', __name__)
 file_cache = {
     'last_check': 0,
     'files': [],
-    'expiry': 10  # Cache expiry in seconds
+    'expiry': 60  # Increase cache expiry to 60 seconds
 }
 
 @routes_blueprint.route('/api/output-files', methods=['GET'])
@@ -19,7 +20,7 @@ def get_output_files():
     
     try:
         # Check cache first to reduce file system operations
-        current_time = int(request.args.get('timestamp', 0)) or int(os.time() if hasattr(os, 'time') else 0)
+        current_time = int(time.time())
         cache_age = current_time - file_cache['last_check']
         
         # Return cached files if still valid
@@ -49,6 +50,7 @@ def get_output_files():
         else:
             current_app.logger.warning(f"Output directory '{output_dir}' does not exist or is not a directory")
         
+        # Always return a JSON response, never HTML
         return jsonify({
             'success': True,
             'files': files,

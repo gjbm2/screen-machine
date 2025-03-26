@@ -8,7 +8,7 @@ export const useOutputFilesState = () => {
   const [isLoading, setIsLoading] = useState(false);
   const lastLoadTimeRef = useRef<number>(0);
   const isFetchingRef = useRef<boolean>(false);
-  const MIN_LOAD_INTERVAL = 10000; // Increase to 10 seconds between loads
+  const MIN_LOAD_INTERVAL = 60000; // Increase to 60 seconds between loads
 
   const loadOutputFiles = useCallback(async () => {
     // Skip if already loading or if another fetch is in progress

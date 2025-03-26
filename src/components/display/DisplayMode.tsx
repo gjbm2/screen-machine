@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { DebugPanel } from '@/components/display/debug/DebugPanel';
 import { DebugImageContainer } from '@/components/display/DebugImageContainer';
@@ -59,13 +60,18 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   const [showPreview, setShowPreview] = useState(!isMobile);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const renderCountRef = useRef(0);
+  const lastLogTimeRef = useRef(0);
   
-  // Limit logging frequency - only log in development mode and every 10 renders
+  // Limit logging frequency - only log in development mode and every 100 renders
   useEffect(() => {
     if (import.meta.env.DEV) {
       renderCountRef.current++;
-      if (renderCountRef.current % 10 === 1) {
+      
+      const now = Date.now();
+      // Only log every 10 seconds to avoid console spam
+      if (now - lastLogTimeRef.current > 10000) {
         console.log('[DisplayMode] Rendering (log limited, render #' + renderCountRef.current + ')');
+        lastLogTimeRef.current = now;
       }
     }
   });
@@ -104,9 +110,11 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
         isChecking={isChecking}
       />
     </div>
-  ), [params, imageUrl, lastModified, lastChecked, nextCheckTime, imageKey, 
-      outputFiles, imageChanged, onHandleManualCheck, metadata, 
-      isMobile, showPreview, isChecking, toggleView]);
+  ), [
+    params, imageUrl, lastModified, lastChecked, nextCheckTime, imageKey, 
+    outputFiles, imageChanged, onHandleManualCheck, metadata, 
+    isMobile, showPreview, isChecking, toggleView
+  ]);
 
   // Memoize the preview panel
   const previewPanel = useMemo(() => (
@@ -138,8 +146,10 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
         isMobile={isMobile}
       />
     </div>
-  ), [imageUrl, imageKey, previewParams, onImageError, imageRef, imageChanged, 
-      processedCaption, metadata, toggleView, showPreview, isMobile]);
+  ), [
+    imageUrl, imageKey, previewParams, onImageError, imageRef, imageChanged, 
+    processedCaption, metadata, toggleView, showPreview, isMobile
+  ]);
 
   // Memoize the mobile view switcher
   const mobileViewSwitcher = useMemo(() => (
@@ -190,16 +200,14 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
       onImageError={onImageError}
       isLoadingMetadata={isLoadingMetadata}
     />
-  ), [previewParams, imageUrl, imageKey, getImagePositionStyle, processedCaption, 
-      metadata, isTransitioning, oldImageUrl, oldImageStyle, newImageStyle, 
-      imageRef, onImageError, isLoadingMetadata]);
+  ), [
+    previewParams, imageUrl, imageKey, getImagePositionStyle, processedCaption, 
+    metadata, isTransitioning, oldImageUrl, oldImageStyle, newImageStyle, 
+    imageRef, onImageError, isLoadingMetadata
+  ]);
 
   // If we're in debug mode, render the debug interface
   if (params.debugMode) {
-    if (import.meta.env.DEV && renderCountRef.current % 10 === 1) {
-      console.log('[DisplayMode] Rendering debug interface with imageUrl:', imageUrl);
-    }
-    
     return (
       <div className="fixed inset-0 flex flex-col sm:flex-row overflow-hidden">
         {mobileViewSwitcher}
@@ -216,4 +224,3 @@ export const DisplayMode: React.FC<DisplayModeProps> = ({
   
   return imageDisplay;
 };
-

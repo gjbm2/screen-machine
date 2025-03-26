@@ -1,47 +1,19 @@
 
-import React, { useCallback, useEffect, useRef, useMemo } from 'react';
-import { useDisplayPage } from '@/components/display/hooks/useDisplayPage';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { DisplayContainer } from '@/components/display/DisplayContainer';
 import { DisplayMode } from '@/components/display/DisplayMode';
 import { ErrorMessage } from '@/components/display/ErrorMessage';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useDisplayParams } from '@/components/display/hooks/useDisplayParams';
+import { DisplayStateProvider, useDisplayStateContext } from '@/components/display/context/DisplayStateContext';
 
-const Display = () => {
+// Inner component that uses the context
+const DisplayContent = () => {
   const isMobile = useIsMobile();
   const logLimiterRef = useRef({ count: 0, lastTime: 0 });
   const rendersRef = useRef(0);
   
-  // Only log in development mode and limit frequency
-  const limitedLog = useCallback((message: string, data?: any) => {
-    if (!import.meta.env.DEV) return;
-    
-    const now = Date.now();
-    const timeDiff = now - logLimiterRef.current.lastTime;
-    
-    // Only log once per 5 seconds and reset counter
-    if (timeDiff > 5000) {
-      if (logLimiterRef.current.count > 1) {
-        console.log(`[Display] Suppressed ${logLimiterRef.current.count - 1} similar log messages in the last 5 seconds`);
-      }
-      console.log(message, data);
-      logLimiterRef.current = { count: 0, lastTime: now };
-    } else {
-      // Count suppressed logs
-      logLimiterRef.current.count++;
-    }
-  }, []);
-  
-  // Track renders for debugging
-  useEffect(() => {
-    if (import.meta.env.DEV) {
-      rendersRef.current++;
-      console.log(`[Display] Component rendered ${rendersRef.current} times`);
-    }
-  });
-  
   const {
-    params,
-    previewParams,
     imageUrl,
     error,
     imageKey,
@@ -58,37 +30,80 @@ const Display = () => {
     newImageStyle,
     imageRef,
     nextCheckTime,
-    isChecking,
     handleManualCheck,
     getImagePositionStyle,
     handleImageError,
-    isLoadingMetadata
-  } = useDisplayPage();
-
-  // Memoize the error component to prevent recreating it on every render
-  const errorComponent = useMemo(() => {
-    if (error) {
-      return <ErrorMessage message={error} backgroundColor={previewParams.backgroundColor} />;
+    isChecking,
+    isLoadingMetadata,
+    debugMode
+  } = useDisplayStateContext();
+  
+  // Only log in development mode and limit frequency
+  const limitedLog = useCallback((message: string, data?: any) => {
+    if (!import.meta.env.DEV) return;
+    
+    const now = Date.now();
+    const timeDiff = now - logLimiterRef.current.lastTime;
+    
+    // Only log once per 10 seconds and reset counter
+    if (timeDiff > 10000) {
+      if (logLimiterRef.current.count > 1) {
+        console.log(`[Display] Suppressed ${logLimiterRef.current.count - 1} similar log messages in the last 10 seconds`);
+      }
+      console.log(message, data);
+      logLimiterRef.current = { count: 0, lastTime: now };
+    } else {
+      // Count suppressed logs
+      logLimiterRef.current.count++;
     }
-    return null;
-  }, [error, previewParams.backgroundColor]);
-
+  }, []);
+  
+  // Track renders for debugging
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      rendersRef.current++;
+      
+      // Only log every 100 renders to avoid console spam
+      if (rendersRef.current % 100 === 0) {
+        console.log(`[Display] Component rendered ${rendersRef.current} times`);
+      }
+    }
+  });
+  
   // Add controlled debug logging - with proper dependency array
   useEffect(() => {
     limitedLog('[Display] Component rendered with imageUrl:', imageUrl);
     limitedLog('[Display] Is mobile device:', isMobile);
     // Only re-run when these values change
   }, [imageUrl, isMobile, limitedLog]);
-
+  
   if (error) {
-    return errorComponent;
+    return <ErrorMessage message={error} backgroundColor="#000000" />;
   }
+  
+  // Get display params from context for the DisplayMode component
+  const params = {
+    debugMode,
+    output: imageUrl,
+    showMode: 'contain',
+    position: 'center',
+    refreshInterval: 30,
+    backgroundColor: '#000000',
+    caption: processedCaption,
+    captionPosition: 'bottom-center',
+    captionSize: 'medium',
+    captionColor: '#ffffff',
+    captionFont: 'sans',
+    captionBgColor: '#000000',
+    captionBgOpacity: 0.5,
+    transition: 'fade'
+  };
 
   return (
     <DisplayContainer params={params}>
       <DisplayMode 
         params={params}
-        previewParams={previewParams}
+        previewParams={params}
         imageUrl={imageUrl}
         imageKey={imageKey}
         imageRef={imageRef}
@@ -110,6 +125,17 @@ const Display = () => {
         isLoadingMetadata={isLoadingMetadata}
       />
     </DisplayContainer>
+  );
+};
+
+// Outer component that provides the context
+const Display = () => {
+  const { displayParams } = useDisplayParams();
+  
+  return (
+    <DisplayStateProvider params={displayParams}>
+      <DisplayContent />
+    </DisplayStateProvider>
   );
 };
 
