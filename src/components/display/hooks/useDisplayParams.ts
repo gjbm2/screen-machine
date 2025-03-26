@@ -12,11 +12,13 @@ export const useDisplayParams = () => {
   // Function to safely get a parameter from the URL
   const getParam = useCallback((key: string, defaultValue: string | null = null): string | null => {
     const paramValue = searchParams.get(key);
+    console.log(`[useDisplayParams] Getting param ${key}, raw value:`, paramValue);
     return paramValue !== null ? paramValue : defaultValue;
   }, [searchParams]);
   
   // Function to update a parameter in the URL
   const updateParam = useCallback((key: string, value: string | null) => {
+    console.log(`[useDisplayParams] Updating param ${key} to:`, value);
     if (value) {
       searchParams.set(key, value);
     } else {
@@ -25,9 +27,17 @@ export const useDisplayParams = () => {
     setSearchParams(searchParams);
   }, [searchParams, setSearchParams]);
   
+  // Get the raw output parameter for logging
+  const rawOutput = searchParams.get('output');
+  console.log('[useDisplayParams] Raw output param from URL:', rawOutput);
+  
+  // Decode the output parameter
+  const decodedOutput = decodeComplexOutputParam(rawOutput);
+  console.log('[useDisplayParams] Decoded output param:', decodedOutput);
+  
   // Construct the display parameters from the URL
   const displayParams: DisplayParams = {
-    output: decodeComplexOutputParam(getParam('output', null)),
+    output: decodedOutput,
     showMode: getParam('showMode', 'contain') as DisplayParams['showMode'],
     position: getParam('position', 'center') as DisplayParams['position'],
     refreshInterval: parseInt(getParam('refreshInterval', '0') || '0', 10),
@@ -42,6 +52,8 @@ export const useDisplayParams = () => {
     transition: getParam('transition', 'fade') as DisplayParams['transition'],
     debugMode: getParam('debug', 'false') === 'true'
   };
+  
+  console.log('[useDisplayParams] Constructed display params:', displayParams);
   
   return {
     displayParams,

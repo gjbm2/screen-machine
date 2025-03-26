@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { DisplayParams } from './types';
 import { toast } from 'sonner';
@@ -43,25 +42,42 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
   // Log the image URL and transition state for debugging
   useEffect(() => {
-    console.log('[ImageDisplay] Current image URL:', imageUrl);
-    console.log('[ImageDisplay] Is transitioning:', isTransitioning);
-    console.log('[ImageDisplay] Is loading metadata:', isLoadingMetadata);
-    console.log('[ImageDisplay] Processed caption:', processedCaption);
-    console.log('[ImageDisplay] Old image URL:', oldImageUrl);
-    console.log('[ImageDisplay] Image transition styles:', { 
+    console.log('[DEBUG Main ImageDisplay] Current image URL:', imageUrl);
+    console.log('[DEBUG Main ImageDisplay] Image key:', imageKey);
+    console.log('[DEBUG Main ImageDisplay] Is transitioning:', isTransitioning);
+    console.log('[DEBUG Main ImageDisplay] Is loading metadata:', isLoadingMetadata);
+    console.log('[DEBUG Main ImageDisplay] Processed caption:', processedCaption);
+    console.log('[DEBUG Main ImageDisplay] Old image URL:', oldImageUrl);
+    console.log('[DEBUG Main ImageDisplay] Image styles:', { 
       oldImageStyle: { ...oldImageStyle, opacity: oldImageStyle.opacity }, 
       newImageStyle: { ...newImageStyle, opacity: newImageStyle.opacity },
       regularImageStyle: { ...imageStyle }
     });
     
-    if (isTransitioning) {
-      console.log('[ImageDisplay] Transition in progress - showing both images with styles');
-    } else {
-      console.log('[ImageDisplay] No transition - showing single image with normal style');
+    // Additional analysis of the image URL
+    if (imageUrl) {
+      console.log('[DEBUG Main ImageDisplay] Image URL analysis:', {
+        length: imageUrl.length,
+        startsWithHttp: imageUrl.startsWith('http'),
+        startsWithSlash: imageUrl.startsWith('/'),
+        endsWithJpgOrPng: imageUrl.endsWith('.jpg') || imageUrl.endsWith('.png') || imageUrl.endsWith('.jpeg')
+      });
+      
+      // Test if the URL is valid
+      const img = new Image();
+      img.onload = () => console.log('[DEBUG Main ImageDisplay] Test image loaded successfully');
+      img.onerror = (e) => console.error('[DEBUG Main ImageDisplay] Test image failed to load:', e);
+      img.src = imageUrl;
     }
     
-    console.log('[ImageDisplay] Metadata available:', Object.keys(metadata).length > 0);
-  }, [imageUrl, isTransitioning, isLoadingMetadata, processedCaption, metadata, oldImageUrl, oldImageStyle, newImageStyle, imageStyle]);
+    if (isTransitioning) {
+      console.log('[DEBUG Main ImageDisplay] Transition in progress - showing both images with styles');
+    } else {
+      console.log('[DEBUG Main ImageDisplay] No transition - showing single image with normal style');
+    }
+    
+    console.log('[DEBUG Main ImageDisplay] Metadata available:', Object.keys(metadata).length > 0);
+  }, [imageUrl, isTransitioning, isLoadingMetadata, processedCaption, metadata, oldImageUrl, oldImageStyle, newImageStyle, imageStyle, imageKey]);
 
   // Update container size on window resize
   useEffect(() => {
@@ -84,18 +100,30 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   // Reset image visibility when URL changes
   useEffect(() => {
     if (imageUrl) {
-      console.log('[ImageDisplay] URL changed, resetting image visibility state');
+      console.log('[DEBUG Main ImageDisplay] URL changed, resetting image visibility state');
       setIsImageVisible(false);
       setHasLoadError(false);
     }
   }, [imageUrl]);
+
+  // Additional checks for image ref
+  useEffect(() => {
+    console.log('[DEBUG Main ImageDisplay] Image ref current:', imageRef.current);
+    if (imageRef.current) {
+      console.log('[DEBUG Main ImageDisplay] Image ref properties:', {
+        complete: imageRef.current.complete,
+        naturalWidth: imageRef.current.naturalWidth,
+        naturalHeight: imageRef.current.naturalHeight
+      });
+    }
+  }, [imageRef.current]);
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     // Prevent event bubbling and default behavior
     e.stopPropagation();
     e.preventDefault();
     
-    console.log('[ImageDisplay] Double-click detected, navigating to debug mode');
+    console.log('[DEBUG Main ImageDisplay] Double-click detected, navigating to debug mode');
     
     // Get current URL and add debug=true parameter
     const currentUrl = window.location.href;
@@ -119,9 +147,25 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
   // Handle image error with more details
   const handleImageLoadError = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    console.error('[ImageDisplay] Image failed to load:', imageUrl);
+    console.error('[DEBUG Main ImageDisplay] Image failed to load:', imageUrl);
+    console.error('[DEBUG Main ImageDisplay] Error event:', e);
+    
     setHasLoadError(true);
     setIsImageVisible(false);
+    
+    // Additional error information
+    if (imageUrl) {
+      if (imageUrl.startsWith('http')) {
+        console.error('[DEBUG Main ImageDisplay] External URL load failed');
+        
+        // Test CORS
+        fetch(imageUrl, { mode: 'no-cors' })
+          .then(() => console.log('[DEBUG Main ImageDisplay] URL exists but may have CORS issues'))
+          .catch(err => console.error('[DEBUG Main ImageDisplay] URL fetch failed completely:', err));
+      } else {
+        console.error('[DEBUG Main ImageDisplay] Local file load failed');
+      }
+    }
     
     // Show toast with more info
     toast.error(`Failed to load image: ${imageUrl?.split('/').pop() || 'unknown'}`);
@@ -130,18 +174,18 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
     if (imageUrl) {
       const isCrossOrigin = imageUrl.startsWith('http') && !imageUrl.startsWith(window.location.origin);
       if (isCrossOrigin) {
-        console.warn('[ImageDisplay] Cross-origin image may have CORS restrictions:', imageUrl);
+        console.warn('[DEBUG Main ImageDisplay] Cross-origin image may have CORS restrictions:', imageUrl);
         toast.error("Cross-origin image failed to load. CORS may be restricted.");
       } else {
         fetch(imageUrl, { method: 'HEAD' })
           .then(response => {
-            console.log('[ImageDisplay] Image HEAD request status:', response.status);
+            console.log('[DEBUG Main ImageDisplay] Image HEAD request status:', response.status);
             if (!response.ok) {
               toast.error(`Image not found (${response.status})`);
             }
           })
           .catch(err => {
-            console.error('[ImageDisplay] Network error checking image:', err);
+            console.error('[DEBUG Main ImageDisplay] Network error checking image:', err);
             toast.error(`Network error: ${err.message}`);
           });
       }
@@ -153,7 +197,12 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
   // Handle successful image load
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    console.log('[ImageDisplay] Image loaded successfully:', imageUrl);
+    console.log('[DEBUG Main ImageDisplay] Image loaded successfully:', imageUrl);
+    console.log('[DEBUG Main ImageDisplay] Image natural dimensions:', {
+      width: (e.target as HTMLImageElement).naturalWidth,
+      height: (e.target as HTMLImageElement).naturalHeight
+    });
+    
     setIsImageVisible(true);
     setHasLoadError(false);
   };
@@ -190,7 +239,7 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   
   // Debug the caption rendering decision
   useEffect(() => {
-    console.log('[ImageDisplay] Should show caption decision:', { 
+    console.log('[DEBUG Main ImageDisplay] Should show caption decision:', { 
       processedCaption, 
       isTransitioning,
       shouldShowCaption
@@ -212,6 +261,8 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
               alt=""
               style={oldImageStyle}
               crossOrigin="anonymous"
+              onLoad={() => console.log('[DEBUG Main ImageDisplay] Old transition image loaded')}
+              onError={() => console.error('[DEBUG Main ImageDisplay] Old transition image failed to load')}
             />
           )}
           

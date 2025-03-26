@@ -27,9 +27,9 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
 }) => {
   // Debug logging
   useEffect(() => {
-    console.log('[ImageDisplay] Component rendered with props:', { imageUrl, imageKey });
+    console.log('[DEBUG ImageDisplay] Component rendered with props:', { imageUrl, imageKey });
     if (imageUrl) {
-      console.log('[ImageDisplay] Image URL being rendered:', imageUrl);
+      console.log('[DEBUG ImageDisplay] Image URL being rendered:', imageUrl);
     }
   }, [imageUrl, imageKey]);
 
@@ -38,13 +38,40 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
 
   // Reset error state when image URL changes
   useEffect(() => {
-    console.log('[ImageDisplay] Image URL changed, resetting error state:', imageUrl);
+    console.log('[DEBUG ImageDisplay] Image URL changed, resetting error state:', imageUrl);
     setHasError(false);
     setIsImageVisible(false);
   }, [imageUrl]);
 
+  // Additional check for image URL sanity
+  useEffect(() => {
+    if (imageUrl && typeof imageUrl === 'string') {
+      console.log('[DEBUG ImageDisplay] Analyzing imageUrl:', {
+        url: imageUrl,
+        length: imageUrl.length,
+        startsWithHttp: imageUrl.startsWith('http'),
+        startsWithSlash: imageUrl.startsWith('/')
+      });
+      
+      // Log different parts of a URL to ensure it's well-formed
+      if (imageUrl.startsWith('http')) {
+        try {
+          const urlObj = new URL(imageUrl);
+          console.log('[DEBUG ImageDisplay] URL parts:', {
+            protocol: urlObj.protocol,
+            hostname: urlObj.hostname,
+            pathname: urlObj.pathname,
+            search: urlObj.search
+          });
+        } catch (e) {
+          console.error('[DEBUG ImageDisplay] Error parsing URL:', e);
+        }
+      }
+    }
+  }, [imageUrl]);
+
   if (!imageUrl) {
-    console.log('[ImageDisplay] No image URL provided, showing placeholder');
+    console.log('[DEBUG ImageDisplay] No image URL provided, showing placeholder');
     return (
       <div className="w-full h-full flex items-center justify-center text-gray-500">
         No image to display
@@ -66,7 +93,22 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
   }
 
   // Log the actual image URL we're trying to load
-  console.log('[ImageDisplay] Attempting to load image from URL:', imageUrl);
+  console.log('[DEBUG ImageDisplay] Attempting to load image from URL:', imageUrl);
+  console.log('[DEBUG ImageDisplay] Current image style:', getImageStyle());
+  
+  // Test if the image exists with fetch in dev mode
+  if (import.meta.env.DEV) {
+    fetch(imageUrl, { method: 'HEAD' })
+      .then(response => {
+        console.log('[DEBUG ImageDisplay] Image HEAD request status:', response.status, response.ok);
+        if (!response.ok) {
+          console.warn('[DEBUG ImageDisplay] Image might not exist:', response.status);
+        }
+      })
+      .catch(err => {
+        console.error('[DEBUG ImageDisplay] Network error checking image:', err);
+      });
+  }
   
   return (
     <img
@@ -76,13 +118,13 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
       alt="Preview"
       className={`max-w-full max-h-full ${isImageVisible ? 'opacity-100' : 'opacity-0'}`}
       onLoad={(e) => {
-        console.log('[ImageDisplay] Image loaded successfully:', imageUrl);
+        console.log('[DEBUG ImageDisplay] Image loaded successfully:', imageUrl);
         setHasError(false);
         setIsImageVisible(true);
         onImageLoad(e);
       }}
       onError={(e) => {
-        console.error('[ImageDisplay] Error loading image:', imageUrl, e);
+        console.error('[DEBUG ImageDisplay] Error loading image:', imageUrl, e);
         setHasError(true);
         setIsImageVisible(false);
         onImageError();
