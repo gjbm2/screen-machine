@@ -44,7 +44,9 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
               {hasReferenceImages && (
                 <ReferenceImageIndicator 
                   imageUrl={imageUrl} 
-                  position={viewMode === 'small' ? 'top-right' : 'bottom-left'} 
+                  // Fix the comparison - don't directly compare viewMode to 'small'
+                  // since in this context viewMode can't be 'small'
+                  position="bottom-left" 
                 />
               )}
             </AspectRatio>
@@ -60,7 +62,9 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
               {hasReferenceImages && (
                 <ReferenceImageIndicator 
                   imageUrl={imageUrl} 
-                  position={viewMode === 'small' ? 'top-right' : 'bottom-left'} 
+                  // Fix the comparison - don't directly compare viewMode to 'small'
+                  // since in this context viewMode can't be 'small'
+                  position="bottom-left" 
                 />
               )}
             </>
