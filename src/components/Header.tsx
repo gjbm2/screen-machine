@@ -34,7 +34,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenAboutDialog }) => {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
           <div className="text-xl font-medium tracking-tight cursor-pointer hover:text-primary transition-colors">
-            imagine
+            screen/machine
           </div>
         </DialogTrigger>
         <DialogContent>
@@ -43,13 +43,13 @@ const Header: React.FC<HeaderProps> = ({ onOpenAboutDialog }) => {
             <DialogDescription>
               <div className="space-y-4 mt-4">
                 <p>
-                  Imagine is an AI-powered image generation tool that turns your text prompts into stunning visuals.
+                  Screen machine imagines what you can't be bothered to.
                 </p>
                 <p>
-                  Simply describe what you want to see or upload reference images, and watch as artificial intelligence transforms your ideas into art within seconds.
+                  Describe what you want to see or upload reference images. Let AI do the rest.
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Version 1.0.0 • Made with ❤️ by your team
+                  Version 1.0.0. Greg Marsh.
                 </p>
               </div>
             </DialogDescription>
