@@ -93,8 +93,8 @@ export const useImageBatchItem = ({
       return;
     }
     
-    // Always go to fullscreen when clicked in normal view (for both desktop and mobile)
-    if (image.url && onFullScreen && viewMode === 'normal') {
+    // Only go to fullscreen in normal view when NOT rolled up (this is the key change)
+    if (image.url && onFullScreen && viewMode === 'normal' && !isRolledUp) {
       onFullScreen(batchId, index);
       return;
     }
