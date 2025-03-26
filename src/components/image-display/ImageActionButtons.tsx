@@ -76,7 +76,8 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
           </Button>
         )}
         
-        {onUseAsInput && (
+        {/* Only show "Use as Input" button if we're NOT in normal view */}
+        {onUseAsInput && viewMode !== 'normal' && (
           <Button 
             type="button" 
             variant="ghost" 
