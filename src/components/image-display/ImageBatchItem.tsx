@@ -109,7 +109,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
       />
       
       {/* Navigation buttons should always be visible when available, not hidden by hover overlay */}
-      <div className="absolute top-0 bottom-0 left-0 right-0 pointer-events-none z-20">
+      <div className="absolute top-0 bottom-0 left-0 right-0 pointer-events-none z-30">
         <ImageNavigationButtons 
           index={index}
           total={total}

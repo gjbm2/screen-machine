@@ -26,7 +26,7 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
   isExpandedMain = false
 }) => {
   // For small view and normal view (except main image in unroll mode), use 1:1 aspect ratio
-  // When in unroll mode for the main image, don't force aspect ratio
+  // When in unroll mode for the main image, use 4:3 aspect ratio
   const useSquareAspectRatio = viewMode === 'small' || (viewMode === 'normal' && !isExpandedMain);
   
   return (
@@ -39,35 +39,31 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
                 src={imageUrl}
                 alt={prompt || `Generated image ${index + 1}`}
                 title={title || prompt}
-                className="w-full h-full object-contain bg-[#333333]"
+                className="w-full h-full object-contain bg-[#f3f3f3]"
               />
               {hasReferenceImages && (
                 <ReferenceImageIndicator 
                   imageUrl={imageUrl} 
-                  // Fix the comparison - don't directly compare viewMode to 'small'
-                  // since in this context viewMode can't be 'small'
                   position="bottom-left" 
                 />
               )}
             </AspectRatio>
           ) : (
-            // For expanded main image, don't force aspect ratio
-            <>
+            // For expanded main image, use 4:3 aspect ratio
+            <AspectRatio ratio={4/3} className="overflow-hidden">
               <img
                 src={imageUrl}
                 alt={prompt || `Generated image ${index + 1}`}
                 title={title || prompt}
-                className="w-full h-full object-contain bg-[#333333]"
+                className="w-full h-full object-contain bg-[#f3f3f3]"
               />
               {hasReferenceImages && (
                 <ReferenceImageIndicator 
                   imageUrl={imageUrl} 
-                  // Fix the comparison - don't directly compare viewMode to 'small'
-                  // since in this context viewMode can't be 'small'
                   position="bottom-left" 
                 />
               )}
-            </>
+            </AspectRatio>
           )}
         </div>
       ) : (

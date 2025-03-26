@@ -27,10 +27,15 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
   onFullScreenClick,
   imageUrl
 }) => {
-  // Create a modified version of onCreateAgain that doesn't roll up the container
+  // Maintain expanded state when calling "Create Again"
   const handleCreateAgain = (batchId?: string) => {
-    // Call the original onCreateAgain but don't manipulate the expanded state
+    // Call the original onCreateAgain
     onCreateAgain(batchId);
+    
+    // If a batch ID was provided and it's not already expanded, expand it
+    if (batchId && !expandedContainers[batchId]) {
+      toggleExpand(batchId);
+    }
   };
 
   return (

@@ -129,18 +129,26 @@ export const useImageActions = (
   };
 
   const handleDeleteImage = (batchId: string, index: number) => {
+    console.log('Deleting image:', { batchId, index });
+    
     setGeneratedImages(prevImages => {
-      // Find the specific image to delete based on the batch ID and index
-      const imageToDelete = prevImages.find(
+      // Create a deep copy of prevImages to ensure state is properly updated
+      const updatedImages = [...prevImages];
+      
+      // Find the index of the image to delete in the array
+      const imageIndex = updatedImages.findIndex(
         img => img.batchId === batchId && img.batchIndex === index
       );
       
-      if (!imageToDelete) return prevImages;
+      if (imageIndex === -1) {
+        console.warn(`Image not found for deletion: batchId=${batchId}, index=${index}`);
+        return prevImages; // Return unchanged if image not found
+      }
       
       // Remove this specific image
-      const updatedImages = prevImages.filter(
-        img => !(img.batchId === batchId && img.batchIndex === index)
-      );
+      updatedImages.splice(imageIndex, 1);
+      
+      console.log(`Removed image at array index ${imageIndex}`);
       
       // Check if this batch has any remaining images
       const batchHasRemainingImages = updatedImages.some(img => img.batchId === batchId);
@@ -151,6 +159,7 @@ export const useImageActions = (
         setImageContainerOrder(prev => prev.filter(id => id !== batchId));
       }
       
+      console.log(`Updated images array now has ${updatedImages.length} images`);
       return updatedImages;
     });
   };
