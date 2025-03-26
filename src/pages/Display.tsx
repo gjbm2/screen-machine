@@ -9,16 +9,19 @@ import { useIsMobile } from '@/hooks/use-mobile';
 const Display = () => {
   const isMobile = useIsMobile();
   const logLimiterRef = useRef({ count: 0, lastTime: 0 });
+  const rendersRef = useRef(0);
   
-  // Custom logging function to limit console output - memoized to prevent recreation on each render
+  // Only log in development mode and limit frequency
   const limitedLog = useCallback((message: string, data?: any) => {
+    if (!import.meta.env.DEV) return;
+    
     const now = Date.now();
     const timeDiff = now - logLimiterRef.current.lastTime;
     
-    // Only log once per second and reset counter
-    if (timeDiff > 1000) {
+    // Only log once per 5 seconds and reset counter
+    if (timeDiff > 5000) {
       if (logLimiterRef.current.count > 1) {
-        console.log(`[Display] Suppressed ${logLimiterRef.current.count - 1} similar log messages in the last second`);
+        console.log(`[Display] Suppressed ${logLimiterRef.current.count - 1} similar log messages in the last 5 seconds`);
       }
       console.log(message, data);
       logLimiterRef.current = { count: 0, lastTime: now };
@@ -27,6 +30,14 @@ const Display = () => {
       logLimiterRef.current.count++;
     }
   }, []);
+  
+  // Track renders for debugging
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      rendersRef.current++;
+      console.log(`[Display] Component rendered ${rendersRef.current} times`);
+    }
+  });
   
   const {
     params,
@@ -54,15 +65,6 @@ const Display = () => {
     isLoadingMetadata
   } = useDisplayPage();
 
-  // Add controlled debug logging - with proper dependency array
-  useEffect(() => {
-    if (import.meta.env.DEV) {
-      limitedLog('[Display] Component rendered with imageUrl:', imageUrl);
-      limitedLog('[Display] Is mobile device:', isMobile);
-    }
-    // Only re-run when these values change
-  }, [imageUrl, isMobile, limitedLog]);
-
   // Memoize the error component to prevent recreating it on every render
   const errorComponent = useMemo(() => {
     if (error) {
@@ -70,6 +72,13 @@ const Display = () => {
     }
     return null;
   }, [error, previewParams.backgroundColor]);
+
+  // Add controlled debug logging - with proper dependency array
+  useEffect(() => {
+    limitedLog('[Display] Component rendered with imageUrl:', imageUrl);
+    limitedLog('[Display] Is mobile device:', isMobile);
+    // Only re-run when these values change
+  }, [imageUrl, isMobile, limitedLog]);
 
   if (error) {
     return errorComponent;
