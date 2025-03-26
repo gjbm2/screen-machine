@@ -28,6 +28,14 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   const isNarrow = width < 600;
   const shouldHideName = hideWorkflowName || isNarrow;
   
+  // Enhanced logging for debugging
+  useEffect(() => {
+    console.log("WorkflowIconSelector: Received props");
+    console.log("- selectedWorkflow:", selectedWorkflow);
+    console.log("- workflows:", workflows.map(w => `${w.id} (${w.name})`).join(", "));
+    console.log("- shouldHideName:", shouldHideName);
+  }, [selectedWorkflow, workflows, shouldHideName]);
+  
   // Find the selected workflow by ID
   const selectedWorkflowObj = workflows.find(w => w.id === selectedWorkflow);
   
@@ -35,7 +43,12 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   useEffect(() => {
     console.log("WorkflowIconSelector: Current workflow:", selectedWorkflow);
     console.log("WorkflowIconSelector: Found workflow object:", selectedWorkflowObj);
-  }, [selectedWorkflow, selectedWorkflowObj]);
+    
+    if (!selectedWorkflowObj) {
+      console.warn("WorkflowIconSelector: No workflow found with ID:", selectedWorkflow);
+      console.log("Available workflows:", workflows.map(w => `${w.id} (${w.name})`).join(", "));
+    }
+  }, [selectedWorkflow, selectedWorkflowObj, workflows]);
   
   const getWorkflowIcon = (workflowId: string) => {
     switch (workflowId) {
@@ -49,6 +62,10 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
         return <Image className="h-5 w-5" />;
     }
   };
+  
+  // Default to "Text to Image" if no workflow is found
+  const displayName = selectedWorkflowObj?.name || 'Workflow';
+  const displayIcon = selectedWorkflowObj ? getWorkflowIcon(selectedWorkflow) : <Image className="h-5 w-5" />;
   
   return (
     <div className="flex items-center h-[48px]">
@@ -64,9 +81,9 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
             }}
             type="button"
           >
-            {getWorkflowIcon(selectedWorkflow)}
+            {displayIcon}
             {!shouldHideName && (
-              <span className="ml-2 text-sm truncate max-w-[90px]">{selectedWorkflowObj?.name || 'Workflow'}</span>
+              <span className="ml-2 text-sm truncate max-w-[90px]">{displayName}</span>
             )}
           </Button>
         </HoverCardTrigger>
