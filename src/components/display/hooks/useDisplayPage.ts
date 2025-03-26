@@ -128,12 +128,15 @@ export const useDisplayPage = () => {
       // Set flag to prevent reprocessing
       hasProcessedOutputRef.current = true;
       
+      // Reset imageChanged flag
+      setImageChanged(false);
+      
       // Show toast notification
       const filename = processedUrl.split('/').pop() || processedUrl;
       const displayName = filename.length > 30 ? filename.substring(0, 27) + '...' : filename;
       toast.success(`Displaying image: ${displayName}`);
     }
-  }, [processedUrl, imageUrl, setImageUrl, setImageKey]);
+  }, [processedUrl, imageUrl, setImageUrl, setImageKey, setImageChanged]);
 
   // Debug mode redirection handling
   const { checkDebugRedirection, userExplicitlyExitedDebugRef } = useDebugRedirection(displayParams, redirectToDebugMode);

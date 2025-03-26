@@ -82,7 +82,6 @@ const DisplayContent = () => {
     return <ErrorMessage message={error} backgroundColor="#000000" />;
   }
   
-  // Pass the actual params from context instead of hardcoded values
   return (
     <DisplayContainer params={params}>
       <DisplayMode 

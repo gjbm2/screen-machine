@@ -1,7 +1,7 @@
-
 import React, { createContext, useContext, useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { DisplayParams } from '../types';
 import { fetchOutputFiles, getNextCheckTime, extractMetadata } from '../utils';
+import { getDefaultParams } from '../utils/defaultParams';
 
 interface DisplayStateContextType {
   // Core image state
@@ -54,6 +54,9 @@ interface DisplayStateContextType {
   
   // Debug mode
   debugMode: boolean;
+  
+  // Display params
+  params: DisplayParams;
 }
 
 const DEFAULT_CONTEXT: DisplayStateContextType = {
@@ -85,7 +88,8 @@ const DEFAULT_CONTEXT: DisplayStateContextType = {
   imageRef: { current: null },
   processedCaption: null,
   setProcessedCaption: () => {},
-  debugMode: false
+  debugMode: false,
+  params: getDefaultParams()
 };
 
 export const DisplayStateContext = createContext<DisplayStateContextType>(DEFAULT_CONTEXT);
@@ -666,13 +670,16 @@ export const DisplayStateProvider: React.FC<DisplayStateProviderProps> = ({ chil
     setProcessedCaption,
     
     // Debug mode
-    debugMode: params.debugMode
+    debugMode: params.debugMode,
+    
+    // Add params to the context
+    params
   }), [
     imageUrl, imageKey, lastModified, lastChecked, nextCheckTime, 
     outputFiles, metadata, isLoading, isChecking, isLoadingMetadata,
     imageChanged, isTransitioning, oldImageUrl, oldImageStyle, newImageStyle,
     error, loadNewImage, handleManualCheck, checkImageModified, extractMetadataFromImage,
-    getImagePositionStyle, handleImageError, processedCaption, params.debugMode
+    getImagePositionStyle, handleImageError, processedCaption, params
   ]);
   
   return (
@@ -681,4 +688,3 @@ export const DisplayStateProvider: React.FC<DisplayStateProviderProps> = ({ chil
     </DisplayStateContext.Provider>
   );
 };
-
