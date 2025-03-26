@@ -37,10 +37,14 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   const { 
     imageContainerOrder, 
     setImageContainerOrder,
+    expandedContainers,
+    setExpandedContainers,
     nextContainerId,
     setNextContainerId,
     handleReorderContainers: containerReorder,
-    handleDeleteContainer: internalHandleDeleteContainer
+    handleDeleteContainer: internalHandleDeleteContainer,
+    handleAddNewContainer,
+    collapseAllExcept
   } = useImageContainer();
 
   const {
@@ -81,7 +85,8 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     lastBatchIdUsed,
     setIsFirstRun,
     setLastBatchIdUsed,
-    generateImages
+    generateImages,
+    collapseAllExcept
   });
   
   const {
@@ -117,6 +122,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     currentParams,
     currentGlobalParams,
     imageContainerOrder,
+    expandedContainers,
     lastBatchId,
     isFirstRun,
     fullscreenRefreshTrigger,
@@ -126,6 +132,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     setCurrentParams,
     setCurrentGlobalParams,
     setImageContainerOrder,
+    setExpandedContainers,
     handleSubmitPrompt,
     handleUseGeneratedAsInput,
     handleCreateAgain,

@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 import { ImageGenerationConfig } from './types';
 
@@ -10,6 +9,7 @@ interface UsePromptSubmissionProps {
   setIsFirstRun: React.Dispatch<React.SetStateAction<boolean>>;
   setLastBatchIdUsed: React.Dispatch<React.SetStateAction<string | null>>;
   generateImages: (config: ImageGenerationConfig) => Promise<string | null>;
+  collapseAllExcept?: (batchId: string) => void;
 }
 
 export const usePromptSubmission = ({
@@ -19,7 +19,8 @@ export const usePromptSubmission = ({
   lastBatchIdUsed,
   setIsFirstRun,
   setLastBatchIdUsed,
-  generateImages
+  generateImages,
+  collapseAllExcept
 }: UsePromptSubmissionProps) => {
   
   const handleSubmitPrompt = useCallback(async (
@@ -69,6 +70,12 @@ export const usePromptSubmission = ({
       // Generate images with this config
       const result = await generateImages(config);
       
+      // If this is a new generation (not a variant of an existing batch),
+      // collapse all other containers and keep only this one expanded
+      if (result && !batchId && collapseAllExcept) {
+        collapseAllExcept(result);
+      }
+      
       // Save the last used batch ID
       if (result) {
         setLastBatchIdUsed(result);
@@ -85,7 +92,8 @@ export const usePromptSubmission = ({
     currentGlobalParams, 
     setIsFirstRun, 
     setLastBatchIdUsed, 
-    generateImages
+    generateImages,
+    collapseAllExcept
   ]);
   
   return {
