@@ -53,9 +53,9 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
     return IconComponent ? <IconComponent className="h-4 w-4 mr-2" /> : <Share className="h-4 w-4 mr-2" />;
   };
 
-  // New styled publish button
-  const buttonSizeClass = isRolledUp ? 'h-8 w-8 p-0' : 'h-9 px-3 py-2 text-xs';
-  const buttonClass = `rounded-full backdrop-blur-sm text-white font-medium shadow-sm transition-all duration-200 flex items-center justify-center bg-green-600/90 hover:bg-green-600 ${buttonSizeClass} image-action-button`;
+  // Enhanced styled publish button
+  const buttonSizeClass = isRolledUp ? 'h-8 w-8 p-0' : 'h-8 px-3 py-1.5 text-xs';
+  const buttonClass = `rounded-full shadow-md transition-all duration-200 flex items-center justify-center bg-green-600 hover:bg-green-700 ${buttonSizeClass} image-action-button`;
 
   return (
     <DropdownMenu>

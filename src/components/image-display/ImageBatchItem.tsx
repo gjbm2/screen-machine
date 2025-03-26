@@ -8,6 +8,7 @@ import ImageBatchItemContent from './ImageBatchItemContent';
 import { useImageBatchItem } from './hooks/useImageBatchItem';
 import { Button } from '@/components/ui/button';
 import { Maximize } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface ImageBatchItemProps {
   image: {
@@ -56,6 +57,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
   isRolledUp = false,
   isExpandedMain = false
 }) => {
+  const isMobile = useIsMobile();
+  
   const {
     isHovered,
     setIsHovered,
@@ -68,7 +71,6 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
     handleDownload,
     handleImageClick,
     shouldShowActionButtons,
-    isMobile
   } = useImageBatchItem({
     image,
     batchId,
@@ -132,8 +134,8 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
         </Button>
       )}
       
-      {/* Display image actions on hover in normal mode for desktop */}
-      {showActions && viewMode === 'normal' && (
+      {/* Display image actions on hover in normal mode for desktop only */}
+      {showActions && viewMode === 'normal' && !isMobile && (
         <ImageActionButtons 
           onDeleteImage={onDeleteImage ? handleDeleteImage : undefined}
           onFullScreen={null} // Removed from bottom bar since we have it at the top now
@@ -141,9 +143,9 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           onCreateAgain={onCreateAgain ? handleCreateAgain : undefined}
           onDownload={handleDownload}
           viewMode={viewMode}
-          forceShow={isMobile && showActionButtons}
+          forceShow={showActionButtons}
           isRolledUp={isRolledUp}
-          isHovered={isHovered && !isMobile}
+          isHovered={isHovered}
           includePublish={true}
           publishInfo={{
             imageUrl: image.url,
