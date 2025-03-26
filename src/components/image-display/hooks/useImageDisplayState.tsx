@@ -12,34 +12,20 @@ export const useImageDisplayState = (
   const [viewMode, setViewMode] = useState<'normal' | 'small' | 'table'>('normal');
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
   const [allImagesFlat, setAllImagesFlat] = useState<any[]>([]);
-  const [initializedContainers, setInitializedContainers] = useState<Set<string>>(new Set());
 
-  // Initialize only new containers as expanded when container order changes
-  // This ensures existing containers maintain their expanded/collapsed state
+  // Initialize all containers as expanded when container order changes
   useEffect(() => {
     if (imageContainerOrder.length > 0) {
-      const expanded: Record<string, boolean> = { ...expandedContainers };
-      const newContainersInitialized = new Set(initializedContainers);
-      
-      // Only set expansion state for containers we haven't seen before
+      const expanded: Record<string, boolean> = {};
       imageContainerOrder.forEach(batchId => {
-        if (!initializedContainers.has(batchId)) {
-          // Only the first (newest) container should be expanded by default
-          // All others should be collapsed
-          expanded[batchId] = imageContainerOrder.indexOf(batchId) === 0;
-          newContainersInitialized.add(batchId);
-        }
+        expanded[batchId] = true; // Set all containers to expanded by default
       });
-      
-      // Update our tracking of initialized containers
-      setInitializedContainers(newContainersInitialized);
-      
-      // Update expanded state only if we have new containers
-      if (Object.keys(expanded).length > Object.keys(expandedContainers).length) {
-        setExpandedContainers(expanded);
-      }
+      setExpandedContainers(prev => ({
+        ...prev,
+        ...expanded
+      }));
     }
-  }, [imageContainerOrder, expandedContainers, initializedContainers]);
+  }, [imageContainerOrder]);
 
   const { 
     showFullScreenView, 
