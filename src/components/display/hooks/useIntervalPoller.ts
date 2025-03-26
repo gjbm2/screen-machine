@@ -64,7 +64,6 @@ export const useIntervalPoller = (
         intervalRef.current = null;
       }
     };
-  // Ensure we have a valid dependency array
   }, [enabled, intervalMs, callback, ...(Array.isArray(dependencies) ? dependencies : [])]);
   
   return {

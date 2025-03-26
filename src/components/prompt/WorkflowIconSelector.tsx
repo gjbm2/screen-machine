@@ -28,12 +28,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   const isNarrow = width < 600;
   const shouldHideName = hideWorkflowName || isNarrow;
   
-  // Find the selected workflow object
   const selectedWorkflowObj = workflows.find(w => w.id === selectedWorkflow);
-  
-  // Log for debugging
-  console.log('WorkflowIconSelector: selectedWorkflow =', selectedWorkflow);
-  console.log('WorkflowIconSelector: found workflow =', selectedWorkflowObj);
   
   const getWorkflowIcon = (workflowId: string) => {
     switch (workflowId) {
@@ -63,8 +58,8 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
             type="button"
           >
             {getWorkflowIcon(selectedWorkflow)}
-            {!shouldHideName && selectedWorkflowObj && (
-              <span className="ml-2 text-sm truncate max-w-[90px]">{selectedWorkflowObj.name || 'Workflow'}</span>
+            {!shouldHideName && (
+              <span className="ml-2 text-sm truncate max-w-[90px]">{selectedWorkflowObj?.name || 'Workflow'}</span>
             )}
           </Button>
         </HoverCardTrigger>
