@@ -53,9 +53,10 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
     return IconComponent ? <IconComponent className="h-4 w-4 mr-2" /> : <Share className="h-4 w-4 mr-2" />;
   };
 
+  // Updated: Use green background color for the publish button
   const buttonClass = isRolledUp
-    ? 'bg-white/20 hover:bg-white/30 text-white h-8 w-auto p-1.5 rounded-full text-xs image-action-button'
-    : 'bg-white/20 hover:bg-white/30 text-white h-9 px-3 py-2 rounded-full text-xs image-action-button';
+    ? 'bg-green-500 hover:bg-green-600 text-white h-8 w-auto p-1.5 rounded-full text-xs image-action-button'
+    : 'bg-green-500 hover:bg-green-600 text-white h-9 px-3 py-2 rounded-full text-xs image-action-button';
 
   return (
     <DropdownMenu>

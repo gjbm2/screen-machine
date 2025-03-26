@@ -23,7 +23,7 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
     return null;
   }
   
-  const baseButtonClass = "absolute top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center z-50 pointer-events-auto";
+  const baseButtonClass = "absolute top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center z-50";
   
   // Add visibility classes based on whether buttons should always be visible
   const visibilityClass = alwaysVisible 
@@ -31,7 +31,7 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
     : "opacity-0 group-hover:opacity-70 group-hover:hover:opacity-100 transition-opacity duration-200";
   
   return (
-    <div className="w-full h-full relative">
+    <div className="w-full h-full relative pointer-events-none">
       {onNavigatePrev && (
         <Button
           type="button" 
@@ -40,7 +40,7 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
             e.stopPropagation();
             onNavigatePrev();
           }}
-          className={`${baseButtonClass} ${visibilityClass} left-2`}
+          className={`${baseButtonClass} ${visibilityClass} left-2 pointer-events-auto`}
           aria-label="Previous image"
         >
           <ChevronLeft className="h-5 w-5" />
@@ -55,7 +55,7 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
             e.stopPropagation();
             onNavigateNext();
           }}
-          className={`${baseButtonClass} ${visibilityClass} right-2`}
+          className={`${baseButtonClass} ${visibilityClass} right-2 pointer-events-auto`}
           aria-label="Next image"
         >
           <ChevronRight className="h-5 w-5" />

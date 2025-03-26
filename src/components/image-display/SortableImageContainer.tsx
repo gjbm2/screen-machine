@@ -2,7 +2,7 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, ChevronUp, ChevronDown, Maximize, Image } from 'lucide-react';
+import { GripVertical, ChevronUp, ChevronDown, Image } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ViewMode } from './ImageDisplay';
@@ -60,7 +60,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     opacity: isDragging ? 0.6 : 1,
     zIndex: isDragging ? 10 : 1,
     position: 'relative' as 'relative',
-    marginBottom: '0.5rem', // Reduced margin from 1rem to 0.5rem
+    marginBottom: '0.25rem', // Reduced margin even further
     width: '100%',
   };
 

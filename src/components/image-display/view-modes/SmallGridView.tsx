@@ -49,7 +49,7 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
   }, [images]);
 
   return (
-    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-0.5">
+    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-0.5">
       {sortedImages.map((image, idx) => (
         <div 
           key={`${image.batchId}-${image.batchIndex || idx}`} 
