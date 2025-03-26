@@ -21,9 +21,8 @@ export const useImageBatchItemActions = ({
   imageUrl
 }: UseImageBatchItemActionsProps) => {
   
-  // This handler is now ONLY used by the Fullscreen button, not general image clicks
-  const handleFullScreen = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleImageClick = useCallback(() => {
+    console.log(`ImageBatchItem clicked with batchId=${batchId}, batchIndex=${batchIndex}`);
     onOpenFullscreenView(batchId, batchIndex);
   }, [batchId, batchIndex, onOpenFullscreenView]);
   
@@ -46,11 +45,11 @@ export const useImageBatchItemActions = ({
     onCreateAgain(batchId);
   }, [batchId, onCreateAgain]);
   
-  // No longer used for general image clicks
-  const handleImageClick = useCallback(() => {
-    console.log(`ImageBatchItem clicked with batchId=${batchId}, batchIndex=${batchIndex}`);
-    // We no longer call onOpenFullscreenView here to prevent fullscreen on image click
-  }, [batchId, batchIndex]);
+  // Use the fullscreen handler for opening the fullscreen view
+  const handleFullScreen = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onOpenFullscreenView(batchId, batchIndex);
+  }, [batchId, batchIndex, onOpenFullscreenView]);
   
   const handleDeleteImage = handleDelete;
   const handleDeleteFromPanel = handleDelete;
