@@ -76,6 +76,7 @@ const RolledUpBatchView: React.FC<RolledUpBatchViewProps> = ({
               prompt={firstGeneratingImage?.prompt || null} 
               hasReferenceImages={firstGeneratingImage?.referenceImageUrl ? true : false}
               workflowName={firstGeneratingImage?.workflow || null}
+              isCompact={viewMode === 'small'}
             />
           ) : failedImages.length > 0 ? (
             <GenerationFailedPlaceholder 
