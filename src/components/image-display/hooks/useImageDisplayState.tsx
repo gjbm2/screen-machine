@@ -83,6 +83,7 @@ export const useImageDisplayState = (
   
   const handleSmallImageClick = (image: any) => {
     if (image?.url && image.batchId) {
+      // MODIFIED: Only open fullscreen from small view, not from normal view
       // Find the actual index within the batch for this image
       const batchImages = batches[image.batchId]?.filter(img => img.status === 'completed') || [];
       const batchIndex = batchImages.findIndex(img => img.batchIndex === image.batchIndex);

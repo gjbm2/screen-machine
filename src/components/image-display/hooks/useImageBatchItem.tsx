@@ -93,14 +93,16 @@ export const useImageBatchItem = ({
       return;
     }
     
-    // Always go to fullscreen when clicked in normal view (for both desktop and mobile)
-    if (image.url && onFullScreen && viewMode === 'normal') {
-      onFullScreen(batchId, index);
-      return;
-    }
-    
-    // For small view, just call the general onImageClick
-    if (image.url) {
+    // CRITICAL CHANGE: Never go to fullscreen when clicking the image in normal view
+    // Only handle image click for small view or other view modes
+    if (image.url && viewMode !== 'normal') {
+      if (onFullScreen) {
+        onFullScreen(batchId, index);
+      } else {
+        onImageClick(image.url);
+      }
+    } else if (image.url) {
+      // In normal view, just call the general onImageClick without fullscreen
       onImageClick(image.url);
     }
   };
