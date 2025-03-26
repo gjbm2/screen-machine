@@ -36,7 +36,7 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
   });
   const [refinerParams, setRefinerParams] = useState<Record<string, any>>(initialValues.refinerParams || {});
   
-  // Initialize workflow parameters based on the selected workflow only once
+  // Initialize workflow parameters based on the selected workflow once on mount
   useEffect(() => {
     // Find the selected workflow
     const workflow = typedWorkflows.find(w => w.id === selectedWorkflow);
@@ -162,7 +162,7 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
     // Expose setters for external state management
     setSelectedWorkflow,
     setSelectedRefiner,
-    setSelectedPublish, // Now we're exposing this function
+    setSelectedPublish,
     setWorkflowParams,
     setRefinerParams,
     setGlobalParams,
