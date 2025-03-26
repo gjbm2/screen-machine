@@ -62,7 +62,7 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className={buttonClass}>
           <Share className="h-4 w-4" />
-          {showLabel && !isRolledUp && <span className="hidden sm:inline ml-1">Publish</span>}
+          {showLabel && !isRolledUp && <span className="ml-1">Publish</span>}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
