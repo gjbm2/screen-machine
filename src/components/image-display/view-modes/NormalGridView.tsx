@@ -1,6 +1,7 @@
 
 import React from 'react';
 import ImageBatch from '../ImageBatch';
+import NewVariantPlaceholder from '../NewVariantPlaceholder';
 
 interface NormalGridViewProps {
   imageContainerOrder: string[];
@@ -64,6 +65,13 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
           </div>
         );
       })}
+      
+      {/* Add CreateNew placeholder at the end of the grid */}
+      <NewVariantPlaceholder
+        batchId="new"
+        onClick={() => onCreateAgain()}
+        className="mt-1"
+      />
     </div>
   );
 };

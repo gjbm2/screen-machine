@@ -18,13 +18,12 @@ const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({
   const [isClicked, setIsClicked] = useState(false);
   
   const handleClick = () => {
+    if (isClicked) return; // Prevent multiple clicks
     setIsClicked(true);
     onClick(batchId);
     
-    // Reset after a short delay to allow for component state to update elsewhere
-    setTimeout(() => {
-      setIsClicked(false);
-    }, 500);
+    // No longer resetting isClicked automatically - it will remain showing the spinner
+    // until the parent component re-renders with the new image
   };
 
   return (
