@@ -14,7 +14,7 @@ interface DebugPanelContentProps {
   customUrl: string;
   setCustomUrl: (url: string) => void;
   selectFile: (file: string) => () => void;
-  selectFileDirectly: (file: string) => void;
+  selectFileDirectly: (file: string) => () => void; // Updated to match the expected return type
   isCurrentFile: (file: string) => boolean;
   formatFileName: (fileName: string) => string;
   showMode: ShowMode;
