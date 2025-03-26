@@ -16,6 +16,8 @@ interface ImageDisplayProps {
   uploadedImages: string[];
   generatedImages: any[];
   imageContainerOrder: string[];
+  expandedContainers?: Record<string, boolean>;
+  setExpandedContainers?: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   workflow: string | null;
   generationParams?: Record<string, any>;
   onUseGeneratedAsInput: (url: string) => void;
@@ -33,6 +35,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   uploadedImages,
   generatedImages,
   imageContainerOrder,
+  expandedContainers: externalExpandedContainers,
+  setExpandedContainers: externalSetExpandedContainers,
   workflow,
   generationParams,
   onUseGeneratedAsInput,
@@ -45,7 +49,8 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   const {
     viewMode,
     setViewMode,
-    expandedContainers,
+    expandedContainers: internalExpandedContainers,
+    setExpandedContainers: internalSetExpandedContainers,
     allImagesFlat,
     showFullScreenView,
     setShowFullScreenView,
@@ -56,7 +61,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     openFullScreenView,
     handleNavigateGlobal,
     handleNavigateWithBatchAwareness,
-    handleToggleExpand,
+    handleToggleExpand: internalHandleToggleExpand,
     batches,
     hasBatches,
     handleSmallImageClick,
@@ -68,8 +73,20 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     getSortedContainers
   } = useImageDisplayState(imageContainerOrder, generatedImages, isLoading);
   
-  // Remove the handleCreateAgain override that automatically expanded containers
-  // This ensures containers only expand/collapse via the chevron button
+  // Use external state if provided, otherwise fall back to internal state
+  const expandedContainers = externalExpandedContainers || internalExpandedContainers;
+  
+  // Handle toggling container expansion
+  const handleToggleExpand = (batchId: string) => {
+    if (externalSetExpandedContainers) {
+      externalSetExpandedContainers(prev => ({
+        ...prev,
+        [batchId]: !prev[batchId]
+      }));
+    } else {
+      internalHandleToggleExpand(batchId);
+    }
+  };
   
   const handleFullScreenClick = (image: any) => {
     if (image && image.batchId) {

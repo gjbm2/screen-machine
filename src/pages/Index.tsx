@@ -42,6 +42,7 @@ const Index = () => {
     currentParams,
     currentGlobalParams,
     imageContainerOrder,
+    expandedContainers,
     isFirstRun,
     fullscreenRefreshTrigger,
     setCurrentPrompt,
@@ -50,6 +51,7 @@ const Index = () => {
     setCurrentParams,
     setCurrentGlobalParams,
     setImageContainerOrder,
+    setExpandedContainers,
     handleSubmitPrompt,
     handleUseGeneratedAsInput,
     handleCreateAgain,
@@ -203,6 +205,8 @@ const Index = () => {
           uploadedImages={uploadedImageUrls}
           generatedImages={generatedImages}
           imageContainerOrder={imageContainerOrder}
+          expandedContainers={expandedContainers}
+          setExpandedContainers={setExpandedContainers}
           workflow={currentWorkflow}
           generationParams={currentParams}
           onUseGeneratedAsInput={handleUseGeneratedAsInput}

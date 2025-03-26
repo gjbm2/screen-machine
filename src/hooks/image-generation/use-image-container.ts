@@ -16,9 +16,14 @@ export const useImageContainer = () => {
   }, []);
 
   const handleAddNewContainer = useCallback((batchId: string) => {
-    // Simply add the new container to the beginning of the order
-    // without modifying expanded state
+    // Add the new container to the beginning of the order
     setImageContainerOrder(prev => [batchId, ...prev]);
+    
+    // Set this new container to be expanded by default
+    setExpandedContainers(prev => ({
+      ...prev,
+      [batchId]: true
+    }));
   }, []);
 
   const handleDeleteContainer = useCallback((batchId: string, setGeneratedImages: Function) => {
@@ -33,6 +38,20 @@ export const useImageContainer = () => {
     });
   }, []);
 
+  // New function to collapse all containers except the specified one
+  const collapseAllExcept = useCallback((exceptBatchId: string) => {
+    setExpandedContainers(prev => {
+      const result: Record<string, boolean> = {};
+      // Set all containers to collapsed
+      Object.keys(prev).forEach(batchId => {
+        result[batchId] = false;
+      });
+      // Set the specified container to expanded
+      result[exceptBatchId] = true;
+      return result;
+    });
+  }, []);
+
   return {
     imageContainerOrder,
     setImageContainerOrder,
@@ -42,7 +61,8 @@ export const useImageContainer = () => {
     setNextContainerId,
     handleReorderContainers,
     handleAddNewContainer,
-    handleDeleteContainer
+    handleDeleteContainer,
+    collapseAllExcept
   };
 };
 
