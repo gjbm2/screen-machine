@@ -1,3 +1,4 @@
+
 import React from 'react';
 import ImageBatch from '../ImageBatch';
 
@@ -41,10 +42,9 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
               isExpanded={!!expandedContainers[batchId]}
               toggleExpand={toggleExpand}
               onImageClick={(url, prompt) => {
-                const image = batches[batchId].find(img => img.status === 'completed');
-                if (image) {
-                  onFullScreenClick(image);
-                }
+                // CRITICAL FIX: In normal view, DO NOT call fullscreen when image is clicked
+                // We're not forwarding to fullscreen anymore, just a no-op
+                console.log("Image clicked in normal view - NOT triggering fullscreen");
               }}
               onCreateAgain={() => onCreateAgain(batchId)}
               onDeleteImage={onDeleteImage}

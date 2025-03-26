@@ -93,9 +93,11 @@ export const useImageBatchItem = ({
       return;
     }
     
-    // CRITICAL CHANGE: Never go to fullscreen when clicking the image in normal view
-    // Only handle image click for small view or other view modes
+    // CRITICAL FIX: Never go to fullscreen when clicking the image in normal view
+    console.log(`Image clicked in ${viewMode} view. Will ${viewMode !== 'normal' ? '' : 'NOT '}go to fullscreen.`);
+    
     if (image.url && viewMode !== 'normal') {
+      // Only in small/table view do we allow fullscreen on image click
       if (onFullScreen) {
         onFullScreen(batchId, index);
       } else {

@@ -23,8 +23,9 @@ export const useImageBatchItemActions = ({
   
   const handleImageClick = useCallback(() => {
     console.log(`ImageBatchItem clicked with batchId=${batchId}, batchIndex=${batchIndex}`);
-    // This function should not directly trigger fullscreen in normal view
-    // onOpenFullscreenView is handled separately via the dedicated fullscreen button
+    console.log(`IMPORTANT: This function should NOT trigger fullscreen in normal view`);
+    // This function should never trigger fullscreen in normal view
+    // The fullscreen functionality is ONLY handled via the dedicated fullscreen button
   }, [batchId, batchIndex]);
   
   const handleUseAsInput = useCallback((e: React.MouseEvent) => {
@@ -50,6 +51,7 @@ export const useImageBatchItemActions = ({
   const handleFullScreen = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     console.log(`Opening fullscreen view for batchId=${batchId}, batchIndex=${batchIndex}`);
+    console.log(`This is triggered ONLY by the fullscreen button in normal view!`);
     onOpenFullscreenView(batchId, batchIndex);
   }, [batchId, batchIndex, onOpenFullscreenView]);
   

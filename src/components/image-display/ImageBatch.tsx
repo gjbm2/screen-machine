@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import SortableImageContainer from './SortableImageContainer';
 import { ViewMode } from './ImageDisplay';
@@ -41,10 +40,10 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   onCreateAgain,
   onDeleteImage,
   onDeleteContainer,
+  onFullScreenClick,
   activeImageUrl,
   viewMode,
-  onFullScreenClick,
-  hasGeneratingImages
+  hasGeneratingImages = false
 }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -59,14 +58,11 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
     return null;
   }
   
-  // Properly identify images by status
   const anyGenerating = images.some(img => img.status === 'generating') || hasGeneratingImages;
   const completedImages = images.filter(img => img.status === 'completed');
   const failedImages = images.filter(img => img.status === 'failed' || img.status === 'error');
   const generatingImages = images.filter(img => img.status === 'generating');
   
-  // Include generating images in the failedImages array if they don't have a URL
-  // This ensures we can access their properties like prompt in the placeholders
   const allNonCompletedImages = [...failedImages, ...generatingImages];
 
   if (viewMode === 'small' && completedImages.length === 0 && !anyGenerating && failedImages.length === 0) {
@@ -105,6 +101,19 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   const handleConfirmDelete = () => {
     onDeleteContainer();
     setShowDeleteDialog(false);
+  };
+
+  const handleImageClick = (url: string, prompt?: string) => {
+    if (viewMode === 'normal') {
+      onImageClick(url, prompt);
+    } else {
+      const image = images.find(img => img.url === url);
+      if (image) {
+        onFullScreenClick(image);
+      } else {
+        onImageClick(url, prompt);
+      }
+    }
   };
 
   return (
