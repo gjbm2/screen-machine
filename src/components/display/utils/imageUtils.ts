@@ -1,38 +1,20 @@
-
 // Fetch a list of available output files from the server
 export const fetchOutputFiles = async (): Promise<string[]> => {
   try {
     console.log("[fetchOutputFiles] Attempting to fetch output files from API");
-    // First try to fetch from the current server
     const response = await fetch('/api/output-files');
     
     if (response.ok) {
       const data = await response.json();
       console.log("[fetchOutputFiles] Successfully fetched output files:", data.files);
-      
-      // Add leading slash to paths for proper URL formation
-      const formattedFiles = (data.files || []).map((file: string) => {
-        return file.startsWith('/') ? file : `/${file}`;
-      });
-      
-      return formattedFiles;
+      return data.files || [];
     }
     
-    // If that fails, log and return some example files with correct path format
     console.warn('[fetchOutputFiles] Could not fetch output files from API, status:', response.status);
-    return [
-      '/output/ComfyUI_00001_.png',
-      '/output/ComfyUI_00002_.png',
-      '/output/William_Hogarth_-_A_Rake\'s_Progress_-_Tavern_Scene.jpg'
-    ];
+    return [];
   } catch (e) {
     console.error('[fetchOutputFiles] Error fetching output files:', e);
-    // Return example files as a fallback with correct path format
-    return [
-      '/output/ComfyUI_00001_.png',
-      '/output/ComfyUI_00002_.png',
-      '/output/William_Hogarth_-_A_Rake\'s_Progress_-_Tavern_Scene.jpg'
-    ];
+    return [];
   }
 };
 
