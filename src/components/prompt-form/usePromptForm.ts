@@ -14,11 +14,20 @@ interface PromptFormInitialValues {
 }
 
 const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
-  // Get the default workflow ID for initialization
-  const defaultWorkflowId = typedWorkflows.length > 0 ? typedWorkflows[0].id : 'text-to-image';
+  // Find the default workflow ID for initialization
+  const getDefaultWorkflowId = (): string => {
+    // First try to find a workflow with default=true
+    const defaultWorkflow = typedWorkflows.find(w => w.default === true);
+    if (defaultWorkflow) {
+      return defaultWorkflow.id;
+    }
+    
+    // Fall back to the first workflow or 'text-to-image' if no workflows exist
+    return typedWorkflows.length > 0 ? typedWorkflows[0].id : 'text-to-image';
+  };
   
   // Use initialValues if provided, otherwise use defaults
-  const [selectedWorkflow, setSelectedWorkflow] = useState(initialValues.selectedWorkflow || defaultWorkflowId);
+  const [selectedWorkflow, setSelectedWorkflow] = useState(initialValues.selectedWorkflow || getDefaultWorkflowId());
   const [selectedRefiner, setSelectedRefiner] = useState(initialValues.selectedRefiner || 'none');
   const [selectedPublish, setSelectedPublish] = useState(initialValues.selectedPublish || 'none');
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>(initialValues.workflowParams || {});

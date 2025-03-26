@@ -8,6 +8,7 @@ function convertToTypedWorkflows(data: any[]): Workflow[] {
     id: workflow.id,
     name: workflow.name,
     description: workflow.description || '', // Ensure description exists with a fallback
+    default: workflow.default || false, // Include the default property
     params: workflow.params.map((param: any): WorkflowParam => ({
       id: param.id,
       name: param.name,
