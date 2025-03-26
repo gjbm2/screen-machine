@@ -39,6 +39,7 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
+            console.log("Navigation: Previous button clicked");
             onNavigatePrev();
           }}
           className={`${baseButtonClass} ${visibilityClass} left-2 pointer-events-auto`}
@@ -55,6 +56,7 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
+            console.log("Navigation: Next button clicked");
             onNavigateNext();
           }}
           className={`${baseButtonClass} ${visibilityClass} right-2 pointer-events-auto`}

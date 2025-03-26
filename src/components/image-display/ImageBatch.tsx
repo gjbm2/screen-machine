@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import SortableImageContainer from './SortableImageContainer';
 import { ViewMode } from './ImageDisplay';
@@ -154,6 +155,7 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
           anyGenerating={anyGenerating}
           failedImages={allNonCompletedImages}
           activeImageIndex={activeImageIndex}
+          setActiveImageIndex={setActiveImageIndex}
           handleCreateAgain={handleCreateAgain}
           handleFullScreenClick={handleFullScreenClick}
           handleRemoveFailedImage={handleRemoveFailedImage}
