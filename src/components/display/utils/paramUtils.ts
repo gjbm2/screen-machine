@@ -6,12 +6,9 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   // Add each parameter to the query string
   if (params.output) {
     console.log('[createUrlWithParams] Adding output param:', params.output);
-    // Handle external URLs differently to prevent double encoding
-    if (params.output.startsWith('http')) {
-      queryParams.set('output', encodeURIComponent(params.output));
-    } else {
-      queryParams.set('output', encodeURIComponent(params.output));
-    }
+    // For all URLs, just use single encoding to prevent double encoding issues
+    queryParams.set('output', encodeURIComponent(params.output));
+    console.log('[createUrlWithParams] Encoded output param:', encodeURIComponent(params.output));
   }
   
   if (params.showMode) {
@@ -72,7 +69,7 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   return result;
 };
 
-// Recursive function to fully decode a URL
+// Recursive function to fully decode a URL - improved version
 export const fullyDecodeUrl = (url: string): string => {
   if (!url) return url;
   
@@ -82,13 +79,19 @@ export const fullyDecodeUrl = (url: string): string => {
   let previousUrl = '';
   let iterations = 0;
   
-  // Keep decoding until there's no more change
+  // Keep decoding until there's no more change or we hit max iterations
   while (decodedUrl !== previousUrl && iterations < 10) {
     previousUrl = decodedUrl;
     try {
       decodedUrl = decodeURIComponent(previousUrl);
       iterations++;
       console.log(`[fullyDecodeUrl] Iteration ${iterations}, decoded to:`, decodedUrl);
+      
+      // Special handling for when we might have nested encodings
+      if (decodedUrl.includes('%') && iterations < 9) {
+        // Continue decoding in next iteration
+        continue;
+      }
     } catch (e) {
       // If we encounter an error, return the last valid decoded URL
       console.warn('[fullyDecodeUrl] Error decoding URL, returning last valid decode:', previousUrl, e);
@@ -105,9 +108,15 @@ export const processOutputParam = (output: string): string => {
   
   console.log('[processOutputParam] Processing output:', output);
   
-  // For external URLs, decode them fully to handle possible nested encodings
-  if (output.includes('http') || output.includes('%3A%2F%2F')) {
-    console.log('[processOutputParam] Processing possible URL:', output);
+  // Check if this is already an http URL
+  if (output.startsWith('http://') || output.startsWith('https://')) {
+    console.log('[processOutputParam] Already a valid URL, using as-is:', output);
+    return output;
+  }
+  
+  // For encoded URLs, decode them fully
+  if (output.includes('%') && (output.includes('http%3A') || output.includes('https%3A'))) {
+    console.log('[processOutputParam] Processing encoded URL:', output);
     // Try to fully decode the URL
     try {
       const fullyDecoded = fullyDecodeUrl(output);
@@ -136,7 +145,13 @@ export const decodeComplexOutputParam = (output: string | null): string | null =
   
   console.log('[decodeComplexOutputParam] Starting to decode:', output);
   
-  // Use the recursive decoder for complex URLs
+  // First check if it's already a valid URL
+  if (output.startsWith('http://') || output.startsWith('https://')) {
+    console.log('[decodeComplexOutputParam] Already a valid URL, using as-is:', output);
+    return output;
+  }
+  
+  // For encoded URLs, decode them
   try {
     const decoded = fullyDecodeUrl(output);
     console.log('[decodeComplexOutputParam] Successfully decoded to:', decoded);
