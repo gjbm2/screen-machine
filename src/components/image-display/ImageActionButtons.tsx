@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { 
@@ -54,7 +55,7 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
 
   // Make buttons smaller for rolled-up view
   const buttonSizeClass = isRolledUp
-    ? 'h-8 w-auto p-1.5 text-xs' // Smaller buttons for rolled-up mode without labels
+    ? 'h-8 w-8 p-0' // Smaller, icon-only buttons for rolled-up mode
     : 'h-9 px-3 py-2 text-xs'; // Regular size with labels for unrolled mode
 
   // Only show on hover/force for normal view
@@ -85,14 +86,20 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
     }
   };
 
+  // New styled button classes
+  const baseButtonClass = "rounded-full backdrop-blur-sm text-white shadow-sm transition-all duration-200 flex items-center justify-center";
+  const actionButtonClass = `${baseButtonClass} bg-black/50 hover:bg-black/70`;
+  const deleteButtonClass = `${baseButtonClass} bg-destructive/70 hover:bg-destructive`;
+  const publishButtonClass = `${baseButtonClass} bg-green-600/90 hover:bg-green-600 font-medium`;
+
   return (
-    <div className={`absolute bottom-0 left-0 right-0 bg-black/80 flex justify-center p-2 z-20 ${visibilityClass}`}>
+    <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent flex justify-center p-3 z-20 ${visibilityClass}`}>
       <div className="flex gap-2 justify-center items-center">
         {onCreateAgain && (
           <Button 
             type="button" 
             variant="ghost" 
-            className={`bg-white/20 hover:bg-white/30 text-white rounded-full ${buttonSizeClass} image-action-button`}
+            className={`${actionButtonClass} ${buttonSizeClass} image-action-button`}
             onClick={onCreateAgain}
             aria-label="Create Again"
           >
@@ -106,7 +113,7 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
           <Button 
             type="button" 
             variant="ghost" 
-            className={`bg-white/20 hover:bg-white/30 text-white rounded-full ${buttonSizeClass} image-action-button`}
+            className={`${actionButtonClass} ${buttonSizeClass} image-action-button`}
             onClick={handleUseAsInput}
             aria-label="Use as Input"
           >
@@ -120,7 +127,7 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
           <Button 
             type="button" 
             variant="ghost" 
-            className={`bg-white/20 hover:bg-white/30 text-white rounded-full ${buttonSizeClass} image-action-button`}
+            className={`${actionButtonClass} ${buttonSizeClass} image-action-button`}
             onClick={(e) => {
               // For non-normal view, always treat as event handler
               (onUseAsInput as (e: React.MouseEvent) => void)(e);
@@ -136,7 +143,7 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
           <Button 
             type="button" 
             variant="ghost" 
-            className={`bg-white/20 hover:bg-white/30 text-white rounded-full ${buttonSizeClass} image-action-button`}
+            className={`${actionButtonClass} ${buttonSizeClass} image-action-button`}
             onClick={onDownload}
             aria-label="Download Image"
           >
@@ -158,7 +165,7 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
           <Button
             type="button"
             variant="destructive"
-            className={`bg-destructive/90 hover:bg-destructive text-white rounded-full ${buttonSizeClass} image-action-button`}
+            className={`${deleteButtonClass} ${buttonSizeClass} image-action-button`}
             onClick={onDeleteImage}
             aria-label="Delete image"
           >
