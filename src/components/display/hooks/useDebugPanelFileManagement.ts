@@ -52,7 +52,7 @@ export const useDebugPanelFileManagement = ({
       console.log('[useDebugPanelFileManagement] Executing navigation function for:', outputPath);
       
       // Direct URL construction for external URLs to prevent encoding issues
-      if (outputPath.startsWith('http')) {
+      if (outputPath?.startsWith('http')) {
         // Use a simple approach for external URLs to avoid double encoding
         const directUrl = `/display?output=${encodeURIComponent(outputPath)}&debug=true`;
         console.log('[useDebugPanelFileManagement] Using direct URL for external URL:', directUrl);
@@ -62,10 +62,8 @@ export const useDebugPanelFileManagement = ({
         navigate(`/display${url}`);
       }
       
-      // Force a refresh after navigation to ensure the image loads
-      setTimeout(() => {
-        window.location.reload();
-      }, 100);
+      // Log the navigation
+      console.log('[useDebugPanelFileManagement] Navigation completed');
     };
   };
 
@@ -82,7 +80,14 @@ export const useDebugPanelFileManagement = ({
   };
 
   const isCurrentFile = (file: string, imageUrl: string | null = null) => {
-    if (!imageUrl) return false;
+    if (!imageUrl) {
+      console.log('[useDebugPanelFileManagement] Using direct string comparison:', {
+        file,
+        imageUrl,
+        isMatch: false
+      });
+      return false;
+    }
     
     // Handle external URLs with query parameters
     let normalizedFile;

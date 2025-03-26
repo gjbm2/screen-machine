@@ -67,6 +67,12 @@ export const ImageDisplay: React.FC<ImageDisplayProps> = ({
           console.error('[DEBUG ImageDisplay] Error parsing URL:', e);
         }
       }
+      
+      // Test loading the image
+      const testImg = new Image();
+      testImg.onload = () => console.log('[DEBUG ImageDisplay] Test image loaded successfully from URL:', imageUrl);
+      testImg.onerror = (e) => console.error('[DEBUG ImageDisplay] Test image failed to load:', imageUrl, e);
+      testImg.src = imageUrl;
     }
   }, [imageUrl]);
 
