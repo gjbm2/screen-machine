@@ -34,14 +34,15 @@ export const useImageBatchItemActions = ({
   
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    console.log(`Deleting image in batch ${batchId} at index ${batchIndex}`);
     onDeleteImage(batchId, batchIndex);
   }, [batchId, batchIndex, onDeleteImage]);
   
   const handleCreateAgain = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     // Pass the batchId to create again in the same batch
+    console.log(`Creating again in batch ${batchId}`);
     onCreateAgain(batchId);
-    // We no longer roll up the batch when creating again (removed this behavior)
   }, [batchId, onCreateAgain]);
   
   // Use the fullscreen handler for opening the fullscreen view

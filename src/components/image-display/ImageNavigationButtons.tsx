@@ -23,7 +23,7 @@ const ImageNavigationButtons: React.FC<ImageNavigationButtonsProps> = ({
     return null;
   }
   
-  const baseButtonClass = "absolute top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center z-30 pointer-events-auto";
+  const baseButtonClass = "absolute top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center z-50 pointer-events-auto";
   
   // Add visibility classes based on whether buttons should always be visible
   const visibilityClass = alwaysVisible 
