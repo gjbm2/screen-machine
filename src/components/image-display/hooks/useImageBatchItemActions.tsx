@@ -26,28 +26,28 @@ export const useImageBatchItemActions = ({
     onOpenFullscreenView(batchId, batchIndex);
   }, [batchId, batchIndex, onOpenFullscreenView]);
   
-  const handleUseAsInput = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleUseAsInput = useCallback((e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     console.log('Using image as input:', imageUrl);
     onUseGeneratedAsInput(imageUrl);
   }, [imageUrl, onUseGeneratedAsInput]);
   
-  const handleDelete = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDelete = useCallback((e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     console.log(`Deleting image in batch ${batchId} at index ${batchIndex}`);
     onDeleteImage(batchId, batchIndex);
   }, [batchId, batchIndex, onDeleteImage]);
   
-  const handleCreateAgain = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleCreateAgain = useCallback((e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     // Pass the batchId to create again in the same batch
     console.log(`Creating again in batch ${batchId}`);
     onCreateAgain(batchId);
   }, [batchId, onCreateAgain]);
   
   // Use the fullscreen handler for opening the fullscreen view
-  const handleFullScreen = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleFullScreen = useCallback((e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     onOpenFullscreenView(batchId, batchIndex);
   }, [batchId, batchIndex, onOpenFullscreenView]);
   

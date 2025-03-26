@@ -6,11 +6,11 @@ import { ViewMode } from './ImageDisplay';
 import PublishMenu from './PublishMenu';
 
 interface ImageActionButtonsProps {
-  onDeleteImage?: () => void;
-  onFullScreen?: () => void;
-  onUseAsInput?: () => void;
-  onCreateAgain?: () => void;
-  onDownload?: () => void;
+  onDeleteImage?: (e?: React.MouseEvent) => void;
+  onFullScreen?: (e?: React.MouseEvent) => void;
+  onUseAsInput?: (e?: React.MouseEvent) => void;
+  onCreateAgain?: (e?: React.MouseEvent) => void;
+  onDownload?: (e?: React.MouseEvent) => void;
   viewMode?: ViewMode;
   forceShow?: boolean;
   isRolledUp?: boolean;
