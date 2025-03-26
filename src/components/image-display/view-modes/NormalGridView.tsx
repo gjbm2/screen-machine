@@ -32,8 +32,6 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
       {imageContainerOrder.map((batchId) => {
         if (!batches[batchId]) return null;
         
-        const hasGeneratingImages = batches[batchId].some(img => img.status === 'generating');
-        
         return (
           <div key={batchId} id={batchId} className={expandedContainers[batchId] ? "col-span-full" : ""}>
             <ImageBatch
@@ -56,7 +54,6 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
                   onFullScreenClick(image);
                 }
               }}
-              hasGeneratingImages={hasGeneratingImages}
             />
           </div>
         );

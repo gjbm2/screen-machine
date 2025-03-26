@@ -1,12 +1,10 @@
 
-import { useState, useCallback, useEffect } from 'react';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useState, useCallback } from 'react';
 
 export const useImageContainer = () => {
   const [imageContainerOrder, setImageContainerOrder] = useState<string[]>([]);
   const [expandedContainers, setExpandedContainers] = useState<Record<string, boolean>>({});
   const [nextContainerId, setNextContainerId] = useState(1);
-  const isMobile = useIsMobile();
 
   const handleReorderContainers = useCallback((sourceIndex: number, destinationIndex: number) => {
     setImageContainerOrder(prev => {
@@ -18,35 +16,8 @@ export const useImageContainer = () => {
   }, []);
 
   const handleAddNewContainer = useCallback((batchId: string) => {
-    // When adding a new container, collapse all existing ones and expand the new one
-    setExpandedContainers(prev => {
-      // Create a completely new object instead of modifying the existing one
-      const newState: Record<string, boolean> = {};
-      
-      // First set all existing containers to collapsed
-      Object.keys(prev).forEach(key => {
-        newState[key] = false;
-      });
-      
-      // Then specifically set the new container to expanded
-      newState[batchId] = true;
-      
-      return newState;
-    });
-    
     setImageContainerOrder(prev => [batchId, ...prev]);
-    
-    // On mobile, scroll to the new container after a short delay to allow DOM updates
-    if (isMobile) {
-      setTimeout(() => {
-        console.log(`[Mobile] Scrolling to newly added container ${batchId}`);
-        const container = document.getElementById(batchId);
-        if (container) {
-          container.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 100);
-    }
-  }, [isMobile]);
+  }, []);
 
   const handleDeleteContainer = useCallback((batchId: string, setGeneratedImages: Function) => {
     setImageContainerOrder(prev => prev.filter(id => id !== batchId));
