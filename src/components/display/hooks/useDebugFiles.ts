@@ -11,7 +11,7 @@ export const useDebugFiles = (
   const isMountedRef = useRef<boolean>(true);
   const isInitialFetchDoneRef = useRef<boolean>(false);
   const isFetchingRef = useRef<boolean>(false);
-  const MIN_FETCH_INTERVAL = 60000; // Increase to 60 seconds between fetches
+  const MIN_FETCH_INTERVAL = 60000; // 60 seconds between fetches
   
   // Create a stable fetch function that's memoized
   const fetchFiles = useCallback(async () => {
@@ -33,8 +33,7 @@ export const useDebugFiles = (
     try {
       const files = await fetchOutputFiles();
       if (isMountedRef.current) {
-        // Fix: Store the current files and compare before updating
-        // This addresses the TypeScript error by not using a callback function
+        // Fix: Directly pass the files array instead of a callback function
         setOutputFiles(files);
       }
     } catch (err) {
@@ -73,3 +72,4 @@ export const useDebugFiles = (
     };
   }, [debugMode, fetchFiles]);
 };
+

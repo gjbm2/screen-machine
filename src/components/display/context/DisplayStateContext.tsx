@@ -33,6 +33,10 @@ interface DisplayStateContextType {
   oldImageStyle: React.CSSProperties;
   newImageStyle: React.CSSProperties;
   
+  // Error state
+  error: string | null;
+  setError: (error: string | null) => void;
+  
   // Actions
   loadNewImage: (url: string) => void;
   handleManualCheck: () => Promise<boolean>;
@@ -70,6 +74,8 @@ const DEFAULT_CONTEXT: DisplayStateContextType = {
   oldImageUrl: null,
   oldImageStyle: {},
   newImageStyle: {},
+  error: null,
+  setError: () => {},
   loadNewImage: () => {},
   handleManualCheck: async () => false,
   checkImageModified: async () => false,
@@ -387,7 +393,7 @@ export const DisplayStateProvider: React.FC<DisplayStateProviderProps> = ({ chil
     setIsTransitioning(true);
     
     // Set transition styles based on parameters
-    const baseTransitionStyle = {
+    const baseTransitionStyle: React.CSSProperties = {
       position: 'absolute',
       top: 0,
       left: 0,
@@ -505,7 +511,7 @@ export const DisplayStateProvider: React.FC<DisplayStateProviderProps> = ({ chil
       style.maxHeight = '100%';
       style.width = 'auto';
       style.height = 'auto';
-    } else if (showMode === 'cover') {
+    } else if (showMode === 'fill') {
       style.width = '100%';
       style.height = '100%';
       style.objectFit = 'cover';
@@ -640,6 +646,10 @@ export const DisplayStateProvider: React.FC<DisplayStateProviderProps> = ({ chil
     oldImageStyle,
     newImageStyle,
     
+    // Error state
+    error,
+    setError,
+    
     // Actions
     loadNewImage,
     handleManualCheck,
@@ -661,7 +671,7 @@ export const DisplayStateProvider: React.FC<DisplayStateProviderProps> = ({ chil
     imageUrl, imageKey, lastModified, lastChecked, nextCheckTime, 
     outputFiles, metadata, isLoading, isChecking, isLoadingMetadata,
     imageChanged, isTransitioning, oldImageUrl, oldImageStyle, newImageStyle,
-    loadNewImage, handleManualCheck, checkImageModified, extractMetadataFromImage,
+    error, loadNewImage, handleManualCheck, checkImageModified, extractMetadataFromImage,
     getImagePositionStyle, handleImageError, processedCaption, params.debugMode
   ]);
   
@@ -671,3 +681,4 @@ export const DisplayStateProvider: React.FC<DisplayStateProviderProps> = ({ chil
     </DisplayStateContext.Provider>
   );
 };
+
