@@ -2,7 +2,6 @@
 import React from 'react';
 import { ViewMode } from './ImageDisplay';
 import ReferenceImageIndicator from './ReferenceImageIndicator';
-import { AspectRatio } from '@/components/ui/aspect-ratio';
 
 interface ImageBatchItemContentProps {
   imageUrl: string;
@@ -25,51 +24,28 @@ const ImageBatchItemContent: React.FC<ImageBatchItemContentProps> = ({
   title,
   isExpandedMain = false
 }) => {
-  // For small view and normal view (except main image in unroll mode), use 1:1 aspect ratio
-  // When in unroll mode for the main image, use 4:3 aspect ratio
-  const useSquareAspectRatio = viewMode === 'small' || (viewMode === 'normal' && !isExpandedMain);
+  // For expanded main view, we use object-contain to preserve aspect ratio
+  // within the 4:3 container defined in ExpandedBatchView
+  const imageObjectFit = isExpandedMain ? 'object-contain' : 'object-cover';
+  
+  // Add background color to the image container
+  const containerBgColor = 'bg-[#f3f3f3]';
   
   return (
-    <div className="w-full h-full" onClick={onClick}>
-      {imageUrl ? (
-        <div className="relative w-full h-full">
-          {useSquareAspectRatio ? (
-            <AspectRatio ratio={1} className="overflow-hidden">
-              <img
-                src={imageUrl}
-                alt={prompt || `Generated image ${index + 1}`}
-                title={title || prompt}
-                className="w-full h-full object-contain bg-[#f3f3f3]"
-              />
-              {hasReferenceImages && (
-                <ReferenceImageIndicator 
-                  imageUrl={imageUrl} 
-                  position="bottom-left" 
-                />
-              )}
-            </AspectRatio>
-          ) : (
-            // For expanded main image, use 4:3 aspect ratio
-            <AspectRatio ratio={4/3} className="overflow-hidden">
-              <img
-                src={imageUrl}
-                alt={prompt || `Generated image ${index + 1}`}
-                title={title || prompt}
-                className="w-full h-full object-contain bg-[#f3f3f3]"
-              />
-              {hasReferenceImages && (
-                <ReferenceImageIndicator 
-                  imageUrl={imageUrl} 
-                  position="bottom-left" 
-                />
-              )}
-            </AspectRatio>
-          )}
-        </div>
-      ) : (
-        <div className="w-full h-full bg-secondary/10 flex items-center justify-center text-muted-foreground text-sm">
-          No image
-        </div>
+    <div 
+      className={`w-full h-full ${containerBgColor} ${viewMode === 'normal' ? 'aspect-square' : ''}`}
+      onClick={onClick}
+    >
+      <img 
+        src={imageUrl} 
+        alt={prompt || `Generated image ${index + 1}`} 
+        title={title || prompt || `Generated image ${index + 1}`}
+        className={`w-full h-full ${imageObjectFit}`}
+      />
+      
+      {/* Show reference image indicator if image has reference images */}
+      {hasReferenceImages && (
+        <ReferenceImageIndicator />
       )}
     </div>
   );
