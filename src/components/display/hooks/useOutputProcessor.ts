@@ -37,15 +37,16 @@ export const useOutputProcessor = (params: DisplayParams) => {
         if (decodedUrl.startsWith('http')) {
           console.log('[useOutputProcessor] Decoded URL appears valid');
           
-          // Test if the URL might be reachable
+          // Set the processed URL immediately without waiting for test image
+          console.log('[useOutputProcessor] Setting processedUrl to decoded URL:', decodedUrl);
+          setProcessedUrl(decodedUrl);
+          
+          // Optionally test if the URL might be reachable (but don't wait for this)
           const testImg = new Image();
           testImg.onload = () => console.log('[useOutputProcessor] Test image loaded from URL');
           testImg.onerror = (e) => console.error('[useOutputProcessor] Test image failed to load:', e);
           testImg.src = decodedUrl;
           
-          // Set the processed URL
-          console.log('[useOutputProcessor] Setting processedUrl to decoded URL:', decodedUrl);
-          setProcessedUrl(decodedUrl);
           return;
         } else {
           console.warn('[useOutputProcessor] Decoded URL does not start with http');

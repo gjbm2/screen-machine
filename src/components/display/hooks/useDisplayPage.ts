@@ -118,6 +118,8 @@ export const useDisplayPage = () => {
     
     if (processedUrl && processedUrl !== imageUrl) {
       console.log('[useDisplayPage] Setting image URL from processed URL:', processedUrl);
+      
+      // Update the image URL
       setImageUrl(processedUrl);
       
       // Update imageKey to force re-render
@@ -137,6 +139,21 @@ export const useDisplayPage = () => {
       const filename = processedUrl.split('/').pop() || processedUrl;
       const displayName = filename.length > 30 ? filename.substring(0, 27) + '...' : filename;
       toast.success(`Displaying image: ${displayName}`);
+      
+      // DEBUG: Verify the image is loadable by creating a test image
+      const testImg = new Image();
+      testImg.onload = () => {
+        console.log('[useDisplayPage] ✅ Test loaded image successfully:', processedUrl);
+      };
+      testImg.onerror = (e) => {
+        console.error('[useDisplayPage] ❌ Test image failed to load:', processedUrl, e);
+      };
+      testImg.src = processedUrl;
+    } else if (processedUrl === null && imageUrl !== null) {
+      // Clear image URL if processed URL is null
+      console.log('[useDisplayPage] Clearing image URL because processedUrl is null');
+      setImageUrl(null);
+      setImageKey(prev => prev + 1);
     }
   }, [processedUrl, imageUrl, setImageUrl, setImageKey, setImageChanged]);
 
@@ -303,32 +320,21 @@ export const useDisplayPage = () => {
         console.log('[useDisplayPage] Forcing processing of output parameter on initial render');
         setImageUrl(null); // Reset to trigger URL change detection
         setTimeout(() => {
-          setImageUrl(processedUrl || displayParams.output);
-          setImageKey(prev => prev + 1);
+          if (processedUrl) {
+            console.log('[useDisplayPage] Setting imageUrl from processedUrl on initial render:', processedUrl);
+            setImageUrl(processedUrl);
+            setImageKey(prev => prev + 1);
+          } else if (displayParams.output) {
+            console.log('[useDisplayPage] No processedUrl available, using raw output param:', displayParams.output);
+            const normalizedPath = normalizePathForDisplay(displayParams.output);
+            setImageUrl(normalizedPath);
+            setImageKey(prev => prev + 1);
+          }
         }, 100);
       }
     }
   }, [displayParams.output, processedUrl, setImageUrl, setImageKey]);
 
-  // Debugging code to force image URL reload when it should be present but isn't
-  useEffect(() => {
-    if (mountedRef.current && displayParams.output && !imageUrl && !isLoading) {
-      console.log('[useDisplayPage] DEBUG: Output param present but imageUrl is null:', {
-        output: displayParams.output,
-        imageUrl,
-        processedUrl,
-        hasProcessedOutputRef: hasProcessedOutputRef.current
-      });
-      
-      // If we have output param but no imageUrl, try to force a reload
-      if (hasProcessedOutputRef.current) {
-        console.log('[useDisplayPage] Forcing hasProcessedOutputRef reset to try loading image again');
-        hasProcessedOutputRef.current = false;
-      }
-    }
-  }, [displayParams.output, imageUrl, processedUrl, isLoading]);
-
-  // Return all necessary state and functions
   return {
     params: displayParams,
     previewParams,
