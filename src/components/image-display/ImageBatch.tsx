@@ -1,19 +1,20 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import SortableImageContainer from './SortableImageContainer';
 import { ViewMode } from './ImageDisplay';
+import { ImageGenerationStatus } from '@/types/workflows';
 import ExpandedBatchView from './batch-components/ExpandedBatchView';
 import RolledUpBatchView from './batch-components/RolledUpBatchView';
 import TableBatchView from './batch-components/TableBatchView';
-import ImageBatchActions from './batch-components/ImageBatchActions';
-import { useImageBatch } from './hooks/useImageBatch';
+import DeleteBatchDialog from './batch-components/DeleteBatchDialog';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface Image {
   url: string;
   prompt: string;
   workflow: string;
   batchIndex: number;
-  status: string;
+  status: ImageGenerationStatus;
   referenceImageUrl?: string;
 }
 
@@ -46,22 +47,44 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   viewMode,
   hasGeneratingImages = false
 }) => {
-  const {
-    showDeleteDialog,
-    setShowDeleteDialog,
-    activeImageIndex,
-    setActiveImageIndex,
-    isMobile,
-    getFilteredImages,
-    getSafeActiveIndex
-  } = useImageBatch({ batchId, images, hasGeneratingImages });
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const isMobile = useIsMobile();
+  
+  // Ensure the activeImageIndex is always within bounds when images array changes
+  useEffect(() => {
+    if (images.length > 0 && activeImageIndex >= images.length) {
+      console.log(`ImageBatch: Resetting activeImageIndex from ${activeImageIndex} to 0 because images.length=${images.length}`);
+      setActiveImageIndex(0);
+    }
+  }, [images, activeImageIndex]);
+  
+  // If this is a new batch with generating images, auto-scroll to it in mobile view
+  useEffect(() => {
+    if (isMobile && hasGeneratingImages) {
+      console.log(`Auto-scrolling to batch ${batchId} with generating images on mobile`);
+      
+      // Scroll this batch into view
+      setTimeout(() => {
+        const element = document.getElementById(batchId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  }, [batchId, hasGeneratingImages, isMobile]);
   
   if (!images || images.length === 0) {
     return null;
   }
   
-  const { anyGenerating, completedImages, failedImages, allNonCompletedImages } = getFilteredImages();
+  const anyGenerating = images.some(img => img.status === 'generating') || hasGeneratingImages;
+  const completedImages = images.filter(img => img.status === 'completed');
+  const failedImages = images.filter(img => img.status === 'failed' || img.status === 'error');
+  const generatingImages = images.filter(img => img.status === 'generating');
   
+  const allNonCompletedImages = [...failedImages, ...generatingImages];
+
   if (viewMode === 'small' && completedImages.length === 0 && !anyGenerating && failedImages.length === 0) {
     return null;
   }
@@ -105,7 +128,9 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   };
 
   // Ensure we always have a valid activeImageIndex
-  const safeActiveIndex = getSafeActiveIndex(completedImages);
+  const safeActiveIndex = completedImages.length > 0 
+    ? Math.min(Math.max(0, activeImageIndex), completedImages.length - 1) 
+    : 0;
 
   const handleImageClick = (url: string, prompt?: string) => {
     if (!url) {
@@ -181,10 +206,10 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
         />
       )}
       
-      <ImageBatchActions
-        showDeleteDialog={showDeleteDialog}
-        onDeleteDialogClose={handleDeleteDialogClose}
-        onConfirmDelete={handleConfirmDelete}
+      <DeleteBatchDialog 
+        isOpen={showDeleteDialog}
+        onClose={handleDeleteDialogClose}
+        onConfirm={handleConfirmDelete}
       />
     </SortableImageContainer>
   );
