@@ -1,7 +1,6 @@
 
 import React from 'react';
 import ImageBatch from '../ImageBatch';
-import LoadingPlaceholder from '../LoadingPlaceholder';
 
 interface NormalGridViewProps {
   imageContainerOrder: string[];
@@ -14,7 +13,6 @@ interface NormalGridViewProps {
   onDeleteContainer: (batchId: string) => void;
   onFullScreenClick: (image: any) => void;
   imageUrl: string | null;
-  activeGenerations?: string[]; // Add activeGenerations prop
 }
 
 const NormalGridView: React.FC<NormalGridViewProps> = ({
@@ -27,8 +25,7 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
   onDeleteImage,
   onDeleteContainer,
   onFullScreenClick,
-  imageUrl,
-  activeGenerations = [] // Default to empty array
+  imageUrl
 }) => {
   return (
     <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1">
@@ -60,7 +57,6 @@ const NormalGridView: React.FC<NormalGridViewProps> = ({
                 }
               }}
               hasGeneratingImages={hasGeneratingImages}
-              activeGenerations={activeGenerations} // Pass activeGenerations prop
             />
           </div>
         );
