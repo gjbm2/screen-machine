@@ -93,13 +93,13 @@ export const useImageBatchItem = ({
       return;
     }
     
-    // Only go to fullscreen in normal view when NOT rolled up (this is the key change)
+    // Don't go to fullscreen view when in normal view AND rolled up
     if (image.url && onFullScreen && viewMode === 'normal' && !isRolledUp) {
       onFullScreen(batchId, index);
       return;
     }
     
-    // For small view, just call the general onImageClick - CRITICAL CHANGE: Don't call this for rolled up containers
+    // Don't call onImageClick for rolled-up containers
     if (image.url && !isRolledUp) {
       onImageClick(image.url);
     }
