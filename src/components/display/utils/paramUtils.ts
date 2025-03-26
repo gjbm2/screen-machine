@@ -6,9 +6,15 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   // Add each parameter to the query string
   if (params.output) {
     console.log('[createUrlWithParams] Adding output param:', params.output);
-    // For all URLs, just use single encoding to prevent double encoding issues
-    queryParams.set('output', encodeURIComponent(params.output));
-    console.log('[createUrlWithParams] Encoded output param:', encodeURIComponent(params.output));
+    // For external URLs, use them directly without additional encoding
+    if (params.output.startsWith('http://') || params.output.startsWith('https://')) {
+      queryParams.set('output', params.output);
+      console.log('[createUrlWithParams] Added external URL directly:', params.output);
+    } else {
+      // For local paths, use single encoding
+      queryParams.set('output', encodeURIComponent(params.output));
+      console.log('[createUrlWithParams] Encoded local path:', encodeURIComponent(params.output));
+    }
   }
   
   if (params.showMode) {
@@ -69,7 +75,7 @@ export const createUrlWithParams = (params: DisplayParams): string => {
   return result;
 };
 
-// Recursive function to fully decode a URL - improved version
+// Improved recursive function to fully decode a URL
 export const fullyDecodeUrl = (url: string): string => {
   if (!url) return url;
   
@@ -86,6 +92,12 @@ export const fullyDecodeUrl = (url: string): string => {
       decodedUrl = decodeURIComponent(previousUrl);
       iterations++;
       console.log(`[fullyDecodeUrl] Iteration ${iterations}, decoded to:`, decodedUrl);
+      
+      // If we have a valid URL now, we can stop decoding
+      if (decodedUrl.startsWith('http://') || decodedUrl.startsWith('https://')) {
+        console.log('[fullyDecodeUrl] Found valid URL, stopping decode loop');
+        break;
+      }
       
       // Special handling for when we might have nested encodings
       if (decodedUrl.includes('%') && iterations < 9) {

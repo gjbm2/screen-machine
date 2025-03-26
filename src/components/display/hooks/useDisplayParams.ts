@@ -38,10 +38,14 @@ export const useDisplayParams = () => {
       // Already a valid URL, use as-is
       decodedOutput = rawOutput;
       console.log('[useDisplayParams] Output is already a valid URL:', decodedOutput);
-    } else {
-      // Needs decoding
+    } else if (rawOutput.includes('%') && (rawOutput.includes('http%3A') || rawOutput.includes('https%3A'))) {
+      // Needs decoding as it appears to be an encoded external URL
       decodedOutput = decodeComplexOutputParam(rawOutput);
       console.log('[useDisplayParams] Decoded output param:', decodedOutput);
+    } else {
+      // Local path - normalize it
+      decodedOutput = processOutputParam(rawOutput);
+      console.log('[useDisplayParams] Normalized output path:', decodedOutput);
     }
   }
   
