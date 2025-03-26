@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Card } from '@/components/ui/card';
-import { Plus, Loader } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 interface NewVariantPlaceholderProps {
@@ -15,16 +15,10 @@ const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({
   onClick,
   className = ''
 }) => {
-  const [isClicked, setIsClicked] = useState(false);
   const isMobile = useIsMobile();
   
   const handleClick = () => {
-    if (isClicked) return; // Prevent multiple clicks
-    setIsClicked(true);
     onClick(batchId);
-    
-    // No longer resetting isClicked automatically - it will remain showing the spinner
-    // until the parent component re-renders with the new image
   };
 
   return (
@@ -33,18 +27,12 @@ const NewVariantPlaceholder: React.FC<NewVariantPlaceholderProps> = ({
       onClick={handleClick}
     >
       <div className="aspect-square relative group flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors">
-        {isClicked ? (
-          <div className="flex items-center justify-center">
-            <Loader className="h-6 w-6 animate-spin text-primary" />
-          </div>
-        ) : (
-          <div className="flex flex-col items-center text-muted-foreground p-2 text-center">
-            <Plus className="h-8 w-8 mb-1" />
-            <span className="text-xs whitespace-nowrap">
-              {isMobile ? "New variant" : "Create new variant"}
-            </span>
-          </div>
-        )}
+        <div className="flex flex-col items-center text-muted-foreground p-2 text-center">
+          <Plus className="h-8 w-8 mb-1" />
+          <span className="text-xs whitespace-nowrap">
+            {isMobile ? "New variant" : "Create new variant"}
+          </span>
+        </div>
       </div>
     </Card>
   );
