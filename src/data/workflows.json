@@ -4,6 +4,7 @@
     "id": "text-to-image",
     "name": "Text to Image",
     "description": "Generate an image from a text prompt",
+    "default": true,
     "params": [
       {
         "id": "style",
