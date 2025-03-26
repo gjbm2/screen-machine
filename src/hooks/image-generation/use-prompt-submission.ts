@@ -31,7 +31,8 @@ export const usePromptSubmission = ({
     globalParams?: Record<string, any>,
     refiner?: string,
     refinerParams?: Record<string, any>,
-    publishDestination?: string
+    publishDestination?: string,
+    batchId?: string
   ) => {
     try {
       // No longer first run after submitting a prompt
@@ -63,8 +64,7 @@ export const usePromptSubmission = ({
         workflow: effectiveWorkflow,
         params: effectiveWorkflowParams,
         globalParams: effectiveGlobalParams,
-        // Important: Don't pass batchId here for a new generation
-        // batchId should only be passed for variants of an existing batch
+        batchId,
         refiner, 
         refinerParams
       };
@@ -74,7 +74,7 @@ export const usePromptSubmission = ({
       
       // If this is a new generation (not a variant of an existing batch),
       // collapse all other containers and keep only this one expanded
-      if (result && collapseAllExcept) {
+      if (result && collapseAllExcept && !batchId) {
         collapseAllExcept(result);
       }
       

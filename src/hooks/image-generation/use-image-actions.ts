@@ -19,6 +19,7 @@ export const useImageActions = (
     globalParams?: Record<string, any> | undefined,
     refiner?: string | undefined,
     refinerParams?: Record<string, any> | undefined,
+    publishDestination?: string | undefined,
     batchId?: string | undefined
   ) => void,
   generatedImages: GeneratedImage[]
@@ -116,6 +117,7 @@ export const useImageActions = (
           undefined, // No global params needed as they're not stored per image
           refinerToUse,
           refinerParamsToUse,
+          publishDestination,
           batchId // Explicitly pass the batchId to ensure the new image is generated in the same batch
         );
       }
