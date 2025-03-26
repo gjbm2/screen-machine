@@ -9,9 +9,12 @@ import AdvancedOptionsContainer from '@/components/advanced/AdvancedOptionsConta
 import { useImageGeneration } from '@/hooks/image-generation/use-image-generation';
 import { useConsoleManagement } from '@/hooks/use-console-management';
 import typedWorkflows from '@/data/typedWorkflows';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const Index = () => {
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   
   // Use our custom hook for console management
   const { 
@@ -60,6 +63,185 @@ const Index = () => {
     handleReorderContainers,
     handleDeleteContainer
   } = useImageGeneration(addConsoleLog);
+
+  // Parse URL parameters and set initial state
+  useEffect(() => {
+    // Check for prompt parameter
+    const promptParam = searchParams.get('prompt');
+    if (promptParam) {
+      setCurrentPrompt(promptParam);
+      addConsoleLog({
+        type: 'info',
+        message: `URL parameter: prompt=${promptParam}`
+      });
+    }
+    
+    // Check for workflow parameter
+    const workflowParam = searchParams.get('workflow');
+    if (workflowParam) {
+      // Validate workflow ID exists
+      const workflowExists = typedWorkflows.some(w => w.id === workflowParam);
+      if (workflowExists) {
+        setCurrentWorkflow(workflowParam);
+        addConsoleLog({
+          type: 'info',
+          message: `URL parameter: workflow=${workflowParam}`
+        });
+      } else {
+        toast.error(`Workflow '${workflowParam}' not found`);
+      }
+    }
+    
+    // Check for publish parameter
+    const publishParam = searchParams.get('publish');
+    if (publishParam) {
+      // Update the params to include publish destination
+      setCurrentParams(prev => ({
+        ...prev,
+        publish_destination: publishParam
+      }));
+      addConsoleLog({
+        type: 'info',
+        message: `URL parameter: publish=${publishParam}`
+      });
+    }
+    
+    // Check for refiner parameter
+    const refinerParam = searchParams.get('refiner');
+    if (refinerParam) {
+      setSelectedRefiner(refinerParam);
+      addConsoleLog({
+        type: 'info',
+        message: `URL parameter: refiner=${refinerParam}`
+      });
+    }
+    
+    // Get all workflow params (any parameter that doesn't match the special ones)
+    const workflowParamsObj: Record<string, any> = {};
+    searchParams.forEach((value, key) => {
+      if (!['prompt', 'workflow', 'refiner', 'publish', 'script', 'run'].includes(key) && !key.startsWith('refiner_')) {
+        try {
+          // Try to parse as JSON if it starts with [ or {
+          if (value.startsWith('[') || value.startsWith('{')) {
+            workflowParamsObj[key] = JSON.parse(value);
+          } else if (value === 'true') {
+            workflowParamsObj[key] = true;
+          } else if (value === 'false') {
+            workflowParamsObj[key] = false;
+          } else if (!isNaN(Number(value))) {
+            workflowParamsObj[key] = Number(value);
+          } else {
+            workflowParamsObj[key] = value;
+          }
+          
+          addConsoleLog({
+            type: 'info',
+            message: `URL parameter: ${key}=${value} (workflow param)`
+          });
+        } catch (e) {
+          // If parsing fails, use as string
+          workflowParamsObj[key] = value;
+          console.error(`Failed to parse param ${key}=${value}`, e);
+        }
+      }
+    });
+    
+    // If we have workflow params, update the state
+    if (Object.keys(workflowParamsObj).length > 0) {
+      setCurrentParams(prev => ({
+        ...prev,
+        ...workflowParamsObj
+      }));
+    }
+    
+    // Get all refiner params (parameters starting with refiner_)
+    const refinerParamsObj: Record<string, any> = {};
+    searchParams.forEach((value, key) => {
+      if (key.startsWith('refiner_')) {
+        const paramName = key.replace('refiner_', '');
+        try {
+          // Try to parse as JSON if it starts with [ or {
+          if (value.startsWith('[') || value.startsWith('{')) {
+            refinerParamsObj[paramName] = JSON.parse(value);
+          } else if (value === 'true') {
+            refinerParamsObj[paramName] = true;
+          } else if (value === 'false') {
+            refinerParamsObj[paramName] = false;
+          } else if (!isNaN(Number(value))) {
+            refinerParamsObj[paramName] = Number(value);
+          } else {
+            refinerParamsObj[paramName] = value;
+          }
+          
+          addConsoleLog({
+            type: 'info',
+            message: `URL parameter: ${key}=${value} (refiner param)`
+          });
+        } catch (e) {
+          // If parsing fails, use as string
+          refinerParamsObj[paramName] = value;
+          console.error(`Failed to parse refiner param ${key}=${value}`, e);
+        }
+      }
+    });
+    
+    // If we have refiner params, update the state
+    if (Object.keys(refinerParamsObj).length > 0) {
+      setRefinerParams(prev => ({
+        ...prev,
+        ...refinerParamsObj
+      }));
+    }
+    
+    // Check for script parameter (for future implementation)
+    const scriptParam = searchParams.get('script');
+    if (scriptParam) {
+      addConsoleLog({
+        type: 'info',
+        message: `URL parameter: script=${scriptParam} (not implemented yet)`
+      });
+      // TODO: Implement script loading
+    }
+    
+    // Check for 'run' parameter last (auto-generate)
+    const hasRunParam = searchParams.has('run');
+    if (hasRunParam) {
+      // We need to wait a moment for all other parameters to be processed
+      // before we trigger the generation
+      const timer = setTimeout(() => {
+        if (currentPrompt || Object.keys(workflowParamsObj).length > 0) {
+          addConsoleLog({
+            type: 'info',
+            message: `URL parameter: run=true (auto-generating)`
+          });
+          
+          // We'll simulate a submit with the current state
+          handlePromptSubmit(
+            currentPrompt || promptParam || '', 
+            undefined, 
+            workflowParam || currentWorkflow,
+            { ...currentParams, ...workflowParamsObj },
+            currentGlobalParams,
+            refinerParam || selectedRefiner,
+            { ...refinerParams, ...refinerParamsObj },
+            publishParam
+          );
+          
+          // Remove the run parameter from URL to prevent re-running on page refresh
+          if (searchParams.has('run')) {
+            const newParams = new URLSearchParams(searchParams);
+            newParams.delete('run');
+            navigate(`/?${newParams.toString()}`, { replace: true });
+          }
+        } else {
+          toast.error('Cannot auto-generate: No prompt or parameters provided');
+        }
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Note: We're disabling the exhaustive deps warning since we want this to run once on mount
 
   // Handler for opening advanced options
   const handleOpenAdvancedOptions = useCallback(() => {
