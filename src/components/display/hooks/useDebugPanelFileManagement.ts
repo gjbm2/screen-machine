@@ -49,8 +49,10 @@ export const useDebugPanelFileManagement = ({
     
     // Return a function that performs the navigation when called
     return () => {
+      console.log('[useDebugPanelFileManagement] Executing navigation function for:', outputPath);
+      
       // Navigate to the URL
-      navigate(`/display${url}`, { replace: false });
+      navigate(`/display${url}`, { replace: true });
       
       // Force a refresh after navigation to ensure the image loads
       setTimeout(() => {
@@ -61,12 +63,16 @@ export const useDebugPanelFileManagement = ({
         console.log('[useDebugPanelFileManagement] Current output param:', currentOutput);
         
         // Add additional logging for debugging
-        if (currentOutput !== outputPath) {
+        if (currentOutput !== outputPath && currentOutput !== encodeURIComponent(outputPath)) {
           console.warn('[useDebugPanelFileManagement] Output parameter mismatch after navigation');
           console.log('  Expected:', outputPath);
           console.log('  Actual:', currentOutput);
+          console.log('  Encoded expected:', encodeURIComponent(outputPath));
+          
+          // Force page reload as a last resort if the URL isn't what we expect
+          window.location.reload();
         }
-      }, 500);
+      }, 300);
     };
   };
 

@@ -42,8 +42,17 @@ export const FilesTab: React.FC<FilesTabProps> = ({
   const handleUseCustomUrl = () => {
     if (customUrl && customUrl.trim() !== '') {
       console.log('[FilesTab] Using custom URL:', customUrl);
-      const navigate = selectFileDirectly(customUrl);
-      navigate(); // Execute the navigation function
+      try {
+        const navigate = selectFileDirectly(customUrl);
+        if (typeof navigate === 'function') {
+          console.log('[FilesTab] Executing navigation function');
+          navigate(); // Execute the navigation function
+        } else {
+          console.error('[FilesTab] Navigation function not returned properly:', navigate);
+        }
+      } catch (error) {
+        console.error('[FilesTab] Error selecting custom URL:', error);
+      }
     }
   };
 
@@ -69,7 +78,14 @@ export const FilesTab: React.FC<FilesTabProps> = ({
                   <div 
                     key={index}
                     className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 ${isCurrentFile(file) ? 'bg-blue-50 border border-blue-200' : ''}`}
-                    onClick={fileSelectHandler} 
+                    onClick={() => {
+                      console.log('[FilesTab] File item clicked:', file);
+                      if (typeof fileSelectHandler === 'function') {
+                        fileSelectHandler();
+                      } else {
+                        console.error('[FilesTab] File select handler not a function:', fileSelectHandler);
+                      }
+                    }}
                   >
                     <div className="flex items-center">
                       <ImageIcon className="h-4 w-4 mr-2 text-gray-500" />
@@ -112,6 +128,11 @@ export const FilesTab: React.FC<FilesTabProps> = ({
               value={customUrl} 
               onChange={(e) => setCustomUrl(e.target.value)}
               placeholder="Enter URL or path..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleUseCustomUrl();
+                }
+              }}
             />
             <Button 
               variant="secondary"
