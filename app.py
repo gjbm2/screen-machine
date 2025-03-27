@@ -313,6 +313,7 @@ def generate_image():
     print(f"DEBUG: Call args: {call_args}") 
     
     # Generate
+    
     response = routes.generate.main(
         prompt=prompt,
         workflow=workflow,
@@ -409,6 +410,27 @@ def get_refiner_params(refiner_id):
 def get_global_options():
     info(f"Returning {len(global_options_data)} global options")
     return jsonify({"global_options": global_options_data})
+    
+@app.route("/api/alexa", methods=["POST"])
+def alexa_webhook():
+    data = request.get_json()
+    intent = data.get("request", {}).get("intent", {})
+    slots = intent.get("slots", {})
+    utterance = slots.get("utterance", {}).get("value", "something")
+
+    print(f"User wants to generate: {utterance}")
+    
+    response = {
+        "version": "1.0",
+        "response": {
+            "outputSpeech": {
+                "type": "PlainText",
+                "text": f"Okay, I'll draw {utterance}"
+            },
+            "shouldEndSession": True
+        }
+    }
+    return jsonify(response)
 
 # Add a new endpoint for extracting image metadata
 @app.route('/api/extract-metadata', methods=['GET', 'POST'])

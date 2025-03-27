@@ -25,11 +25,36 @@
         "type": "select",
         "options": ["256", "512", "720", "768", "920", "1024", "1280"],
         "default": "720"
+      },
+	   {
+        "id": "lora",
+        "name": "Lora",
+        "type": "select",
+		"options": ["sldr_flux_nsfw_v2-studio.safetensors"],
+        "default": "sldr_flux_nsfw_v2-studio.safetensors"
+      },
+ 	  {
+        "id": "lora_strength",
+        "name": "Lora strength",
+        "type": "number",
+        "default": 1
+      },
+ 	  {
+        "id": "seed",
+        "name": "Random seed",
+        "type": "number"
+      },
+      {
+        "id": "upscaler",
+        "name": "Upscaler model",
+        "type": "select",
+        "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
+		"default": "RealESRGAN_x2plus.pth"
       }
-    ]
+	]
   },
   {
-    "id": "sdxl.json",
+    "id": "sdxl-scale.json",
     "name": "Text to Image (sdxl)",
     "description": "Image from text using SDXL",
     "default": true,
@@ -57,21 +82,28 @@
         "id": "width",
         "name": "Width",
         "type": "select",
-        "options": ["256", "512", "720", "768", "920", "1024", "1280"],
-        "default": "512"
+        "options": ["256", "512", "720", "768", "920", "1024", "1280", "1440", "1600", "1920", "2048", "2560", "2880", "3200", "3840"],
+        "default": "1024"
       },
 {
         "id": "height",
         "name": "Height",
         "type": "select",
-        "options": ["256", "512", "720", "768", "920", "1024", "1280"],
-        "default": "512"
+		"options": ["256", "512", "720", "768", "920", "1024", "1280", "1440", "1600", "1920", "2048", "2560", "2880", "3200", "3840"],
+        "default": "1024"
       },
       {
-        "id": "negative_prompt",
+        "id": "negativeprompt",
         "name": "Negative Prompt",
         "type": "text",
         "default": "blurry, distorted, low quality, oversaturated"
+      },
+      {
+        "id": "upscaler",
+        "name": "Upscaler model",
+        "type": "select",
+        "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
+		"default": "RealESRGAN_x2plus.pth"
       }
     ]
   },

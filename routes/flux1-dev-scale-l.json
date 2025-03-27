@@ -7,7 +7,7 @@
     },
     "class_type": "EmptyLatentImage",
     "_meta": {
-      "title": "Empty Latent Image"
+      "title": "Empty Latent Image {{LATENT-IMAGE}}"
     }
   },
   "8": {
@@ -53,7 +53,7 @@
     },
     "class_type": "DualCLIPLoader",
     "_meta": {
-      "title": "DualCLIPLoader"
+      "title": "DualCLIPLoader {{CLIP-MODEL}"
     }
   },
   "12": {
@@ -63,7 +63,7 @@
     },
     "class_type": "UNETLoader",
     "_meta": {
-      "title": "Load Diffusion Model"
+      "title": "Load Diffusion Model {{BASE-MODEL}}"
     }
   },
   "16": {
@@ -72,7 +72,7 @@
     },
     "class_type": "KSamplerSelect",
     "_meta": {
-      "title": "KSamplerSelect"
+      "title": "KSamplerSelect {{SAMPLER}}"
     }
   },
   "25": {
@@ -81,7 +81,7 @@
     },
     "class_type": "RandomNoise",
     "_meta": {
-      "title": "RandomNoise"
+      "title": "RandomNoise {{SAMPLER}}"
     }
   },
   "45": {
@@ -90,7 +90,7 @@
     },
     "class_type": "UpscaleModelLoader",
     "_meta": {
-      "title": "Load Upscale Model"
+      "title": "Load Upscale Model {{UPSCALER}}"
     }
   },
   "46": {
@@ -139,7 +139,7 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP Text Encode (Prompt)"
+      "title": "CLIP Text Encode (Prompt) {{POSITIVE-PROMPT}}"
     }
   },
   "56": {
@@ -154,7 +154,7 @@
     },
     "class_type": "BasicScheduler",
     "_meta": {
-      "title": "BasicScheduler"
+      "title": "BasicScheduler {{SAMPLER}}"
     }
   },
   "57": {
@@ -217,7 +217,7 @@
     },
     "class_type": "LoraLoader",
     "_meta": {
-      "title": "Load LoRA"
+      "title": "Load LoRA {{LORA}}"
     }
   }
 }
