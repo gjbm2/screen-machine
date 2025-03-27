@@ -27,9 +27,13 @@ class ApiService {
     // Check if we're running in mock mode (when backend is not available)
     this.mockMode = window.location.hostname.includes('lovable') || 
                     !apiUrl.startsWith('http');
-    
+
     if (this.mockMode) {
-      console.info('API Service running in mock mode - backend simulation active');
+      console.info('apiUrl:', apiUrl);
+      console.info('hostname:', window.location.hostname);
+      console.info('API Service running in mock mode - backend simulation active'); 
+    } else { 
+      console.info('API Service running in normal mode - backend live');
     }
   }
 
@@ -99,6 +103,8 @@ class ApiService {
         return this.mockGenerateImage(params);
       }
       
+	  console.log('Calling:', `${this.apiUrl}/generate-image`);
+
       // Send the actual request to the backend
       const response = await fetch(`${this.apiUrl}/generate-image`, {
         method: 'POST',

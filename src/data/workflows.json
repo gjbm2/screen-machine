@@ -1,9 +1,37 @@
 
 [
   {
-    "id": "text-to-image",
-    "name": "Text to Image",
-    "description": "Generate an image from a text prompt",
+    "id": "flux1-dev-scale-l.json",
+    "name": "Text to Image (flux1)",
+    "description": "Image from text using Flux1",
+    "default": true,
+    "params": [
+      { 
+        "id": "steps",
+        "name": "Steps",
+        "type": "number",
+        "default": 30
+      },
+      {
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+        "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+        "default": "1280"
+      },
+	  {
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+        "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+        "default": "720"
+      }
+    ]
+  },
+  {
+    "id": "sdxl.json",
+    "name": "Text to Image (sdxl)",
+    "description": "Image from text using SDXL",
     "default": true,
     "params": [
       {
@@ -13,18 +41,31 @@
         "options": ["Photorealistic", "Artistic", "Cartoon", "Abstract"],
         "default": "Photorealistic"
       },
-      {
-        "id": "resolution",
-        "name": "Resolution",
-        "type": "select",
-        "options": ["512x512", "768x768", "1024x1024"],
-        "default": "512x512"
+      { 
+        "id": "cfg",
+        "name": "CFG",
+        "type": "number",
+        "default": 8
+      },
+      { 
+        "id": "steps",
+        "name": "Steps",
+        "type": "number",
+        "default": 20
       },
       {
-        "id": "guidance_scale",
-        "name": "Guidance Scale",
-        "type": "range",
-        "default": 75
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+        "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+        "default": "512"
+      },
+{
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+        "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+        "default": "512"
       },
       {
         "id": "negative_prompt",

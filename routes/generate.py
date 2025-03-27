@@ -39,14 +39,14 @@ def warning(message: str, **kwargs):
     if app_logging:
         return utils.logger.warning(message, **kwargs)
     else:
-        printf(f"WARNING: {message}", **kwargs)
+        print(f"WARNING: {message}", **kwargs)
 
 def error(message: str, **kwargs):
     """Log an error message"""
     if app_logging:
         return utils.logger.error(message, **kwargs)
     else:
-        printf(f"ERROR: {message}", **kwargs)
+        print(f"ERROR: {message}", **kwargs)
         
 try:
     from utils.logger import log_to_console, info, error, warning, debug, console_logs
@@ -149,23 +149,24 @@ def update_workflow(json_data, replacements):
     # The JSON file is a dictionary keyed by node IDs, e.g. "5", "6", etc.
     # We iterate over each node ID and check its _meta title.
     for node_id, node_def in json_data.items():
-        # Safely get the node's title from _meta
         node_title = node_def.get("_meta", {}).get("title", "")
 
-        # If the node's title is one we want to replace
         if node_title in replacements:
-            # For each key-value pair in that replacement spec
             for input_key, new_value in replacements[node_title].items():
-                # Only replace if the key actually exists in the node's 'inputs'
+                if new_value is None:
+                    continue  # Skip None values
                 if input_key in node_def.get("inputs", {}):
                     node_def["inputs"][input_key] = new_value
-                    if len(str(new_value))>60:
-                      info(f"  - Replaced {input_key} in '{node_title}' with:\n{textwrap.indent(textwrap.fill(str(new_value), width=80), '      ')}")
+                    if len(str(new_value)) > 60:
+                        info(
+                            f"  - Replaced {input_key} in '{node_title}' with:\n"
+                            f"{textwrap.indent(textwrap.fill(str(new_value), width=80), '      ')}"
+                        )
                     else:
-                      info(f"  - Replaced {input_key} in '{node_title}' with: {new_value}")
-
+                        info(f"  - Replaced {input_key} in '{node_title}' with: {new_value}")
 
     return json_data
+
 
 def init():
     ########
@@ -200,6 +201,7 @@ def init():
 
     with open(findfile(args.workflow), "r") as file:
         workflow_data = json.load(file)
+
 
     json_replacements = {
         "Empty Latent Image": {  
@@ -254,7 +256,7 @@ def init():
 
     # get initial status
     status = run_request.status()
-    print(f"> Runpod initial job status (will wait {args.timeout}s): {status}")
+    print(f"> Runpod initial job status (will wait {args.timeout})")
 
     try:
         run_request = endpoint.run_sync(
@@ -335,6 +337,7 @@ def main(
         width: int | None = None,
         height: int | None = None,
         steps: int | None = None,
+        cfg: int | None = None,
         batch: int | None = None,
         pod: str | None = None,
         scale: int | None = None,
@@ -371,6 +374,7 @@ def main(
             "steps": steps,
             "batch": batch,
             "pod": pod,
+            "cfg": cfg,
             "scale": scale,
             "setwallpaper": setwallpaper,
             "refine": refine,
@@ -401,7 +405,8 @@ def main(
         "Empty Latent Image": {  
             "width": args.width,
             "height": args.height,
-            "batch_size": args.batch
+            "batch_size": args.batch,
+            "cfg": args.cfg
         },
         "Empty SD3 Latent Image": {  
             "width": args.width,
@@ -446,11 +451,11 @@ def main(
     endpoint = runpod.Endpoint(args.pod)
 
     # Let's go...
-    run_request = endpoint.run(input_payload)
+    #run_request = endpoint.run(input_payload)
 
     # get initial status
-    status = run_request.status()
-    info(f"> Runpod initial job status (will wait {args.timeout}s): {status}")
+    #status = run_request.status()
+    info(f"> Runpod initial job status (will wait {args.timeout}s)")
 
     try:
         run_request = endpoint.run_sync(
@@ -475,9 +480,9 @@ def main(
 def get_parser():
     parser = argparse.ArgumentParser(description="Example script with parameters")
     parser.add_argument("prompt", nargs="?", help="Enter prompt text (e.g. 'cat on a sofa')")
-    parser.add_argument("--width", default=1024, type=int, help="Width of image")
-    parser.add_argument("--height", default=1024, type=int, help="Height of image")
-    parser.add_argument("--steps", default=20, type=int, help="Number of rendering steps")
+    parser.add_argument("--width", type=int, help="Width of image")
+    parser.add_argument("--height", type=int, help="Height of image")
+    parser.add_argument("--steps", type=int, help="Number of rendering steps")
     parser.add_argument("--scale", default=1, type=int, help="Output scale factor")
     parser.add_argument("--pod", default=os.getenv("RUNPOD_ID"), type=str, help="Runpod ID")
     parser.add_argument(

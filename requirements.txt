@@ -8,5 +8,5 @@ websocket-server==0.6.4
 asyncio==3.4.3
 pillow
 piexif
-python-xmp-toolki
+python-xmp-toolkit
 iptcinfo3

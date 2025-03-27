@@ -5,8 +5,12 @@ import time
 import random
 import uuid
 import json
+import inspect
 import sys
+import ast
+from typing import get_origin, get_args, Union
 import requests
+import types
 from werkzeug.utils import secure_filename
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
 import routes.generate
@@ -217,6 +221,39 @@ def add_log():
     
     return jsonify({"status": "error", "message": "No log message provided"}), 400
 
+def safe_cast(val, target_type, default=None):
+    if val is None:
+        return default
+
+    try:
+        target_type = unwrap_optional_type(target_type)
+        print(f"Trying to cast {val!r} to {target_type}")
+
+        if target_type is bool:
+            return str(val).lower() in ("true", "1", "yes", "on")
+        if target_type is int:
+            return int(val)
+        elif target_type is float:
+            return float(val)
+        elif target_type is str:
+            return str(val)
+        elif target_type in (list, dict):
+            return ast.literal_eval(val)
+
+        return target_type(val)
+    except Exception as e:
+        print(f"[safe_cast] Failed to cast {val!r} to {target_type}: {e}")
+        return default
+
+
+def unwrap_optional_type(tp):
+    origin = get_origin(tp)
+    if origin in (Union, types.UnionType):  # support both `Union` and `int | None`
+        args = [t for t in get_args(tp) if t is not type(None)]
+        if len(args) == 1:
+            return args[0]
+    return tp
+
 @app.route('/api/generate-image', methods=['POST'])
 def generate_image():
     # Extract JSON data from the form
@@ -240,6 +277,15 @@ def generate_image():
     batch_size = data.get('batch_size', 1)
     has_reference_image = data.get('has_reference_image', False)
     
+   
+    # Get valid parameter names from main()
+    main_params = inspect.signature(routes.generate.main).parameters
+    call_args = {
+        k: safe_cast(v, main_params[k].annotation if main_params[k].annotation is not inspect._empty else str)
+        for k, v in params.items()
+        if k in main_params
+    }
+        
     # Handle uploaded files
     uploaded_files = []
     image_files = request.files.getlist('image')
@@ -262,10 +308,15 @@ def generate_image():
     info(f"Generating images with prompt: {prompt}")
     info(f"Workflow: {workflow}, Batch size: {batch_size}")
     info(f"Reference images: {uploaded_files if uploaded_files else 'None'}")
-       
+
+    print(f"DEBUG: Workflow {workflow}, Params {params}")    
+    print(f"DEBUG: Call args: {call_args}") 
+    
     # Generate
     response = routes.generate.main(
-        prompt=prompt
+        prompt=prompt,
+        workflow=workflow,
+        **call_args
     )
     
     # Generate a unique ID for this batch
@@ -300,6 +351,8 @@ def generate_image():
             "batch_id": batch_id,
             "batch_index": i
         }
+        
+        print(f"Delivering {image_data}")
         
         generated_images[image_id] = image_data
         result_images.append(image_data)
