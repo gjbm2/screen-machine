@@ -10,6 +10,7 @@ import argparse
 import random
 import json
 import os
+import re
 import sys
 import textwrap
 from dotenv import load_dotenv, find_dotenv
@@ -134,40 +135,38 @@ def get_input_text(input_arg):
         return input_arg
 
 # Dictionary replacer
-
 def update_workflow(json_data, replacements):
     """
-    Given a dictionary describing the workflow and a replacements dictionary,
-    updates the 'inputs' of matching nodes based on _meta.title.
-    
-    :param json_data: A Python dictionary loaded from the original JSON file.
+    Updates 'inputs' of matching nodes in a workflow JSON based on regex matches
+    against the _meta.title field (case-insensitive).
+
+    :param json_data: A Python dictionary loaded from a workflow JSON file.
     :param replacements: A dict where:
-        - Keys match node _meta.title (e.g. "Empty Latent Image")
-        - Values are dicts of input_key: new_value pairs to set in node['inputs'].
-    :return: Updated Python dictionary with replacements applied where found.
+        - Keys are regex patterns (e.g., r"KSampler")
+        - Values are dicts of input_key: new_value pairs to apply to matching nodes.
+    :return: Updated JSON dictionary with replacements applied.
     """
-    # The JSON file is a dictionary keyed by node IDs, e.g. "5", "6", etc.
-    # We iterate over each node ID and check its _meta title.
     for node_id, node_def in json_data.items():
         node_title = node_def.get("_meta", {}).get("title", "")
 
-        if node_title in replacements:
-            for input_key, new_value in replacements[node_title].items():
-                if new_value is None:
-                    continue  # Skip None values
-                if input_key in node_def.get("inputs", {}):
-                    node_def["inputs"][input_key] = new_value
-                    if len(str(new_value)) > 60:
-                        info(
-                            f"  - Replaced {input_key} in '{node_title}' with:\n"
-                            f"{textwrap.indent(textwrap.fill(str(new_value), width=80), '      ')}"
-                        )
-                    else:
-                        info(f"  - Replaced {input_key} in '{node_title}' with: {new_value}")
+        for pattern, input_changes in replacements.items():
+            if re.search(pattern, node_title, flags=re.IGNORECASE):
+                for input_key, new_value in input_changes.items():
+                    if new_value is None:
+                        continue
+                    if input_key in node_def.get("inputs", {}):
+                        node_def["inputs"][input_key] = new_value
+                        if len(str(new_value)) > 60:
+                            info(
+                                f"  - Replaced {input_key} in '{node_title}' with:\n"
+                                f"{textwrap.indent(textwrap.fill(str(new_value), width=80), '      ')}"
+                            )
+                        else:
+                            info(f"  - Replaced {input_key} in '{node_title}' with: {new_value}")
 
     return json_data
 
-
+"""
 def init():
     ########
     # INIT #
@@ -203,39 +202,7 @@ def init():
         workflow_data = json.load(file)
 
 
-    json_replacements = {
-        "Empty Latent Image": {  
-            "width": args.width,
-            "height": args.height,
-            "batch_size": args.batch
-        },
-        "Empty SD3 Latent Image": {  
-            "width": args.width,
-            "height": args.height,
-            "batch_size": args.batch
-        },
-        "CLIP Text Encode (Prompt)": {  
-            "text": refined_prompt
-        },
-        "CLIP Text Encode negative (Prompt)": {  
-            "text": "text, watermark, blurry, ugly, deformed"
-        },
-        "BasicScheduler": {
-            "steps": args.steps
-        },
-        "Upscale Image By": {
-            "scale_by": args.scale
-        },
-        "RandomNoise": {
-            "noise_seed": args.seed
-        },
-        "KSampler": {
-            "seed": args.seed,
-            "steps": args.steps,
-            "width": args.width,
-            "height": args.height
-        }
-    }
+
 
     input_payload = {
       "input": {
@@ -294,11 +261,11 @@ def init():
                 vda = ctypes.WinDLL(os.path.abspath("VirtualDesktopAccessor.dll"))
 
                 def get_current_desktop_number():
-                    """Returns the current virtual desktop number."""
+                    ""Returns the current virtual desktop number.""
                     return vda.GetCurrentDesktopNumber() + 1  # 0-based index
 
                 def set_wallpaper_for_desktop(image_path, target_desktop):
-                    """Sets wallpaper for a specific virtual desktop."""
+                    ""Sets wallpaper for a specific virtual desktop.""
                     current_desktop = get_current_desktop_number()
                 
                     # Switch to the target desktop if not already on it
@@ -331,13 +298,15 @@ def init():
     except TimeoutError:
         print("X Job timed out.")
         sys.exit(2)
+        
+        """
 
 def main(
         prompt: str | None = None, 
         width: int | None = None,
         height: int | None = None,
         steps: int | None = None,
-        cfg: int | None = None,
+        cfg: float | None = None,
         batch: int | None = None,
         pod: str | None = None,
         scale: int | None = None,
@@ -349,7 +318,12 @@ def main(
         suppress: bool | None = None,
         metaprompt: bool | None = None,
         images: list | None = None,
-        cli_args=None
+        negativeprompt: str | None = None,
+        upscaler: str | None = None,
+        lora: str | None = None,
+        lora_strength: float | None = None,
+        cli_args=None,
+        **kwargs
         ):
 
     # Basic init
@@ -363,7 +337,7 @@ def main(
     # Get params
     parser = get_parser() 
     if cli_args is not None:                    # called from command line
-        args = parser.parse_args(cli_args)
+        args_namespace = parser.parse_args(cli_args)
     else:                                       # called as  a function
         defaults = vars(parser.parse_args([]))  # extract defaults
         
@@ -381,58 +355,67 @@ def main(
             "workflow": workflow,
             "seed": seed,
             "timeout": timeout,
+            "negativeprompt": negativeprompt,
+            "upscaler": upscaler,
+            "lora": lora,
+            "lora_strength": lora_strength,
             "suppress": suppress,
             "metaprompt": metaprompt
         }
         provided_args["images"] = images        # include images if any
 
         # Merge defaults with provided arguments (use provided if not None, else default)
-        final_args = {k: v if v is not None else defaults.get(k, None) for k, v in provided_args.items()}
-        args = argparse.Namespace(**final_args)
+        final_args = {**defaults}
+        final_args.update({k: v for k, v in provided_args.items() if v is not None})
+        final_args.update(kwargs)
+        
+        #final_args = {k: v if v is not None else defaults.get(k, None) for k, v in provided_args.items()}
+        args_namespace = argparse.Namespace(**final_args)
+        
+        print(f"Args_namespace: {args_namespace}")
 
     # Validation steps
-    if not args.prompt: 
+    if not args_namespace.prompt: 
         raise ValueError("A prompt or image must be provided.")
     
     # DO STUFF
     
-    info("Image parameters: " + ", ".join(f"{k}={v}" for k, v in vars(args).items()))
+    info("Image parameters: " + ", ".join(f"{k}={v}" for k, v in vars(args_namespace).items()))
        
-    with open(findfile(args.workflow), "r") as file:
+    with open(findfile(args_namespace.workflow), "r") as file:
         workflow_data = json.load(file)
 
     json_replacements = {
-        "Empty Latent Image": {  
-            "width": args.width,
-            "height": args.height,
-            "batch_size": args.batch,
-            "cfg": args.cfg
+        r"{{LATENT-IMAGE}}": {  
+            "width": args_namespace.width,
+            "height": args_namespace.height,
+            "batch_size": args_namespace.batch
         },
-        "Empty SD3 Latent Image": {  
-            "width": args.width,
-            "height": args.height,
-            "batch_size": args.batch
+        r"{{POSITIVE-PROMPT}}": {  
+            "text":  args_namespace.prompt
         },
-        "CLIP Text Encode (Prompt)": {  
-            "text": args.prompt
+        r"{{NEGATIVE-PROMPT}}": {  
+            "text": vars(args_namespace).get("negativeprompt", None)
         },
-        "CLIP Text Encode negative (Prompt)": {  
-            "text": "text, watermark, blurry, ugly, deformed"
+        r"{{SAMPLER}}": {
+            "steps": args_namespace.steps
         },
-        "BasicScheduler": {
-            "steps": args.steps
+        r"{{UPSCALER}}": {
+            "scale_by": args_namespace.scale,
+            "model_name": vars(args_namespace).get("upscaler", None)
         },
-        "Upscale Image By": {
-            "scale_by": args.scale
+        r"{{SAMPLER}}": {
+            "seed": args_namespace.seed,
+            "noise_seed": args_namespace.seed,            
+            "steps": args_namespace.steps,
+            "width": args_namespace.width,
+            "height": args_namespace.height,
+            "cfg": vars(args_namespace).get("cfg", None)
         },
-        "RandomNoise": {
-            "noise_seed": args.seed
-        },
-        "KSampler": {
-            "seed": args.seed,
-            "steps": args.steps,
-            "width": args.width,
-            "height": args.height
+        r"{{LORA}}": {
+            "lora_name": vars(args_namespace).get("lora", None),
+            "strength_model": vars(args_namespace).get("lora_strength", None),
+            "strength_clip": vars(args_namespace).get("lora_strength", None)
         }
     }
 
@@ -448,19 +431,19 @@ def main(
     import requests
 
     runpod.api_key = os.getenv("RUNPOD_API_KEY")
-    endpoint = runpod.Endpoint(args.pod)
+    endpoint = runpod.Endpoint(args_namespace.pod)
 
     # Let's go...
     #run_request = endpoint.run(input_payload)
 
     # get initial status
     #status = run_request.status()
-    info(f"> Runpod initial job status (will wait {args.timeout}s)")
+    info(f"> Runpod initial job status (will wait {args_namespace.timeout}s)")
 
     try:
         run_request = endpoint.run_sync(
             input_payload,
-            timeout=args.timeout,  # Timeout in seconds.
+            timeout=args_namespace.timeout,  # Timeout in seconds.
         )
 
         # Success 

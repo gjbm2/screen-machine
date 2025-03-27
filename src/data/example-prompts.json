@@ -1,51 +1,97 @@
-
 {
   "basicPrompts": [
-    "Astronaut riding a horse",
-    "A sunset beach scene",
-    "Futuristic cityscape",
-    "Magic forest at night"
+    "Desert inside a snow globe",
+    "Nun lighting fireworks",
+    "Tiger in a library",
+	"Forest of empty chairs",
+	"Road through a glacier",
+    "Wolf in a wedding dress",
+    "Lunar teatime",
+    "Scientist in hot air ballroom",
+    "Cathedral made of glass",
+	"Orchestra tuning underwater",
+	"Giraffe on an escalator"
   ],
   "stylePrompts": [
     {
-      "display": "oil painting...",
-      "prompt": "in the style of an old oil painting with masterful visible brushwork, (impasto:2), realistic skin tones, subtle lighting, rich textures, aged canvas look, muted and elegant color palette; museum-quality, reminiscent of works by Rembrandt, Vermeer, or Gainsborough; cracked patina and "
+      "display": "Baroque oil...",
+      "prompt": "in the style of a 17th-century Baroque oil painting, with intense chiaroscuro, thick impasto brushwork, deep shadows, and rich earth tones. Emphasis on dramatic realism and expressive texture throughout"
     },
     {
-      "display": "watercolor...",
-      "prompt": "in the style of watercolor"
+      "display": "Steampunk realism...",
+      "prompt": "intricately detailed steampunk aesthetic with aged brass textures, exposed clockwork mechanisms, and Victorian-industrial materials. Smoky atmosphere with warm, diffused lighting"
     },
     {
-      "display": "impressionist...",
-      "prompt": "in impressionist style"
+      "display": "Nouveau dream...",
+      "prompt": "inspired by Art Nouveau masters, featuring flowing organic lines, botanical ornamentation, subtle gold flourishes, and a glowing pastel palette. Stylized elegance with softly blended textures"
     },
     {
-      "display": "Studio Ghibli...",
-      "prompt": "in the style of Studio Ghibli"
+      "display": "Cyber nocturne...",
+      "prompt": "futuristic nighttime cityscape with sharp reflections, glowing neon accents, and atmospheric depth. Ultra-detailed surfaces—glass, chrome, raindrops—captured in cinematic light"
     },
     {
-      "display": "cyberpunk...",
-      "prompt": "in cyberpunk style with neon colors"
+      "display": "Ukiyo minimal...",
+      "prompt": "in the manner of Edo-period Japanese woodblock prints, with stylized clouds, flat color planes, delicate linework, and natural subject matter arranged in flowing, asymmetrical compositions"
     },
     {
-      "display": "pixel art...",
-      "prompt": "as detailed pixel art"
+      "display": "Rococo whimsy...",
+      "prompt": "delicate pastel palette, light-filled composition, and intricate ornamental details inspired by 18th-century French Rococo. Light silks, florals, and airy brushwork evoke aristocratic refinement"
     },
     {
-      "display": "comic book...",
-      "prompt": "in comic book style with bold outlines"
+      "display": "Brutalist abstract...",
+      "prompt": "monumental abstract forms rendered in textured concrete, iron, and glass. Cold, architectural minimalism with stark shadows and rhythmic composition, emphasizing mass and material"
     },
     {
-      "display": "steampunk...",
-      "prompt": "in steampunk style with brass and cogs"
+      "display": "Celestial realism...",
+      "prompt": "hyper-detailed cosmic vistas, with glowing nebulae, crystalline stars, gaseous clouds, and planetary forms. Grand compositions that suggest astronomical scale and subtle motion"
     },
     {
-      "display": "gothic...",
-      "prompt": "in dark gothic style"
+      "display": "Gothic light...",
+      "prompt": "inspired by high gothic cathedrals, with vertical stone forms, filtered light, and intricate carved textures. Cool, desaturated palette and an air of quiet monumentality"
     },
     {
-      "display": "photo-realistic...",
-      "prompt": "in photo-realistic style with detailed textures"
+      "display": "Fantasy epic...",
+      "prompt": "high-fidelity fantasy realism with cinematic composition, intricate costume and environment detail, ambient light and weather effects. A visual echo of fine book illustration"
+    },
+    {
+      "display": "Studio portrait...",
+      "prompt": "sharp-focus, high-dynamic-range studio photography with rich, natural skin tones, balanced light falloff, and luxurious material textures. Carefully composed for timeless clarity"
+    },
+    {
+      "display": "Modern street...",
+      "prompt": "high-resolution street photography aesthetic with layered depth of field, spontaneous framing, and textural urban realism. Subtle lens grain and naturalistic color grading"
+    },
+    {
+      "display": "Film noir...",
+      "prompt": "moody monochrome with strong directional light, deep shadows, and grain texture reminiscent of mid-century analog film stock. Emphasis on negative space and visual suspense"
+    },
+    {
+      "display": "Large format...",
+      "prompt": "shot in the style of 8x10 large format photography, capturing ultra-fine textures, tonal gradients, and environmental detail. Diffuse natural light and precise focus plane"
+    },
+    {
+      "display": "Dreamscape lens...",
+      "prompt": "surreal photographic composition with shallow depth of field, misty atmospherics, dreamlike lighting, and softened textures. Feels cinematic and otherworldly without overt fantasy"
+    },
+    {
+      "display": "Renaissance fresco...",
+      "prompt": "inspired by early Renaissance frescoes, with subdued earth pigments, idealized anatomical forms, gentle perspective, and matte, plaster-like textures that suggest age and history"
+    },
+    {
+      "display": "Botanical plate...",
+      "prompt": "in the tradition of scientific botanical illustration, with razor-sharp renderings of flora, watercolor tinting, fine stippling, and aged vellum tonality"
+    },
+    {
+      "display": "Cubist layers...",
+      "prompt": "fragmented geometric abstraction with overlapping forms and multifaceted perspectives. Dry-brush textures and a subdued earthy palette inspired by early 20th-century Cubism"
+    },
+	{
+       "display": "Zen ink...",
+      "prompt": "monochromatic ink wash technique with minimalist composition, textured brushstrokes, and soft diffusion. Inspired by Japanese sumi-e painting and wabi-sabi aesthetics"
+    },
+    {
+      "display": "Surreal texture...",
+      "prompt": "strange and uncanny compositions using realistic textures—skin, fabric, woodgrain—assembled in illogical but beautiful ways. A quiet, museum-ready surrealism with rich surface detail"
     }
   ]
 }
