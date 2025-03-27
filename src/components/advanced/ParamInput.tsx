@@ -90,6 +90,21 @@ const ParamInput: React.FC<ParamInputProps> = ({ param, value, onChange }) => {
         </div>
       );
     
+	case 'number':
+      return (
+        <div className="space-y-1">
+          <Label htmlFor={param.id} className="text-sm font-medium">{param.name}</Label>
+          <input
+            type="number"
+            id={param.id}
+            value={paramValue ?? ''}
+            onChange={(e) => onChange(param.id, e.target.value === '' ? null : Number(e.target.value))}
+            placeholder={`Enter ${param.name.toLowerCase()}`}
+            className="w-full border border-input bg-background px-3 py-2 text-sm rounded-md shadow-sm"
+          />
+        </div>
+      );
+	
     default:
       return null;
   }
