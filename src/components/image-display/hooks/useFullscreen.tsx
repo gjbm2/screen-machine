@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 
 export const useFullscreen = (allImagesFlat: any[]) => {
@@ -18,13 +19,13 @@ export const useFullscreen = (allImagesFlat: any[]) => {
       batchImages.map(img => ({batchId: img.batchId, batchIndex: img.batchIndex})));
     
     const selectedImage = allImagesFlat.find(
-      img => img.batchId === batchId && img.batchIndex === imageIndex
+      img => img.batchId === batchId && Number(img.batchIndex) === Number(imageIndex)
     );
     
     if (selectedImage) {
       console.log(`Found selected image with batchIndex=${imageIndex}:`, selectedImage);
       const globalIndex = allImagesFlat.findIndex(
-        img => img.batchId === batchId && img.batchIndex === imageIndex
+        img => img.batchId === batchId && Number(img.batchIndex) === Number(imageIndex)
       );
       
       if (globalIndex !== -1) {
@@ -46,6 +47,10 @@ export const useFullscreen = (allImagesFlat: any[]) => {
   };
   
   const handleNavigateWithBatchAwareness = (direction: 'next' | 'prev') => {
+    // Add debug logging to help track the issue
+    console.log(`Navigation: ${direction} button clicked`);
+    console.log(`Current state: batchId=${fullScreenBatchId}, imageIndex=${fullScreenImageIndex}, globalIndex=${currentGlobalIndex}`);
+    
     const batchesMap = allImagesFlat.reduce((acc, img) => {
       if (!acc[img.batchId]) {
         acc[img.batchId] = [];
@@ -55,6 +60,7 @@ export const useFullscreen = (allImagesFlat: any[]) => {
     }, {} as Record<string, any[]>);
     
     const batchIds = Object.keys(batchesMap).sort();
+    console.log(`Available batch IDs: ${batchIds.join(', ')}`);
     
     if (!fullScreenBatchId || !batchIds.includes(fullScreenBatchId)) {
       console.error('Cannot navigate: Invalid batch ID');
@@ -62,18 +68,30 @@ export const useFullscreen = (allImagesFlat: any[]) => {
     }
     
     const currentBatchImages = batchesMap[fullScreenBatchId];
+    console.log(`Current batch ${fullScreenBatchId} has ${currentBatchImages.length} images`);
     
-    currentBatchImages.sort((a, b) => a.batchIndex - b.batchIndex);
+    // Sort images by batch index (ensuring they're converted to numbers)
+    currentBatchImages.sort((a, b) => Number(a.batchIndex) - Number(b.batchIndex));
+    
+    // Log the available batch indexes for debugging
+    console.log('Available batch indexes:', currentBatchImages.map(img => ({
+      batchIndex: img.batchIndex, 
+      type: typeof img.batchIndex
+    })));
+    console.log(`Looking for image with batchIndex=${fullScreenImageIndex}, type=${typeof fullScreenImageIndex}`);
     
     if (direction === 'next') {
-      const nextIndexInBatch = currentBatchImages.findIndex(img => img.batchIndex === fullScreenImageIndex) + 1;
+      // FIX: Convert both sides to number for consistent comparison
+      const nextIndexInBatch = currentBatchImages.findIndex(img => Number(img.batchIndex) === Number(fullScreenImageIndex)) + 1;
+      console.log(`Found at position ${nextIndexInBatch - 1}, next image position: ${nextIndexInBatch}`);
       
       if (nextIndexInBatch < currentBatchImages.length) {
         const nextImage = currentBatchImages[nextIndexInBatch];
+        console.log(`Navigating to next image in batch: ${nextImage.batchIndex}`);
         setFullScreenImageIndex(nextImage.batchIndex);
         
         const globalIndex = allImagesFlat.findIndex(
-          img => img.batchId === fullScreenBatchId && img.batchIndex === nextImage.batchIndex
+          img => img.batchId === fullScreenBatchId && Number(img.batchIndex) === Number(nextImage.batchIndex)
         );
         if (globalIndex !== -1) {
           setCurrentGlobalIndex(globalIndex);
@@ -84,15 +102,16 @@ export const useFullscreen = (allImagesFlat: any[]) => {
           const nextBatchId = batchIds[currentBatchIndex + 1];
           const nextBatchImages = batchesMap[nextBatchId];
           
-          nextBatchImages.sort((a, b) => a.batchIndex - b.batchIndex);
+          nextBatchImages.sort((a, b) => Number(a.batchIndex) - Number(b.batchIndex));
           
           const firstImageInNextBatch = nextBatchImages[0];
+          console.log(`Navigating to first image in next batch: ${nextBatchId}, index ${firstImageInNextBatch.batchIndex}`);
           
           setFullScreenBatchId(nextBatchId);
           setFullScreenImageIndex(firstImageInNextBatch.batchIndex);
           
           const globalIndex = allImagesFlat.findIndex(
-            img => img.batchId === nextBatchId && img.batchIndex === firstImageInNextBatch.batchIndex
+            img => img.batchId === nextBatchId && Number(img.batchIndex) === Number(firstImageInNextBatch.batchIndex)
           );
           
           if (globalIndex !== -1) {
@@ -101,14 +120,17 @@ export const useFullscreen = (allImagesFlat: any[]) => {
         }
       }
     } else if (direction === 'prev') {
-      const currentIndexInBatch = currentBatchImages.findIndex(img => img.batchIndex === fullScreenImageIndex);
+      // FIX: Convert both sides to number for consistent comparison
+      const currentIndexInBatch = currentBatchImages.findIndex(img => Number(img.batchIndex) === Number(fullScreenImageIndex));
+      console.log(`Found at position ${currentIndexInBatch} in current batch`);
       
       if (currentIndexInBatch > 0) {
         const prevImage = currentBatchImages[currentIndexInBatch - 1];
+        console.log(`Navigating to previous image in batch: ${prevImage.batchIndex}`);
         setFullScreenImageIndex(prevImage.batchIndex);
         
         const globalIndex = allImagesFlat.findIndex(
-          img => img.batchId === fullScreenBatchId && img.batchIndex === prevImage.batchIndex
+          img => img.batchId === fullScreenBatchId && Number(img.batchIndex) === Number(prevImage.batchIndex)
         );
         
         if (globalIndex !== -1) {
@@ -120,15 +142,16 @@ export const useFullscreen = (allImagesFlat: any[]) => {
           const prevBatchId = batchIds[currentBatchIndex - 1];
           const prevBatchImages = batchesMap[prevBatchId];
           
-          prevBatchImages.sort((a, b) => a.batchIndex - b.batchIndex);
+          prevBatchImages.sort((a, b) => Number(a.batchIndex) - Number(b.batchIndex));
           
           const lastImageInPrevBatch = prevBatchImages[prevBatchImages.length - 1];
+          console.log(`Navigating to last image in previous batch: ${prevBatchId}, index ${lastImageInPrevBatch.batchIndex}`);
           
           setFullScreenBatchId(prevBatchId);
           setFullScreenImageIndex(lastImageInPrevBatch.batchIndex);
           
           const globalIndex = allImagesFlat.findIndex(
-            img => img.batchId === prevBatchId && img.batchIndex === lastImageInPrevBatch.batchIndex
+            img => img.batchId === prevBatchId && Number(img.batchIndex) === Number(lastImageInPrevBatch.batchIndex)
           );
           
           if (globalIndex !== -1) {
