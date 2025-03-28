@@ -2,7 +2,7 @@
 export interface WorkflowParam {
   id: string;
   name: string;
-  type: 'select' | 'checkbox' | 'range' | 'text';
+  type: 'select' | 'checkbox' | 'range' | 'text' | 'number';
   options?: string[];
   default?: string | boolean | number;
 }
