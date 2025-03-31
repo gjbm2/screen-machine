@@ -1,0 +1,19 @@
+31-Mar-25
+
+1. Sort out openai latency
+        a. splitting out utterance processor (with ssml) from refiner
+	b. force ssml return after x seconds by threading utterance processor
+	c. include refiner inside generator
+
+2. Get publish contexts working for normal generation (and confirm carried through from url, for end-to-end)
+
+3. For normal generation, take width, height, etc. from workflow unless specified (i.e. remove defaults from workflow) 
+
+4. SD 3.5
+
+5. img-2-img flows
+
+6. debug display OR rebuilt
+
+7. debug fullscreen view (ensure non-mock generator assigns unique batch IDs)
+
