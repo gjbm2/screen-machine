@@ -8,6 +8,7 @@
 
 import argparse
 import random
+import requests
 import json
 import os
 import re
@@ -15,7 +16,14 @@ import sys
 import textwrap
 from dotenv import load_dotenv, find_dotenv
 from datetime import datetime
-from openai import OpenAI
+import routes.openai
+from routes.utils import findfile
+
+# image processing
+from PIL import Image
+import piexif
+import piexif.helper
+from io import BytesIO
 
 ###########
 # LOGGING #
@@ -54,73 +62,33 @@ try:
 except ImportError:
     app_logging = None
 
-# OpenAI machinery
 
-def run_prompt(user_prompt, system_prompt=None):
-    openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    if system_prompt is not None:
-        with open(system_prompt, 'r', encoding='utf-8') as file:
-          system_message = file.read()
-    else:
-        system_message=""
-    print(f"> Asking OpenAI (with system prompt '{system_prompt}'):\n{textwrap.indent(textwrap.fill(user_prompt, width=80), '    ')}")
 
-    response = openai_client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": user_prompt}
-        ],
-    )
-    
-    if response.choices[0].message.content == "CANNOT HELP":
-      return user_prompt
-    else:
-      print(f"  OpenAI proposed:\n{textwrap.indent(textwrap.fill(response.choices[0].message.content, width=80), '    ')}")
-      return response.choices[0].message.content
+def save_jpeg_with_metadata(url, metadata: dict, save_path: str):
+    response = requests.get(url)
+    response.raise_for_status()
+    img = Image.open(BytesIO(response.content)).convert("RGB")
 
-# Find file
+    # Build EXIF with JSON-formatted metadata
+    exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
 
-def findfile(file_param):
-    """
-    Check if a file exists with or without a path.
-    If only a filename is given, check multiple predefined directories.
-    """
-    # 1. Check if the provided path is already valid
-    if os.path.exists(file_param):
-        return file_param  # Use as-is
+    comment = json.dumps(metadata, ensure_ascii=False, indent=None)
+    user_comment = piexif.helper.UserComment.dump(comment, encoding="unicode")
+    exif_dict["Exif"][piexif.ExifIFD.UserComment] = user_comment
 
-    # 2. Check in the current working directory
-    file_in_cwd = os.path.join(os.getcwd(), file_param)
-    if os.path.exists(file_in_cwd):
-        return file_in_cwd
+    exif_bytes = piexif.dump(exif_dict)
+    img.save(save_path, "JPEG", exif=exif_bytes, quality=95)
+    print(f"Saved JPEG with metadata to {save_path}")
 
-    # 3. Check in the script’s directory
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_in_script_dir = os.path.join(script_dir, file_param)
-    if os.path.exists(file_in_script_dir):
-        return file_in_script_dir
 
-    # 4. Check in predefined workflow directories
-    workflow_dirs = [
-        os.path.join(script_dir, "workflows"),          # /workflows/
-        os.path.join(script_dir, "src", "workflows"),   # /src/workflows/
-        os.path.join(script_dir, "src", "data", "workflows")  # /src/data/workflows/
-    ]
 
-    for directory in workflow_dirs:
-        file_in_dir = os.path.join(directory, file_param)
-        if os.path.exists(file_in_dir):
-            return file_in_dir
+def loosely_matches(a, b):
+    # Normalize both strings to lowercase, strip spaces
+    a = a.lower().strip()
+    b = b.lower().strip()
 
-    # 5. Check in the user’s home directory
-    home_dir = os.path.expanduser("~")
-    file_in_home = os.path.join(home_dir, file_param)
-    if os.path.exists(file_in_home):
-        return file_in_home
-
-    # 6. File not found in any location
-    return None
+    # Allow substring match or abbreviation match
+    return a in b or b in a or re.sub(r'\s+', '', a) in re.sub(r'\s+', '', b)
 
 # Argument parsing
 
@@ -323,6 +291,7 @@ def main(
         lora: str | None = None,
         lora_strength: float | None = None,
         cli_args=None,
+        target: str | None = None,
         **kwargs
         ):
 
@@ -378,7 +347,24 @@ def main(
     if not args_namespace.prompt: 
         raise ValueError("A prompt or image must be provided.")
     
-    # DO STUFF
+    # Get targets data and see if we have a size constraint
+    if target:
+        with open(findfile("publish-destinations.json"), "r") as file:
+            publish_destinations = json.load(file)
+        
+        target_config = next(
+            (item for item in publish_destinations if
+             loosely_matches(item.get("id", ""), target) or
+             loosely_matches(item.get("name", ""), target)),
+            {}
+        )
+        
+        maxwidth = target_config.get("maxwidth", None)
+        maxheight = target_config.get("maxheight", None)
+        targetfile=target_config.get('file')
+        print(f"Target config: {targetfile}")
+        
+    # DO STUFF 
     
     info("Image parameters: " + ", ".join(f"{k}={v}" for k, v in vars(args_namespace).items()))
        
@@ -416,6 +402,10 @@ def main(
             "lora_name": vars(args_namespace).get("lora", None),
             "strength_model": vars(args_namespace).get("lora_strength", None),
             "strength_clip": vars(args_namespace).get("lora_strength", None)
+        },
+        r"{{DOWNSCALER}}": {
+            "width": locals().get("maxwidth", 6400),
+            "height": locals().get("maxheight", 6400)   
         }
     }
 
@@ -451,6 +441,19 @@ def main(
             info(f"> Successfully generated image")
             info("\n".join(f"  - {key}: {value}" for key, value in run_request.items()))
     
+            # Where do we need to deliver this?
+            if target:
+                # We need to save metadata to the image
+                img_metadata=vars(args_namespace)
+                # Now save it to the location
+                targetfilename = os.path.join(os.getcwd(), "output", targetfile)
+                print(f"Delivering to: {targetfilename}")
+                save_jpeg_with_metadata(
+                    url=run_request["message"],
+                    metadata=img_metadata,
+                    save_path=targetfilename
+                )
+                           
             return run_request["message"]
         
         else:
@@ -458,8 +461,8 @@ def main(
     
     except Exception as e:
         raise ValueError(str(e))
-    
 
+# Handle if called from command line
 def get_parser():
     parser = argparse.ArgumentParser(description="Example script with parameters")
     parser.add_argument("prompt", nargs="?", help="Enter prompt text (e.g. 'cat on a sofa')")

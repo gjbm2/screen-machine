@@ -13,6 +13,8 @@
     "icon": "Tv",
     "type": "output_file",
     "file": "screen-north.jpg",
+	"maxwidth": 3840,
+	"maxheight": 2160,
     "description": "Publish to big screen (north)"
   },
   {
@@ -21,6 +23,8 @@
     "icon": "Tv",
     "type": "output_file",
     "file": "screen-south.jpg",
+	"maxwidth": 3840,
+	"maxheight": 2160,
     "description": "Publish to big screen (south)"
   },
   {

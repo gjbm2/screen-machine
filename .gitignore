@@ -23,7 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 
-/venv
+/.venv
 __pycache__/
 *.py[cod]
 .env
+
+
+/output/*.jpg
