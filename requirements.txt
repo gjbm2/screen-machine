@@ -1,12 +1,21 @@
-
 flask==2.3.3
 flask-cors==4.0.0
 Werkzeug==2.3.7
-openai==1.68.0
+
+# OpenAI and dependencies
+openai>=1.3.7,<2
+httpx>=0.24.0,<0.28.0  # ensure compatibility with OpenAI SDK
+
+# RunPod (for remote GPU execution)
 runpod==1.7.7
+
+# WebSocket server
 websocket-server==0.6.4
-asyncio==3.4.3
-pillow
-piexif
-python-xmp-toolkit
-iptcinfo3
+
+# Imaging / metadata tools
+pillow>=9.0.0
+piexif>=1.1.3
+python-xmp-toolkit>=2.0.1
+iptcinfo3>=2.1.1
+
+# Do NOT install asyncio directly (it's built-in)

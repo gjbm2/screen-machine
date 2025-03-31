@@ -86,7 +86,7 @@
   },
   "45": {
     "inputs": {
-      "model_name": "RealESRGAN_x2plus.pth"
+      "model_name": "RealESRGAN_x4plus.pth"
     },
     "class_type": "UpscaleModelLoader",
     "_meta": {
@@ -120,7 +120,7 @@
     "inputs": {
       "filename_prefix": "ComfyUI",
       "images": [
-        "46",
+        "60",
         0
       ]
     },
@@ -204,8 +204,8 @@
   "59": {
     "inputs": {
       "lora_name": "sldr_flux_nsfw_v2-studio.safetensors",
-      "strength_model": 1,
-      "strength_clip": 1,
+      "strength_model": 1.0000000000000002,
+      "strength_clip": 1.0000000000000002,
       "model": [
         "12",
         0
@@ -218,6 +218,24 @@
     "class_type": "LoraLoader",
     "_meta": {
       "title": "Load LoRA {{LORA}}"
+    }
+  },
+  "60": {
+    "inputs": {
+      "width": 6400,
+      "height": 6400,
+      "interpolation": "lanczos",
+      "method": "keep proportion",
+      "condition": "downscale if bigger",
+      "multiple_of": 0,
+      "image": [
+        "46",
+        0
+      ]
+    },
+    "class_type": "ImageResize+",
+    "_meta": {
+      "title": "🔧 Image Resize {{DOWNSCALER}}"
     }
   }
 }

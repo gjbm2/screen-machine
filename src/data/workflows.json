@@ -104,7 +104,19 @@
         "type": "select",
         "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
 		"default": "RealESRGAN_x2plus.pth"
-      }
+      },
+      { 
+        "id": "maxwidth",
+        "name": "Max width",
+        "type": "number",
+        "default": 5000
+      },
+      { 
+        "id": "maxheight",
+        "name": "Max width",
+        "type": "number",
+        "default": 5000
+	  }
     ]
   },
   {

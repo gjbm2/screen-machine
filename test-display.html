@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="3">
+  <title>Image Viewer</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: black;
+      height: 100%;
+      overflow: hidden;
+    }
+    img {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      object-position: center;
+    }
+  </style>
+</head>
+<body>
+  <img id="viewer" src="" alt="Image">
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const imgSrc = params.get("img");
+
+    if (imgSrc) {
+      document.getElementById("viewer").src = imgSrc;
+    } else {
+      document.body.innerHTML = "<h1 style='color:white;text-align:center'>No image specified</h1>";
+    }
+  </script>
+</body>
+</html>

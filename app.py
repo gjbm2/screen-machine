@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
+import threading
+import re
 import time
 import random
 import uuid
@@ -14,6 +16,7 @@ import types
 from werkzeug.utils import secure_filename
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
 import routes.generate
+import routes.alexa
 import subprocess
 import logging
 
@@ -414,18 +417,61 @@ def get_global_options():
 @app.route("/api/alexa", methods=["POST"])
 def alexa_webhook():
     data = request.get_json()
-    intent = data.get("request", {}).get("intent", {})
-    slots = intent.get("slots", {})
-    utterance = slots.get("utterance", {}).get("value", "something")
-
-    print(f"User wants to generate: {utterance}")
     
+    #print(f"Data {json.dumps(data, indent=2)}")
+    
+    request_type = data.get("request", {}).get("type", "")
+    response_ssml = "<speak>You should never hear this</speak>"
+    
+    if request_type == "LaunchRequest":
+        #print(f"No package")
+    
+        response_ssml = routes.alexa.Brianize("<speak>Hello. My mind is open. Try: 'use open a.i. to generate a cat in a hat'. Or 'use open a.i. to ask how big is the moon'.</speak>")
+    
+    elif request_type == "IntentRequest":
+    
+        intent = data.get("request", {}).get("intent", {}).get("name", "unspecified")
+        utterance = data.get("request", {}).get("intent", {}).get("slots", {}).get("utterance", {}).get("value", "unspecified")
+
+        print(f"> Intent: {intent}\n> Utterance: {utterance}")
+        processed_object = routes.alexa.refine(intent + " " + utterance)
+        print(f"> processed object: {processed_object}")
+        response_ssml = processed_object.get("response_ssml", "<speak>No response received from pre-processor</speak>")
+        print(f"> response_ssml: {response_ssml}")
+        
+        # Generate an image only if we were told to
+        if processed_object.get("status") == "specific_action":
+            if processed_object.get("data", {}).get("type") == "image_generation":
+                payload = processed_object.get("data", {}).get("payload", {})
+                prompt = payload.get("full_prompt")
+                workflow = payload.get("workflow")
+                publish_target = payload.get("publish_target")
+                    
+                # We were successful so create images...
+                threads=[] 
+                
+                # Spool upone thread per image
+                for target in publish_target:
+                    thread = threading.Thread(
+                        target=routes.generate.main,
+                        kwargs={
+                            "prompt": prompt,
+                            "workflow": workflow,
+                            "target": target
+                        }
+                    )
+                    thread.start()
+                    threads.append(thread)
+                    
+                print(f"Spawned {len(threads)} generator threads.")
+    
+    # Deliver response to Alexa
     response = {
         "version": "1.0",
         "response": {
             "outputSpeech": {
-                "type": "PlainText",
-                "text": f"Okay, I'll draw {utterance}"
+                "type": "SSML",
+                "ssml": response_ssml
             },
             "shouldEndSession": True
         }
