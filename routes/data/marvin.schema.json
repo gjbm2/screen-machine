@@ -36,8 +36,8 @@
           },
           "refiner": {
             "type": "string",
-            "enum": ["embelish", "none"],
-            "default": "embelish",
+            "enum": ["enrich", "none", "gallerist", "curator", "picture editor", "tabloid picture editor"],
+            "default": "enrich",
             "description": "Optional image refinement mode. 'embelish' adds detail, 'none' skips refinement."
           }
         },
