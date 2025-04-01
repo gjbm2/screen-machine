@@ -1,0 +1,62 @@
+{
+  "name": "marvin_interpret",
+  "description": "Infers the user's intent, responds in Marvin's sardonic SSML tone, and optionally returns an image prompt.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "intent": {
+        "type": "string",
+        "enum": ["respond_only", "generate_image", "other_action"],
+        "description": "The user's intent. Choose from: 'respond_only', 'generate_image', or 'other_action'."
+      },
+      "response_ssml": {
+        "type": "string",
+        "description": "A sardonic SSML-wrapped response in Marvin's voice, using <speak><voice name='Brian'>...</voice></speak>."
+      },
+      "data": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "The image prompt to generate."
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["north-screen", "south-screen", "kitchen-screen", "basement-screen"]
+            },
+            "minItems": 1,
+            "description": "Target screen(s) for image display."
+          },
+          "workflow": {
+            "type": "string",
+            "enum": ["flux", "sdxl"],
+            "description": "Optional image generation workflow to use."
+          },
+          "refiner": {
+            "type": "string",
+            "enum": ["embelish", "none"],
+            "default": "embelish",
+            "description": "Optional image refinement mode. 'embelish' adds detail, 'none' skips refinement."
+          }
+        },
+        "required": ["prompt", "screens"]
+      }
+    },
+    "required": ["intent", "response_ssml"],
+    "if": {
+      "properties": {
+        "intent": { "const": "generate_image" }
+      }
+    },
+    "then": {
+      "required": ["data"]
+    },
+    "else": {
+      "not": {
+        "required": ["data"]
+      }
+    }
+  }
+}
