@@ -7,9 +7,17 @@
     "icon": "x-circle"
   },
   {
-    "id": "enhance",
-    "name": "Enhance",
+    "id": "enrich",
+    "name": "Enrich",
+	"system_prompt": "refiner-enrich.txt",
     "description": "Improve image clarity and details",
+    "icon": "sparkles"
+  },
+  {
+    "id": "artify",
+    "name": "Artify",
+	"system_prompt": "refiner-artify.txt",
+    "description": "Select and embrace a bold artistic style.",
     "icon": "sparkles"
   },
   {

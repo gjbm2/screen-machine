@@ -1,7 +1,16 @@
-from openai import OpenAI
 import os
+from openai import OpenAI
+from dotenv import load_dotenv
 
-client = OpenAI(api_key="")
+# Load .env file if it exists
+load_dotenv()
+
+# Fetch the API key from environment
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise RuntimeError("OPENAI_API_KEY not found in environment. Check your .env file or environment variables.")
+
+client = OpenAI(api_key=api_key)
 
 # List all files
 files = client.files.list()

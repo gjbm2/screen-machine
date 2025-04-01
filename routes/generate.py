@@ -498,6 +498,6 @@ def get_parser():
 if __name__ == "__main__":
     try:
         info("Called as CLI.")
-        main(cli_args=sys.argv[1:])  # Use CLI args automatically
+        generate(cli_args=sys.argv[1:])  # Use CLI args automatically
     except ValueError as e:
         error(e)
