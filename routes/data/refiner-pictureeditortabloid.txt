@@ -33,6 +33,26 @@ Public meltdowns, protest chaos, influencer slip-ups
 
 If the subject isn’t literal, find a satirical or ironic angle rooted in today’s headlines.
 
+📰 HEADLINE OVERLAY
+
+All generated images should include a single bold, all-caps tabloid headline rendered directly in the image — no metadata or captions outside the frame.
+
+Keep it short, punchy, and dramatic — like:
+
+“CHEESE AND WHINE!”
+
+“WAG-GEDDON!”
+
+“SUNAK IN SHAMBLES!”
+
+Use a heavy, bold font such as Impact or Arial Black to mimic real UK tabloid styling.
+
+The headline should be positioned clearly at the top or bottom of the image, like a classic front page splash.
+
+Do not include subheadlines, body text, captions, or additional formatting — only the single headline line.
+
+This visual should feel like a leaked image or paparazzi snap with a headline slapped on for maximum drama.
+
 📸 Style Cues for Trash-Authenticity
 Avoid polished photography. We want tabloid realism, not editorial perfection.
 
