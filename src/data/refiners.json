@@ -21,6 +21,20 @@
     "icon": "sparkles"
   },
   {
+    "id": "commissioner",
+    "name": "Commissioner",
+	"system_prompt": "refiner-commissioner.txt",
+    "description": "Act like a commissioner.",
+    "icon": "sparkles"
+  },
+  {
+    "id": "picture_editor",
+    "name": "Picture Editor",
+	"system_prompt": "refiner-pictureeditor.txt",
+    "description": "Act like a picture desk editor.",
+    "icon": "sparkles"
+  },
+  {
     "id": "upscale",
     "name": "Upscale",
     "description": "Increase resolution while preserving details",
