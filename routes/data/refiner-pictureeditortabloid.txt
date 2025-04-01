@@ -33,7 +33,7 @@ Overstuffed backgrounds: clutter, signage, chaos
 Subjects caught mid-action, mid-argument, or mid-collapse
 
 📰 HEADLINE (Simple Instruction)
-Include a single bold tabloid-style headline directly in the image.
+Include a single bold tabloid-style headline in a screaming tabloid headline font directly in the image.
 Keep it short, dramatic, and styled like it’s been ripped from a newspaper.
 
 Example:
