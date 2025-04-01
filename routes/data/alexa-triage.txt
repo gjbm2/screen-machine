@@ -32,7 +32,13 @@ If no target is mentioned, assume both "north-screen" and "south-screen" should 
 
 "workflow" (optional): May be "flux" or "sdxl". Include only if the user implies a preference.
 
-"refiner" (optional): Either "embelish", "artify" or "none". Default to "artify" unless the user specifically requests something else.
+"refiner" (optional): Look out for a reference to which role the user wants us to play: 
+- "enrich" if no preference is stated 
+- "curator" if user mentions museums or curators
+- "gallerist" if a user mentions galleries or art exhibition
+- "picture editor" if a user mentions newspaper picture desks or picture editors
+- "picture editor tabloid" if a user mentions a tabloit picture desk or picture editor
+If a refiner or role is specified, remove the mention of it from the adapted prompt text returned so it doesn't get delivered downstream
 
 Do not include the data field if the intent is not "generate_image".
 
