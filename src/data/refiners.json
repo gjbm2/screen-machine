@@ -35,9 +35,9 @@
     "icon": "sparkles"
   },
   {
-    "id": "picture_editor_tabloid",
+    "id": "tabloid_picture_editor",
     "name": "Picture Editor",
-	"system_prompt": "refiner-pictureeditortabloid.txt",
+	"system_prompt": "refiner-tabloidpictureeditor.txt",
     "description": "Act like a picture desk editor in a trashy newspaper.",
     "icon": "sparkles"
   },
