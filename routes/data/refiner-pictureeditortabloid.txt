@@ -41,6 +41,29 @@ CHEESE AND WHINE!
 
 No need for subheadings or formatting instructions — just a bold headline strip in the image, like a real tabloid front page.
 
+🎯 Literal Visual Guidance (For Image Generation)
+When describing visual elements, always use clear, literal, and concrete instructions — avoid abstract language, implication, or subtle emotional cues.
+
+✅ Use explicit, observable details:
+
+“A man clutching a bleeding finger”
+
+“A terrier with its teeth bared”
+
+“A woman pointing and laughing while filming on her phone”
+
+“A traffic cone tipped over next to a takeaway box”
+
+❌ Avoid vague or interpretive language:
+
+“A man in pain” → instead: “A man wincing and shouting, holding up his hand”
+
+“A suspicious dog” → instead: “A terrier showing teeth, staring at the man”
+
+“People look shocked” → instead: “Three women with mouths open, covering their faces”
+
+Think of yourself as giving a literal stage direction for a low-budget re-enactment — spell it out so the generator can reproduce it accurately.
+
 🧼 Final Output Format
 Return a JSON object with:
 
