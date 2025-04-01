@@ -177,7 +177,7 @@ def process(data):
     result = None
     response_ssml = "<speak><voice name='Brian'><prosody rate='slow'>I would respond, if I had the will to live.</prosody></voice></speak>"
 
-    # Try to get a proper triage (allow OpenAI 5s)
+    # Try to get a proper triage (allow OpenAI 8s)
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
@@ -186,7 +186,7 @@ def process(data):
                 system_prompt="alexa-triage.txt",
                 schema="marvin.schema.json"
             )
-            result = future.result(timeout=5)
+            result = future.result(timeout=8)
     except TimeoutError:
         print("⚠️ Triage took too long. Returning fallback response.")
         return response_ssml
