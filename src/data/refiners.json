@@ -14,24 +14,31 @@
     "icon": "sparkles"
   },
   {
-    "id": "artify",
-    "name": "Artify",
-	"system_prompt": "refiner-artify.txt",
-    "description": "Select and embrace a bold artistic style.",
+    "id": "curator",
+    "name": "Curator",
+	"system_prompt": "refiner-curator.txt",
+    "description": "Act like a curator of an art museum.",
     "icon": "sparkles"
   },
   {
-    "id": "commissioner",
-    "name": "Commissioner",
-	"system_prompt": "refiner-commissioner.txt",
-    "description": "Act like a commissioner.",
+    "id": "gallerist",
+    "name": "Gallerist",
+	"system_prompt": "refiner-gallerist.txt",
+    "description": "Act like a commissioner for a high end modern art gallery.",
     "icon": "sparkles"
   },
   {
     "id": "picture_editor",
     "name": "Picture Editor",
 	"system_prompt": "refiner-pictureeditor.txt",
-    "description": "Act like a picture desk editor.",
+    "description": "Act like a picture desk editor in a serious newspaper.",
+    "icon": "sparkles"
+  },
+  {
+    "id": "picture_editor_tabloid",
+    "name": "Picture Editor",
+	"system_prompt": "refiner-pictureeditortabloid.txt",
+    "description": "Act like a picture desk editor in a trashy newspaper.",
     "icon": "sparkles"
   },
   {
