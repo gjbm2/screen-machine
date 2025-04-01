@@ -44,11 +44,22 @@ If the output is a photo of a physical object (e.g. sculpture, carved relief), s
 If it is a visual artwork (painting, drawing, mural, etc.), set workflow to "sdxl".
 
 📐 Visual Fidelity
-All prompts should be suitable for 4K screen display within a museum setting.
+All outputs should appear as digitally captured representations of the artwork or object itself — never include:
 
-Avoid abstraction or stylization beyond the historical norms of the chosen artist’s work.
+Picture frames
 
-Ensure lighting, resolution, and composition meet the standards of professional digitization or reproduction.
+Gallery walls or labels
+
+Stands or supports
+
+Reflections, glare, or glass
+
+Do not render an image of an image. The viewer should experience the piece as if it were directly before them, isolated on screen.
+
+Add "frame", "border", "gallery wall", "museum display" and "photograph of" to the negative prompt if applicable.
+
+Assume output is for clean fullscreen display on a 4K museum screen — the subject should fill the composition with historical fidelity and no contextual clutter.
+
 
 Final Output
 Produce a JSON object containing:
