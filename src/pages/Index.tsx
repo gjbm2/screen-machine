@@ -15,7 +15,6 @@ const Index = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
-  // Use our custom hook for console management
   const { 
     consoleVisible, 
     consoleLogs, 
@@ -24,19 +23,15 @@ const Index = () => {
     addLog: addConsoleLog 
   } = useConsoleManagement();
   
-  // Add state for refiner and refiner params
   const [selectedRefiner, setSelectedRefiner] = useState('none');
   const [refinerParams, setRefinerParams] = useState<Record<string, any>>({});
   
-  // Add state for publish destination
   const [selectedPublish, setSelectedPublish] = useState('none');
   
-  // Add logging for debugging the advanced panel issue
   useEffect(() => {
     console.log('Advanced options panel open state:', advancedOptionsOpen);
   }, [advancedOptionsOpen]);
 
-  // Image generation hook
   const {
     generatedImages,
     activeGenerations,
@@ -66,16 +61,13 @@ const Index = () => {
     handleDeleteContainer
   } = useImageGeneration(addConsoleLog);
 
-  // Helper function to process URL parameter values
   const processUrlParam = (value: string): any => {
-    // Remove enclosing quotes if present
     if ((value.startsWith('"') && value.endsWith('"')) || 
         (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
     
     try {
-      // Try to parse as JSON if it starts with [ or {
       if (value.startsWith('[') || value.startsWith('{')) {
         return JSON.parse(value);
       } else if (value === 'true') {
@@ -88,18 +80,14 @@ const Index = () => {
         return value;
       }
     } catch (e) {
-      // If parsing fails, use as string
       console.error(`Failed to parse param value=${value}`, e);
       return value;
     }
   };
 
-  // Parse URL parameters and set initial state
   useEffect(() => {
-    // Check for prompt parameter
     const promptParam = searchParams.get('prompt');
     if (promptParam) {
-      // Process the prompt to handle quoted strings
       const processedPrompt = processUrlParam(promptParam);
       setCurrentPrompt(processedPrompt);
       addConsoleLog({
@@ -108,10 +96,8 @@ const Index = () => {
       });
     }
     
-    // Check for workflow parameter
     const workflowParam = searchParams.get('workflow');
     if (workflowParam) {
-      // Validate workflow ID exists
       const workflowExists = typedWorkflows.some(w => w.id === workflowParam);
       if (workflowExists) {
         setCurrentWorkflow(workflowParam);
@@ -124,10 +110,8 @@ const Index = () => {
       }
     }
     
-    // Check for publish parameter
     const publishParam = searchParams.get('publish');
     if (publishParam) {
-      // Set the selected publish destination
       setSelectedPublish(publishParam);
       
       addConsoleLog({
@@ -136,7 +120,6 @@ const Index = () => {
       });
     }
     
-    // Check for refiner parameter
     const refinerParam = searchParams.get('refiner');
     if (refinerParam) {
       setSelectedRefiner(refinerParam);
@@ -146,7 +129,6 @@ const Index = () => {
       });
     }
     
-    // Get all workflow params (any parameter that doesn't match the special ones)
     const workflowParamsObj: Record<string, any> = {};
     searchParams.forEach((value, key) => {
       if (!['prompt', 'workflow', 'refiner', 'publish', 'script', 'run'].includes(key) && !key.startsWith('refiner_')) {
@@ -158,14 +140,12 @@ const Index = () => {
             message: `URL parameter: ${key}=${value} (workflow param)`
           });
         } catch (e) {
-          // If parsing fails, use as string
           workflowParamsObj[key] = value;
           console.error(`Failed to parse param ${key}=${value}`, e);
         }
       }
     });
     
-    // If we have workflow params, update the state
     if (Object.keys(workflowParamsObj).length > 0) {
       setCurrentParams(prev => ({
         ...prev,
@@ -173,7 +153,6 @@ const Index = () => {
       }));
     }
     
-    // Get all refiner params (parameters starting with refiner_)
     const refinerParamsObj: Record<string, any> = {};
     searchParams.forEach((value, key) => {
       if (key.startsWith('refiner_')) {
@@ -186,14 +165,12 @@ const Index = () => {
             message: `URL parameter: ${key}=${value} (refiner param)`
           });
         } catch (e) {
-          // If parsing fails, use as string
           refinerParamsObj[paramName] = value;
           console.error(`Failed to parse refiner param ${key}=${value}`, e);
         }
       }
     });
     
-    // If we have refiner params, update the state
     if (Object.keys(refinerParamsObj).length > 0) {
       setRefinerParams(prev => ({
         ...prev,
@@ -201,21 +178,16 @@ const Index = () => {
       }));
     }
     
-    // Check for script parameter (for future implementation)
     const scriptParam = searchParams.get('script');
     if (scriptParam) {
       addConsoleLog({
         type: 'info',
         message: `URL parameter: script=${scriptParam} (not implemented yet)`
       });
-      // TODO: Implement script loading
     }
     
-    // Check for 'run' parameter last (auto-generate)
     const hasRunParam = searchParams.has('run');
     if (hasRunParam) {
-      // We need to wait a moment for all other parameters to be processed
-      // before we trigger the generation
       const timer = setTimeout(() => {
         const currentPromptValue = promptParam ? processUrlParam(promptParam) : currentPrompt;
         
@@ -225,7 +197,6 @@ const Index = () => {
             message: `URL parameter: run=true (auto-generating)`
           });
           
-          // We'll simulate a submit with the current state
           handlePromptSubmit(
             currentPromptValue, 
             undefined, 
@@ -237,7 +208,6 @@ const Index = () => {
             publishParam || selectedPublish
           );
           
-          // Remove the run parameter from URL to prevent re-running on page refresh
           if (searchParams.has('run')) {
             const newParams = new URLSearchParams(searchParams);
             newParams.delete('run');
@@ -250,28 +220,23 @@ const Index = () => {
       
       return () => clearTimeout(timer);
     }
-  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Note: We're disabling the exhaustive deps warning since we want this to run once on mount
+  }, [searchParams]);
 
-  // Handler for opening advanced options
   const handleOpenAdvancedOptions = useCallback(() => {
     console.log('Opening advanced options panel');
     setAdvancedOptionsOpen(true);
   }, []);
 
-  // Handler for advanced options open state change
   const handleAdvancedOptionsOpenChange = useCallback((open: boolean) => {
     console.log('Advanced options panel open state changing to:', open);
     setAdvancedOptionsOpen(open);
   }, []);
 
-  // Handler for refiner changes from advanced panel
   const handleRefinerChange = useCallback((refiner: string) => {
     console.log('Index: Refiner changed to:', refiner);
     setSelectedRefiner(refiner);
   }, []);
 
-  // Handler for refiner param changes from advanced panel
   const handleRefinerParamChange = useCallback((paramId: string, value: any) => {
     console.log('Index: Refiner param changed:', paramId, value);
     setRefinerParams(prev => ({
@@ -280,13 +245,11 @@ const Index = () => {
     }));
   }, []);
 
-  // Handler for publish changes
   const handlePublishChange = useCallback((publishId: string) => {
     console.log('Index: Publish destination changed to:', publishId);
     setSelectedPublish(publishId);
   }, []);
 
-  // Handler for prompt submission
   const handlePromptSubmit = async (
     prompt: string,
     imageFiles?: File[] | string[],
@@ -307,47 +270,37 @@ const Index = () => {
       console.log('- refinerParams:', refinerParams);
       console.log('- publish:', publish);
       
-      // Update state with the values from prompt form
       setCurrentPrompt(prompt);
       
-      // Update workflow state if provided from prompt form
       if (workflow) {
         setCurrentWorkflow(workflow);
       }
       
-      // Update refiner state if provided from prompt form
       if (refiner) {
         setSelectedRefiner(refiner);
       }
       
-      // Update publish state if provided from prompt form
       if (publish) {
         setSelectedPublish(publish);
       }
       
-      // Create a copy of the params to avoid mutation issues
       let effectiveParams = params ? { ...params } : { ...currentParams };
       
-      // Add publish destination to params if provided
       if (publish && publish !== 'none') {
         console.log('Adding publish destination to params:', publish);
         effectiveParams.publish_destination = publish;
       }
       
-      // Update params state
       setCurrentParams(effectiveParams);
       
-      // Update global params if provided
       if (globalParams) {
         setCurrentGlobalParams(globalParams);
       }
       
-      // Update refiner params if provided
       if (refinerParams) {
         setRefinerParams(refinerParams);
       }
       
-      // Process image files if provided
       if (imageFiles && imageFiles.length > 0) {
         const fileUrls = imageFiles
           .filter((file): file is string => typeof file === 'string')
@@ -356,8 +309,6 @@ const Index = () => {
         setUploadedImageUrls(fileUrls);
       }
       
-      // Submit the generation request with all parameters
-      // Important: DO NOT pass a batchId here for a new generation
       await handleSubmitPrompt(
         prompt, 
         imageFiles, 
@@ -391,14 +342,12 @@ const Index = () => {
           currentPrompt={currentPrompt}
           isFirstRun={isFirstRun}
           onOpenAdvancedOptions={handleOpenAdvancedOptions}
-          // Pass additional props to reflect current state
           selectedWorkflow={currentWorkflow}
           selectedRefiner={selectedRefiner}
           selectedPublish={selectedPublish}
           workflowParams={currentParams}
           refinerParams={refinerParams}
           globalParams={currentGlobalParams}
-          // Add handlers for workflow and refiner changes from prompt form
           onWorkflowChange={setCurrentWorkflow}
           onRefinerChange={handleRefinerChange}
           onPublishChange={handlePublishChange}
@@ -439,7 +388,6 @@ const Index = () => {
             [paramId]: value
           }));
         }}
-        // Pass refiner props
         selectedRefiner={selectedRefiner}
         refinerParams={refinerParams}
         onRefinerChange={handleRefinerChange}
@@ -450,4 +398,3 @@ const Index = () => {
 };
 
 export default Index;
-
