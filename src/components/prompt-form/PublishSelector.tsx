@@ -1,14 +1,14 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu';
 import { getPublishDestinations } from '@/services/PublishService';
-import { Share, Share2 } from 'lucide-react';
+import { Share2 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -26,21 +26,64 @@ const PublishSelector: React.FC<PublishSelectorProps> = ({
   const publishDestinations = getPublishDestinations();
   const isMobile = useIsMobile();
   
+  // Track selected publish destinations
+  const [selectedDestinations, setSelectedDestinations] = useState<string[]>(
+    selectedPublish === 'none' ? [] : [selectedPublish]
+  );
+  
   // Function to get icon component
   const getIconComponent = (iconName: string) => {
     const IconComponent = (LucideIcons as any)[iconName];
-    return IconComponent ? <IconComponent className="h-3.5 w-3.5" /> : <Share className="h-3.5 w-3.5" />;
+    return IconComponent ? <IconComponent className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />;
   };
   
-  // Get the selected destination
-  const selectedDestination = publishDestinations.find(dest => dest.id === selectedPublish);
+  // Handle selecting/deselecting a publish destination
+  const handleToggleDestination = (destId: string) => {
+    setSelectedDestinations(prev => {
+      // If it's already selected, remove it
+      if (prev.includes(destId)) {
+        const newSelections = prev.filter(id => id !== destId);
+        // Update the parent component with the first selection or 'none'
+        onPublishChange(newSelections.length > 0 ? newSelections[0] : 'none');
+        return newSelections;
+      } 
+      // Otherwise add it
+      else {
+        const newSelections = [...prev, destId];
+        // Update the parent component with the first selection
+        onPublishChange(newSelections[0]);
+        return newSelections;
+      }
+    });
+  };
   
-  // Default to "None" if no publish destination is selected
-  const displayIcon = selectedDestination 
-    ? getIconComponent(selectedDestination.icon)
-    : <Share2 className="h-3.5 w-3.5" />;
+  // Get display text for the button
+  const getDisplayText = () => {
+    if (selectedDestinations.length === 0) {
+      return "No Publish";
+    }
+    
+    if (selectedDestinations.length === 1) {
+      const dest = publishDestinations.find(d => d.id === selectedDestinations[0]);
+      return dest ? dest.name : "No Publish";
+    }
+    
+    return `${selectedDestinations.length} destinations`;
+  };
   
-  const displayName = selectedDestination?.name || "None";
+  // Get the icon to display on the button
+  const getDisplayIcon = () => {
+    if (selectedDestinations.length === 0) {
+      return <Share2 className="h-3.5 w-3.5" />;
+    }
+    
+    if (selectedDestinations.length === 1) {
+      const dest = publishDestinations.find(d => d.id === selectedDestinations[0]);
+      return dest ? getIconComponent(dest.icon) : <Share2 className="h-3.5 w-3.5" />;
+    }
+    
+    return <Share2 className="h-3.5 w-3.5" />;
+  };
   
   return (
     <div className="flex items-center space-x-1">
@@ -54,31 +97,36 @@ const PublishSelector: React.FC<PublishSelectorProps> = ({
           <Button
             variant="outline"
             size={isMobile ? "icon" : "sm"}
-            className={`${isMobile ? "h-[28px] w-[28px]" : "h-[28px] px-2"} text-muted-foreground`}
+            className={`${isMobile ? "h-[28px] w-[28px]" : "h-[28px] px-2"} text-muted-foreground bg-white`}
             aria-label="Select publish destination"
           >
-            {displayIcon}
-            {!isMobile && <span className="ml-1.5 text-xs">{displayName}</span>}
+            {getDisplayIcon()}
+            {!isMobile && <span className="ml-1.5 text-xs">{getDisplayText()}</span>}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="bg-white">
-          <DropdownMenuItem
+          <DropdownMenuCheckboxItem
             className="flex items-center px-2 py-1 text-xs"
-            onClick={() => onPublishChange('none')}
+            checked={selectedDestinations.length === 0}
+            onCheckedChange={() => {
+              setSelectedDestinations([]);
+              onPublishChange('none');
+            }}
           >
             <Share2 className="h-3.5 w-3.5 mr-2" />
-            <span>None</span>
-          </DropdownMenuItem>
+            <span>No Publish</span>
+          </DropdownMenuCheckboxItem>
           
           {publishDestinations.map(destination => (
-            <DropdownMenuItem
+            <DropdownMenuCheckboxItem
               key={destination.id}
               className="flex items-center px-2 py-1 text-xs"
-              onClick={() => onPublishChange(destination.id)}
+              checked={selectedDestinations.includes(destination.id)}
+              onCheckedChange={() => handleToggleDestination(destination.id)}
             >
               {getIconComponent(destination.icon)}
               <span className="ml-2">{destination.name}</span>
-            </DropdownMenuItem>
+            </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
