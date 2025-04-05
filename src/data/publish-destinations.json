@@ -2,8 +2,8 @@
 [
   {
     "id": "screen1",
-    "name": "North screen",
-    "icon": "Tv",
+    "name": "North",
+    "icon": "SquareArrowUp",
     "type": "output_file",
     "file": "screen-north.jpg",
 	"maxwidth": 3840,
@@ -12,8 +12,8 @@
   },
   {
     "id": "screen2",
-    "name": "South screen",
-    "icon": "Tv",
+    "name": "South",
+    "icon": "SquareArrowDown",
     "type": "output_file",
     "file": "screen-south.jpg",
 	"maxwidth": 3840,
@@ -22,7 +22,7 @@
   },
   {
     "id": "cloud",
-    "name": "Cloud storage",
+    "name": "Cloud",
     "icon": "Cloud",
     "type": "s3",
     "file": "cloud-storage.jpg",

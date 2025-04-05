@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { getPublishDestinations } from '@/services/PublishService';
 import { Share2 } from 'lucide-react';
+import { CircleSlash } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -65,30 +66,30 @@ const PublishSelector: React.FC<PublishSelectorProps> = ({
   // Get display text for the button
   const getDisplayText = () => {
     if (selectedDestinations.length === 0) {
-      return "No Publish";
+      return "None";
     }
     
     if (selectedDestinations.length === 1) {
       const dest = publishDestinations.find(d => d.id === selectedDestinations[0]);
-      return dest ? dest.name : "No Publish";
+      return dest ? dest.name : "None";
     }
     
     return `${selectedDestinations.length} destinations`;
   };
   
   // Get the icon to display on the button
-  const getDisplayIcon = () => {
-    if (selectedDestinations.length === 0) {
-      return <Share2 className="h-3.5 w-3.5" />;
-    }
-    
-    if (selectedDestinations.length === 1) {
-      const dest = publishDestinations.find(d => d.id === selectedDestinations[0]);
-      return dest ? getIconComponent(dest.icon) : <Share2 className="h-3.5 w-3.5" />;
-    }
-    
-    return <Share2 className="h-3.5 w-3.5" />;
-  };
+	const getDisplayIcon = () => {
+	  if (selectedDestinations.length === 0) {
+		return <CircleSlash className="h-3.5 w-3.5" />;
+	  }
+
+	  if (selectedDestinations.length === 1) {
+		const dest = publishDestinations.find(d => d.id === selectedDestinations[0]);
+		return dest ? getIconComponent(dest.icon) : <Share2 className="h-3.5 w-3.5" />;
+	  }
+
+	  return <Share2 className="h-3.5 w-3.5" />;
+	};
 
   // Get badge for multiple destinations
   const getMultipleDestinationsBadge = () => {
@@ -118,7 +119,7 @@ const PublishSelector: React.FC<PublishSelectorProps> = ({
             aria-label="Select publish destination"
           >
             {getDisplayIcon()}
-            <span className={`ml-1.5 text-xs ${isMobile && selectedDestinations.length > 1 ? 'hidden' : ''}`}>
+            <span className={`ml-1.5 text-xs ${isMobile ? 'hidden' : ''}`}>
               {getDisplayText()}
             </span>
             {isMobile && getMultipleDestinationsBadge()}
@@ -126,21 +127,21 @@ const PublishSelector: React.FC<PublishSelectorProps> = ({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="bg-white">
           <DropdownMenuCheckboxItem
-            className="flex items-center px-2 py-1 text-xs"
+            className="pl-6 pr-2 py-1 text-xs flex items-center"
             checked={selectedDestinations.length === 0}
             onCheckedChange={() => {
               setSelectedDestinations([]);
               onPublishChange('none');
             }}
           >
-            <Share2 className="h-3.5 w-3.5 mr-2" />
-            <span>No Publish</span>
+            <CircleSlash className="h-3.5 w-3.5 mr-2" />
+            <span>None</span>
           </DropdownMenuCheckboxItem>
           
           {publishDestinations.map(destination => (
             <DropdownMenuCheckboxItem
               key={destination.id}
-              className="flex items-center px-2 py-1 text-xs"
+              className="pl-6 pr-2 py-1 text-xs flex items-center"
               checked={selectedDestinations.includes(destination.id)}
               onCheckedChange={() => handleToggleDestination(destination.id)}
             >
