@@ -32,7 +32,7 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   const shouldDisableButton = isLoading || (!prompt.trim() && !hasUploadedImages);
   
   // Common style for all toolbar buttons to ensure consistency
-  const toolbarButtonClass = "h-[28px] text-muted-foreground bg-white flex items-center justify-center";
+  const toolbarButtonClass = "h-[28px] text-muted-foreground bg-white";
   
   return (
     <div className="flex items-center justify-between overflow-x-auto py-1">
