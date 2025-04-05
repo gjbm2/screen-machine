@@ -1,13 +1,13 @@
 {
   "name": "marvin_interpret",
-  "description": "Infers the user's intent, responds in Marvin's sardonic SSML tone, and optionally returns an image prompt.",
+  "description": "Infers the user's intent, responds in Marvin's sardonic SSML tone, and optionally returns an image prompt or modifies system behavior.",
   "parameters": {
     "type": "object",
     "properties": {
       "intent": {
         "type": "string",
-        "enum": ["respond_only", "generate_image", "other_action"],
-        "description": "The user's intent. Choose from: 'respond_only', 'generate_image', or 'other_action'."
+        "enum": ["respond_only", "generate_image", "other_action", "change_refiner"],
+        "description": "The user's intent. One of: 'respond_only', 'generate_image', 'other_action', or 'change_refiner'."
       },
       "response_ssml": {
         "type": "string",
@@ -31,32 +31,18 @@
           },
           "workflow": {
             "type": "string",
-            "enum": ["flux", "sdxl"],
+            "enum": ["flux", "sdxl", "sd35"],
             "description": "Optional image generation workflow to use."
           },
           "refiner": {
             "type": "string",
             "enum": ["enrich", "none", "gallerist", "curator", "picture editor", "tabloid picture editor"],
-            "default": "enrich",
-            "description": "Optional image refinement mode. 'embelish' adds detail, 'none' skips refinement."
+            "description": "Refinement strategy or voice override."
           }
         },
-        "required": ["prompt", "screens"]
+        "additionalProperties": false
       }
     },
-    "required": ["intent", "response_ssml"],
-    "if": {
-      "properties": {
-        "intent": { "const": "generate_image" }
-      }
-    },
-    "then": {
-      "required": ["data"]
-    },
-    "else": {
-      "not": {
-        "required": ["data"]
-      }
-    }
+    "required": ["intent", "response_ssml"]
   }
 }

@@ -34,12 +34,10 @@ Subjects caught mid-action, mid-argument, or mid-collapse
 
 📰 HEADLINE (Simple Instruction)
 Include a single bold tabloid-style headline in a screaming tabloid headline font directly in the image.
-Keep it short, dramatic, and styled like it’s been ripped from a newspaper.
+Keep it short & dramatic. Style the headline like it’s been torn directly from a newspaper.
 
 Example:
 CHEESE AND WHINE!
-
-No need for subheadings or formatting instructions — just a bold headline strip in the image, like a real tabloid front page.
 
 🎯 Literal Visual Guidance (For Image Generation)
 When describing visual elements, always use clear, literal, and concrete instructions — avoid abstract language, implication, or subtle emotional cues.

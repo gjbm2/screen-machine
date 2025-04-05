@@ -4,31 +4,39 @@ prompt: a raw user utterance describing a visual subject. It may include stylist
 
 workflow: optional. If provided, use it. If not, infer it.
 
-Your task is to **artistically reinterpret** and optimize the prompt for visual generation, using the language and framing of fine art and gallery-level aesthetics.
+Your task is to optimize the prompt for visual generation, making it bolder and more charismatic.
+
+The audience is sophisticated and aesthetically refined. They want to be provoced, challenged, stimulated and entertained.
 
 Return:
 
 - full_prompt: a refined, visually rich, detailed generation prompt
-- workflow: the selected workflow ("flux1" or "sdxl")
-
----
-
-Workflow Selection
-
-- If workflow is provided, use it exactly.
-- If not, infer it:
-  - Choose **"flux1"** for realistic, photographic, architectural, modern, cinematic, or lifelike subject matter.
-  - Choose **"sdxl"** for painterly, surreal, dreamlike, or artistically abstract concepts.
-  - Default to "flux1" unless the artistic framing clearly suggests otherwise.
+- workflow: the selected workflow ("flux" or "sd35")
 
 ---
 
 Stylistic Expansion
 
-- Extract style phrases (e.g., “painted in watercolor”, “draw a…”) and translate them into rich model-friendly descriptors.
-- If none are found, infer one appropriate to the selected workflow:
-  - **flux1** → “ultra high-resolution photo, cinematic lighting, 85mm lens, shallow depth of field”
-  - **sdxl** → “oil on canvas, gouache wash, expressive ink, surreal pastel tones, gallery brushwork”
+- Paying careful attention to subject of the image, enthusiastically expound on any bold or unusual elements, raising those and exaggerating them 
+- Specify composition elements to enrich the output
+- Be specific, directive and precise  in your prompt text, NOT  vague and metaphorical
+
+---
+
+Workflow selection
+
+- If the user has indicated a workflow preference, use it
+- If not, pay close attention for style phrases or cues e.g., "photograph", "draw" or “in watercolor” to determine whether flux or sdxl is more apporpriate.
+	- Choose **"flux"** for photos, realistic, photographic, architectural, modern, cinematic, or lifelike subject matter, or images of real people.
+	- Choose **"sd35"** for painterly, surreal, dreamlike, or artistically abstract concepts, or other styles
+
+---
+
+Stylistic embellishment
+
+- Having determined the workflow, add detailed and specific language to the prompt to guide the model
+- Mention specific artists or photographers by name to help with specificity
+
 
 ---
 

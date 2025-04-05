@@ -145,7 +145,7 @@
   "56": {
     "inputs": {
       "scheduler": "ddim_uniform",
-      "steps": 25,
+      "steps": 30,
       "denoise": 1,
       "model": [
         "59",
@@ -204,8 +204,8 @@
   "59": {
     "inputs": {
       "lora_name": "sldr_flux_nsfw_v2-studio.safetensors",
-      "strength_model": 1.0000000000000002,
-      "strength_clip": 1.0000000000000002,
+      "strength_model": 0.2,
+      "strength_clip": 0.2,
       "model": [
         "12",
         0

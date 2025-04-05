@@ -1,10 +1,9 @@
-
 [
   {
     "id": "flux1-dev-scale-l.json",
     "name": "Text to Image (flux1)",
     "description": "Image from text using Flux1",
-    "default": true,
+	"runpod_id": "k98wg36ip597n0",
     "params": [
       { 
         "id": "steps",
@@ -37,7 +36,7 @@
         "id": "lora_strength",
         "name": "Lora strength",
         "type": "number",
-        "default": 1
+        "default": 0.2
       },
  	  {
         "id": "seed",
@@ -57,7 +56,7 @@
     "id": "sdxl-scale.json",
     "name": "Text to Image (sdxl)",
     "description": "Image from text using SDXL",
-    "default": true,
+	"runpod_id": "14n0ueqye259so",
     "params": [
       {
         "id": "style",
@@ -76,7 +75,7 @@
         "id": "steps",
         "name": "Steps",
         "type": "number",
-        "default": 20
+        "default": 30
       },
       {
         "id": "width",
@@ -91,6 +90,80 @@
         "type": "select",
 		"options": ["256", "512", "720", "768", "920", "1024", "1280", "1440", "1600", "1920", "2048", "2560", "2880", "3200", "3840"],
         "default": "1024"
+      },
+      {
+        "id": "negativeprompt",
+        "name": "Negative Prompt",
+        "type": "text",
+        "default": "blurry, distorted, low quality, oversaturated"
+      },
+      {
+        "id": "upscaler",
+        "name": "Upscaler model",
+        "type": "select",
+        "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
+		"default": "RealESRGAN_x2plus.pth"
+      },
+      { 
+        "id": "maxwidth",
+        "name": "Max width",
+        "type": "number",
+        "default": 5000
+      },
+      { 
+        "id": "maxheight",
+        "name": "Max width",
+        "type": "number",
+        "default": 5000
+	  }
+    ]
+  },
+   {
+    "id": "sd35.json",
+    "name": "Text to Image (sd35)",
+    "description": "Image from text using SD35",
+	"runpod_id": "ks1jy6452r59ox",
+    "default": true,
+    "params": [
+      { 
+        "id": "cfg",
+        "name": "CFG",
+        "type": "number",
+        "default": 3
+      },
+      { 
+        "id": "steps",
+        "name": "Steps",
+        "type": "number",
+        "default": 30
+      },
+      { 
+        "id": "sampler",
+        "name": "Sampler",
+        "type": "select",
+		"options": ["euler", "euler_cfg_pp", "euler_ancestral", "euler_ancestral_cfg_pp", "heun", "heunpp2", "dpm_2", "dpm_2_ancestral", "lms", "dpm_fast", "dpm_adaptive", "dpmp_2s_ancestral", "dpmp_2s_ancestral_cfg_pp", "dpmp_sde", "dpmp_sde_gpu", "dpmp_2m", "dpmp_2m_cfg_pp", "dpmp_2m_sde", "dpmp_2m_sde_gpu", "dpmp_3m_sde", "dpmp_3m_sde_gpu", "ddpm", "lcm", "ipndm", "ipndm_v", "deis", "res_multistep", "res_multistep_cfg_pp", "res_multistep_ancestral", "res_multistep_ancestral_cfg_pp", "gradient_estimation", "er_sde", "ddim", "uni_pc", "uni_pc_bh2"],		
+        "default": "euler"
+      },	  
+      { 
+        "id": "scheduler",
+        "name": "Scheduler",
+        "type": "select",
+		"options": ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddm_uniform", "beta", "linear_quadratic", "kl_optimal"],
+        "default": "sgm_uniform"
+      },
+      {
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+        "options": ["256", "512", "720", "768", "920", "1024", "1280", "1440", "1600", "1920", "2048", "2560", "2880", "3200", "3840"],
+        "default": "1280"
+      },
+{
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+		"options": ["256", "512", "720", "768", "920", "1024", "1280", "1440", "1600", "1920", "2048", "2560", "2880", "3200", "3840"],
+        "default": "720"
       },
       {
         "id": "negativeprompt",

@@ -10,7 +10,7 @@
       },
       "workflow": {
         "type": "string",
-        "enum": ["flux1", "sdxl"],
+        "enum": ["flux1", "sdxl", "sd35"],
         "description": "The selected workflow, either inferred or confirmed from user input."
       }
     },

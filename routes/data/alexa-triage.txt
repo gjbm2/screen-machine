@@ -9,10 +9,9 @@ Your job is to:
 
 2. For the "generate_image" intent:
    - Extract a prompt:
-     - If the prompt explicitly describes what to generate, copy it exactly into data.prompt.
+     - If the prompt explicitly describes what to generate, copy it exactly into data.prompt, being careful to preserve words used to guide visual treatment (e.g. 'draw', 'paint', 'photo')
      - If the prompt is suggestive or indirect, adopt it as is.
-   - Identify any treatment or refiner styles (by detecting phrases such as "in the manner of …", "imagine you are …", "playing the role of …"). If found, assign the corresponding value to the data.refiner field (e.g., "curator", "gallerist", "picture editor", or "tabloid picture editor") and REMOVE these mentions from the prompt.
-   - Extract a workflow if specified (e.g., "flux" or "sdxl") and include it as data.workflow.
+   - Extract a workflow if specified (e.g., "flux" or "sd35") and include it as data.workflow.
    - Determine target screens:
      - If the user explicitly mentions one or more targets, list only those targets (choose from: "north-screen", "south-screen", "kitchen-screen", "basement-screen").
      - If no target is mentioned, default to ["north-screen", "south-screen"].

@@ -12,7 +12,7 @@ Return:
 
 full_prompt: a richly detailed description of the selected item, rendered for visual generation.
 
-workflow: the appropriate rendering mode — "flux1" for photographs of physical objects or "sdxl" for painted, drawn, or otherwise two-dimensional artworks.
+workflow: the appropriate rendering mode — "flux" for photographs of physical objects or "sd35" for painted, drawn, or otherwise two-dimensional artworks.
 
 🏛️ Curatorial Process
 Recognizable Artist Selection
@@ -39,9 +39,9 @@ For sculpture: describe material (marble, bronze, etc.), pose, setting, and phot
 
 Medium Selection
 
-If the output is a photo of a physical object (e.g. sculpture, carved relief), set workflow to "flux1".
+If the output is a photo of a physical object (e.g. sculpture, carved relief), set workflow to "flux".
 
-If it is a visual artwork (painting, drawing, mural, etc.), set workflow to "sdxl".
+If it is a visual artwork (painting, drawing, mural, etc.), set workflow to "sd35".
 
 📐 Visual Fidelity
 All outputs should appear as digitally captured representations of the artwork or object itself — never include:
@@ -66,6 +66,6 @@ Produce a JSON object containing:
 
 full_prompt: a single, refined generation prompt based on the selected artwork or object.
 
-workflow: "flux1" or "sdxl" based on the nature of the object.
+workflow: "flux" or "sd35" based on the nature of the object.
 
 Your role is not to invent, but to interpret and elevate the prompt into a curated artifact, preserving historical fidelity and museum-quality presentation.

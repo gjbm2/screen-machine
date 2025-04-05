@@ -136,20 +136,21 @@ def publish_image():
         data = request.json
         if not data:
             return jsonify({"success": False, "error": "No data provided"}), 400
-        
+            
         image_url = data.get('imageUrl')
         destination = data.get('destination')
         destination_type = data.get('destinationType')
-        destination_file = data.get('destinationFile')
+        destination_file = data.get('destinationFile', None)
         metadata = data.get('metadata', {})
-        
+
         if not image_url:
             return jsonify({"success": False, "error": "No image URL provided"}), 400
         
         if not destination:
-            return jsonify({"success": False, "error": "No destination provided"}), 400
+            return jsonify({"success": False, "error": "No destination provided"}), 400        
         
-        # Download the image
+
+        '''# Download the image
         try:
             image_response = requests.get(image_url)
             if image_response.status_code != 200:
@@ -158,7 +159,7 @@ def publish_image():
             image_data = image_response.content
         except Exception as e:
             logging.error(f"Error downloading image: {str(e)}")
-            return jsonify({"success": False, "error": f"Failed to download image: {str(e)}"}), 500
+            return jsonify({"success": False, "error": f"Failed to download image: {str(e)}"}), 500'''
         
         # Handle based on destination type
         if destination_type == "output_file":
@@ -174,8 +175,11 @@ def publish_image():
                 safe_filename = secure_filename(destination_file)
                 output_path = os.path.join(output_dir, safe_filename)
                 
-                with open(output_path, 'wb') as f:
-                    f.write(image_data)
+                save_jpeg_with_metadata(
+                    url = image_url,
+                    img_metadata = metadata,
+                    save_path = output_path
+                )
                 
                 return jsonify({
                     "success": True, 
@@ -269,19 +273,34 @@ def generate_image():
     except Exception as e:
         error(f"Invalid JSON: {str(e)}")
         return jsonify({"error": f"Invalid JSON: {str(e)}"}), 400
+
+    # Generate a unique ID for this batch
+    batch_id = data.get('batch_id') or str(uuid.uuid4())
     
     prompt = data.get('prompt', '')
     workflow = data.get('workflow', 'text-to-image')
     params = data.get('params', {})
     global_params = data.get('global_params', {})
-    refiner = data.get('refiner', 'none')
-    refiner_params = data.get('refiner_params', {})
+
+    # Only use refiner if this is the first image in this batch
+    if sum(1 for img in generated_images.values() if img["batch_id"] == batch_id) > 0:
+        refiner = "None"
+        refiner_params = None
+    else:
+        refiner = data.get('refiner', 'none')
+        refiner_params = data.get('refiner_params', {})
+
     batch_size = data.get('batch_size', 1)
     has_reference_image = data.get('has_reference_image', False)
+    publish_destination = params.get('publish_destination', None)
     
+    print(f"========================================================")
+    print(f"> Refiner: {refiner}")
+    #corrected_refiner = resolve_runtime_value("refiner", refiner, return_key="system_prompt")
+    #print(f"  -> corrected_refiner: {corrected_refiner}")
    
-    # Get valid parameter names from main()
-    main_params = inspect.signature(routes.generate.main).parameters
+    # Get valid parameter names from generate()
+    main_params = inspect.signature(routes.generate.start).parameters
     call_args = {
         k: safe_cast(v, main_params[k].annotation if main_params[k].annotation is not inspect._empty else str)
         for k, v in params.items()
@@ -293,7 +312,7 @@ def generate_image():
     image_files = request.files.getlist('image')
     
     # Save uploaded files if any
-    for file in image_files:
+    for file in image_files: 
         if file.filename:
             filename = secure_filename(file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -310,52 +329,70 @@ def generate_image():
     info(f"Generating images with prompt: {prompt}")
     info(f"Workflow: {workflow}, Batch size: {batch_size}")
     info(f"Reference images: {uploaded_files if uploaded_files else 'None'}")
-
-    print(f"DEBUG: Workflow {workflow}, Params {params}")    
-    print(f"DEBUG: Call args: {call_args}") 
+    info(f"DEBUG: Workflow {workflow}, Params {params}")    
+    info(f"DEBUG: Call args: {call_args}") 
     
     # Generate
+    send_obj = {
+        "data": {
+            "prompt": prompt,
+            "workflow": workflow,
+            "refiner": refiner,
+            "targets": publish_destination
+        }
+    }   
+    info(f"send_obj: {send_obj}")
     
-    response = routes.generate.main(
-        prompt=prompt,
-        workflow=workflow,
+    # Don't refine if this is an existing batch:
+       
+    response = routes.alexa.handle_image_generation(
+        input_obj = send_obj,
+        wait = True,
         **call_args
     )
     
-    # Generate a unique ID for this batch
-    batch_id = data.get('batch_id') or str(uuid.uuid4())
+    #info(f"Response from image_generation: {response}")
+
     
     # Generate the requested number of images (based on batch_size)
     result_images = []
     
-    for i in range(int(batch_size)):
-        # For this mock implementation, we're returning different placeholder images based on the workflow
-        #if workflow == 'artistic-style-transfer':
-        #    image_url = random.choice(ARTISTIC_IMAGES)
-        #else:
-        #    image_url = random.choice(PLACEHOLDER_IMAGES)
-        image_url = response
+    for i, r in enumerate(response):            
         
         # Generate a unique ID for this image
         image_id = str(uuid.uuid4())
         
         # Store the image metadata in our dictionary
+        used_workflow = r["input"]["workflow"]
+        
+        for q in generated_images.values():
+            print(f"Batch ID: {q['batch_id']}, Batch Index: {q['batch_index']}")
+
+        
+        batch_index = max(
+            (img["batch_index"] for img in generated_images.values() if img["batch_id"] == batch_id), default=0
+        ) + 1
+        
         image_data = {
             "id": image_id,
-            "url": image_url,
-            "prompt": prompt,
+            "url": r.get("message", None),
+            "seed": r["seed"],
+            "original_prompt": prompt,
+            "prompt": r["prompt"],
+            "negative_prompt": r["negative_prompt"],
             "workflow": workflow,
-            "timestamp": time.time(),
+            "full_workflow": r["input"],
+            "timestamp":  int(time.time() * 1000),
             "params": params,
             "global_params": global_params,
             "refiner": refiner,
             "refiner_params": refiner_params,
             "used_reference_image": has_reference_image,
             "batch_id": batch_id,
-            "batch_index": i
+            "batch_index": batch_index
         }
         
-        print(f"Delivering {image_data}")
+        #print(f"Delivering {image_data}")
         
         generated_images[image_id] = image_data
         result_images.append(image_data)
@@ -423,7 +460,7 @@ def alexa_webhook():
     response_ssml = routes.alexa.Brianize("You should never hear this")
     
     if request_type == "LaunchRequest":
-        response_ssml = routes.alexa.Brianize("Hello. My mind is open. Try: 'use a.i. to generate a cat in a hat'. Or 'use a.i. to ask how big is the moon'.")
+        response_ssml = routes.alexa.Brianize("Hello. Try: 'use A.I. to depict a cat in a hat'. Or 'use A.I. to ask how big is the moon'. Or 'use A.I. to channel a museum curator', and take things from there.")
     
     elif request_type == "IntentRequest":
         response_ssml = routes.alexa.Brianize(routes.alexa.process(data))

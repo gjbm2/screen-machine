@@ -1,4 +1,34 @@
 {
+  "3": {
+    "inputs": {
+      "seed": 131111862151048,
+      "steps": 30,
+      "cfg": 3,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "sgm_uniform",
+      "denoise": 1,
+      "model": [
+        "58",
+        0
+      ],
+      "positive": [
+        "16",
+        0
+      ],
+      "negative": [
+        "59",
+        0
+      ],
+      "latent_image": [
+        "53",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler {{SAMPLER}}"
+    }
+  },
   "4": {
     "inputs": {
       "ckpt_name": "sd3.5_large.safetensors"
@@ -8,23 +38,10 @@
       "title": "Load Checkpoint"
     }
   },
-  "6": {
-    "inputs": {
-      "text": "beautiful scenery nature glass bottle landscape, purple galaxy bottle,",
-      "clip": [
-        "11",
-        0
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode (Prompt)"
-    }
-  },
   "8": {
     "inputs": {
       "samples": [
-        "294",
+        "3",
         0
       ],
       "vae": [
@@ -37,20 +54,136 @@
       "title": "VAE Decode"
     }
   },
-  "11": {
+  "9": {
     "inputs": {
-      "clip_name1": "clip_g_sdxl_base.safetensors",
-      "clip_name2": "clip_l_sdxl_base.safetensors",
-      "clip_name3": "t5xxl.safetensors"
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "57",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "16": {
+    "inputs": {
+      "text": "An ultra-detailed, semi-realistic photo of a witch and her cat sitting on a broomstick,  The witch, with a clearly visible face, wears a pointed hat and a long, flowing cloak that billows slightly in the night wind. Her expression is mysterious yet serene, with intricate facial features illuminated by the moonlight. Beautiful detailed face.",
+      "clip": [
+        "43",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Positive Prompt {{POSITIVE-PROMPT}}"
+    }
+  },
+  "40": {
+    "inputs": {
+      "text": "ugly, disfigured, deformed, frame",
+      "clip": [
+        "43",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Negative Prompt {{NEGATIVE-PROMPT}}"
+    }
+  },
+  "41": {
+    "inputs": {
+      "clip_name": "t5xxl_fp16.safetensors",
+      "type": "sd3",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "42": {
+    "inputs": {
+      "clip_name1": "clip_l.safetensors",
+      "clip_name2": "clip_g.safetensors",
+      "type": "sd3",
+      "device": "default"
+    },
+    "class_type": "DualCLIPLoader",
+    "_meta": {
+      "title": "DualCLIPLoader"
+    }
+  },
+  "43": {
+    "inputs": {
+      "clip_name1": "clip_l.safetensors",
+      "clip_name2": "clip_g.safetensors",
+      "clip_name3": "t5xxl_fp16.safetensors"
     },
     "class_type": "TripleCLIPLoader",
     "_meta": {
       "title": "TripleCLIPLoader"
     }
   },
-  "13": {
+  "53": {
     "inputs": {
-      "shift": 3,
+      "width": 1280,
+      "height": 720,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "EmptySD3LatentImage {{LATENT-IMAGE}}"
+    }
+  },
+  "55": {
+    "inputs": {
+      "model_name": "RealESRGAN_x4plus.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "Load Upscale Model {{UPSCALER}}"
+    }
+  },
+  "56": {
+    "inputs": {
+      "upscale_model": [
+        "55",
+        0
+      ],
+      "image": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "Upscale Image (using Model)"
+    }
+  },
+  "57": {
+    "inputs": {
+      "width": 6400,
+      "height": 6400,
+      "interpolation": "lanczos",
+      "method": "keep proportion",
+      "condition": "downscale if bigger",
+      "multiple_of": 0,
+      "image": [
+        "56",
+        0
+      ]
+    },
+    "class_type": "ImageResize+",
+    "_meta": {
+      "title": "🔧 Image Resize {{DOWNSCALER}}"
+    }
+  },
+  "58": {
+    "inputs": {
+      "shift": 2.0000000000000004,
       "model": [
         "4",
         0
@@ -61,127 +194,17 @@
       "title": "ModelSamplingSD3"
     }
   },
-  "67": {
+  "59": {
     "inputs": {
-      "conditioning": [
-        "71",
-        0
-      ]
-    },
-    "class_type": "ConditioningZeroOut",
-    "_meta": {
-      "title": "ConditioningZeroOut"
-    }
-  },
-  "68": {
-    "inputs": {
-      "start": 0.1,
-      "end": 1,
-      "conditioning": [
-        "67",
-        0
-      ]
-    },
-    "class_type": "ConditioningSetTimestepRange",
-    "_meta": {
-      "title": "ConditioningSetTimestepRange"
-    }
-  },
-  "69": {
-    "inputs": {
-      "conditioning_1": [
-        "68",
-        0
-      ],
-      "conditioning_2": [
-        "70",
-        0
-      ]
-    },
-    "class_type": "ConditioningCombine",
-    "_meta": {
-      "title": "Conditioning (Combine)"
-    }
-  },
-  "70": {
-    "inputs": {
-      "start": 0,
       "end": 0.1,
       "conditioning": [
-        "71",
+        "40",
         0
       ]
     },
-    "class_type": "ConditioningSetTimestepRange",
+    "class_type": "SD3NegativeConditioning+",
     "_meta": {
-      "title": "ConditioningSetTimestepRange"
-    }
-  },
-  "71": {
-    "inputs": {
-      "text": "",
-      "clip": [
-        "11",
-        0
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode negative (Prompt)"
-    }
-  },
-  "135": {
-    "inputs": {
-      "width": 1024,
-      "height": 1024,
-      "batch_size": 1
-    },
-    "class_type": "EmptySD3LatentImage",
-    "_meta": {
-      "title": "Empty SD3 Latent Image"
-    }
-  },
-  "294": {
-    "inputs": {
-      "seed": 66155038679131,
-      "steps": 40,
-      "cfg": 4.5,
-      "sampler_name": "dpmpp_2m",
-      "scheduler": "sgm_uniform",
-      "denoise": 1,
-      "model": [
-        "13",
-        0
-      ],
-      "positive": [
-        "6",
-        0
-      ],
-      "negative": [
-        "69",
-        0
-      ],
-      "latent_image": [
-        "135",
-        0
-      ]
-    },
-    "class_type": "KSampler",
-    "_meta": {
-      "title": "KSampler"
-    }
-  },
-  "301": {
-    "inputs": {
-      "filename_prefix": "ComfyUI",
-      "images": [
-        "8",
-        0
-      ]
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "Save Image"
+      "title": "🔧 SD3 Negative Conditioning"
     }
   }
 }
