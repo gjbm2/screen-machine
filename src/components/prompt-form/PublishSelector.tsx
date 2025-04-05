@@ -114,14 +114,16 @@ const PublishSelector: React.FC<PublishSelectorProps> = ({
           <Button
             variant="outline"
             size="sm"
-            className="h-[28px] px-2 text-muted-foreground bg-white flex items-center"
+            className="h-[28px] text-muted-foreground bg-white flex items-center justify-center px-2"
             aria-label="Select publish destination"
           >
-            {getDisplayIcon()}
-            <span className={`ml-1.5 text-xs ${isMobile && selectedDestinations.length > 1 ? 'hidden' : ''}`}>
-              {getDisplayText()}
-            </span>
-            {isMobile && getMultipleDestinationsBadge()}
+            <div className="flex items-center">
+              {getDisplayIcon()}
+              {(!isMobile || selectedDestinations.length <= 1) && (
+                <span className="ml-1.5 text-xs">{getDisplayText()}</span>
+              )}
+              {isMobile && getMultipleDestinationsBadge()}
+            </div>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="bg-white">
