@@ -44,10 +44,20 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     refiner = data.get("refiner", "none")  
     workflow = data.get("workflow", None)
 
-    # get targets as a list
+    # Get "targets" from input data
     targets = data.get("targets", [])
+
+    # If it's a string (possibly comma-separated), split and clean it
+    if isinstance(targets, str):
+        targets = [t.strip() for t in targets.split(",") if t.strip()]
+
+    # Ensure it's a list at this point
     targets = targets if isinstance(targets, list) else [targets]
+
+    # Final fallback if empty
     publish_targets = targets if targets else [None]
+    
+    info(f"publish_targets {publish_targets}")
     
     if not prompt:
         return 

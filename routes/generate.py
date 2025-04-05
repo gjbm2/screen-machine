@@ -211,6 +211,7 @@ def start(
     
     # Get destinations data and see if we have a size constraint
     if publish_destination:
+        info(f"publish_destination: {publish_destination}")
         with open(findfile("publish-destinations.json"), "r") as file:
             publish_destinations = json.load(file)
         
