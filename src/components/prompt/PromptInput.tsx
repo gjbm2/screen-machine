@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { X } from 'lucide-react';
@@ -101,17 +100,6 @@ const PromptInput: React.FC<PromptInputProps> = ({
 
   return (
     <div className="relative">
-      {(prompt || (uploadedImages && uploadedImages.length > 0)) && (
-        <button
-          type="button"
-          onClick={handleClearPrompt}
-          className="absolute top-0 right-0 text-muted-foreground hover:text-foreground p-1 rounded-full transition-colors z-10"
-          aria-label="Clear prompt and images"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      )}
-      
       {/* Reference Images Section - Only show at the top above the text input */}
       {uploadedImages && uploadedImages.length > 0 && (
         <div className="mb-3">
@@ -140,6 +128,17 @@ const PromptInput: React.FC<PromptInputProps> = ({
         disabled={isLoading}
         rows={multiline ? 3 : 1}
       />
+      
+      {(prompt || (uploadedImages && uploadedImages.length > 0)) && (
+        <button
+          type="button"
+          onClick={handleClearPrompt}
+          className="absolute top-3 right-3 text-muted-foreground hover:text-foreground p-1 rounded-full transition-colors"
+          aria-label="Clear prompt and images"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
       
       {maxLength && (
         <div className="absolute bottom-1 right-3 text-xs text-muted-foreground">
