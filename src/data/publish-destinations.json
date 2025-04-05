@@ -3,7 +3,7 @@
   {
     "id": "screen1",
     "name": "North screen",
-    "icon": "Tv",
+    "icon": "square-arrow-up",
     "type": "output_file",
     "file": "screen-north.jpg",
 	"maxwidth": 3840,
@@ -12,7 +12,7 @@
   },
   {
     "id": "screen2",
-    "name": "South screen",
+    "name": "square-arrow-down",
     "icon": "Tv",
     "type": "output_file",
     "file": "screen-south.jpg",
@@ -23,7 +23,7 @@
   {
     "id": "cloud",
     "name": "Cloud storage",
-    "icon": "Cloud",
+    "icon": "cloud-upload",
     "type": "s3",
     "file": "cloud-storage.jpg",
     "description": "Publish to cloud storage"
