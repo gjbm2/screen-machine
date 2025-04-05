@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu';
 import { getPublishDestinations } from '@/services/PublishService';
@@ -28,8 +28,13 @@ const PublishSelector: React.FC<PublishSelectorProps> = ({
   
   // Track selected publish destinations
   const [selectedDestinations, setSelectedDestinations] = useState<string[]>(
-    selectedPublish === 'none' ? [] : [selectedPublish]
+    selectedPublish === 'none' ? [] : selectedPublish.split(',')
   );
+
+  // Update selected destinations when prop changes
+  useEffect(() => {
+    setSelectedDestinations(selectedPublish === 'none' ? [] : selectedPublish.split(','));
+  }, [selectedPublish]);
   
   // Function to get icon component
   const getIconComponent = (iconName: string) => {
@@ -43,15 +48,15 @@ const PublishSelector: React.FC<PublishSelectorProps> = ({
       // If it's already selected, remove it
       if (prev.includes(destId)) {
         const newSelections = prev.filter(id => id !== destId);
-        // Update the parent component with the first selection or 'none'
-        onPublishChange(newSelections.length > 0 ? newSelections[0] : 'none');
+        // Update the parent component with joined selections or 'none'
+        onPublishChange(newSelections.length > 0 ? newSelections.join(',') : 'none');
         return newSelections;
       } 
       // Otherwise add it
       else {
         const newSelections = [...prev, destId];
-        // Update the parent component with the first selection
-        onPublishChange(newSelections[0]);
+        // Update the parent component with joined selections
+        onPublishChange(newSelections.join(','));
         return newSelections;
       }
     });
