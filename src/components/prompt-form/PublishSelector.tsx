@@ -89,6 +89,18 @@ const PublishSelector: React.FC<PublishSelectorProps> = ({
     
     return <Share2 className="h-3.5 w-3.5" />;
   };
+
+  // Get badge for multiple destinations
+  const getMultipleDestinationsBadge = () => {
+    if (selectedDestinations.length > 1) {
+      return (
+        <span className="ml-0.5 flex items-center justify-center bg-primary/90 text-primary-foreground text-[10px] font-bold h-4 w-4 rounded-full">
+          {selectedDestinations.length}
+        </span>
+      );
+    }
+    return null;
+  };
   
   return (
     <div className="flex items-center space-x-1">
@@ -101,12 +113,15 @@ const PublishSelector: React.FC<PublishSelectorProps> = ({
         <DropdownMenuTrigger asChild>
           <Button
             variant="outline"
-            size={isMobile ? "icon" : "sm"}
-            className={`${isMobile ? "h-[28px] w-[28px]" : "h-[28px] px-2"} text-muted-foreground bg-white`}
+            size="sm"
+            className="h-[28px] px-2 text-muted-foreground bg-white flex items-center"
             aria-label="Select publish destination"
           >
             {getDisplayIcon()}
-            {!isMobile && <span className="ml-1.5 text-xs">{getDisplayText()}</span>}
+            <span className={`ml-1.5 text-xs ${isMobile && selectedDestinations.length > 1 ? 'hidden' : ''}`}>
+              {getDisplayText()}
+            </span>
+            {isMobile && getMultipleDestinationsBadge()}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="bg-white">

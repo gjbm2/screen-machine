@@ -31,6 +31,9 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   // The button should be enabled if there's a prompt OR uploaded images
   const shouldDisableButton = isLoading || (!prompt.trim() && !hasUploadedImages);
   
+  // Common style for all toolbar buttons to ensure consistency
+  const toolbarButtonClass = "h-[28px] text-muted-foreground bg-white";
+  
   return (
     <div className="flex items-center justify-between overflow-x-auto py-1">
       <div className="flex flex-nowrap items-center gap-1 sm:gap-2">
@@ -62,9 +65,9 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
         <Button 
           type="button"
           variant="outline" 
-          size={isMobile ? "icon" : "sm"}
+          size="sm"
           onClick={toggleAdvancedOptions}
-          className={`${isMobile ? "h-[28px] w-[28px]" : "h-[28px] px-2"} text-muted-foreground hover:bg-purple-500/10 text-purple-700 shrink-0`}
+          className={`${toolbarButtonClass} px-2 hover:bg-purple-500/10 text-purple-700 shrink-0`}
           aria-label="Advanced Settings"
         >
           <Settings className="h-3.5 w-3.5" />
