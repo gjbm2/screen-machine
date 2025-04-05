@@ -12,8 +12,8 @@
   },
   {
     "id": "screen2",
-    "name": "square-arrow-down",
-    "icon": "Tv",
+    "name": "South screen",
+    "icon": "square-arrow-down",
     "type": "output_file",
     "file": "screen-south.jpg",
 	"maxwidth": 3840,
