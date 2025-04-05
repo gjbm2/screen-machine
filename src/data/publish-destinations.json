@@ -1,13 +1,6 @@
 
 [
   {
-    "id": "share",
-    "name": "Share...",
-    "icon": "Share2",
-    "type": "share",
-    "description": "Use device sharing options"
-  },
-  {
     "id": "screen1",
     "name": "North screen",
     "icon": "Tv",
