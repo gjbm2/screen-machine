@@ -3,9 +3,11 @@ import time
 import json
 import textwrap
 import hashlib
+import re
 from openai import OpenAI
 from dotenv import load_dotenv
 from routes.utils import findfile
+from utils.logger import log_to_console, info, error, warning, debug, console_logs
 
 # Load environment variables from .env (if present)
 load_dotenv()
@@ -14,6 +16,32 @@ load_dotenv()
 _system_prompt_cache = {}
 _file_upload_cache = {}
 _function_schema_cache = {}
+
+'''
+# Calls out to openai
+def modelquery(input_prompt, system_prompt=None,schema=None, model_name="gpt-4o"):
+    
+    info(f"**** prompt: {input_prompt}, system_prompt: {system_prompt}, schema: {schema}")
+    
+    response = openai_prompt(
+        user_prompt=input_prompt,
+        system_prompt=system_prompt,
+        model_name=model_name,
+        schema=schema
+    )
+    
+    #info(f"*** response: {response}")
+
+    if isinstance(response, str):
+        cleaned = re.sub(r"^```(?:json)?|```$", "", response.strip(), flags=re.MULTILINE).strip()
+        try:
+            response = json.loads(cleaned)
+        except Exception as e:
+            info("!!! Failed to parse JSON response:")
+            info(cleaned)
+            raise
+            
+    return response'''
 
 def hash_file(path):
     with open(path, "rb") as f:
@@ -47,7 +75,7 @@ def openai_prompt(user_prompt, system_prompt=None, model_name="gpt-4o", upload=N
     # === Fast path: No upload, no schema ===
     if not upload and not schema:
         if verbose:
-            print(f"> ChatCompletion (simple text):\n"
+            info(f"[OpenAI.openai_prompt] > ChatCompletion (simple text):\n"
                   f"{textwrap.indent(textwrap.fill(user_prompt, width=80), '    ')}")
 
         messages = [{"role": "system", "content": system_message}] if system_message else []
@@ -57,7 +85,18 @@ def openai_prompt(user_prompt, system_prompt=None, model_name="gpt-4o", upload=N
             model=model_name,
             messages=messages
         )
-        return response.choices[0].message.content.strip()
+
+        result = response.choices[0].message.content.strip()
+
+        # Clean output: strip ```json ... ``` if present
+        cleaned = re.sub(r"^```(?:json)?|```$", "", result.strip(), flags=re.MULTILINE).strip()
+        try:
+            if verbose:
+                info(f"[OpenAI.openai_prompt] > Output:\n"
+                      f"{textwrap.indent(textwrap.fill(cleaned, width=80), '    ')}")
+            return json.loads(cleaned)
+        except Exception:
+            return result  # Return raw string if not valid JSON
 
     # === File uploads ===
     uploaded_files = []
@@ -78,10 +117,10 @@ def openai_prompt(user_prompt, system_prompt=None, model_name="gpt-4o", upload=N
                         _file_upload_cache[file_hash] = file_id
                 uploaded_files.append(file_id)
                 if verbose:
-                    print(f"[SUCCESS] Cached or uploaded: {filepath} => {file_id}")
+                    info(f"[SUCCESS] Cached or uploaded: {filepath} => {file_id}")
             else:
                 if verbose:
-                    print(f"[WARNING] File not found or invalid: {filepath}")
+                    info(f"[WARNING] File not found or invalid: {filepath}")
 
     # === Schema mode (Function calling) ===
     if schema and not upload:
@@ -118,7 +157,7 @@ def openai_prompt(user_prompt, system_prompt=None, model_name="gpt-4o", upload=N
                 _function_schema_cache[schema_hash] = fn_def
 
         if verbose:
-            print(f"> ChatCompletion (function call with schema):\n"
+            info(f"[OpenAI.openai_prompt] > ChatCompletion (function call with schema, {schema}):\n"
                   f"{textwrap.indent(textwrap.fill(user_prompt, width=80), '    ')}\n")
 
         messages = [{"role": "system", "content": system_message}] if system_message else []
@@ -132,11 +171,14 @@ def openai_prompt(user_prompt, system_prompt=None, model_name="gpt-4o", upload=N
         )
 
         tool_args = response.choices[0].message.tool_calls[0].function.arguments
+        if verbose:
+                info(f"[OpenAI.openai_prompt] > Output:\n"
+                      f"{textwrap.indent(textwrap.fill(tool_args, width=80), '    ')}")
         return json.loads(tool_args)
 
     # === Assistant flow if files are uploaded ===
     if verbose:
-        print(f"> Asking OpenAI Assistant (with files):\n"
+        info(f"> Asking OpenAI Assistant (with files):\n"
               f"{textwrap.indent(textwrap.fill(user_prompt, width=80), '    ')}\n"
               f"{uploaded_files}")
 
@@ -171,6 +213,4 @@ def openai_prompt(user_prompt, system_prompt=None, model_name="gpt-4o", upload=N
     messages = openai_client.beta.threads.messages.list(thread_id=thread.id)
     for message in messages.data:
         if message.role == "assistant":
-            return message.content[0].text.value.strip()
-
-    return "No assistant reply found."
+            result = message.content

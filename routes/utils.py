@@ -1,4 +1,9 @@
 import os
+import difflib
+import json
+
+# Internal JSON cache
+_json_cache = {}
 
 # Find file
 def findfile(file_param):
@@ -46,3 +51,74 @@ def findfile(file_param):
 
     print(f"*** FAILED TO FIND *** {file_param}")
     return None
+
+def _load_json_once(name, filename):
+    """Find and load a JSON file using findfile(), cache it by name."""
+    if name not in _json_cache:
+        path = findfile(filename)
+        if not path:
+            raise FileNotFoundError(f"Could not locate file: {filename}")
+        with open(path, "r", encoding="utf-8") as f:
+            _json_cache[name] = json.load(f)
+    return _json_cache[name]
+
+def fuzzy_match(name, candidates, key="name"):
+    """Fuzzy match input name to item in candidate list by key."""
+    if not name:
+        return None
+    names = [item[key] for item in candidates if key in item]
+    match = difflib.get_close_matches(name.lower(), [n.lower() for n in names], n=1, cutoff=0.4)
+    if match:
+        for item in candidates:
+            if key in item and item[key].lower() == match[0]:
+                return item
+    return None
+
+def resolve_runtime_value(category, input_value, return_key="id", match_key=None):
+    """
+    Resolve a single category (refiner, workflow, destination) to a specific field from the matched item.
+    
+    If match_key is not provided, tries all string fields and selects the best fuzzy match.
+    """
+    mapping = {
+        "refiner": "refiners.json",
+        "workflow": "workflows.json",
+        "destination": "publish-destinations.json"
+    }
+
+    if category not in mapping:
+        raise ValueError(f"Unknown category: {category}")
+
+    data = _load_json_once(category, mapping[category])
+
+    best_match = None
+    best_score = 0.0
+
+    def score_match(value1, value2):
+        return difflib.SequenceMatcher(None, value1.lower(), value2.lower()).ratio()
+
+    if match_key:
+        # Simple case: match on specified key
+        return_value = None
+        match = fuzzy_match(input_value, data, key=match_key)
+        if match and return_key in match:
+            return match[return_key]
+        return None
+    else:
+        # Try all string fields in each item to find the highest score
+        for item in data:
+            for key, candidate_value in item.items():
+                if isinstance(candidate_value, str):
+                    score = score_match(input_value, candidate_value)
+                    if score > best_score:
+                        best_score = score
+                        best_match = item
+
+        if best_match and return_key in best_match:
+            return best_match[return_key]
+
+    return None
+
+def reset_cache():
+    """Clear the cached JSON data."""
+    _json_cache.clear()

@@ -27,17 +27,14 @@ def log_to_console(message: str, source: Optional[str] = None, metadata: Optiona
         The formatted log message
     """
     if source is None:
-        # Try to determine the calling module
-        frame = inspect.currentframe()
-        if frame:
-            frame = frame.f_back
-            if frame:
-                module = inspect.getmodule(frame)
-                if module:
-                    source = module.__name__
-        
-        if not source:
+        # Get the name of the calling function two levels up the stack
+        stack = inspect.stack()
+        if len(stack) > 2:
+            caller_frame = stack[2]
+            source = caller_frame.function
+        else:
             source = "unknown"
+
     
     #timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     timestamp = time.strftime("%H:%M:%S", time.localtime())

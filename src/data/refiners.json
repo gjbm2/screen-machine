@@ -36,7 +36,7 @@
   },
   {
     "id": "tabloid_picture_editor",
-    "name": "Picture Editor",
+    "name": "Tabloid Picture Editor",
 	"system_prompt": "refiner-tabloidpictureeditor.txt",
     "description": "Act like a picture desk editor in a trashy newspaper.",
     "icon": "sparkles"
