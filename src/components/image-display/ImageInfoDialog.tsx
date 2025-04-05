@@ -242,12 +242,14 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
             <div className="space-y-2">
               <h3 className="text-sm font-bold">Refiner Parameters</h3>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                {Object.entries(refinerParams).map(([key, value]) => (
-                  <React.Fragment key={key}>
-                    <div className="font-medium">{key}:</div>
-                    <div>{String(value)}</div>
-                  </React.Fragment>
-                ))}
+                {Object.entries(refinerParams).map(([key, value]) => {
+                  return (
+                    <React.Fragment key={key}>
+                      <div className="font-medium">{key}:</div>
+                      <div>{String(value)}</div>
+                    </React.Fragment>
+                  );
+                })}
               </div>
             </div>
           )}
