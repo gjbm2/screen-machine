@@ -1,4 +1,4 @@
-
+/*
 import { toast } from 'sonner';
 
 interface PublishImageOptions {
@@ -44,3 +44,4 @@ export const publishImageToBackend = async (options: PublishImageOptions): Promi
     return false;
   }
 };
+*/

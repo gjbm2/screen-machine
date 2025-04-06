@@ -1,12 +1,17 @@
-
-import React from 'react';
-import { Sparkles, XCircle, Maximize, Heart, Palette } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import * as LucideIcons from 'lucide-react';
+import { XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
-} from "@/components/ui/hover-card";
+} from '@/components/ui/hover-card';
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@/components/ui/popover';
 import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
 import refinersData from '@/data/refiners.json';
 
@@ -20,78 +25,124 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
   onRefinerChange,
 }) => {
   const isMobile = useIsMobile();
-  const { width } = useWindowSize();
+  const { width, height: viewportHeight } = useWindowSize();
   const isNarrow = width < 600;
-  
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [maxContentHeight, setMaxContentHeight] = useState<number | undefined>(undefined);
+
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
   const selectedRefinerObj = refinersData.find(r => r.id === selectedRefiner);
-  
-  // Get the icon for a refiner
-  const getRefinerIcon = (refinerId: string) => {
-    switch (refinerId) {
-      case 'enhance':
-        return <Sparkles className="h-5 w-5" />;
-      case 'upscale':
-        return <Maximize className="h-5 w-5" />;
-      case 'beautify':
-        return <Heart className="h-5 w-5" />;
-      case 'stylize':
-        return <Palette className="h-5 w-5" />;
-      case 'none':
-      default:
-        return <XCircle className="h-5 w-5" />;
-    }
+
+  const getRefinerIcon = (iconName?: string) => {
+    if (!iconName) return <XCircle className="h-5 w-5" />;
+    const IconComponent = (LucideIcons as any)[iconName];
+    return IconComponent ? <IconComponent className="h-5 w-5" /> : <XCircle className="h-5 w-5" />;
   };
-  
-  return (
-    <div className="flex items-center h-[48px]">
-      <HoverCard openDelay={0} closeDelay={100}>
-        <HoverCardTrigger asChild>
+
+  const handleSelectRefiner = (refinerId: string) => {
+    onRefinerChange(refinerId);
+    setIsOpen(false);
+  };
+
+  const renderRefinerMenu = () => (
+    <div className="space-y-2">
+      <h4 className="text-sm font-semibold">Refiners</h4>
+      <div className="grid grid-cols-1 gap-1">
+        {refinersData.map((refiner) => (
           <Button
-            variant="outline"
-            className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700"
-            onClick={(e) => {
-              // Prevent any default action or propagation
-              e.preventDefault();
-              e.stopPropagation();
-            }}
+            key={refiner.id}
+            variant={refiner.id === selectedRefiner ? "secondary" : "ghost"}
+            size="sm"
+            className="justify-start text-sm h-auto py-2"
+            onClick={() => handleSelectRefiner(refiner.id)}
             type="button"
           >
-            {getRefinerIcon(selectedRefiner)}
-            {!isNarrow && (
-              <span className="ml-2 text-sm truncate max-w-[80px]">{selectedRefinerObj?.name || 'No Refiner'}</span>
-            )}
-          </Button>
-        </HoverCardTrigger>
-        <HoverCardContent className="w-64 p-2" align="start">
-          <div className="space-y-2">
-            <h4 className="text-sm font-semibold">Refiners</h4>
-            <div className="grid grid-cols-1 gap-1">
-              {refinersData.map((refiner) => (
-                <Button
-                  key={refiner.id}
-                  variant={refiner.id === selectedRefiner ? "secondary" : "ghost"}
-                  size="sm"
-                  className="justify-start text-sm h-auto py-2"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onRefinerChange(refiner.id);
-                  }}
-                  type="button"
-                >
-                  <div className="mr-2 flex-shrink-0">
-                    {getRefinerIcon(refiner.id)}
-                  </div>
-                  <div className="flex flex-col items-start overflow-hidden">
-                    <span className="truncate w-full text-left">{refiner.name}</span>
-                    <span className="text-xs text-muted-foreground truncate w-full text-left">{refiner.description}</span>
-                  </div>
-                </Button>
-              ))}
+            <div className="mr-2 flex-shrink-0">
+              {getRefinerIcon(refiner.icon)}
             </div>
-          </div>
-        </HoverCardContent>
-      </HoverCard>
+            <div className="flex flex-col items-start overflow-hidden">
+              <span className="truncate w-full text-left text-sm">{refiner.name}</span>
+              <span className="text-xs text-muted-foreground w-full text-left whitespace-normal">{refiner.description}</span>
+            </div>
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+
+  useEffect(() => {
+    if (isMobile && isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const spaceBelow = viewportHeight - rect.bottom - 16;
+      const maxHeight = Math.max(spaceBelow, 150);
+      setMaxContentHeight(maxHeight);
+    }
+  }, [isOpen, isMobile, viewportHeight]);
+
+  return (
+    <div className="flex items-center h-[48px]">
+      {isMobile ? (
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              ref={buttonRef}
+              variant="outline"
+              className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700 flex items-center px-3 text-sm"
+              type="button"
+              onClick={() => setIsOpen(prev => !prev)}
+            >
+              {getRefinerIcon(selectedRefinerObj?.icon)}
+              {!isNarrow && (
+                <span className="ml-2 text-sm truncate max-w-[80px]">
+                  {selectedRefinerObj?.name || 'No Refiner'}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            side="bottom"
+            sideOffset={8}
+            collisionPadding={8}
+            avoidCollisions
+            className="w-64 p-2 overflow-y-auto"
+            style={{ maxHeight: maxContentHeight }}
+          >
+            {renderRefinerMenu()}
+          </PopoverContent>
+        </Popover>
+      ) : (
+        <HoverCard open={isOpen} onOpenChange={setIsOpen} openDelay={100} closeDelay={100}>
+          <HoverCardTrigger asChild>
+            <Button
+              ref={buttonRef}
+              variant="outline"
+              className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700 flex items-center px-3 text-sm"
+              type="button"
+              onClick={() => setIsOpen(prev => !prev)}
+            >
+              {getRefinerIcon(selectedRefinerObj?.icon)}
+              {!isNarrow && (
+                <span className="ml-2 text-sm truncate max-w-[80px]">
+                  {selectedRefinerObj?.name || 'No Refiner'}
+                </span>
+              )}
+            </Button>
+          </HoverCardTrigger>
+          <HoverCardContent
+            align="start"
+            side="bottom"
+            sideOffset={4}
+            collisionPadding={8}
+            avoidCollisions
+            className="w-64 p-2 overflow-y-auto max-h-[60vh]"
+          >
+            {renderRefinerMenu()}
+          </HoverCardContent>
+        </HoverCard>
+      )}
     </div>
   );
 };

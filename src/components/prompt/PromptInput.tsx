@@ -1,9 +1,7 @@
-
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
-import { ReferenceImageData } from '@/types/workflows';
 import PromptExamples from './PromptExamples';
 import ReferenceImagesSection from '@/components/image-display/ReferenceImagesSection';
 
@@ -32,45 +30,30 @@ const PromptInput: React.FC<PromptInputProps> = ({
   onClearAllImages,
   onRemoveImage,
   placeholder = "Describe the image you want to create...",
-  minHeight = "min-h-[120px]",
+  minHeight = "min-h-[48px]",
   multiline = true,
   maxLength,
   onSubmit,
   isFirstRun
 }) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
   const handleClearPrompt = () => {
-    if (onClearPrompt) {
-      onClearPrompt();
-    }
-    
-    // Also clear images if there's a handler for it
-    if (onClearAllImages) {
-      onClearAllImages();
-    }
+    if (onClearPrompt) onClearPrompt();
+    if (onClearAllImages) onClearAllImages();
   };
 
-  // Handle Enter key
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter') {
-      // If not multiline mode or if Ctrl/Cmd+Enter is pressed
       if (!multiline || e.ctrlKey || e.metaKey) {
-        e.preventDefault(); // Prevent newline
+        e.preventDefault();
         if (onSubmit && !isLoading && prompt.trim().length > 0) {
           onSubmit();
         }
-      }
-      // If multiline is false, always prevent default to avoid newlines
-      else if (!multiline) {
+      } else if (!multiline) {
         e.preventDefault();
-      }
-      // If just Enter is pressed in multiline mode with Shift key, allow newline
-      else if (e.shiftKey) {
-        // Allow default behavior (new line)
-        return;
-      }
-      // If just plain Enter is pressed in multiline mode, submit the form
-      else if (onSubmit && !isLoading && prompt.trim().length > 0) {
-        e.preventDefault(); // Prevent newline
+      } else if (!e.shiftKey && onSubmit && !isLoading && prompt.trim().length > 0) {
+        e.preventDefault();
         onSubmit();
       }
     }
@@ -82,22 +65,30 @@ const PromptInput: React.FC<PromptInputProps> = ({
       preventDefault: () => {},
       stopPropagation: () => {},
     } as React.ChangeEvent<HTMLTextAreaElement>;
-    
     onPromptChange(event);
   };
 
   const handleStyleClick = (stylePrompt: string) => {
-    // If there's already text, append the style with a comma separator
     const combinedPrompt = prompt.trim() ? `${prompt.trim()}, ${stylePrompt}` : stylePrompt;
-    
     const event = {
       target: { value: combinedPrompt },
       preventDefault: () => {},
       stopPropagation: () => {},
     } as React.ChangeEvent<HTMLTextAreaElement>;
-    
     onPromptChange(event);
   };
+
+  const autoResize = () => {
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, window.innerHeight * 0.5)}px`;
+    }
+  };
+
+  useEffect(() => {
+    autoResize();
+  }, [prompt]);
 
   return (
     <div className="relative">
@@ -111,36 +102,34 @@ const PromptInput: React.FC<PromptInputProps> = ({
           <X className="h-4 w-4" />
         </button>
       )}
-      
-      {/* Reference Images Section - Only show at the top above the text input */}
-      {uploadedImages && uploadedImages.length > 0 && (
+
+      {uploadedImages.length > 0 && (
         <div className="mb-3">
           <ReferenceImagesSection 
             images={uploadedImages} 
             onRemoveImage={onRemoveImage || onClearAllImages ? (index) => {
-              // If we have a specific handler for single image removal, use it
-              if (onRemoveImage) {
-                onRemoveImage(index);
-              } 
-              // Otherwise fallback to clearing all images
-              else if (onClearAllImages) {
-                onClearAllImages();
-              }
+              if (onRemoveImage) onRemoveImage(index);
+              else if (onClearAllImages) onClearAllImages();
             } : undefined} 
           />
         </div>
       )}
-      
+
       <Textarea
+        ref={textareaRef}
         placeholder={placeholder}
-        className={`${minHeight} resize-none border-0 bg-transparent p-4 text-base placeholder:text-muted-foreground/50 focus-visible:ring-0`}
+        className={`${minHeight} resize-none border-0 bg-transparent p-4 text-base placeholder:text-muted-foreground/50 focus-visible:ring-0 overflow-hidden`}
         value={prompt}
-        onChange={onPromptChange}
+        onChange={(e) => {
+          onPromptChange(e);
+          autoResize();
+        }}
         onKeyDown={handleKeyDown}
         disabled={isLoading}
-        rows={multiline ? 3 : 1}
+        rows={multiline ? 2 : 1}
+        style={{ maxHeight: '50vh' }}
       />
-      
+
       {maxLength && (
         <div className="absolute bottom-1 right-3 text-xs text-muted-foreground">
           {prompt.length}/{maxLength}

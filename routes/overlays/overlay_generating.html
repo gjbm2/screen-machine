@@ -1,0 +1,27 @@
+<div style="
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  background: rgba(0, 0, 0, 0.3);
+  color: white;
+  font-size: 1.8rem;
+  font-weight: 500;
+  border-radius: 12px;
+  text-align: center;
+">
+  <div style="
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: red;
+    animation: pulse 2s infinite ease-in-out;
+  "></div>Generating...</div>
+
+<!-- Inline animation definition (must be included somewhere on the page) -->
+<style>
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+</style>

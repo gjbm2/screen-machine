@@ -10,6 +10,7 @@ export interface WorkflowParam {
 export interface Workflow {
   id: string;
   name: string;
+  icon: string;
   description: string;
   default?: boolean;
   params: WorkflowParam[];

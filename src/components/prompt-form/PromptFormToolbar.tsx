@@ -62,17 +62,18 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
           isCompact={isMobile}
         />
 
-        <Button 
-          type="button"
-          variant="outline" 
-          size="sm"
-          onClick={toggleAdvancedOptions}
-          className={`${toolbarButtonClass} px-2 hover:bg-purple-500/10 text-purple-700 shrink-0`}
-          aria-label="Advanced Settings"
-        >
-          <Settings className="h-3.5 w-3.5" />
-          {!isMobile && <span className="ml-1.5 text-xs">Advanced</span>}
-        </Button>
+		<Button 
+		  type="button"
+		  variant="outline"
+		  onClick={toggleAdvancedOptions}
+		  className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700 flex items-center px-3 text-sm shrink-0"
+		  aria-label="Advanced Settings"
+		>
+		  <Settings className="h-5 w-5" />
+		  {!isMobile && (
+			<span className="ml-2 text-sm">Advanced</span>
+		  )}
+		</Button>
       </div>
 
       <div className="ml-auto">

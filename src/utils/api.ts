@@ -255,7 +255,43 @@ class ApiService {
       }, 10000); // Changed from 2000 to 10000 (10 seconds)
     });
   }
+  
+  // Publish an image via backend (handled by Flask)
+  async publishImage(data: any) {
+	// console.info('api.ts', data);
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Publishing image with data:', data);
+      return {
+        success: true,
+        message: 'Mock publish succeeded',
+        path: '/mock/path/to/image.jpg'
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/publish-image`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Publish failed');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error publishing image:', error);
+      toast.error('Failed to publish image');
+      throw error;
+    }
+  }
 }
+
+
 
 // Create a singleton instance of the API service
 const apiService = new ApiService();

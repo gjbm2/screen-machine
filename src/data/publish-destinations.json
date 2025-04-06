@@ -1,8 +1,8 @@
 
 [
   {
-    "id": "screen1",
-    "name": "North",
+    "id": "north-screen",
+    "name": "North screen",
     "icon": "SquareArrowUp",
     "type": "output_file",
     "file": "screen-north.jpg",
@@ -11,8 +11,8 @@
     "description": "Publish to big screen (north)"
   },
   {
-    "id": "screen2",
-    "name": "South",
+    "id": "south-screen",
+    "name": "South screen",
     "icon": "SquareArrowDown",
     "type": "output_file",
     "file": "screen-south.jpg",

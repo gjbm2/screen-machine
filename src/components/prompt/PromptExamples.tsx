@@ -27,31 +27,46 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   useEffect(() => {
     if (!width) return;
     
-    const avgExampleWidth = 180;
-    const labelWidth = 40;
-    const moreButtonWidth = 70;
-    const availableWidth = width - 40;
+    const avgExampleWidth = 155;
+    const labelWidth = 30;
+    const moreButtonWidth = 80;
+    const availableWidth = width - 75;
     
     const examplesCapacity = Math.max(1, Math.floor((availableWidth - labelWidth - moreButtonWidth) / avgExampleWidth));
-    setInitialExamplesCount(Math.min(3, examplesCapacity));
+	
+	
+	if (width < 375) {
+      setInitialExamplesCount(2);
+    } else if (width < 500) {
+      setInitialExamplesCount(Math.min(3, examplesCapacity));
+    } else if (width < 640) {
+      setInitialExamplesCount(Math.min(4, examplesCapacity));
+    } else if (width < 768) {
+      setInitialExamplesCount(Math.min(5, examplesCapacity));
+    } else if (width < 1024) {
+      setInitialExamplesCount(Math.min(6, examplesCapacity));
+    } else {
+      setInitialExamplesCount(showMore ? Math.min(8, examplesCapacity) : Math.min(6, examplesCapacity));
+    }
+	
     
-    const avgStyleWidth = 150;
-    const styleLabelWidth = 50;
+    const avgStyleWidth = 110;
+    const styleLabelWidth = 40;
     
     const stylesCapacity = Math.max(1, Math.floor((availableWidth - styleLabelWidth - moreButtonWidth) / avgStyleWidth));
     
     if (width < 375) {
-      setInitialStylesCount(1);
+      setInitialStylesCount(2);
     } else if (width < 500) {
-      setInitialStylesCount(Math.min(2, stylesCapacity));
-    } else if (width < 640) {
       setInitialStylesCount(Math.min(3, stylesCapacity));
-    } else if (width < 768) {
+    } else if (width < 640) {
       setInitialStylesCount(Math.min(4, stylesCapacity));
-    } else if (width < 1024) {
+    } else if (width < 768) {
       setInitialStylesCount(Math.min(5, stylesCapacity));
+    } else if (width < 1024) {
+      setInitialStylesCount(Math.min(6, stylesCapacity));
     } else {
-      setInitialStylesCount(showMore ? Math.min(8, stylesCapacity) : Math.min(6, stylesCapacity));
+      setInitialStylesCount(showMore ? Math.min(10, stylesCapacity) : Math.min(6, stylesCapacity));
     }
   }, [width, showMore]);
   
@@ -74,7 +89,7 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   };
   
   return (
-    <div className="p-1 space-y-1.5">
+    <div className="p-2 pt-4 space-y-1.5">
       <PromptExamplesList 
         examples={randomizedExamples} 
         initialCount={initialExamplesCount} 

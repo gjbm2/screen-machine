@@ -2,61 +2,62 @@
 [
   {
     "id": "none",
-    "name": "No Refiner",
+    "name": "No refiner",
     "description": "Generate without applying any refiners",
-    "icon": "x-circle"
+    "icon": "CircleSlash"
   },
   {
     "id": "enrich",
     "name": "Enrich",
+	"default": true,
 	"system_prompt": "refiner-enrich.txt",
     "description": "Improve image clarity and details",
-    "icon": "sparkles"
+    "icon": "CircleFadingArrowUp"
   },
   {
     "id": "curator",
     "name": "Curator",
 	"system_prompt": "refiner-curator.txt",
     "description": "Act like a curator of an art museum.",
-    "icon": "sparkles"
+    "icon": "Landmark"
   },
   {
     "id": "gallerist",
     "name": "Gallerist",
 	"system_prompt": "refiner-gallerist.txt",
     "description": "Act like a commissioner for a high end modern art gallery.",
-    "icon": "sparkles"
+    "icon": "GalleryVerticalEnd"
   },
   {
     "id": "picture_editor",
     "name": "Picture Editor",
 	"system_prompt": "refiner-pictureeditor.txt",
     "description": "Act like a picture desk editor in a serious newspaper.",
-    "icon": "sparkles"
+    "icon": "Newspaper"
   },
   {
     "id": "tabloid_picture_editor",
     "name": "Tabloid Picture Editor",
 	"system_prompt": "refiner-tabloidpictureeditor.txt",
     "description": "Act like a picture desk editor in a trashy newspaper.",
-    "icon": "sparkles"
+    "icon": "SquareUserRound"
   },
   {
     "id": "upscale",
     "name": "Upscale",
     "description": "Increase resolution while preserving details",
-    "icon": "maximize"
+    "icon": "Expand"
   },
   {
     "id": "beautify",
     "name": "Beautify",
     "description": "Apply beauty enhancement",
-    "icon": "heart"
+    "icon": "Pipette"
   },
   {
     "id": "stylize",
     "name": "Stylize",
     "description": "Apply artistic styling",
-    "icon": "palette"
+    "icon": "Paintbrush"
   }
 ]

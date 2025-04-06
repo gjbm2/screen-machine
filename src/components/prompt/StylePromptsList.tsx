@@ -43,8 +43,8 @@ const StylePromptsList: React.FC<StylePromptsListProps> = ({
         <Badge 
           key={index}
           variant="outline"
-          className="px-2 py-1 text-sm cursor-pointer hover:bg-purple-100 bg-purple-50 text-purple-700 border-purple-200 font-normal prompt-badge"
-          onClick={() => onStyleClick(style)}
+          className="px-2 py-1 text-sm cursor-pointer hover:bg-amber-100 bg-amber-50 text-amber-700 border-amber-200 font-normal prompt-badge"
+		  onClick={() => onStyleClick(style)}
         >
           {style.display}
         </Badge>
@@ -55,7 +55,7 @@ const StylePromptsList: React.FC<StylePromptsListProps> = ({
           variant="ghost" 
           size="sm" 
           onClick={toggleStyles}
-          className="h-7 text-xs px-1.5"
+          className="h-6 text-[10px] px-1.5"
           type="button"
         >
           {showAllStyles ? (

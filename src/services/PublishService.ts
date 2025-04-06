@@ -1,6 +1,7 @@
 
 import { toast } from 'sonner';
 import publishDestinations from '@/data/publish-destinations.json';
+import api from '/src/utils/api';
 
 export interface PublishDestination {
   id: string;
@@ -94,39 +95,27 @@ export const publishImage = async (
     }
   }
 
-  // Handle backend publishing
-  try {
-    const response = await fetch('/api/publish-image', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        imageUrl,
-        destination: destination.id,
-        destinationType: destination.type,
-        destinationFile: destination.file,
-        metadata: {
-          prompt: generationInfo?.prompt,
-          workflow: generationInfo?.workflow,
-          params: generationInfo?.params,
-        }
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Failed to publish image' }));
-      throw new Error(errorData.error || 'Failed to publish image');
+// Handle backend publishing
+try {
+  await api.publishImage({
+    imageUrl,
+    destination: destination.id,
+    destinationType: destination.type,
+    destinationFile: destination.file,
+    metadata: {
+      prompt: generationInfo?.prompt,
+      workflow: generationInfo?.workflow,
+      params: generationInfo?.params,
     }
+  });
 
-    const result = await response.json().catch(() => ({ success: true }));
-    toast.success(`Published to ${destination.name}`);
-    return true;
-  } catch (error) {
-    console.error('Error publishing image:', error);
-    toast.error(`Failed to publish to ${destination.name}`);
-    return false;
-  }
+  toast.success(`Published to ${destination.name}`);
+  return true;
+} catch (error) {
+  console.error('Error publishing image:', error);
+  toast.error(`Failed to publish to ${destination.name}`);
+  return false;
+}
 };
 
 // Helper function for clipboard fallback
