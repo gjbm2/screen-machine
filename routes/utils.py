@@ -20,7 +20,8 @@ def findfile(file_param):
 
     # 3. Check in predefined workflow directories
     workflow_dirs = [
-        os.path.join(os.getcwd(), "src", "data"),                 # ./src/data
+        os.path.join(os.getcwd(), "src", "data"),                 # ./ssrc/data
+        os.path.join(os.getcwd(), "routes", "overlays"),             # ./routes/overlays
         os.path.join(script_dir, "data"),                         # script/data
         os.path.join(script_dir, "workflows"),                    # script/workflows
         os.path.join(script_dir, "sysprompts"),                   # script/sysprompts

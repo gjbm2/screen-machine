@@ -11,6 +11,7 @@ runpod==1.7.7
 
 # WebSocket server
 websocket-server==0.6.4
+websockets>=11.0
 
 # Imaging / metadata tools
 pillow>=9.0.0

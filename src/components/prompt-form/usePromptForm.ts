@@ -24,7 +24,7 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
     }
     
     // Fall back to the first workflow or 'text-to-image' if no workflows exist
-    const fallbackId = typedWorkflows.length > 0 ? typedWorkflows[0].id : 'text-to-image';
+    const fallbackId = typedWorkflows.length > 0 ? typedWorkflows[0].id : 'sdxl-scale.json';
     console.log("Using fallback workflow:", fallbackId);
     return fallbackId;
   };

@@ -4,6 +4,7 @@
     "name": "Text to Image (flux1)",
     "description": "Image from text using Flux1",
 	"runpod_id": "k98wg36ip597n0",
+	"icon": "Camera",
     "params": [
       { 
         "id": "steps",
@@ -124,6 +125,7 @@
     "description": "Image from text using SD35",
 	"runpod_id": "ks1jy6452r59ox",
     "default": true,
+	"icon": "ImagePlus",
     "params": [
       { 
         "id": "cfg",
@@ -196,6 +198,7 @@
     "id": "image-to-image",
     "name": "Image to Image",
     "description": "Transform an uploaded image based on a text prompt",
+	"icon": "Images",
     "params": [
       {
         "id": "strength",
@@ -222,6 +225,7 @@
     "id": "artistic-style-transfer",
     "name": "Artistic Style Transfer",
     "description": "Apply artistic styles to your image",
+	"icon": "PaintBucket",
     "params": [
       {
         "id": "style_preset",

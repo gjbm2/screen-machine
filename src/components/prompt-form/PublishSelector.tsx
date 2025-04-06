@@ -1,15 +1,18 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
-  DropdownMenuCheckboxItem,
+  DropdownMenuPortal,
 } from '@/components/ui/dropdown-menu';
+import {
+  HoverCard,
+  HoverCardTrigger,
+  HoverCardContent,
+} from '@/components/ui/hover-card';
 import { getPublishDestinations } from '@/services/PublishService';
-import { Share2 } from 'lucide-react';
-import { CircleSlash } from 'lucide-react';
+import { Share2, ScreenShareOff } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -22,135 +25,165 @@ interface PublishSelectorProps {
 const PublishSelector: React.FC<PublishSelectorProps> = ({
   selectedPublish,
   onPublishChange,
-  isCompact = false
+  isCompact = false,
 }) => {
-  const publishDestinations = getPublishDestinations();
   const isMobile = useIsMobile();
-  
-  // Track selected publish destinations
+  const publishDestinations = getPublishDestinations();
+  const [menuOpen, setMenuOpen] = useState(false);
+
   const [selectedDestinations, setSelectedDestinations] = useState<string[]>(
     selectedPublish === 'none' ? [] : selectedPublish.split(',')
   );
 
-  // Update selected destinations when prop changes
   useEffect(() => {
-    setSelectedDestinations(selectedPublish === 'none' ? [] : selectedPublish.split(','));
+    setSelectedDestinations(
+      selectedPublish === 'none' ? [] : selectedPublish.split(',')
+    );
   }, [selectedPublish]);
-  
-  // Function to get icon component
+
   const getIconComponent = (iconName: string) => {
     const IconComponent = (LucideIcons as any)[iconName];
-    return IconComponent ? <IconComponent className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />;
+    return IconComponent ? (
+      <IconComponent className="h-5 w-5" />
+    ) : (
+      <Share2 className="h-5 w-5" />
+    );
   };
-  
-  // Handle selecting/deselecting a publish destination
+
+  const handleNone = () => {
+    const updated: string[] = [];
+    setSelectedDestinations(updated);
+    onPublishChange('none');
+  };
+
   const handleToggleDestination = (destId: string) => {
     setSelectedDestinations(prev => {
-      // If it's already selected, remove it
-      if (prev.includes(destId)) {
-        const newSelections = prev.filter(id => id !== destId);
-        // Update the parent component with joined selections or 'none'
-        onPublishChange(newSelections.length > 0 ? newSelections.join(',') : 'none');
-        return newSelections;
-      } 
-      // Otherwise add it
-      else {
-        const newSelections = [...prev, destId];
-        // Update the parent component with joined selections
-        onPublishChange(newSelections.join(','));
-        return newSelections;
-      }
+      const isSelected = prev.includes(destId);
+      const newSelections = isSelected
+        ? prev.filter(id => id !== destId)
+        : [...prev, destId];
+
+      const updated = newSelections.length > 0 ? newSelections : [];
+      onPublishChange(updated.length > 0 ? updated.join(',') : 'none');
+      return updated;
     });
   };
-  
-  // Get display text for the button
+
   const getDisplayText = () => {
-    if (selectedDestinations.length === 0) {
-      return "None";
-    }
-    
+    if (selectedDestinations.length === 0) return 'Not published';
     if (selectedDestinations.length === 1) {
       const dest = publishDestinations.find(d => d.id === selectedDestinations[0]);
-      return dest ? dest.name : "None";
+      return dest?.name || 'Not published';
     }
-    
     return `${selectedDestinations.length} destinations`;
   };
-  
-  // Get the icon to display on the button
-	const getDisplayIcon = () => {
-	  if (selectedDestinations.length === 0) {
-		return <CircleSlash className="h-3.5 w-3.5" />;
-	  }
 
-	  if (selectedDestinations.length === 1) {
-		const dest = publishDestinations.find(d => d.id === selectedDestinations[0]);
-		return dest ? getIconComponent(dest.icon) : <Share2 className="h-3.5 w-3.5" />;
-	  }
+  const getDisplayIcons = () => {
+    if (selectedDestinations.length === 0) return <ScreenShareOff className="h-5 w-5" />;
+    const icons = selectedDestinations.slice(0, 2).map(id => {
+      const dest = publishDestinations.find(d => d.id === id);
+      return dest ? getIconComponent(dest.icon) : null;
+    }).filter(Boolean);
 
-	  return <Share2 className="h-3.5 w-3.5" />;
-	};
-
-  // Get badge for multiple destinations
-  const getMultipleDestinationsBadge = () => {
-    if (selectedDestinations.length > 1) {
-      return (
-        <span className="ml-0.5 flex items-center justify-center bg-primary/90 text-primary-foreground text-[10px] font-bold h-4 w-4 rounded-full">
-          {selectedDestinations.length}
-        </span>
-      );
-    }
-    return null;
+    return (
+      <div className="flex items-center">
+        {icons.map((icon, idx) => (
+          <span key={idx} className="flex items-center">
+            {icon}
+            {idx < icons.length - 1 && (
+              <span className="text-xs px-[2px]">+</span>
+            )}
+          </span>
+        ))}
+        {selectedDestinations.length > 2 && (
+          <span className="text-xs px-1">...</span>
+        )}
+      </div>
+    );
   };
-  
+
+  const renderDestinationList = () => (
+    <div className="space-y-1">
+      <div className="text-sm font-semibold mb-1 px-2">Publish to</div>
+
+      <button
+        onClick={handleNone}
+        className={`w-full text-left px-4 py-1.5 text-sm flex items-center hover:bg-muted rounded-md ${
+          selectedDestinations.length === 0 ? 'bg-muted font-medium' : ''
+        }`}
+      >
+        <ScreenShareOff className="h-5 w-5 mr-2" />
+        <span>Nowhere</span>
+      </button>
+
+      {publishDestinations.map(destination => {
+        const isChecked = selectedDestinations.includes(destination.id);
+        return (
+          <button
+            key={destination.id}
+            onClick={() => handleToggleDestination(destination.id)}
+            className={`w-full text-left px-4 py-1.5 text-sm flex items-center rounded-md transition-colors ${
+              isChecked ? 'bg-muted font-medium' : 'hover:bg-muted'
+            }`}
+          >
+            {getIconComponent(destination.icon)}
+            <span className="ml-2">{destination.name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <div className="flex items-center space-x-1">
-      {!isCompact && (
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
-          Publish:
-        </span>
-      )}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-[28px] px-2 text-muted-foreground bg-white flex items-center"
-            aria-label="Select publish destination"
-          >
-            {getDisplayIcon()}
-            <span className={`ml-1.5 text-xs ${isMobile ? 'hidden' : ''}`}>
-              {getDisplayText()}
-            </span>
-            {isMobile && getMultipleDestinationsBadge()}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="bg-white">
-          <DropdownMenuCheckboxItem
-            className="pl-6 pr-2 py-1 text-xs flex items-center"
-            checked={selectedDestinations.length === 0}
-            onCheckedChange={() => {
-              setSelectedDestinations([]);
-              onPublishChange('none');
-            }}
-          >
-            <CircleSlash className="h-3.5 w-3.5 mr-2" />
-            <span>None</span>
-          </DropdownMenuCheckboxItem>
-          
-          {publishDestinations.map(destination => (
-            <DropdownMenuCheckboxItem
-              key={destination.id}
-              className="pl-6 pr-2 py-1 text-xs flex items-center"
-              checked={selectedDestinations.includes(destination.id)}
-              onCheckedChange={() => handleToggleDestination(destination.id)}
+    <div className="flex items-center h-[48px]">
+      {isMobile ? (
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              className={`h-[36px] border border-input flex items-center px-3 text-sm ${
+                menuOpen ? 'bg-purple-500/10 text-purple-700' : 'hover:bg-purple-500/10 text-purple-700'
+              }`}
+              aria-label="Select publish destination"
             >
-              {getIconComponent(destination.icon)}
-              <span className="ml-2">{destination.name}</span>
-            </DropdownMenuCheckboxItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+              {getDisplayIcons()}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuPortal>
+            <DropdownMenuContent
+              key={selectedDestinations.join(',')}
+              align="start"
+              className="bg-white w-64 p-2"
+              onCloseAutoFocus={e => e.preventDefault()} // 👈 prevent auto-close on item click
+            >
+              {renderDestinationList()}
+            </DropdownMenuContent>
+          </DropdownMenuPortal>
+        </DropdownMenu>
+      ) : (
+        <HoverCard openDelay={100} closeDelay={100}>
+          <HoverCardTrigger asChild>
+            <Button
+              variant="outline"
+              className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700 flex items-center px-3 text-sm"
+              aria-label="Select publish destination"
+            >
+              {getDisplayIcons()}
+              <span className="ml-2 text-sm truncate max-w-[150px]">
+                {getDisplayText()}
+              </span>
+            </Button>
+          </HoverCardTrigger>
+          <HoverCardContent
+            align="start"
+            side="bottom"
+            sideOffset={4}
+            className="w-64 p-2 max-h-[60vh] overflow-y-auto"
+          >
+            {renderDestinationList()}
+          </HoverCardContent>
+        </HoverCard>
+      )}
     </div>
   );
 };

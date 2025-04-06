@@ -10,6 +10,7 @@ from dotenv import load_dotenv, find_dotenv
 from datetime import datetime
 import routes.openai
 from routes.utils import findfile
+import routes.display
 
 # Runpod
 import runpod
@@ -227,6 +228,14 @@ def start(
         targetfile=target_config.get('file')
         info(f"Target config: {targetfile}")
         
+        # Let the screen know we're generating
+        routes.display.send_overlay(
+            html = "overlay_generating.html",
+            screens = [publish_destination] if isinstance(publish_destination, str) else publish_destination, 
+            duration = 120000,
+            position = "top-left"
+        )
+        
     # DO STUFF 
     
     info("Image parameters: " + ", ".join(f"{k}={v}" for k, v in vars(args_namespace).items()))
@@ -321,15 +330,39 @@ def start(
             # Where do we need to deliver this?
             if publish_destination:
                 targetfilename = os.path.join(os.getcwd(), "output", targetfile)
+                
+                info(f"output_path {targetfilename}")
+                info(f"image_url {run_request["message"]}")
+                info(f"metadata {vars(args_namespace)}")
+                
                 save_jpeg_with_metadata(
                     url = run_request["message"],
                     img_metadata = vars(args_namespace),
                     save_path = targetfilename
                 )
            
+                routes.display.send_overlay(
+                    html = "overlay_prompt.html",
+                    screens = [publish_destination] if isinstance(publish_destination, str) else publish_destination, 
+                    substitutions = {'{{PROMPT_TEXT}}': prompt},
+                    duration = 60000,
+                    position = "bottom-center",
+                    clear = True
+                )
+           
             return run_request
         
         else:
+            # Let the screen know we're generating
+            if publish-destinations:
+                routes.display.send_overlay(
+                    html = "overlay_alert.html",
+                    screens = [publish_destination] if isinstance(publish_destination, str) else publish_destination,
+                    substitutions = {'{{ALERT_TEXT}}': '❌ Generation failed.'},
+                    duration = 5000,
+                    position = "top-left",
+                    clear = True
+                )
             raise ValueError(run_request)
     
     except Exception as e:

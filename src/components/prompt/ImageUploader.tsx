@@ -1,5 +1,4 @@
-
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Upload, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,6 +8,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
 
 interface ImageUploaderProps {
@@ -27,24 +27,21 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  // Listen for custom event triggered by "Use as input"
   useEffect(() => {
     const handleImageSelected = (event: CustomEvent) => {
       if (event.detail && event.detail.files) {
         onImageUpload(event.detail.files);
         onWorkflowChange('image-to-image');
-        
-        // If there are URLs in the event detail, we can use them directly
+
         if (event.detail.urls && event.detail.urls.length > 0) {
-          // This is a generated image being used as input
           toast.info('Using generated image as input');
         }
       }
     };
 
     document.addEventListener('image-selected', handleImageSelected as EventListener);
-    
     return () => {
       document.removeEventListener('image-selected', handleImageSelected as EventListener);
     };
@@ -54,28 +51,20 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     if (!files || files.length === 0) return;
 
     const validFiles: File[] = [];
-    
-    // Validate each file
     Array.from(files).forEach(file => {
-      // Check if file is an image
       if (!file.type.startsWith('image/')) {
         toast.error(`${file.name} is not an image file`);
         return;
       }
-
-      // Check file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         toast.error(`${file.name} exceeds the 5MB size limit`);
         return;
       }
-
       validFiles.push(file);
     });
 
     if (validFiles.length > 0) {
       onImageUpload(validFiles);
-      
-      // If uploading images, automatically switch to image-to-image workflow
       onWorkflowChange('image-to-image');
       toast.info('Switched to Image-to-Image workflow');
     }
@@ -83,17 +72,11 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     processFiles(e.target.files);
-    // Reset input value so the same file can be selected again if needed
     e.target.value = '';
   };
 
-  const triggerFileInput = () => {
-    fileInputRef.current?.click();
-  };
-
-  const triggerCameraInput = () => {
-    cameraInputRef.current?.click();
-  };
+  const triggerFileInput = () => fileInputRef.current?.click();
+  const triggerCameraInput = () => cameraInputRef.current?.click();
 
   if (isMobile) {
     return (
@@ -116,29 +99,35 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
           disabled={isLoading}
           capture="environment"
         />
-        
-        <DropdownMenu>
+
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
           <DropdownMenuTrigger asChild>
-            <Button 
-              type="button" 
+            <Button
+              type="button"
               variant="outline"
-              className="h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 border border-input"
+              className={`h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 border border-input ${
+                menuOpen
+                  ? 'bg-purple-500/10 text-purple-700'
+                  : 'hover:bg-purple-500/10 text-purple-700'
+              }`}
               disabled={isLoading}
             >
               <Upload className="h-4 w-4" />
-              {/* Always hide label on mobile view */}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={triggerFileInput}>
-              <Upload className="h-4 w-4 mr-2" />
-              From Gallery
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={triggerCameraInput}>
-              <Camera className="h-4 w-4 mr-2" />
-              From Camera
-            </DropdownMenuItem>
-          </DropdownMenuContent>
+          <DropdownMenuPortal>
+            <DropdownMenuContent align="start" className="w-64 p-2">
+              <div className="text-sm font-semibold mb-1 px-2">Upload options</div>
+              <DropdownMenuItem onClick={triggerFileInput} className="px-4 py-1.5 text-sm">
+                <Upload className="h-4 w-4 mr-2" />
+                From Gallery
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={triggerCameraInput} className="px-4 py-1.5 text-sm">
+                <Camera className="h-4 w-4 mr-2" />
+                From Camera
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenuPortal>
         </DropdownMenu>
       </>
     );
@@ -155,9 +144,9 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         disabled={isLoading}
         multiple
       />
-      
-      <Button 
-        type="button" 
+
+      <Button
+        type="button"
         variant="outline"
         onClick={triggerFileInput}
         className="h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 border border-input"

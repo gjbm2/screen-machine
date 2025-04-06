@@ -1,13 +1,18 @@
-
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import * as LucideIcons from 'lucide-react';
+import { Image } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
 import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
-import { Image, Wand, PaintBucket } from 'lucide-react';
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
+import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
 import { WorkflowProps } from '@/components/prompt-form/types';
 
 interface WorkflowIconSelectorProps {
@@ -24,94 +29,127 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   hideWorkflowName = false
 }) => {
   const isMobile = useIsMobile();
-  const { width } = useWindowSize();
+  const { width, height: viewportHeight } = useWindowSize();
   const isNarrow = width < 600;
   const shouldHideName = hideWorkflowName || isNarrow;
-  
-  // Find the selected workflow by ID
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [maxContentHeight, setMaxContentHeight] = useState<number | undefined>(undefined);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
   const selectedWorkflowObj = workflows.find(w => w.id === selectedWorkflow);
-  
-  // Enhanced logging only on mount or when essential props change
-  useEffect(() => {
-    console.log("WorkflowIconSelector: Component mounted with", {
-      selectedWorkflow,
-      workflowCount: workflows.length,
-      availableWorkflows: workflows.map(w => `${w.id} (${w.name})`).join(", "),
-      foundWorkflow: selectedWorkflowObj ? `${selectedWorkflowObj.id} (${selectedWorkflowObj.name})` : "none"
-    });
-    
-    if (!selectedWorkflowObj) {
-      console.warn("WorkflowIconSelector: No workflow found with ID:", selectedWorkflow);
-    }
-  }, []);  // Empty deps array - only run on mount
-  
-  const getWorkflowIcon = (workflowId: string) => {
-    switch (workflowId) {
-      case 'text-to-image':
-        return <Image className="h-5 w-5" />;
-      case 'image-to-image':
-        return <PaintBucket className="h-5 w-5" />;
-      case 'artistic-style-transfer':
-        return <Wand className="h-5 w-5" />;
-      default:
-        return <Image className="h-5 w-5" />;
-    }
+
+  const getWorkflowIcon = (iconName?: string) => {
+    if (!iconName) return <Image className="h-5 w-5" />;
+    const IconComponent = (LucideIcons as any)[iconName];
+    return IconComponent ? <IconComponent className="h-5 w-5" /> : <Image className="h-5 w-5" />;
   };
-  
-  // Default to "Text to Image" if no workflow is found
+
   const displayName = selectedWorkflowObj?.name || 'Workflow';
-  const displayIcon = selectedWorkflowObj ? getWorkflowIcon(selectedWorkflow) : <Image className="h-5 w-5" />;
-  
-  return (
-    <div className="flex items-center h-[48px]">
-      <HoverCard openDelay={0} closeDelay={100}>
-        <HoverCardTrigger asChild>
+  const displayIcon = getWorkflowIcon(selectedWorkflowObj?.icon);
+
+  const handleSelectWorkflow = (workflowId: string) => {
+    onWorkflowChange(workflowId);
+    setIsOpen(false);
+  };
+
+  const renderMenuContent = () => (
+    <div className="space-y-2">
+      <h4 className="text-sm font-semibold">Workflows</h4>
+      <div className="grid grid-cols-1 gap-1">
+        {workflows.map((workflow) => (
           <Button
-            variant="outline"
-            className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700"
-            onClick={(e) => {
-              // Prevent any default action or propagation
-              e.preventDefault();
-              e.stopPropagation();
-            }}
+            key={workflow.id}
+            variant={workflow.id === selectedWorkflow ? "secondary" : "ghost"}
+            size="sm"
+            className="justify-start text-sm h-auto py-2"
+            onClick={() => handleSelectWorkflow(workflow.id)}
             type="button"
           >
-            {displayIcon}
-            {!shouldHideName && (
-              <span className="ml-2 text-sm truncate max-w-[90px]">{displayName}</span>
-            )}
-          </Button>
-        </HoverCardTrigger>
-        <HoverCardContent className="w-64 p-2" align="start">
-          <div className="space-y-2">
-            <h4 className="text-sm font-semibold">Workflows</h4>
-            <div className="grid grid-cols-1 gap-1">
-              {workflows.map((workflow) => (
-                <Button
-                  key={workflow.id}
-                  variant={workflow.id === selectedWorkflow ? "secondary" : "ghost"}
-                  size="sm"
-                  className="justify-start text-sm h-auto py-2"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onWorkflowChange(workflow.id);
-                  }}
-                  type="button"
-                >
-                  <div className="mr-2 flex-shrink-0">
-                    {getWorkflowIcon(workflow.id)}
-                  </div>
-                  <div className="flex flex-col items-start overflow-hidden">
-                    <span className="truncate w-full text-left">{workflow.name}</span>
-                    <span className="text-xs text-muted-foreground truncate w-full text-left">{workflow.description}</span>
-                  </div>
-                </Button>
-              ))}
+            <div className="mr-2 flex-shrink-0">
+              {getWorkflowIcon(workflow.icon)}
             </div>
-          </div>
-        </HoverCardContent>
-      </HoverCard>
+            <div className="flex flex-col items-start overflow-hidden">
+              <span className="truncate w-full text-left text-sm">{workflow.name}</span>
+              <span className="text-xs text-muted-foreground w-full text-left whitespace-normal">{workflow.description}</span>
+            </div>
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+
+  useEffect(() => {
+    if (isMobile && isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const spaceBelow = viewportHeight - rect.bottom - 16;
+      const maxHeight = Math.max(spaceBelow, 150);
+      setMaxContentHeight(maxHeight);
+    }
+  }, [isOpen, isMobile, viewportHeight]);
+
+  return (
+    <div className="flex items-center h-[48px]">
+      {isMobile ? (
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              ref={buttonRef}
+              variant="outline"
+              className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700 flex items-center px-3 text-sm"
+              type="button"
+              onClick={() => setIsOpen(prev => !prev)}
+            >
+              {displayIcon}
+              {!shouldHideName && (
+                <span className="ml-2 text-sm truncate max-w-[150px]">
+                  {displayName}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            side="bottom"
+            sideOffset={8}
+            collisionPadding={8}
+            avoidCollisions
+            className="w-64 p-2 overflow-y-auto"
+            style={{ maxHeight: maxContentHeight }}
+          >
+            {renderMenuContent()}
+          </PopoverContent>
+        </Popover>
+      ) : (
+        <HoverCard open={isOpen} onOpenChange={setIsOpen} openDelay={100} closeDelay={100}>
+          <HoverCardTrigger asChild>
+            <Button
+              ref={buttonRef}
+              variant="outline"
+              className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700 flex items-center px-3 text-sm"
+              type="button"
+              onClick={() => setIsOpen(prev => !prev)}
+            >
+              {displayIcon}
+              {!shouldHideName && (
+                <span className="ml-2 text-sm truncate max-w-[150px]">
+                  {displayName}
+                </span>
+              )}
+            </Button>
+          </HoverCardTrigger>
+          <HoverCardContent
+            align="start"
+            side="bottom"
+            sideOffset={4}
+            collisionPadding={8}
+            avoidCollisions
+            className="w-64 p-2 overflow-y-auto max-h-[60vh]"
+          >
+            {renderMenuContent()}
+          </HoverCardContent>
+        </HoverCard>
+      )}
     </div>
   );
 };

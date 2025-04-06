@@ -18,6 +18,8 @@ import routes.generate
 import routes.alexa
 import subprocess
 import logging
+from threading import Thread
+from overlay_ws_server import start_ws_server, send_overlay_to_clients
 
 app = Flask(__name__, static_folder='build')
 CORS(app)  # Enable CORS for all routes
@@ -132,6 +134,7 @@ def run_script():
 # Add a new route for publishing images
 @app.route('/api/publish-image', methods=['POST'])
 def publish_image():
+
     try:
         data = request.json
         if not data:
@@ -149,7 +152,6 @@ def publish_image():
         if not destination:
             return jsonify({"success": False, "error": "No destination provided"}), 400        
         
-
         '''# Download the image
         try:
             image_response = requests.get(image_url)
@@ -168,14 +170,19 @@ def publish_image():
             
             try:
                 # Ensure the output directory exists
-                output_dir = "published_images"
-                os.makedirs(output_dir, exist_ok=True)
+                output_dir = "output"
+                #os.makedirs(output_dir, exist_ok=True)
                 
                 # Secure the filename and save
-                safe_filename = secure_filename(destination_file)
-                output_path = os.path.join(output_dir, safe_filename)
+                #safe_filename = secure_filename(destination_file)
+                #targetfilename = os.path.join(os.getcwd(), "output", targetfile)
+                output_path = os.path.join(os.getcwd(), output_dir, destination_file)
                 
-                save_jpeg_with_metadata(
+                info(f"output_path {output_path}")
+                info(f"image_url {image_url}")
+                info(f"metadata {metadata}")
+                
+                routes.generate.save_jpeg_with_metadata(
                     url = image_url,
                     img_metadata = metadata,
                     save_path = output_path
@@ -524,6 +531,21 @@ def extract_metadata():
         # Make sure we always return JSON, even in error cases
         return jsonify({"success": False, "error": error_msg}), 500
 
+@app.route("/test-overlay", methods=["POST"])
+def test_overlay():
+    data = request.json
+    info(f"Data: {data}")
+    import routes.display
+    routes.display.send_overlay(
+        screens = data["screens"],
+        html = data["htmlFile"],
+        duration = data["duration"],
+        position = data["position"],
+        substitutions = data["substitutions"],
+        clear = data["clear"]
+    )
+    return {"status": "sent"}
+    
 # Serve the React frontend
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -534,5 +556,8 @@ def serve(path):
         return send_from_directory(app.static_folder, 'index.html')
 
 if __name__ == '__main__':
+    info("Starting websockets server (to listen for front end messages on localhost:8765.")
+    Thread(target=start_ws_server, daemon=True).start()
+    
     info("Starting Flask server on port 5000")
     app.run(host="0.0.0.0", debug=True, port=5000, use_reloader=False)
