@@ -1,0 +1,67 @@
+{
+  "9": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "57",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "55": {
+    "inputs": {
+      "model_name": "RealESRGAN_x2plus.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "Load Upscale Model {{UPSCALER}}"
+    }
+  },
+  "56": {
+    "inputs": {
+      "upscale_model": [
+        "55",
+        0
+      ],
+      "image": [
+        "60",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "Upscale Image (using Model)"
+    }
+  },
+  "57": {
+    "inputs": {
+      "width": 6400,
+      "height": 6400,
+      "interpolation": "lanczos",
+      "method": "keep proportion",
+      "condition": "downscale if bigger",
+      "multiple_of": 0,
+      "image": [
+        "56",
+        0
+      ]
+    },
+    "class_type": "ImageResize+",
+    "_meta": {
+      "title": "🔧 Image Resize {{DOWNSCALER}}"
+    }
+  },
+  "60": {
+    "inputs": {
+      "image": "test.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image {{LOAD_IMAGE}}"
+    }
+  }
+}

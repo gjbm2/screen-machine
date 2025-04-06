@@ -149,7 +149,7 @@ def start(
         timeout: int | None = None,
         suppress: bool | None = None,
         metaprompt: bool | None = None,
-        images: list | None = None,
+        images: list[dict[str, str]] | None = None,
         negativeprompt: str | None = None,
         upscaler: str | None = None,
         lora: str | None = None,
@@ -204,10 +204,10 @@ def start(
         #final_args = {k: v if v is not None else defaults.get(k, None) for k, v in provided_args.items()}
         args_namespace = argparse.Namespace(**final_args)
         
-        info(f"Args_namespace: {args_namespace}")
+        #info(f"Args_namespace: {args_namespace}")
 
     # Validation steps
-    if not args_namespace.prompt: 
+    if not args_namespace.prompt and not args_namespace.images: 
         raise ValueError("A prompt or image must be provided.")
     
     # Get destinations data and see if we have a size constraint
@@ -238,7 +238,7 @@ def start(
         
     # DO STUFF 
     
-    info("Image parameters: " + ", ".join(f"{k}={v}" for k, v in vars(args_namespace).items()))
+    #info("Image parameters: " + ", ".join(f"{k}={v}" for k, v in vars(args_namespace).items()))
     
     with open(findfile(args_namespace.workflow), "r") as file:
         workflow_data = json.load(file)
@@ -254,9 +254,6 @@ def start(
         },
         r"{{NEGATIVE-PROMPT}}": {  
             "text": vars(args_namespace).get("negativeprompt", None)
-        },
-        r"{{SAMPLER}}": {
-            "steps": args_namespace.steps
         },
         r"{{UPSCALER}}": {
             "scale_by": args_namespace.scale,
@@ -279,16 +276,23 @@ def start(
         },
         r"{{DOWNSCALER}}": {
             "width": locals().get("maxwidth", 6400),
-            "height": locals().get("maxheight", 6400)   
+            "height": locals().get("maxheight", 6400)
         }
     }
+    
+    if args_namespace.images and len(args_namespace.images) > 0:
+        json_replacements[r"{{LOAD_IMAGE}}"] = {
+            "image": args_namespace.images[0].get("name")
+        }
 
     # Compile the final object to submit
     input_payload = {
       "input": {
-        "workflow": update_workflow(workflow_data, json_replacements) 
+        "workflow": update_workflow(workflow_data, json_replacements),
       }
     }
+    if args_namespace.images:
+        input_payload["input"]["images"] = args_namespace.images
     
     # Use the right runpod container id
     with open(findfile("workflows.json")) as f:
@@ -326,6 +330,16 @@ def start(
             info("\n".join(f"  - {key}: {value}" for key, value in run_request.items()))
             
             run_request.update(input_payload)
+            
+            # We're done with the base-64 image data now--discard it so we aren't carrying it around
+            if "images" in input_payload["input"]:
+                input_payload["input"]["images"] = [
+                    {"name": img.get("name")} for img in input_payload["input"]["images"]
+                ]
+            if hasattr(args_namespace, "images") and args_namespace.images:
+                args_namespace.images = [
+                    {"name": img.get("name")} for img in args_namespace.images
+                ]
     
             # Where do we need to deliver this?
             if publish_destination:
@@ -343,10 +357,15 @@ def start(
            
                 routes.display.send_overlay(
                     html = "overlay_prompt.html",
-                    screens = [publish_destination] if isinstance(publish_destination, str) else publish_destination, 
-                    substitutions = {'{{PROMPT_TEXT}}': prompt},
-                    duration = 60000,
-                    position = "bottom-center",
+                    screens = [publish_destination] if isinstance(publish_destination, str) else publish_destination,
+                    substitutions = {
+                        '{{PROMPT_TEXT}}': prompt,
+                        '{{WORKFLOW_TEXT}}': workflow,
+                        '{{WIDTH}}': locals().get("maxwidth", 6400),
+                        '{{HEIGHT}}': locals().get("maxheight", 6400),
+                        '{{SEED}}':  args_namespace.seed
+                    },
+                    duration = 30000,
                     clear = True
                 )
            
