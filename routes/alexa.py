@@ -36,13 +36,12 @@ def Brianize(text: str) -> str:
 
 # Sorts out prompt refinement and then calls out to generator, without updating webapp state
 def handle_image_generation(input_obj, wait=False, **kwargs):
-    
-    info(f"*********************** input_obj {input_obj}")
-    
+       
     data = input_obj.get("data", {})
     prompt = data.get("prompt", None)
     refiner = data.get("refiner", "none")  
     workflow = data.get("workflow", None)
+    images = data.get("images", [])
 
     # Get "targets" from input data
     targets = data.get("targets", [])
@@ -59,7 +58,7 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     
     info(f"publish_targets {publish_targets}")
     
-    if not prompt:
+    if not prompt and not images:
         return 
     
     # Refine the prompt
@@ -100,6 +99,7 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     results = [None] * len(publish_targets)  # Pre-size results list
     safe_kwargs = kwargs.copy()
     safe_kwargs.pop("publish_destination", None)  # remove if exists, else no-op
+    safe_kwargs["images"] = images
     
     for idx, publish_destination in enumerate(publish_targets):
         if no_targets:
@@ -107,7 +107,7 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         else:
             info(f"> For destination: {publish_destination}")
             corrected_publish_destination = resolve_runtime_value("destination", publish_destination)
-
+            
         def thread_fn(index=idx, destination=corrected_publish_destination):
             result = routes.generate.start(
                 prompt=refined_prompt,

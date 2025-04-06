@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
+import base64
 import re
 import time
 import random
@@ -313,13 +314,33 @@ def generate_image():
         for k, v in params.items()
         if k in main_params
     }
-        
+    
+    image_files = request.files.getlist('image')
+    images = []
+    
+    for file in image_files:
+        if file.filename:
+            filename = secure_filename(file.filename)
+            
+            # Read image into memory and base64 encode it
+            image_bytes = file.read()
+            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+            
+            images.append({
+                "name": filename,
+                "image": image_base64
+            })
+
+            info(f"Processed uploaded image '{filename}' with length {len(image_base64)}.")
+    
+    ''' THIS CODE WORKED.
     # Handle uploaded files
     uploaded_files = []
     image_files = request.files.getlist('image')
     
     # Save uploaded files if any
     for file in image_files: 
+        
         if file.filename:
             filename = secure_filename(file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -327,28 +348,30 @@ def generate_image():
             uploaded_files.append(filepath)
             has_reference_image = True
             info(f"Saved uploaded file: {filename}")
-
+    '''
+    
     # Validate input
     if not prompt and not has_reference_image:
         error("Prompt or reference image is required")
         return jsonify({"error": "Prompt or reference image is required"}), 400
     
     info(f"Generating images with prompt: {prompt}")
-    info(f"Workflow: {workflow}, Batch size: {batch_size}")
-    info(f"Reference images: {uploaded_files if uploaded_files else 'None'}")
+    #info(f"Workflow: {workflow}, Batch size: {batch_size}")
+    #info(f"Reference images: {uploaded_files if uploaded_files else 'None'}")
     info(f"DEBUG: Workflow {workflow}, Params {params}")    
-    info(f"DEBUG: Call args: {call_args}") 
+    #info(f"DEBUG: Call args: {call_args}") 
     
     # Generate
     send_obj = {
         "data": {
             "prompt": prompt,
+            "images": images,
             "workflow": workflow,
             "refiner": refiner,
             "targets": publish_destination
         }
     }   
-    info(f"send_obj: {send_obj}")
+    #info(f"send_obj: {send_obj}")
     
     # Don't refine if this is an existing batch:
        
@@ -373,7 +396,7 @@ def generate_image():
         used_workflow = r["input"]["workflow"]
         
         for q in generated_images.values():
-            print(f"Batch ID: {q['batch_id']}, Batch Index: {q['batch_index']}")
+            info(f"Batch ID: {q['batch_id']}, Batch Index: {q['batch_index']}")
 
         
         batch_index = max(

@@ -36,7 +36,7 @@ async def send_overlay_to_clients(data: dict):
 
 # WebSocket server entry point
 async def ws_main():
-    async with websockets.serve(handler, "0.0.0.0", 8765):
+    async with websockets.serve(handler, "0.0.0.0", 8765, compression=None):
         print("🌐 WebSocket server running on ws://0.0.0.0:8765")
         await asyncio.Future()  # run forever
 

@@ -195,9 +195,10 @@
     ]
   },
   {
-    "id": "image-to-image",
+    "id": "upscale.json",
     "name": "Image to Image",
     "description": "Transform an uploaded image based on a text prompt",
+	"runpod_id": "k98wg36ip597n0",
 	"icon": "Images",
     "params": [
       {

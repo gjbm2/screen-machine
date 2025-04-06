@@ -10,7 +10,7 @@ def send_overlay(
     html: str,
     screens: list[str] = None,
     duration: int = 5000,
-    position: str = "bottom-center",
+    position: str = None,
     clear: bool = True,
     substitutions=None,
 ):
@@ -33,6 +33,8 @@ def send_overlay(
                     final_html = final_html.replace(key, str(value))
         except Exception as e:
             info(f"⚠️ Substitution parse error: {e}")
+
+    #info(f"⚠️ Substitution: {final_html}")
 
     # Prepare and send message
     message = {

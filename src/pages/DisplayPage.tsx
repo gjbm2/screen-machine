@@ -3,15 +3,16 @@ import { useParams } from "react-router-dom";
 import { getPublishDestinations } from "@/services/PublishService";
 
 const POLL_INTERVAL = 2000;
-const FADE_DURATION = 5000;
+const FADE_DURATION = 3500;
 const OVERLAY_FADEIN_DURATION = 2000;
 const OVERLAY_FADEOUT_DURATION = 5000;
-const WS_HOST = "ws://172.28.255.46:8765";
+const WS_HOST = import.meta.env.VITE_WS_HOST
+//const WS_HOST = import.meta.env.VITE_WS_HOST || "ws://172.28.255.46:8765";
 
 interface OverlayMessage {
   html: string;
   duration: number;
-  position: string;
+  position?: string; // Make position optional
   clear?: boolean;
   screens?: string[];
 }
@@ -19,7 +20,7 @@ interface OverlayMessage {
 interface Overlay {
   id: string;
   html: string;
-  position: string;
+  position: string | undefined;
   visible: boolean;
 }
 
@@ -83,16 +84,15 @@ function useOverlayWebSocket(
             );
           }, 50);
 
-			setTimeout(() => {
-			  setOverlays((prev) =>
-				prev.map((o) => (o.id === id ? { ...o, visible: false } : o))
-			  );
+          setTimeout(() => {
+            setOverlays((prev) =>
+              prev.map((o) => (o.id === id ? { ...o, visible: false } : o))
+            );
 
-			  // Remove only *after* the fade-out transition completes
-			  const removalTimeout = setTimeout(() => {
-				setOverlays((prev) => prev.filter((o) => o.id !== id));
-			  }, OVERLAY_FADEOUT_DURATION);
-			}, displayTime);
+            const removalTimeout = setTimeout(() => {
+              setOverlays((prev) => prev.filter((o) => o.id !== id));
+            }, OVERLAY_FADEOUT_DURATION);
+          }, displayTime);
         } catch (err) {
           console.error("Overlay message failed:", err);
         }
@@ -108,7 +108,7 @@ function useOverlayWebSocket(
   }, [screenId, setOverlays]);
 }
 
-function getOverlayStyle(position: string, visible: boolean): React.CSSProperties {
+function getOverlayStyle(position: string | undefined, visible: boolean): React.CSSProperties {
   const baseStyle: React.CSSProperties = {
     position: "absolute",
     zIndex: 10000,
@@ -117,6 +117,12 @@ function getOverlayStyle(position: string, visible: boolean): React.CSSPropertie
     pointerEvents: "none"
   };
 
+  // If no position is provided, don't apply positioning to the outer div
+  if (!position) {
+    return { ...baseStyle, top: 0, left: 0, width: "100vw", height: "100vh" }; // Full viewport size
+  }
+
+  // Otherwise, apply default positions
   switch (position) {
     case "top-left":
       return { ...baseStyle, top: "20px", left: "20px" };
@@ -193,6 +199,19 @@ export default function DisplayPage() {
 
   useOverlayWebSocket(screenId, setOverlays);
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (containerRef.current) {
+      const scripts = containerRef.current.querySelectorAll("script");
+      scripts.forEach((script) => {
+        const scriptElement = document.createElement("script");
+        scriptElement.textContent = script.textContent;
+        document.body.appendChild(scriptElement); // Execute the script
+      });
+    }
+  }, [overlays]);
+
   if (!currentSrc) {
     return <div style={{ background: "black", height: "100vh", color: "white" }}>Loading…</div>;
   }
@@ -206,6 +225,7 @@ export default function DisplayPage() {
         position: "relative",
         overflow: "hidden",
       }}
+      ref={containerRef}
     >
       <img
         src={currentSrc}
