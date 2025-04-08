@@ -49,9 +49,12 @@ export const usePromptSubmission = ({
     const imageWorkflow = workflows.find(w => {
       if (!w.input) return false;
       
-      return typeof w.input === 'string' 
-        ? w.input === 'image' || w.input.includes('image')
-        : Array.isArray(w.input) && w.input.includes('image');
+      if (typeof w.input === 'string') {
+        return w.input === 'image';
+      } else if (Array.isArray(w.input)) {
+        return w.input.includes('image');
+      }
+      return false;
     });
     
     if (imageWorkflow) {
