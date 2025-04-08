@@ -6,7 +6,7 @@ import PromptInput from '@/components/prompt/PromptInput';
 import PromptFormToolbar from './PromptFormToolbar';
 import { PromptFormProps, WorkflowProps } from './types';
 import useExternalImageUrls from '@/hooks/use-external-images';
-import typedWorkflows from '@/data/typedWorkflows';
+import { Workflow } from '@/types/workflows';
 
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
@@ -113,67 +113,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
   useExternalImageUrls(setPreviewUrls);
 
-  const findImageCapableWorkflow = (currentWorkflowId: string) => {
-    console.log(`Checking if current workflow ${currentWorkflowId} supports images...`);
-    
-    const currentWorkflowObj = typedWorkflows.find(w => w.id === currentWorkflowId);
-    
-    if (currentWorkflowObj && currentWorkflowObj.input) {
-      const inputType = currentWorkflowObj.input;
-      
-      if (typeof inputType === 'string' && inputType === 'image') {
-        console.log(`Current workflow ${currentWorkflowId} already supports images`);
-        return currentWorkflowId;
-      } 
-      
-      if (Array.isArray(inputType) && inputType.includes('image')) {
-        console.log(`Current workflow ${currentWorkflowId} already supports images`);
-        return currentWorkflowId;
-      }
-    }
-    
-    console.log(`Current workflow ${currentWorkflowId} does not support images, looking for one that does...`);
-    
-    // Look for workflows that accept both image and text
-    const imageAndTextWorkflow = typedWorkflows.find(w => {
-      if (!w.input) return false;
-      
-      if (Array.isArray(w.input)) {
-        return w.input.includes('image') && w.input.includes('text');
-      }
-      
-      return false;
-    });
-
-    if (imageAndTextWorkflow) {
-      console.log(`Found image+text capable workflow: ${imageAndTextWorkflow.id}`);
-      return imageAndTextWorkflow.id;
-    }
-    
-    // If no combined workflow found, look for image-only workflow
-    const imageWorkflow = typedWorkflows.find(w => {
-      if (!w.input) return false;
-      
-      if (typeof w.input === 'string') {
-        return w.input === 'image';
-      } 
-      
-      if (Array.isArray(w.input)) {
-        return w.input.includes('image');
-      }
-      
-      return false;
-    });
-    
-    if (imageWorkflow) {
-      console.log(`Found image-capable workflow: ${imageWorkflow.id}`);
-      return imageWorkflow.id;
-    }
-    
-    console.log(`No image-capable workflow found, keeping current: ${currentWorkflowId}`);
-    return currentWorkflowId;
-  };
-
   const handleLocalWorkflowChange = (workflowId: string) => {
     handleWorkflowChange(workflowId);
     
@@ -273,18 +212,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
       
       return [...prevUrls, ...uniqueNewUrls];
     });
-
-    if (files.length > 0 && selectedWorkflow) {
-      const imageWorkflow = findImageCapableWorkflow(selectedWorkflow);
-      
-      if (imageWorkflow !== selectedWorkflow) {
-        console.log(`Switching to image-capable workflow: ${imageWorkflow}`);
-        handleLocalWorkflowChange(imageWorkflow);
-        toast.info(`Switched to image-compatible workflow: ${
-          typedWorkflows.find(w => w.id === imageWorkflow)?.name || imageWorkflow
-        }`);
-      }
-    }
   };
 
   const handleRemoveImage = (index: number) => {

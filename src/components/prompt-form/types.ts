@@ -1,10 +1,7 @@
-
 export interface WorkflowProps {
   id: string;
   name: string;
   description: string;
-  icon?: string;
-  input?: string[];
   params?: Array<{
     id: string;
     name: string;
