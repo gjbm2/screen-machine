@@ -33,7 +33,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     const handleImageSelected = (event: CustomEvent) => {
       if (event.detail && event.detail.files) {
         onImageUpload(event.detail.files);
-        onWorkflowChange('image-to-image');
+        // Let the parent component decide which workflow to use based on our new logic
+        // instead of directly setting 'image-to-image'
 
         if (event.detail.urls && event.detail.urls.length > 0) {
           toast.info('Using generated image as input');
@@ -65,8 +66,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
     if (validFiles.length > 0) {
       onImageUpload(validFiles);
-      onWorkflowChange('image-to-image');
-      toast.info('Switched to Image-to-Image workflow');
+      // No longer directly set the workflow - let our selection logic handle it
+      toast.info('Image uploaded successfully');
     }
   };
 

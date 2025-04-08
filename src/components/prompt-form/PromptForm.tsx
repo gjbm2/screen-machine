@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -7,6 +8,43 @@ import PromptFormToolbar from './PromptFormToolbar';
 import { PromptFormProps, WorkflowProps } from './types';
 import useExternalImageUrls from '@/hooks/use-external-images';
 import { Workflow } from '@/types/workflows';
+import typedWorkflows from '@/data/typedWorkflows';
+
+// Helper function to find an image-capable workflow
+const findImageCapableWorkflow = (currentWorkflowId: string, hasImages: boolean) => {
+  if (!hasImages) {
+    return currentWorkflowId;
+  }
+  
+  const workflows = typedWorkflows;
+  const currentIndex = workflows.findIndex(w => w.id === currentWorkflowId);
+  
+  if (currentIndex === -1) {
+    const firstImageWorkflow = workflows.find(w => w.input && w.input.includes('image'));
+    return firstImageWorkflow ? firstImageWorkflow.id : currentWorkflowId;
+  }
+  
+  const currentWorkflow = workflows[currentIndex];
+  if (currentWorkflow.input && currentWorkflow.input.includes('image')) {
+    return currentWorkflowId;
+  }
+  
+  // Find next image-capable workflow
+  for (let i = currentIndex + 1; i < workflows.length; i++) {
+    if (workflows[i].input && workflows[i].input.includes('image')) {
+      return workflows[i].id;
+    }
+  }
+  
+  // If not found after current, look from beginning
+  for (let i = 0; i < currentIndex; i++) {
+    if (workflows[i].input && workflows[i].input.includes('image')) {
+      return workflows[i].id;
+    }
+  }
+  
+  return currentWorkflowId;
+};
 
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
@@ -210,7 +248,16 @@ const PromptForm: React.FC<PromptFormProps> = ({
       const existingUrls = new Set(prevUrls);
       const uniqueNewUrls = newPreviewUrls.filter(url => !existingUrls.has(url));
       
-      return [...prevUrls, ...uniqueNewUrls];
+      const updatedUrls = [...prevUrls, ...uniqueNewUrls];
+      
+      // Find appropriate image-capable workflow when images are uploaded
+      const nextWorkflow = findImageCapableWorkflow(selectedWorkflow, true);
+      if (nextWorkflow !== selectedWorkflow) {
+        handleLocalWorkflowChange(nextWorkflow);
+        console.log(`Auto-selected image-capable workflow: ${nextWorkflow}`);
+      }
+      
+      return updatedUrls;
     });
   };
 

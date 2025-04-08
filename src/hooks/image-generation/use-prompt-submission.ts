@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ImageGenerationConfig } from './types';
-import typedWorkflows from '@/data/typedWorkflows';
+import { findImageCapableWorkflow } from '@/utils/workflow-utils';
 
 interface UsePromptSubmissionProps {
   currentWorkflow: string;
@@ -24,45 +24,6 @@ export const usePromptSubmission = ({
   collapseAllExcept
 }: UsePromptSubmissionProps) => {
   
-  const findImageCapableWorkflow = (currentWorkflowId: string, imageFiles?: (File | string)[]) => {
-    if (!imageFiles || imageFiles.length === 0) {
-      return currentWorkflowId;
-    }
-    
-    const workflows = typedWorkflows;
-    const currentIndex = workflows.findIndex(w => w.id === currentWorkflowId);
-    
-    if (currentIndex === -1) {
-      const firstImageWorkflow = workflows.find(w => w.input && w.input.includes('image'));
-      return firstImageWorkflow ? firstImageWorkflow.id : currentWorkflowId;
-    }
-    
-    const currentWorkflow = workflows[currentIndex];
-    if (currentWorkflow.input && currentWorkflow.input.includes('image')) {
-      return currentWorkflowId;
-    }
-    
-    let nextImageWorkflowId = currentWorkflowId;
-    
-    for (let i = currentIndex + 1; i < workflows.length; i++) {
-      if (workflows[i].input && workflows[i].input.includes('image')) {
-        nextImageWorkflowId = workflows[i].id;
-        break;
-      }
-    }
-    
-    if (nextImageWorkflowId === currentWorkflowId) {
-      for (let i = 0; i < currentIndex; i++) {
-        if (workflows[i].input && workflows[i].input.includes('image')) {
-          nextImageWorkflowId = workflows[i].id;
-          break;
-        }
-      }
-    }
-    
-    return nextImageWorkflowId;
-  };
-  
   const handleSubmitPrompt = useCallback(async (
     prompt: string, 
     imageFiles?: (File | string)[],
@@ -78,8 +39,10 @@ export const usePromptSubmission = ({
       setIsFirstRun(false);
       
       let effectiveWorkflow = workflow || currentWorkflow;
+      
+      // Use the utility function to find image capable workflow
       if (imageFiles && imageFiles.length > 0) {
-        effectiveWorkflow = findImageCapableWorkflow(effectiveWorkflow, imageFiles);
+        effectiveWorkflow = findImageCapableWorkflow(effectiveWorkflow, true);
         console.log(`Auto-selected image-capable workflow: ${effectiveWorkflow}`);
       }
       
