@@ -324,6 +324,27 @@ const Index = () => {
     }
   };
 
+  const handleUseGeneratedAsInputWrapper = (url: string) => {
+    handleUseGeneratedAsInput(url);
+  };
+
+  const handleCreateAgainWrapper = (batchId?: string) => {
+    if (batchId) {
+      handleCreateAgain(batchId);
+    }
+  };
+
+  const handleReorderContainersWrapper = (sourceIndex: number, destinationIndex: number) => {
+    const newOrder = [...imageContainerOrder];
+    const [removed] = newOrder.splice(sourceIndex, 1);
+    newOrder.splice(destinationIndex, 0, removed);
+    handleReorderContainers(newOrder);
+  };
+
+  const handleDeleteImageWrapper = (batchId: string, index: number) => {
+    handleDeleteImage(batchId, index);
+  };
+
   return (
     <>
       <MainLayout
@@ -364,10 +385,10 @@ const Index = () => {
           setExpandedContainers={setExpandedContainers}
           workflow={currentWorkflow}
           generationParams={currentParams}
-          onUseGeneratedAsInput={handleUseGeneratedAsInput}
-          onCreateAgain={handleCreateAgain}
-          onReorderContainers={handleReorderContainers}
-          onDeleteImage={handleDeleteImage}
+          onUseGeneratedAsInput={handleUseGeneratedAsInputWrapper}
+          onCreateAgain={handleCreateAgainWrapper}
+          onReorderContainers={handleReorderContainersWrapper}
+          onDeleteImage={handleDeleteImageWrapper}
           onDeleteContainer={handleDeleteContainer}
           fullscreenRefreshTrigger={fullscreenRefreshTrigger}
         />
