@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
@@ -345,6 +346,10 @@ const Index = () => {
     handleDeleteImage(batchId, index);
   };
 
+  const handleDeleteContainerWrapper = (batchId: string) => {
+    handleDeleteContainer(batchId);
+  };
+
   return (
     <>
       <MainLayout
@@ -389,7 +394,7 @@ const Index = () => {
           onCreateAgain={handleCreateAgainWrapper}
           onReorderContainers={handleReorderContainersWrapper}
           onDeleteImage={handleDeleteImageWrapper}
-          onDeleteContainer={handleDeleteContainer}
+          onDeleteContainer={handleDeleteContainerWrapper}
           fullscreenRefreshTrigger={fullscreenRefreshTrigger}
         />
       </MainLayout>
