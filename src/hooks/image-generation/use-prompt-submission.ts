@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { ImageGenerationConfig } from './types';
 import typedWorkflows from '@/data/typedWorkflows';
@@ -32,19 +33,26 @@ export const usePromptSubmission = ({
     const workflows = typedWorkflows;
     
     const currentWorkflowObj = workflows.find(w => w.id === currentWorkflowId);
-    if (currentWorkflowObj && currentWorkflowObj.input && 
-        (currentWorkflowObj.input.includes('image') || 
-         (Array.isArray(currentWorkflowObj.input) && currentWorkflowObj.input.includes('image')))) {
-      console.log(`Current workflow ${currentWorkflowId} already supports images, keeping it`);
-      return currentWorkflowId;
+    if (currentWorkflowObj && currentWorkflowObj.input) {
+      // Safely check if input contains 'image', handling both string and array types
+      const supportsImage = 
+        (typeof currentWorkflowObj.input === 'string' && currentWorkflowObj.input === 'image') ||
+        (Array.isArray(currentWorkflowObj.input) && currentWorkflowObj.input.includes('image'));
+        
+      if (supportsImage) {
+        console.log(`Current workflow ${currentWorkflowId} already supports images, keeping it`);
+        return currentWorkflowId;
+      }
     }
     
-    const imageWorkflow = workflows.find(w => 
-      w.input && 
-      (typeof w.input === 'string' ? 
-        w.input === 'image' || w.input.includes('image') : 
-        Array.isArray(w.input) && w.input.includes('image'))
-    );
+    // Look for a workflow that supports images
+    const imageWorkflow = workflows.find(w => {
+      if (!w.input) return false;
+      
+      return typeof w.input === 'string' 
+        ? w.input === 'image' || w.input.includes('image')
+        : Array.isArray(w.input) && w.input.includes('image');
+    });
     
     if (imageWorkflow) {
       console.log(`Switching to image-capable workflow: ${imageWorkflow.id}`);
