@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
@@ -336,10 +335,7 @@ const Index = () => {
   };
 
   const handleReorderContainersWrapper = (sourceIndex: number, destinationIndex: number) => {
-    const newOrder = [...imageContainerOrder];
-    const [removed] = newOrder.splice(sourceIndex, 1);
-    newOrder.splice(destinationIndex, 0, removed);
-    handleReorderContainers(newOrder);
+    handleReorderContainers(sourceIndex, destinationIndex);
   };
 
   const handleDeleteImageWrapper = (batchId: string, index: number) => {
