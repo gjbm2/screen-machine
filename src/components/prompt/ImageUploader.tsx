@@ -22,7 +22,6 @@ interface ImageUploaderProps {
 const ImageUploader: React.FC<ImageUploaderProps> = ({
   isLoading,
   onImageUpload,
-  onWorkflowChange,
   hideLabel = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -35,8 +34,6 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       if (event.detail && event.detail.files) {
         // Simply pass the files to the parent component
         onImageUpload(event.detail.files);
-        
-        // Workflow selection is now handled by usePromptSubmission
         
         if (event.detail.urls && event.detail.urls.length > 0) {
           toast.info('Using generated image as input');
@@ -68,8 +65,10 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
     if (validFiles.length > 0) {
       // Pass the files to the parent component
-      // Workflow selection will happen in usePromptSubmission
       onImageUpload(validFiles);
+      
+      // Log that files were uploaded (for debugging)
+      console.log(`ImageUploader: Uploaded ${validFiles.length} image files`);
       toast.info('Image uploaded successfully');
     }
   };
