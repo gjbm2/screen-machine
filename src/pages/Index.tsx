@@ -269,20 +269,9 @@ const Index = () => {
       console.log('- refiner:', refiner);
       console.log('- refinerParams:', refinerParams);
       console.log('- publish:', publish);
+      console.log('- imageFiles count:', imageFiles?.length || 0);
       
       setCurrentPrompt(prompt);
-      
-      if (workflow) {
-        setCurrentWorkflow(workflow);
-      }
-      
-      if (refiner) {
-        setSelectedRefiner(refiner);
-      }
-      
-      if (publish) {
-        setSelectedPublish(publish);
-      }
       
       let effectiveParams = params ? { ...params } : { ...currentParams };
       
@@ -297,8 +286,12 @@ const Index = () => {
         setCurrentGlobalParams(globalParams);
       }
       
-      if (refinerParams) {
-        setRefinerParams(refinerParams);
+      if (refiner) {
+        setSelectedRefiner(refiner);
+      }
+      
+      if (publish) {
+        setSelectedPublish(publish);
       }
       
       if (imageFiles && imageFiles.length > 0) {
@@ -309,7 +302,7 @@ const Index = () => {
         setUploadedImageUrls(fileUrls);
       }
       
-      await handleSubmitPrompt(
+      const result = await handleSubmitPrompt(
         prompt, 
         imageFiles, 
         workflow, 
@@ -318,6 +311,12 @@ const Index = () => {
         refiner, 
         refinerParams
       );
+      
+      if (workflow) {
+        setCurrentWorkflow(workflow);
+      }
+      
+      return result;
     } catch (error) {
       console.error('Error submitting prompt:', error);
       toast.error('Error generating image');
