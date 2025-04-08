@@ -64,11 +64,11 @@ const Index = () => {
                                (typedWorkflows.length > 0 ? typedWorkflows[0].id : '');
       
       if (defaultWorkflowId) {
-        console.log("Index: Setting initial default workflow:", defaultWorkflowId);
+        console.log("Index: Setting initial default workflow (ONLY because none is selected):", defaultWorkflowId);
         setCurrentWorkflow(defaultWorkflowId);
       }
     }
-  }, [currentWorkflow, setCurrentWorkflow]);
+  }, []);
 
   const processUrlParam = (value: string): any => {
     if ((value.startsWith('"') && value.endsWith('"')) || 
