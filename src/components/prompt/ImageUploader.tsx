@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Upload, Camera } from 'lucide-react';
@@ -35,9 +34,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       if (event.detail && event.detail.files) {
         onImageUpload(event.detail.files);
         
-        // Remove the hardcoded workflow change here as it conflicts with the automatic selection
-        // The workflow selection will be handled by findImageCapableWorkflow in usePromptSubmission
-
+        // Workflow selection is now handled by findImageCapableWorkflow in usePromptSubmission
+        
         if (event.detail.urls && event.detail.urls.length > 0) {
           toast.info('Using generated image as input');
         }
@@ -68,7 +66,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
     if (validFiles.length > 0) {
       onImageUpload(validFiles);
-      // Remove hardcoded workflow change - findImageCapableWorkflow will handle this
+      // Workflow selection is now handled by findImageCapableWorkflow in usePromptSubmission
       toast.info('Image uploaded successfully');
     }
   };
