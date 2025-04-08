@@ -16,3 +16,6 @@ export interface Workflow {
   input?: string | string[];
   params: WorkflowParam[];
 }
+
+// Add the missing ImageGenerationStatus type that's being imported in multiple files
+export type ImageGenerationStatus = 'generating' | 'completed' | 'failed' | 'error' | 'to_update';
