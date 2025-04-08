@@ -1,7 +1,6 @@
-
 import { toast } from 'sonner';
 import publishDestinations from '@/data/publish-destinations.json';
-import api from '/src/utils/api';
+import api from '@/utils/api';
 
 export interface PublishDestination {
   id: string;
