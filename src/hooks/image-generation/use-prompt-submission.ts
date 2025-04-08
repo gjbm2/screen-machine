@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 import { ImageGenerationConfig } from './types';
 import typedWorkflows from '@/data/typedWorkflows';
@@ -27,38 +26,47 @@ export const usePromptSubmission = ({
   
   const findImageCapableWorkflow = (currentWorkflowId: string, imageFiles?: (File | string)[]) => {
     if (!imageFiles || imageFiles.length === 0) {
+      console.log(`No images provided, keeping current workflow: ${currentWorkflowId}`);
       return currentWorkflowId;
     }
     
-    const workflows = typedWorkflows;
+    console.log(`Checking if current workflow ${currentWorkflowId} supports images...`);
     
-    const currentWorkflowObj = workflows.find(w => w.id === currentWorkflowId);
+    const currentWorkflowObj = typedWorkflows.find(w => w.id === currentWorkflowId);
+    
     if (currentWorkflowObj && currentWorkflowObj.input) {
-      // Safely check if input contains 'image', handling both string and array types
-      const supportsImage = 
-        (typeof currentWorkflowObj.input === 'string' && currentWorkflowObj.input === 'image') ||
-        (Array.isArray(currentWorkflowObj.input) && currentWorkflowObj.input.includes('image'));
-        
-      if (supportsImage) {
-        console.log(`Current workflow ${currentWorkflowId} already supports images, keeping it`);
+      const inputType = currentWorkflowObj.input;
+      console.log(`Current workflow input type:`, inputType);
+      
+      if (typeof inputType === 'string' && inputType === 'image') {
+        console.log(`Current workflow ${currentWorkflowId} already supports images (string), keeping it`);
+        return currentWorkflowId;
+      } 
+      
+      if (Array.isArray(inputType) && inputType.includes('image')) {
+        console.log(`Current workflow ${currentWorkflowId} already supports images (array), keeping it`);
         return currentWorkflowId;
       }
     }
     
-    // Look for a workflow that supports images
-    const imageWorkflow = workflows.find(w => {
+    console.log(`Current workflow ${currentWorkflowId} does not support images, looking for an image-capable workflow...`);
+    
+    const imageWorkflow = typedWorkflows.find(w => {
       if (!w.input) return false;
       
       if (typeof w.input === 'string') {
         return w.input === 'image';
-      } else if (Array.isArray(w.input)) {
+      } 
+      
+      if (Array.isArray(w.input)) {
         return w.input.includes('image');
       }
+      
       return false;
     });
     
     if (imageWorkflow) {
-      console.log(`Switching to image-capable workflow: ${imageWorkflow.id}`);
+      console.log(`Found image-capable workflow: ${imageWorkflow.id}`);
       return imageWorkflow.id;
     }
     
@@ -80,12 +88,22 @@ export const usePromptSubmission = ({
     try {
       setIsFirstRun(false);
       
+      console.log(`handleSubmitPrompt called with:`, {
+        prompt,
+        imageFilesCount: imageFiles?.length || 0,
+        workflow,
+        currentWorkflow
+      });
+      
       let effectiveWorkflow = workflow || currentWorkflow;
       
       if (imageFiles && imageFiles.length > 0 && !workflow) {
         const imageCapableWorkflow = findImageCapableWorkflow(effectiveWorkflow, imageFiles);
-        effectiveWorkflow = imageCapableWorkflow;
-        console.log(`Auto-selected image-capable workflow: ${effectiveWorkflow}`);
+        
+        if (imageCapableWorkflow !== effectiveWorkflow) {
+          console.log(`Auto-switching to image-capable workflow: ${imageCapableWorkflow} (from ${effectiveWorkflow})`);
+          effectiveWorkflow = imageCapableWorkflow;
+        }
       }
       
       const effectiveWorkflowParams = workflowParams || currentParams;
@@ -95,9 +113,14 @@ export const usePromptSubmission = ({
       
       if (imageFiles && imageFiles.length > 0) {
         uniqueImageFiles = imageFiles.filter(f => f !== null && f !== undefined);
+        console.log(`Processing ${uniqueImageFiles.length} image files with workflow: ${effectiveWorkflow}`);
       }
       
-      console.log("usePromptSubmission: Starting new prompt submission with publishDestination:", publishDestination);
+      console.log("usePromptSubmission: Starting generation with:", {
+        workflow: effectiveWorkflow,
+        publishDestination,
+        imageCount: uniqueImageFiles.length
+      });
       
       const config: ImageGenerationConfig = {
         prompt,
