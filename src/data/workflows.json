@@ -227,6 +227,21 @@
     ]
   },
   {
+    "id": "wan_image_to_video.json",
+    "name": "Image to Video",
+    "description": "Animate an image based on a text prompt",
+	"runpod_id": "wxd8n6sak3urv5",
+	"icon": "FileVideo2",
+    "params": [
+      {
+        "id": "length",
+        "name": "Video length",
+        "type": "number",
+        "default": 33
+      }
+    ]
+  },
+  {
     "id": "artistic-style-transfer",
     "name": "Artistic Style Transfer",
     "description": "Apply artistic styles to your image",
@@ -239,13 +254,6 @@
         "type": "select",
         "options": ["Impressionist", "Cubist", "Pop Art", "Watercolor", "Oil Painting"],
         "default": "Impressionist"
-      },
-      {
-        "id": "intensity",
-        "name": "Style Intensity",
-        "type": "select",
-        "options": ["Low", "Medium", "High"],
-        "default": "Medium"
       },
       {
         "id": "style_fidelity",
