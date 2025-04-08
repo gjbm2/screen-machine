@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ImageGenerationConfig } from './types';
+import typedWorkflows from '@/data/typedWorkflows';
 
 interface UsePromptSubmissionProps {
   currentWorkflow: string;
@@ -23,6 +24,45 @@ export const usePromptSubmission = ({
   collapseAllExcept
 }: UsePromptSubmissionProps) => {
   
+  const findImageCapableWorkflow = (currentWorkflowId: string, imageFiles?: (File | string)[]) => {
+    if (!imageFiles || imageFiles.length === 0) {
+      return currentWorkflowId;
+    }
+    
+    const workflows = typedWorkflows;
+    const currentIndex = workflows.findIndex(w => w.id === currentWorkflowId);
+    
+    if (currentIndex === -1) {
+      const firstImageWorkflow = workflows.find(w => w.input && w.input.includes('image'));
+      return firstImageWorkflow ? firstImageWorkflow.id : currentWorkflowId;
+    }
+    
+    const currentWorkflow = workflows[currentIndex];
+    if (currentWorkflow.input && currentWorkflow.input.includes('image')) {
+      return currentWorkflowId;
+    }
+    
+    let nextImageWorkflowId = currentWorkflowId;
+    
+    for (let i = currentIndex + 1; i < workflows.length; i++) {
+      if (workflows[i].input && workflows[i].input.includes('image')) {
+        nextImageWorkflowId = workflows[i].id;
+        break;
+      }
+    }
+    
+    if (nextImageWorkflowId === currentWorkflowId) {
+      for (let i = 0; i < currentIndex; i++) {
+        if (workflows[i].input && workflows[i].input.includes('image')) {
+          nextImageWorkflowId = workflows[i].id;
+          break;
+        }
+      }
+    }
+    
+    return nextImageWorkflowId;
+  };
+  
   const handleSubmitPrompt = useCallback(async (
     prompt: string, 
     imageFiles?: (File | string)[],
@@ -35,29 +75,25 @@ export const usePromptSubmission = ({
     batchId?: string
   ) => {
     try {
-      // No longer first run after submitting a prompt
       setIsFirstRun(false);
       
-      // Use provided workflow or fall back to current workflow
-      const effectiveWorkflow = workflow || currentWorkflow;
+      let effectiveWorkflow = workflow || currentWorkflow;
+      if (imageFiles && imageFiles.length > 0) {
+        effectiveWorkflow = findImageCapableWorkflow(effectiveWorkflow, imageFiles);
+        console.log(`Auto-selected image-capable workflow: ${effectiveWorkflow}`);
+      }
       
-      // Use provided params or fall back to current params
       const effectiveWorkflowParams = workflowParams || currentParams;
-      
-      // Use provided global params or fall back to current global params
       const effectiveGlobalParams = globalParams || currentGlobalParams;
       
-      // Filter out null and undefined from the image files
       let uniqueImageFiles: (File | string)[] = [];
       
       if (imageFiles && imageFiles.length > 0) {
-        // First, filter out null and undefined values
         uniqueImageFiles = imageFiles.filter(f => f !== null && f !== undefined);
       }
       
       console.log("usePromptSubmission: Starting new prompt submission with publishDestination:", publishDestination);
       
-      // Create the configuration for image generation
       const config: ImageGenerationConfig = {
         prompt,
         imageFiles: uniqueImageFiles,
@@ -69,16 +105,12 @@ export const usePromptSubmission = ({
         refinerParams
       };
       
-      // Generate images with this config
       const result = await generateImages(config);
       
-      // If this is a new generation (not a variant of an existing batch),
-      // collapse all other containers and keep only this one expanded
       if (result && collapseAllExcept && !batchId) {
         collapseAllExcept(result);
       }
       
-      // Save the last used batch ID
       if (result) {
         setLastBatchIdUsed(result);
       }
