@@ -7,6 +7,7 @@ import { useImageGenerationLoading } from './use-image-generation-loading';
 import { useUploadedImages } from './use-uploaded-images';
 import { usePromptSubmission } from './use-prompt-submission';
 import { useContainerOrderEffect } from './use-container-order-effect';
+import typedWorkflows from '@/data/typedWorkflows';
 
 // Declare global window type to include our custom property
 declare global {
@@ -17,9 +18,24 @@ declare global {
 }
 
 export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
-  // State for current prompts and workflows
+  // Get the default workflow ID
+  const getDefaultWorkflowId = (): string => {
+    // First try to find a workflow with default=true
+    const defaultWorkflow = typedWorkflows.find(w => w.default === true);
+    if (defaultWorkflow) {
+      console.log("useImageGeneration: Using default workflow:", defaultWorkflow.id, defaultWorkflow.name);
+      return defaultWorkflow.id;
+    }
+    
+    // Fall back to the first workflow or 'text-to-image' if no workflows exist
+    const fallbackId = typedWorkflows.length > 0 ? typedWorkflows[0].id : 'text-to-image';
+    console.log("useImageGeneration: Using fallback workflow:", fallbackId);
+    return fallbackId;
+  };
+
+  // State for current prompts and workflows using the default workflow ID
   const [currentPrompt, setCurrentPrompt] = useState<string>('');
-  const [currentWorkflow, setCurrentWorkflow] = useState<string>('');
+  const [currentWorkflow, setCurrentWorkflow] = useState<string>(getDefaultWorkflowId());
   const [currentParams, setCurrentParams] = useState<Record<string, any>>({});
   const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
 
@@ -85,8 +101,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     setIsFirstRun,
     setLastBatchIdUsed,
     generateImages,
-    collapseAllExcept,
-    setCurrentWorkflow
+    collapseAllExcept
   });
   
   const {

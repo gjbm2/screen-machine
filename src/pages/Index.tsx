@@ -28,6 +28,10 @@ const Index = () => {
   
   const [selectedPublish, setSelectedPublish] = useState('none');
   
+  useEffect(() => {
+    console.log('Advanced options panel open state:', advancedOptionsOpen);
+  }, [advancedOptionsOpen]);
+
   const {
     generatedImages,
     activeGenerations,
@@ -56,19 +60,6 @@ const Index = () => {
     handleReorderContainers,
     handleDeleteContainer
   } = useImageGeneration(addConsoleLog);
-
-  useEffect(() => {
-    if (currentWorkflow === '') {
-      const defaultWorkflow = typedWorkflows.find(w => w.default === true);
-      const defaultWorkflowId = defaultWorkflow ? defaultWorkflow.id : 
-                               (typedWorkflows.length > 0 ? typedWorkflows[0].id : '');
-      
-      if (defaultWorkflowId) {
-        console.log("Index: Setting initial default workflow (ONLY because none is selected):", defaultWorkflowId);
-        setCurrentWorkflow(defaultWorkflowId);
-      }
-    }
-  }, []);
 
   const processUrlParam = (value: string): any => {
     if ((value.startsWith('"') && value.endsWith('"')) || 
@@ -278,9 +269,20 @@ const Index = () => {
       console.log('- refiner:', refiner);
       console.log('- refinerParams:', refinerParams);
       console.log('- publish:', publish);
-      console.log('- imageFiles count:', imageFiles?.length || 0);
       
       setCurrentPrompt(prompt);
+      
+      if (workflow) {
+        setCurrentWorkflow(workflow);
+      }
+      
+      if (refiner) {
+        setSelectedRefiner(refiner);
+      }
+      
+      if (publish) {
+        setSelectedPublish(publish);
+      }
       
       let effectiveParams = params ? { ...params } : { ...currentParams };
       
@@ -295,12 +297,8 @@ const Index = () => {
         setCurrentGlobalParams(globalParams);
       }
       
-      if (refiner) {
-        setSelectedRefiner(refiner);
-      }
-      
-      if (publish) {
-        setSelectedPublish(publish);
+      if (refinerParams) {
+        setRefinerParams(refinerParams);
       }
       
       if (imageFiles && imageFiles.length > 0) {
@@ -311,7 +309,7 @@ const Index = () => {
         setUploadedImageUrls(fileUrls);
       }
       
-      const result = await handleSubmitPrompt(
+      await handleSubmitPrompt(
         prompt, 
         imageFiles, 
         workflow, 
@@ -320,38 +318,10 @@ const Index = () => {
         refiner, 
         refinerParams
       );
-      
-      if (workflow) {
-        setCurrentWorkflow(workflow);
-      }
-      
-      return result;
     } catch (error) {
       console.error('Error submitting prompt:', error);
       toast.error('Error generating image');
     }
-  };
-
-  const handleUseGeneratedAsInputWrapper = (url: string) => {
-    handleUseGeneratedAsInput(url);
-  };
-
-  const handleCreateAgainWrapper = (batchId?: string) => {
-    if (batchId) {
-      handleCreateAgain(batchId);
-    }
-  };
-
-  const handleReorderContainersWrapper = (sourceIndex: number, destinationIndex: number) => {
-    handleReorderContainers(sourceIndex, destinationIndex);
-  };
-
-  const handleDeleteImageWrapper = (batchId: string, index: number) => {
-    handleDeleteImage(batchId, index);
-  };
-
-  const handleDeleteContainerWrapper = (batchId: string) => {
-    handleDeleteContainer(batchId);
   };
 
   return (
@@ -394,11 +364,11 @@ const Index = () => {
           setExpandedContainers={setExpandedContainers}
           workflow={currentWorkflow}
           generationParams={currentParams}
-          onUseGeneratedAsInput={handleUseGeneratedAsInputWrapper}
-          onCreateAgain={handleCreateAgainWrapper}
-          onReorderContainers={handleReorderContainersWrapper}
-          onDeleteImage={handleDeleteImageWrapper}
-          onDeleteContainer={handleDeleteContainerWrapper}
+          onUseGeneratedAsInput={handleUseGeneratedAsInput}
+          onCreateAgain={handleCreateAgain}
+          onReorderContainers={handleReorderContainers}
+          onDeleteImage={handleDeleteImage}
+          onDeleteContainer={handleDeleteContainer}
           fullscreenRefreshTrigger={fullscreenRefreshTrigger}
         />
       </MainLayout>

@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 import { ImageGenerationConfig } from './types';
 import typedWorkflows from '@/data/typedWorkflows';
@@ -12,7 +11,6 @@ interface UsePromptSubmissionProps {
   setLastBatchIdUsed: React.Dispatch<React.SetStateAction<string | null>>;
   generateImages: (config: ImageGenerationConfig) => Promise<string | null>;
   collapseAllExcept?: (batchId: string) => void;
-  setCurrentWorkflow?: (workflowId: string) => void; // Add this to allow forced workflow changes
 }
 
 export const usePromptSubmission = ({
@@ -23,75 +21,46 @@ export const usePromptSubmission = ({
   setIsFirstRun,
   setLastBatchIdUsed,
   generateImages,
-  collapseAllExcept,
-  setCurrentWorkflow
+  collapseAllExcept
 }: UsePromptSubmissionProps) => {
   
   const findImageCapableWorkflow = (currentWorkflowId: string, imageFiles?: (File | string)[]) => {
     if (!imageFiles || imageFiles.length === 0) {
-      console.log(`No images provided, keeping current workflow: ${currentWorkflowId}`);
       return currentWorkflowId;
     }
     
-    console.log(`Checking if current workflow ${currentWorkflowId} supports images...`);
+    const workflows = typedWorkflows;
+    const currentIndex = workflows.findIndex(w => w.id === currentWorkflowId);
     
-    const currentWorkflowObj = typedWorkflows.find(w => w.id === currentWorkflowId);
+    if (currentIndex === -1) {
+      const firstImageWorkflow = workflows.find(w => w.input && w.input.includes('image'));
+      return firstImageWorkflow ? firstImageWorkflow.id : currentWorkflowId;
+    }
     
-    if (currentWorkflowObj && currentWorkflowObj.input) {
-      const inputType = currentWorkflowObj.input;
-      console.log(`Current workflow input type:`, inputType);
-      
-      if (typeof inputType === 'string' && inputType === 'image') {
-        console.log(`Current workflow ${currentWorkflowId} already supports images (string), keeping it`);
-        return currentWorkflowId;
-      } 
-      
-      if (Array.isArray(inputType) && inputType.includes('image')) {
-        console.log(`Current workflow ${currentWorkflowId} already supports images (array), keeping it`);
-        return currentWorkflowId;
+    const currentWorkflow = workflows[currentIndex];
+    if (currentWorkflow.input && currentWorkflow.input.includes('image')) {
+      return currentWorkflowId;
+    }
+    
+    let nextImageWorkflowId = currentWorkflowId;
+    
+    for (let i = currentIndex + 1; i < workflows.length; i++) {
+      if (workflows[i].input && workflows[i].input.includes('image')) {
+        nextImageWorkflowId = workflows[i].id;
+        break;
       }
     }
     
-    console.log(`Current workflow ${currentWorkflowId} does not support images, looking for an image-capable workflow...`);
-    
-    // First look for workflows that accept both image and text
-    const imageAndTextWorkflow = typedWorkflows.find(w => {
-      if (!w.input) return false;
-      
-      if (Array.isArray(w.input)) {
-        return w.input.includes('image') && w.input.includes('text');
+    if (nextImageWorkflowId === currentWorkflowId) {
+      for (let i = 0; i < currentIndex; i++) {
+        if (workflows[i].input && workflows[i].input.includes('image')) {
+          nextImageWorkflowId = workflows[i].id;
+          break;
+        }
       }
-      
-      return false;
-    });
-
-    if (imageAndTextWorkflow) {
-      console.log(`Found image+text capable workflow: ${imageAndTextWorkflow.id}`);
-      return imageAndTextWorkflow.id;
     }
     
-    // If no combined workflow found, look for image-only workflow
-    const imageWorkflow = typedWorkflows.find(w => {
-      if (!w.input) return false;
-      
-      if (typeof w.input === 'string') {
-        return w.input === 'image';
-      } 
-      
-      if (Array.isArray(w.input)) {
-        return w.input.includes('image');
-      }
-      
-      return false;
-    });
-    
-    if (imageWorkflow) {
-      console.log(`Found image-capable workflow: ${imageWorkflow.id}`);
-      return imageWorkflow.id;
-    }
-    
-    console.log(`No image-capable workflow found, keeping current: ${currentWorkflowId}`);
-    return currentWorkflowId;
+    return nextImageWorkflowId;
   };
   
   const handleSubmitPrompt = useCallback(async (
@@ -108,28 +77,10 @@ export const usePromptSubmission = ({
     try {
       setIsFirstRun(false);
       
-      console.log(`handleSubmitPrompt called with:`, {
-        prompt,
-        imageFilesCount: imageFiles?.length || 0,
-        workflow,
-        currentWorkflow
-      });
-      
       let effectiveWorkflow = workflow || currentWorkflow;
-      
-      if (imageFiles && imageFiles.length > 0 && !workflow) {
-        const imageCapableWorkflow = findImageCapableWorkflow(effectiveWorkflow, imageFiles);
-        
-        if (imageCapableWorkflow !== effectiveWorkflow) {
-          console.log(`Auto-switching to image-capable workflow: ${imageCapableWorkflow} (from ${effectiveWorkflow})`);
-          effectiveWorkflow = imageCapableWorkflow;
-          
-          // Force workflow update in parent component
-          if (setCurrentWorkflow) {
-            console.log('Updating parent workflow state via setCurrentWorkflow');
-            setCurrentWorkflow(imageCapableWorkflow);
-          }
-        }
+      if (imageFiles && imageFiles.length > 0) {
+        effectiveWorkflow = findImageCapableWorkflow(effectiveWorkflow, imageFiles);
+        console.log(`Auto-selected image-capable workflow: ${effectiveWorkflow}`);
       }
       
       const effectiveWorkflowParams = workflowParams || currentParams;
@@ -139,14 +90,9 @@ export const usePromptSubmission = ({
       
       if (imageFiles && imageFiles.length > 0) {
         uniqueImageFiles = imageFiles.filter(f => f !== null && f !== undefined);
-        console.log(`Processing ${uniqueImageFiles.length} image files with workflow: ${effectiveWorkflow}`);
       }
       
-      console.log("usePromptSubmission: Starting generation with:", {
-        workflow: effectiveWorkflow,
-        publishDestination,
-        imageCount: uniqueImageFiles.length
-      });
+      console.log("usePromptSubmission: Starting new prompt submission with publishDestination:", publishDestination);
       
       const config: ImageGenerationConfig = {
         prompt,
@@ -181,8 +127,7 @@ export const usePromptSubmission = ({
     setIsFirstRun, 
     setLastBatchIdUsed, 
     generateImages,
-    collapseAllExcept,
-    setCurrentWorkflow
+    collapseAllExcept
   ]);
   
   return {

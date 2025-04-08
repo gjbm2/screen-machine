@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Upload, Camera } from 'lucide-react';
@@ -15,13 +14,14 @@ import {
 interface ImageUploaderProps {
   isLoading: boolean;
   onImageUpload: (files: File[]) => void;
-  onWorkflowChange?: (workflowId: string) => void;
+  onWorkflowChange: (workflowId: string) => void;
   hideLabel?: boolean;
 }
 
 const ImageUploader: React.FC<ImageUploaderProps> = ({
   isLoading,
   onImageUpload,
+  onWorkflowChange,
   hideLabel = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -32,9 +32,9 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   useEffect(() => {
     const handleImageSelected = (event: CustomEvent) => {
       if (event.detail && event.detail.files) {
-        // Simply pass the files to the parent component
         onImageUpload(event.detail.files);
-        
+        onWorkflowChange('image-to-image');
+
         if (event.detail.urls && event.detail.urls.length > 0) {
           toast.info('Using generated image as input');
         }
@@ -45,7 +45,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     return () => {
       document.removeEventListener('image-selected', handleImageSelected as EventListener);
     };
-  }, [onImageUpload]);
+  }, [onImageUpload, onWorkflowChange]);
 
   const processFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -64,12 +64,9 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     });
 
     if (validFiles.length > 0) {
-      // Pass the files to the parent component
       onImageUpload(validFiles);
-      
-      // Log that files were uploaded (for debugging)
-      console.log(`ImageUploader: Uploaded ${validFiles.length} image files`);
-      toast.info('Image uploaded successfully');
+      onWorkflowChange('image-to-image');
+      toast.info('Switched to Image-to-Image workflow');
     }
   };
 
