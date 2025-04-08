@@ -2,55 +2,56 @@
   {
     "id": "flux1-dev-scale-l.json",
     "name": "Text to Image (flux1)",
+    "input": ["text"],
     "description": "Image from text using Flux1",
 	"runpod_id": "k98wg36ip597n0",
 	"icon": "Camera",
-    "params": [
-      { 
-        "id": "steps",
-        "name": "Steps",
-        "type": "number",
-        "default": 30
-      },
-      {
-        "id": "width",
-        "name": "Width",
-        "type": "select",
-        "options": ["256", "512", "720", "768", "920", "1024", "1280"],
-        "default": "1280"
-      },
+	"params": [
+	{ 
+	"id": "steps",
+	"name": "Steps",
+	"type": "number",
+	"default": 30
+	},
+	{
+	"id": "width",
+	"name": "Width",
+	"type": "select",
+	"options": ["256", "512", "720", "768", "920", "1024", "1280"],
+	"default": "1280"
+	},
 	  {
-        "id": "height",
-        "name": "Height",
-        "type": "select",
-        "options": ["256", "512", "720", "768", "920", "1024", "1280"],
-        "default": "720"
-      },
+	"id": "height",
+	"name": "Height",
+	"type": "select",
+	"options": ["256", "512", "720", "768", "920", "1024", "1280"],
+	"default": "720"
+	},
 	   {
-        "id": "lora",
-        "name": "Lora",
-        "type": "select",
+	"id": "lora",
+	"name": "Lora",
+	"type": "select",
 		"options": ["sldr_flux_nsfw_v2-studio.safetensors"],
-        "default": "sldr_flux_nsfw_v2-studio.safetensors"
-      },
- 	  {
-        "id": "lora_strength",
-        "name": "Lora strength",
-        "type": "number",
-        "default": 0.2
-      },
- 	  {
-        "id": "seed",
-        "name": "Random seed",
-        "type": "number"
-      },
-      {
-        "id": "upscaler",
-        "name": "Upscaler model",
-        "type": "select",
-        "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
+	"default": "sldr_flux_nsfw_v2-studio.safetensors"
+	},
+	  {
+	"id": "lora_strength",
+	"name": "Lora strength",
+	"type": "number",
+	"default": 0.2
+	},
+	  {
+	"id": "seed",
+	"name": "Random seed",
+	"type": "number"
+	},
+	{
+	"id": "upscaler",
+	"name": "Upscaler model",
+	"type": "select",
+	"options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
 		"default": "RealESRGAN_x2plus.pth"
-      }
+	}
 	]
   },
   {
@@ -58,6 +59,7 @@
     "name": "Text to Image (sdxl)",
     "description": "Image from text using SDXL",
 	"runpod_id": "14n0ueqye259so",
+    "input": ["text"],
     "params": [
       {
         "id": "style",
@@ -123,9 +125,10 @@
     "id": "sd35.json",
     "name": "Text to Image (sd35)",
     "description": "Image from text using SD35",
-	"runpod_id": "ks1jy6452r59ox",
+    "runpod_id": "ks1jy6452r59ox",
     "default": true,
-	"icon": "ImagePlus",
+    "input": ["text"],	   
+    "icon": "ImagePlus",
     "params": [
       { 
         "id": "cfg",
@@ -160,7 +163,7 @@
         "options": ["256", "512", "720", "768", "920", "1024", "1280", "1440", "1600", "1920", "2048", "2560", "2880", "3200", "3840"],
         "default": "1280"
       },
-{
+      {
         "id": "height",
         "name": "Height",
         "type": "select",
@@ -191,15 +194,16 @@
         "name": "Max width",
         "type": "number",
         "default": 5000
-	  }
+      }
     ]
   },
   {
     "id": "upscale.json",
     "name": "Image to Image",
     "description": "Transform an uploaded image based on a text prompt",
-	"runpod_id": "k98wg36ip597n0",
-	"icon": "Images",
+    "runpod_id": "k98wg36ip597n0",
+    "icon": "Images",
+    "input": ["image"],	  
     "params": [
       {
         "id": "strength",
@@ -226,7 +230,8 @@
     "id": "artistic-style-transfer",
     "name": "Artistic Style Transfer",
     "description": "Apply artistic styles to your image",
-	"icon": "PaintBucket",
+    "icon": "PaintBucket",
+    "input": ["image", "text"],
     "params": [
       {
         "id": "style_preset",
