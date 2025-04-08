@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { ImageGenerationConfig } from './types';
 import typedWorkflows from '@/data/typedWorkflows';
@@ -11,6 +12,7 @@ interface UsePromptSubmissionProps {
   setLastBatchIdUsed: React.Dispatch<React.SetStateAction<string | null>>;
   generateImages: (config: ImageGenerationConfig) => Promise<string | null>;
   collapseAllExcept?: (batchId: string) => void;
+  setCurrentWorkflow?: (workflowId: string) => void; // Add this to allow forced workflow changes
 }
 
 export const usePromptSubmission = ({
@@ -21,7 +23,8 @@ export const usePromptSubmission = ({
   setIsFirstRun,
   setLastBatchIdUsed,
   generateImages,
-  collapseAllExcept
+  collapseAllExcept,
+  setCurrentWorkflow
 }: UsePromptSubmissionProps) => {
   
   const findImageCapableWorkflow = (currentWorkflowId: string, imageFiles?: (File | string)[]) => {
@@ -51,6 +54,23 @@ export const usePromptSubmission = ({
     
     console.log(`Current workflow ${currentWorkflowId} does not support images, looking for an image-capable workflow...`);
     
+    // First look for workflows that accept both image and text
+    const imageAndTextWorkflow = typedWorkflows.find(w => {
+      if (!w.input) return false;
+      
+      if (Array.isArray(w.input)) {
+        return w.input.includes('image') && w.input.includes('text');
+      }
+      
+      return false;
+    });
+
+    if (imageAndTextWorkflow) {
+      console.log(`Found image+text capable workflow: ${imageAndTextWorkflow.id}`);
+      return imageAndTextWorkflow.id;
+    }
+    
+    // If no combined workflow found, look for image-only workflow
     const imageWorkflow = typedWorkflows.find(w => {
       if (!w.input) return false;
       
@@ -103,6 +123,12 @@ export const usePromptSubmission = ({
         if (imageCapableWorkflow !== effectiveWorkflow) {
           console.log(`Auto-switching to image-capable workflow: ${imageCapableWorkflow} (from ${effectiveWorkflow})`);
           effectiveWorkflow = imageCapableWorkflow;
+          
+          // Force workflow update in parent component
+          if (setCurrentWorkflow) {
+            console.log('Updating parent workflow state via setCurrentWorkflow');
+            setCurrentWorkflow(imageCapableWorkflow);
+          }
         }
       }
       
@@ -155,7 +181,8 @@ export const usePromptSubmission = ({
     setIsFirstRun, 
     setLastBatchIdUsed, 
     generateImages,
-    collapseAllExcept
+    collapseAllExcept,
+    setCurrentWorkflow
   ]);
   
   return {

@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useImageState } from './use-image-state';
 import { useImageContainer } from './use-image-container';
@@ -101,7 +102,8 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     setIsFirstRun,
     setLastBatchIdUsed,
     generateImages,
-    collapseAllExcept
+    collapseAllExcept,
+    setCurrentWorkflow // Pass the setCurrentWorkflow function to allow direct state updates
   });
   
   const {
