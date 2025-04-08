@@ -28,10 +28,6 @@ const Index = () => {
   
   const [selectedPublish, setSelectedPublish] = useState('none');
   
-  useEffect(() => {
-    console.log('Advanced options panel open state:', advancedOptionsOpen);
-  }, [advancedOptionsOpen]);
-
   const {
     generatedImages,
     activeGenerations,
@@ -60,6 +56,19 @@ const Index = () => {
     handleReorderContainers,
     handleDeleteContainer
   } = useImageGeneration(addConsoleLog);
+
+  useEffect(() => {
+    if (currentWorkflow === '') {
+      const defaultWorkflow = typedWorkflows.find(w => w.default === true);
+      const defaultWorkflowId = defaultWorkflow ? defaultWorkflow.id : 
+                               (typedWorkflows.length > 0 ? typedWorkflows[0].id : '');
+      
+      if (defaultWorkflowId) {
+        console.log("Index: Setting initial default workflow:", defaultWorkflowId);
+        setCurrentWorkflow(defaultWorkflowId);
+      }
+    }
+  }, [currentWorkflow, setCurrentWorkflow]);
 
   const processUrlParam = (value: string): any => {
     if ((value.startsWith('"') && value.endsWith('"')) || 

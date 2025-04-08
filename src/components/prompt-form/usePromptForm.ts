@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import typedWorkflows from '@/data/typedWorkflows';
 import refinersData from '@/data/refiners.json';
@@ -14,29 +13,10 @@ interface PromptFormInitialValues {
 }
 
 const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
-  // Find the default workflow ID for initialization
-  const getDefaultWorkflowId = (): string => {
-    // First try to find a workflow with default=true
-    const defaultWorkflow = typedWorkflows.find(w => w.default === true);
-    if (defaultWorkflow) {
-      console.log("Found default workflow:", defaultWorkflow.id, defaultWorkflow.name);
-      return defaultWorkflow.id;
-    }
-    
-    // Fall back to the first workflow or 'text-to-image' if no workflows exist
-    const fallbackId = typedWorkflows.length > 0 ? typedWorkflows[0].id : 'sdxl-scale.json';
-    console.log("Using fallback workflow:", fallbackId);
-    return fallbackId;
-  };
-  
-  // Use initialValues if provided, otherwise use defaults
-  const defaultWorkflowId = getDefaultWorkflowId();
-  
-  // Log the initial workflow selection for debugging
-  console.log("usePromptForm: Initializing with workflow ID:", defaultWorkflowId);
+  // Log the initial values provided for debugging
   console.log("usePromptForm: Initial values provided:", initialValues);
   
-  const [selectedWorkflow, setSelectedWorkflow] = useState(initialValues.selectedWorkflow || defaultWorkflowId);
+  const [selectedWorkflow, setSelectedWorkflow] = useState(initialValues.selectedWorkflow || '');
   const [selectedRefiner, setSelectedRefiner] = useState(initialValues.selectedRefiner || 'none');
   const [selectedPublish, setSelectedPublish] = useState(initialValues.selectedPublish || 'none');
   const [workflowParams, setWorkflowParams] = useState<Record<string, any>>(initialValues.workflowParams || {});
@@ -45,19 +25,14 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
   });
   const [refinerParams, setRefinerParams] = useState<Record<string, any>>(initialValues.refinerParams || {});
   
-  // Verify that selectedWorkflow is set correctly
+  // Initialize workflow parameters when workflow changes
   useEffect(() => {
-    console.log("usePromptForm: Current selected workflow:", selectedWorkflow);
-    
-    // If somehow selectedWorkflow is empty or invalid, reset it to default
-    if (!selectedWorkflow || !typedWorkflows.some(w => w.id === selectedWorkflow)) {
-      console.log("usePromptForm: Selected workflow is invalid, resetting to default");
-      setSelectedWorkflow(defaultWorkflowId);
+    // Only proceed if we have a selected workflow
+    if (!selectedWorkflow) {
+      console.log("usePromptForm: No workflow selected yet");
+      return;
     }
-  }, [selectedWorkflow]);
-  
-  // Initialize workflow parameters based on the selected workflow once on mount
-  useEffect(() => {
+    
     // Log the current selected workflow for debugging
     console.log("usePromptForm: Initializing parameters for workflow:", selectedWorkflow);
     
