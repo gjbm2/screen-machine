@@ -30,37 +30,29 @@ export const usePromptSubmission = ({
     }
     
     const workflows = typedWorkflows;
-    const currentIndex = workflows.findIndex(w => w.id === currentWorkflowId);
     
-    if (currentIndex === -1) {
-      const firstImageWorkflow = workflows.find(w => w.input && w.input.includes('image'));
-      return firstImageWorkflow ? firstImageWorkflow.id : currentWorkflowId;
-    }
-    
-    const currentWorkflow = workflows[currentIndex];
-    if (currentWorkflow.input && currentWorkflow.input.includes('image')) {
+    const currentWorkflowObj = workflows.find(w => w.id === currentWorkflowId);
+    if (currentWorkflowObj && currentWorkflowObj.input && 
+        (currentWorkflowObj.input.includes('image') || 
+         (Array.isArray(currentWorkflowObj.input) && currentWorkflowObj.input.includes('image')))) {
+      console.log(`Current workflow ${currentWorkflowId} already supports images, keeping it`);
       return currentWorkflowId;
     }
     
-    let nextImageWorkflowId = currentWorkflowId;
+    const imageWorkflow = workflows.find(w => 
+      w.input && 
+      (typeof w.input === 'string' ? 
+        w.input === 'image' || w.input.includes('image') : 
+        Array.isArray(w.input) && w.input.includes('image'))
+    );
     
-    for (let i = currentIndex + 1; i < workflows.length; i++) {
-      if (workflows[i].input && workflows[i].input.includes('image')) {
-        nextImageWorkflowId = workflows[i].id;
-        break;
-      }
+    if (imageWorkflow) {
+      console.log(`Switching to image-capable workflow: ${imageWorkflow.id}`);
+      return imageWorkflow.id;
     }
     
-    if (nextImageWorkflowId === currentWorkflowId) {
-      for (let i = 0; i < currentIndex; i++) {
-        if (workflows[i].input && workflows[i].input.includes('image')) {
-          nextImageWorkflowId = workflows[i].id;
-          break;
-        }
-      }
-    }
-    
-    return nextImageWorkflowId;
+    console.log(`No image-capable workflow found, keeping current: ${currentWorkflowId}`);
+    return currentWorkflowId;
   };
   
   const handleSubmitPrompt = useCallback(async (
@@ -78,8 +70,10 @@ export const usePromptSubmission = ({
       setIsFirstRun(false);
       
       let effectiveWorkflow = workflow || currentWorkflow;
-      if (imageFiles && imageFiles.length > 0) {
-        effectiveWorkflow = findImageCapableWorkflow(effectiveWorkflow, imageFiles);
+      
+      if (imageFiles && imageFiles.length > 0 && !workflow) {
+        const imageCapableWorkflow = findImageCapableWorkflow(effectiveWorkflow, imageFiles);
+        effectiveWorkflow = imageCapableWorkflow;
         console.log(`Auto-selected image-capable workflow: ${effectiveWorkflow}`);
       }
       
