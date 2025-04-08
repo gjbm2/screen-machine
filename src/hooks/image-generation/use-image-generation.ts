@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useImageState } from './use-image-state';
 import { useImageContainer } from './use-image-container';
