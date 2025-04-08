@@ -1,14 +1,14 @@
 {
   "3": {
     "inputs": {
-      "seed": 987948718394761,
+      "seed": 353470491069365,
       "steps": 20,
       "cfg": 6,
       "sampler_name": "uni_pc",
       "scheduler": "simple",
       "denoise": 1,
       "model": [
-        "54",
+        "37",
         0
       ],
       "positive": [
@@ -31,7 +31,7 @@
   },
   "6": {
     "inputs": {
-      "text": "a cute anime girl with massive fennec ears and a big fluffy tail wearing a maid outfit turning around",
+      "text": "girl slowly licks her icecream and smiles happily",
       "clip": [
         "38",
         0
@@ -39,12 +39,12 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP Text Encode (Positive Prompt) {{POSITIVE_PROMPT}}"
+      "title": "CLIP Text Encode (Prompt) {{POSITIVE-PROMPT}}"
     }
   },
   "7": {
     "inputs": {
-      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
+      "text": "Overexposure, static, blurred details, subtitles, paintings, pictures, still, overall gray, worst quality, low quality, JPEG compression residue, ugly, mutilated, redundant fingers, poorly painted hands, poorly painted faces, deformed, disfigured, deformed limbs, fused fingers, cluttered background, three legs, a lot of people in the background, upside down",
       "clip": [
         "38",
         0
@@ -52,7 +52,7 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP Text Encode (Negative Prompt) {{NEGATIVE_PROMPT}}"
+      "title": "CLIP Text Encode (Negative Prompt)"
     }
   },
   "8": {
@@ -73,23 +73,23 @@
   },
   "37": {
     "inputs": {
-      "unet_name": "wan2.1_i2v_480p_14B_fp16.safetensors",
+      "unet_name": "wan2.1_i2v_720p_14B_fp16.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
     "_meta": {
-      "title": "Load Diffusion Model {{LOAD_MODEL}}"
+      "title": "Load Diffusion Model"
     }
   },
   "38": {
     "inputs": {
-      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "clip_name": "umt5_xxl_fp16.safetensors",
       "type": "wan",
       "device": "default"
     },
     "class_type": "CLIPLoader",
     "_meta": {
-      "title": "Load CLIP {{LOAD_CLIP}}"
+      "title": "Load CLIP"
     }
   },
   "39": {
@@ -103,9 +103,9 @@
   },
   "47": {
     "inputs": {
-      "filename_prefix": "ComfyUI",
+      "filename_prefix": "output_video",
       "codec": "vp9",
-      "fps": 24,
+      "fps": 12,
       "crf": 32,
       "images": [
         "8",
@@ -114,7 +114,7 @@
     },
     "class_type": "SaveWEBM",
     "_meta": {
-      "title": "SaveWEBM {{SAVE_VIDEO}}"
+      "title": "SaveWEBM {{SAVE-WEBM}}"
     }
   },
   "49": {
@@ -123,14 +123,14 @@
     },
     "class_type": "CLIPVisionLoader",
     "_meta": {
-      "title": "Load CLIP Vision {{LOAD_CLIP_VISION}}"
+      "title": "Load CLIP Vision"
     }
   },
   "50": {
     "inputs": {
-      "width": 832,
-      "height": 480,
-      "length": 33,
+      "width": 768,
+      "height": 768,
+      "length": 153,
       "batch_size": 1,
       "positive": [
         "6",
@@ -155,12 +155,12 @@
     },
     "class_type": "WanImageToVideo",
     "_meta": {
-      "title": "WanImageToVideo"
+      "title": "WanImageToVideo {{IMAGE-TO-VIDEO}}"
     }
   },
   "51": {
     "inputs": {
-      "crop": "center",
+      "crop": "none",
       "clip_vision": [
         "49",
         0
@@ -176,25 +176,12 @@
     }
   },
   "52": {
-    "inputs": {
-      "image": "flux_dev_example.png"
-    },
+	"inputs": {
+	  "image": "example.png"
+	},
     "class_type": "LoadImage",
     "_meta": {
-      "title": "Load Image {{LOAD_IMAGE}}"
-    }
-  },
-  "54": {
-    "inputs": {
-      "shift": 8,
-      "model": [
-        "37",
-        0
-      ]
-    },
-    "class_type": "ModelSamplingSD3",
-    "_meta": {
-      "title": "ModelSamplingSD3 {{SAMPLING}}"
+      "title": "Load Image {{LOAD-IMAGE}}"
     }
   }
 }

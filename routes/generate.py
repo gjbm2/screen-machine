@@ -11,6 +11,9 @@ from datetime import datetime
 import routes.openai
 from routes.utils import findfile
 import routes.display
+from time import sleep, time 
+import asyncio
+import uuid
 
 # Runpod
 import runpod
@@ -242,7 +245,8 @@ def start(
     
     with open(findfile(args_namespace.workflow), "r") as file:
         workflow_data = json.load(file)
-
+    
+    unique_video_name = f"output_video{str(uuid.uuid4())[:8]}"    
     json_replacements = {
         r"{{LATENT-IMAGE}}": {  
             "width": args_namespace.width,
@@ -277,11 +281,17 @@ def start(
         r"{{DOWNSCALER}}": {
             "width": locals().get("maxwidth", 6400),
             "height": locals().get("maxheight", 6400)
+        },
+        r"{{IMAGE-TO-VIDEO}}": {
+            "length": locals().get("length", 33)
+        },
+        r"{{SAVE-WEBM}}": {
+            "filename_prefix": unique_video_name
         }
     }
     
     if args_namespace.images and len(args_namespace.images) > 0:
-        json_replacements[r"{{LOAD_IMAGE}}"] = {
+        json_replacements[r"{{LOAD-IMAGE}}"] = {
             "image": args_namespace.images[0].get("name")
         }
 
@@ -303,33 +313,59 @@ def start(
         getattr(args_namespace, "pod", None) or os.getenv("RUNPOD_ID")
     )
 
+    info(f"Workflow: {args_namespace.workflow}")
     info(f"RunPod ID: {runpod_id}")
     runpod.api_key = os.getenv("RUNPOD_API_KEY")
     endpoint = runpod.Endpoint(runpod_id)
 
-    # Let's go...
-    #run_request = endpoint.run(input_payload)
-
-    # get initial status
-    #status = run_request.status()
-    info(f"> Runpod initial job status (will wait {args_namespace.timeout}s)")
-
     try:
-        run_request = endpoint.run_sync(
-            input_payload,
-            timeout=args_namespace.timeout,  # Timeout in seconds.
-        )
+        # Let's go...
+        run_request = endpoint.run(input_payload)
 
-        # Success 
-        if run_request["status"]=="success":
-            info(f"> Successfully generated image")
-            run_request["seed"] = args_namespace.seed
-            run_request["prompt"] = args_namespace.prompt
-            run_request["negative_prompt"] = vars(args_namespace).get("negativeprompt", None)
-                       
-            info("\n".join(f"  - {key}: {value}" for key, value in run_request.items()))
+        # get initial status
+        status = run_request.status()
+        info(f"Initial status: '{status}'")
+
+        timeout = getattr(args_namespace, "timeout", 300)
+        poll_interval = getattr(args_namespace, "poll_interval", 2)
+        info(f"> Polling RunPod every {poll_interval}s for up to {timeout}s...")
+        
+        start_time = time()
+        
+        while True:
+            status = run_request.status()
+            info(f"{int(time()-start_time)} RunPod job status: {status}")
+
+            if status == "COMPLETED":
+                output = run_request.output()
+                break
+            elif status == "FAILED":
+                output = run_request.output()
+                if output and output.get("status") == "success":
+                    info("⚠️ RunPod status was FAILED, but output is '{output}'")
+                    break
+                raise RuntimeError("❌ RunPod job failed (no output).")
             
-            run_request.update(input_payload)
+            if time() - start_time > timeout:
+                raise TimeoutError("⏰ RunPod job timed out after {timeout} seconds.")
+            
+            sleep(poll_interval)
+        
+        #run_request = endpoint.run_sync(
+        #    input_payload,
+        #    timeout=args_namespace.timeout,  # Timeout in seconds.
+        #)
+                    
+        # Success 
+        if output["status"]=="success":
+            info(f"> Successfully generated image")
+            output["seed"] = args_namespace.seed
+            output["prompt"] = args_namespace.prompt
+            output["negative_prompt"] = vars(args_namespace).get("negativeprompt", None)
+                       
+            info("\n".join(f"  - {key}: {value}" for key, value in output.items()))
+            
+            output.update(input_payload)
             
             # We're done with the base-64 image data now--discard it so we aren't carrying it around
             if "images" in input_payload["input"]:
@@ -346,11 +382,11 @@ def start(
                 targetfilename = os.path.join(os.getcwd(), "output", targetfile)
                 
                 info(f"output_path {targetfilename}")
-                info(f"image_url {run_request["message"]}")
+                info(f"image_url {output['message']}")
                 info(f"metadata {vars(args_namespace)}")
                 
                 save_jpeg_with_metadata(
-                    url = run_request["message"],
+                    url = output["message"],
                     img_metadata = vars(args_namespace),
                     save_path = targetfilename
                 )
@@ -369,11 +405,11 @@ def start(
                     clear = True
                 )
            
-            return run_request
+            return output
         
         else:
             # Let the screen know we're generating
-            if publish-destinations:
+            if publish_destinations:
                 routes.display.send_overlay(
                     html = "overlay_alert.html",
                     screens = [publish_destination] if isinstance(publish_destination, str) else publish_destination,
@@ -382,7 +418,7 @@ def start(
                     position = "top-left",
                     clear = True
                 )
-            raise ValueError(run_request)
+            raise ValueError(output)
     
     except Exception as e:
         raise ValueError(str(e))
