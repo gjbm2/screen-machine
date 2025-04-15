@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Button } from '@/components/ui/button';
@@ -55,7 +54,7 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
     refetchInterval: isVisible ? 5000 : false, // Refresh every 5 seconds when visible
     enabled: isVisible,
     staleTime: 2000, // Consider data fresh for 2 seconds to reduce API calls
-    cacheTime: 60000, // Cache for 1 minute
+    gcTime: 60000, // Cache for 1 minute (renamed from cacheTime in React Query v5)
   });
   
   useEffect(() => {
