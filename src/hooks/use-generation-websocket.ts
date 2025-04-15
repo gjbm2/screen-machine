@@ -63,16 +63,20 @@ export function useGenerationWebSocket(
         ws.onmessage = (event) => {
           try {
             console.log("📬 Generation WS message received:", event.data);
-            const message = JSON.parse(event.data) as WebSocketMessage;
+            const message = JSON.parse(event.data);
             
-            // For now, simply pass the message to the callback
-            // Later, we'll implement specific handling for different message types
-            if (onMessage) {
-              onMessage(message);
+            // Handle job status messages
+            if (message.job_id && typeof message.html === 'string') {
+              console.log("📬 Received job status message:", message);
+              // Let the component handle these messages directly
+              return;
             }
-
-            // Show toasts for important updates
-            if (message.type === 'generation_update') {
+            
+            // Handle standard generation update messages
+            if (message.type === 'generation_update' && onMessage) {
+              onMessage(message as WebSocketMessage);
+              
+              // Show toasts for important updates
               if (message.status === 'completed') {
                 toast.success(`Generation completed for batch ${message.batch_id.slice(0, 8)}`);
               } else if (message.status === 'error') {
