@@ -14,8 +14,9 @@ export interface Workflow {
   description: string;
   default?: boolean;
   input?: ('text' | 'image')[]; 
-  async?: boolean; // Add the async property that's used in workflows.json
-  processing_stages?: string[]; // Add processing_stages as it's used in the code
+  async?: boolean;
+  runpod_id?: string;
+  processing_stages?: string[];
   params: WorkflowParam[];
 }
 
