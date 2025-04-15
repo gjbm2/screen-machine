@@ -1,11 +1,10 @@
-
 export interface ImageGenerationConfig {
   prompt: string;
   imageFiles?: File[];
   referenceUrls?: string[];
-  workflow: string;
-  params: Record<string, any>;
-  globalParams: Record<string, any>;
+  workflow?: string;
+  params?: Record<string, any>;
+  globalParams?: Record<string, any>;
   batchId?: string;
   refiner?: string;
   refinerParams?: Record<string, any>;
@@ -27,10 +26,9 @@ export interface GeneratedImage {
   refiner?: string;
   refinerParams?: Record<string, any>;
   containerId?: number;
-  title?: string; // Added title property as optional
+  title?: string;
 }
 
-// Add types for the WebSocket message handling
 export interface AsyncGenerationUpdate {
   type: 'generation_update';
   batch_id: string;

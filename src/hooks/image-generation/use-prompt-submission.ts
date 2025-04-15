@@ -92,11 +92,12 @@ export const usePromptSubmission = ({
 
       console.log("usePromptSubmission: Starting new prompt submission with publishDestination:", publishDestination);
 
+      // Get the workflow config to check if it's async
       const workflowConfig = typedWorkflows.find(w => w.id === effectiveWorkflow);
       const isAsync = workflowConfig?.async === true;
 
       if (isAsync) {
-        console.log(`[usePromptSubmission] Async workflow detected (${effectiveWorkflow}), skipping placeholder handling`);
+        console.log(`[usePromptSubmission] Async workflow detected (${effectiveWorkflow}), handling differently`);
       }
 
       const config: ImageGenerationConfig = {
@@ -114,6 +115,7 @@ export const usePromptSubmission = ({
 
       const result = await generateImages(config);
 
+      // Only collapse other containers if this is NOT an async workflow
       if (result && collapseAllExcept && !batchId && !isAsync) {
         collapseAllExcept(result);
       }
