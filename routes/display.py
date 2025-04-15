@@ -1,3 +1,4 @@
+
 import asyncio
 import json
 import ast
@@ -34,9 +35,7 @@ def send_overlay(
                 for key, value in substitutions.items():
                     final_html = final_html.replace(key, str(value))
         except Exception as e:
-            info(f"⚠️ Substitution parse error: {e}")
-
-    #info(f"⚠️ Substitution: {final_html}")
+            error(f"Substitution parse error: {e}")
 
     # Prepare and send message
     message = {
@@ -49,4 +48,15 @@ def send_overlay(
         "job_id": job_id
     }
 
+    if not job_id and not final_html:
+        warning("Empty overlay message or missing job_id - skipping")
+        return
+        
+    # Log a sanitized version of the message (to avoid huge HTML dumps in logs)
+    log_message = {**message}
+    if "html" in log_message and isinstance(log_message["html"], str) and len(log_message["html"]) > 50:
+        log_message["html"] = f"{log_message['html'][:50]}... [truncated, {len(message['html'])} chars]"
+    
+    debug(f"Sending overlay message: {log_message}")
+    
     asyncio.run(send_overlay_to_clients(message))
