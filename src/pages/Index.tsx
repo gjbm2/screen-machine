@@ -121,6 +121,7 @@ const Index = () => {
       return; // Ignore messages not meant for index screen
     }
 
+    console.log("Handling job status message:", message);
     const messageHash = hashMessage(message);
     const jobId = message.job_id;
 
@@ -452,7 +453,7 @@ const Index = () => {
       });
     }
     
-    const hasRunParam = searchParams.has('run');
+    const hasRunParam = searchParams.get('run');
     if (hasRunParam) {
       const timer = setTimeout(() => {
         const currentPromptValue = promptParam ? processUrlParam(promptParam) : currentPrompt;
@@ -606,28 +607,52 @@ const Index = () => {
 
   // For testing: Simulate job status messages for async workflows
   useEffect(() => {
+    // Check if we're in the Lovable environment
+    const isLovableEnvironment = 
+      typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || 
+       window.location.hostname.includes('lovable'));
+    
+    if (!isLovableEnvironment) {
+      console.log("Not in Lovable environment, skipping test message simulation");
+      return;
+    }
+    
+    console.log("In Lovable environment, will simulate test messages for async workflows");
+    
     const originalHandleSubmitPrompt = handleSubmitPrompt;
     
     const wrappedHandleSubmitPrompt = async (...args: Parameters<typeof handleSubmitPrompt>) => {
-      const result = await originalHandleSubmitPrompt(...args);
-      
       // Check if the selected workflow is async
       const workflowConfig = typedWorkflows.find(w => w.id === (args[2] || currentWorkflow));
       if (workflowConfig?.async) {
-        // Simulate a job status message for testing
+        // Simulate a job status message for testing BEFORE calling the API
         const mockJobId = nanoid();
         const mockMessage: JobStatusMessage = {
           screens: 'index',
-          html: 'Rendering...',
+          html: `Generating with ${workflowConfig.name}...`,
           duration: 30000,
           job_id: mockJobId
         };
         
+        console.log("Simulating job status message for async workflow:", mockMessage);
         handleJobStatusMessage(mockMessage);
-        console.log('Simulated job status message for async workflow:', mockMessage);
+        
+        // Simulate an update after 3 seconds
+        setTimeout(() => {
+          const updatedMessage: JobStatusMessage = {
+            screens: 'index',
+            html: `Processing ${workflowConfig.name} results (30%)...`,
+            duration: 30000,
+            job_id: mockJobId // Same job ID as before
+          };
+          console.log("Simulating job status update:", updatedMessage);
+          handleJobStatusMessage(updatedMessage);
+        }, 3000);
       }
       
-      return result;
+      // Call the original function to actually generate the image
+      return await originalHandleSubmitPrompt(...args);
     };
     
     // Override the handleSubmitPrompt function temporarily
