@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Button } from '@/components/ui/button';
@@ -48,16 +47,21 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
     });
   };
   
-  // Fetch backend logs using React Query
+  // Fetch backend logs using React Query with proper caching
   const { data: backendLogsData, isLoading, refetch } = useQuery({
     queryKey: ['backendLogs'],
     queryFn: () => apiService.getLogs(100),
     refetchInterval: isVisible ? 5000 : false, // Refresh every 5 seconds when visible
     enabled: isVisible,
+    staleTime: 2000, // Consider data fresh for 2 seconds to reduce API calls
+    gcTime: 60000, // Cache for 1 minute (renamed from cacheTime in React Query v5)
   });
   
   useEffect(() => {
-    if (isVisible) {
+    // Only refetch when becoming visible, not on every render
+    let firstLoad = true;
+    if (isVisible && firstLoad) {
+      firstLoad = false;
       setIsExiting(false);
       refetch();
     }
@@ -82,11 +86,12 @@ const ResizableConsole: React.FC<ResizableConsoleProps> = ({
     }
   }, [logs, backendLogsData]);
   
+  // Scroll to bottom when logs change
   useEffect(() => {
-    if (consoleRef.current) {
+    if (consoleRef.current && isVisible) {
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
-  }, [combinedLogs]);
+  }, [combinedLogs, isVisible]);
   
   const handleToggleMaximize = () => {
     setIsMaximized(prev => !prev);
