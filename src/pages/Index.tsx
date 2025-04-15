@@ -34,7 +34,7 @@ interface Overlay {
 
 // Define interface for job status messages
 interface JobStatusMessage {
-  screens?: string;
+  screens?: string | string[];
   html: string;
   duration?: number;
   position?: string;
@@ -119,10 +119,15 @@ const Index = () => {
   const handleJobStatusMessage = useCallback((message: JobStatusMessage) => {
     // Log ALL received messages for debugging
     console.log("🕵️ ALL Job Status Message Received:", message);
+    
+    // Check if screens property exists and extract the value for better logging
+    const screens = message.screens || "";
+    console.log("📋 Message screens property:", screens);
   
     // Check if this message is intended for this screen
     // Use Array.includes to check if 'index' is in the screens array
     const isForThisScreen = message.screens === 'index' || 
+      message.screens === undefined || // Accept undefined screens
       (Array.isArray(message.screens) && message.screens.includes('index'));
 
     if (!isForThisScreen) {
@@ -208,6 +213,7 @@ const Index = () => {
       let reconnectTimeout: ReturnType<typeof setTimeout>;
       
       const connect = () => {
+        console.log("🔄 Attempting to connect to WebSocket at:", WS_HOST);
         socket = new WebSocket(WS_HOST);
         
         socket.onopen = () => {
@@ -215,29 +221,33 @@ const Index = () => {
           reconnectAttempts = 0;
           
           // Identify this client
-          socket.send(JSON.stringify({ 
+          const identifyMsg = JSON.stringify({ 
             type: 'identify', 
             session_id: sessionId 
-          }));
+          });
+          console.log("📤 Sending identify message:", identifyMsg);
+          socket.send(identifyMsg);
         };
         
-        socket.onclose = () => {
-          console.warn("🔌 WebSocket closed, attempting to reconnect...");
+        socket.onclose = (event) => {
+          console.warn("🔌 WebSocket closed with code:", event.code, "reason:", event.reason || "No reason provided");
           reconnectAttempts++;
           const delay = Math.min(10000, 1000 * 2 ** reconnectAttempts);
+          console.log(`🔄 Will attempt to reconnect in ${delay}ms (attempt #${reconnectAttempts})`);
           reconnectTimeout = setTimeout(connect, delay);
         };
         
         socket.onerror = (err) => {
           console.error("🔴 WebSocket error:", err);
+          console.log("❌ Closing socket due to error");
           socket?.close();
         };
         
         socket.onmessage = (event) => {
-          console.log("📬 FULL WS message received:", event.data);
+          console.log("📬 WS raw message received:", event.data.substring(0, 200) + (event.data.length > 200 ? "..." : ""));
           try {
             const msg = JSON.parse(event.data);
-            console.log("🔍 Parsed WebSocket Message:", JSON.stringify(msg, null, 2));
+            console.log("🔍 Parsed WebSocket Message type:", msg.type || "No type", "job_id:", msg.job_id || "No job_id");
             
             // Handle job status messages
             if (msg.job_id && typeof msg.html === 'string') {
@@ -291,7 +301,8 @@ const Index = () => {
               }, displayTime);
             }
           } catch (err) {
-            console.error("❌ WebSocket Message Parsing Error:", err, event.data);
+            console.error("❌ WebSocket Message Parsing Error:", err);
+            console.error("⚠️ Could not parse message:", event.data.substring(0, 500));
           }
         };
       };
@@ -299,10 +310,11 @@ const Index = () => {
       connect();
       
       return () => {
+        console.log("🧹 Cleaning up WebSocket connection");
         socket?.close();
         clearTimeout(reconnectTimeout);
       };
-    }, [sessionId, handleJobStatusMessage]);
+    }, [sessionId, handleJobStatusMessage, handleGenerationUpdate]);
   }, [handleJobStatusMessage]);
   
   // Function to handle generation updates from WebSocket
