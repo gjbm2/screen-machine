@@ -669,7 +669,33 @@ const Index = () => {
     };
   }, [handleSubmitPrompt, handleJobStatusMessage, currentWorkflow]);
 
-  // Render overlay elements
+  // Development-only WebSocket message simulation
+  const [devJobId, setDevJobId] = useState('');
+  const [devHtml, setDevHtml] = useState('Rendering...');
+
+  const simulateWebSocketMessage = () => {
+    // Only simulate in Lovable or localhost environments
+    const isLovableEnvironment = 
+      typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || 
+       window.location.hostname.includes('lovable'));
+    
+    if (!isLovableEnvironment) {
+      console.warn('WebSocket simulation only works in Lovable/localhost');
+      return;
+    }
+
+    const mockMessage: JobStatusMessage = {
+      screens: 'index',
+      html: devHtml || 'Rendering...',
+      duration: 30000,
+      job_id: devJobId || nanoid()
+    };
+
+    console.log('Simulating WebSocket message:', mockMessage);
+    handleJobStatusMessage(mockMessage);
+  };
+
   const overlayElements = overlays.map((o) => (
     <div
       key={o.id}
@@ -806,6 +832,32 @@ const Index = () => {
       
       {/* Render job status elements */}
       {jobStatusElements}
+      
+      {/* Development-only WebSocket simulation section */}
+      {(window.location.hostname === 'localhost' || window.location.hostname.includes('lovable')) && (
+        <div className="fixed bottom-0 left-0 right-0 bg-gray-100 p-4 border-t flex items-center space-x-2 z-50">
+          <input 
+            type="text"
+            placeholder="Job ID (optional)"
+            value={devJobId}
+            onChange={(e) => setDevJobId(e.target.value)}
+            className="flex-1 p-2 border rounded"
+          />
+          <input 
+            type="text"
+            placeholder="HTML Message"
+            value={devHtml}
+            onChange={(e) => setDevHtml(e.target.value)}
+            className="flex-1 p-2 border rounded"
+          />
+          <button 
+            onClick={simulateWebSocketMessage}
+            className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+          >
+            Simulate WS Message
+          </button>
+        </div>
+      )}
     </>
   );
 };
