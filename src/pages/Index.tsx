@@ -746,21 +746,22 @@ const Index = () => {
     .map((status, index) => (
       <div
         key={status.id}
-        className="fixed left-4 bottom-4 bg-black/75 text-white rounded-md p-3 shadow-lg z-50 max-w-md animate-in fade-in slide-in-from-bottom-4"
+        className="fixed left-4 bg-black/75 text-white rounded-md p-2 shadow-lg z-50 max-w-md animate-in fade-in slide-in-from-bottom-4"
         style={{
-          bottom: `${4 + index * 80}px`,
+          bottom: `${4 + index * 44}px`,
           position: "fixed",
           zIndex: 9999,
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
           backdropFilter: "blur(4px)",
-          gap: "8px",
-          maxWidth: "400px"
+          gap: "6px",
+          maxWidth: "350px",
+          fontSize: "0.875rem"
         }}
       >
         <div 
-          className="flex-1 pr-2"
+          className="flex-1 pr-2 text-sm"
           dangerouslySetInnerHTML={{ __html: status.html }} 
         />
         <button
@@ -768,7 +769,7 @@ const Index = () => {
           className="text-white/75 hover:text-white transition-colors flex-shrink-0"
           aria-label="Close notification"
         >
-          <X size={18} />
+          <X size={16} />
         </button>
       </div>
     ));
@@ -850,13 +851,10 @@ const Index = () => {
         </div>
       )}
       
-      {/* Render overlay elements */}
       {overlayElements}
       
-      {/* Render job status elements */}
       {jobStatusElements}
       
-      {/* Development-only WebSocket simulation section */}
       {(window.location.hostname === 'localhost' || window.location.hostname.includes('lovable')) && (
         <div className="fixed bottom-0 left-0 right-0 bg-gray-100 p-4 border-t flex items-center space-x-2 z-50">
           <input 
