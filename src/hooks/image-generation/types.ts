@@ -9,6 +9,7 @@ export interface ImageGenerationConfig {
   batchId?: string;
   refiner?: string;
   refinerParams?: Record<string, any>;
+  isAsync?: boolean;
 }
 
 export interface GeneratedImage {
