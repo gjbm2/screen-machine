@@ -48,6 +48,7 @@ interface JobStatus {
   html: string;
   visible: boolean;
   messageHash: string; // To track if message content changed
+  timeoutId?: ReturnType<typeof setTimeout>; // To store timeout ID for cleanup
 }
 
 // Utility function to generate unique IDs
@@ -127,51 +128,61 @@ const Index = () => {
 
     // Create or update the job status
     setJobStatuses(prev => {
-      // Check if we already have this job and if the message content changed
-      const existingStatus = prev[jobId];
-      if (existingStatus && existingStatus.messageHash === messageHash && existingStatus.visible) {
-        return prev; // No need to update if the same message and already visible
+      // Clear any existing timeout for this job ID
+      if (prev[jobId]?.timeoutId) {
+        clearTimeout(prev[jobId].timeoutId);
       }
-
+      
+      // Prepare the updated job status
+      const updatedStatus = {
+        id: jobId,
+        html: message.html,
+        visible: true,
+        messageHash,
+        timeoutId: undefined as ReturnType<typeof setTimeout> | undefined
+      };
+      
+      // If duration is specified, set a new timeout
+      if (message.duration) {
+        updatedStatus.timeoutId = setTimeout(() => {
+          setJobStatuses(currentState => {
+            if (!currentState[jobId]) return currentState;
+            
+            return {
+              ...currentState,
+              [jobId]: {
+                ...currentState[jobId],
+                visible: false,
+                timeoutId: undefined
+              }
+            };
+          });
+        }, message.duration);
+      }
+      
       return {
         ...prev,
-        [jobId]: {
-          id: jobId,
-          html: message.html,
-          visible: true,
-          messageHash
-        }
+        [jobId]: updatedStatus
       };
     });
-
-    // If duration is specified, hide the message after that time
-    if (message.duration) {
-      setTimeout(() => {
-        setJobStatuses(prev => {
-          if (!prev[jobId]) return prev;
-          
-          return {
-            ...prev,
-            [jobId]: {
-              ...prev[jobId],
-              visible: false
-            }
-          };
-        });
-      }, message.duration);
-    }
   }, []);
 
   // Handle close of job status
   const handleCloseJobStatus = useCallback((jobId: string) => {
     setJobStatuses(prev => {
+      // Clear any existing timeout for this job
+      if (prev[jobId]?.timeoutId) {
+        clearTimeout(prev[jobId].timeoutId);
+      }
+      
       if (!prev[jobId]) return prev;
       
       return {
         ...prev,
         [jobId]: {
           ...prev[jobId],
-          visible: false
+          visible: false,
+          timeoutId: undefined
         }
       };
     });
@@ -716,6 +727,18 @@ const Index = () => {
       dangerouslySetInnerHTML={{ __html: o.html }}
     />
   ));
+
+  // Make sure to clean up all timeouts when component unmounts
+  useEffect(() => {
+    return () => {
+      // Clean up all active timeouts
+      Object.values(jobStatuses).forEach(status => {
+        if (status.timeoutId) {
+          clearTimeout(status.timeoutId);
+        }
+      });
+    };
+  }, [jobStatuses]);
 
   // Render job status elements
   const jobStatusElements = Object.values(jobStatuses)
