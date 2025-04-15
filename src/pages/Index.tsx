@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
@@ -13,6 +12,7 @@ import { WebSocketMessage, AsyncGenerationUpdate } from '@/hooks/image-generatio
 import { nanoid } from '@/lib/utils';
 import typedWorkflows from '@/data/typedWorkflows';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { X } from 'lucide-react';
 
 // Define interface for overlay messages and overlay state
 interface OverlayMessage {
@@ -32,11 +32,34 @@ interface Overlay {
   fadein?: number;
 }
 
+// Define interface for job status messages
+interface JobStatusMessage {
+  screens?: string;
+  html: string;
+  duration?: number;
+  position?: string;
+  clear?: boolean;
+  fadein?: number;
+  job_id: string;
+}
+
+interface JobStatus {
+  id: string;
+  html: string;
+  visible: boolean;
+  messageHash: string; // To track if message content changed
+}
+
 // Utility function to generate unique IDs
 function generateId(): string {
   return (typeof crypto !== "undefined" && crypto.randomUUID)
     ? crypto.randomUUID()
     : Math.random().toString(36).substring(2, 10);
+}
+
+// Utility to create hash of message content
+function hashMessage(message: JobStatusMessage): string {
+  return `${message.html}_${message.screens}_${message.position}`;
 }
 
 const Index = () => {
@@ -45,6 +68,7 @@ const Index = () => {
   const navigate = useNavigate();
   const sessionId = React.useMemo(() => nanoid(), []);
   const [overlays, setOverlays] = useState<Overlay[]>([]);
+  const [jobStatuses, setJobStatuses] = useState<Record<string, JobStatus>>({});
   
   const { 
     consoleVisible, 
@@ -90,6 +114,68 @@ const Index = () => {
     handleDeleteContainer
   } = useImageGeneration(addConsoleLog);
   
+  // Handle job status message
+  const handleJobStatusMessage = useCallback((message: JobStatusMessage) => {
+    // Check if this message is intended for this screen
+    if (message.screens !== 'index') {
+      return; // Ignore messages not meant for index screen
+    }
+
+    const messageHash = hashMessage(message);
+    const jobId = message.job_id;
+
+    // Create or update the job status
+    setJobStatuses(prev => {
+      // Check if we already have this job and if the message content changed
+      const existingStatus = prev[jobId];
+      if (existingStatus && existingStatus.messageHash === messageHash && existingStatus.visible) {
+        return prev; // No need to update if the same message and already visible
+      }
+
+      return {
+        ...prev,
+        [jobId]: {
+          id: jobId,
+          html: message.html,
+          visible: true,
+          messageHash
+        }
+      };
+    });
+
+    // If duration is specified, hide the message after that time
+    if (message.duration) {
+      setTimeout(() => {
+        setJobStatuses(prev => {
+          if (!prev[jobId]) return prev;
+          
+          return {
+            ...prev,
+            [jobId]: {
+              ...prev[jobId],
+              visible: false
+            }
+          };
+        });
+      }, message.duration);
+    }
+  }, []);
+
+  // Handle close of job status
+  const handleCloseJobStatus = useCallback((jobId: string) => {
+    setJobStatuses(prev => {
+      if (!prev[jobId]) return prev;
+      
+      return {
+        ...prev,
+        [jobId]: {
+          ...prev[jobId],
+          visible: false
+        }
+      };
+    });
+  }, []);
+  
   // Custom hook for handling WebSocket updates
   const useOverlayWebSocket = useCallback((sessionId: string | undefined) => {
     useEffect(() => {
@@ -132,9 +218,11 @@ const Index = () => {
           try {
             const msg = JSON.parse(event.data);
             
-            // This is where we'd place our custom message filtering logic
-            // Instead of msg.screens for now, we'll just process all messages
-            // PLACEHOLDER: Add custom message filtering here
+            // Handle job status messages
+            if (msg.job_id && typeof msg.html === 'string') {
+              handleJobStatusMessage(msg);
+              return;
+            }
             
             // Handle generation updates separately
             if (msg.type === 'generation_update') {
@@ -190,8 +278,8 @@ const Index = () => {
         socket?.close();
         clearTimeout(reconnectTimeout);
       };
-    }, [sessionId]);
-  }, []);
+    }, [sessionId, handleJobStatusMessage]);
+  }, [handleJobStatusMessage]);
   
   // Function to handle generation updates from WebSocket
   const handleGenerationUpdate = useCallback((update: AsyncGenerationUpdate) => {
@@ -516,6 +604,46 @@ const Index = () => {
     }
   };
 
+  // For testing: Simulate job status messages for async workflows
+  useEffect(() => {
+    const originalHandleSubmitPrompt = handleSubmitPrompt;
+    
+    const wrappedHandleSubmitPrompt = async (...args: Parameters<typeof handleSubmitPrompt>) => {
+      const result = await originalHandleSubmitPrompt(...args);
+      
+      // Check if the selected workflow is async
+      const workflowConfig = typedWorkflows.find(w => w.id === (args[2] || currentWorkflow));
+      if (workflowConfig?.async) {
+        // Simulate a job status message for testing
+        const mockJobId = nanoid();
+        const mockMessage: JobStatusMessage = {
+          screens: 'index',
+          html: 'Rendering...',
+          duration: 30000,
+          job_id: mockJobId
+        };
+        
+        handleJobStatusMessage(mockMessage);
+        console.log('Simulated job status message for async workflow:', mockMessage);
+      }
+      
+      return result;
+    };
+    
+    // Override the handleSubmitPrompt function temporarily
+    // This is a bit of a hack but useful for testing
+    (window as any).originalHandleSubmitPrompt = handleSubmitPrompt;
+    (window as any).handleSubmitPrompt = wrappedHandleSubmitPrompt;
+    
+    return () => {
+      // Restore the original function
+      if ((window as any).originalHandleSubmitPrompt) {
+        (window as any).handleSubmitPrompt = (window as any).originalHandleSubmitPrompt;
+        delete (window as any).originalHandleSubmitPrompt;
+      }
+    };
+  }, [handleSubmitPrompt, handleJobStatusMessage, currentWorkflow]);
+
   // Render overlay elements
   const overlayElements = overlays.map((o) => (
     <div
@@ -537,6 +665,39 @@ const Index = () => {
       dangerouslySetInnerHTML={{ __html: o.html }}
     />
   ));
+
+  // Render job status elements
+  const jobStatusElements = Object.values(jobStatuses)
+    .filter(status => status.visible)
+    .map((status, index) => (
+      <div
+        key={status.id}
+        className="fixed left-4 bottom-4 bg-black/75 text-white rounded-md p-3 shadow-lg z-50 max-w-md animate-in fade-in slide-in-from-bottom-4"
+        style={{
+          bottom: `${4 + index * 80}px`,
+          position: "fixed",
+          zIndex: 9999,
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          backdropFilter: "blur(4px)",
+          gap: "8px",
+          maxWidth: "400px"
+        }}
+      >
+        <div 
+          className="flex-1 pr-2"
+          dangerouslySetInnerHTML={{ __html: status.html }} 
+        />
+        <button
+          onClick={() => handleCloseJobStatus(status.id)}
+          className="text-white/75 hover:text-white transition-colors flex-shrink-0"
+          aria-label="Close notification"
+        >
+          <X size={18} />
+        </button>
+      </div>
+    ));
 
   return (
     <>
@@ -617,6 +778,9 @@ const Index = () => {
       
       {/* Render overlay elements */}
       {overlayElements}
+      
+      {/* Render job status elements */}
+      {jobStatusElements}
     </>
   );
 };
