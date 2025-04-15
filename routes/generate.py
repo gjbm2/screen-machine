@@ -270,8 +270,6 @@ def start(
             duration = 30000,
             position = "top-left"
         )
-        
-    # DO STUFF 
     
     #info("Image parameters: " + ", ".join(f"{k}={v}" for k, v in vars(args_namespace).items()))
     
@@ -447,6 +445,14 @@ def start(
 
             elif status in {"FAILED", "CANCELLED"}:
                 error_text = "Generation cancelled." if status == "CANCELLED" else "❌ Generation failed."
+                # update index page
+                routes.display.send_overlay(
+                    html="overlay_alert.html",
+                    screens="index",
+                    substitutions={'{{ALERT_TEXT}}': error_text},
+                    duration=5000,
+                    job_id=job_id
+                )
                 if publish_destination:
                     routes.display.send_overlay(
                         html="overlay_alert.html",
@@ -466,6 +472,17 @@ def start(
             if should_update_overlay and (
                 new_message != last_update_message or new_percentage != last_update_percentage
             ):
+                # Update index page
+                routes.display.send_overlay(
+                    html="overlay_generating.html",
+                    screens="index",
+                    duration=60000,
+                    substitutions={
+                        '{{MESSAGE}}': new_message,
+                        '{{PROGRESS_PERCENT}}': new_percentage
+                    },
+                    job_id=job_id
+                )
                 if publish_destination:
                     routes.display.send_overlay(
                         html="overlay_generating.html",
@@ -560,7 +577,18 @@ def start(
                     duration = 30000,
                     clear = True
                 )
-           
+
+            display_final_file = f'<a href="{output["message"]}">Done</a>'
+            routes.display.send_overlay(
+                html = "overlay_generating.html",
+                screens = "index",
+                substitutions = {
+                    '{{MESSAGE}}': display_final_file
+                },
+                duration = 600000,
+                job_id = job_id
+            )
+            
             return output
         
         else:
@@ -574,6 +602,13 @@ def start(
                     position = "top-left",
                     clear = True
                 )
+            routes.display.send_overlay(
+                html = "overlay_alert.html",
+                screens = "index",
+                substitutions = {'{{ALERT_TEXT}}': '❌ Generation failed.'},
+                duration = 30000,
+                job_id = job_id
+            )
             raise ValueError(output)
     
     except Exception as e:
