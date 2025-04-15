@@ -8,6 +8,7 @@ import RefinerSelector from '@/components/prompt/RefinerSelector';
 import PublishSelector from './PublishSelector';
 import { ToolbarProps, WorkflowProps } from './types';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Workflow } from '@/types/workflows';
 
 const PromptFormToolbar: React.FC<ToolbarProps> = ({
   isLoading,
@@ -47,7 +48,7 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
 		/>
         
         <WorkflowIconSelector
-          workflows={workflows as any}
+          workflows={workflows as unknown as Workflow[]} // Properly cast to Workflow[] type
           selectedWorkflow={selectedWorkflow}
           onWorkflowChange={onWorkflowChange}
           hideWorkflowName={isMobile}
