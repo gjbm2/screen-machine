@@ -1,0 +1,50 @@
+<div style="
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  background: rgba(0, 0, 0, 0.3);
+  color: white;
+  font-size: clamp(1rem, 2.5vw, 1.8rem);
+  font-weight: 500;
+  border-radius: 12px;
+  text-align: center;
+">
+  <div class="progress-ring" style="--percent: {{PROGRESS_PERCENT}}">
+    <svg viewBox="0 0 36 36">
+      <circle class="bg" cx="18" cy="18" r="16" />
+      <circle class="fg" cx="18" cy="18" r="16" />
+    </svg>
+  </div>
+  {{MESSAGE}}
+</div>
+
+<style>
+.progress-ring {
+  width: 24px;
+  height: 24px;
+  position: relative;
+  display: inline-block;
+  transform: rotate(-90deg);
+}
+
+.progress-ring svg {
+  width: 100%;
+  height: 100%;
+}
+
+.progress-ring circle {
+  fill: none;
+  stroke-width: 4;
+}
+
+.progress-ring .bg {
+  stroke: rgba(255, 255, 255, 0.2);
+}
+
+.progress-ring .fg {
+  stroke: white;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - var(--percent, 0));
+}
+</style>

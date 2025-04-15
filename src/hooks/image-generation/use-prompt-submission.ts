@@ -82,21 +82,28 @@ export const usePromptSubmission = ({
         effectiveWorkflow = findImageCapableWorkflow(effectiveWorkflow, imageFiles);
         console.log(`Auto-selected image-capable workflow: ${effectiveWorkflow}`);
       }
-      
+
+      // NEW: Split image files into files and reference URLs
+      const uploadedFiles = (imageFiles || []).filter(f => f instanceof File) as File[];
+      const referenceUrls = (imageFiles || []).filter(f => typeof f === 'string') as string[];
+
       const effectiveWorkflowParams = workflowParams || currentParams;
       const effectiveGlobalParams = globalParams || currentGlobalParams;
-      
-      let uniqueImageFiles: (File | string)[] = [];
-      
-      if (imageFiles && imageFiles.length > 0) {
-        uniqueImageFiles = imageFiles.filter(f => f !== null && f !== undefined);
-      }
-      
+
       console.log("usePromptSubmission: Starting new prompt submission with publishDestination:", publishDestination);
-      
+
+      const workflowConfig = typedWorkflows.find(w => w.id === effectiveWorkflow);
+      const isAsync = workflowConfig?.async === true;
+
+      // NEW: optionally skip placeholder creation if async
+      if (isAsync) {
+        console.log(`[usePromptSubmission] Async workflow detected (${effectiveWorkflow}), skipping placeholder handling`);
+      }
+
       const config: ImageGenerationConfig = {
         prompt,
-        imageFiles: uniqueImageFiles,
+        imageFiles: uploadedFiles,
+        referenceUrls, // NEW: pass reference image URLs separately
         workflow: effectiveWorkflow,
         params: effectiveWorkflowParams,
         globalParams: effectiveGlobalParams,
@@ -104,17 +111,17 @@ export const usePromptSubmission = ({
         refiner, 
         refinerParams
       };
-      
+
       const result = await generateImages(config);
-      
+
       if (result && collapseAllExcept && !batchId) {
         collapseAllExcept(result);
       }
-      
+
       if (result) {
         setLastBatchIdUsed(result);
       }
-      
+
       return result;
     } catch (error) {
       console.error('Error submitting prompt:', error);

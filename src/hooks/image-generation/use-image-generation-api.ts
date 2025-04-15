@@ -51,6 +51,7 @@ export const useImageGenerationApi = (
         prompt: config.prompt,
         imageFiles: config.imageFiles,
         workflow: config.workflow,
+		referenceUrls: config.referenceUrls,
         params: config.params,
         globalParams: config.globalParams,
         refiner: config.refiner,

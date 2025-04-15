@@ -250,79 +250,78 @@ const Index = () => {
     setSelectedPublish(publishId);
   }, []);
 
-  const handlePromptSubmit = async (
-    prompt: string,
-    imageFiles?: File[] | string[],
-    workflow?: string,
-    params?: Record<string, any>,
-    globalParams?: Record<string, any>,
-    refiner?: string,
-    refinerParams?: Record<string, any>,
-    publish?: string
-  ) => {
-    try {
-      console.log('Index: handlePromptSubmit called with:');
-      console.log('- prompt:', prompt);
-      console.log('- workflow:', workflow);
-      console.log('- params:', params);
-      console.log('- globalParams:', globalParams);
-      console.log('- refiner:', refiner);
-      console.log('- refinerParams:', refinerParams);
-      console.log('- publish:', publish);
-      
-      setCurrentPrompt(prompt);
-      
-      if (workflow) {
-        setCurrentWorkflow(workflow);
-      }
-      
-      if (refiner) {
-        setSelectedRefiner(refiner);
-      }
-      
-      if (publish) {
-        setSelectedPublish(publish);
-      }
-      
-      let effectiveParams = params ? { ...params } : { ...currentParams };
-      
-      if (publish && publish !== 'none') {
-        console.log('Adding publish destination to params:', publish);
-        effectiveParams.publish_destination = publish;
-      }
-      
-      setCurrentParams(effectiveParams);
-      
-      if (globalParams) {
-        setCurrentGlobalParams(globalParams);
-      }
-      
-      if (refinerParams) {
-        setRefinerParams(refinerParams);
-      }
-      
-      if (imageFiles && imageFiles.length > 0) {
-        const fileUrls = imageFiles
-          .filter((file): file is string => typeof file === 'string')
-          .map(url => url);
-          
-        setUploadedImageUrls(fileUrls);
-      }
-      
-      await handleSubmitPrompt(
-        prompt, 
-        imageFiles, 
-        workflow, 
-        effectiveParams, 
-        globalParams, 
-        refiner, 
-        refinerParams
-      );
-    } catch (error) {
-      console.error('Error submitting prompt:', error);
-      toast.error('Error generating image');
+ const handlePromptSubmit = async (
+  prompt: string,
+  imageFiles?: File[] | string[],
+  workflow?: string,
+  params?: Record<string, any>,
+  globalParams?: Record<string, any>,
+  refiner?: string,
+  refinerParams?: Record<string, any>,
+  publish?: string
+) => {
+  try {
+    console.log('Index: handlePromptSubmit called with:');
+    console.log('- prompt:', prompt);
+    console.log('- workflow:', workflow);
+    console.log('- params:', params);
+    console.log('- globalParams:', globalParams);
+    console.log('- refiner:', refiner);
+    console.log('- refinerParams:', refinerParams);
+    console.log('- publish:', publish);
+
+    setCurrentPrompt(prompt);
+
+    if (workflow) {
+      setCurrentWorkflow(workflow);
     }
-  };
+
+    if (refiner) {
+      setSelectedRefiner(refiner);
+    }
+
+    if (publish) {
+      setSelectedPublish(publish);
+    }
+
+    let effectiveParams = params ? { ...params } : { ...currentParams };
+
+    if (publish && publish !== 'none') {
+      console.log('Adding publish destination to params:', publish);
+      effectiveParams.publish_destination = publish;
+    }
+
+    setCurrentParams(effectiveParams);
+
+    if (globalParams) {
+      setCurrentGlobalParams(globalParams);
+    }
+
+    if (refinerParams) {
+      setRefinerParams(refinerParams);
+    }
+
+    // ✅ Merge in reference URLs from global state
+    const allImages: (File | string)[] = [
+      ...(imageFiles ?? []),
+      ...uploadedImageUrls
+    ];
+
+    // ✅ Pass to generation
+    await handleSubmitPrompt(
+      prompt,
+      allImages.length > 0 ? allImages : undefined,
+      workflow,
+      effectiveParams,
+      globalParams,
+      refiner,
+      refinerParams
+    );
+  } catch (error) {
+    console.error('Error submitting prompt:', error);
+    toast.error('Error generating image');
+  }
+};
 
   return (
     <>

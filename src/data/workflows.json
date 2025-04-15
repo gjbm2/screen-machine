@@ -128,6 +128,7 @@
     "runpod_id": "ks1jy6452r59ox",
     "default": true,
     "input": ["text"],	   
+	"processing_stages": ["Rendering","Upscaling"],	
     "icon": "ImagePlus",
     "params": [
       { 
@@ -227,17 +228,19 @@
     ]
   },
   {
-    "id": "wan_image_to_video.json",
+    "id": "wan_image_to_video_upscale_slow.json",
     "name": "Image to Video",
     "description": "Animate an image based on a text prompt",
 	"runpod_id": "wxd8n6sak3urv5",
+    "input": ["image", "text"],	
 	"icon": "FileVideo2",
+	"processing_stages": ["Rendering","Interpolating","Upscaling"],
     "params": [
       {
-        "id": "length",
+        "id": "video_length",
         "name": "Video length",
         "type": "number",
-        "default": 33
+        "default": 50
       }
     ]
   },

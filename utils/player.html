@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fullscreen Video Player with Crossfade</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; height: 100%; background: black; overflow: hidden;
+    }
+    video {
+      position: absolute; width: 100vw; height: 100vh;
+      object-fit: contain; background: black; opacity: 0; transition: opacity 0.2s linear;
+    }
+    #fps, #which {
+      position: absolute; top: 10px;
+      color: white; font-family: monospace; font-size: 16px;
+      background: rgba(0,0,0,0.4); padding: 4px 8px; border-radius: 5px;
+      z-index: 10;
+    }
+    #fps { right: 20px; }
+    #which { left: 20px; }
+    #url-form {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: #222; color: white; padding: 20px; border-radius: 8px;
+      font-family: sans-serif; z-index: 10;
+    }
+  </style>
+</head>
+<body>
+
+<div id="fps">FPS: --</div>
+<div id="which">Video: --</div>
+
+<video id="video1" muted playsinline></video>
+<video id="video2" muted playsinline></video>
+
+<div id="url-form" style="display:none;">
+  <form>
+    <label for="videoUrl">Paste video URL (S3 URL):</label><br>
+    <input type="text" id="videoUrl" name="video" style="width:100%; margin-top:8px;" required />
+    <br><br>
+    <label for="fpsInput">Target FPS (optional):</label><br>
+    <input type="number" id="fpsInput" name="fps" min="1" max="240" />
+    <br><br>
+    <label for="crossfadeInput">Crossfade (ms, optional):</label><br>
+    <input type="number" id="crossfadeInput" name="crossfade" min="0" />
+    <br><br>
+    <button type="submit">Play Video</button>
+  </form>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  const videoUrl = params.get("video");
+  const targetFps = parseFloat(params.get("fps")) || 24;
+  const crossfadeMs = parseInt(params.get("crossfade")) || 0;
+
+  const DEFAULT_BASE_FPS = 30;
+  const EASE_DURATION_MS = 10000;
+
+  const video1 = document.getElementById("video1");
+  const video2 = document.getElementById("video2");
+  const fpsDisplay = document.getElementById("fps");
+  const whichDisplay = document.getElementById("which");
+  const form = document.getElementById("url-form");
+
+  let activeVideo = video1;
+  let inactiveVideo = video2;
+
+  let lastFpsLogged = -1;
+
+  function logDetailed(context = "") {
+    const now = new Date().toISOString().split("T")[1].split(".")[0];
+    console.log(`[${now}] ${context} | active=${activeVideo.id} | inactive=${inactiveVideo.id} | ` +
+                `active.currentTime=${activeVideo.currentTime.toFixed(2)} | active.duration=${activeVideo.duration?.toFixed(2)} | ` +
+                `inactive.currentTime=${inactiveVideo.currentTime.toFixed(2)} | opacityA=${video1.style.opacity} | opacityB=${video2.style.opacity} | ` +
+                `playbackRate=${activeVideo.playbackRate.toFixed(2)} | crossfadeMs=${crossfadeMs} | targetFps=${targetFps}`);
+  }
+
+  if (!videoUrl) {
+    form.style.display = 'block';
+    document.querySelector('form').addEventListener('submit', e => {
+      e.preventDefault();
+      const video = encodeURIComponent(document.getElementById('videoUrl').value);
+      const fps = document.getElementById('fpsInput').value;
+      const crossfade = document.getElementById('crossfadeInput').value;
+      window.location.search = `?video=${video}${fps ? `&fps=${fps}`:''}${crossfade ? `&crossfade=${crossfade}`:''}`;
+    });
+  } else {
+    form.style.display = 'none';
+    initializeVideos();
+  }
+
+  function initializeVideos() {
+    logDetailed("🔄 Initializing videos");
+    video1.src = videoUrl;
+    video2.src = videoUrl;
+    video1.load();
+    video2.load();
+    video1.style.opacity = 1;
+    video2.style.opacity = 0;
+    video1.onloadedmetadata = () => {
+      video2.onloadedmetadata = () => {
+        startPlaybackCycle();
+      }
+    }
+  }
+
+  function easePlayback(video, from, to, durationMs) {
+    const start = performance.now();
+    function step(now) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / durationMs, 1);
+      const rate = from + progress * (to - from);
+      video.playbackRate = Math.max(0.1, rate);
+      const currentFps = Math.round(video.playbackRate * DEFAULT_BASE_FPS);
+      if (currentFps !== lastFpsLogged) {
+        lastFpsLogged = currentFps;
+        fpsDisplay.textContent = `FPS: ${currentFps}`;
+      }
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function crossfade() {
+    logDetailed("🎬 Crossfade triggered");
+
+    inactiveVideo.currentTime = 0;
+    inactiveVideo.style.opacity = 0;
+    inactiveVideo.play();
+
+    easePlayback(inactiveVideo, 0.1, targetFps / DEFAULT_BASE_FPS, EASE_DURATION_MS);
+
+    const fadeStart = performance.now();
+    const fromRate = activeVideo.playbackRate;
+    easePlayback(activeVideo, fromRate, 0.1, EASE_DURATION_MS); // ease out during fade
+
+    function fade(now) {
+      const progress = Math.min((now - fadeStart) / crossfadeMs, 1);
+      inactiveVideo.style.opacity = progress;
+      activeVideo.style.opacity = 1 - progress;
+      if (progress < 1) {
+        requestAnimationFrame(fade);
+      } else {
+        activeVideo.pause();
+        [activeVideo, inactiveVideo] = [inactiveVideo, activeVideo];
+        logDetailed(`✅ Crossfade complete. Now showing ${activeVideo === video1 ? 'A' : 'B'}`);
+        fpsDisplay.textContent = `FPS: ${Math.round(activeVideo.playbackRate * DEFAULT_BASE_FPS)}`;
+        startPlaybackCycle();
+      }
+    }
+    requestAnimationFrame(fade);
+  }
+
+  function startPlaybackCycle() {
+    logDetailed(`▶️ Playing ${activeVideo === video1 ? 'A' : 'B'}`);
+    activeVideo.play();
+    whichDisplay.textContent = `Video: ${activeVideo === video1 ? 'A' : 'B'}`;
+    easePlayback(activeVideo, 0.1, targetFps / DEFAULT_BASE_FPS, EASE_DURATION_MS);
+
+    const thisVideo = activeVideo;
+    thisVideo.ontimeupdate = () => {
+      const threshold = thisVideo.duration - crossfadeMs / 1000 - 0.1;
+      if (thisVideo.currentTime >= threshold) {
+        thisVideo.ontimeupdate = null;
+        crossfade(); // start fade AND ease out together
+      }
+    };
+  }
+
+  setInterval(() => {
+    const currentFps = Math.round(activeVideo.playbackRate * DEFAULT_BASE_FPS);
+    if (currentFps !== lastFpsLogged) {
+      lastFpsLogged = currentFps;
+      fpsDisplay.textContent = `FPS: ${currentFps}`;
+    }
+  }, 250);
+});
+</script>
+
+</body>
+</html>

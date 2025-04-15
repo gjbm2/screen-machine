@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
-import base64
 import re
 import time
 import random
@@ -21,6 +20,7 @@ import subprocess
 import logging
 from threading import Thread
 from overlay_ws_server import start_ws_server, send_overlay_to_clients
+from routes.utils import encode_image_uploads, encode_reference_urls
 
 app = Flask(__name__, static_folder='build')
 CORS(app)  # Enable CORS for all routes
@@ -282,6 +282,8 @@ def generate_image():
         error(f"Invalid JSON: {str(e)}")
         return jsonify({"error": f"Invalid JSON: {str(e)}"}), 400
 
+    info(f"Full blob: {data}")
+
     # Generate a unique ID for this batch
     batch_id = data.get('batch_id') or str(uuid.uuid4())
     
@@ -303,7 +305,6 @@ def generate_image():
     publish_destination = params.get('publish_destination', None)
     
     print(f"========================================================")
-    print(f"> Refiner: {refiner}")
     #corrected_refiner = resolve_runtime_value("refiner", refiner, return_key="system_prompt")
     #print(f"  -> corrected_refiner: {corrected_refiner}")
    
@@ -315,6 +316,23 @@ def generate_image():
         if k in main_params
     }
     
+    reference_urls = data.get('referenceUrls', [])
+
+    # 1. Encode reference URLs first
+    info(f"[generate_image] Calling encode_reference_urls with {len(reference_urls)} URLs")
+    images = encode_reference_urls(reference_urls, max_file_size_mb=5)
+    info(f"[generate_image] Finished encode_reference_urls, got {len(images)} images")
+
+
+    # 2. Then encode uploaded files and append
+    image_files = request.files.getlist('image')
+    images.extend(encode_image_uploads(image_files, max_file_size_mb=5))
+
+    # Log processed image details
+    for img in images:
+        info(f"Processed uploaded image '{img['name']}' with length {len(img['image'])}.")
+    
+    ''' THIS CODE WORKED TOO ...
     image_files = request.files.getlist('image')
     images = []
     
@@ -332,7 +350,7 @@ def generate_image():
             })
 
             info(f"Processed uploaded image '{filename}' with length {len(image_base64)}.")
-    
+    '''
     ''' THIS CODE WORKED.
     # Handle uploaded files
     uploaded_files = []
@@ -373,16 +391,19 @@ def generate_image():
     }   
     #info(f"send_obj: {send_obj}")
     
-    # Don't refine if this is an existing batch:
-       
-    response = routes.alexa.handle_image_generation(
-        input_obj = send_obj,
-        wait = True,
-        **call_args
-    )
-    
-    #info(f"Response from image_generation: {response}")
-
+    try:   
+        response = routes.alexa.handle_image_generation(
+            input_obj = send_obj,
+            wait = True,
+            **call_args
+        )
+    except Exception as e:
+        error(f"Image generation failed: {e}")
+        return jsonify({"error": str(e)}), 500
+        
+    if not response:
+        error("Image generation returned no results.")
+        return jsonify({"error": "Image generation returned no results."}), 500
     
     # Generate the requested number of images (based on batch_size)
     result_images = []

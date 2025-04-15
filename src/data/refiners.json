@@ -43,6 +43,13 @@
     "icon": "SquareUserRound"
   },
   {
+    "id": "nous_values",
+    "name": "Nous values",
+	"system_prompt": "refiner-nous-values.txt",
+    "description": "Channel your inner Nous...",
+    "icon": "MessageCircleHeart"
+  },
+  {
     "id": "upscale",
     "name": "Upscale",
     "description": "Increase resolution while preserving details",

@@ -38,90 +38,94 @@ class ApiService {
   }
 
   // Generate images through the API
-  async generateImage(params: GenerateImageParams) {
-    try {
-      const { prompt, workflow, params: workflowParams, global_params, refiner, refiner_params, imageFiles, batch_id, placeholders } = params;
-      
-      console.log(`[api] Received request with workflow: ${workflow}`);
-      console.log(`[api] Received workflowParams:`, workflowParams);
-      console.log(`[api] Received global_params:`, global_params);
-      console.log(`[api] Received refiner:`, refiner);
-      console.log(`[api] Received refiner_params:`, refiner_params);
-      console.log(`[api] Received placeholders:`, placeholders);
-      
-      // Create form data for multipart request
-      const formData = new FormData();
-      
-      // Create a data object to serialize as JSON
-      const jsonData: any = {
-        prompt,
-        workflow,
-        params: workflowParams || {},
-        global_params: global_params || { batch_size: 1 },
-        batch_id,
-        has_reference_image: (imageFiles && imageFiles.length > 0) || false
-      };
-      
-      // Add placeholders if available
-      if (placeholders && placeholders.length > 0) {
-        jsonData.placeholders = placeholders;
-      }
-      
-      // Log publish destination if present
-      if (workflowParams?.publish_destination) {
-        console.log(`[api] Publishing to destination:`, workflowParams.publish_destination);
-      }
-      
-      // Add refiner if specified
-      if (refiner && refiner !== 'none') {
-        console.log(`[api] Using refiner:`, refiner);
-        jsonData.refiner = refiner;
-        if (refiner_params) {
-          console.log(`[api] With refiner params:`, refiner_params);
-          jsonData.refiner_params = refiner_params;
-        }
-      }
-      
-      // Log the complete API payload for debugging
-      console.log("[api] Full API payload:", jsonData);
-      
-      // Append the JSON data
-      formData.append('data', JSON.stringify(jsonData));
-      
-      // Append image files if any
-      if (imageFiles && imageFiles.length > 0) {
-        imageFiles.forEach(file => {
-          // Only append File objects, not string URLs
-          if (file instanceof File) {
-            formData.append('image', file);
-          }
-        });
-      }
-      
-      if (this.mockMode) {
-        // In mock mode, return placeholder images
-        return this.mockGenerateImage(params);
-      }
-      
-	  console.log('Calling:', `${this.apiUrl}/generate-image`);
+	async generateImage(params: GenerateImageParams) {
+	  try {
+		const {
+		  prompt,
+		  workflow,
+		  params: workflowParams,
+		  global_params,
+		  refiner,
+		  refiner_params,
+		  imageFiles,
+		  batch_id,
+		  placeholders,
+		  referenceUrls // ✅ include it in the destructure
+		} = params;
 
-      // Send the actual request to the backend
-      const response = await fetch(`${this.apiUrl}/generate-image`, {
-        method: 'POST',
-        body: formData,
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate image');
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('Error generating image:', error);
-      throw error;
-    }
-  }
+		console.log(`[api] Received request with workflow: ${workflow}`);
+		console.log(`[api] Received workflowParams:`, workflowParams);
+		console.log(`[api] Received global_params:`, global_params);
+		console.log(`[api] Received refiner:`, refiner);
+		console.log(`[api] Received refiner_params:`, refiner_params);
+		console.log(`[api] Received placeholders:`, placeholders);
+		
+		const formData = new FormData();
+
+		const jsonData: any = {
+		  prompt,
+		  workflow,
+		  params: workflowParams || {},
+		  global_params: global_params || { batch_size: 1 },
+		  batch_id,
+		  has_reference_image: (imageFiles && imageFiles.length > 0) || false,
+		};
+
+		if (referenceUrls && referenceUrls.length > 0) {
+		  jsonData.referenceUrls = referenceUrls; // ✅ this is the fix
+		}
+
+		if (placeholders && placeholders.length > 0) {
+		  jsonData.placeholders = placeholders;
+		}
+
+		if (workflowParams?.publish_destination) {
+		  console.log(`[api] Publishing to destination:`, workflowParams.publish_destination);
+		}
+
+		if (refiner && refiner !== 'none') {
+		  console.log(`[api] Using refiner:`, refiner);
+		  jsonData.refiner = refiner;
+		  if (refiner_params) {
+			console.log(`[api] With refiner params:`, refiner_params);
+			jsonData.refiner_params = refiner_params;
+		  }
+		}
+
+		console.log("[api] Full API payload:", jsonData);
+		formData.append('data', JSON.stringify(jsonData));
+
+		if (imageFiles && imageFiles.length > 0) {
+		  imageFiles.forEach(file => {
+			if (file instanceof File) {
+			  formData.append('image', file);
+			}
+		  });
+		}
+
+		if (this.mockMode) {
+		  return this.mockGenerateImage(params);
+		}
+
+		console.log('Calling:', `${this.apiUrl}/generate-image`);
+
+		const response = await fetch(`${this.apiUrl}/generate-image`, {
+		  method: 'POST',
+		  body: formData,
+		});
+
+		if (!response.ok) {
+		  const errorData = await response.json();
+		  throw new Error(errorData.error || 'Failed to generate image');
+		}
+
+		return await response.json();
+	  } catch (error) {
+		console.error('Error generating image:', error);
+		throw error;
+	  }
+	}
+
   
   // Send logs to the API
   async sendLog(message: string) {

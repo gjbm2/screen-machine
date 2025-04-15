@@ -4,20 +4,21 @@ import rawWorkflowsData from './workflows.json';
 
 // Type assertion function to convert the raw JSON data to properly typed workflows
 function convertToTypedWorkflows(data: any[]): Workflow[] {
-  return data.map(workflow => ({
-    id: workflow.id,
-    name: workflow.name,
-	icon: workflow.icon,
-    description: workflow.description || '', // Ensure description exists with a fallback
-    default: workflow.default || false, // Include the default property
-    params: workflow.params.map((param: any): WorkflowParam => ({
-      id: param.id,
-      name: param.name,
-      type: param.type as "select" | "checkbox" | "range" | "text" | "number",
-      options: param.options,
-      default: param.default
-    }))
-  }));
+	return data.map(workflow => ({
+	  id: workflow.id,
+	  name: workflow.name,
+	  icon: workflow.icon,
+	  description: workflow.description || '',
+	  default: workflow.default || false,
+	  input: workflow.input || [], // 👈 include the 'input' field if present
+	  params: workflow.params.map((param: any): WorkflowParam => ({
+		id: param.id,
+		name: param.name,
+		type: param.type as "select" | "checkbox" | "range" | "text" | "number",
+		options: param.options,
+		default: param.default
+	  }))
+	}));
 }
 
 // Export the typed version of the workflows data
