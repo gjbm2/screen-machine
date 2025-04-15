@@ -448,7 +448,7 @@ def start(
                 # update index page
                 routes.display.send_overlay(
                     html="overlay_alert.html",
-                    screens="index",
+                    screens=["index"],
                     substitutions={'{{ALERT_TEXT}}': error_text},
                     duration=5000,
                     job_id=job_id
@@ -475,7 +475,7 @@ def start(
                 # Update index page
                 routes.display.send_overlay(
                     html="overlay_generating.html",
-                    screens="index",
+                    screens=["index"],
                     duration=60000,
                     substitutions={
                         '{{MESSAGE}}': new_message,
@@ -581,7 +581,7 @@ def start(
             display_final_file = f'<a href="{output["message"]}">Done</a>'
             routes.display.send_overlay(
                 html = "overlay_generating.html",
-                screens = "index",
+                screens = ["index"],
                 substitutions = {
                     '{{MESSAGE}}': display_final_file
                 },
@@ -604,7 +604,7 @@ def start(
                 )
             routes.display.send_overlay(
                 html = "overlay_alert.html",
-                screens = "index",
+                screens = ["index"],
                 substitutions = {'{{ALERT_TEXT}}': '❌ Generation failed.'},
                 duration = 30000,
                 job_id = job_id

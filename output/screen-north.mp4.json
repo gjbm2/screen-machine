@@ -1,14 +1,14 @@
 {
-  "prompt": "balloons floating upwards",
+  "prompt": "Tiger in a library",
   "width": null,
   "height": null,
-  "steps": 15,
+  "steps": null,
   "scale": 1,
   "pod": "ks1jy6452r59ox",
   "setwallpaper": null,
   "refine": null,
   "workflow": "wan_image_to_video_upscale_slow.json",
-  "seed": 2835971,
+  "seed": 37196234,
   "timeout": 300,
   "suppress": false,
   "batch": 1,
@@ -16,7 +16,7 @@
   "video_length": 10,
   "images": [
     {
-      "name": "4c70d45a.jpg"
+      "name": "7e367748.jpg"
     }
   ]
 }
