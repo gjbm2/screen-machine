@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Upload, Camera } from 'lucide-react';
@@ -41,8 +42,10 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     const handleImageSelected = (event: CustomEvent) => {
@@ -50,8 +53,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         onImageUpload(event.detail.files);
         const nextWorkflow = findNextImageWorkflow(availableWorkflows, selectedWorkflowId);
 		if (nextWorkflow) {
-		  onWorkflowChange(nextWorkflow.id);
-		  toast.info(`Switched to "${nextWorkflow.name}" workflow`);
+		  onWorkflowChange(nextWorkflow);
+		  toast.info(`Switched to "${nextWorkflow}" workflow`);
 		}
       }
     };
@@ -93,8 +96,99 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     e.target.value = '';
   };
 
+  // Function to handle URL drops
+  const processURL = async (url: string) => {
+    try {
+      // Check if the URL is valid
+      const isValidURL = /^(https?:\/\/)/i.test(url);
+      if (!isValidURL) {
+        toast.error("Invalid URL format");
+        return;
+      }
+
+      // Attempt to fetch the image to verify it's valid
+      const response = await fetch(url, { method: 'HEAD' });
+      
+      if (!response.ok) {
+        toast.error("Could not access the URL");
+        return;
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.startsWith('image/')) {
+        toast.error("URL does not point to a valid image");
+        return;
+      }
+      
+      // Convert URL to a file object
+      const imageResponse = await fetch(url);
+      const blob = await imageResponse.blob();
+      const fileName = url.split('/').pop() || 'image.jpg';
+      const file = new File([blob], fileName, { type: blob.type });
+      
+      onImageUpload([file]);
+      
+      const nextWorkflow = findNextImageWorkflow(availableWorkflows, selectedWorkflowId);
+      if (nextWorkflow) {
+        onWorkflowChange(nextWorkflow);
+        toast.info(`Switched to "${nextWorkflow}" workflow`);
+      }
+    } catch (error) {
+      console.error('Error processing URL:', error);
+      toast.error("Failed to process image URL");
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isLoading) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isLoading) {
+      setIsDragging(true);
+      // Indicate this is a copy operation
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    if (isLoading) return;
+    
+    // Check for files first
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files);
+      return;
+    }
+    
+    // Check for URLs (text/uri-list or text/plain)
+    const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text');
+    if (url) {
+      processURL(url);
+    }
+  };
+
   const triggerFileInput = () => fileInputRef.current?.click();
   const triggerCameraInput = () => cameraInputRef.current?.click();
+
+  // Common drag-enabled button styles
+  const dragButtonClass = `${isDragging ? 'bg-purple-100 border-purple-500' : 'border border-input'} transition-colors`;
 
   if (isMobile) {
     return (
@@ -123,12 +217,17 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
             <Button
               type="button"
               variant="outline"
-              className={`h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 border border-input ${
+              className={`h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 ${dragButtonClass} ${
                 menuOpen
                   ? 'bg-purple-500/10 text-purple-700'
                   : 'hover:bg-purple-500/10 text-purple-700'
               }`}
               disabled={isLoading}
+              ref={buttonRef}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
             >
               <Upload className="h-4 w-4" />
             </Button>
@@ -167,8 +266,13 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         type="button"
         variant="outline"
         onClick={triggerFileInput}
-        className="h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 border border-input"
+        className={`h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 ${dragButtonClass}`}
         disabled={isLoading}
+        ref={buttonRef}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
       >
         <Upload className="h-4 w-4" />
         {!hideLabel && "Upload"}
