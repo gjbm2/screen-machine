@@ -2,6 +2,7 @@
 import { GeneratedImage } from '../types';
 import { ImageGenerationStatus } from '@/types/workflows';
 import { generateImageTitle } from './title-util';
+import { nanoid } from '@/lib/utils';
 
 /**
  * Creates a placeholder image entry for the generation process
@@ -18,6 +19,7 @@ export const createPlaceholderImage = (
   nextContainerId?: number
 ): GeneratedImage => {
   const placeholderImage: GeneratedImage = {
+    id: nanoid(), // Add required id property
     url: '', 
     prompt,
     workflow,
@@ -27,7 +29,8 @@ export const createPlaceholderImage = (
     status: 'generating' as ImageGenerationStatus,
     params,
     refiner,
-    refinerParams
+    refinerParams,
+    title: generateImageTitle(prompt, workflow) // Add title
   };
   
   // Store reference image URLs if there are any

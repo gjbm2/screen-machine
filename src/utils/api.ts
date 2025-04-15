@@ -1,3 +1,4 @@
+
 // API service for all backend requests
 import { toast } from 'sonner';
 
@@ -53,6 +54,8 @@ class ApiService {
 		  batch_id,
 		  placeholders,
 		  referenceUrls,
+          refiner,
+          refiner_params,
 		  is_async
 		} = params;
 
