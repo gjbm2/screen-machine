@@ -112,6 +112,11 @@ export const generateImage = async (
   // Keep track of this generation
   setActiveGenerations(prev => [...prev, currentBatchId]);
   
+  // IMPORTANT: For async workflows, show toast immediately rather than waiting for API response
+  if (isAsync) {
+    toast.success("Async generation started, you'll be notified when it completes");
+  }
+  
   try {
     const mergedImageInputs = [
       ...(config.imageFiles || []),
@@ -246,13 +251,10 @@ export const generateImage = async (
             return updatedImages;
           });
 
-          // Success message
+          // Success message (only for non-async workflows since we already showed a toast for async)
           if (response.images?.length > 0) {
             toast.success(`Generated ${response.images.length} image${response.images.length > 1 ? 's' : ''} successfully`);
           }
-        } else {
-          // For async workflows, just show a message that generation has started
-          toast.success("Async generation started, you'll be notified when it completes");
         }
       } catch (error: any) {
         console.error('Image generation error:', error);
