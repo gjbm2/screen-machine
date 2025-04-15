@@ -120,7 +120,7 @@ export const usePromptSubmission = ({
         collapseAllExcept(result);
       }
 
-      if (result) {
+      if (result && !isAsync) {
         setLastBatchIdUsed(result);
       }
 

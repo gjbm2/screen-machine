@@ -26,8 +26,8 @@ export const useImageGenerationApi = (
       setActiveGenerations(prev => [...prev, batchId]);
       
       // Always add this batch ID to the container order if it's a new batch
-      // (which it will be except when using "Go Again" functionality)
-      if (!config.batchId) {
+      // AND it's not an async workflow
+      if (!config.batchId && !config.isAsync) {
         setImageContainerOrder(prev => [batchId, ...prev]);
       }
       
@@ -42,7 +42,8 @@ export const useImageGenerationApi = (
           globalParams: config.globalParams,
           refiner: config.refiner,
           refinerParams: config.refinerParams,
-          isReusingBatch: !!config.batchId
+          isReusingBatch: !!config.batchId,
+          isAsync: config.isAsync
         }
       });
       
@@ -51,13 +52,14 @@ export const useImageGenerationApi = (
         prompt: config.prompt,
         imageFiles: config.imageFiles,
         workflow: config.workflow,
-		referenceUrls: config.referenceUrls,
+        referenceUrls: config.referenceUrls,
         params: config.params,
         globalParams: config.globalParams,
         refiner: config.refiner,
         refinerParams: config.refinerParams,
         batchId: batchId,
-        nextContainerId
+        nextContainerId,
+        isAsync: config.isAsync
       };
       
       // Set up the actions needed by the image generator
