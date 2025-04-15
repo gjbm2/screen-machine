@@ -100,7 +100,12 @@ export const generateImage = async (
   setActiveGenerations(prev => [...prev, currentBatchId]);
   
   try {
-    const { uploadedFiles, uploadedImageUrls } = processUploadedFiles(imageFiles);
+	const mergedImageInputs = [
+	  ...(config.imageFiles || []),
+	  ...(config.referenceUrls || [])
+	];
+
+	const { uploadedFiles, uploadedImageUrls } = processUploadedFiles(mergedImageInputs);
     
     // Generate title for this image generation
     const imageTitle = generateImageTitle(prompt, workflow);
@@ -189,12 +194,15 @@ export const generateImage = async (
           refiner,
           refiner_params: refinerParams,
           imageFiles: uploadedFiles,
+		  referenceUrls: uploadedImageUrls,
           batch_id: currentBatchId,
           placeholders: placeholderIds // Send placeholder IDs to API
         };
         
         // Enhanced logging to debug
         console.log("[image-generator] Sending API payload:", payload);
+
+
         
         const response = await apiService.generateImage(payload);
         

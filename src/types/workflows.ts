@@ -13,6 +13,7 @@ export interface Workflow {
   icon: string;
   description: string;
   default?: boolean;
+  input?: ('text' | 'image')[]; // NEW: specifies input types
   params: WorkflowParam[];
 }
 

@@ -1,6 +1,13 @@
 import os
 import difflib
 import json
+from PIL import Image
+import io
+import base64
+from werkzeug.utils import secure_filename
+import requests
+from utils.logger import log_to_console, info, error, warning, debug, console_logs
+from io import BytesIO
 
 # Internal JSON cache
 _json_cache = {}
@@ -123,3 +130,118 @@ def resolve_runtime_value(category, input_value, return_key="id", match_key=None
 def reset_cache():
     """Clear the cached JSON data."""
     _json_cache.clear()
+
+
+def encode_image_uploads(image_files, max_file_size_mb=5):
+    """
+    Compress and base64-encode uploaded images as JPEGs while preserving aspect ratio.
+
+    Args:
+        image_files (list): List of Werkzeug FileStorage objects.
+        max_file_size_mb (int): Maximum size per image in megabytes.
+
+    Returns:
+        List of dicts with keys: "name" (filename), "image" (base64 string).
+    """
+    max_size_bytes = max_file_size_mb * 1024 * 1024
+    result = []
+
+    def compress_image(image, max_size_bytes):
+        quality = 95
+        step = 5
+        buffer = io.BytesIO()
+
+        # Ensure it's in RGB for JPEG compatibility
+        if image.mode in ("RGBA", "P", "LA"):
+            image = image.convert("RGB")
+
+        while quality > 5:
+            buffer.seek(0)
+            buffer.truncate()
+            image.save(buffer, format="JPEG", quality=quality, optimize=True)
+            if buffer.tell() <= max_size_bytes:
+                break
+            quality -= step
+
+        buffer.seek(0)
+        return buffer.read()
+
+    for file in image_files:
+        if file and file.filename:
+            filename = secure_filename(file.filename)
+            image = Image.open(file.stream)
+
+            compressed_bytes = compress_image(image, max_size_bytes)
+            image_base64 = base64.b64encode(compressed_bytes).decode('utf-8')
+
+            result.append({
+                "name": os.path.splitext(filename)[0] + ".jpg",
+                "image": image_base64
+            })
+
+    return result
+    
+import base64, os, requests
+from PIL import Image
+from io import BytesIO
+from utils.logger import info, error
+
+def encode_reference_urls(reference_urls, max_file_size_mb=5):
+    """
+    Downloads, compresses, and base64-encodes images from external URLs.
+    Returns a list of dicts: {name, image}
+    """
+    result = []
+    max_size_bytes = max_file_size_mb * 1024 * 1024
+
+    # Normalize and dedupe: remove query params
+    normalized = list({url.split("?")[0]: url for url in reference_urls}.values())
+    info(f"[encode_reference_urls] Called with {len(reference_urls)} raw, {len(normalized)} unique URLs")
+
+    def compress_image(image, max_size_bytes):
+        info(f"[compress_image] Converting to JPEG. Original mode: {image.mode}, size: {image.size}")
+        buffer = BytesIO()
+
+        # Convert to RGB if needed (JPEG doesn't support alpha or palette)
+        if image.mode in ("RGBA", "P", "LA"):
+            image = image.convert("RGB")
+
+        quality = 95
+        step = 5
+
+        while quality > 5:
+            buffer.seek(0)
+            buffer.truncate()
+            image.save(buffer, format="JPEG", quality=quality, optimize=True)
+            if buffer.tell() <= max_size_bytes:
+                break
+            quality -= step
+
+        buffer.seek(0)
+        return buffer.read()
+
+    for url in normalized:
+        try:
+            info(f"[encode_reference_urls] Fetching: {url}")
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+
+            content_type = response.headers.get("Content-Type", "")
+            info(f"[encode_reference_urls] Content-Type: {content_type}")
+
+            image = Image.open(BytesIO(response.content)).convert("RGB")
+            format = image.format or "PNG"
+            compressed_bytes = compress_image(image, max_size_bytes)
+            image_base64 = base64.b64encode(compressed_bytes).decode('utf-8')
+
+            result.append({
+                "name": os.path.basename(url.split("?")[0]).replace(".png", ".jpg"),
+                "image": image_base64
+            })
+
+            info(f"[encode_reference_urls] Encoded {os.path.basename(url)} (length={len(image_base64)})")
+
+        except Exception as e:
+            error(f"[encode_reference_urls] Failed to process {url}: {str(e)}")
+
+    return result

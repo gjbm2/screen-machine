@@ -13,6 +13,7 @@ def send_overlay(
     position: str = None,
     clear: bool = True,
     substitutions=None,
+    fadein=0
 ):
     # Load from file if it exists
     file_path = findfile(html)
@@ -43,6 +44,7 @@ def send_overlay(
         "duration": duration,
         "position": position,
         "clear": clear,
+        "fadein": fadein
     }
 
     asyncio.run(send_overlay_to_clients(message))

@@ -1,0 +1,22 @@
+{
+  "prompt": "balloons floating upwards",
+  "width": null,
+  "height": null,
+  "steps": 15,
+  "scale": 1,
+  "pod": "ks1jy6452r59ox",
+  "setwallpaper": null,
+  "refine": null,
+  "workflow": "wan_image_to_video_upscale_slow.json",
+  "seed": 2835971,
+  "timeout": 300,
+  "suppress": false,
+  "batch": 1,
+  "metaprompt": false,
+  "video_length": 10,
+  "images": [
+    {
+      "name": "4c70d45a.jpg"
+    }
+  ]
+}

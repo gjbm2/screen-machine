@@ -5,7 +5,7 @@
     "name": "North screen",
     "icon": "SquareArrowUp",
     "type": "output_file",
-    "file": "screen-north.jpg",
+    "file": "screen-north",
 	"maxwidth": 3840,
 	"maxheight": 2160,
     "description": "Publish to big screen (north)"
@@ -15,17 +15,67 @@
     "name": "South screen",
     "icon": "SquareArrowDown",
     "type": "output_file",
-    "file": "screen-south.jpg",
+    "file": "screen-south",
 	"maxwidth": 3840,
 	"maxheight": 2160,
     "description": "Publish to big screen (south)"
+  },
+  {
+    "id": "work-laptop-background-main",
+    "name": "Work laptop - main",
+    "icon": "LaptopMinimal",
+    "type": "output_file",
+    "file": "work-laptop-background-main",
+        "maxwidth": 3840,
+        "maxheight": 2160,
+    "description": "Publish to work laptop (main)"
+  },
+  {
+    "id": "work-laptop-background-landscape",
+    "name": "Work laptop - landscape",
+    "icon": "LaptopMinimal",
+    "type": "output_file",
+    "file": "work-laptop-background-landscape",
+        "maxwidth": 3840,
+        "maxheight": 2160,
+    "description": "Publish to work laptop"
+  },
+  {
+    "id": "work-laptop-background-portrait",
+    "name": "Work laptop - portrait",
+    "icon": "LaptopMinimal",
+    "type": "output_file",
+    "file": "work-laptop-background-portrait",
+        "maxwidth": 2160,
+        "maxheight": 3840,
+    "description": "Publish to work laptop (portrait)"
+  },
+  {
+    "id": "work-laptop-background-projected",
+    "name": "Work laptop - projected",
+    "icon": "Presentation",
+    "type": "output_file",
+    "file": "work-laptop-background-projected",
+        "maxwidth": 2160,
+        "maxheight": 3840,
+    "description": "Publish to work laptop (projected)"
+  },
+  {
+    "id": "the-beast",
+    "name": "Nous - The Beast",
+    "icon": "PawPrint",
+    "type": "output_file",
+    "file": "the-beast",
+        "maxwidth": 3840,
+        "maxheight": 2160,
+    "description": "Publish to The Neast at Nous HQ"
   },
   {
     "id": "cloud",
     "name": "Cloud",
     "icon": "Cloud",
     "type": "s3",
-    "file": "cloud-storage.jpg",
+    "file": "cloud-storage",
     "description": "Publish to cloud storage"
   }
 ]

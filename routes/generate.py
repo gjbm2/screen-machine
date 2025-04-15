@@ -12,8 +12,9 @@ import routes.openai
 from routes.utils import findfile
 import routes.display
 from time import sleep, time 
-import asyncio
 import uuid
+from overlay_ws_server import job_progress_listeners_latest
+from urllib.parse import urlparse
 
 # Runpod
 import runpod
@@ -68,6 +69,24 @@ except ImportError:
 # MAIN #
 ########
 
+def save_video_with_metadata(url: str, img_metadata: dict, save_path: str):
+    # Download the video
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+
+    with open(save_path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+
+    info(f"Saved MP4 to {save_path}")
+
+    # Save metadata sidecar as .json
+    metadata_path = save_path + ".json"
+    with open(metadata_path, "w", encoding="utf-8") as meta_file:
+        json.dump(img_metadata, meta_file, ensure_ascii=False, indent=2)
+
+    info(f"Saved metadata to {metadata_path}")
+
 def save_jpeg_with_metadata(url, img_metadata: dict, save_path: str):
     response = requests.get(url)
     response.raise_for_status()
@@ -83,6 +102,15 @@ def save_jpeg_with_metadata(url, img_metadata: dict, save_path: str):
     exif_bytes = piexif.dump(exif_dict)
     img.save(save_path, "JPEG", exif=exif_bytes, quality=95)
     info(f"Saved JPEG with metadata to {save_path}")
+    
+def detect_file_type(url: str) -> str:
+    parsed = urlparse(url)
+    path = parsed.path.lower()
+    if path.endswith(".mp4"):
+        return "video"
+    elif path.endswith(".jpg") or path.endswith(".jpeg") or path.endswith(".png"):
+        return "image"
+    return "unknown"
 
 def loosely_matches(a, b):
     # Normalize both strings to lowercase, strip spaces
@@ -156,6 +184,7 @@ def start(
         negativeprompt: str | None = None,
         upscaler: str | None = None,
         lora: str | None = None,
+        video_length: int | None = None,
         lora_strength: float | None = None,
         cli_args=None,
         publish_destination: str | None = None,
@@ -195,6 +224,7 @@ def start(
             "lora": lora,
             "lora_strength": lora_strength,
             "suppress": suppress,
+            "video_length" : video_length,
             "metaprompt": metaprompt
         }
         provided_args["images"] = images        # include images if any
@@ -202,6 +232,7 @@ def start(
         # Merge defaults with provided arguments (use provided if not None, else default)
         final_args = {**defaults}
         final_args.update({k: v for k, v in provided_args.items() if v is not None})
+        info(f"Kwags: {kwargs}")
         final_args.update(kwargs)
         
         #final_args = {k: v if v is not None else defaults.get(k, None) for k, v in provided_args.items()}
@@ -235,7 +266,8 @@ def start(
         routes.display.send_overlay(
             html = "overlay_generating.html",
             screens = [publish_destination] if isinstance(publish_destination, str) else publish_destination, 
-            duration = 120000,
+            substitutions = {'{{MESSAGE}}': 'Initialising...'},
+            duration = 30000,
             position = "top-left"
         )
         
@@ -283,7 +315,7 @@ def start(
             "height": locals().get("maxheight", 6400)
         },
         r"{{IMAGE-TO-VIDEO}}": {
-            "length": locals().get("length", 33)
+            "length": vars(args_namespace).get("video_length", 10)
         },
         r"{{SAVE-WEBM}}": {
             "filename_prefix": unique_video_name
@@ -321,35 +353,144 @@ def start(
     try:
         # Let's go...
         run_request = endpoint.run(input_payload)
+        job_id = run_request.job_id
 
         # get initial status
         status = run_request.status()
         info(f"Initial status: '{status}'")
 
-        timeout = getattr(args_namespace, "timeout", 300)
-        poll_interval = getattr(args_namespace, "poll_interval", 2)
+        #timeout = getattr(args_namespace, "timeout", 600)
+        timeout = 100000  # TEMPORARY
+        poll_interval = getattr(args_namespace, "poll_interval", 0.5)
         info(f"> Polling RunPod every {poll_interval}s for up to {timeout}s...")
-        
+
         start_time = time()
         
+        try:
+            workflow_entry = next(item for item in workflow_config if item["id"] == args_namespace.workflow)
+            processing_stages = workflow_entry.get("processing_stages", ["Rendering"])
+            if not isinstance(processing_stages, list):
+                processing_stages = ["Rendering"]
+        except Exception:
+            processing_stages = ["Rendering"]
+
+        last_status = None
+        last_update_message = ""
+        last_update_percentage = ""
+        last_max_val = None
+        last_value = None
+        stage_index = 1
+
+        # To avoid redundant logging
+        last_kind = None
+        last_details_serialized = None
+
         while True:
             status = run_request.status()
-            info(f"{int(time()-start_time)} RunPod job status: {status}")
+            progress = job_progress_listeners_latest.get(job_id)
 
-            if status == "COMPLETED":
+            value = None
+            max_val = None
+            new_message = last_update_message
+            new_percentage = last_update_percentage
+            new_stage_index = stage_index
+            should_update_overlay = False
+
+            # Detect status change
+            if status != last_status:
+                info(f"{int(time() - start_time)} RunPod job status: {status}")
+                last_status = status
+                should_update_overlay = True
+
+            if status == "IN_QUEUE":
+                new_message = "Queued..."
+                new_percentage = ""
+                should_update_overlay = (new_message != last_update_message)
+
+            elif status == "IN_PROGRESS":
+                if progress:
+                    kind = progress.get("comfy", {}).get("type")
+                    details = progress.get("comfy", {}).get("data", {})
+                    current_details_serialized = json.dumps(details, sort_keys=True)
+
+                    if kind != last_kind or current_details_serialized != last_details_serialized:
+                        info(f"📡 Latest update for job {job_id}: [{kind}] {details}")
+                        last_kind = kind
+                        last_details_serialized = current_details_serialized
+
+                    if kind == "progress":
+                        max_val = int(details.get("max", 1))
+                        value = int(details.get("value", 0))
+
+                        # Only update if progress has changed
+                        if value != last_value or max_val != last_max_val:
+                            # Detect stage change
+                            if last_value is not None and (value < last_value or max_val != last_max_val):
+                                new_stage_index = min(stage_index + 1, len(processing_stages))
+
+                            stage_label = f"{processing_stages[new_stage_index - 1]} (stage {new_stage_index} of {len(processing_stages)})"
+                            new_message = stage_label
+                            new_percentage = int(100 * value / max_val)
+                            should_update_overlay = True
+
+                    elif kind == "status":
+                        queue_remaining = details.get("status", {}).get("exec_info", {}).get("queue_remaining")
+                        new_message = "Finalising..." if queue_remaining == 0 else "Queued..."
+                        new_percentage = ""
+                        should_update_overlay = True
+
+                else:
+                    # Fallback if no progress available
+                    new_message = "Working..."
+                    new_percentage = ""
+                    should_update_overlay = True
+
+            elif status in {"FAILED", "CANCELLED"}:
+                error_text = "Generation cancelled." if status == "CANCELLED" else "❌ Generation failed."
+                if publish_destination:
+                    routes.display.send_overlay(
+                        html="overlay_alert.html",
+                        screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
+                        substitutions={'{{ALERT_TEXT}}': error_text},
+                        duration=5000,
+                        position="top-left",
+                        clear=True
+                    )
+                raise RuntimeError(error_text)
+
+            elif status == "COMPLETED":
                 output = run_request.output()
                 break
-            elif status == "FAILED":
-                output = run_request.output()
-                if output and output.get("status") == "success":
-                    info("⚠️ RunPod status was FAILED, but output is '{output}'")
-                    break
-                raise RuntimeError("❌ RunPod job failed (no output).")
-            
+
+            # Update overlay only if there's a real change
+            if should_update_overlay and (
+                new_message != last_update_message or new_percentage != last_update_percentage
+            ):
+                if publish_destination:
+                    routes.display.send_overlay(
+                        html="overlay_generating.html",
+                        screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
+                        duration=60000,
+                        substitutions={
+                            '{{MESSAGE}}': new_message,
+                            '{{PROGRESS_PERCENT}}': new_percentage
+                        },
+                        position="top-left",
+                        fadein=0,
+                        clear=True
+                    )
+                last_update_message = new_message
+                last_update_percentage = new_percentage
+                stage_index = new_stage_index
+                last_max_val = max_val
+                last_value = value
+
+            # Timeout check
             if time() - start_time > timeout:
-                raise TimeoutError("⏰ RunPod job timed out after {timeout} seconds.")
-            
+                raise TimeoutError(f"⏰ RunPod job timed out after {timeout} seconds.")
+
             sleep(poll_interval)
+
         
         #run_request = endpoint.run_sync(
         #    input_payload,
@@ -379,17 +520,32 @@ def start(
     
             # Where do we need to deliver this?
             if publish_destination:
-                targetfilename = os.path.join(os.getcwd(), "output", targetfile)
-                
-                info(f"output_path {targetfilename}")
-                info(f"image_url {output['message']}")
-                info(f"metadata {vars(args_namespace)}")
-                
-                save_jpeg_with_metadata(
-                    url = output["message"],
-                    img_metadata = vars(args_namespace),
-                    save_path = targetfilename
-                )
+                file_type = detect_file_type(output["message"])
+
+                if file_type == "image":
+                    full_filename = targetfile + ".jpg"
+                    targetfilepath = os.path.join(os.getcwd(), "output", full_filename)
+                    
+                    info(f"📷 Saving image to {targetfilepath}")
+                    save_jpeg_with_metadata(
+                        url=output["message"],
+                        img_metadata=vars(args_namespace),
+                        save_path=targetfilepath
+                    )
+
+                elif file_type == "video":
+                    full_filename = targetfile + ".mp4"
+                    targetfilepath = os.path.join(os.getcwd(), "output", full_filename)
+                    
+                    info(f"🎞️ Saving video to {targetfilepath}")
+                    save_video_with_metadata(
+                        url=output["message"],
+                        img_metadata=vars(args_namespace),
+                        save_path=targetfilepath
+                    )
+
+                else:
+                    raise ValueError(f"❌ Unrecognized file type in URL: {output['message']}")
            
                 routes.display.send_overlay(
                     html = "overlay_prompt.html",

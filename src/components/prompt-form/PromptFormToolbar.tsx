@@ -37,12 +37,14 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   return (
     <div className="flex items-center justify-between overflow-x-auto py-1">
       <div className="flex flex-nowrap items-center gap-1 sm:gap-2">
-        <ImageUploader
-          isLoading={isLoading}
-          onImageUpload={onImageUpload}
-          onWorkflowChange={onWorkflowChange}
-          hideLabel={isMobile}
-        />
+		<ImageUploader
+		  isLoading={isLoading}
+		  onImageUpload={onImageUpload}
+		  onWorkflowChange={onWorkflowChange}
+		  availableWorkflows={workflows}
+		  selectedWorkflowId={selectedWorkflow}  // ✅ pass current workflow id
+		  hideLabel={isMobile}
+		/>
         
         <WorkflowIconSelector
           workflows={workflows}

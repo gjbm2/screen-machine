@@ -6,15 +6,15 @@ const POLL_INTERVAL = 2000;
 const FADE_DURATION = 3500;
 const OVERLAY_FADEIN_DURATION = 2000;
 const OVERLAY_FADEOUT_DURATION = 5000;
-const WS_HOST = import.meta.env.VITE_WS_HOST
-//const WS_HOST = import.meta.env.VITE_WS_HOST || "ws://172.28.255.46:8765";
+const WS_HOST = import.meta.env.VITE_WS_HOST;
 
 interface OverlayMessage {
   html: string;
   duration: number;
-  position?: string; // Make position optional
+  position?: string;
   clear?: boolean;
   screens?: string[];
+  fadein?: number;
 }
 
 interface Overlay {
@@ -22,6 +22,7 @@ interface Overlay {
   html: string;
   position: string | undefined;
   visible: boolean;
+  fadein?: number;
 }
 
 function generateId(): string {
@@ -35,6 +36,8 @@ function useOverlayWebSocket(
   setOverlays: React.Dispatch<React.SetStateAction<Overlay[]>>
 ) {
   useEffect(() => {
+    if (!screenId) return;
+
     let socket: WebSocket | null = null;
     let reconnectAttempts = 0;
     let reconnectTimeout: ReturnType<typeof setTimeout>;
@@ -44,7 +47,7 @@ function useOverlayWebSocket(
 
       socket.onopen = () => {
         reconnectAttempts = 0;
-        console.log("🟢 WebSocket connected");
+        console.log("🟢 WebSocket connected to", WS_HOST);
       };
 
       socket.onclose = () => {
@@ -63,7 +66,7 @@ function useOverlayWebSocket(
         console.log("📬 WS message received:", event.data);
         try {
           const msg: OverlayMessage = JSON.parse(event.data);
-          if (msg.screens && msg.screens.length > 0 && !msg.screens.includes(screenId || "")) {
+          if (msg.screens && msg.screens.length > 0 && !msg.screens.includes(screenId)) {
             console.log(`🛑 Message not for this screen: ${screenId}`);
             return;
           }
@@ -75,21 +78,29 @@ function useOverlayWebSocket(
 
           setOverlays((prev) => {
             const base = clear ? [] : [...prev];
-            return [...base, { id, html, position, visible: false }];
+            return [...base, {
+              id,
+              html,
+              position,
+              visible: msg.fadein === 0,
+              fadein: msg.fadein
+            }];
           });
 
-          setTimeout(() => {
-            setOverlays((prev) =>
-              prev.map((o) => (o.id === id ? { ...o, visible: true } : o))
-            );
-          }, 50);
+          if (msg.fadein !== 0) {
+            setTimeout(() => {
+              setOverlays((prev) =>
+                prev.map((o) => (o.id === id ? { ...o, visible: true } : o))
+              );
+            }, 50);
+          }
 
           setTimeout(() => {
             setOverlays((prev) =>
               prev.map((o) => (o.id === id ? { ...o, visible: false } : o))
             );
 
-            const removalTimeout = setTimeout(() => {
+            setTimeout(() => {
               setOverlays((prev) => prev.filter((o) => o.id !== id));
             }, OVERLAY_FADEOUT_DURATION);
           }, displayTime);
@@ -108,36 +119,31 @@ function useOverlayWebSocket(
   }, [screenId, setOverlays]);
 }
 
-function getOverlayStyle(position: string | undefined, visible: boolean): React.CSSProperties {
+function getOverlayStyle(position: string | undefined, visible: boolean, fadein?: number): React.CSSProperties {
+  const fadeDuration = visible
+    ? (typeof fadein === "number" ? fadein : OVERLAY_FADEIN_DURATION)
+    : OVERLAY_FADEOUT_DURATION;
+
   const baseStyle: React.CSSProperties = {
     position: "absolute",
     zIndex: 10000,
     opacity: visible ? 1 : 0,
-    transition: `opacity ${visible ? OVERLAY_FADEIN_DURATION : OVERLAY_FADEOUT_DURATION}ms ease`,
+    transition: fadein === 0 ? "none" : `opacity ${fadeDuration}ms ease`,
     pointerEvents: "none"
   };
 
-  // If no position is provided, don't apply positioning to the outer div
   if (!position) {
-    return { ...baseStyle, top: 0, left: 0, width: "100vw", height: "100vh" }; // Full viewport size
+    return { ...baseStyle, top: 0, left: 0, width: "100vw", height: "100vh" };
   }
 
-  // Otherwise, apply default positions
   switch (position) {
-    case "top-left":
-      return { ...baseStyle, top: "20px", left: "20px" };
-    case "top-center":
-      return { ...baseStyle, top: "20px", left: "50%", transform: "translateX(-50%)" };
-    case "top-right":
-      return { ...baseStyle, top: "20px", right: "20px" };
-    case "bottom-left":
-      return { ...baseStyle, bottom: "20px", left: "20px" };
-    case "bottom-center":
-      return { ...baseStyle, bottom: "20px", left: "50%", transform: "translateX(-50%)" };
-    case "bottom-right":
-      return { ...baseStyle, bottom: "20px", right: "20px" };
-    default:
-      return { ...baseStyle, bottom: "20px", left: "50%", transform: "translateX(-50%)" };
+    case "top-left": return { ...baseStyle, top: "20px", left: "20px" };
+    case "top-center": return { ...baseStyle, top: "20px", left: "50%", transform: "translateX(-50%)" };
+    case "top-right": return { ...baseStyle, top: "20px", right: "20px" };
+    case "bottom-left": return { ...baseStyle, bottom: "20px", left: "20px" };
+    case "bottom-center": return { ...baseStyle, bottom: "20px", left: "50%", transform: "translateX(-50%)" };
+    case "bottom-right": return { ...baseStyle, bottom: "20px", right: "20px" };
+    default: return { ...baseStyle, bottom: "20px", left: "50%", transform: "translateX(-50%)" };
   }
 }
 
@@ -146,56 +152,96 @@ export default function DisplayPage() {
   const [currentSrc, setCurrentSrc] = useState<string | null>(null);
   const [fadeInSrc, setFadeInSrc] = useState<string | null>(null);
   const [fadeInVisible, setFadeInVisible] = useState(false);
+  const [videoKey, setVideoKey] = useState<string>("initial");
   const [overlays, setOverlays] = useState<Overlay[]>([]);
 
   const lastModifiedRef = useRef<number>(0);
-  const imageFileRef = useRef<string | null>(null);
+  const baseFileNameRef = useRef<string | null>(null);
 
   useEffect(() => {
     const destinations = getPublishDestinations();
-    const matched = destinations.find(
-      (d) => d.id === screenId && d.type === "output_file"
-    );
+    const matched = destinations.find(d => d.id === screenId && d.type === "output_file");
     if (matched) {
-      imageFileRef.current = matched.file;
-      const initialUrl = `/output/${matched.file}?t=${Date.now()}`;
-      lastModifiedRef.current = Date.now();
-      setCurrentSrc(initialUrl);
+      baseFileNameRef.current = matched.file.replace(/\.(jpg|mp4)$/, "");
     }
   }, [screenId]);
 
   useEffect(() => {
-    if (!imageFileRef.current) return;
-    const imageUrl = `/output/${imageFileRef.current}`;
+    if (!baseFileNameRef.current) return;
+
+    const detectInitialFile = async () => {
+      const base = `/output/${baseFileNameRef.current}`;
+      const jpgUrl = `${base}.jpg`;
+      const mp4Url = `${base}.mp4`;
+
+      const [jpgRes, mp4Res] = await Promise.allSettled([
+        fetch(jpgUrl, { method: "HEAD" }),
+        fetch(mp4Url, { method: "HEAD" }),
+      ]);
+
+      const jpgModified = jpgRes.status === "fulfilled"
+        ? new Date(jpgRes.value.headers.get("last-modified") || 0).getTime()
+        : 0;
+      const mp4Modified = mp4Res.status === "fulfilled"
+        ? new Date(mp4Res.value.headers.get("last-modified") || 0).getTime()
+        : 0;
+
+      const latestType = jpgModified > mp4Modified ? "jpg" : "mp4";
+      const latestModified = Math.max(jpgModified, mp4Modified);
+      lastModifiedRef.current = latestModified;
+
+      const initialUrl = latestType === "jpg"
+        ? `${base}.jpg?t=${latestModified}`
+        : `${base}.mp4?t=${latestModified}`;
+
+      setCurrentSrc(initialUrl);
+      setVideoKey(`${Date.now()}`);
+    };
+
+    detectInitialFile();
 
     const checkForChange = async () => {
-      try {
-        const res = await fetch(imageUrl, { method: "HEAD" });
-        const lastModified = new Date(res.headers.get("last-modified") || 0).getTime();
-        if (lastModified > lastModifiedRef.current) {
-          lastModifiedRef.current = lastModified;
-          const newUrl = `${imageUrl}?t=${Date.now()}`;
-          const img = new Image();
-          img.src = newUrl;
-          img.onload = () => {
-            setFadeInSrc(newUrl);
-            setFadeInVisible(false);
-            requestAnimationFrame(() => setFadeInVisible(true));
-            setTimeout(() => {
-              setCurrentSrc(newUrl);
-              setFadeInSrc(null);
-              setFadeInVisible(false);
-            }, FADE_DURATION);
-          };
-        }
-      } catch (err) {
-        console.error("Polling error:", err);
+      const base = `/output/${baseFileNameRef.current}`;
+      const jpgUrl = `${base}.jpg`;
+      const mp4Url = `${base}.mp4`;
+
+      const [jpgRes, mp4Res] = await Promise.allSettled([
+        fetch(jpgUrl, { method: "HEAD" }),
+        fetch(mp4Url, { method: "HEAD" }),
+      ]);
+
+      const jpgModified = jpgRes.status === "fulfilled"
+        ? new Date(jpgRes.value.headers.get("last-modified") || 0).getTime()
+        : 0;
+      const mp4Modified = mp4Res.status === "fulfilled"
+        ? new Date(mp4Res.value.headers.get("last-modified") || 0).getTime()
+        : 0;
+
+      const latestType = jpgModified > mp4Modified ? "jpg" : "mp4";
+      const latestModified = Math.max(jpgModified, mp4Modified);
+
+      if (latestModified > lastModifiedRef.current) {
+        lastModifiedRef.current = latestModified;
+
+        const newUrl = latestType === "jpg"
+          ? `${base}.jpg?t=${latestModified}`
+          : `${base}.mp4?t=${latestModified}`;
+
+        setFadeInSrc(newUrl);
+        setFadeInVisible(false);
+        requestAnimationFrame(() => setFadeInVisible(true));
+        setTimeout(() => {
+          setCurrentSrc(newUrl);
+          setVideoKey(`${Date.now()}`);
+          setFadeInSrc(null);
+          setFadeInVisible(false);
+        }, FADE_DURATION);
       }
     };
 
     const interval = setInterval(checkForChange, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, []);
+  }, [screenId]);
 
   useOverlayWebSocket(screenId, setOverlays);
 
@@ -207,7 +253,7 @@ export default function DisplayPage() {
       scripts.forEach((script) => {
         const scriptElement = document.createElement("script");
         scriptElement.textContent = script.textContent;
-        document.body.appendChild(scriptElement); // Execute the script
+        document.body.appendChild(scriptElement);
       });
     }
   }, [overlays]);
@@ -227,21 +273,60 @@ export default function DisplayPage() {
       }}
       ref={containerRef}
     >
-      <img
-        src={currentSrc}
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "contain",
-          zIndex: 0,
-        }}
-        alt="Current image"
-      />
+      {currentSrc.endsWith(".mp4?t=") || currentSrc.includes(".mp4?") ? (
+        <video
+          key={videoKey}
+          src={currentSrc}
+          autoPlay
+          muted
+          loop
+          playsInline
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            zIndex: 0,
+          }}
+        />
+      ) : (
+        <img
+          src={currentSrc}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            zIndex: 0,
+          }}
+          alt="Current image"
+        />
+      )}
 
-      {fadeInSrc && (
+      {fadeInSrc?.includes(".mp4") ? (
+        <video
+          src={fadeInSrc}
+          autoPlay
+          muted
+          loop
+          playsInline
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            zIndex: 1,
+            opacity: fadeInVisible ? 1 : 0,
+            transition: `opacity ${FADE_DURATION}ms ease`,
+          }}
+        />
+      ) : fadeInSrc ? (
         <img
           src={fadeInSrc}
           style={{
@@ -257,12 +342,12 @@ export default function DisplayPage() {
           }}
           alt="Next image"
         />
-      )}
+      ) : null}
 
       {overlays.map((o) => (
         <div
           key={o.id}
-          style={getOverlayStyle(o.position, o.visible)}
+          style={getOverlayStyle(o.position, o.visible, o.fadein)}
           dangerouslySetInnerHTML={{ __html: o.html }}
         />
       ))}

@@ -3,7 +3,7 @@
     "inputs": {
       "seed": 353470491069365,
       "steps": 20,
-      "cfg": 6,
+      "cfg": 5,
       "sampler_name": "uni_pc",
       "scheduler": "simple",
       "denoise": 1,
@@ -31,7 +31,7 @@
   },
   "6": {
     "inputs": {
-      "text": "girl slowly licks her icecream and smiles happily",
+      "text": "bouncing ball",
       "clip": [
         "38",
         0
@@ -105,7 +105,7 @@
     "inputs": {
       "filename_prefix": "output_video",
       "codec": "vp9",
-      "fps": 12,
+      "fps": 16,
       "crf": 32,
       "images": [
         "8",
@@ -128,9 +128,9 @@
   },
   "50": {
     "inputs": {
-      "width": 768,
-      "height": 768,
-      "length": 153,
+      "width": 1280,
+      "height": 720,
+      "length": 100,
       "batch_size": 1,
       "positive": [
         "6",

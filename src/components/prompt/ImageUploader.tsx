@@ -10,19 +10,34 @@ import {
   DropdownMenuTrigger,
   DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
+import type { Workflow } from '@/components/prompt-form/types';
 
 interface ImageUploaderProps {
   isLoading: boolean;
   onImageUpload: (files: File[]) => void;
   onWorkflowChange: (workflowId: string) => void;
+  availableWorkflows: Workflow[];
   hideLabel?: boolean;
+  selectedWorkflowId?: string;
+}
+
+function findNextImageWorkflow(workflows: Workflow[], currentWorkflowId?: string): string | null {
+  const current = workflows.find(wf => wf.id === currentWorkflowId);
+  if (current?.input?.includes('image')) return null; // already supports image
+
+  for (const wf of workflows) {
+    if (wf.input?.includes('image')) return wf.id;
+  }
+  return null;
 }
 
 const ImageUploader: React.FC<ImageUploaderProps> = ({
   isLoading,
   onImageUpload,
   onWorkflowChange,
+  availableWorkflows,
   hideLabel = false,
+  selectedWorkflowId
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -33,11 +48,11 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     const handleImageSelected = (event: CustomEvent) => {
       if (event.detail && event.detail.files) {
         onImageUpload(event.detail.files);
-        onWorkflowChange('image-to-image');
-
-        if (event.detail.urls && event.detail.urls.length > 0) {
-          toast.info('Using generated image as input');
-        }
+        const nextWorkflow = findNextImageWorkflow(availableWorkflows, selectedWorkflowId);
+		if (nextWorkflow) {
+		  onWorkflowChange(nextWorkflow.id);
+		  toast.info(`Switched to "${nextWorkflow.name}" workflow`);
+		}
       }
     };
 
@@ -45,7 +60,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     return () => {
       document.removeEventListener('image-selected', handleImageSelected as EventListener);
     };
-  }, [onImageUpload, onWorkflowChange]);
+  }, [onImageUpload, onWorkflowChange, availableWorkflows, selectedWorkflowId]);
 
   const processFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -65,8 +80,11 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
     if (validFiles.length > 0) {
       onImageUpload(validFiles);
-      onWorkflowChange('image-to-image');
-      toast.info('Switched to Image-to-Image workflow');
+      const nextWorkflow = findNextImageWorkflow(availableWorkflows, selectedWorkflowId);
+      if (nextWorkflow) {
+        onWorkflowChange(nextWorkflow);
+        toast.info(`Switched to "${nextWorkflow}" workflow`);
+      }
     }
   };
 
