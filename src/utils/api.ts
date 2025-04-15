@@ -14,6 +14,7 @@ interface GenerateImageParams {
   refiner?: string;
   refiner_params?: Record<string, any>;
   imageFiles?: (File | string)[];
+  referenceUrls?: string[];
   batch_id?: string;
   placeholders?: Array<{batch_index: number, placeholder_id: string}>;
 }

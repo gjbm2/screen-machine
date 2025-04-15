@@ -21,6 +21,7 @@ export interface GeneratedImage {
 export interface ImageGenerationConfig {
   prompt: string;
   imageFiles?: (File | string)[];
+  referenceUrls?: string[];
   workflow?: string;
   params?: Record<string, any>;
   globalParams?: Record<string, any>;

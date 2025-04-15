@@ -11,18 +11,18 @@ import {
   DropdownMenuTrigger,
   DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
-import type { Workflow } from '@/components/prompt-form/types';
+import type { WorkflowProps } from '@/components/prompt-form/types';
 
 interface ImageUploaderProps {
   isLoading: boolean;
   onImageUpload: (files: File[]) => void;
   onWorkflowChange: (workflowId: string) => void;
-  availableWorkflows: Workflow[];
+  availableWorkflows: WorkflowProps[];
   hideLabel?: boolean;
   selectedWorkflowId?: string;
 }
 
-function findNextImageWorkflow(workflows: Workflow[], currentWorkflowId?: string): string | null {
+function findNextImageWorkflow(workflows: WorkflowProps[], currentWorkflowId?: string): string | null {
   const current = workflows.find(wf => wf.id === currentWorkflowId);
   if (current?.input?.includes('image')) return null; // already supports image
 
