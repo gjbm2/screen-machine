@@ -1,36 +1,42 @@
 
-import { ImageGenerationStatus, Workflow } from '@/types/workflows';
-
-export interface GeneratedImage {
-  url: string;
-  prompt: string;
-  workflow: string;
-  batchId: string;
-  batchIndex: number;
-  status: ImageGenerationStatus;
-  timestamp: number;
-  title?: string;
-  params?: Record<string, any>;
-  refiner?: string;
-  refinerParams?: Record<string, any>;
-  referenceImageUrl?: string;
-  containerId?: number;
-  placeholderId?: string; // Added placeholder ID for tracking
-}
-
 export interface ImageGenerationConfig {
   prompt: string;
-  imageFiles?: (File | string)[];
-  workflow?: string;
-  params?: Record<string, any>;
-  globalParams?: Record<string, any>;
+  imageFiles?: File[];
+  referenceUrls?: string[];
+  workflow: string;
+  params: Record<string, any>;
+  globalParams: Record<string, any>;
+  batchId?: string;
   refiner?: string;
   refinerParams?: Record<string, any>;
-  batchId?: string;
 }
 
-export interface GenerationResult {
-  image: string;
-  status: 'success' | 'error';
-  message?: string;
+export interface GeneratedImage {
+  id: string;
+  url: string;
+  prompt: string;
+  batchId: string;
+  batchIndex: number;
+  placeholderId?: string;
+  status: 'generating' | 'completed' | 'error' | 'failed' | 'to_update';
+  timestamp: number;
+  workflow: string;
+  params?: Record<string, any>;
+  referenceImageUrl?: string;
+  refiner?: string;
+  refinerParams?: Record<string, any>;
+  containerId?: number;
 }
+
+// Add types for the WebSocket message handling
+export interface AsyncGenerationUpdate {
+  type: 'generation_update';
+  batch_id: string;
+  status: 'progress' | 'completed' | 'error';
+  progress?: number;
+  message?: string;
+  images?: string[];
+  error?: string;
+}
+
+export type WebSocketMessage = AsyncGenerationUpdate;
