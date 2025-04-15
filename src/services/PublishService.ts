@@ -1,7 +1,7 @@
+
 import { toast } from 'sonner';
-import { nanoid } from '@/lib/utils';
-import { GeneratedImage } from '@/hooks/image-generation/types';
-import apiService from '@/utils/api';
+import publishDestinations from '@/data/publish-destinations.json';
+import api from '/src/utils/api';
 
 export interface PublishDestination {
   id: string;
@@ -97,7 +97,7 @@ export const publishImage = async (
 
 // Handle backend publishing
 try {
-  await apiService.publishImage({
+  await api.publishImage({
     imageUrl,
     destination: destination.id,
     destinationType: destination.type,
