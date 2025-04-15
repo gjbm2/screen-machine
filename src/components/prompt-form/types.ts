@@ -1,3 +1,4 @@
+
 import { ReactNode } from 'react';
 import { Workflow as TypedWorkflow } from '@/types/workflows';
 
@@ -89,4 +90,11 @@ export interface PublishSelectorProps {
   selectedPublish: string;
   onPublishChange: (publishId: string) => void;
   isCompact?: boolean;
+}
+
+// Add ImagePreviewSectionProps interface
+export interface ImagePreviewSectionProps {
+  previewUrls: string[];
+  handleRemoveImage: (index: number) => void;
+  clearAllImages: () => void;
 }

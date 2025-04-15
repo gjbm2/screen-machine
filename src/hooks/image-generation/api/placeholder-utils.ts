@@ -46,6 +46,7 @@ export const createPlaceholderBatch = (
     const placeholderId = nanoid();
     
     const placeholder: GeneratedImage = {
+      id: nanoid(), // Add required id property
       url: '', // Adding empty url to satisfy the GeneratedImage type
       batchId,
       status: 'generating',
@@ -58,7 +59,8 @@ export const createPlaceholderBatch = (
       refiner,
       refinerParams,
       referenceImageUrl,
-      containerId
+      containerId,
+      title: `Generating image ${nextIndex + 1} of ${batchSize}...` // Add a title for display
     };
     
     console.log(`[placeholder-utils] Created placeholder with batchIndex ${nextIndex} and placeholderId ${placeholderId}`);

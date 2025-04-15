@@ -27,6 +27,7 @@ export interface GeneratedImage {
   refiner?: string;
   refinerParams?: Record<string, any>;
   containerId?: number;
+  title?: string; // Added title property as optional
 }
 
 // Add types for the WebSocket message handling
