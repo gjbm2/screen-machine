@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
@@ -13,11 +14,37 @@ import { nanoid } from '@/lib/utils';
 import typedWorkflows from '@/data/typedWorkflows';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
+// Define interface for overlay messages and overlay state
+interface OverlayMessage {
+  html: string;
+  duration: number;
+  position?: string;
+  clear?: boolean;
+  screens?: string[];
+  fadein?: number;
+}
+
+interface Overlay {
+  id: string;
+  html: string;
+  position: string | undefined;
+  visible: boolean;
+  fadein?: number;
+}
+
+// Utility function to generate unique IDs
+function generateId(): string {
+  return (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : Math.random().toString(36).substring(2, 10);
+}
+
 const Index = () => {
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const sessionId = React.useMemo(() => nanoid(), []);
+  const [overlays, setOverlays] = useState<Overlay[]>([]);
   
   const { 
     consoleVisible, 
@@ -31,31 +58,173 @@ const Index = () => {
   const [refinerParams, setRefinerParams] = useState<Record<string, any>>({});
   
   const [selectedPublish, setSelectedPublish] = useState('none');
+
+  // Extract all values from useImageGeneration hook
+  const {
+    generatedImages,
+    activeGenerations,
+    imageUrl,
+    currentPrompt,
+    uploadedImageUrls,
+    currentWorkflow,
+    currentParams,
+    currentGlobalParams,
+    imageContainerOrder,
+    expandedContainers,
+    lastBatchId,
+    isFirstRun,
+    fullscreenRefreshTrigger,
+    setCurrentPrompt,
+    setUploadedImageUrls,
+    setCurrentWorkflow,
+    setCurrentParams,
+    setCurrentGlobalParams,
+    setImageContainerOrder,
+    setExpandedContainers,
+    handleSubmitPrompt,
+    handleUseGeneratedAsInput,
+    handleCreateAgain,
+    handleDownloadImage,
+    handleDeleteImage,
+    handleReorderContainers,
+    handleDeleteContainer
+  } = useImageGeneration(addConsoleLog);
+  
+  // Custom hook for handling WebSocket updates
+  const useOverlayWebSocket = useCallback((sessionId: string | undefined) => {
+    useEffect(() => {
+      if (!sessionId) return;
+      
+      const WS_HOST = import.meta.env.VITE_WS_HOST;
+      
+      let socket: WebSocket | null = null;
+      let reconnectAttempts = 0;
+      let reconnectTimeout: ReturnType<typeof setTimeout>;
+      
+      const connect = () => {
+        socket = new WebSocket(WS_HOST);
+        
+        socket.onopen = () => {
+          reconnectAttempts = 0;
+          console.log("🟢 WebSocket connected to", WS_HOST);
+          
+          // Identify this client
+          socket.send(JSON.stringify({ 
+            type: 'identify', 
+            session_id: sessionId 
+          }));
+        };
+        
+        socket.onclose = () => {
+          console.warn("🔌 WebSocket closed, attempting to reconnect...");
+          reconnectAttempts++;
+          const delay = Math.min(10000, 1000 * 2 ** reconnectAttempts);
+          reconnectTimeout = setTimeout(connect, delay);
+        };
+        
+        socket.onerror = (err) => {
+          console.error("🔴 WebSocket error:", err);
+          socket?.close();
+        };
+        
+        socket.onmessage = (event) => {
+          console.log("📬 WS message received:", event.data);
+          try {
+            const msg = JSON.parse(event.data);
+            
+            // This is where we'd place our custom message filtering logic
+            // Instead of msg.screens for now, we'll just process all messages
+            // PLACEHOLDER: Add custom message filtering here
+            
+            // Handle generation updates separately
+            if (msg.type === 'generation_update') {
+              handleGenerationUpdate(msg);
+              return;
+            }
+            
+            // Handle overlay messages
+            if (msg.html) {
+              const { html, duration, position, clear } = msg;
+              const id = generateId();
+              const showDuration = typeof duration === "number" ? duration : 5000;
+              const displayTime = Math.max(0, showDuration);
+              
+              setOverlays((prev) => {
+                const base = clear ? [] : [...prev];
+                return [...base, {
+                  id,
+                  html,
+                  position,
+                  visible: msg.fadein === 0,
+                  fadein: msg.fadein
+                }];
+              });
+              
+              if (msg.fadein !== 0) {
+                setTimeout(() => {
+                  setOverlays((prev) =>
+                    prev.map((o) => (o.id === id ? { ...o, visible: true } : o))
+                  );
+                }, 50);
+              }
+              
+              setTimeout(() => {
+                setOverlays((prev) =>
+                  prev.map((o) => (o.id === id ? { ...o, visible: false } : o))
+                );
+                
+                setTimeout(() => {
+                  setOverlays((prev) => prev.filter((o) => o.id !== id));
+                }, 5000); // OVERLAY_FADEOUT_DURATION
+              }, displayTime);
+            }
+          } catch (err) {
+            console.error("Overlay message failed:", err);
+          }
+        };
+      };
+      
+      connect();
+      
+      return () => {
+        socket?.close();
+        clearTimeout(reconnectTimeout);
+      };
+    }, [sessionId]);
+  }, []);
+  
+  // Function to handle generation updates from WebSocket
+  const handleGenerationUpdate = useCallback((update: AsyncGenerationUpdate) => {
+    console.log("📬 Handling generation update:", update);
+    
+    addConsoleLog({
+      type: update.status === 'error' ? 'error' : 'info',
+      message: `Async generation update for batch ${update.batch_id}: ${update.status}`,
+      details: update
+    });
+    
+    if (update.status === 'progress' && update.progress !== undefined) {
+      console.log(`Generation progress: ${update.progress}%`);
+    } else if (update.status === 'completed') {
+      if (update.images && update.images.length > 0) {
+        toast.success(`Completed async generation with ${update.images.length} images`);
+        console.log("Completed async images:", update.images);
+      }
+    } else if (update.status === 'error') {
+      toast.error(`Generation failed: ${update.error || 'Unknown error'}`);
+    }
+  }, [addConsoleLog]);
+  
+  // Initialize WebSocket connection
+  useOverlayWebSocket(sessionId);
   
   const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
     console.log("📬 Handling WebSocket message:", message);
     
     if (message.type === 'generation_update') {
-      const update = message as AsyncGenerationUpdate;
-      
-      addConsoleLog({
-        type: update.status === 'error' ? 'error' : 'info',
-        message: `Async generation update for batch ${update.batch_id}: ${update.status}`,
-        details: update
-      });
-      
-      if (update.status === 'progress' && update.progress !== undefined) {
-        console.log(`Generation progress: ${update.progress}%`);
-      } else if (update.status === 'completed') {
-        if (update.images && update.images.length > 0) {
-          toast.success(`Completed async generation with ${update.images.length} images`);
-          console.log("Completed async images:", update.images);
-        }
-      } else if (update.status === 'error') {
-        toast.error(`Generation failed: ${update.error || 'Unknown error'}`);
-      }
+      handleGenerationUpdate(message as AsyncGenerationUpdate);
     }
-  }, [addConsoleLog]);
+  }, [handleGenerationUpdate]);
   
   const { connected: wsConnected } = useGenerationWebSocket(handleWebSocketMessage, sessionId);
   
@@ -206,7 +375,7 @@ const Index = () => {
             message: `URL parameter: run=true (auto-generating)`
           });
           
-          handlePromptSubmit(
+          handleSubmitPrompt(
             currentPromptValue, 
             undefined, 
             workflowParam || currentWorkflow,
@@ -229,7 +398,24 @@ const Index = () => {
       
       return () => clearTimeout(timer);
     }
-  }, [searchParams]);
+  }, [
+    searchParams, 
+    addConsoleLog, 
+    setCurrentPrompt, 
+    setCurrentWorkflow, 
+    setCurrentParams, 
+    setSelectedRefiner, 
+    setSelectedPublish, 
+    handleSubmitPrompt, 
+    currentPrompt, 
+    currentWorkflow, 
+    currentParams, 
+    currentGlobalParams, 
+    selectedRefiner, 
+    refinerParams, 
+    selectedPublish, 
+    navigate
+  ]);
 
   const handleOpenAdvancedOptions = useCallback(() => {
     console.log('Opening advanced options panel');
@@ -330,6 +516,28 @@ const Index = () => {
     }
   };
 
+  // Render overlay elements
+  const overlayElements = overlays.map((o) => (
+    <div
+      key={o.id}
+      style={{
+        position: "absolute",
+        zIndex: 10000,
+        opacity: o.visible ? 1 : 0,
+        transition: o.fadein === 0 ? "none" : `opacity ${o.fadein || 2000}ms ease`,
+        pointerEvents: "none",
+        ...(o.position === "top-left" && { top: "20px", left: "20px" }),
+        ...(o.position === "top-center" && { top: "20px", left: "50%", transform: "translateX(-50%)" }),
+        ...(o.position === "top-right" && { top: "20px", right: "20px" }),
+        ...(o.position === "bottom-left" && { bottom: "20px", left: "20px" }),
+        ...(o.position === "bottom-center" && { bottom: "20px", left: "50%", transform: "translateX(-50%)" }),
+        ...(o.position === "bottom-right" && { bottom: "20px", right: "20px" }),
+        ...(!o.position && { top: 0, left: 0, width: "100vw", height: "100vh" })
+      }}
+      dangerouslySetInnerHTML={{ __html: o.html }}
+    />
+  ));
+
   return (
     <>
       <MainLayout
@@ -406,6 +614,9 @@ const Index = () => {
           Connected
         </div>
       )}
+      
+      {/* Render overlay elements */}
+      {overlayElements}
     </>
   );
 };
