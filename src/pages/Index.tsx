@@ -118,7 +118,7 @@ const Index = () => {
   // Handle job status message
   const handleJobStatusMessage = useCallback((message: JobStatusMessage) => {
     // Log ALL received messages for debugging
-    console.log("🕵️ ALL Job Status Message Received:", message);
+    console.log("🕵️ Job Status Message Received:", message);
     
     // Check if screens property exists and extract the value for better logging
     const screens = message.screens || "";
@@ -126,8 +126,9 @@ const Index = () => {
   
     // Check if this message is intended for this screen
     // Use Array.includes to check if 'index' is in the screens array
-    const isForThisScreen = message.screens === 'index' || 
-      message.screens === undefined || // Accept undefined screens
+    const isForThisScreen = 
+      !message.screens || // Accept undefined/null screens
+      message.screens === 'index' || 
       (Array.isArray(message.screens) && message.screens.includes('index'));
 
     if (!isForThisScreen) {
@@ -135,7 +136,7 @@ const Index = () => {
       return; // Ignore messages not meant for index screen
     }
 
-    console.log("📬 Handling Job Status Message for Index:", message);
+    console.log("✅ Processing job status message for index screen:", message);
     const messageHash = hashMessage(message);
     const jobId = message.job_id;
 
@@ -203,7 +204,7 @@ const Index = () => {
   
   // Function to handle generation updates from WebSocket
   const handleGenerationUpdate = useCallback((update: AsyncGenerationUpdate) => {
-    console.log("📬 Handling generation update:", update);
+    console.log("📈 Generation update received:", update);
     
     addConsoleLog({
       type: update.status === 'error' ? 'error' : 'info',
@@ -223,31 +224,31 @@ const Index = () => {
     }
   }, [addConsoleLog]);
 
-  // Unified WebSocket handler for both overlay and generation messages
+  // WebSocket message handler
   const handleWebSocketMessage = useCallback((event: MessageEvent) => {
-    console.log("📬 WS raw message received:", event.data.substring(0, 200) + (event.data.length > 200 ? "..." : ""));
+    console.log("📬 Raw WS message received:", event.data.substring(0, 200) + (event.data.length > 200 ? "..." : ""));
     
     try {
       const msg = JSON.parse(event.data);
-      console.log("🔍 Parsed WebSocket Message type:", msg.type || "No type", "job_id:", msg.job_id || "No job_id");
+      console.log("🔍 Parsed WS message:", msg);
       
       // Handle job status messages
       if (msg.job_id && typeof msg.html === 'string') {
-        console.log("📋 Job Status Message Detected:", msg);
+        console.log("📋 Found job status message with job_id:", msg.job_id);
         handleJobStatusMessage(msg);
         return;
       }
       
       // Handle generation updates
       if (msg.type === 'generation_update') {
-        console.log("🚀 Generation Update Message:", msg);
+        console.log("🚀 Found generation update message:", msg);
         handleGenerationUpdate(msg as AsyncGenerationUpdate);
         return;
       }
       
       // Handle overlay messages
       if (msg.html) {
-        console.log("🖼️ Overlay Message Detected:", msg);
+        console.log("🖼️ Found overlay message:", msg);
         const { html, duration, position, clear, fadein } = msg;
         const id = generateId();
         const showDuration = typeof duration === "number" ? duration : 5000;
@@ -290,16 +291,24 @@ const Index = () => {
   
   // Initialize WebSocket connection
   useEffect(() => {
-    if (!sessionId) return;
-    
     const WS_HOST = import.meta.env.VITE_WS_HOST;
+    if (!WS_HOST) {
+      console.error("❌ No WebSocket host defined in environment variables");
+      return;
+    }
+    
+    console.log("🔄 Attempting to connect to WebSocket at:", WS_HOST);
     
     let socket: WebSocket | null = null;
     let reconnectAttempts = 0;
     let reconnectTimeout: ReturnType<typeof setTimeout>;
     
     const connect = () => {
-      console.log("🔄 Attempting to connect to WebSocket at:", WS_HOST);
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        console.log("⚠️ WebSocket already connected, closing before reconnecting");
+        socket.close();
+      }
+      
       socket = new WebSocket(WS_HOST);
       
       socket.onopen = () => {
@@ -324,6 +333,8 @@ const Index = () => {
       socket.onclose = (event) => {
         console.warn("🔌 WebSocket closed with code:", event.code, "reason:", event.reason || "No reason provided");
         setWsConnected(false);
+        
+        // Attempt to reconnect
         reconnectAttempts++;
         const delay = Math.min(10000, 1000 * 2 ** reconnectAttempts);
         console.log(`🔄 Will attempt to reconnect in ${delay}ms (attempt #${reconnectAttempts})`);
@@ -332,11 +343,11 @@ const Index = () => {
       
       socket.onerror = (err) => {
         console.error("🔴 WebSocket error:", err);
-        console.log("❌ Closing socket due to error");
+        console.error("❌ Closing socket due to error");
         socket?.close();
       };
       
-      // Unified message handling for all WebSocket messages
+      // Set message handler
       socket.onmessage = handleWebSocketMessage;
     };
     
