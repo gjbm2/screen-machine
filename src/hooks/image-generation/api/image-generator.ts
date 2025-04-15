@@ -11,6 +11,7 @@ import { generateImageTitle } from './title-util';
 export interface ImageGenerationParams {
   prompt: string;
   imageFiles?: (File | string)[];
+  referenceUrls?: string[];
   workflow?: string;
   params?: Record<string, any>;
   globalParams?: Record<string, any>;
@@ -18,6 +19,7 @@ export interface ImageGenerationParams {
   refinerParams?: Record<string, any>;
   batchId?: string;
   nextContainerId?: number;
+  isAsync?: boolean;
 }
 
 export interface ImageGenerationActions {
@@ -38,13 +40,15 @@ export const generateImage = async (
   const {
     prompt,
     imageFiles,
+    referenceUrls,
     workflow = 'flux1',
     params = {},
     globalParams = {},
     refiner,
     refinerParams,
     batchId,
-    nextContainerId
+    nextContainerId,
+    isAsync
   } = config;
 
   const {

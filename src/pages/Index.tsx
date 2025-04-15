@@ -7,6 +7,9 @@ import MainLayout from '@/components/layout/MainLayout';
 import AdvancedOptionsContainer from '@/components/advanced/AdvancedOptionsContainer';
 import { useImageGeneration } from '@/hooks/image-generation/use-image-generation';
 import { useConsoleManagement } from '@/hooks/use-console-management';
+import { useGenerationWebSocket } from '@/hooks/use-generation-websocket';
+import { WebSocketMessage, AsyncGenerationUpdate } from '@/hooks/image-generation/types';
+import { nanoid } from '@/lib/utils';
 import typedWorkflows from '@/data/typedWorkflows';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
@@ -14,6 +17,7 @@ const Index = () => {
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const sessionId = React.useMemo(() => nanoid(), []);
   
   const { 
     consoleVisible, 
@@ -28,38 +32,43 @@ const Index = () => {
   
   const [selectedPublish, setSelectedPublish] = useState('none');
   
+  const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
+    console.log("📬 Handling WebSocket message:", message);
+    
+    if (message.type === 'generation_update') {
+      const update = message as AsyncGenerationUpdate;
+      
+      addConsoleLog({
+        type: update.status === 'error' ? 'error' : 'info',
+        message: `Async generation update for batch ${update.batch_id}: ${update.status}`,
+        details: update
+      });
+      
+      if (update.status === 'progress' && update.progress !== undefined) {
+        console.log(`Generation progress: ${update.progress}%`);
+      } else if (update.status === 'completed') {
+        if (update.images && update.images.length > 0) {
+          toast.success(`Completed async generation with ${update.images.length} images`);
+          console.log("Completed async images:", update.images);
+        }
+      } else if (update.status === 'error') {
+        toast.error(`Generation failed: ${update.error || 'Unknown error'}`);
+      }
+    }
+  }, [addConsoleLog]);
+  
+  const { connected: wsConnected } = useGenerationWebSocket(handleWebSocketMessage, sessionId);
+  
   useEffect(() => {
-    console.log('Advanced options panel open state:', advancedOptionsOpen);
-  }, [advancedOptionsOpen]);
-
-  const {
-    generatedImages,
-    activeGenerations,
-    imageUrl,
-    currentPrompt,
-    uploadedImageUrls,
-    currentWorkflow,
-    currentParams,
-    currentGlobalParams,
-    imageContainerOrder,
-    expandedContainers,
-    isFirstRun,
-    fullscreenRefreshTrigger,
-    setCurrentPrompt,
-    setUploadedImageUrls,
-    setCurrentWorkflow,
-    setCurrentParams,
-    setCurrentGlobalParams,
-    setImageContainerOrder,
-    setExpandedContainers,
-    handleSubmitPrompt,
-    handleUseGeneratedAsInput,
-    handleCreateAgain,
-    handleDownloadImage,
-    handleDeleteImage,
-    handleReorderContainers,
-    handleDeleteContainer
-  } = useImageGeneration(addConsoleLog);
+    console.log(`WebSocket connection status: ${wsConnected ? 'connected' : 'disconnected'}`);
+    
+    if (wsConnected) {
+      addConsoleLog({
+        type: 'info',
+        message: 'WebSocket connected for real-time updates'
+      });
+    }
+  }, [wsConnected, addConsoleLog]);
 
   const processUrlParam = (value: string): any => {
     if ((value.startsWith('"') && value.endsWith('"')) || 
@@ -250,78 +259,76 @@ const Index = () => {
     setSelectedPublish(publishId);
   }, []);
 
- const handlePromptSubmit = async (
-  prompt: string,
-  imageFiles?: File[] | string[],
-  workflow?: string,
-  params?: Record<string, any>,
-  globalParams?: Record<string, any>,
-  refiner?: string,
-  refinerParams?: Record<string, any>,
-  publish?: string
-) => {
-  try {
-    console.log('Index: handlePromptSubmit called with:');
-    console.log('- prompt:', prompt);
-    console.log('- workflow:', workflow);
-    console.log('- params:', params);
-    console.log('- globalParams:', globalParams);
-    console.log('- refiner:', refiner);
-    console.log('- refinerParams:', refinerParams);
-    console.log('- publish:', publish);
+  const handlePromptSubmit = async (
+    prompt: string,
+    imageFiles?: File[] | string[],
+    workflow?: string,
+    params?: Record<string, any>,
+    globalParams?: Record<string, any>,
+    refiner?: string,
+    refinerParams?: Record<string, any>,
+    publish?: string
+  ) => {
+    try {
+      console.log('Index: handlePromptSubmit called with:');
+      console.log('- prompt:', prompt);
+      console.log('- workflow:', workflow);
+      console.log('- params:', params);
+      console.log('- globalParams:', globalParams);
+      console.log('- refiner:', refiner);
+      console.log('- refinerParams:', refinerParams);
+      console.log('- publish:', publish);
 
-    setCurrentPrompt(prompt);
+      setCurrentPrompt(prompt);
 
-    if (workflow) {
-      setCurrentWorkflow(workflow);
+      if (workflow) {
+        setCurrentWorkflow(workflow);
+      }
+
+      if (refiner) {
+        setSelectedRefiner(refiner);
+      }
+
+      if (publish) {
+        setSelectedPublish(publish);
+      }
+
+      let effectiveParams = params ? { ...params } : { ...currentParams };
+
+      if (publish && publish !== 'none') {
+        console.log('Adding publish destination to params:', publish);
+        effectiveParams.publish_destination = publish;
+      }
+
+      setCurrentParams(effectiveParams);
+
+      if (globalParams) {
+        setCurrentGlobalParams(globalParams);
+      }
+
+      if (refinerParams) {
+        setRefinerParams(refinerParams);
+      }
+
+      const allImages: (File | string)[] = [
+        ...(imageFiles ?? []),
+        ...uploadedImageUrls
+      ];
+
+      await handleSubmitPrompt(
+        prompt,
+        allImages.length > 0 ? allImages : undefined,
+        workflow,
+        effectiveParams,
+        globalParams,
+        refiner,
+        refinerParams
+      );
+    } catch (error) {
+      console.error('Error submitting prompt:', error);
+      toast.error('Error generating image');
     }
-
-    if (refiner) {
-      setSelectedRefiner(refiner);
-    }
-
-    if (publish) {
-      setSelectedPublish(publish);
-    }
-
-    let effectiveParams = params ? { ...params } : { ...currentParams };
-
-    if (publish && publish !== 'none') {
-      console.log('Adding publish destination to params:', publish);
-      effectiveParams.publish_destination = publish;
-    }
-
-    setCurrentParams(effectiveParams);
-
-    if (globalParams) {
-      setCurrentGlobalParams(globalParams);
-    }
-
-    if (refinerParams) {
-      setRefinerParams(refinerParams);
-    }
-
-    // ✅ Merge in reference URLs from global state
-    const allImages: (File | string)[] = [
-      ...(imageFiles ?? []),
-      ...uploadedImageUrls
-    ];
-
-    // ✅ Pass to generation
-    await handleSubmitPrompt(
-      prompt,
-      allImages.length > 0 ? allImages : undefined,
-      workflow,
-      effectiveParams,
-      globalParams,
-      refiner,
-      refinerParams
-    );
-  } catch (error) {
-    console.error('Error submitting prompt:', error);
-    toast.error('Error generating image');
-  }
-};
+  };
 
   return (
     <>
@@ -392,6 +399,13 @@ const Index = () => {
         onRefinerChange={handleRefinerChange}
         onRefinerParamChange={handleRefinerParamChange}
       />
+      
+      {wsConnected && (
+        <div className="fixed bottom-4 right-4 p-1 px-2 bg-green-100 text-green-800 text-xs rounded-full border border-green-300 opacity-60">
+          <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>
+          Connected
+        </div>
+      )}
     </>
   );
 };

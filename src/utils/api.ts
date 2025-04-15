@@ -1,4 +1,3 @@
-
 // API service for all backend requests
 import { toast } from 'sonner';
 
@@ -9,13 +8,18 @@ const DEFAULT_API_URL = import.meta.env.VITE_API_URL || '/api';
 interface GenerateImageParams {
   prompt: string;
   workflow: string;
-  params?: Record<string, any>;
-  global_params?: Record<string, any>;
+  params: Record<string, any>;
+  global_params: Record<string, any>;
+  imageFiles?: File[];
+  referenceUrls?: string[];
+  batch_id: string;
+  placeholders: Array<{
+    batch_index: number;
+    placeholder_id: string;
+  }>;
   refiner?: string;
   refiner_params?: Record<string, any>;
-  imageFiles?: (File | string)[];
-  batch_id?: string;
-  placeholders?: Array<{batch_index: number, placeholder_id: string}>;
+  is_async?: boolean;
 }
 
 class ApiService {
@@ -45,19 +49,16 @@ class ApiService {
 		  workflow,
 		  params: workflowParams,
 		  global_params,
-		  refiner,
-		  refiner_params,
 		  imageFiles,
 		  batch_id,
 		  placeholders,
-		  referenceUrls // ✅ include it in the destructure
+		  referenceUrls,
+		  is_async
 		} = params;
 
 		console.log(`[api] Received request with workflow: ${workflow}`);
 		console.log(`[api] Received workflowParams:`, workflowParams);
 		console.log(`[api] Received global_params:`, global_params);
-		console.log(`[api] Received refiner:`, refiner);
-		console.log(`[api] Received refiner_params:`, refiner_params);
 		console.log(`[api] Received placeholders:`, placeholders);
 		
 		const formData = new FormData();
@@ -72,7 +73,7 @@ class ApiService {
 		};
 
 		if (referenceUrls && referenceUrls.length > 0) {
-		  jsonData.referenceUrls = referenceUrls; // ✅ this is the fix
+		  jsonData.referenceUrls = referenceUrls;
 		}
 
 		if (placeholders && placeholders.length > 0) {
@@ -294,8 +295,6 @@ class ApiService {
     }
   }
 }
-
-
 
 // Create a singleton instance of the API service
 const apiService = new ApiService();
