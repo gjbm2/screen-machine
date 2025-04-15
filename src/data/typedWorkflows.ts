@@ -10,7 +10,8 @@ function convertToTypedWorkflows(data: any[]): Workflow[] {
 	  icon: workflow.icon,
 	  description: workflow.description || '',
 	  default: workflow.default || false,
-	  input: workflow.input || [], // 👈 include the 'input' field if present
+	  input: workflow.input || [], 
+	  async: workflow.async || false, // Ensure async property is properly passed through
 	  params: workflow.params.map((param: any): WorkflowParam => ({
 		id: param.id,
 		name: param.name,
