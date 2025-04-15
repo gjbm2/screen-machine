@@ -124,7 +124,7 @@ const Index = () => {
       !message.screens || 
       message.screens === 'index' || 
       (Array.isArray(message.screens) && 
-       (message.screens.includes('index') || message.screens.includes('*') || message.screens.length === 0));
+       (message.screens.includes('index') || message.screens.includes('*')));
 
     console.log("🔍 Is message for this screen?", isForThisScreen, "Screen filter:", message.screens);
 
@@ -240,6 +240,22 @@ const Index = () => {
       
       if (msg.html) {
         console.log("🖼️ Found overlay message:", msg);
+        
+        const screens = msg.screens || null;
+        const isForThisScreen = 
+          !screens || 
+          screens === 'index' || 
+          (Array.isArray(screens) && 
+           (screens.includes('index') || screens.includes('*')));
+        
+        console.log("🔍 Is overlay for this screen?", isForThisScreen, "Screen filter:", screens);
+        
+        if (!isForThisScreen) {
+          console.log("🚫 Overlay NOT intended for index screen. Screens:", screens);
+          return;
+        }
+        
+        console.log("✅ Processing overlay message for index screen");
         const { html, duration, position, clear, fadein } = msg;
         const id = generateId();
         const showDuration = typeof duration === "number" ? duration : 5000;
@@ -646,17 +662,25 @@ const Index = () => {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      (window as any).testOverlayMessage = (message: any) => {
+      (window as any).testIndexMessage = (message: any) => {
+        if (!message.screens) {
+          message.screens = ['index'];
+        } else if (typeof message.screens === 'string' && message.screens !== 'index') {
+          message.screens = [message.screens, 'index'];
+        } else if (Array.isArray(message.screens) && !message.screens.includes('index')) {
+          message.screens.push('index');
+        }
+        
         console.log("🧪 Testing message handling with:", message);
         const event = { data: JSON.stringify(message) };
         handleWebSocketMessage(event as MessageEvent);
-        return "Test message sent to handler";
+        return "Test message sent to handler (screens includes 'index')";
       };
       
-      console.log("🧪 testOverlayMessage() function is available in browser console");
+      console.log("🧪 testIndexMessage() function is available in browser console");
       
       return () => {
-        delete (window as any).testOverlayMessage;
+        delete (window as any).testIndexMessage;
       };
     }
   }, [handleWebSocketMessage]);
