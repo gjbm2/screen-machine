@@ -8,7 +8,7 @@ export interface WorkflowProps {
   id: string;
   name: string;
   icon: string;
-  description?: string;
+  description: string; // Changed from optional to required to match Workflow type
   default?: boolean;
   input?: ('text' | 'image')[];
   async?: boolean;

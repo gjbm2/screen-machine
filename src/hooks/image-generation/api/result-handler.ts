@@ -1,5 +1,7 @@
+
 import { GeneratedImage } from '../types';
 import { ImageGenerationStatus } from '@/types/workflows';
+import { nanoid } from '@/lib/utils';
 
 /**
  * Processes the results of a generation and updates the images array
@@ -226,6 +228,7 @@ export const processGenerationResults = (
       
       // Create a new image entry
       const newImage: GeneratedImage = {
+        id: nanoid(), // Added id property
         url: responseImage.url,
         prompt: responseImage.prompt,
         workflow: responseImage.workflow || 'unknown',
