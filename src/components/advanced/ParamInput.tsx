@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -30,11 +29,22 @@ const ParamInput: React.FC<ParamInputProps> = ({ param, value, onChange }) => {
               <SelectValue placeholder={`Select ${param.name.toLowerCase()}`} />
             </SelectTrigger>
             <SelectContent>
-              {param.options?.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
+              {param.options?.map((option) => {
+                // Check if option is an object with value and label properties
+                if (typeof option === 'object' && option !== null && 'value' in option && 'label' in option) {
+                  return (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  );
+                }
+                // Handle string options
+                return (
+                  <SelectItem key={String(option)} value={String(option)}>
+                    {String(option)}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>

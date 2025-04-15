@@ -1,8 +1,9 @@
+
 export interface WorkflowParam {
   id: string;
   name: string;
   type: "select" | "checkbox" | "range" | "text" | "number";
-  options?: { value: string; label: string }[];
+  options?: string[] | { value: string; label: string }[];
   default?: string | number | boolean;
 }
 
@@ -13,6 +14,9 @@ export interface Workflow {
   description: string;
   default?: boolean;
   input?: string[];
-  async?: boolean; // Add async property
+  async?: boolean;
   params: WorkflowParam[];
 }
+
+// Add the ImageGenerationStatus type that was removed
+export type ImageGenerationStatus = 'generating' | 'completed' | 'error' | 'failed' | 'to_update';

@@ -1,4 +1,3 @@
-
 import { ReactNode } from 'react';
 import { Workflow as TypedWorkflow } from '@/types/workflows';
 
@@ -7,10 +6,10 @@ export type Workflow = TypedWorkflow;
 export interface WorkflowProps {
   id: string;
   name: string;
-  icon: string;
-  description: string; // Changed from optional to required to match Workflow type
+  icon?: string;
+  description: string;
   default?: boolean;
-  input?: ('text' | 'image')[];
+  input?: string[];
   async?: boolean;
   runpod_id?: string;
   processing_stages?: string[];
@@ -92,7 +91,6 @@ export interface PublishSelectorProps {
   isCompact?: boolean;
 }
 
-// Add ImagePreviewSectionProps interface
 export interface ImagePreviewSectionProps {
   previewUrls: string[];
   handleRemoveImage: (index: number) => void;

@@ -1,8 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import SortableImageContainer from './SortableImageContainer';
 import { ViewMode } from './ImageDisplay';
-import { ImageGenerationStatus } from '@/types/workflows';
 import ExpandedBatchView from './batch-components/ExpandedBatchView';
 import RolledUpBatchView from './batch-components/RolledUpBatchView';
 import TableBatchView from './batch-components/TableBatchView';
@@ -14,7 +12,7 @@ interface Image {
   prompt: string;
   workflow: string;
   batchIndex: number;
-  status: ImageGenerationStatus;
+  status: 'generating' | 'completed' | 'error' | 'failed' | 'to_update';
   referenceImageUrl?: string;
 }
 
@@ -51,7 +49,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const isMobile = useIsMobile();
   
-  // Ensure the activeImageIndex is always within bounds when images array changes
   useEffect(() => {
     if (images.length > 0 && activeImageIndex >= images.length) {
       console.log(`ImageBatch: Resetting activeImageIndex from ${activeImageIndex} to 0 because images.length=${images.length}`);
@@ -59,12 +56,10 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
     }
   }, [images, activeImageIndex]);
   
-  // If this is a new batch with generating images, auto-scroll to it in mobile view
   useEffect(() => {
     if (isMobile && hasGeneratingImages) {
       console.log(`Auto-scrolling to batch ${batchId} with generating images on mobile`);
       
-      // Scroll this batch into view
       setTimeout(() => {
         const element = document.getElementById(batchId);
         if (element) {
@@ -98,7 +93,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
   };
 
   const handleFullScreenClick = (image: any) => {
-    // Extra validation to ensure we have a valid image before showing fullscreen
     if (onFullScreenClick && image && image.url) {
       console.log("Opening fullscreen view with image:", image.url);
       onFullScreenClick({
@@ -127,7 +121,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
     setShowDeleteDialog(false);
   };
 
-  // Ensure we always have a valid activeImageIndex
   const safeActiveIndex = completedImages.length > 0 
     ? Math.min(Math.max(0, activeImageIndex), completedImages.length - 1) 
     : 0;
@@ -138,7 +131,6 @@ const ImageBatch: React.FC<ImageBatchProps> = ({
       return;
     }
     
-    // In mobile view, clicking a rolled up container should expand it
     if (isMobile && viewMode === 'normal' && !isExpanded) {
       console.log(`Mobile: Expanding container ${batchId} on click`);
       toggleExpand(batchId);

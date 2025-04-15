@@ -1,6 +1,4 @@
-
 import { GeneratedImage } from '../types';
-import { ImageGenerationStatus } from '@/types/workflows';
 import { nanoid } from '@/lib/utils';
 
 /**
@@ -57,7 +55,7 @@ export const processGenerationResults = (
     if (img.batchId === batchId && img.status === 'generating') {
       updatedImages[index] = {
         ...img,
-        status: 'to_update' as ImageGenerationStatus
+        status: 'to_update'
       };
     }
   });
@@ -187,7 +185,7 @@ export const processGenerationResults = (
       updatedImages[existingImageIndex] = {
         ...existingImage,
         url: responseImage.url,
-        status: imageStatus as ImageGenerationStatus,
+        status: imageStatus as 'generating' | 'completed' | 'error' | 'failed' | 'to_update',
         prompt: responseImage.prompt || existingImage.prompt,
         workflow: responseImage.workflow || existingImage.workflow,
         timestamp: responseImage.timestamp || Date.now(),
@@ -235,7 +233,7 @@ export const processGenerationResults = (
         batchId: batchId,
         batchIndex: batchIndex,
         placeholderId: responseImage.placeholder_id, // Store placeholder ID if available
-        status: imageStatus as ImageGenerationStatus,
+        status: imageStatus as 'generating' | 'completed' | 'error' | 'failed' | 'to_update',
         timestamp: responseImage.timestamp || Date.now(),
         title: `${window.imageCounter + 1}. ${responseImage.prompt} (${responseImage.workflow || 'unknown'})`,
         params: responseImage.params || {},

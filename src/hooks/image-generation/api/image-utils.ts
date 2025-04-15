@@ -1,6 +1,5 @@
 
 import { GeneratedImage } from '../types';
-import { ImageGenerationStatus } from '@/types/workflows';
 import { generateImageTitle } from './title-util';
 import { nanoid } from '@/lib/utils';
 
@@ -26,7 +25,7 @@ export const createPlaceholderImage = (
     timestamp: Date.now(),
     batchId: currentBatchId,
     batchIndex: nextIndex,
-    status: 'generating' as ImageGenerationStatus,
+    status: 'generating',
     params,
     refiner,
     refinerParams,
@@ -66,7 +65,7 @@ export const updateImageWithResult = (
   return {
     ...placeholder,
     url: imageUrl,
-    status: 'completed' as ImageGenerationStatus,
+    status: 'completed',
     timestamp: Date.now(),
     // Reference image URL is automatically preserved via spread operator
   };
@@ -86,7 +85,7 @@ export const updateImageWithError = (
   // Ensure we preserve the referenceImageUrl for error images too
   return {
     ...placeholder,
-    status: 'error' as ImageGenerationStatus,
+    status: 'error',
     timestamp: Date.now()
     // Reference image URL is automatically preserved via spread operator
   };

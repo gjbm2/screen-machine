@@ -48,7 +48,7 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
 		/>
         
         <WorkflowIconSelector
-          workflows={workflows as unknown as Workflow[]} // Properly cast to Workflow[] type
+          workflows={workflows}
           selectedWorkflow={selectedWorkflow}
           onWorkflowChange={onWorkflowChange}
           hideWorkflowName={isMobile}
