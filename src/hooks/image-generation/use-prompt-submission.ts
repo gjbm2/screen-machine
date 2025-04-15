@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { ImageGenerationConfig } from './types';
 import typedWorkflows from '@/data/typedWorkflows';
@@ -83,9 +84,9 @@ export const usePromptSubmission = ({
         console.log(`Auto-selected image-capable workflow: ${effectiveWorkflow}`);
       }
 
-      // NEW: Split image files into files and reference URLs
-      const uploadedFiles = (imageFiles || []).filter(f => f instanceof File) as File[];
-      const referenceUrls = (imageFiles || []).filter(f => typeof f === 'string') as string[];
+      // Split image files into files and reference URLs
+      const uploadedFiles = imageFiles ? imageFiles.filter(f => f instanceof File) as File[] : [];
+      const referenceUrls = imageFiles ? imageFiles.filter(f => typeof f === 'string') as string[] : [];
 
       const effectiveWorkflowParams = workflowParams || currentParams;
       const effectiveGlobalParams = globalParams || currentGlobalParams;
@@ -95,7 +96,6 @@ export const usePromptSubmission = ({
       const workflowConfig = typedWorkflows.find(w => w.id === effectiveWorkflow);
       const isAsync = workflowConfig?.async === true;
 
-      // NEW: optionally skip placeholder creation if async
       if (isAsync) {
         console.log(`[usePromptSubmission] Async workflow detected (${effectiveWorkflow}), skipping placeholder handling`);
       }
@@ -103,7 +103,7 @@ export const usePromptSubmission = ({
       const config: ImageGenerationConfig = {
         prompt,
         imageFiles: uploadedFiles,
-        referenceUrls, // NEW: pass reference image URLs separately
+        referenceUrls, // Pass reference image URLs separately
         workflow: effectiveWorkflow,
         params: effectiveWorkflowParams,
         globalParams: effectiveGlobalParams,
