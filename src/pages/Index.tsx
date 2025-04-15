@@ -117,12 +117,20 @@ const Index = () => {
   
   // Handle job status message
   const handleJobStatusMessage = useCallback((message: JobStatusMessage) => {
+    // Log ALL received messages for debugging
+    console.log("🕵️ ALL Job Status Message Received:", message);
+  
     // Check if this message is intended for this screen
-    if (message.screens !== 'index') {
+    // Use Array.includes to check if 'index' is in the screens array
+    const isForThisScreen = message.screens === 'index' || 
+      (Array.isArray(message.screens) && message.screens.includes('index'));
+
+    if (!isForThisScreen) {
+      console.log("🚫 Message NOT intended for index screen. Screens:", message.screens);
       return; // Ignore messages not meant for index screen
     }
 
-    console.log("Handling job status message:", message);
+    console.log("📬 Handling Job Status Message for Index:", message);
     const messageHash = hashMessage(message);
     const jobId = message.job_id;
 
@@ -203,8 +211,8 @@ const Index = () => {
         socket = new WebSocket(WS_HOST);
         
         socket.onopen = () => {
+          console.log("🟢 Overlay WebSocket FULL Connection Log - Connected to", WS_HOST);
           reconnectAttempts = 0;
-          console.log("🟢 WebSocket connected to", WS_HOST);
           
           // Identify this client
           socket.send(JSON.stringify({ 
@@ -213,6 +221,80 @@ const Index = () => {
           }));
         };
         
+        socket.onclose = () => {
+          console.warn("🔌 WebSocket closed, attempting to reconnect...");
+          reconnectAttempts++;
+          const delay = Math.min(10000, 1000 * 2 ** reconnectAttempts);
+          reconnectTimeout = setTimeout(connect, delay);
+        };
+        
+        socket.onerror = (err) => {
+          console.error("🔴 WebSocket error:", err);
+          socket?.close();
+        };
+        
+        socket.onmessage = (event) => {
+          console.log("📬 FULL WS message received:", event.data);
+          try {
+            const msg = JSON.parse(event.data);
+            console.log("🔍 Parsed WebSocket Message:", JSON.stringify(msg, null, 2));
+            
+            // Handle job status messages
+            if (msg.job_id && typeof msg.html === 'string') {
+              console.log("📋 Job Status Message Detected:", msg);
+              handleJobStatusMessage(msg);
+              return;
+            }
+            
+            // Handle generation updates
+            if (msg.type === 'generation_update') {
+              console.log("🚀 Generation Update Message:", msg);
+              handleGenerationUpdate(msg);
+              return;
+            }
+            
+            // Handle overlay messages
+            if (msg.html) {
+              console.log("🖼️ Overlay Message Detected:", msg);
+              const { html, duration, position, clear } = msg;
+              const id = generateId();
+              const showDuration = typeof duration === "number" ? duration : 5000;
+              const displayTime = Math.max(0, showDuration);
+              
+              setOverlays((prev) => {
+                const base = clear ? [] : [...prev];
+                return [...base, {
+                  id,
+                  html,
+                  position,
+                  visible: msg.fadein === 0,
+                  fadein: msg.fadein
+                }];
+              });
+              
+              if (msg.fadein !== 0) {
+                setTimeout(() => {
+                  setOverlays((prev) =>
+                    prev.map((o) => (o.id === id ? { ...o, visible: true } : o))
+                  );
+                }, 50);
+              }
+              
+              setTimeout(() => {
+                setOverlays((prev) =>
+                  prev.map((o) => (o.id === id ? { ...o, visible: false } : o))
+                );
+                
+                setTimeout(() => {
+                  setOverlays((prev) => prev.filter((o) => o.id !== id));
+                }, 5000); // OVERLAY_FADEOUT_DURATION
+              }, displayTime);
+            }
+          } catch (err) {
+            console.error("❌ WebSocket Message Parsing Error:", err, event.data);
+          }
+        };
+      
         socket.onclose = () => {
           console.warn("🔌 WebSocket closed, attempting to reconnect...");
           reconnectAttempts++;
