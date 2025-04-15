@@ -98,27 +98,27 @@ export const publishImage = async (
     }
   }
 
-// Handle backend publishing
-try {
-  await api.publishImage({
-    imageUrl,
-    destination: destination.id,
-    destinationType: destination.type,
-    destinationFile: destination.file,
-    metadata: {
-      prompt: generationInfo?.prompt,
-      workflow: generationInfo?.workflow,
-      params: generationInfo?.params,
-    }
-  });
+  // Handle backend publishing
+  try {
+    await api.publishImage({
+      imageUrl,
+      destination: destination.id,
+      destinationType: destination.type,
+      destinationFile: destination.file,
+      metadata: {
+        prompt: generationInfo?.prompt,
+        workflow: generationInfo?.workflow,
+        params: generationInfo?.params,
+      }
+    });
 
-  toast.success(`Published to ${destination.name}`);
-  return true;
-} catch (error) {
-  console.error('Error publishing image:', error);
-  toast.error(`Failed to publish to ${destination.name}`);
-  return false;
-}
+    toast.success(`Published to ${destination.name}`);
+    return true;
+  } catch (error) {
+    console.error('Error publishing image:', error);
+    toast.error(`Failed to publish to ${destination.name}`);
+    return false;
+  }
 };
 
 // Helper function for clipboard fallback
