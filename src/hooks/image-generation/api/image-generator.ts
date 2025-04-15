@@ -101,6 +101,11 @@ export const generateImage = async (
       
       // Only increment container ID for new batches
       setNextContainerId(prevId => prevId + 1);
+    } else {
+      addConsoleLog({
+        type: 'info',
+        message: `Async workflow detected: Not adding to container order for batch ${currentBatchId}`
+      });
     }
   }
 
