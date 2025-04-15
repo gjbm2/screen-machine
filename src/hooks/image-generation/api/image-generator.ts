@@ -1,3 +1,4 @@
+
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -69,6 +70,7 @@ export const generateImage = async (
   console.log('- refinerParams:', refinerParams);
   console.log('- publish destination:', params.publish_destination);
   console.log('- batchId:', batchId);
+  console.log('- isAsync:', isAsync);
 
   // Create or use the provided batch ID
   const currentBatchId = batchId || nanoid();
@@ -93,23 +95,25 @@ export const generateImage = async (
       message: `Starting new batch with ID: ${currentBatchId}`
     });
     
-    // Only add to the container order if this is a new batch
-    setImageContainerOrder(prev => [currentBatchId, ...prev]);
-    
-    // Only increment container ID for new batches
-    setNextContainerId(prevId => prevId + 1);
+    // Only add to the container order if this is a new batch and NOT async
+    if (!isAsync) {
+      setImageContainerOrder(prev => [currentBatchId, ...prev]);
+      
+      // Only increment container ID for new batches
+      setNextContainerId(prevId => prevId + 1);
+    }
   }
 
   // Keep track of this generation
   setActiveGenerations(prev => [...prev, currentBatchId]);
   
   try {
-	const mergedImageInputs = [
-	  ...(config.imageFiles || []),
-	  ...(config.referenceUrls || [])
-	];
+    const mergedImageInputs = [
+      ...(config.imageFiles || []),
+      ...(config.referenceUrls || [])
+    ];
 
-	const { uploadedFiles, uploadedImageUrls } = processUploadedFiles(mergedImageInputs);
+    const { uploadedFiles, uploadedImageUrls } = processUploadedFiles(mergedImageInputs);
     
     // Generate title for this image generation
     const imageTitle = generateImageTitle(prompt, workflow);
@@ -144,7 +148,8 @@ export const generateImage = async (
         refinerParams: refinerParams || undefined,
         publishDestination: params.publish_destination || undefined,
         batchId: currentBatchId,
-        containerId: existingContainerId
+        containerId: existingContainerId,
+        isAsync
       }
     });
     
@@ -159,26 +164,33 @@ export const generateImage = async (
     // Determine which container ID to use
     const containerIdToUse = getContainerIdForBatch(batchId, existingContainerId, nextContainerId);
     
-    // Create placeholders for the batch and store them for tracking
+    // Skip creating placeholders for async workflows
     let placeholders: GeneratedImage[] = [];
     
-    setGeneratedImages(prevImages => {
-      // Create placeholders with unique IDs
-      placeholders = createPlaceholderBatch(
-        prompt,
-        workflow,
-        currentBatchId,
-        batchSize,
-        prevImages,
-        params,
-        refiner,
-        refinerParams,
-        referenceImageUrl,
-        containerIdToUse
-      );
-      
-      return [...prevImages, ...placeholders];
-    });
+    if (!isAsync) {
+      setGeneratedImages(prevImages => {
+        // Create placeholders with unique IDs
+        placeholders = createPlaceholderBatch(
+          prompt,
+          workflow,
+          currentBatchId,
+          batchSize,
+          prevImages,
+          params,
+          refiner,
+          refinerParams,
+          referenceImageUrl,
+          containerIdToUse
+        );
+        
+        return [...prevImages, ...placeholders];
+      });
+    } else {
+      addConsoleLog({
+        type: 'info',
+        message: `Async workflow: Skipping placeholder creation for batch ${currentBatchId}`
+      });
+    }
 
     // Use setTimeout to allow the UI to update before starting the API call
     setTimeout(async () => {
@@ -198,7 +210,7 @@ export const generateImage = async (
           refiner,
           refiner_params: refinerParams,
           imageFiles: uploadedFiles,
-		  referenceUrls: uploadedImageUrls,
+          referenceUrls: uploadedImageUrls,
           batch_id: currentBatchId,
           placeholders: placeholderIds // Send placeholder IDs to API
         };
@@ -206,8 +218,6 @@ export const generateImage = async (
         // Enhanced logging to debug
         console.log("[image-generator] Sending API payload:", payload);
 
-
-        
         const response = await apiService.generateImage(payload);
         
         addConsoleLog({
@@ -219,19 +229,25 @@ export const generateImage = async (
             referenceImageUrls: uploadedImageUrls.length > 0 ? uploadedImageUrls : undefined,
             refiner: refiner || undefined,
             refinerParams: refinerParams || undefined,
-            publishDestination: params.publish_destination || undefined
+            publishDestination: params.publish_destination || undefined,
+            isAsync
           }
         });
         
-        // Update the images with the actual URLs
-        setGeneratedImages(prevImages => {
-          const updatedImages = processGenerationResults(response, currentBatchId, prevImages);
-          return updatedImages;
-        });
+        // For non-async workflows, update the images with the actual URLs
+        if (!isAsync) {
+          setGeneratedImages(prevImages => {
+            const updatedImages = processGenerationResults(response, currentBatchId, prevImages);
+            return updatedImages;
+          });
 
-        // Success message
-        if (response.images?.length > 0) {
-          toast.success(`Generated ${response.images.length} image${response.images.length > 1 ? 's' : ''} successfully`);
+          // Success message
+          if (response.images?.length > 0) {
+            toast.success(`Generated ${response.images.length} image${response.images.length > 1 ? 's' : ''} successfully`);
+          }
+        } else {
+          // For async workflows, just show a message that generation has started
+          toast.success("Async generation started, you'll be notified when it completes");
         }
       } catch (error: any) {
         console.error('Image generation error:', error);
@@ -242,10 +258,12 @@ export const generateImage = async (
           details: error
         });
         
-        // Update image placeholders to show error
-        setGeneratedImages(prevImages => {
-          return markBatchAsError(currentBatchId, prevImages);
-        });
+        // Only update image placeholders for non-async workflows
+        if (!isAsync && placeholders.length > 0) {
+          setGeneratedImages(prevImages => {
+            return markBatchAsError(currentBatchId, prevImages);
+          });
+        }
         
         toast.error(`Failed to generate image: ${error.message || 'Unknown error'}`);
       } finally {
