@@ -1,6 +1,5 @@
 
 import { GeneratedImage } from '../types';
-import { ImageGenerationStatus } from '@/types/workflows';
 import { generateImageTitle } from './title-util';
 import { nanoid } from '@/lib/utils';
 
@@ -22,14 +21,14 @@ export const createPlaceholderImages = (
   
   // Create a placeholder entry with a generated title - this is our first and only call to generateImageTitle
   const placeholderImage: GeneratedImage = {
-    id: nanoid(), // Added id property
+    id: nanoid(),
     url: '', 
     prompt,
     workflow,
     timestamp: Date.now(),
     batchId,
     batchIndex: nextIndex,
-    status: 'generating' as ImageGenerationStatus,
+    status: 'generating',
     params,
     refiner,
     refinerParams,
@@ -80,7 +79,7 @@ export const processGenerationResponse = (
       newImages[placeholderIndex] = {
         ...newImages[placeholderIndex],
         url: img.url,
-        status: 'completed' as ImageGenerationStatus,
+        status: 'completed',
         timestamp: Date.now(),
       };
       
@@ -98,14 +97,14 @@ export const processGenerationResponse = (
       // No placeholder found, this is an additional image
       // In this case we need to generate a new title since we don't have a placeholder
       const newImage: GeneratedImage = {
-        id: nanoid(), // Added id property
+        id: nanoid(),
         url: img.url,
         prompt,
         workflow,
         timestamp: Date.now(),
         batchId,
         batchIndex: index,
-        status: 'completed' as ImageGenerationStatus,
+        status: 'completed',
         params: {},
         title: generateImageTitle(prompt, workflow)
       };
@@ -139,7 +138,7 @@ export const markBatchAsError = (
     if (img.batchId === batchId && img.status === 'generating') {
       return {
         ...img,
-        status: 'error' as ImageGenerationStatus,
+        status: 'error',
         timestamp: Date.now()
       };
     }

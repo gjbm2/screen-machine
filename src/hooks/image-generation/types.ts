@@ -1,3 +1,4 @@
+
 export interface ImageGenerationConfig {
   prompt: string;
   imageFiles?: File[];
