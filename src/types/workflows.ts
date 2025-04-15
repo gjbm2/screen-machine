@@ -13,7 +13,9 @@ export interface Workflow {
   icon: string;
   description: string;
   default?: boolean;
-  input?: ('text' | 'image')[]; // NEW: specifies input types
+  input?: ('text' | 'image')[]; 
+  async?: boolean; // Add the async property that's used in workflows.json
+  processing_stages?: string[]; // Add processing_stages as it's used in the code
   params: WorkflowParam[];
 }
 
