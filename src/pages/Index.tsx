@@ -7,7 +7,6 @@ import MainLayout from '@/components/layout/MainLayout';
 import AdvancedOptionsContainer from '@/components/advanced/AdvancedOptionsContainer';
 import { useImageGeneration } from '@/hooks/image-generation/use-image-generation';
 import { useConsoleManagement } from '@/hooks/use-console-management';
-import { useGenerationWebSocket } from '@/hooks/use-generation-websocket';
 import { WebSocketMessage, AsyncGenerationUpdate } from '@/hooks/image-generation/types';
 import { nanoid } from '@/lib/utils';
 import typedWorkflows from '@/data/typedWorkflows';
@@ -70,6 +69,7 @@ const Index = () => {
   const sessionId = React.useMemo(() => nanoid(), []);
   const [overlays, setOverlays] = useState<Overlay[]>([]);
   const [jobStatuses, setJobStatuses] = useState<Record<string, JobStatus>>({});
+  const [wsConnected, setWsConnected] = useState(false);
   
   const { 
     consoleVisible, 
@@ -201,122 +201,6 @@ const Index = () => {
     });
   }, []);
   
-  // Custom hook for handling WebSocket updates
-  const useOverlayWebSocket = useCallback((sessionId: string | undefined) => {
-    useEffect(() => {
-      if (!sessionId) return;
-      
-      const WS_HOST = import.meta.env.VITE_WS_HOST;
-      
-      let socket: WebSocket | null = null;
-      let reconnectAttempts = 0;
-      let reconnectTimeout: ReturnType<typeof setTimeout>;
-      
-      const connect = () => {
-        console.log("🔄 Attempting to connect to WebSocket at:", WS_HOST);
-        socket = new WebSocket(WS_HOST);
-        
-        socket.onopen = () => {
-          console.log("🟢 Overlay WebSocket FULL Connection Log - Connected to", WS_HOST);
-          reconnectAttempts = 0;
-          
-          // Identify this client
-          const identifyMsg = JSON.stringify({ 
-            type: 'identify', 
-            session_id: sessionId 
-          });
-          console.log("📤 Sending identify message:", identifyMsg);
-          socket.send(identifyMsg);
-        };
-        
-        socket.onclose = (event) => {
-          console.warn("🔌 WebSocket closed with code:", event.code, "reason:", event.reason || "No reason provided");
-          reconnectAttempts++;
-          const delay = Math.min(10000, 1000 * 2 ** reconnectAttempts);
-          console.log(`🔄 Will attempt to reconnect in ${delay}ms (attempt #${reconnectAttempts})`);
-          reconnectTimeout = setTimeout(connect, delay);
-        };
-        
-        socket.onerror = (err) => {
-          console.error("🔴 WebSocket error:", err);
-          console.log("❌ Closing socket due to error");
-          socket?.close();
-        };
-        
-        socket.onmessage = (event) => {
-          console.log("📬 WS raw message received:", event.data.substring(0, 200) + (event.data.length > 200 ? "..." : ""));
-          try {
-            const msg = JSON.parse(event.data);
-            console.log("🔍 Parsed WebSocket Message type:", msg.type || "No type", "job_id:", msg.job_id || "No job_id");
-            
-            // Handle job status messages
-            if (msg.job_id && typeof msg.html === 'string') {
-              console.log("📋 Job Status Message Detected:", msg);
-              handleJobStatusMessage(msg);
-              return;
-            }
-            
-            // Handle generation updates
-            if (msg.type === 'generation_update') {
-              console.log("🚀 Generation Update Message:", msg);
-              handleGenerationUpdate(msg);
-              return;
-            }
-            
-            // Handle overlay messages
-            if (msg.html) {
-              console.log("🖼️ Overlay Message Detected:", msg);
-              const { html, duration, position, clear } = msg;
-              const id = generateId();
-              const showDuration = typeof duration === "number" ? duration : 5000;
-              const displayTime = Math.max(0, showDuration);
-              
-              setOverlays((prev) => {
-                const base = clear ? [] : [...prev];
-                return [...base, {
-                  id,
-                  html,
-                  position,
-                  visible: msg.fadein === 0,
-                  fadein: msg.fadein
-                }];
-              });
-              
-              if (msg.fadein !== 0) {
-                setTimeout(() => {
-                  setOverlays((prev) =>
-                    prev.map((o) => (o.id === id ? { ...o, visible: true } : o))
-                  );
-                }, 50);
-              }
-              
-              setTimeout(() => {
-                setOverlays((prev) =>
-                  prev.map((o) => (o.id === id ? { ...o, visible: false } : o))
-                );
-                
-                setTimeout(() => {
-                  setOverlays((prev) => prev.filter((o) => o.id !== id));
-                }, 5000); // OVERLAY_FADEOUT_DURATION
-              }, displayTime);
-            }
-          } catch (err) {
-            console.error("❌ WebSocket Message Parsing Error:", err);
-            console.error("⚠️ Could not parse message:", event.data.substring(0, 500));
-          }
-        };
-      };
-      
-      connect();
-      
-      return () => {
-        console.log("🧹 Cleaning up WebSocket connection");
-        socket?.close();
-        clearTimeout(reconnectTimeout);
-      };
-    }, [sessionId, handleJobStatusMessage, handleGenerationUpdate]);
-  }, [handleJobStatusMessage]);
-  
   // Function to handle generation updates from WebSocket
   const handleGenerationUpdate = useCallback((update: AsyncGenerationUpdate) => {
     console.log("📬 Handling generation update:", update);
@@ -338,30 +222,134 @@ const Index = () => {
       toast.error(`Generation failed: ${update.error || 'Unknown error'}`);
     }
   }, [addConsoleLog]);
+
+  // Unified WebSocket handler for both overlay and generation messages
+  const handleWebSocketMessage = useCallback((event: MessageEvent) => {
+    console.log("📬 WS raw message received:", event.data.substring(0, 200) + (event.data.length > 200 ? "..." : ""));
+    
+    try {
+      const msg = JSON.parse(event.data);
+      console.log("🔍 Parsed WebSocket Message type:", msg.type || "No type", "job_id:", msg.job_id || "No job_id");
+      
+      // Handle job status messages
+      if (msg.job_id && typeof msg.html === 'string') {
+        console.log("📋 Job Status Message Detected:", msg);
+        handleJobStatusMessage(msg);
+        return;
+      }
+      
+      // Handle generation updates
+      if (msg.type === 'generation_update') {
+        console.log("🚀 Generation Update Message:", msg);
+        handleGenerationUpdate(msg as AsyncGenerationUpdate);
+        return;
+      }
+      
+      // Handle overlay messages
+      if (msg.html) {
+        console.log("🖼️ Overlay Message Detected:", msg);
+        const { html, duration, position, clear, fadein } = msg;
+        const id = generateId();
+        const showDuration = typeof duration === "number" ? duration : 5000;
+        const displayTime = Math.max(0, showDuration);
+        
+        setOverlays((prev) => {
+          const base = clear ? [] : [...prev];
+          return [...base, {
+            id,
+            html,
+            position,
+            visible: fadein === 0,
+            fadein
+          }];
+        });
+        
+        if (fadein !== 0) {
+          setTimeout(() => {
+            setOverlays((prev) =>
+              prev.map((o) => (o.id === id ? { ...o, visible: true } : o))
+            );
+          }, 50);
+        }
+        
+        setTimeout(() => {
+          setOverlays((prev) =>
+            prev.map((o) => (o.id === id ? { ...o, visible: false } : o))
+          );
+          
+          setTimeout(() => {
+            setOverlays((prev) => prev.filter((o) => o.id !== id));
+          }, 5000); // OVERLAY_FADEOUT_DURATION
+        }, displayTime);
+      }
+    } catch (err) {
+      console.error("❌ WebSocket Message Parsing Error:", err);
+      console.error("⚠️ Could not parse message:", event.data.substring(0, 500));
+    }
+  }, [handleJobStatusMessage, handleGenerationUpdate]);
   
   // Initialize WebSocket connection
-  useOverlayWebSocket(sessionId);
-  
-  const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
-    console.log("📬 Handling WebSocket message:", message);
-    
-    if (message.type === 'generation_update') {
-      handleGenerationUpdate(message as AsyncGenerationUpdate);
-    }
-  }, [handleGenerationUpdate]);
-  
-  const { connected: wsConnected } = useGenerationWebSocket(handleWebSocketMessage, sessionId);
-  
   useEffect(() => {
-    console.log(`WebSocket connection status: ${wsConnected ? 'connected' : 'disconnected'}`);
+    if (!sessionId) return;
     
-    if (wsConnected) {
-      addConsoleLog({
-        type: 'info',
-        message: 'WebSocket connected for real-time updates'
-      });
-    }
-  }, [wsConnected, addConsoleLog]);
+    const WS_HOST = import.meta.env.VITE_WS_HOST;
+    
+    let socket: WebSocket | null = null;
+    let reconnectAttempts = 0;
+    let reconnectTimeout: ReturnType<typeof setTimeout>;
+    
+    const connect = () => {
+      console.log("🔄 Attempting to connect to WebSocket at:", WS_HOST);
+      socket = new WebSocket(WS_HOST);
+      
+      socket.onopen = () => {
+        console.log("🟢 WebSocket connected to", WS_HOST);
+        setWsConnected(true);
+        reconnectAttempts = 0;
+        
+        // Identify this client
+        const identifyMsg = JSON.stringify({ 
+          type: 'identify', 
+          session_id: sessionId 
+        });
+        console.log("📤 Sending identify message:", identifyMsg);
+        socket.send(identifyMsg);
+        
+        addConsoleLog({
+          type: 'info',
+          message: 'WebSocket connected for real-time updates'
+        });
+      };
+      
+      socket.onclose = (event) => {
+        console.warn("🔌 WebSocket closed with code:", event.code, "reason:", event.reason || "No reason provided");
+        setWsConnected(false);
+        reconnectAttempts++;
+        const delay = Math.min(10000, 1000 * 2 ** reconnectAttempts);
+        console.log(`🔄 Will attempt to reconnect in ${delay}ms (attempt #${reconnectAttempts})`);
+        reconnectTimeout = setTimeout(connect, delay);
+      };
+      
+      socket.onerror = (err) => {
+        console.error("🔴 WebSocket error:", err);
+        console.log("❌ Closing socket due to error");
+        socket?.close();
+      };
+      
+      // Unified message handling for all WebSocket messages
+      socket.onmessage = handleWebSocketMessage;
+    };
+    
+    connect();
+    
+    return () => {
+      console.log("🧹 Cleaning up WebSocket connection");
+      if (socket) {
+        socket.close();
+      }
+      clearTimeout(reconnectTimeout);
+    };
+  }, [sessionId, handleWebSocketMessage, addConsoleLog]);
 
   const processUrlParam = (value: string): any => {
     if ((value.startsWith('"') && value.endsWith('"')) || 
