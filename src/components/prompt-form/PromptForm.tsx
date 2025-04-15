@@ -6,6 +6,7 @@ import PromptInput from '@/components/prompt/PromptInput';
 import PromptFormToolbar from './PromptFormToolbar';
 import { PromptFormProps, WorkflowProps } from './types';
 import useExternalImageUrls from '@/hooks/use-external-images';
+import { Workflow } from '@/types/workflows';
 
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
@@ -125,43 +126,43 @@ const PromptForm: React.FC<PromptFormProps> = ({
     if (externalPublishChange) externalPublishChange(publishId);
   };
 
-  const handleSubmit = () => {
-    if (prompt.trim() === '' && imageFiles.length === 0 && previewUrls.length === 0) {
-      toast.error('Please enter a prompt or upload an image');
-      return;
-    }
+	  const handleSubmit = () => {
+	  if (prompt.trim() === '' && imageFiles.length === 0 && previewUrls.length === 0) {
+		toast.error('Please enter a prompt or upload an image');
+		return;
+	  }
 
-    if (!selectedWorkflow) {
-      toast.error('Please select a workflow');
-      return;
-    }
+	  if (!selectedWorkflow) {
+		toast.error('Please select a workflow');
+		return;
+	  }
 
-    setLocalLoading(true);
+	  setLocalLoading(true);
 
-    const fileImages: File[] = [...imageFiles];
-    const urlImages: string[] = [...previewUrls.filter(url => typeof url === 'string')];
-    
-    const allImages: (File | string)[] = [...fileImages, ...urlImages];
+	  const allImages: (File | string)[] = [
+		...imageFiles,
+		...previewUrls.filter(url => typeof url === 'string')  // ✅ ADD reference URLs
+	  ];
 
-    const refinerToUse = selectedRefiner === 'none' ? undefined : selectedRefiner;
-    const publishToUse = selectedPublish === 'none' ? undefined : selectedPublish;
-    const currentGlobalParams = { ...globalParams };
+	  const refinerToUse = selectedRefiner === 'none' ? undefined : selectedRefiner;
+	  const publishToUse = selectedPublish === 'none' ? undefined : selectedPublish;
+	  const currentGlobalParams = { ...globalParams };
 
-    onSubmit(
-      prompt,
-      allImages.length > 0 ? allImages : undefined,
-      selectedWorkflow,
-      workflowParams,
-      currentGlobalParams,
-      refinerToUse,
-      refinerParams,
-      publishToUse
-    );
+	  onSubmit(
+		prompt,
+		allImages.length > 0 ? allImages : undefined,
+		selectedWorkflow,
+		workflowParams,
+		currentGlobalParams,
+		refinerToUse,
+		refinerParams,
+		publishToUse
+	  );
 
-    setTimeout(() => {
-      setLocalLoading(false);
-    }, 1000);
-  };
+	  setTimeout(() => {
+		setLocalLoading(false);
+	  }, 1000);
+	};
 
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setPrompt(e.target.value);

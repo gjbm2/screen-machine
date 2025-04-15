@@ -1,12 +1,7 @@
-
 export interface WorkflowProps {
   id: string;
   name: string;
   description: string;
-  icon?: string;
-  default?: boolean;
-  input?: ('text' | 'image')[];
-  async?: boolean;
   params?: Array<{
     id: string;
     name: string;
@@ -19,7 +14,7 @@ export interface WorkflowProps {
 export interface PromptFormProps {
   onSubmit: (
     prompt: string,
-    imageFiles?: (File | string)[],
+    imageFiles?: File[] | string[],
     workflow?: string,
     params?: Record<string, any>,
     globalParams?: Record<string, any>,
