@@ -8,7 +8,7 @@
   "setwallpaper": null,
   "refine": null,
   "workflow": "wan_image_to_video_upscale_slow.json",
-  "seed": 37196234,
+  "seed": 90862339,
   "timeout": 300,
   "suppress": false,
   "batch": 1,
