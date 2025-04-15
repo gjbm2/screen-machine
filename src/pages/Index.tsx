@@ -13,7 +13,6 @@ import typedWorkflows from '@/data/typedWorkflows';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 
-// Define interface for overlay messages and overlay state
 interface OverlayMessage {
   html: string;
   duration: number;
@@ -31,7 +30,6 @@ interface Overlay {
   fadein?: number;
 }
 
-// Define interface for job status messages
 interface JobStatusMessage {
   screens?: string | string[];
   html: string;
@@ -46,18 +44,16 @@ interface JobStatus {
   id: string;
   html: string;
   visible: boolean;
-  messageHash: string; // To track if message content changed
-  timeoutId?: ReturnType<typeof setTimeout>; // To store timeout ID for cleanup
+  messageHash: string;
+  timeoutId?: ReturnType<typeof setTimeout>;
 }
 
-// Utility function to generate unique IDs
 function generateId(): string {
   return (typeof crypto !== "undefined" && crypto.randomUUID)
     ? crypto.randomUUID()
     : Math.random().toString(36).substring(2, 10);
 }
 
-// Utility to create hash of message content
 function hashMessage(message: JobStatusMessage): string {
   return `${message.html}_${message.screens}_${message.position}`;
 }
@@ -84,7 +80,6 @@ const Index = () => {
   
   const [selectedPublish, setSelectedPublish] = useState('none');
 
-  // Extract all values from useImageGeneration hook
   const {
     generatedImages,
     activeGenerations,
@@ -115,39 +110,38 @@ const Index = () => {
     handleDeleteContainer
   } = useImageGeneration(addConsoleLog);
   
-  // Handle job status message
   const handleJobStatusMessage = useCallback((message: JobStatusMessage) => {
-    // Log ALL received messages for debugging
     console.log("🕵️ Job Status Message Received:", message);
+    addConsoleLog({
+      type: 'info',
+      message: `Job status message received: ${JSON.stringify(message).substring(0, 100)}...`
+    });
     
-    // Check if screens property exists and extract the value for better logging
     const screens = message.screens || "";
     console.log("📋 Message screens property:", screens);
   
-    // Check if this message is intended for this screen
-    // Use Array.includes to check if 'index' is in the screens array
     const isForThisScreen = 
-      !message.screens || // Accept undefined/null screens
+      !message.screens || 
       message.screens === 'index' || 
-      (Array.isArray(message.screens) && message.screens.includes('index'));
+      (Array.isArray(message.screens) && 
+       (message.screens.includes('index') || message.screens.includes('*') || message.screens.length === 0));
+
+    console.log("🔍 Is message for this screen?", isForThisScreen, "Screen filter:", message.screens);
 
     if (!isForThisScreen) {
       console.log("🚫 Message NOT intended for index screen. Screens:", message.screens);
-      return; // Ignore messages not meant for index screen
+      return;
     }
 
     console.log("✅ Processing job status message for index screen:", message);
     const messageHash = hashMessage(message);
     const jobId = message.job_id;
 
-    // Create or update the job status
     setJobStatuses(prev => {
-      // Clear any existing timeout for this job ID
       if (prev[jobId]?.timeoutId) {
         clearTimeout(prev[jobId].timeoutId);
       }
       
-      // Prepare the updated job status
       const updatedStatus = {
         id: jobId,
         html: message.html,
@@ -156,7 +150,6 @@ const Index = () => {
         timeoutId: undefined as ReturnType<typeof setTimeout> | undefined
       };
       
-      // If duration is specified, set a new timeout
       if (message.duration) {
         updatedStatus.timeoutId = setTimeout(() => {
           setJobStatuses(currentState => {
@@ -179,12 +172,10 @@ const Index = () => {
         [jobId]: updatedStatus
       };
     });
-  }, []);
+  }, [addConsoleLog]);
 
-  // Handle close of job status
   const handleCloseJobStatus = useCallback((jobId: string) => {
     setJobStatuses(prev => {
-      // Clear any existing timeout for this job
       if (prev[jobId]?.timeoutId) {
         clearTimeout(prev[jobId].timeoutId);
       }
@@ -202,7 +193,6 @@ const Index = () => {
     });
   }, []);
   
-  // Function to handle generation updates from WebSocket
   const handleGenerationUpdate = useCallback((update: AsyncGenerationUpdate) => {
     console.log("📈 Generation update received:", update);
     
@@ -224,29 +214,30 @@ const Index = () => {
     }
   }, [addConsoleLog]);
 
-  // WebSocket message handler
   const handleWebSocketMessage = useCallback((event: MessageEvent) => {
-    console.log("📬 Raw WS message received:", event.data.substring(0, 200) + (event.data.length > 200 ? "..." : ""));
+    console.log("📬 Raw WS message received:", event.data);
+    
+    addConsoleLog({
+      type: 'info',
+      message: `WebSocket message received (raw): ${event.data.substring(0, 100)}...`
+    });
     
     try {
       const msg = JSON.parse(event.data);
       console.log("🔍 Parsed WS message:", msg);
       
-      // Handle job status messages
       if (msg.job_id && typeof msg.html === 'string') {
         console.log("📋 Found job status message with job_id:", msg.job_id);
         handleJobStatusMessage(msg);
         return;
       }
       
-      // Handle generation updates
       if (msg.type === 'generation_update') {
         console.log("🚀 Found generation update message:", msg);
         handleGenerationUpdate(msg as AsyncGenerationUpdate);
         return;
       }
       
-      // Handle overlay messages
       if (msg.html) {
         console.log("🖼️ Found overlay message:", msg);
         const { html, duration, position, clear, fadein } = msg;
@@ -280,20 +271,32 @@ const Index = () => {
           
           setTimeout(() => {
             setOverlays((prev) => prev.filter((o) => o.id !== id));
-          }, 5000); // OVERLAY_FADEOUT_DURATION
+          }, 5000);
         }, displayTime);
       }
     } catch (err) {
       console.error("❌ WebSocket Message Parsing Error:", err);
-      console.error("⚠️ Could not parse message:", event.data.substring(0, 500));
+      console.error("⚠️ Could not parse message:", event.data);
+      
+      addConsoleLog({
+        type: 'error',
+        message: `Failed to parse WebSocket message: ${err}`,
+        details: {
+          rawMessage: event.data.substring(0, 500),
+          error: String(err)
+        }
+      });
     }
-  }, [handleJobStatusMessage, handleGenerationUpdate]);
+  }, [handleJobStatusMessage, handleGenerationUpdate, addConsoleLog]);
   
-  // Initialize WebSocket connection
   useEffect(() => {
     const WS_HOST = import.meta.env.VITE_WS_HOST;
     if (!WS_HOST) {
       console.error("❌ No WebSocket host defined in environment variables");
+      addConsoleLog({
+        type: 'error',
+        message: 'No WebSocket host defined in environment variables'
+      });
       return;
     }
     
@@ -316,17 +319,9 @@ const Index = () => {
         setWsConnected(true);
         reconnectAttempts = 0;
         
-        // Identify this client
-        const identifyMsg = JSON.stringify({ 
-          type: 'identify', 
-          session_id: sessionId 
-        });
-        console.log("📤 Sending identify message:", identifyMsg);
-        socket.send(identifyMsg);
-        
         addConsoleLog({
           type: 'info',
-          message: 'WebSocket connected for real-time updates'
+          message: 'WebSocket connected as overlay client'
         });
       };
       
@@ -334,7 +329,11 @@ const Index = () => {
         console.warn("🔌 WebSocket closed with code:", event.code, "reason:", event.reason || "No reason provided");
         setWsConnected(false);
         
-        // Attempt to reconnect
+        addConsoleLog({
+          type: 'warning',
+          message: `WebSocket disconnected: Code ${event.code} - ${event.reason || "No reason provided"}`
+        });
+        
         reconnectAttempts++;
         const delay = Math.min(10000, 1000 * 2 ** reconnectAttempts);
         console.log(`🔄 Will attempt to reconnect in ${delay}ms (attempt #${reconnectAttempts})`);
@@ -344,10 +343,16 @@ const Index = () => {
       socket.onerror = (err) => {
         console.error("🔴 WebSocket error:", err);
         console.error("❌ Closing socket due to error");
+        
+        addConsoleLog({
+          type: 'error',
+          message: 'WebSocket connection error',
+          details: err
+        });
+        
         socket?.close();
       };
       
-      // Set message handler
       socket.onmessage = handleWebSocketMessage;
     };
     
@@ -639,9 +644,24 @@ const Index = () => {
     }
   };
 
-  // For testing: Simulate job status messages for async workflows
   useEffect(() => {
-    // Check if we're in the Lovable environment
+    if (typeof window !== 'undefined') {
+      (window as any).testOverlayMessage = (message: any) => {
+        console.log("🧪 Testing message handling with:", message);
+        const event = { data: JSON.stringify(message) };
+        handleWebSocketMessage(event as MessageEvent);
+        return "Test message sent to handler";
+      };
+      
+      console.log("🧪 testOverlayMessage() function is available in browser console");
+      
+      return () => {
+        delete (window as any).testOverlayMessage;
+      };
+    }
+  }, [handleWebSocketMessage]);
+
+  useEffect(() => {
     const isLovableEnvironment = 
       typeof window !== 'undefined' && 
       (window.location.hostname === 'localhost' || 
@@ -657,10 +677,8 @@ const Index = () => {
     const originalHandleSubmitPrompt = handleSubmitPrompt;
     
     const wrappedHandleSubmitPrompt = async (...args: Parameters<typeof handleSubmitPrompt>) => {
-      // Check if the selected workflow is async
       const workflowConfig = typedWorkflows.find(w => w.id === (args[2] || currentWorkflow));
       if (workflowConfig?.async) {
-        // Simulate a job status message for testing BEFORE calling the API
         const mockJobId = nanoid();
         const mockMessage: JobStatusMessage = {
           screens: 'index',
@@ -672,30 +690,25 @@ const Index = () => {
         console.log("Simulating job status message for async workflow:", mockMessage);
         handleJobStatusMessage(mockMessage);
         
-        // Simulate an update after 3 seconds
         setTimeout(() => {
           const updatedMessage: JobStatusMessage = {
             screens: 'index',
             html: `Processing ${workflowConfig.name} results (30%)...`,
             duration: 30000,
-            job_id: mockJobId // Same job ID as before
+            job_id: mockJobId
           };
           console.log("Simulating job status update:", updatedMessage);
           handleJobStatusMessage(updatedMessage);
         }, 3000);
       }
       
-      // Call the original function to actually generate the image
       return await originalHandleSubmitPrompt(...args);
     };
     
-    // Override the handleSubmitPrompt function temporarily
-    // This is a bit of a hack but useful for testing
     (window as any).originalHandleSubmitPrompt = handleSubmitPrompt;
     (window as any).handleSubmitPrompt = wrappedHandleSubmitPrompt;
     
     return () => {
-      // Restore the original function
       if ((window as any).originalHandleSubmitPrompt) {
         (window as any).handleSubmitPrompt = (window as any).originalHandleSubmitPrompt;
         delete (window as any).originalHandleSubmitPrompt;
@@ -703,12 +716,10 @@ const Index = () => {
     };
   }, [handleSubmitPrompt, handleJobStatusMessage, currentWorkflow]);
 
-  // Development-only WebSocket message simulation
   const [devJobId, setDevJobId] = useState('');
   const [devHtml, setDevHtml] = useState('Rendering...');
 
   const simulateWebSocketMessage = () => {
-    // Only simulate in Lovable or localhost environments
     const isLovableEnvironment = 
       typeof window !== 'undefined' && 
       (window.location.hostname === 'localhost' || 
@@ -751,10 +762,8 @@ const Index = () => {
     />
   ));
 
-  // Make sure to clean up all timeouts when component unmounts
   useEffect(() => {
     return () => {
-      // Clean up all active timeouts
       Object.values(jobStatuses).forEach(status => {
         if (status.timeoutId) {
           clearTimeout(status.timeoutId);
@@ -763,7 +772,6 @@ const Index = () => {
     };
   }, [jobStatuses]);
 
-  // Render job status elements
   const jobStatusElements = Object.values(jobStatuses)
     .filter(status => status.visible)
     .map((status, index) => (
