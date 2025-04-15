@@ -78,10 +78,22 @@ export const usePromptSubmission = ({
     try {
       setIsFirstRun(false);
       
+      // KEY CHANGE: Use the user-specified workflow if provided, regardless of images
       let effectiveWorkflow = workflow || currentWorkflow;
-      if (imageFiles && imageFiles.length > 0) {
-        effectiveWorkflow = findImageCapableWorkflow(effectiveWorkflow, imageFiles);
-        console.log(`Auto-selected image-capable workflow: ${effectiveWorkflow}`);
+      
+      // Check if there are uploaded images but no workflow was explicitly provided in this function call
+      // In this case, we should only check for image compatibility
+      if (!workflow && imageFiles && imageFiles.length > 0) {
+        const currentWorkflowObj = typedWorkflows.find(w => w.id === effectiveWorkflow);
+        
+        // Only change workflow if current one doesn't support images
+        if (!currentWorkflowObj?.input?.includes('image')) {
+          const imageWorkflow = findImageCapableWorkflow(effectiveWorkflow, imageFiles);
+          if (imageWorkflow !== effectiveWorkflow) {
+            console.log(`Auto-selected image-capable workflow: ${imageWorkflow} (current workflow didn't support images)`);
+            effectiveWorkflow = imageWorkflow;
+          }
+        }
       }
 
       const uploadedFiles = (imageFiles || []).filter(f => f instanceof File) as File[];

@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Upload, Camera } from 'lucide-react';
@@ -52,10 +51,10 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       if (event.detail && event.detail.files) {
         onImageUpload(event.detail.files);
         const nextWorkflow = findNextImageWorkflow(availableWorkflows, selectedWorkflowId);
-		if (nextWorkflow) {
-		  onWorkflowChange(nextWorkflow);
-		  toast.info(`Switched to "${nextWorkflow}" workflow`);
-		}
+        if (nextWorkflow) {
+          onWorkflowChange(nextWorkflow);
+          toast.info(`Switched to "${nextWorkflow}" workflow to support image input`);
+        }
       }
     };
 
@@ -86,7 +85,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       const nextWorkflow = findNextImageWorkflow(availableWorkflows, selectedWorkflowId);
       if (nextWorkflow) {
         onWorkflowChange(nextWorkflow);
-        toast.info(`Switched to "${nextWorkflow}" workflow`);
+        toast.info(`Switched to "${nextWorkflow}" workflow to support image input`);
       }
     }
   };
@@ -96,17 +95,14 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     e.target.value = '';
   };
 
-  // Function to handle URL drops
   const processURL = async (url: string) => {
     try {
-      // Check if the URL is valid
       const isValidURL = /^(https?:\/\/)/i.test(url);
       if (!isValidURL) {
         toast.error("Invalid URL format");
         return;
       }
 
-      // Attempt to fetch the image to verify it's valid
       const response = await fetch(url, { method: 'HEAD' });
       
       if (!response.ok) {
@@ -120,7 +116,6 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         return;
       }
       
-      // Convert URL to a file object
       const imageResponse = await fetch(url);
       const blob = await imageResponse.blob();
       const fileName = url.split('/').pop() || 'image.jpg';
@@ -131,7 +126,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       const nextWorkflow = findNextImageWorkflow(availableWorkflows, selectedWorkflowId);
       if (nextWorkflow) {
         onWorkflowChange(nextWorkflow);
-        toast.info(`Switched to "${nextWorkflow}" workflow`);
+        toast.info(`Switched to "${nextWorkflow}" workflow to support image input`);
       }
     } catch (error) {
       console.error('Error processing URL:', error);
@@ -139,7 +134,6 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   };
 
-  // Drag and drop handlers
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -159,7 +153,6 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     e.stopPropagation();
     if (!isLoading) {
       setIsDragging(true);
-      // Indicate this is a copy operation
       e.dataTransfer.dropEffect = 'copy';
     }
   };
@@ -171,13 +164,11 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     
     if (isLoading) return;
     
-    // Check for files first
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       processFiles(e.dataTransfer.files);
       return;
     }
     
-    // Check for URLs (text/uri-list or text/plain)
     const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text');
     if (url) {
       processURL(url);
@@ -187,7 +178,6 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const triggerFileInput = () => fileInputRef.current?.click();
   const triggerCameraInput = () => cameraInputRef.current?.click();
 
-  // Common drag-enabled button styles
   const dragButtonClass = `${isDragging ? 'bg-purple-100 border-purple-500' : 'border border-input'} transition-colors`;
 
   if (isMobile) {
