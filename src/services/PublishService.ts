@@ -1,6 +1,6 @@
 
 import { toast } from 'sonner';
-import publishDestinations from '@/data/publish-destinations.json';
+import publishDestinationsData from '@/data/publish-destinations.json';
 import api from '/src/utils/api';
 
 export interface PublishDestination {
@@ -10,10 +10,12 @@ export interface PublishDestination {
   type: string;
   description: string;
   file?: string;
+  maxwidth?: number;
+  maxheight?: number;
 }
 
 export const getPublishDestinations = (): PublishDestination[] => {
-  return publishDestinations;
+  return publishDestinationsData;
 };
 
 export const publishImage = async (
@@ -25,7 +27,8 @@ export const publishImage = async (
     params?: Record<string, any>;
   }
 ): Promise<boolean> => {
-  const destination = publishDestinations.find(dest => dest.id === destinationId);
+  const destinations = getPublishDestinations();
+  const destination = destinations.find(dest => dest.id === destinationId);
   
   if (!destination) {
     toast.error(`Unknown destination: ${destinationId}`);
