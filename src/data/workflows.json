@@ -233,6 +233,7 @@
     "description": "Animate an image based on a text prompt",
 	"runpod_id": "wxd8n6sak3urv5",
     "input": ["image", "text"],	
+    "async" true,
 	"icon": "FileVideo2",
 	"processing_stages": ["Rendering","Interpolating","Upscaling"],
     "params": [
