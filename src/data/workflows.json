@@ -234,6 +234,7 @@
 	"runpod_id": "wxd8n6sak3urv5",
 	"type": "async",
     "input": ["image", "text"],	
+    "async" true,
 	"icon": "FileVideo2",
 	"processing_stages": ["Rendering","Interpolating","Upscaling"],
     "params": [
