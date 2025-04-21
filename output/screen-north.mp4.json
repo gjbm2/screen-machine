@@ -1,5 +1,5 @@
 {
-  "prompt": "Tiger in a library",
+  "prompt": "Slowly, the vibrant hot air balloons drift across the night sky, casting a warm, shifting glow over the city lights below. The reflections in the wet pavement shimmer subtly as the lone figure walks forward, silhouetted against the vivid luminescence.",
   "width": null,
   "height": null,
   "steps": null,
@@ -8,15 +8,14 @@
   "setwallpaper": null,
   "refine": null,
   "workflow": "wan_image_to_video_upscale_slow.json",
-  "seed": 37196234,
+  "seed": 71482809,
   "timeout": 300,
   "suppress": false,
   "batch": 1,
   "metaprompt": false,
-  "video_length": 10,
   "images": [
     {
-      "name": "7e367748.jpg"
+      "name": "screen-north.jpg"
     }
   ]
 }

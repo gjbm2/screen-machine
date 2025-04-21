@@ -16,6 +16,14 @@ export interface Workflow {
   input?: string[];
   async?: boolean;
   params: WorkflowParam[];
+
+  // NEW optional fields seen in the JSON
+  runpod_id?: string;
+  alexavisible?: boolean;
+  style_guidance?: string;
+  style_descriptor?: string;
+  uses_images?: number;
+  processing_stages?: { name: string; weight: number }[];
 }
 
 // Add the ImageGenerationStatus type that was removed

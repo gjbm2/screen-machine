@@ -1,0 +1,122 @@
+{% if BACKGROUND != "none" %}
+<div style="
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: clamp(6px, 1vw, 10px);
+  padding: 6px 10px;
+  background: {% if TYPE == 'alert' %}rgba(255, 0, 0, 0.3){% else %}rgba(0, 0, 0, 0.3){% endif %};
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 400;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);  
+  text-align: center;
+">
+{% else %}
+<div style="
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 400;
+  text-align: center;
+">
+{% endif %}
+
+  <!-- Pulsing blob fallback -->
+  <div id="progress_blob" style="
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: red;
+    animation: pulse 2s infinite ease-in-out;
+  "></div>
+
+  <!-- Progress ring -->
+  <svg id="progress_ring" width="10" height="10" viewBox="0 0 36 36" style="display: none;">
+    <circle
+      cx="18" cy="18" r="16"
+      fill="none"
+      stroke="rgba(255, 255, 255, 0.3)"
+      stroke-width="4"
+    />
+    <circle
+      id="progress_foreground"
+      cx="18" cy="18" r="16"
+      fill="none"
+      stroke="white"
+      stroke-width="4"
+      stroke-dasharray="100"
+      stroke-dashoffset="100"
+      stroke-linecap="round"
+      transform="rotate(-90 18 18)"
+    />
+  </svg>
+
+  <!-- Message always shown -->
+  <div id="message_text">{{MESSAGE}}</div>
+</div>
+
+<style>
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes shimmerSweep {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.pulsing-stage {
+  display: inline-block;
+  font-weight: 500;
+  color: rgba(255, 255, 255, .7);  /* base text color */
+  background: linear-gradient(
+    -90deg,
+	  rgba(255, 255, 255, 0) 0%,
+	  rgba(255, 255, 255, 0.2) 35%,
+	  rgba(255, 255, 255, 0.5) 45%,
+	  rgba(255, 255, 255, 1.0) 50%,
+	  rgba(255, 255, 255, 0.5) 55%,
+	  rgba(255, 255, 255, 0.2) 65%,
+	  rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 150% 100%;
+  background-position: -200% 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: currentColor;
+  animation: shimmerSweep 5s ease-in-out infinite;
+}
+</style>
+
+
+<script>
+(function () {
+  const percent = "{{PROGRESS_PERCENT}}";
+  const ring = document.getElementById("progress_ring");
+  const blob = document.getElementById("progress_blob");
+  const fg = document.getElementById("progress_foreground");
+
+  if (percent !== "" && !isNaN(Number(percent))) {
+    const clamped = Math.max(0, Math.min(100, Number(percent)));
+    const offset = 100 - clamped;
+
+    blob.style.display = "none";
+    ring.style.display = "inline";
+    fg.setAttribute("stroke-dashoffset", offset.toString());
+  } else {
+    blob.style.display = "inline";
+    ring.style.display = "none";
+  }
+})();
+</script>

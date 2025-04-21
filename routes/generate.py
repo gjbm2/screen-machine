@@ -9,12 +9,13 @@ import textwrap
 from dotenv import load_dotenv, find_dotenv
 from datetime import datetime
 import routes.openai
-from routes.utils import findfile
+from routes.utils import findfile, truncate_element, _load_json_once
 import routes.display
 from time import sleep, time 
 import uuid
 from overlay_ws_server import job_progress_listeners_latest
 from urllib.parse import urlparse
+from routes.manage_jobs import add_job
 
 # Runpod
 import runpod
@@ -182,6 +183,7 @@ def start(
         metaprompt: bool | None = None,
         images: list[dict[str, str]] | None = None,
         negativeprompt: str | None = None,
+        interpolate_frames: int | None = None,
         upscaler: str | None = None,
         lora: str | None = None,
         video_length: int | None = None,
@@ -222,6 +224,7 @@ def start(
             "negativeprompt": negativeprompt,
             "upscaler": upscaler,
             "lora": lora,
+            "interpolate_frames": interpolate_frames,
             "lora_strength": lora_strength,
             "suppress": suppress,
             "video_length" : video_length,
@@ -264,17 +267,19 @@ def start(
         
         # Let the screen know we're generating
         routes.display.send_overlay(
-            html = "overlay_generating.html",
+            html = "overlay_generating.html.j2",
             screens = [publish_destination] if isinstance(publish_destination, str) else publish_destination, 
-            substitutions = {'{{MESSAGE}}': 'Initialising...'},
+            substitutions = {'MESSAGE': 'Initialising...'},
             duration = 30000,
             position = "top-left"
         )
     
     #info("Image parameters: " + ", ".join(f"{k}={v}" for k, v in vars(args_namespace).items()))
     
+    info(f"Trying to load: {args_namespace.workflow}")
     with open(findfile(args_namespace.workflow), "r") as file:
         workflow_data = json.load(file)
+    info(f"Successfully loaded: {args_namespace.workflow}")
     
     unique_video_name = f"output_video{str(uuid.uuid4())[:8]}"    
     json_replacements = {
@@ -312,18 +317,48 @@ def start(
             "width": locals().get("maxwidth", 6400),
             "height": locals().get("maxheight", 6400)
         },
+        r"{{INTERPOLATOR}}": {
+            "multiplier": vars(args_namespace).get("interpolate_frames", None)
+        },        
         r"{{IMAGE-TO-VIDEO}}": {
-            "length": vars(args_namespace).get("video_length", 10)
+            "length": vars(args_namespace).get("video_length", None),
+            "width": args_namespace.width,
+            "height": args_namespace.height
         },
         r"{{SAVE-WEBM}}": {
             "filename_prefix": unique_video_name
         }
     }
     
+    # Reference images as appropriate
+    
+    # Load workflows and find matching workflow metadata
+    master_workflow_data = _load_json_once("workflow", "workflows.json")
+    workflow_id = args_namespace.workflow  # adjust if needed
+    master_workflow_meta = next((w for w in master_workflow_data if w["id"] == workflow_id), {})
+
+    # Check whether this workflow expects 2 images
+    uses_two_images = master_workflow_meta.get("uses_images", 1) == 2
+    
+    debug("!!! uses_two_images !!!")
+
+    # Always set the first image if any images are provided
     if args_namespace.images and len(args_namespace.images) > 0:
         json_replacements[r"{{LOAD-IMAGE}}"] = {
             "image": args_namespace.images[0].get("name")
         }
+
+        # Only add LOAD-IMAGE-2 if the workflow explicitly expects 2 images
+        if uses_two_images:
+            second_image = (
+                args_namespace.images[1].get("name")
+                if len(args_namespace.images) > 1
+                else args_namespace.images[0].get("name")
+            )
+            json_replacements[r"{{LOAD-IMAGE-2}}"] = {
+                "image": second_image
+            }
+
 
     # Compile the final object to submit
     input_payload = {
@@ -348,29 +383,39 @@ def start(
     runpod.api_key = os.getenv("RUNPOD_API_KEY")
     endpoint = runpod.Endpoint(runpod_id)
 
+    #debug(f"Workflow object: {json.dumps(truncate_element(input_payload, 5000), indent=2)}")
+    #return 
+
     try:
         # Let's go...
         run_request = endpoint.run(input_payload)
         job_id = run_request.job_id
+        add_job(job_id, endpoint.endpoint_id)  # track all jobs centrally
 
-        # get initial status
         status = run_request.status()
         info(f"Initial status: '{status}'")
 
-        #timeout = getattr(args_namespace, "timeout", 600)
         timeout = 100000  # TEMPORARY
         poll_interval = getattr(args_namespace, "poll_interval", 0.5)
         info(f"> Polling RunPod every {poll_interval}s for up to {timeout}s...")
 
         start_time = time()
-        
+
         try:
             workflow_entry = next(item for item in workflow_config if item["id"] == args_namespace.workflow)
-            processing_stages = workflow_entry.get("processing_stages", ["Rendering"])
-            if not isinstance(processing_stages, list):
-                processing_stages = ["Rendering"]
+            raw_stages = workflow_entry.get("processing_stages", [{"name": "Rendering", "weight": 100}])
+            if isinstance(raw_stages[0], str):
+                stage_weight = 100 // len(raw_stages)
+                processing_stages = [{"name": name, "weight": stage_weight} for name in raw_stages]
+            else:
+                processing_stages = raw_stages
         except Exception:
-            processing_stages = ["Rendering"]
+            processing_stages = [{"name": "Rendering", "weight": 100}]
+
+        stage_weights = [s["weight"] for s in processing_stages]
+        stage_names = [s["name"] for s in processing_stages]
+        total_weight = sum(stage_weights)
+        cumulative_weights = [sum(stage_weights[:i]) for i in range(len(stage_weights))]
 
         last_status = None
         last_update_message = ""
@@ -379,7 +424,6 @@ def start(
         last_value = None
         stage_index = 1
 
-        # To avoid redundant logging
         last_kind = None
         last_details_serialized = None
 
@@ -394,9 +438,7 @@ def start(
             new_stage_index = stage_index
             should_update_overlay = False
 
-            # Detect status change
             if status != last_status:
-                info(f"{int(time() - start_time)} RunPod job status: {status}")
                 last_status = status
                 should_update_overlay = True
 
@@ -412,7 +454,6 @@ def start(
                     current_details_serialized = json.dumps(details, sort_keys=True)
 
                     if kind != last_kind or current_details_serialized != last_details_serialized:
-                        info(f"📡 Latest update for job {job_id}: [{kind}] {details}")
                         last_kind = kind
                         last_details_serialized = current_details_serialized
 
@@ -420,15 +461,27 @@ def start(
                         max_val = int(details.get("max", 1))
                         value = int(details.get("value", 0))
 
-                        # Only update if progress has changed
                         if value != last_value or max_val != last_max_val:
-                            # Detect stage change
                             if last_value is not None and (value < last_value or max_val != last_max_val):
                                 new_stage_index = min(stage_index + 1, len(processing_stages))
 
-                            stage_label = f"{processing_stages[new_stage_index - 1]} (stage {new_stage_index} of {len(processing_stages)})"
-                            new_message = stage_label
-                            new_percentage = int(100 * value / max_val)
+                            # ✨ NEW: weighted global progress calculation
+                            completed_weight = cumulative_weights[new_stage_index - 1]
+                            stage_weight = stage_weights[new_stage_index - 1]
+                            fraction_within_stage = value / max_val if max_val else 0
+                            weighted_progress = completed_weight + (stage_weight * fraction_within_stage)
+                            new_percentage = int(100 * weighted_progress / total_weight)
+
+                            # ✨ NEW: bold current stage in status message
+                            stage_status_parts = []
+                            for i, name in enumerate(stage_names):
+                                if i == new_stage_index - 1:
+                                    stage_status_parts.append(f"<span class='pulsing-stage'>{name}</span>")
+                                else:
+                                    stage_status_parts.append(name)
+                            stage_status_string = " › ".join(stage_status_parts)
+
+                            new_message = f"{stage_status_string}"
                             should_update_overlay = True
 
                     elif kind == "status":
@@ -438,26 +491,24 @@ def start(
                         should_update_overlay = True
 
                 else:
-                    # Fallback if no progress available
                     new_message = "Working..."
                     new_percentage = ""
                     should_update_overlay = True
 
             elif status in {"FAILED", "CANCELLED"}:
                 error_text = "Generation cancelled." if status == "CANCELLED" else "❌ Generation failed."
-                # update index page
                 routes.display.send_overlay(
-                    html="overlay_alert.html",
+                    html="overlay_generating.html.j2",
                     screens=["index"],
-                    substitutions={'{{ALERT_TEXT}}': error_text},
+                    substitutions={'MESSAGE': error_text, 'BACKGROUND':'none', 'TYPE':'alert'},
                     duration=5000,
                     job_id=job_id
                 )
                 if publish_destination:
                     routes.display.send_overlay(
-                        html="overlay_alert.html",
+                        html="overlay_generating.html.j2",
                         screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
-                        substitutions={'{{ALERT_TEXT}}': error_text},
+                        substitutions={'ALERT_TEXT': error_text, 'TYPE': 'alert'},
                         duration=5000,
                         position="top-left",
                         clear=True
@@ -468,29 +519,29 @@ def start(
                 output = run_request.output()
                 break
 
-            # Update overlay only if there's a real change
             if should_update_overlay and (
                 new_message != last_update_message or new_percentage != last_update_percentage
             ):
-                # Update index page
+                display_index_message = f"{publish_destination}: {new_percentage}% - {new_message}"
                 routes.display.send_overlay(
-                    html="overlay_generating.html",
+                    html="overlay_generating.html.j2",
                     screens=["index"],
-                    duration=60000,
+                    duration=120000,
                     substitutions={
-                        '{{MESSAGE}}': new_message,
-                        '{{PROGRESS_PERCENT}}': new_percentage
+                        'MESSAGE': display_index_message,
+                        'PROGRESS_PERCENT': new_percentage,
+                        'BACKGROUND':'none'
                     },
                     job_id=job_id
                 )
                 if publish_destination:
                     routes.display.send_overlay(
-                        html="overlay_generating.html",
+                        html="overlay_generating.html.j2",
                         screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
-                        duration=60000,
+                        duration=120000,
                         substitutions={
-                            '{{MESSAGE}}': new_message,
-                            '{{PROGRESS_PERCENT}}': new_percentage
+                            'MESSAGE': new_message,
+                            'PROGRESS_PERCENT': new_percentage
                         },
                         position="top-left",
                         fadein=0,
@@ -502,7 +553,6 @@ def start(
                 last_max_val = max_val
                 last_value = value
 
-            # Timeout check
             if time() - start_time > timeout:
                 raise TimeoutError(f"⏰ RunPod job timed out after {timeout} seconds.")
 
@@ -565,25 +615,27 @@ def start(
                     raise ValueError(f"❌ Unrecognized file type in URL: {output['message']}")
            
                 routes.display.send_overlay(
-                    html = "overlay_prompt.html",
-                    screens = [publish_destination] if isinstance(publish_destination, str) else publish_destination,
-                    substitutions = {
-                        '{{PROMPT_TEXT}}': prompt,
-                        '{{WORKFLOW_TEXT}}': workflow,
-                        '{{WIDTH}}': locals().get("maxwidth", 6400),
-                        '{{HEIGHT}}': locals().get("maxheight", 6400),
-                        '{{SEED}}':  args_namespace.seed
+                    html="overlay_prompt.html.j2",
+                    screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
+                    substitutions={
+                        'PROMPT_TEXT': prompt,
+                        'WORKFLOW_TEXT': workflow,
+                        'WIDTH': locals().get("maxwidth", 6400),
+                        'HEIGHT': locals().get("maxheight", 6400),
+                        'DURATION': 30,
+                        'SEED': args_namespace.seed
                     },
-                    duration = 30000,
-                    clear = True
+                    duration=30000,
+                    clear=True
                 )
 
-            display_final_file = f'<a href="{output["message"]}">Done</a>'
+            display_final_file = f'<a href="{output["message"]}" target="_blank">Done</a>'
             routes.display.send_overlay(
-                html = "overlay_generating.html",
+                html = "overlay_generating.html.j2",
                 screens = ["index"],
                 substitutions = {
-                    '{{MESSAGE}}': display_final_file
+                    'MESSAGE':  display_final_file,
+                    'BACKGROUND':'none'                    
                 },
                 duration = 600000,
                 job_id = job_id
@@ -595,17 +647,17 @@ def start(
             # Let the screen know we're generating
             if publish_destinations:
                 routes.display.send_overlay(
-                    html = "overlay_alert.html",
+                    html = "overlay_generating.html.j2",
                     screens = [publish_destination] if isinstance(publish_destination, str) else publish_destination,
-                    substitutions = {'{{ALERT_TEXT}}': '❌ Generation failed.'},
+                    substitutions = {'ALERT_TEXT': '❌ Generation failed.', 'TYPE': 'alert'},
                     duration = 5000,
                     position = "top-left",
                     clear = True
                 )
             routes.display.send_overlay(
-                html = "overlay_alert.html",
+                html = "overlay_generating.html.j2",
                 screens = ["index"],
-                substitutions = {'{{ALERT_TEXT}}': '❌ Generation failed.'},
+                substitutions = {'ALERT_TEXT': '❌ Generation failed.', 'TYPE': 'alert'},
                 duration = 30000,
                 job_id = job_id
             )

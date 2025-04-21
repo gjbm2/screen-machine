@@ -1,0 +1,64 @@
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet" />
+
+<style>
+  body {
+    font-family: 'Inter', sans-serif;
+    font-weight: 200;
+    color: white;
+  }
+
+  @keyframes fadeInStatic {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  .overlay-panel {
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 10px;
+    color: white;
+    font-family: 'Inter', sans-serif;
+    font-weight: 200;
+    line-height: 1.7;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    display: flex;
+    opacity: 0;
+    animation: fadeInStatic 1.6s ease forwards;
+  }
+
+  /* Positioning variants */
+  .overlay-panel.bottom-left {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    max-width: 44vw;
+    padding: 36px 40px;
+    font-size: clamp(14px, 1.5vw, 20px);
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .overlay-panel.centered {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 64px 72px;
+    font-size: clamp(14px, 1.5vw, 20px);
+    width: 46vw;
+    text-align: left;
+    flex-direction: row;
+    gap: 48px;
+  }
+</style>

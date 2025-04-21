@@ -10,45 +10,69 @@
     "id": "enrich",
     "name": "Enrich",
 	"default": true,
-	"system_prompt": "refiner-enrich.txt",
+	"system_prompt": "refiner-enrich.txt.j2",
     "description": "Improve image clarity and details",
-    "icon": "CircleFadingArrowUp"
+    "icon": "CircleFadingArrowUp",
+	"alexavisible": true
   },
   {
     "id": "curator",
     "name": "Curator",
-	"system_prompt": "refiner-curator.txt",
+	"system_prompt": "refiner-curator.txt.j2",
     "description": "Act like a curator of an art museum.",
-    "icon": "Landmark"
+    "icon": "Landmark",
+	"alexavisible": true
   },
   {
     "id": "gallerist",
     "name": "Gallerist",
-	"system_prompt": "refiner-gallerist.txt",
+	"system_prompt": "refiner-gallerist.txt.j2",
     "description": "Act like a commissioner for a high end modern art gallery.",
-    "icon": "GalleryVerticalEnd"
+    "icon": "GalleryVerticalEnd",
+	"alexavisible": true
   },
   {
     "id": "picture_editor",
     "name": "Picture Editor",
 	"system_prompt": "refiner-pictureeditor.txt",
     "description": "Act like a picture desk editor in a serious newspaper.",
-    "icon": "Newspaper"
+    "icon": "Newspaper",
+	"alexavisible": true
   },
   {
     "id": "tabloid_picture_editor",
     "name": "Tabloid Picture Editor",
 	"system_prompt": "refiner-tabloidpictureeditor.txt",
     "description": "Act like a picture desk editor in a trashy newspaper.",
-    "icon": "SquareUserRound"
+    "icon": "SquareUserRound",
+	"alexavisible": true
   },
   {
     "id": "nous_values",
     "name": "Nous values",
-	"system_prompt": "refiner-nous-values.txt",
+	"system_prompt": "refiner-nous-values.txt.j2",
     "description": "Channel your inner Nous...",
-    "icon": "MessageCircleHeart"
+    "icon": "MessageCircleHeart",
+	"alexavisible": true
   },
+  {
+    "id": "animator",
+    "name": "Animate an image",
+	"system_prompt": "refiner-image-to-video.txt",
+    "description": "Create a short video from an image",
+    "icon": "MessageCircleHeart",
+	"uploadimages": 1,
+	"alexavisible": true
+  },
+  {
+    "id": "ftl-animator",
+    "name": "Animate from one image to another",
+	"system_prompt": "refiner-ftl-image-to-video.txt",
+    "description": "Create a short video connecting two images",
+    "icon": "MessageCircleHeart",
+	"uploadimages": 2,
+	"alexavisible": true
+  },  
   {
     "id": "upscale",
     "name": "Upscale",

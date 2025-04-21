@@ -15,6 +15,7 @@ import types
 from werkzeug.utils import secure_filename
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
 import routes.generate
+from routes.generate import detect_file_type, save_jpeg_with_metadata, save_video_with_metadata
 import routes.alexa
 import subprocess
 import logging
@@ -170,34 +171,47 @@ def publish_image():
                 return jsonify({"success": False, "error": "No destination file specified for output_file type"}), 400
             
             try:
-                # Ensure the output directory exists
+                # Detect the file type
+                file_type = detect_file_type(image_url)
+                if file_type == "unknown":
+                    return jsonify({"success": False, "error": "Unsupported file type in imageUrl"}), 400
+
+                # Append correct extension if needed
+                ext = ".jpg" if file_type == "image" else ".mp4"
+                if not destination_file.lower().endswith(ext):
+                    destination_file += ext
+
                 output_dir = "output"
-                #os.makedirs(output_dir, exist_ok=True)
-                
-                # Secure the filename and save
-                #safe_filename = secure_filename(destination_file)
-                #targetfilename = os.path.join(os.getcwd(), "output", targetfile)
                 output_path = os.path.join(os.getcwd(), output_dir, destination_file)
-                
+
                 info(f"output_path {output_path}")
                 info(f"image_url {image_url}")
                 info(f"metadata {metadata}")
-                
-                routes.generate.save_jpeg_with_metadata(
-                    url = image_url,
-                    img_metadata = metadata,
-                    save_path = output_path
-                )
-                
+
+                # Save the file accordingly
+                if file_type == "image":
+                    save_jpeg_with_metadata(
+                        url=image_url,
+                        img_metadata=metadata,
+                        save_path=output_path
+                    )
+                elif file_type == "video":
+                    save_video_with_metadata(
+                        url=image_url,
+                        img_metadata=metadata,
+                        save_path=output_path
+                    )
+
                 return jsonify({
-                    "success": True, 
-                    "message": f"Image published to {output_path}",
+                    "success": True,
+                    "message": f"File published to {output_path}",
                     "path": output_path
                 })
+
             except Exception as e:
                 logging.error(f"Error saving to file: {str(e)}")
-                return jsonify({"success": False, "error": f"Failed to save image: {str(e)}"}), 500
-        
+                return jsonify({"success": False, "error": f"Failed to save file: {str(e)}"}), 500
+            
         elif destination_type == "s3":
             # This would be implemented with boto3/AWS SDK
             # For now, we'll just mock the response
@@ -331,48 +345,7 @@ def generate_image():
     # Log processed image details
     for img in images:
         info(f"Processed uploaded image '{img['name']}' with length {len(img['image'])}.")
-    
-    ''' THIS CODE WORKED TOO ...
-    image_files = request.files.getlist('image')
-    images = []
-    
-    for file in image_files:
-        if file.filename:
-            filename = secure_filename(file.filename)
-            
-            # Read image into memory and base64 encode it
-            image_bytes = file.read()
-            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-            
-            images.append({
-                "name": filename,
-                "image": image_base64
-            })
-
-            info(f"Processed uploaded image '{filename}' with length {len(image_base64)}.")
-    '''
-    ''' THIS CODE WORKED.
-    # Handle uploaded files
-    uploaded_files = []
-    image_files = request.files.getlist('image')
-    
-    # Save uploaded files if any
-    for file in image_files: 
-        
-        if file.filename:
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-            uploaded_files.append(filepath)
-            has_reference_image = True
-            info(f"Saved uploaded file: {filename}")
-    '''
-    
-    # Validate input
-    if not prompt and not has_reference_image:
-        error("Prompt or reference image is required")
-        return jsonify({"error": "Prompt or reference image is required"}), 400
-    
+   
     info(f"Generating images with prompt: {prompt}")
     #info(f"Workflow: {workflow}, Batch size: {batch_size}")
     #info(f"Reference images: {uploaded_files if uploaded_files else 'None'}")
@@ -504,17 +477,9 @@ def get_global_options():
 @app.route("/api/alexa", methods=["POST"])
 def alexa_webhook():
     data = request.get_json()
+    #debug(f"Data {json.dumps(data, indent=2)}")
     
-    #print(f"Data {json.dumps(data, indent=2)}")
-    
-    request_type = data.get("request", {}).get("type", "")
-    response_ssml = routes.alexa.Brianize("You should never hear this")
-    
-    if request_type == "LaunchRequest":
-        response_ssml = routes.alexa.Brianize("Hello. Try: 'use A.I. to depict a cat in a hat'. Or 'use A.I. to ask how big is the moon'. Or 'use A.I. to channel a museum curator', and take things from there.")
-    
-    elif request_type == "IntentRequest":
-        response_ssml = routes.alexa.Brianize(routes.alexa.process(data))
+    response_ssml = routes.alexa.process(data)
     
     # Deliver response to Alexa
     response = {

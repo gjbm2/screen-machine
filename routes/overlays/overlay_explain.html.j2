@@ -1,0 +1,83 @@
+{% include "overlay_panel_common_head.html.j2" %}
+
+<div class="overlay-panel centered">
+
+  <!-- Left Column -->
+  <div style="width: 38%; display: flex; flex-direction: column; justify-content: space-between; animation: fadeInUp 1.6s ease 0.2s forwards; opacity: 0;">
+    <div>
+      <div style="font-weight: 400; font-size: 1.5em; margin-bottom: 8px;">
+        screen/machine
+      </div>
+      <div style="opacity: 0.85; font-size: 1em;">
+        For lazy artists.
+      </div>
+    </div>
+
+    <div style="margin-top: auto;">
+      <div style="font-style: italic; font-size: 1em; margin-top: 48px; margin-bottom: 10px;">
+        Want more control?
+      </div>
+      <div style="width: 180px; border-radius: 12px; overflow: hidden;">
+        <img src="{{ QR_BASE64 }}" style="display: block; width: 100%; height: auto; opacity: 0.8;" />
+      </div>
+
+      {% if SCREEN_NAME %}
+        <div style="font-size: 0.8em; opacity: 0.6; margin-top: 18px;">
+          This is <span style="font-weight: 400;">{{ SCREEN_NAME }}</span>.
+        </div>
+        <div style="font-size: 0.6em; opacity: 0.6; margin-top: 1em;">
+          screen-machine@gregmarsh.co.uk
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Right Column -->
+  <div style="width: 62%; display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-style: italic; font-size: 1em; animation: fadeInUp 1.6s ease 0.4s forwards; opacity: 0;">
+      Just say what you want to see:
+    </div>
+
+    <div style="margin-left: 24px; letter-spacing: -0.25px; animation: fadeIn 1.6s ease 0.6s forwards; opacity: 0;">
+      <span style="font-weight: 400;">computer, use AI</span> <span style="font-weight: 700;">to paint a cat</span>
+    </div>
+
+    <div style="margin-left: 24px; letter-spacing: -0.25px; animation: fadeIn 1.6s ease 0.8s forwards; opacity: 0;">
+      computer, use AI to <span style="font-weight: 400;">paint a cat</span> <span style="font-weight: 700;">in the style of Basquiat</span>
+    </div>
+
+    <div style="margin-left: 24px; letter-spacing: -0.25px; animation: fadeIn 1.6s ease 1s forwards; opacity: 0;">
+      computer, use AI to paint a cat <span style="font-weight: 400;">in the style of Basquiat</span> <span style="font-weight: 700;">on the {% if SCREEN_NAME=='South screen' %}North screen{% else %}South screen{% endif %}</span>
+    </div>
+
+    <div style="font-style: italic; font-size: 1em; margin-top: 28px; animation: fadeIn 1.6s ease 1.2s forwards; opacity: 0;">
+      Real subjects are fine:
+    </div>
+    <div style="margin-left: 24px; letter-spacing: -0.25px; animation: fadeIn 1.6s ease 1.4s forwards; opacity: 0;">
+      computer, use AI to <span style="font-weight: 400;">show me</span> <span style="font-weight: 700;">nuns with guns</span>
+    </div>
+
+    <div style="font-style: italic; font-size: 1em; margin-top: 28px; animation: fadeIn 1.6s ease 1.6s forwards; opacity: 0;">
+      Unless you're feeling lazy:
+    </div>
+    <div style="margin-left: 24px; letter-spacing: -0.25px; animation: fadeIn 1.6s ease 1.8s forwards; opacity: 0;">
+      computer, use AI to <span style="font-weight: 700;">delight me</span>
+    </div>
+
+    <div style="font-style: italic; font-size: 1em; margin-top: 28px; animation: fadeIn 1.6s ease 2s forwards; opacity: 0;">
+      If you're feeling patient...
+    </div>
+    <div style="margin-left: 24px; letter-spacing: -0.25px; animation: fadeIn 1.6s ease 2.2s forwards; opacity: 0;">
+      computer, use AI to <span style="font-weight: 700;">animate</span> <span style="font-weight: 400;">{% if SCREEN_NAME %}{{ SCREEN_NAME }}{% else %}the north screen{% endif %}</span>
+    </div>
+
+    <div style="font-style: italic; font-size: 1em; margin-top: 28px; animation: fadeIn 1.6s ease 2.4s forwards; opacity: 0;">
+      And Marvin's always at your disposal:
+    </div>
+    <div style="margin-left: 24px; letter-spacing: -0.25px; animation: fadeIn 1.6s ease 2.6s forwards; opacity: 0;">
+      computer, use AI <span style="font-weight: 700;">to ask</span> <span style="font-weight: 400;">how big is the moon?</span>
+    </div>
+  </div>
+
+  {% include "overlay_spinner.html.j2" %}
+</div>

@@ -771,6 +771,7 @@ const Index = () => {
       style={{
         position: "absolute",
         zIndex: 10000,
+		fontSize: "10px",
         opacity: o.visible ? 1 : 0,
         transition: o.fadein === 0 ? "none" : `opacity ${o.fadein || 2000}ms ease`,
         pointerEvents: "none",

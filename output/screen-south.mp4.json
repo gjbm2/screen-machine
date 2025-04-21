@@ -1,5 +1,5 @@
 {
-  "prompt": "Tiger in a library",
+  "prompt": "The rabbit softly twitches its ears and blinks slowly, while a gentle breeze causes the flowers to sway delicately.",
   "width": null,
   "height": null,
   "steps": null,
@@ -8,15 +8,14 @@
   "setwallpaper": null,
   "refine": null,
   "workflow": "wan_image_to_video_upscale_slow.json",
-  "seed": 90862339,
+  "seed": 54735581,
   "timeout": 300,
   "suppress": false,
   "batch": 1,
   "metaprompt": false,
-  "video_length": 10,
   "images": [
     {
-      "name": "7e367748.jpg"
+      "name": "0265be27.jpg"
     }
   ]
 }

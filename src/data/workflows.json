@@ -6,6 +6,13 @@
     "description": "Image from text using Flux1",
 	"runpod_id": "k98wg36ip597n0",
 	"icon": "Camera",
+	"processing_stages": [
+		{"name": "Rendering", "weight": 90},
+		{"name": "Upscaling", "weight": 10}
+	],	
+	"alexavisible": true,
+	"style_guidance": "Use for photography, lifelike imagery, cinematic lighting, or physical objects such as sculpture, carved relief, or material artifacts.",
+	"style_descriptor": "photo-realistic, soft cinematic lighting, medium format lens, glossy textures",
 	"params": [
 	{ 
 	"id": "steps",
@@ -58,7 +65,12 @@
     "id": "sdxl-scale.json",
     "name": "Text to Image (sdxl)",
     "description": "Image from text using SDXL",
+	"processing_stages": [
+		{"name": "Rendering", "weight": 90},
+		{"name": "Upscaling", "weight": 10}
+	],
 	"runpod_id": "14n0ueqye259so",
+	"alexavisible": true,
     "input": ["text"],
     "params": [
       {
@@ -126,9 +138,15 @@
     "name": "Text to Image (sd35)",
     "description": "Image from text using SD35",
     "runpod_id": "ks1jy6452r59ox",
+	"processing_stages": [
+		{"name": "Rendering", "weight": 90},
+		{"name": "Upscaling", "weight": 10}
+	],
     "default": true,
+	"alexavisible": true,
     "input": ["text"],	   
-	"processing_stages": ["Rendering","Upscaling"],	
+	"style_guidance": "Use for painted, drawn, or illustrated works — murals, oil paintings, woodcuts, or dreamlike visual concepts. Less suitable for sculpture or 3D objects unless treatment is abstract.",
+	"style_descriptor": "oil on canvas, gallery brushwork, surreal palette, ink and gouache textures, inspired by [artist]",
     "icon": "ImagePlus",
     "params": [
       { 
@@ -192,7 +210,7 @@
       },
       { 
         "id": "maxheight",
-        "name": "Max width",
+        "name": "Max height",
         "type": "number",
         "default": 5000
       }
@@ -234,14 +252,131 @@
 	"runpod_id": "wxd8n6sak3urv5",
     "input": ["image", "text"],	
     "async": true,
+	"alexavisible": true,
 	"icon": "FileVideo2",
-	"processing_stages": ["Rendering","Interpolating","Upscaling"],
+	"processing_stages": [
+		{"name": "Rendering", "weight": 70},
+		{"name": "Interpolating", "weight": 20},
+		{"name": "Upscaling", "weight": 10}
+	],
     "params": [
+      { 
+        "id": "cfg",
+        "name": "CFG",
+        "type": "number",
+        "default": 8
+      },
+      { 
+        "id": "steps",
+        "name": "Steps",
+        "type": "number",
+        "default": 30
+      },
+      {
+        "id": "negativeprompt",
+        "name": "Negative Prompt",
+        "type": "text",
+        "default": "Overexposure, static, blurred details, subtitles, paintings, pictures, still, overall gray, worst quality, low quality, JPEG compression residue, ugly, mutilated, redundant fingers, poorly painted hands, poorly painted faces, deformed, disfigured, deformed limbs, fused fingers, cluttered background, three legs, a lot of people in the background, upside down"
+      },
+      {
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+		"options": ["480", "512", "640", "720", "854", "920", "1024", "1280"],
+		"default": "1280"
+      },
+      {
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+		"options": ["480", "512", "640", "720", "854", "920", "1024", "1280"],
+		"default": "720"
+      },
+      {
+        "id": "framerate",
+        "name": "Frame Rate",
+        "type": "number",
+        "default": 24
+      },
+      {
+        "id": "video_length",
+        "name": "Video length",
+        "type": "number",
+        "default": 30
+      },
+      {
+        "id": "interpolate_frames",
+        "name": "Frame multipliier",
+        "type": "number",
+        "default": 8
+      }
+    ]
+  },
+  {
+    "id": "wan_ftl_image_to_video_upscale_slow.json",
+    "name": "First-to-last image to Video",
+    "description": "Animate an image to another image based on a text prompt",
+	"runpod_id": "wxd8n6sak3urv5",
+    "input": ["image", "text"],	
+    "uses_images": 2,
+    "async": true,
+	"alexavisible": true,
+	"icon": "FileVideo2",
+	"processing_stages": [
+		{"name": "Rendering", "weight": 70},
+		{"name": "Interpolating", "weight": 20},
+		{"name": "Upscaling", "weight": 10}
+	],
+    "params": [
+      { 
+        "id": "cfg",
+        "name": "CFG",
+        "type": "number",
+        "default": 8
+      },
+      { 
+        "id": "steps",
+        "name": "Steps",
+        "type": "number",
+        "default": 30
+      },
+      {
+        "id": "negativeprompt",
+        "name": "Negative Prompt",
+        "type": "text",
+        "default": "Overexposure, static, blurred details, subtitles, paintings, pictures, still, overall gray, worst quality, low quality, JPEG compression residue, ugly, mutilated, redundant fingers, poorly painted hands, poorly painted faces, deformed, disfigured, deformed limbs, fused fingers, cluttered background, three legs, a lot of people in the background, upside down"
+      },
+      {
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+		"options": ["480", "512", "640", "720", "854", "920", "1024", "1280"],
+		"default": "1280"
+      },
+      {
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+		"options": ["480", "512", "640", "720", "854", "920", "1024", "1280"],
+		"default": "720"
+      },
+      {
+        "id": "framerate",
+        "name": "Frame Rate",
+        "type": "number",
+        "default": 24
+      },
       {
         "id": "video_length",
         "name": "Video length",
         "type": "number",
         "default": 50
+      },
+      {
+        "id": "interpolate_frames",
+        "name": "Frame multipliier",
+        "type": "number",
+        "default": 8
       }
     ]
   },

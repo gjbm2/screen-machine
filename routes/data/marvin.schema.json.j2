@@ -1,0 +1,48 @@
+{
+  "name": "marvin_interpret",
+  "description": "Infers the user's intent, responds in Marvin's sardonic SSML tone, and optionally returns an image prompt or modifies system behavior.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "intent": {
+        "type": "string",
+        "enum": ["respond_only", "generate_image", "other_action", "change_refiner", "animate"],
+        "description": "The user's intent. One of: 'respond_only', 'generate_image', 'other_action', or 'change_refiner'."
+      },
+      "response_ssml": {
+        "type": "string",
+        "description": "A sardonic SSML-wrapped response in Marvin's voice, using <speak><voice name='Brian'>...</voice></speak>."
+      },
+      "data": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "The image prompt to generate."
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": {{ ALEXA_SCREENS | tojson }}
+            },
+            "minItems": 1,
+            "description": "Target screen(s) for image display."
+          },
+          "workflow": {
+            "type": "string",
+            "enum": {{ ALEXA_WORKFLOWS | tojson }},
+            "description": "Optional image generation workflow to use. Selects the underlying image model and pipeline."
+          },
+          "refiner": {
+            "type": "string",
+            "enum": {{ ALEXA_REFINERS | tojson }},
+            "description": "Optional refinement strategy. Influences tone, framing, or stylization of the final image prompt."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "required": ["intent", "response_ssml"]
+  }
+}
