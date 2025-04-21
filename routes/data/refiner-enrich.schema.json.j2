@@ -10,8 +10,8 @@
       },
       "workflow": {
         "type": "string",
-        "enum": ["flux1", "sdxl", "sd35"],
-        "description": "The selected workflow, either inferred or confirmed from user input."
+        "enum": {{ ALEXA_WORKFLOWS | tojson }},
+        "description": "The selected image generation workflow. Choose from text-to-image, image-to-video, or other modes depending on prompt context."
       }
     },
     "required": ["full_prompt", "workflow"]

@@ -4,44 +4,22 @@ import json
 import textwrap
 import hashlib
 import re
+import jsonschema
+import base64
+from uuid import uuid4
+from io import BytesIO
+from PIL import Image
+from werkzeug.utils import secure_filename
 from openai import OpenAI
-from dotenv import load_dotenv
-from routes.utils import findfile
+from routes.utils import findfile, resize_image_keep_aspect
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
-
-# Load environment variables from .env (if present)
-load_dotenv()
 
 # Caches
 _system_prompt_cache = {}
+_system_prompt_mtime = {}
 _file_upload_cache = {}
 _function_schema_cache = {}
-
-'''
-# Calls out to openai
-def modelquery(input_prompt, system_prompt=None,schema=None, model_name="gpt-4o"):
-    
-    info(f"**** prompt: {input_prompt}, system_prompt: {system_prompt}, schema: {schema}")
-    
-    response = openai_prompt(
-        user_prompt=input_prompt,
-        system_prompt=system_prompt,
-        model_name=model_name,
-        schema=schema
-    )
-    
-    #info(f"*** response: {response}")
-
-    if isinstance(response, str):
-        cleaned = re.sub(r"^```(?:json)?|```$", "", response.strip(), flags=re.MULTILINE).strip()
-        try:
-            response = json.loads(cleaned)
-        except Exception as e:
-            info("!!! Failed to parse JSON response:")
-            info(cleaned)
-            raise
-            
-    return response'''
+_function_schema_mtime = {}
 
 def hash_file(path):
     with open(path, "rb") as f:
@@ -50,34 +28,192 @@ def hash_file(path):
 def hash_schema(schema):
     return hashlib.md5(json.dumps(schema, sort_keys=True).encode()).hexdigest()
 
-def openai_prompt(user_prompt, system_prompt=None, model_name="gpt-4o", upload=None, schema=None, verbose=True):
-    # === Ensure OpenAI API key is loaded ===
+def openai_prompt(
+    user_prompt,
+    system_prompt=None,
+    model_name="gpt-4o",
+    upload=None,
+    schema=None,
+    images=None,
+    verbose=True
+):
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
         raise RuntimeError("OPENAI_API_KEY is not set in environment. Check your .env file or environment variables.")
     openai_client = OpenAI(api_key=openai_key)
 
-    # === Load or parse system prompt ===
+    # Load system prompt
     if system_prompt:
-        if system_prompt in _system_prompt_cache:
+        path = findfile(system_prompt)
+        if path and os.path.isfile(path):
+            mtime = os.path.getmtime(path)
+            if (
+                system_prompt not in _system_prompt_cache or
+                _system_prompt_mtime.get(system_prompt) != mtime
+            ):
+                with open(path, "r", encoding="utf-8") as f:
+                    _system_prompt_cache[system_prompt] = f.read()
+                    _system_prompt_mtime[system_prompt] = mtime
             system_message = _system_prompt_cache[system_prompt]
         else:
-            path = findfile(system_prompt)
-            if path and os.path.isfile(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    system_message = f.read()
-                _system_prompt_cache[system_prompt] = system_message
-            else:
-                system_message = system_prompt
+            system_message = system_prompt
     else:
         system_message = ""
 
-    # === Fast path: No upload, no schema ===
-    if not upload and not schema:
+    # === Assistant mode if images are passed ===
+    if images:
         if verbose:
-            info(f"[OpenAI.openai_prompt] > ChatCompletion (simple text):\n"
-                  f"{textwrap.indent(textwrap.fill(user_prompt, width=80), '    ')}")
+            info(f"[OpenAI.openai_prompt] > Assistant mode with image upload")
 
+        resized_paths = []
+        for i, image_input in enumerate(images):
+            try:
+                if isinstance(image_input, dict):
+                    image_bytes = base64.b64decode(image_input["image"])
+                    image = Image.open(BytesIO(image_bytes)).convert("RGB")
+                    image.thumbnail((512, 512), Image.LANCZOS)
+                    tmp_path = f"/tmp/{secure_filename(image_input.get('name', f'image_{i}.jpg'))}"
+                    image.save(tmp_path, format="JPEG", quality=90)
+                    resized_paths.append(tmp_path)
+
+                elif isinstance(image_input, str) and os.path.isfile(image_input):
+                    img = resize_image_keep_aspect(image_input, max_dim=512)
+                    resized_path = f"{image_input}.resized.jpg"
+                    img.save(resized_path, format="JPEG", quality=90)
+                    resized_paths.append(resized_path)
+
+                elif isinstance(image_input, str) and len(image_input) > 1000:
+                    image_bytes = base64.b64decode(image_input)
+                    image = Image.open(BytesIO(image_bytes)).convert("RGB")
+                    image.thumbnail((512, 512), Image.LANCZOS)
+                    tmp_path = f"/tmp/openai_upload_{uuid4().hex}.jpg"
+                    image.save(tmp_path, format="JPEG", quality=90)
+                    resized_paths.append(tmp_path)
+
+                else:
+                    warning(f"[openai_prompt] Ignored unrecognized image input: {type(image_input)}")
+
+            except Exception as e:
+                warning(f"[openai_prompt] Failed to process image {i}: {e}")
+
+        uploaded_files = []
+        for path in resized_paths:
+            file_hash = hash_file(path)
+            if file_hash in _file_upload_cache:
+                file_id = _file_upload_cache[file_hash]
+            else:
+                with open(path, "rb") as f:
+                    uploaded = openai_client.files.create(file=f, purpose="vision")
+                    file_id = uploaded.id
+                    _file_upload_cache[file_hash] = file_id
+            uploaded_files.append(file_id)
+
+        if schema:
+            if isinstance(schema, str):
+                resolved = findfile(schema)
+                mtime = os.path.getmtime(resolved)
+                if (
+                    schema not in _function_schema_cache or
+                    _function_schema_mtime.get(schema) != mtime
+                ):
+                    with open(resolved, "r", encoding="utf-8") as f:
+                        loaded = json.load(f)
+                        schema_obj = loaded.get("parameters", loaded)
+                        schema_str = json.dumps(schema_obj, indent=2)
+                        _function_schema_cache[schema] = {"parameters": schema_obj}
+                        _function_schema_mtime[schema] = mtime
+                else:
+                    schema_obj = _function_schema_cache[schema]["parameters"]
+                    schema_str = json.dumps(schema_obj, indent=2)
+            else:
+                schema_obj = schema.get("parameters", schema)
+                schema_str = json.dumps(schema_obj, indent=2)
+
+            system_message += f"\n\n---\n\nSchema:\n{schema_str}"
+            system_message += "\n\nYou must respond with only a valid JSON object matching the above schema. Do not include any explanation or prose — only the JSON object as the entire output."
+
+        # Retry loop with validation
+        for attempt in range(3):
+            assistant = openai_client.beta.assistants.create(
+                name="ImageAssistant",
+                instructions=system_message,
+                model=model_name,
+                tools=[]
+            )
+
+            thread = openai_client.beta.threads.create()
+
+            try:
+                openai_client.beta.threads.messages.create(
+                    thread_id=thread.id,
+                    role="user",
+                    content=[
+                        {"type": "text", "text": user_prompt or ""},
+                        *[
+                            {
+                                "type": "image_file",
+                                "image_file": {
+                                    "file_id": fid,
+                                    "detail": "auto"
+                                }
+                            } for fid in uploaded_files
+                        ]
+                    ]
+                )
+            except Exception as e:
+                error(f"[openai_prompt] Failed to create thread message: {e}")
+                raise
+
+            debug(f"[openai_prompt] Prompt:\n{textwrap.indent(user_prompt or '', '  ')}")
+            debug(f"[openai_prompt] Uploaded image file IDs: {uploaded_files}")
+
+            run = openai_client.beta.threads.runs.create(
+                thread_id=thread.id,
+                assistant_id=assistant.id
+            )
+
+            while True:
+                run_status = openai_client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+                if run_status.status == "completed":
+                    break
+                elif run_status.status == "failed":
+                    raise RuntimeError(f"Assistant run failed: {run_status}")
+                time.sleep(0.5)
+
+            messages = openai_client.beta.threads.messages.list(thread_id=thread.id)
+            for message in messages.data:
+                if message.role == "assistant":
+                    try:
+                        raw = message.content[0].text.value.strip()
+                        debug(f"[openai_prompt] Assistant raw output:\n{raw}")
+
+                        if not raw:
+                            raise ValueError("Assistant returned an empty response")
+
+                        parsed = json.loads(raw)
+                        debug(f"[openai_prompt] Parsed JSON:\n{json.dumps(parsed, indent=2)}")
+
+                        if schema:
+                            jsonschema.validate(parsed, schema_obj)
+                            debug("[openai_prompt] ✅ Schema validation passed")
+
+                        return parsed
+
+                    except json.JSONDecodeError as e:
+                        warning(f"[Assistant retry] Attempt {attempt+1}: Failed to parse JSON — {e}")
+                        warning(f"[Assistant retry] Raw output: {repr(raw)}")
+
+                    except jsonschema.ValidationError as e:
+                        warning(f"[Assistant retry] Attempt {attempt+1}: Schema validation failed — {e.message}")
+                        warning(f"[Assistant retry] Invalid JSON: {json.dumps(parsed, indent=2)}")
+
+                    except Exception as e:
+                        warning(f"[Assistant retry] Attempt {attempt+1}: Unknown error — {e}")
+
+        raise RuntimeError("Assistant failed to return valid schema-compliant output after 3 attempts.")
+
+    # === Simple flow ===
+    if not upload and not schema:
         messages = [{"role": "system", "content": system_message}] if system_message else []
         messages.append({"role": "user", "content": user_prompt})
 
@@ -87,78 +223,52 @@ def openai_prompt(user_prompt, system_prompt=None, model_name="gpt-4o", upload=N
         )
 
         result = response.choices[0].message.content.strip()
-
-        # Clean output: strip ```json ... ``` if present
         cleaned = re.sub(r"^```(?:json)?|```$", "", result.strip(), flags=re.MULTILINE).strip()
         try:
-            if verbose:
-                info(f"[OpenAI.openai_prompt] > Output:\n"
-                      f"{textwrap.indent(textwrap.fill(cleaned, width=80), '    ')}")
             return json.loads(cleaned)
         except Exception:
-            return result  # Return raw string if not valid JSON
+            return result
 
-    # === File uploads ===
-    uploaded_files = []
-    if upload:
-        if isinstance(upload, str):
-            upload = [upload]
-        for filepath in upload:
-            resolved = findfile(filepath)
-            if resolved and os.path.isfile(resolved):
-                abs_path = os.path.abspath(resolved)
-                file_hash = hash_file(abs_path)
-                if file_hash in _file_upload_cache:
-                    file_id = _file_upload_cache[file_hash]
-                else:
-                    with open(abs_path, "rb") as f:
-                        uploaded = openai_client.files.create(file=f, purpose="assistants")
-                        file_id = uploaded.id
-                        _file_upload_cache[file_hash] = file_id
-                uploaded_files.append(file_id)
-                if verbose:
-                    info(f"[SUCCESS] Cached or uploaded: {filepath} => {file_id}")
-            else:
-                if verbose:
-                    info(f"[WARNING] File not found or invalid: {filepath}")
-
-    # === Schema mode (Function calling) ===
-    if schema and not upload:
+    # === Function mode (no image) ===
+    if schema:
         if isinstance(schema, str):
-            if schema in _function_schema_cache:
-                fn_def = _function_schema_cache[schema]
-            else:
-                resolved = findfile(schema)
-                if not resolved or not os.path.isfile(resolved):
-                    raise FileNotFoundError(f"Schema file not found: {schema}")
+            resolved = findfile(schema)
+            mtime = os.path.getmtime(resolved)
+            if (
+                schema not in _function_schema_cache or
+                _function_schema_mtime.get(schema) != mtime
+            ):
                 with open(resolved, "r", encoding="utf-8") as f:
-                    schema_data = json.load(f)
-                if "parameters" in schema_data:
-                    fn_def = schema_data
-                    schema_hash = hash_schema(fn_def["parameters"])
-                else:
-                    schema_hash = hash_schema(schema_data)
+                    loaded = json.load(f)
+                if "parameters" in loaded and loaded["parameters"].get("type") == "object":
                     fn_def = {
-                        "name": f"auto_function_{schema_hash[:8]}",
-                        "description": "Auto-generated function from file.",
-                        "parameters": schema_data
+                        "name": loaded.get("name", f"auto_function_{hash_schema(loaded['parameters'])[:8]}"),
+                        "description": loaded.get("description", "Auto-generated function from file."),
+                        "parameters": loaded["parameters"]
+                    }
+                else:
+                    fn_def = {
+                        "name": f"auto_function_{hash_schema(loaded)[:8]}",
+                        "description": "Auto-generated function from schema.",
+                        "parameters": loaded
                     }
                 _function_schema_cache[schema] = fn_def
+                _function_schema_mtime[schema] = mtime
+            else:
+                fn_def = _function_schema_cache[schema]
         else:
-            schema_hash = hash_schema(schema)
-            if schema_hash in _function_schema_cache:
-                fn_def = _function_schema_cache[schema_hash]
+            if "parameters" in schema and schema["parameters"].get("type") == "object":
+                fn_def = {
+                    "name": schema.get("name", f"auto_function_{hash_schema(schema['parameters'])[:8]}"),
+                    "description": schema.get("description", "Auto-generated function from schema."),
+                    "parameters": schema["parameters"]
+                }
             else:
                 fn_def = {
-                    "name": f"auto_function_{schema_hash[:8]}",
+                    "name": f"auto_function_{hash_schema(schema)[:8]}",
                     "description": "Auto-generated function from schema.",
                     "parameters": schema
                 }
-                _function_schema_cache[schema_hash] = fn_def
-
-        if verbose:
-            info(f"[OpenAI.openai_prompt] > ChatCompletion (function call with schema, {schema}):\n"
-                  f"{textwrap.indent(textwrap.fill(user_prompt, width=80), '    ')}\n")
 
         messages = [{"role": "system", "content": system_message}] if system_message else []
         messages.append({"role": "user", "content": user_prompt})
@@ -171,46 +281,4 @@ def openai_prompt(user_prompt, system_prompt=None, model_name="gpt-4o", upload=N
         )
 
         tool_args = response.choices[0].message.tool_calls[0].function.arguments
-        if verbose:
-                info(f"[OpenAI.openai_prompt] > Output:\n"
-                      f"{textwrap.indent(textwrap.fill(tool_args, width=80), '    ')}")
         return json.loads(tool_args)
-
-    # === Assistant flow if files are uploaded ===
-    if verbose:
-        info(f"> Asking OpenAI Assistant (with files):\n"
-              f"{textwrap.indent(textwrap.fill(user_prompt, width=80), '    ')}\n"
-              f"{uploaded_files}")
-
-    assistant = openai_client.beta.assistants.create(
-        name="FileProcessingAssistant",
-        instructions=system_message,
-        model=model_name,
-        tools=[{"type": "file_search"}]
-    )
-
-    thread = openai_client.beta.threads.create()
-    openai_client.beta.threads.messages.create(
-        thread_id=thread.id,
-        role="user",
-        content=user_prompt,
-        attachments=[{"file_id": fid, "tools": [{"type": "file_search"}]} for fid in uploaded_files]
-    )
-
-    run = openai_client.beta.threads.runs.create(
-        thread_id=thread.id,
-        assistant_id=assistant.id
-    )
-
-    while True:
-        run_status = openai_client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-        if run_status.status == "completed":
-            break
-        elif run_status.status == "failed":
-            raise RuntimeError(f"Assistant run failed: {run_status}")
-        time.sleep(0.5)
-
-    messages = openai_client.beta.threads.messages.list(thread_id=thread.id)
-    for message in messages.data:
-        if message.role == "assistant":
-            result = message.content

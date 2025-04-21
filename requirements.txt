@@ -5,6 +5,7 @@ Werkzeug==2.3.7
 # OpenAI and dependencies
 openai>=1.3.7,<2
 httpx>=0.24.0,<0.28.0  # ensure compatibility with OpenAI SDK
+jsonschema>=4.0.0
 
 # RunPod (for remote GPU execution)
 runpod==1.7.7
@@ -18,5 +19,7 @@ pillow>=9.0.0
 piexif>=1.1.3
 python-xmp-toolkit>=2.0.1
 iptcinfo3>=2.1.1
+opencv-python-headless>=4.5.0
+qrcode[pil]
 
 # Do NOT install asyncio directly (it's built-in)

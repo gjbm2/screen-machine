@@ -344,13 +344,16 @@ export default function DisplayPage() {
         />
       ) : null}
 
-      {overlays.map((o) => (
-        <div
-          key={o.id}
-          style={getOverlayStyle(o.position, o.visible, o.fadein)}
-          dangerouslySetInnerHTML={{ __html: o.html }}
-        />
-      ))}
+		{overlays.map((o) => (
+		  <div
+			key={o.id}
+			style={{
+			  ...getOverlayStyle(o.position, o.visible, o.fadein),
+			  fontSize: "clamp(0.5rem, 2.5vw, 1.8rem)", // ← font scaling here
+			}}
+			dangerouslySetInnerHTML={{ __html: o.html }}
+		  />
+		))}
     </div>
   );
 }

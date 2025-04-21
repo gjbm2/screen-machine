@@ -11,7 +11,7 @@ The audience is sophisticated and aesthetically refined. They want to be provoce
 Return:
 
 - full_prompt: a refined, visually rich, detailed generation prompt
-- workflow: the selected workflow ("flux" or "sd35")
+- workflow: the selected workflow {{ ALEXA_WORKFLOWS | join(" or ") }}
 
 ---
 
@@ -27,8 +27,17 @@ Workflow selection
 
 - If the user has indicated a workflow preference, use it
 - If not, pay close attention for style phrases or cues e.g., "photograph", "draw" or “in watercolor” to determine whether flux or sdxl is more apporpriate.
-	- Choose **"flux"** for photos, realistic, photographic, architectural, modern, cinematic, or lifelike subject matter, or images of real people.
-	- Choose **"sd35"** for painterly, surreal, dreamlike, or artistically abstract concepts, or other styles
+
+	{% if ALEXA_WORKFLOWS_LABELLED %}
+	Available workflows include:
+
+	{% for w in ALEXA_WORKFLOWS_LABELLED %}
+	- **"{{ w.id }}"**: {{ w.description }}  
+	  _Guidance_: {{ w.style_guidance }}
+	{% endfor %}
+
+	Choose based on these associations:
+	{% endif %}
 
 ---
 

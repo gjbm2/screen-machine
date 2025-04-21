@@ -3,7 +3,7 @@ import asyncio
 import json
 import ast
 import os
-from routes.utils import findfile
+from routes.utils import findfile, dict_substitute
 from overlay_ws_server import send_overlay_to_clients
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
 
@@ -17,7 +17,6 @@ def send_overlay(
     fadein=0,
     job_id=None
 ):
-    # Load from file if it exists
     file_path = findfile(html)
     if file_path and os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as f:
@@ -25,19 +24,22 @@ def send_overlay(
     else:
         html_content = html
 
-    # Parse substitutions if passed
-    final_html = html_content
+    # JINJA2 substitution using dict_substitute
     if substitutions:
         try:
             if isinstance(substitutions, str):
                 substitutions = ast.literal_eval(substitutions)
             if isinstance(substitutions, dict):
-                for key, value in substitutions.items():
-                    final_html = final_html.replace(key, str(value))
+                final_html = dict_substitute(html_content, substitutions)
+            else:
+                warning("Substitutions is not a dict, skipping templating")
+                final_html = html_content
         except Exception as e:
-            error(f"Substitution parse error: {e}")
+            error(f"Jinja2 template substitution error: {e}")
+            final_html = html_content
+    else:
+        final_html = html_content
 
-    # Prepare and send message
     message = {
         "screens": screens,
         "html": final_html,
@@ -51,12 +53,10 @@ def send_overlay(
     if not job_id and not final_html:
         warning("Empty overlay message or missing job_id - skipping")
         return
-        
-    # Log a sanitized version of the message (to avoid huge HTML dumps in logs)
+
     log_message = {**message}
-    if "html" in log_message and isinstance(log_message["html"], str) and len(log_message["html"]) > 50:
-        log_message["html"] = f"{log_message['html'][:50]}... [truncated, {len(message['html'])} chars]"
-    
+    if "html" in log_message and isinstance(log_message["html"], str) and len(log_message["html"]) > 500:
+        log_message["html"] = f"{log_message['html'][:500]}... [truncated, {len(message['html'])} chars]"
     debug(f"Sending overlay message: {log_message}")
-    
+
     asyncio.run(send_overlay_to_clients(message))

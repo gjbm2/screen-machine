@@ -6,7 +6,7 @@
     "properties": {
       "intent": {
         "type": "string",
-        "enum": ["respond_only", "generate_image", "other_action", "change_refiner"],
+        "enum": ["respond_only", "generate_image", "other_action", "change_refiner", "animate"],
         "description": "The user's intent. One of: 'respond_only', 'generate_image', 'other_action', or 'change_refiner'."
       },
       "response_ssml": {
@@ -24,20 +24,20 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["north-screen", "south-screen", "kitchen-screen", "basement-screen"]
+              "enum": {{ ALEXA_SCREENS | tojson }}
             },
             "minItems": 1,
             "description": "Target screen(s) for image display."
           },
           "workflow": {
             "type": "string",
-            "enum": ["flux", "sdxl", "sd35"],
-            "description": "Optional image generation workflow to use."
+            "enum": {{ ALEXA_WORKFLOWS | tojson }},
+            "description": "Optional image generation workflow to use. Selects the underlying image model and pipeline."
           },
           "refiner": {
             "type": "string",
-            "enum": ["enrich", "none", "gallerist", "curator", "picture editor", "tabloid picture editor"],
-            "description": "Refinement strategy or voice override."
+            "enum": {{ ALEXA_REFINERS | tojson }},
+            "description": "Optional refinement strategy. Influences tone, framing, or stylization of the final image prompt."
           }
         },
         "additionalProperties": false

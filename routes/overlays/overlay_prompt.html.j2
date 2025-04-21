@@ -1,0 +1,49 @@
+{% include "overlay_panel_common_head.html.j2" %}
+
+<div class="overlay-panel bottom-left">
+
+  <!-- Prompt Section -->
+  <div>
+    <div style="font-weight: 600; margin-bottom: 8px;">Prompt</div>
+    {% if PROMPT_TEXT %}
+      <div>{{ PROMPT_TEXT }}</div>
+    {% else %}
+      <div style="color: #bbb;">None supplied</div>
+    {% endif %}
+  </div>
+
+  <!-- Grid Section -->
+ <div style="
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  column-gap: 80px;
+  row-gap: 24px;
+  align-items: start;
+">
+
+  <div style="min-width: 0;">
+    <div style="font-weight: 600; margin-bottom: 8px;">Workflow</div>
+    <div style="overflow-wrap: break-word;">
+      {{ WORKFLOW_TEXT or "—" }}
+    </div>
+  </div>
+
+  <div>
+    <div style="font-weight: 600; margin-bottom: 8px;">Seed</div>
+    {{ SEED or "—" }}
+  </div>
+
+  <div>
+    <div style="font-weight: 600; margin-bottom: 8px;">Width</div>
+    {{ WIDTH or "—" }}
+  </div>
+
+  <div>
+    <div style="font-weight: 600; margin-bottom: 8px;">Height</div>
+    {{ HEIGHT or "—" }}
+  </div>
+</div>
+
+
+  {% include "overlay_spinner.html.j2" %}
+</div>

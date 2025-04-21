@@ -114,7 +114,7 @@
     "inputs": {
       "width": 1280,
       "height": 720,
-      "length": 101,
+      "length": 30,
       "batch_size": 1,
       "positive": [
         "6",
@@ -180,7 +180,7 @@
     },
     "class_type": "FILM VFI",
     "_meta": {
-      "title": "FILM VFI"
+      "title": "FILM VFI {{INTERPOLATOR}}"
     }
   },
   "54": {
@@ -202,7 +202,7 @@
     },
     "class_type": "VHS_VideoCombine",
     "_meta": {
-      "title": "Video Combine 🎥🅥🅗🅢"
+      "title": "Video Combine 🎥🅥🅗🅢 {{VIDEO_OUTPUT}}"
     }
   },
   "55": {

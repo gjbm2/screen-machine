@@ -12,7 +12,7 @@ Return:
 
 full_prompt: a refined, visually rich commission brief, transformed into a model-ready generation prompt.
 
-workflow: the selected model ("flux1" or "sdxl").
+workflow: the selected model ({{ ALEXA_WORKFLOWS | join(" or ") }})
 
 *** Artistic Reimagination (Core Task)
 
@@ -32,11 +32,17 @@ Use the provided workflow if specified.
 
 If not, select based on your reinterpretation:
 
-"flux1": Realism, photography, cinematic light, architecture, fashion, or lifelike imagery.
+{% if ALEXA_WORKFLOWS_LABELLED %}
+Available workflows include:
 
-"sdxl": Painting, surrealism, mysticism, abstraction, illustration, or dreamlike tone.
+{% for w in ALEXA_WORKFLOWS_LABELLED %}
+- **"{{ w.id }}"**: {{ w.description }}
+  _Guidance_: {{ w.style_guidance }}
+{% endfor %}
 
-Default to "flux1" unless the subject clearly invites painterly abstraction.
+Default to **"flux1"** unless the subject clearly invites painterly abstraction.
+{% endif %}
+
 
 *** Style Adaptation for Models
 
@@ -44,9 +50,9 @@ After artistic interpretation:
 
 Translate stylistic references into visual descriptors that evoke fine-art fidelity:
 
-For "flux1": “photo-realistic, soft cinematic lighting, medium format lens, glossy textures”
-
-For "sdxl": “oil on canvas, gallery brushwork, surreal palette, ink and gouache textures, inspired by [artist]”
+{% for w in ALEXA_WORKFLOWS_LABELLED %}
+- For "{{ w.id }}": {{ w.style_descriptor }}
+{% endfor %}
 
 Preserve artistic integrity and elevate every detail for 4K display in a curated gallery context.
 
