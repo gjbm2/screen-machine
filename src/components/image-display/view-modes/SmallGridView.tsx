@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { BucketGridView } from './BucketView/BucketGridView';
 import { BucketItem } from '@/api/buckets-api';
 
@@ -20,6 +20,8 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
 }) => {
   // Handle opening a bucket image in fullscreen view
   const handleOpenBucketImage = (bucketImage: BucketItem) => {
+    console.log('Opening bucket image in fullscreen:', bucketImage);
+    
     // Create a compatible image object that the existing fullscreen view can understand
     const compatibleImage = {
       url: bucketImage.thumbnail.replace('/thumbnail/', '/raw/'),
