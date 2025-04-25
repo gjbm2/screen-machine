@@ -6,6 +6,7 @@ import useOverlayWebSocket from "./hooks/useOverlayWebSocket";
 import { MediaDisplay } from "./MediaDisplay";
 import { OverlayContainer } from "./OverlayContainer";
 
+
 export default function DisplayPage() {
   const { screenId } = useParams();
 
@@ -27,6 +28,21 @@ const [videoKey, setVideoKey] = useState(filePolling.videoKey);
   const [fadingOut, setFadingOut] = useState(false);
   const [pendingSrc, setPendingSrc] = useState<string | null>(null);
   const [shouldPlay, setShouldPlay] = useState(false);
+
+/*
+useEffect(() => {
+  const existing = document.querySelector("meta[name=viewport]");
+  const metaContent = "width=1920, initial-scale=0.5, maximum-scale=1.0, user-scalable=no";
+
+  if (!existing) {
+    const meta = document.createElement("meta");
+    meta.name = "viewport";
+    meta.content = metaContent;
+    document.head.appendChild(meta);
+  } else {
+    existing.setAttribute("content", metaContent);
+  }
+}, []);  */
 
   useEffect(() => {
     if (containerRef.current) {
@@ -62,44 +78,50 @@ const [videoKey, setVideoKey] = useState(filePolling.videoKey);
   if (!currentSrc) {
     return <div style={{ background: "black", height: "100vh", color: "white" }}>Loading…</div>;
   }
+  
+  const isFireTV = /AFT|FireTV|Amazon/i.test(navigator.userAgent);
+
+  const outerStyle = {
+    width: "100vw",
+    height: "100vh", 
+    background: "black",
+    position: "relative",
+    overflow: "hidden",
+	overflow: "hidden",
+	position: "fixed",
+	top: 0,
+	left: 0,
+  };
+
 
   return (
-    <div
-      style={{
-        background: "black",
-        width: "100vw",
-        height: "100vh",
-        position: "relative",
-        overflow: "hidden",
-      }}
-      ref={containerRef}
-    >
-      <MediaDisplay
-        src={visibleSrc || currentSrc}
-        fadeInSrc={fadeInSrc}
-        fadeInVisible={fadeInVisible}
-        videoKey={videoKey}
-        fadeOut={fadingOut}
-		shouldPlay={shouldPlay}
-        onFadeOutComplete={() => {
-		  // Do the swap after fading out (ensure fadeOut completes before switching)
-		  if (pendingSrc) {
-			setVisibleSrc(pendingSrc);
-			setPendingSrc(null);
-		  }
+    <div ref={containerRef} style = { outerStyle }> 
+		  <MediaDisplay
+			src={visibleSrc || currentSrc}
+			fadeInSrc={fadeInSrc}
+			fadeInVisible={fadeInVisible}
+			videoKey={videoKey}
+			fadeOut={fadingOut}
+			shouldPlay={shouldPlay}
+			onFadeOutComplete={() => {
+			  // Do the swap after fading out (ensure fadeOut completes before switching)
+			  if (pendingSrc) {
+				setVisibleSrc(pendingSrc);
+				setPendingSrc(null);
+			  }
 
-		  setShouldPlay(false);
+			  setShouldPlay(false);
 
-		  // After 1000ms (to match the CSS fade-out duration)
-		  setTimeout(() => {
-			// Now update the videoKey and start playing the video
-			setVideoKey(filePolling.videoKey); // ✅ update key properly
-			setFadingOut(false);
-			setShouldPlay(true); // Signal to start playing the new media
-		  }, 1000); // Match fade-out duration
-		}}
-      />
-      <OverlayContainer overlays={overlays} />
+			  // After 1000ms (to match the CSS fade-out duration)
+			  setTimeout(() => {
+				// Now update the videoKey and start playing the video
+				setVideoKey(filePolling.videoKey); // ✅ update key properly
+				setFadingOut(false);
+				setShouldPlay(true); // Signal to start playing the new media
+			  }, 1000); // Match fade-out duration
+			}}
+		  />
+		  	  <OverlayContainer overlays={overlays} />
     </div>
   );
 }
@@ -136,7 +158,7 @@ function scheduleNextHardReload() {
     console.log(`[reload] Fading to black before reload...`);
     fadeToBlackAndReload();
   }, delay);
-}
+} 
 
 function fadeToBlackAndReload() {
   const fade = document.createElement("div");

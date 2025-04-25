@@ -27,44 +27,14 @@
 	"alexaclosest": "amzn1.ask.device.AMAZUTGGYC5NVOOX2BOEVWIJ2QEUXQEPVHNODMGQK62XELJQHCHIWLYHF73HCM5RFDZTDJ6IR75HPDXKADUFP6ZOPUUS7FSTCX2QINRM5MWFWMO2DOGYCCPG2VIIALCS25YIWVB35ULFC3GWZTRZVFMXCFIGIP5VRXRDNAMEZ3CTE6Q5Y3T4FSXQDN5ENLWB5BXEVW4XKQ7I36JX"
   },
   {
-    "id": "work-laptop-background-main",
+    "id": "work-laptop-background",
     "name": "Work laptop - main",
     "icon": "LaptopMinimal",
     "type": "output_file",
-    "file": "work-laptop-background-main",
-        "maxwidth": 3840,
-        "maxheight": 2160,
-    "description": "Publish to work laptop (main)"
-  },
-  {
-    "id": "work-laptop-background-landscape",
-    "name": "Work laptop - landscape",
-    "icon": "LaptopMinimal",
-    "type": "output_file",
-    "file": "work-laptop-background-landscape",
+    "file": "work-laptop-background",
         "maxwidth": 3840,
         "maxheight": 2160,
     "description": "Publish to work laptop"
-  },
-  {
-    "id": "work-laptop-background-portrait",
-    "name": "Work laptop - portrait",
-    "icon": "LaptopMinimal",
-    "type": "output_file",
-    "file": "work-laptop-background-portrait",
-        "maxwidth": 2160,
-        "maxheight": 3840,
-    "description": "Publish to work laptop (portrait)"
-  },
-  {
-    "id": "work-laptop-background-projected",
-    "name": "Work laptop - projected",
-    "icon": "Presentation",
-    "type": "output_file",
-    "file": "work-laptop-background-projected",
-        "maxwidth": 2160,
-        "maxheight": 3840,
-    "description": "Publish to work laptop (projected)"
   },
   {
     "id": "devtest",
@@ -86,7 +56,8 @@
     "file": "the-beast",
         "maxwidth": 3840,
         "maxheight": 2160,
-    "description": "Publish to The Neast at Nous HQ"
+    "description": "Publish to The Neast at Nous HQ",
+	"alexavisible": true
   },
   {
     "id": "cloud",

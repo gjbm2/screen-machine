@@ -3,14 +3,14 @@
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  font-size: clamp(6px, 1vw, 10px);
-  padding: 6px 10px;
+  font-size: clamp(12px, 1.5vw, 16px);
+  padding: 12px 14px;
   background: {% if TYPE == 'alert' %}rgba(255, 0, 0, 0.3){% else %}rgba(0, 0, 0, 0.3){% endif %};
   color: rgba(255, 255, 255, 0.5);
   font-weight: 400;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(10px);
-  border-radius: 6px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(5apx);
+  border-radius: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);  
   text-align: center;
 ">
@@ -28,15 +28,15 @@
 
   <!-- Pulsing blob fallback -->
   <div id="progress_blob" style="
-    width: 10px;
-    height: 10px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: red;
     animation: pulse 2s infinite ease-in-out;
   "></div>
 
   <!-- Progress ring -->
-  <svg id="progress_ring" width="10" height="10" viewBox="0 0 36 36" style="display: none;">
+  <svg id="progress_ring" width="24" height="24" viewBox="0 0 36 36" style="display: none;">
     <circle
       cx="18" cy="18" r="16"
       fill="none"

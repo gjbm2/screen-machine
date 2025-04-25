@@ -948,3 +948,9 @@
   width: 48px !important;
   height: 48px !important;
   padding: 0 !important;
+
+
+firetv-scale .firetv-wrapper {
+  transform: scale(0.5);
+  transform-origin: top left;
+}
