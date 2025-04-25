@@ -24,7 +24,7 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
     const compatibleImage = {
       url: bucketImage.thumbnail.replace('/thumbnail/', '/raw/'),
       prompt: bucketImage.filename, // Use filename as prompt since we don't have actual prompt data
-      batchId: `bucket-${bucketImage.filename}`,
+      batchId: `bucket-${bucketImage.bucket}-${bucketImage.filename}`,
       batchIndex: bucketImage.index,
       status: 'completed',
       timestamp: Date.now()
