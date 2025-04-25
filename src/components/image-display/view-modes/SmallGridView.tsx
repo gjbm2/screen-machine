@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { BucketGridView } from './BucketView/BucketGridView';
 import { BucketItem } from '@/api/buckets-api';
 
@@ -36,7 +36,7 @@ const SmallGridView: React.FC<SmallGridViewProps> = ({
   };
 
   return (
-    <div className="bucket-grid-container">
+    <div className="bucket-grid-container w-full">
       <BucketGridView onFullScreenView={handleOpenBucketImage} />
     </div>
   );
