@@ -6,13 +6,19 @@ import useOverlayWebSocket from "./hooks/useOverlayWebSocket";
 import { MediaDisplay } from "./MediaDisplay";
 import { OverlayContainer } from "./OverlayContainer";
 
+
 export default function DisplayPage() {
   const { screenId } = useParams();
 
   const baseFileName = useBaseFileName(screenId);
-  const { currentSrc, videoKey, fadeInSrc, fadeInVisible } = useFilePolling(baseFileName);
-  
-  const [videoKeyState, setVideoKey] = useState(videoKey);
+  const filePolling = useFilePolling(baseFileName);
+ const {
+  currentSrc,
+  fadeInSrc,
+  fadeInVisible,
+} = filePolling;
+
+const [videoKey, setVideoKey] = useState(filePolling.videoKey);
 
   const [overlays, setOverlays] = useState([]);
   useOverlayWebSocket(screenId, setOverlays);
@@ -22,6 +28,21 @@ export default function DisplayPage() {
   const [fadingOut, setFadingOut] = useState(false);
   const [pendingSrc, setPendingSrc] = useState<string | null>(null);
   const [shouldPlay, setShouldPlay] = useState(false);
+
+/*
+useEffect(() => {
+  const existing = document.querySelector("meta[name=viewport]");
+  const metaContent = "width=1920, initial-scale=0.5, maximum-scale=1.0, user-scalable=no";
+
+  if (!existing) {
+    const meta = document.createElement("meta");
+    meta.name = "viewport";
+    meta.content = metaContent;
+    document.head.appendChild(meta);
+  } else {
+    existing.setAttribute("content", metaContent);
+  }
+}, []);  */
 
   useEffect(() => {
     if (containerRef.current) {
@@ -44,7 +65,7 @@ export default function DisplayPage() {
 
     if (!visibleSrc) {
       setVisibleSrc(currentSrc);
-      setShouldPlay(true);
+	  setShouldPlay(true);
       return;
     }
 
@@ -52,7 +73,7 @@ export default function DisplayPage() {
       setPendingSrc(currentSrc);
       setFadingOut(true);
     }
-  }, [currentSrc, visibleSrc, fadingOut, pendingSrc]);
+  }, [currentSrc, visibleSrc, fadingOut]);
 
   if (!currentSrc) {
     return <div style={{ background: "black", height: "100vh", color: "white" }}>Loading…</div>;
@@ -60,49 +81,53 @@ export default function DisplayPage() {
   
   const isFireTV = /AFT|FireTV|Amazon/i.test(navigator.userAgent);
 
-  const outerStyle: React.CSSProperties = {
+  const outerStyle = {
     width: "100vw",
     height: "100vh", 
     background: "black",
-    position: "fixed",
+    position: "relative",
     overflow: "hidden",
-    top: 0,
-    left: 0,
+	overflow: "hidden",
+	position: "fixed",
+	top: 0,
+	left: 0,
   };
 
+
   return (
-    <div ref={containerRef} style={outerStyle}> 
-      <MediaDisplay
-        src={visibleSrc || currentSrc}
-        fadeInSrc={fadeInSrc}
-        fadeInVisible={fadeInVisible}
-        videoKey={videoKeyState}
-        fadeOut={fadingOut}
-        shouldPlay={shouldPlay}
-        onFadeOutComplete={() => {
-          // Do the swap after fading out (ensure fadeOut completes before switching)
-          if (pendingSrc) {
-            setVisibleSrc(pendingSrc);
-            setPendingSrc(null);
-          }
+    <div ref={containerRef} style = { outerStyle }> 
+		  <MediaDisplay
+			src={visibleSrc || currentSrc}
+			fadeInSrc={fadeInSrc}
+			fadeInVisible={fadeInVisible}
+			videoKey={videoKey}
+			fadeOut={fadingOut}
+			shouldPlay={shouldPlay}
+			onFadeOutComplete={() => {
+			  // Do the swap after fading out (ensure fadeOut completes before switching)
+			  if (pendingSrc) {
+				setVisibleSrc(pendingSrc);
+				setPendingSrc(null);
+			  }
 
-          setShouldPlay(false);
+			  setShouldPlay(false);
 
-          // After 1000ms (to match the CSS fade-out duration)
-          setTimeout(() => {
-            // Now update the videoKey and start playing the video
-            setVideoKey(videoKey); // Update key properly
-            setFadingOut(false);
-            setShouldPlay(true); // Signal to start playing the new media
-          }, 1000); // Match fade-out duration
-        }}
-      />
-      <OverlayContainer overlays={overlays} />
+			  // After 1000ms (to match the CSS fade-out duration)
+			  setTimeout(() => {
+				// Now update the videoKey and start playing the video
+				setVideoKey(filePolling.videoKey); // ✅ update key properly
+				setFadingOut(false);
+				setShouldPlay(true); // Signal to start playing the new media
+			  }, 1000); // Match fade-out duration
+			}}
+		  />
+		  	  <OverlayContainer overlays={overlays} />
     </div>
   );
 }
 
 // === Reload Logic ===
+
 function scheduleNextHardReload() {
   const now = new Date();
   const reloadHours = [2, 6, 10, 14, 18, 22];

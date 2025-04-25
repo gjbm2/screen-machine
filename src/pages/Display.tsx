@@ -1,6 +1,5 @@
-
 import React, { useCallback, useEffect, useRef } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCode } from 'qrcode.react';
 import { DisplayContainer } from '@/components/display/DisplayContainer';
 import { DisplayMode } from '@/components/display/DisplayMode';
 import { ErrorMessage } from '@/components/display/ErrorMessage';

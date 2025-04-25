@@ -1,4 +1,3 @@
-
 // src/pages/DisplayPage/OverlayContainer.tsx
 import React from "react";
 
@@ -66,7 +65,7 @@ export function OverlayContainer({ overlays }: { overlays: Overlay[] }) {
       {overlays.map((o) => {
         const hasPosition = !!o.position;
 
-        const wrapperStyle: React.CSSProperties = hasPosition
+        const wrapperStyle = hasPosition
           ? {
               ...getOverlayStyle(o.position!, o.visible, o.fadein),
               fontSize: "clamp(0.5rem, 2.5vmin, 1.8rem)",

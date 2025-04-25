@@ -1,71 +1,74 @@
+// src/pages/DisplayPage/hooks/useFilePolling.ts
+import { useEffect, useRef, useState } from "react";
 
-import { useState, useEffect, useRef } from 'react';
+const POLL_INTERVAL = 1000;
 
-// Expanded interface to include all the properties we're returning
-interface FilePollingResult {
-  currentSrc: string;
-  videoKey: string;
-  fadeInSrc: string | null;
-  fadeInVisible: boolean;
-}
+export default function useFilePolling(baseFileName: string | null) {
+  const [currentSrc, setCurrentSrc] = useState<string | null>(null);
+  const [videoKey, setVideoKey] = useState<string>("initial");
+  const lastModifiedRef = useRef<number>(0);
 
-export default function useFilePolling(baseFileName: string | undefined): FilePollingResult {
-  const [currentSrc, setCurrentSrc] = useState<string>('');
-  const [videoKey, setVideoKey] = useState<string>(Date.now().toString());
-  const [fadeInSrc, setFadeInSrc] = useState<string | null>(null);
-  const [fadeInVisible, setFadeInVisible] = useState<boolean>(false);
-  const lastPolled = useRef<number>(0);
-
-  // Implement a polling mechanism to check for new files
   useEffect(() => {
     if (!baseFileName) return;
-    
-    const checkForUpdates = async () => {
-      try {
-        const now = Date.now();
-        // Prevent excessive polling
-        if (now - lastPolled.current < 1000) return;
-        lastPolled.current = now;
-        
-        // Add a cache-busting query param
-        const url = `/api/display/${baseFileName}?t=${now}`;
-        
-        const response = await fetch(url);
-        if (!response.ok) return;
-        
-        const data = await response.json();
-        
-        if (data?.url && data.url !== currentSrc) {
-          console.log(`[polling] File changed: ${data.url}`);
-          
-          // If this is a fade transition
-          if (data.transition === 'fade' && currentSrc) {
-            setFadeInSrc(data.url);
-            setFadeInVisible(true);
-            
-            // After transition completes, set as main image
-            setTimeout(() => {
-              setCurrentSrc(data.url);
-              setVideoKey(Date.now().toString());
-              setFadeInSrc(null);
-              setFadeInVisible(false);
-            }, 1000); // Match fade-in duration in CSS
-          } else {
-            // Regular update without transition
-            setCurrentSrc(data.url);
-            setVideoKey(Date.now().toString());
-          }
-        }
-      } catch (error) {
-        console.error('[polling] Error checking for updates:', error);
+
+    const base = `/output/${baseFileName}`;
+
+    const detectInitialFile = async () => {
+      const jpgUrl = `${base}.jpg`;
+      const mp4Url = `${base}.mp4`;
+
+      const [jpgRes, mp4Res] = await Promise.allSettled([
+        fetch(jpgUrl, { method: "HEAD" }),
+        fetch(mp4Url, { method: "HEAD" }),
+      ]);
+
+      const jpgModified = jpgRes.status === "fulfilled"
+        ? new Date(jpgRes.value.headers.get("last-modified") || 0).getTime()
+        : 0;
+      const mp4Modified = mp4Res.status === "fulfilled"
+        ? new Date(mp4Res.value.headers.get("last-modified") || 0).getTime()
+        : 0;
+
+      const latestType = jpgModified > mp4Modified ? "jpg" : "mp4";
+      const latestModified = Math.max(jpgModified, mp4Modified);
+      lastModifiedRef.current = latestModified;
+
+      const initialUrl = `${base}.${latestType}?t=${latestModified}`;
+      setCurrentSrc(initialUrl);
+      setVideoKey(`${Date.now()}`);
+    };
+
+    const checkForChange = async () => {
+      const jpgUrl = `${base}.jpg`;
+      const mp4Url = `${base}.mp4`;
+
+      const [jpgRes, mp4Res] = await Promise.allSettled([
+        fetch(jpgUrl, { method: "HEAD" }),
+        fetch(mp4Url, { method: "HEAD" }),
+      ]);
+
+      const jpgModified = jpgRes.status === "fulfilled"
+        ? new Date(jpgRes.value.headers.get("last-modified") || 0).getTime()
+        : 0;
+      const mp4Modified = mp4Res.status === "fulfilled"
+        ? new Date(mp4Res.value.headers.get("last-modified") || 0).getTime()
+        : 0;
+
+      const latestType = jpgModified > mp4Modified ? "jpg" : "mp4";
+      const latestModified = Math.max(jpgModified, mp4Modified);
+
+      if (latestModified > lastModifiedRef.current) {
+        lastModifiedRef.current = latestModified;
+        const newUrl = `${base}.${latestType}?t=${latestModified}`;
+        setCurrentSrc(newUrl);
+        setVideoKey(`${Date.now()}`);
       }
     };
-    
-    checkForUpdates();
-    const interval = setInterval(checkForUpdates, 2000);
-    
+
+    detectInitialFile();
+    const interval = setInterval(checkForChange, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [baseFileName, currentSrc]);
-  
-  return { currentSrc, videoKey, fadeInSrc, fadeInVisible };
+  }, [baseFileName]);
+
+  return { currentSrc, videoKey };
 }
