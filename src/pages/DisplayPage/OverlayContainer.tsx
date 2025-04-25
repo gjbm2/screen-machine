@@ -1,3 +1,4 @@
+
 // src/pages/DisplayPage/OverlayContainer.tsx
 import React from "react";
 
@@ -28,7 +29,7 @@ function getOverlayStyle(
     zIndex: 10000,
     opacity: visible ? 1 : 0,
     transition: fadein === 0 ? "none" : `opacity ${fadeDuration}ms ease`,
-    pointerEvents: "none",
+    pointerEvents: "none" as React.CSSProperties["pointerEvents"],
   };
 
   switch (position) {
@@ -59,13 +60,13 @@ export function OverlayContainer({ overlays }: { overlays: Overlay[] }) {
         width: "100vw",
         height: "100vh",
         zIndex: 9999,
-        pointerEvents: "none",
+        pointerEvents: "none" as React.CSSProperties["pointerEvents"],
       }}
     >
       {overlays.map((o) => {
         const hasPosition = !!o.position;
 
-        const wrapperStyle = hasPosition
+        const wrapperStyle: React.CSSProperties = hasPosition
           ? {
               ...getOverlayStyle(o.position!, o.visible, o.fadein),
               fontSize: "clamp(0.5rem, 2.5vmin, 1.8rem)",
@@ -82,7 +83,7 @@ export function OverlayContainer({ overlays }: { overlays: Overlay[] }) {
               zIndex: 10000,
               opacity: o.visible ? 1 : 0,
               transition: `opacity ${(o.fadein || OVERLAY_FADEIN_DURATION)}ms ease`,
-              pointerEvents: "none",
+              pointerEvents: "none" as React.CSSProperties["pointerEvents"],
               fontSize: "clamp(0.5rem, 2.5vmin, 1.8rem)",
             };
 
