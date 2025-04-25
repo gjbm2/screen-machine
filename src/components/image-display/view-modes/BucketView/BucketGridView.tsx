@@ -30,34 +30,50 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
   const queryClient = useQueryClient();
   
   // Fetch all available buckets
-  const { data: buckets = [] } = useQuery({
+  const { data: buckets = [], isLoading: isBucketsLoading, error: bucketsError } = useQuery({
     queryKey: ['buckets'],
     queryFn: fetchAllBuckets,
     refetchOnWindowFocus: false
   });
   
+  useEffect(() => {
+    console.log('Loaded buckets:', buckets);
+  }, [buckets]);
+  
   // Fetch details for currently selected bucket
   const { 
     data: bucketDetails,
-    isLoading, 
-    isError,
+    isLoading: isBucketLoading, 
+    isError: isBucketError,
     refetch: refetchBucketDetails
   } = useQuery({
     queryKey: ['bucket', selectedDestination?.file],
-    queryFn: () => selectedDestination?.file ? fetchBucketDetails(selectedDestination.file) : Promise.resolve(null),
+    queryFn: () => {
+      if (!selectedDestination?.file) return Promise.resolve({ name: '', items: [] });
+      console.log('Fetching details for bucket:', selectedDestination.file);
+      return fetchBucketDetails(selectedDestination.file);
+    },
     refetchOnWindowFocus: false,
     enabled: !!selectedDestination?.file
   });
   
+  useEffect(() => {
+    if (bucketDetails) {
+      console.log('Bucket details loaded:', bucketDetails);
+    }
+  }, [bucketDetails]);
+  
   // Refresh buckets after certain operations
   const refreshBucket = () => {
     if (selectedDestination?.file) {
+      console.log('Refreshing bucket:', selectedDestination.file);
       queryClient.invalidateQueries({ queryKey: ['bucket', selectedDestination.file] });
     }
   };
   
   // Handle operations on images
   const handleToggleFavorite = async (bucket: string, filename: string, currentState: boolean) => {
+    console.log('Toggle favorite:', bucket, filename, currentState);
     const success = await toggleFavorite(bucket, filename, currentState);
     if (success) {
       refreshBucket();
@@ -66,6 +82,7 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
   
   const handleDelete = async (bucket: string, filename: string) => {
     if (confirm('Are you sure you want to delete this image?')) {
+      console.log('Deleting image:', bucket, filename);
       const success = await deleteImage(bucket, filename);
       if (success) {
         refreshBucket();
@@ -74,6 +91,7 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
   };
   
   const handleMoveUp = async (bucket: string, filename: string) => {
+    console.log('Moving image up:', bucket, filename);
     const success = await moveImage(bucket, filename, 'up');
     if (success) {
       refreshBucket();
@@ -81,6 +99,7 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
   };
   
   const handleMoveDown = async (bucket: string, filename: string) => {
+    console.log('Moving image down:', bucket, filename);
     const success = await moveImage(bucket, filename, 'down');
     if (success) {
       refreshBucket();
@@ -88,6 +107,7 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
   };
   
   const handleCopyTo = async (sourceBucket: string, targetBucket: string, filename: string) => {
+    console.log('Copying image:', sourceBucket, targetBucket, filename);
     const success = await copyImageToBucket(sourceBucket, targetBucket, filename);
     if (success) {
       // Invalidate both source and target bucket queries
@@ -97,6 +117,7 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
   };
   
   const handlePublish = async (bucket: string, filename: string) => {
+    console.log('Publishing image:', bucket, filename);
     const success = await publishImage(bucket, filename);
     if (success) {
       refreshBucket();
@@ -114,6 +135,7 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
     };
     
     if (confirm(`Are you sure you want to ${actionLabels[action]} this bucket?`)) {
+      console.log('Performing bucket maintenance:', action, selectedDestination.file);
       const success = await performBucketMaintenance(selectedDestination.file, action);
       if (success) {
         refreshBucket();
@@ -122,10 +144,21 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
   };
   
   const handleOpenImage = (item: BucketItem) => {
-    setSelectedItem(item);
+    const bucketItem = {
+      ...item,
+      bucket: selectedDestination?.file || ''
+    };
+    
+    setSelectedItem(bucketItem);
     if (onFullScreenView) {
-      onFullScreenView(item);
+      console.log('Opening image in fullscreen:', bucketItem);
+      onFullScreenView(bucketItem);
     }
+  };
+  
+  const handleSelectDestination = (destination: any) => {
+    console.log('Selected destination:', destination);
+    setSelectedDestination(destination);
   };
   
   // DnD sensors for drag and drop functionality
@@ -168,12 +201,15 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
     }
   };
   
+  const isLoading = isBucketsLoading || isBucketLoading;
+  const hasError = bucketsError || isBucketError;
+
   return (
     <div className="w-full">
       {/* Publish destinations selector */}
       <PublishDestinations 
         selectedDestination={selectedDestination?.id || null}
-        onSelectDestination={setSelectedDestination}
+        onSelectDestination={handleSelectDestination}
       />
       
       {/* Current bucket info */}
@@ -221,7 +257,7 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
       )}
       
       {/* Error state */}
-      {isError && (
+      {hasError && (
         <div className="bg-red-50 p-4 rounded-md text-red-800">
           Failed to load bucket data. Please try again.
           <Button variant="outline" size="sm" className="ml-2" onClick={() => refetchBucketDetails()}>
@@ -231,7 +267,7 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
       )}
       
       {/* Empty state */}
-      {bucketDetails && bucketDetails.items.length === 0 && !isLoading && (
+      {bucketDetails && bucketDetails.items.length === 0 && !isLoading && !hasError && (
         <div className="bg-gray-50 p-8 rounded-md text-center">
           <p className="text-gray-500">This bucket is empty.</p>
         </div>
@@ -249,22 +285,30 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
             strategy={rectSortingStrategy}
           >
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-              {bucketDetails.items.map((item) => (
-                <SortableBucketImage
-                  key={item.filename}
-                  id={item.filename}
-                  bucket={bucketDetails.name}
-                  item={item}
-                  buckets={buckets}
-                  onToggleFavorite={handleToggleFavorite}
-                  onDelete={handleDelete}
-                  onCopyTo={handleCopyTo}
-                  onMoveUp={handleMoveUp}
-                  onMoveDown={handleMoveDown}
-                  onOpen={handleOpenImage}
-                  onPublish={handlePublish}
-                />
-              ))}
+              {bucketDetails.items.map((item) => {
+                // Add bucket info to each item
+                const itemWithBucket = {
+                  ...item,
+                  bucket: bucketDetails.name
+                };
+                
+                return (
+                  <SortableBucketImage
+                    key={item.filename}
+                    id={item.filename}
+                    bucket={bucketDetails.name}
+                    item={itemWithBucket}
+                    buckets={buckets}
+                    onToggleFavorite={handleToggleFavorite}
+                    onDelete={handleDelete}
+                    onCopyTo={handleCopyTo}
+                    onMoveUp={handleMoveUp}
+                    onMoveDown={handleMoveDown}
+                    onOpen={handleOpenImage}
+                    onPublish={handlePublish}
+                  />
+                );
+              })}
             </div>
           </SortableContext>
         </DndContext>

@@ -27,13 +27,16 @@ interface PublishDestinationsProps {
 export function PublishDestinations({ selectedDestination, onSelectDestination }: PublishDestinationsProps) {
   const [destinations, setDestinations] = useState<PublishDestination[]>([]);
   const [buckets, setBuckets] = useState<string[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   
   // Load publish destinations
   useEffect(() => {
     const loadDestinations = async () => {
       try {
+        console.log('Loading publish destinations');
         const response = await fetch('/src/data/publish-destinations.json');
         const data = await response.json();
+        console.log('Loaded destinations:', data);
         setDestinations(data);
         
         // Select first destination by default if none is selected
@@ -51,8 +54,17 @@ export function PublishDestinations({ selectedDestination, onSelectDestination }
   // Load buckets to verify which ones exist
   useEffect(() => {
     const loadBuckets = async () => {
-      const bucketList = await fetchAllBuckets();
-      setBuckets(bucketList);
+      setLoading(true);
+      try {
+        console.log('Fetching bucket list');
+        const bucketList = await fetchAllBuckets();
+        console.log('Available buckets:', bucketList);
+        setBuckets(bucketList);
+      } catch (error) {
+        console.error('Error fetching buckets:', error);
+      } finally {
+        setLoading(false);
+      }
     };
     
     loadBuckets();
@@ -71,31 +83,42 @@ export function PublishDestinations({ selectedDestination, onSelectDestination }
   
   return (
     <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 dark:bg-gray-800 rounded-md">
-      {destinations.map((destination) => {
-        const isSelected = selectedDestination === destination.id;
-        const hasBucket = destinationHasBucket(destination);
-        
-        return (
-          <Tooltip key={destination.id}>
-            <TooltipTrigger asChild>
-              <Button
-                variant={isSelected ? "default" : "outline"}
-                size="sm"
-                className={`px-3 ${!hasBucket ? 'opacity-50' : ''}`}
-                onClick={() => hasBucket && onSelectDestination(destination)}
-                disabled={!hasBucket}
-              >
-                {getIcon(destination.icon)}
-                <span className="ml-2 hidden sm:inline">{destination.name}</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{destination.description}</p>
-              {!hasBucket && <p className="text-xs text-red-500">Bucket not found</p>}
-            </TooltipContent>
-          </Tooltip>
-        );
-      })}
+      {loading ? (
+        <div className="text-sm text-gray-500 p-2">Loading destinations...</div>
+      ) : destinations.length === 0 ? (
+        <div className="text-sm text-gray-500 p-2">No publish destinations found</div>
+      ) : (
+        destinations.map((destination) => {
+          const isSelected = selectedDestination === destination.id;
+          const hasBucket = destinationHasBucket(destination);
+          
+          return (
+            <Tooltip key={destination.id}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={isSelected ? "default" : "outline"}
+                  size="sm"
+                  className={`px-3 ${!hasBucket ? 'opacity-50' : ''}`}
+                  onClick={() => {
+                    console.log('Destination clicked:', destination.id, 'Has bucket:', hasBucket);
+                    if (hasBucket) {
+                      onSelectDestination(destination);
+                    }
+                  }}
+                  disabled={!hasBucket}
+                >
+                  {getIcon(destination.icon)}
+                  <span className="ml-2 hidden sm:inline">{destination.name}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{destination.description}</p>
+                {!hasBucket && <p className="text-xs text-red-500">Bucket not found</p>}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })
+      )}
     </div>
   );
 }

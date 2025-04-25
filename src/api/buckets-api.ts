@@ -1,4 +1,3 @@
-
 import { toast } from "sonner";
 
 export interface BucketItem {
@@ -6,6 +5,7 @@ export interface BucketItem {
   thumbnail: string;
   isFavorite: boolean;
   index: number;
+  bucket: string;
 }
 
 export interface Bucket {
@@ -18,8 +18,15 @@ export interface Bucket {
 // Functions to interact with the bucket API
 export async function fetchAllBuckets(): Promise<string[]> {
   try {
+    console.log('Fetching all buckets from /test-buckets/ endpoint');
     const response = await fetch('/test-buckets/');
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
     const text = await response.text();
+    console.log('Got response from buckets endpoint, parsing HTML');
     
     // Extract bucket names from HTML response
     const bucketRegex = /<a href="\/test-buckets\/([^\/]+)\/">/g;
@@ -30,6 +37,7 @@ export async function fetchAllBuckets(): Promise<string[]> {
       buckets.push(match[1]);
     }
     
+    console.log('Found buckets:', buckets);
     return buckets;
   } catch (error) {
     console.error('Error fetching buckets:', error);
@@ -40,7 +48,13 @@ export async function fetchAllBuckets(): Promise<string[]> {
 
 export async function fetchBucketDetails(bucketName: string): Promise<Bucket> {
   try {
+    console.log(`Fetching details for bucket: ${bucketName}`);
     const response = await fetch(`/test-buckets/${bucketName}/`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
     const text = await response.text();
     
     // Extract sequence and favorites
@@ -49,12 +63,15 @@ export async function fetchBucketDetails(bucketName: string): Promise<Bucket> {
     const publishedMatch = text.match(/<strong>Currently published:<\/strong>\s*<a[^>]*>([^<]+)<\/a>/);
     const publishedAtMatch = text.match(/<small>Published at ([^<]+)<\/small>/);
     
+    console.log('Parsed HTML, extracting sequence and favorites');
+    
     let sequence: string[] = [];
     let favorites: string[] = [];
     
     if (sequenceMatch && sequenceMatch[1]) {
       try {
         sequence = JSON.parse(sequenceMatch[1]);
+        console.log(`Found ${sequence.length} images in sequence`);
       } catch (e) {
         console.error('Failed to parse sequence:', e);
       }
@@ -63,6 +80,7 @@ export async function fetchBucketDetails(bucketName: string): Promise<Bucket> {
     if (favoritesMatch && favoritesMatch[1]) {
       try {
         favorites = JSON.parse(favoritesMatch[1]);
+        console.log(`Found ${favorites.length} favorites`);
       } catch (e) {
         console.error('Failed to parse favorites:', e);
       }
@@ -72,7 +90,8 @@ export async function fetchBucketDetails(bucketName: string): Promise<Bucket> {
       filename,
       thumbnail: `/test-buckets/${bucketName}/thumbnail/${filename}`,
       isFavorite: favorites.includes(filename),
-      index
+      index,
+      bucket: bucketName
     }));
     
     return {
@@ -90,6 +109,7 @@ export async function fetchBucketDetails(bucketName: string): Promise<Bucket> {
 
 export async function toggleFavorite(bucket: string, filename: string, currentState: boolean): Promise<boolean> {
   try {
+    console.log(`${currentState ? 'Unfavoriting' : 'Favoriting'} image ${filename} in bucket ${bucket}`);
     const formData = new FormData();
     formData.append('filename', filename);
     formData.append('action', currentState ? 'unfavorite' : 'favorite');
