@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import useBaseFileName from "./hooks/useBaseFileName";
@@ -11,14 +10,8 @@ export default function DisplayPage() {
   const { screenId } = useParams();
 
   const baseFileName = useBaseFileName(screenId);
-  const filePolling = useFilePolling(baseFileName);
-  const { currentSrc, videoKey } = filePolling;
+  const { currentSrc, videoKey, fadeInSrc, fadeInVisible } = useFilePolling(baseFileName);
   
-  // Since fadeInSrc and fadeInVisible are missing from filePolling's return type,
-  // we'll provide default values
-  const fadeInSrc = (filePolling as any).fadeInSrc || null;
-  const fadeInVisible = (filePolling as any).fadeInVisible || false;
-
   const [videoKeyState, setVideoKey] = useState(videoKey);
 
   const [overlays, setOverlays] = useState([]);
@@ -98,7 +91,7 @@ export default function DisplayPage() {
           // After 1000ms (to match the CSS fade-out duration)
           setTimeout(() => {
             // Now update the videoKey and start playing the video
-            setVideoKey(filePolling.videoKey); // ✅ update key properly
+            setVideoKey(videoKey); // Update key properly
             setFadingOut(false);
             setShouldPlay(true); // Signal to start playing the new media
           }, 1000); // Match fade-out duration
@@ -110,7 +103,6 @@ export default function DisplayPage() {
 }
 
 // === Reload Logic ===
-
 function scheduleNextHardReload() {
   const now = new Date();
   const reloadHours = [2, 6, 10, 14, 18, 22];

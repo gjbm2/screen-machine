@@ -42,7 +42,7 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
 		  isLoading={isLoading}
 		  onImageUpload={onImageUpload}
 		  onWorkflowChange={onWorkflowChange}
-		  availableWorkflows={workflows as Workflow[]}
+		  availableWorkflows={workflows as unknown as Workflow[]}
 		  selectedWorkflowId={selectedWorkflow}
 		  hideLabel={isMobile}
 		/>
