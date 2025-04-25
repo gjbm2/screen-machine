@@ -1,13 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-const EASE_IN_DURATION = 2000;
-const EASE_OUT_DURATION = 2000;
-const HOLD_FINAL_FRAME = 2000;
+const EASE_IN_DURATION = 2500;
+const EASE_OUT_DURATION = 2500;
+const HOLD_FINAL_FRAME = 4000;
 const FADE_OUT_TIME = 1000;
 const PRIMER_PLAYBACK_DURATION = 1500;
-const B_EASE_OUT_TIME = 1000;
-const pace = 0.75;
+const LOOP_RESTART_DELAY = 2000;
+const CROSSFADE_DURATION = 8000;
+const FIRST_FRAME_FADE_OUT_DURATION = 500;
+const pace = 0.6;
+const OPACITY_EASING = "cubic-bezier(0.65, 0, 0.35, 1)";
 
 interface Props {
   src: string;
@@ -30,10 +33,21 @@ export function MediaDisplay({
 }: Props) {
   const isVideo = src.includes(".mp4");
 
+  // ❗ clear any lingering video state only when the parent has fully faded out and swapped src
+  useEffect(() => {
+    cancelAnimationFrame(animationFrame.current!);
+    cancelAnimationFrame(rafDebug.current!);
+    clearTimeout(easeOutTimeout.current!);
+    setFirstFrame(null);
+    setShowFirstFrame(false);
+    setPaused(false);
+  }, [src]);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [paused, setPaused] = useState(false);
   const [firstFrame, setFirstFrame] = useState<string | null>(null);
+  const [showFirstFrame, setShowFirstFrame] = useState(false); // ✅ replaces paused tie-in
 
   const [debugInfo, setDebugInfo] = useState<any>({});
   const [searchParams] = useSearchParams();
@@ -45,6 +59,7 @@ export function MediaDisplay({
 
   const extractFirstFrame = async () => {
     if (!isVideo || !src) return;
+
     const video = document.createElement("video");
     video.crossOrigin = "anonymous";
     video.src = src;
@@ -52,17 +67,35 @@ export function MediaDisplay({
     video.playsInline = true;
     video.preload = "auto";
 
-    video.addEventListener("loadeddata", () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
-      setFirstFrame(dataUrl);
+    await new Promise<void>((resolve, reject) => {
+      video.addEventListener("loadedmetadata", () => {
+        resolve();
+      });
+      video.addEventListener("error", reject);
     });
+
+    video.currentTime = 0;
+
+    await new Promise<void>((resolve, reject) => {
+      const check = () => {
+        if (video.readyState >= 2 && !video.seeking) {
+          resolve();
+        } else {
+          requestAnimationFrame(check);
+        }
+      };
+      requestAnimationFrame(check);
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    setFirstFrame(dataUrl);
   };
 
   useEffect(() => {
@@ -77,6 +110,7 @@ export function MediaDisplay({
     cancelAnimationFrame(rafDebug.current!);
     clearTimeout(easeOutTimeout.current!);
     setPaused(false);
+    setShowFirstFrame(false);
 
     const timeout = setTimeout(() => {
       console.log("[MediaDisplay] FADE OUT COMPLETE — calling onFadeOutComplete()");
@@ -105,6 +139,20 @@ export function MediaDisplay({
       rafDebug.current = requestAnimationFrame(updateDebug);
     };
 
+	function easeInOutCubic(t: number): number {
+	  return t < 0.5
+		? 4 * t * t * t
+		: 1 - Math.pow(-2 * t + 2, 3) / 2;
+	}
+	function easeOutExpo(t: number): number {
+	  return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+	}
+	function easeInOutQuad(t: number): number {
+	  return t < 0.5
+		? 2 * t * t
+		: 1 - Math.pow(-2 * t + 2, 2) / 2;
+	}
+
     const easePlaybackRate = (
       start: number,
       end: number,
@@ -115,7 +163,8 @@ export function MediaDisplay({
       const step = (now: number) => {
         const elapsed = now - startTime;
         const progress = Math.min(1, elapsed / duration);
-        const rawRate = start + (end - start) * progress;
+		const easedProgress = easeInOutQuad(progress); // use your chosen easing function
+        const rawRate = start + (end - start) * easedProgress;
         const clampedRate = Math.max(0.0625, Math.min(16, rawRate));
         video.playbackRate = clampedRate;
         if (progress < 1) {
@@ -161,7 +210,7 @@ export function MediaDisplay({
                 log("A at full speed now.");
 
                 const primerSeconds = (PRIMER_PLAYBACK_DURATION / 1000) * 0.065;
-                const easeInSeconds = (EASE_IN_DURATION / 1000) * ((1 + 0.065) / 2);
+                const easeInSeconds = (EASE_IN_DURATION / 1000) * ((pace + 0.065) / 2);
                 const totalDelay = primerSeconds + easeInSeconds;
                 const playUntil = Math.max(
                   0,
@@ -171,20 +220,28 @@ export function MediaDisplay({
                 easeOutTimeout.current = setTimeout(() => {
                   log("Easing out...");
                   easePlaybackRate(1.0 * pace, 0.065, EASE_OUT_DURATION, () => {
-                    video.pause();
-                    setPaused(true);
+					video.pause();
+					setPaused(true);
 
-                    setTimeout(() => {
-                      video.pause();
-                      video.currentTime = 0;
-                      video.playbackRate = 0.065;
+					// ✅ Step 4: Hold paused video frame
+					setTimeout(() => {
+					  // ✅ Step 5: Start fading in firstFrame
+					  setShowFirstFrame(true);
 
-                      video.play().then(() => {
-                        setTimeout(() => {
-                          beginPlayback();
-                        }, B_EASE_OUT_TIME);
-                      });
-                    }, HOLD_FINAL_FRAME);
+					  // ✅ Step 6: Wait until crossfade is finished
+					  setTimeout(() => {
+						// ✅ Step 7: Hold fully visible frame
+						setTimeout(() => {
+						  // ✅ Restart
+						  setShowFirstFrame(false);
+						  setPaused(false);
+						  console.log("Go again...");
+						  video.play().then(() => {
+							beginPlayback();
+						  });
+						}, LOOP_RESTART_DELAY);
+					  }, CROSSFADE_DURATION);
+					}, HOLD_FINAL_FRAME);
                   });
                 }, playUntil);
               });
@@ -234,27 +291,28 @@ export function MediaDisplay({
     pointerEvents: "none",
   };
 
-  const firstFrameStyle: React.CSSProperties = {
-    ...videoStyle,
-    zIndex: 2,
-    opacity: paused ? 1 : 0,
-    transition: "opacity 1000ms ease",
+	const firstFrameStyle: React.CSSProperties = {
+	  ...videoStyle,
+	  zIndex: 2,
+	  opacity: showFirstFrame ? 1 : 0,
+	  transition: showFirstFrame
+		? `opacity ${CROSSFADE_DURATION}ms ${OPACITY_EASING}`     // fade in
+		: `opacity ${FIRST_FRAME_FADE_OUT_DURATION}ms ${OPACITY_EASING}`, // fade out
+	  pointerEvents: "none",
+	};
+
+  const fadeOverlayStyle: React.CSSProperties = {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    backgroundColor: "black",
+    opacity: fadeOut ? 1 : 0,
+    transition: `opacity 1000ms ease`,
+    zIndex: 9998,
     pointerEvents: "none",
   };
-
-const fadeOverlayStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 0,
-  left: 0,
-  width: "100%",
-  height: "100%",
-  backgroundColor: "black",
-  opacity: fadeOut ? 1 : 0,
-  transition: `opacity ${EASE_OUT_DURATION}ms ease`,
-  zIndex: 9998,
-  pointerEvents: "none",
-};
-
 
   return (
     <>
@@ -274,7 +332,7 @@ const fadeOverlayStyle: React.CSSProperties = {
         </div>
       </div>
 
-	  <div style={fadeOverlayStyle} />
+      <div style={fadeOverlayStyle} />
 
       {showDebug && (
         <div

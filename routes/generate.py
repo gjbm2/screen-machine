@@ -9,22 +9,25 @@ import textwrap
 from dotenv import load_dotenv, find_dotenv
 from datetime import datetime
 import routes.openai
-from routes.utils import findfile, truncate_element, _load_json_once
+from routes.utils import (
+    findfile, 
+    truncate_element, 
+    _load_json_once, 
+    detect_file_type,
+    save_video_with_metadata,
+    save_jpeg_with_metadata
+)
 import routes.display
 from time import sleep, time 
 import uuid
 from overlay_ws_server import job_progress_listeners_latest
-from urllib.parse import urlparse
 from routes.manage_jobs import add_job
+from routes.publisher import publish_to_destination
 
 # Runpod
 import runpod
 import requests
 
-# image processing
-from PIL import Image
-import piexif
-import piexif.helper
 from io import BytesIO
 
 ###########
@@ -69,49 +72,6 @@ except ImportError:
 ########
 # MAIN #
 ########
-
-def save_video_with_metadata(url: str, img_metadata: dict, save_path: str):
-    # Download the video
-    response = requests.get(url, stream=True)
-    response.raise_for_status()
-
-    with open(save_path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
-
-    info(f"Saved MP4 to {save_path}")
-
-    # Save metadata sidecar as .json
-    metadata_path = save_path + ".json"
-    with open(metadata_path, "w", encoding="utf-8") as meta_file:
-        json.dump(img_metadata, meta_file, ensure_ascii=False, indent=2)
-
-    info(f"Saved metadata to {metadata_path}")
-
-def save_jpeg_with_metadata(url, img_metadata: dict, save_path: str):
-    response = requests.get(url)
-    response.raise_for_status()
-    img = Image.open(BytesIO(response.content)).convert("RGB")
-
-    # Build EXIF with JSON-formatted metadata
-    exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
-
-    comment = json.dumps(img_metadata, ensure_ascii=False, indent=None)
-    user_comment = piexif.helper.UserComment.dump(comment, encoding="unicode")
-    exif_dict["Exif"][piexif.ExifIFD.UserComment] = user_comment
-
-    exif_bytes = piexif.dump(exif_dict)
-    img.save(save_path, "JPEG", exif=exif_bytes, quality=95)
-    info(f"Saved JPEG with metadata to {save_path}")
-    
-def detect_file_type(url: str) -> str:
-    parsed = urlparse(url)
-    path = parsed.path.lower()
-    if path.endswith(".mp4"):
-        return "video"
-    elif path.endswith(".jpg") or path.endswith(".jpeg") or path.endswith(".png"):
-        return "image"
-    return "unknown"
 
 def loosely_matches(a, b):
     # Normalize both strings to lowercase, strip spaces
@@ -522,7 +482,11 @@ def start(
             if should_update_overlay and (
                 new_message != last_update_message or new_percentage != last_update_percentage
             ):
-                display_index_message = f"{publish_destination}: {new_percentage}% - {new_message}"
+                display_index_message = (
+                    f"{publish_destination}: "
+                    f"{f'{new_percentage}% - ' if new_percentage is not "" else ''}"
+                    f"{new_message}"
+                )
                 routes.display.send_overlay(
                     html="overlay_generating.html.j2",
                     screens=["index"],
@@ -585,36 +549,25 @@ def start(
                     {"name": img.get("name")} for img in args_namespace.images
                 ]
     
-            # Where do we need to deliver this?
             if publish_destination:
-                file_type = detect_file_type(output["message"])
+                # Actually publish into your screen’s bucket
+                pub_res = publish_to_destination(
+                    url                    = output["message"],
+                    publish_destination_id = publish_destination,
+                    metadata               = vars(args_namespace),
+                )
+                if not pub_res["success"]:
+                    raise RuntimeError(f"Publish failed: {pub_res.get('error')}")
 
-                if file_type == "image":
-                    full_filename = targetfile + ".jpg"
-                    targetfilepath = os.path.join(os.getcwd(), "output", full_filename)
-                    
-                    info(f"📷 Saving image to {targetfilepath}")
-                    save_jpeg_with_metadata(
-                        url=output["message"],
-                        img_metadata=vars(args_namespace),
-                        save_path=targetfilepath
-                    )
+                info(f"✅ Published to {pub_res['path']}")
+                dest_info = pub_res["destination"]
 
-                elif file_type == "video":
-                    full_filename = targetfile + ".mp4"
-                    targetfilepath = os.path.join(os.getcwd(), "output", full_filename)
-                    
-                    info(f"🎞️ Saving video to {targetfilepath}")
-                    save_video_with_metadata(
-                        url=output["message"],
-                        img_metadata=vars(args_namespace),
-                        save_path=targetfilepath
-                    )
-
-                else:
-                    raise ValueError(f"❌ Unrecognized file type in URL: {output['message']}")
+                # Merge publish info into the returned payload
+                output["published_path"] = pub_res["path"]
+                output["published_meta"] = pub_res.get("meta", {})
+                output["destination"]   = dest_info
            
-                routes.display.send_overlay(
+                '''routes.display.send_overlay(
                     html="overlay_prompt.html.j2",
                     screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
                     substitutions={
@@ -627,7 +580,7 @@ def start(
                     },
                     duration=30000,
                     clear=True
-                )
+                )'''
 
             display_final_file = f'<a href="{output["message"]}" target="_blank">Done</a>'
             routes.display.send_overlay(

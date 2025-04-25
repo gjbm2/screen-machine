@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()  # Load .env vars into os.environ
+
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
@@ -22,6 +25,7 @@ import logging
 from threading import Thread
 from overlay_ws_server import start_ws_server, send_overlay_to_clients
 from routes.utils import encode_image_uploads, encode_reference_urls
+from routes.publisher import publish_remote_asset, publish_to_destination
 
 app = Flask(__name__, static_folder='build')
 CORS(app)  # Enable CORS for all routes
@@ -52,6 +56,30 @@ ARTISTIC_IMAGES = [
     "https://images.unsplash.com/photo-1549289524-06cf8837ace5?q=80&w=1974&auto=format&fit=crop",
     "https://images.unsplash.com/photo-1591267990532-e5bdb1b0ceb8?q=80&w=1974&auto=format&fit=crop"
 ]
+
+# Bucket API
+from routes.bucket_api import buckets_bp
+app.register_blueprint(buckets_bp)
+
+# Bucket API testing
+from routes.test_buckets_ui import test_buckets_bp
+app.register_blueprint(test_buckets_bp)
+
+# Scheduler API
+from routes.scheduler_api import scheduler_bp
+app.register_blueprint(scheduler_bp)
+
+# Scheduler Control Panel UI
+from routes.test_scheduler_ui import test_scheduler_bp
+app.register_blueprint(test_scheduler_bp)
+
+# Scheduler Simulator UI
+from routes.simulate_scheduler_ui import simulate_scheduler_handler
+@app.route("/simulate-scheduler", methods=["GET", "POST"])
+def simulate_scheduler():
+    return simulate_scheduler_handler()
+
+
 
 # Load workflow data from JSON files
 def load_json_data(file_name):
@@ -134,100 +162,36 @@ def run_script():
         return jsonify({"success": False, "error": error_msg}), 500
 
 # Add a new route for publishing images
-@app.route('/api/publish-image', methods=['POST'])
+@app.route("/api/publish-image", methods=["POST"])
 def publish_image():
+    data = request.get_json(force=True, silent=True) or {}
 
-    try:
-        data = request.json
-        if not data:
-            return jsonify({"success": False, "error": "No data provided"}), 400
-            
-        image_url = data.get('imageUrl')
-        destination = data.get('destination')
-        destination_type = data.get('destinationType')
-        destination_file = data.get('destinationFile', None)
-        metadata = data.get('metadata', {})
+    url        = data.get("imageUrl") or data.get("url")
+    dest_id    = data.get("destination")            # new way
+    meta       = data.get("metadata", {})
 
-        if not image_url:
-            return jsonify({"success": False, "error": "No image URL provided"}), 400
-        
-        if not destination:
-            return jsonify({"success": False, "error": "No destination provided"}), 400        
-        
-        '''# Download the image
-        try:
-            image_response = requests.get(image_url)
-            if image_response.status_code != 200:
-                return jsonify({"success": False, "error": f"Failed to download image: HTTP {image_response.status_code}"}), 500
-            
-            image_data = image_response.content
-        except Exception as e:
-            logging.error(f"Error downloading image: {str(e)}")
-            return jsonify({"success": False, "error": f"Failed to download image: {str(e)}"}), 500'''
-        
-        # Handle based on destination type
-        if destination_type == "output_file":
-            if not destination_file:
-                return jsonify({"success": False, "error": "No destination file specified for output_file type"}), 400
-            
-            try:
-                # Detect the file type
-                file_type = detect_file_type(image_url)
-                if file_type == "unknown":
-                    return jsonify({"success": False, "error": "Unsupported file type in imageUrl"}), 400
-
-                # Append correct extension if needed
-                ext = ".jpg" if file_type == "image" else ".mp4"
-                if not destination_file.lower().endswith(ext):
-                    destination_file += ext
-
-                output_dir = "output"
-                output_path = os.path.join(os.getcwd(), output_dir, destination_file)
-
-                info(f"output_path {output_path}")
-                info(f"image_url {image_url}")
-                info(f"metadata {metadata}")
-
-                # Save the file accordingly
-                if file_type == "image":
-                    save_jpeg_with_metadata(
-                        url=image_url,
-                        img_metadata=metadata,
-                        save_path=output_path
-                    )
-                elif file_type == "video":
-                    save_video_with_metadata(
-                        url=image_url,
-                        img_metadata=metadata,
-                        save_path=output_path
-                    )
-
-                return jsonify({
-                    "success": True,
-                    "message": f"File published to {output_path}",
-                    "path": output_path
-                })
-
-            except Exception as e:
-                logging.error(f"Error saving to file: {str(e)}")
-                return jsonify({"success": False, "error": f"Failed to save file: {str(e)}"}), 500
-            
-        elif destination_type == "s3":
-            # This would be implemented with boto3/AWS SDK
-            # For now, we'll just mock the response
-            logging.info(f"Mock S3 upload for file: {destination_file}")
+    if not url or not dest_id:
+        # ── fall-back to legacy keys ────────────────────────────────────
+        dtype = data.get("destinationType")
+        dfile = data.get("destinationFile")
+        if not url or not (dtype and dfile):
             return jsonify({
-                "success": True, 
-                "message": f"Image published to S3 (mock)",
-                "path": f"s3://mock-bucket/{destination_file}"
-            })
-        
-        else:
-            return jsonify({"success": False, "error": f"Unsupported destination type: {destination_type}"}), 400
-        
-    except Exception as e:
-        logging.error(f"Error in publish endpoint: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
+                "success": False,
+                "error": "Required fields: imageUrl + destination "
+                         "or imageUrl + destinationType + destinationFile"
+            }), 400
+
+        result = publish_remote_asset(url, dtype, dfile, meta)
+        return jsonify(result), (200 if result.get("success") else 500)
+
+    # ── preferred path: destination id only ─────────────────────────────
+    try:
+        result = publish_to_destination(url, dest_id, meta)
+    except KeyError as e:                 # unknown destination id
+        return jsonify({"success": False, "error": str(e)}), 400
+
+    return jsonify(result), 200
+
 
 # Add a new endpoint to get console logs
 @app.route('/api/logs', methods=['GET'])
@@ -554,7 +518,7 @@ def test_overlay():
         clear = data["clear"]
     )
     return {"status": "sent"}
-    
+
 # Serve the React frontend
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

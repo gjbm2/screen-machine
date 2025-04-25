@@ -302,7 +302,7 @@
         "id": "video_length",
         "name": "Video length",
         "type": "number",
-        "default": 30
+        "default": 50
       },
       {
         "id": "interpolate_frames",

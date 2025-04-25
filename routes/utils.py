@@ -13,7 +13,14 @@ import re
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 import cv2
 import qrcode
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
+from pathlib import Path
+from flask import url_for
+
+# image processing
+from PIL import Image
+import piexif
+import piexif.helper
 
 # Internal JSON cache
 _json_cache = {}
@@ -64,6 +71,14 @@ def findfile(file_param):
 
     return None
 
+def detect_file_type(url: str) -> str:
+    parsed = urlparse(url)
+    path = parsed.path.lower()
+    if path.endswith(".mp4"):
+        return "video"
+    elif path.endswith(".jpg") or path.endswith(".jpeg") or path.endswith(".png"):
+        return "image"
+    return "unknown"
 
 def _load_json_once(name, filename):
     """
@@ -402,12 +417,15 @@ def encode_single_image(pil_image: Image.Image, name="image.jpg", max_file_size_
     encoded = encode_image_uploads([fake_file], max_file_size_mb=max_file_size_mb)
     return encoded[0]["image"] if encoded else None
 
-def get_image_from_target(file_prefix: str) -> dict | None:
+def get_image_from_target(file_prefix: str, thumbnail: bool = False) -> dict | None:
     """
     Chooses the newer of filename.jpg or filename.mp4 in /output/,
     extracts and compresses the image, and returns a dict:
     { "name": "<filename>.jpg", "image": "<base64-encoded JPEG>" }
+
+    If thumbnail=True, the image will be downscaled to 256×256 before encoding.
     """
+
     jpg_path = f"./output/{file_prefix}.jpg"
     mp4_path = f"./output/{file_prefix}.mp4"
 
@@ -419,8 +437,12 @@ def get_image_from_target(file_prefix: str) -> dict | None:
 
     try:
         if jpg_mtime >= mp4_mtime:
+            raw_name = f"{file_prefix}.jpg"
+            image_path  = jpg_path
             image = Image.open(jpg_path)
         else:
+            raw_name = f"{file_prefix}.mp4"
+            image_path = mp4_path
             import cv2
             cap = cv2.VideoCapture(mp4_path)
             success, frame = cap.read()
@@ -429,10 +451,23 @@ def get_image_from_target(file_prefix: str) -> dict | None:
                 return None
             image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
-        base64_str = encode_single_image(image, name=f"{file_prefix}.jpg")
+        if thumbnail:
+            image.thumbnail((256, 256))
+
+        buf = BytesIO()
+        image.save(buf, format="JPEG")
+        base64_str = base64.b64encode(buf.getvalue()).decode("ascii")
+        
+        VITE_URL = os.environ.get("VITE_URL", "").rstrip("/")
+        
+        raw_url = f"{VITE_URL}/output/{raw_name}" if VITE_URL else f"/output/{raw_name}"
+
         return {
             "name": f"{file_prefix}.jpg",
-            "image": base64_str
+            "image": base64_str,
+            "raw_name": raw_name,
+            "raw_url": raw_url,
+            "local_path": str(image_path)
         }
 
     except Exception as e:
@@ -500,3 +535,42 @@ def get_qr(publish=None, run=False, refiner=None, prompt=None):
     base64_str = base64.b64encode(img_bytes).decode("utf-8")
 
     return f"data:image/png;base64,{base64_str}"
+
+
+def save_video_with_metadata(url: str, img_metadata: dict, save_path: Path):
+    # Download the video
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(save_path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+
+    info(f"Saved MP4 to {save_path}")
+
+    # Save metadata sidecar as .json
+    from routes.publisher import sidecar_path
+    metadata_path = sidecar_path(save_path)
+
+    with open(metadata_path, "w", encoding="utf-8") as meta_file:
+        json.dump(img_metadata, meta_file, ensure_ascii=False, indent=2)
+
+    info(f"Saved metadata to {metadata_path}")
+
+def save_jpeg_with_metadata(url: str, img_metadata: dict, save_path: Path):
+    response = requests.get(url)
+    response.raise_for_status()
+    img = Image.open(BytesIO(response.content)).convert("RGB")
+
+    # Build EXIF with JSON-formatted metadata
+    exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
+
+    comment = json.dumps(img_metadata, ensure_ascii=False, indent=None)
+    user_comment = piexif.helper.UserComment.dump(comment, encoding="unicode")
+    exif_dict["Exif"][piexif.ExifIFD.UserComment] = user_comment
+
+    exif_bytes = piexif.dump(exif_dict)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(save_path, "JPEG", exif=exif_bytes, quality=95)
+    info(f"Saved JPEG with metadata to {save_path}")
