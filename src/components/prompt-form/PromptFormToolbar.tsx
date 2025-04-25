@@ -6,7 +6,7 @@ import ImageUploader from '@/components/prompt/ImageUploader';
 import WorkflowIconSelector from '@/components/prompt/WorkflowIconSelector';
 import RefinerSelector from '@/components/prompt/RefinerSelector';
 import PublishSelector from './PublishSelector';
-import { ToolbarProps } from './types';
+import { ToolbarProps, WorkflowProps } from './types';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Workflow } from '@/types/workflows';
 
@@ -42,7 +42,7 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
 		  isLoading={isLoading}
 		  onImageUpload={onImageUpload}
 		  onWorkflowChange={onWorkflowChange}
-		  availableWorkflows={workflows as unknown as Workflow[]}
+		  availableWorkflows={workflows}
 		  selectedWorkflowId={selectedWorkflow}
 		  hideLabel={isMobile}
 		/>
