@@ -26,6 +26,7 @@ from threading import Thread
 from overlay_ws_server import start_ws_server, send_overlay_to_clients
 from routes.utils import encode_image_uploads, encode_reference_urls
 from routes.publisher import publish_remote_asset, publish_to_destination
+from routes.animate import animate_bp
 
 app = Flask(__name__, static_folder='build')
 CORS(app)  # Enable CORS for all routes
@@ -78,8 +79,6 @@ from routes.simulate_scheduler_ui import simulate_scheduler_handler
 @app.route("/simulate-scheduler", methods=["GET", "POST"])
 def simulate_scheduler():
     return simulate_scheduler_handler()
-
-
 
 # Load workflow data from JSON files
 def load_json_data(file_name):
