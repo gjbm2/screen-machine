@@ -1,11 +1,12 @@
-
 import asyncio
 import json
 import ast
 import os
 from routes.utils import findfile, dict_substitute
-from overlay_ws_server import send_overlay_to_clients
+from overlay_ws_server import send_to_clients
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
+from datetime import datetime
+import uuid
 
 def send_overlay(
     html: str,
@@ -40,23 +41,27 @@ def send_overlay(
     else:
         final_html = html_content
 
-    message = {
-        "screens": screens,
-        "html": final_html,
-        "duration": duration,
-        "position": position,
-        "clear": clear,
-        "fadein": fadein,
-        "job_id": job_id
+    data = {
+        "type": "overlay",
+        "data": {
+            "screens": screens,
+            "html": final_html,
+            "duration": duration,
+            "position": position,
+            "substitutions": substitutions,
+            "clear": clear
+        },
+        "timestamp": int(datetime.now().timestamp()),
+        "id": str(uuid.uuid4())
     }
 
     if not job_id and not final_html:
         warning("Empty overlay message or missing job_id - skipping")
         return
 
-    log_message = {**message}
+    log_message = {**data["data"]}
     if "html" in log_message and isinstance(log_message["html"], str) and len(log_message["html"]) > 500:
-        log_message["html"] = f"{log_message['html'][:500]}... [truncated, {len(message['html'])} chars]"
+        log_message["html"] = f"{log_message['html'][:500]}... [truncated, {len(data['data']['html'])} chars]"
     debug(f"Sending overlay message: {log_message}")
 
-    asyncio.run(send_overlay_to_clients(message))
+    asyncio.run(send_to_clients(data))

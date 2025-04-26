@@ -1,0 +1,38 @@
+{
+  "triggers": [
+    {
+      "type": "time",
+      "value": "06:00",
+      "instructions": []
+    },
+    {
+      "type": "time",
+      "value": "06:00",
+      "window": ["06:00", "23:59"],
+      "repeat": 1,
+      "instructions": [
+        {
+          "action": "random_choice",
+          "var": "values_theme",
+          "choices": [
+            "Action this day",
+            "Change begins at home",
+            "Be good company",
+            "Tech to power",
+            "Solve for people",
+            "See through"
+          ]
+        },
+        {
+          "action": "devise_prompt",
+          "theme_var": "values_theme",
+          "var": "daily_prompt"
+        },
+        {
+          "action": "generate",
+          "prompt_var": "daily_prompt"
+        }
+      ]
+    }
+  ]
+} 

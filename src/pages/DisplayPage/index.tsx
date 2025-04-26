@@ -2,25 +2,23 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import useBaseFileName from "./hooks/useBaseFileName";
 import useFilePolling from "./hooks/useFilePolling";
-import useOverlayWebSocket from "./hooks/useOverlayWebSocket";
 import { MediaDisplay } from "./MediaDisplay";
 import { OverlayContainer } from "./OverlayContainer";
-
+import useOverlayWebSocket from "./hooks/useOverlayWebSocket";
 
 export default function DisplayPage() {
   const { screenId } = useParams();
-
   const baseFileName = useBaseFileName(screenId);
   const filePolling = useFilePolling(baseFileName);
- const {
-  currentSrc,
-  fadeInSrc,
-  fadeInVisible,
-} = filePolling;
+  const {
+    currentSrc,
+    fadeInSrc,
+    fadeInVisible,
+  } = filePolling;
 
-const [videoKey, setVideoKey] = useState(filePolling.videoKey);
-
+  const [videoKey, setVideoKey] = useState(filePolling.videoKey);
   const [overlays, setOverlays] = useState([]);
+
   useOverlayWebSocket(screenId, setOverlays);
 
   const containerRef = useRef(null);
@@ -29,20 +27,19 @@ const [videoKey, setVideoKey] = useState(filePolling.videoKey);
   const [pendingSrc, setPendingSrc] = useState<string | null>(null);
   const [shouldPlay, setShouldPlay] = useState(false);
 
-/*
-useEffect(() => {
-  const existing = document.querySelector("meta[name=viewport]");
-  const metaContent = "width=1920, initial-scale=0.5, maximum-scale=1.0, user-scalable=no";
+  useEffect(() => {
+    const existing = document.querySelector("meta[name=viewport]");
+    const metaContent = "width=1920, initial-scale=0.5, maximum-scale=1.0, user-scalable=no";
 
-  if (!existing) {
-    const meta = document.createElement("meta");
-    meta.name = "viewport";
-    meta.content = metaContent;
-    document.head.appendChild(meta);
-  } else {
-    existing.setAttribute("content", metaContent);
-  }
-}, []);  */
+    if (!existing) {
+      const meta = document.createElement("meta");
+      meta.name = "viewport";
+      meta.content = metaContent;
+      document.head.appendChild(meta);
+    } else {
+      existing.setAttribute("content", metaContent);
+    }
+  }, []);
 
   useEffect(() => {
     if (containerRef.current) {
@@ -65,7 +62,7 @@ useEffect(() => {
 
     if (!visibleSrc) {
       setVisibleSrc(currentSrc);
-	  setShouldPlay(true);
+      setShouldPlay(true);
       return;
     }
 
@@ -85,43 +82,37 @@ useEffect(() => {
     width: "100vw",
     height: "100vh", 
     background: "black",
-    position: "relative",
+    position: "fixed" as const,
     overflow: "hidden",
-	overflow: "hidden",
-	position: "fixed",
-	top: 0,
-	left: 0,
+    top: 0,
+    left: 0,
   };
 
-
   return (
-    <div ref={containerRef} style = { outerStyle }> 
-		  <MediaDisplay
-			src={visibleSrc || currentSrc}
-			fadeInSrc={fadeInSrc}
-			fadeInVisible={fadeInVisible}
-			videoKey={videoKey}
-			fadeOut={fadingOut}
-			shouldPlay={shouldPlay}
-			onFadeOutComplete={() => {
-			  // Do the swap after fading out (ensure fadeOut completes before switching)
-			  if (pendingSrc) {
-				setVisibleSrc(pendingSrc);
-				setPendingSrc(null);
-			  }
+    <div ref={containerRef} style={outerStyle}> 
+      <MediaDisplay
+        src={visibleSrc || currentSrc}
+        fadeInSrc={fadeInSrc}
+        fadeInVisible={fadeInVisible}
+        videoKey={videoKey}
+        fadeOut={fadingOut}
+        shouldPlay={shouldPlay}
+        onFadeOutComplete={() => {
+          if (pendingSrc) {
+            setVisibleSrc(pendingSrc);
+            setPendingSrc(null);
+          }
 
-			  setShouldPlay(false);
+          setShouldPlay(false);
 
-			  // After 1000ms (to match the CSS fade-out duration)
-			  setTimeout(() => {
-				// Now update the videoKey and start playing the video
-				setVideoKey(filePolling.videoKey); // ✅ update key properly
-				setFadingOut(false);
-				setShouldPlay(true); // Signal to start playing the new media
-			  }, 1000); // Match fade-out duration
-			}}
-		  />
-		  	  <OverlayContainer overlays={overlays} />
+          setTimeout(() => {
+            setVideoKey(filePolling.videoKey);
+            setFadingOut(false);
+            setShouldPlay(true);
+          }, 1000);
+        }}
+      />
+      <OverlayContainer overlays={overlays} />
     </div>
   );
 }
@@ -180,5 +171,5 @@ function fadeToBlackAndReload() {
 
   setTimeout(() => {
     location.reload();
-  }, 1200); // 1s fade + 200ms buffer
+  }, 1200);
 }
