@@ -227,14 +227,14 @@ const Index = () => {
       console.log("🔍 Parsed WS message:", msg);
       
       if (msg.job_id && typeof msg.html === 'string') {
-        console.log("📋 Found job status message with job_id:", msg.job_id);
+        console.log("📋 Found job status message:", msg);
         handleJobStatusMessage(msg);
         return;
       }
       
       if (msg.type === 'generation_update') {
         console.log("🚀 Found generation update message:", msg);
-        handleGenerationUpdate(msg as AsyncGenerationUpdate);
+        handleGenerationUpdate(msg as WebSocketMessage);
         return;
       }
       
@@ -291,17 +291,7 @@ const Index = () => {
         }, displayTime);
       }
     } catch (err) {
-      console.error("❌ WebSocket Message Parsing Error:", err);
-      console.error("⚠️ Could not parse message:", event.data);
-      
-      addConsoleLog({
-        type: 'error',
-        message: `Failed to parse WebSocket message: ${err}`,
-        details: {
-          rawMessage: event.data.substring(0, 500),
-          error: String(err)
-        }
-      });
+      console.error("Failed to process WebSocket message:", err);
     }
   }, [handleJobStatusMessage, handleGenerationUpdate, addConsoleLog]);
   

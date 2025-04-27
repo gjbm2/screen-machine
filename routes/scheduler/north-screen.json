@@ -47,29 +47,89 @@
   "context_stack": [
     {
       "vars": {
-        "values_theme": "See through",
-        "daily_prompt": "Generated prompt for theme: See through"
+        "values_theme": "Action this day",
+        "daily_prompt": "Generated prompt for theme: Action this day",
+        "devised_history": [
+          {
+            "timestamp": "2025-04-27 15:17:00",
+            "prompt": "Generated prompt for theme: Action this day"
+          },
+          {
+            "timestamp": "2025-04-27 15:18:00",
+            "prompt": "Generated prompt for theme: Tech to power"
+          },
+          {
+            "timestamp": "2025-04-27 15:19:00",
+            "prompt": "Generated prompt for theme: See through"
+          },
+          {
+            "timestamp": "2025-04-27 15:19:57",
+            "prompt": "Generated prompt for theme: Tech to power"
+          },
+          {
+            "timestamp": "2025-04-27 15:20:00",
+            "prompt": "Generated prompt for theme: Action this day"
+          },
+          {
+            "timestamp": "2025-04-27 15:21:00",
+            "prompt": "Generated prompt for theme: Be good company"
+          },
+          {
+            "timestamp": "2025-04-27 15:22:00",
+            "prompt": "Generated prompt for theme: See through"
+          },
+          {
+            "timestamp": "2025-04-27 15:23:00",
+            "prompt": "Generated prompt for theme: See through"
+          },
+          {
+            "timestamp": "2025-04-27 15:24:00",
+            "prompt": "Generated prompt for theme: Action this day"
+          }
+        ],
+        "prompt_history": [
+          {
+            "timestamp": "2025-04-27 15:17:00",
+            "prompt": "Generated prompt for theme: Action this day"
+          },
+          {
+            "timestamp": "2025-04-27 15:18:00",
+            "prompt": "Generated prompt for theme: Tech to power"
+          },
+          {
+            "timestamp": "2025-04-27 15:19:00",
+            "prompt": "Generated prompt for theme: See through"
+          },
+          {
+            "timestamp": "2025-04-27 15:19:57",
+            "prompt": "Generated prompt for theme: Tech to power"
+          },
+          {
+            "timestamp": "2025-04-27 15:20:00",
+            "prompt": "Generated prompt for theme: Action this day"
+          },
+          {
+            "timestamp": "2025-04-27 15:21:00",
+            "prompt": "Generated prompt for theme: Be good company"
+          },
+          {
+            "timestamp": "2025-04-27 15:22:00",
+            "prompt": "Generated prompt for theme: See through"
+          },
+          {
+            "timestamp": "2025-04-27 15:23:00",
+            "prompt": "Generated prompt for theme: See through"
+          },
+          {
+            "timestamp": "2025-04-27 15:24:00",
+            "prompt": "Generated prompt for theme: Action this day"
+          }
+        ]
       },
       "last_generated": "[image_path]",
-      "publish_destination": "north-screen",
-      "devised_history": [
-        "Generated prompt for theme: Action this day",
-        "Generated prompt for theme: Solve for people",
-        "Generated prompt for theme: Be good company",
-        "Generated prompt for theme: Tech to power",
-        "Generated prompt for theme: See through",
-        "Generated prompt for theme: Change begins at home"
-      ],
-      "prompt_history": [
-        "Generated prompt for theme: Action this day",
-        "Generated prompt for theme: Solve for people",
-        "Generated prompt for theme: Be good company",
-        "Generated prompt for theme: Tech to power",
-        "Generated prompt for theme: See through",
-        "Generated prompt for theme: Change begins at home"
-      ]
+      "publish_destination": "north-screen"
     }
   ],
   "state": "running",
-  "last_updated": "2025-04-26T17:23:00.322181"
+  "last_updated": "2025-04-27T15:24:00.412919"
 }

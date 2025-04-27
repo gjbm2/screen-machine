@@ -21,6 +21,9 @@ from routes.scheduler_api import (
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
 import os
 from datetime import datetime
+import base64
+from urllib.parse import quote
+from jsonschema.validators import validator_for
 
 BASE_URL = "http://localhost:5000"
 
@@ -38,6 +41,27 @@ SCHEDULER_STATES_DIR = "scheduler_states"
 if not os.path.exists(SCHEDULER_STATES_DIR):
     os.makedirs(SCHEDULER_STATES_DIR)
     debug(f"Created scheduler_states directory at {os.path.abspath(SCHEDULER_STATES_DIR)}")
+
+# Helper to generate a minimal valid schedule from the schema
+with open(os.path.join(SCHEDULER_DIR, "schedule_schema.json"), 'r') as f:
+    SCHEDULE_SCHEMA = json.load(f)
+
+# Generate minimal valid data for a schema
+# (This is a simple version; for more complex schemas, use a library or extend as needed)
+def minimal_valid_data(schema):
+    if 'default' in schema:
+        return schema['default']
+    if schema.get('type') == 'object':
+        return {k: minimal_valid_data(v) for k, v in schema.get('properties', {}).items() if 'default' in v or v.get('type') in ['string', 'number', 'boolean', 'array', 'object']}
+    if schema.get('type') == 'array':
+        return []
+    if schema.get('type') == 'string':
+        return ""
+    if schema.get('type') == 'number':
+        return 0
+    if schema.get('type') == 'boolean':
+        return False
+    return None
 
 HTML_TEMPLATE = """
 <!doctype html>
@@ -211,47 +235,68 @@ HTML_TEMPLATE = """
         updateSchedulerStatus(destination);
       });
     });
+
+    async function clearContext(destination) {
+      if (!confirm('Clear context for ' + destination + '?')) return;
+      try {
+        const response = await fetch(`/api/schedulers/${destination}/context/clear`, { method: 'POST' });
+        if (response.ok) {
+          alert('Context cleared for ' + destination);
+          location.reload();
+        } else {
+          const data = await response.json();
+          alert('Failed to clear context: ' + (data.error || response.status));
+        }
+      } catch (e) {
+        alert('Error clearing context: ' + e);
+      }
+    }
+
+    function openCreateEditor(destination) {
+      fetch('/test-scheduler/create-editor-url?destination=' + encodeURIComponent(destination))
+        .then(response => response.json())
+        .then(data => {
+          if (data.url) {
+            window.open(data.url, '_blank');
+          } else {
+            alert('Failed to open editor: ' + (data.error || 'Unknown error'));
+          }
+        });
+    }
   </script>
 </head>
 <body>
   <div class="main-content">
-    <h1>Scheduler Control Panel</h1>
+  <h1>Scheduler Control Panel</h1>
     
     <div class="actions-bar">
       <strong>Global Actions:</strong>
       <a href="/test-scheduler?load_from_files=true" class="btn">Load Schedules from Files</a>
     </div>
 
-    <form method="POST" action="/test-scheduler">
-      <div>
-        <label for="destination">Publish Destination:</label>
-        <select name="destination" id="destination">
-          {% for dest in all_destinations %}
-            <option value="{{ dest }}" {% if dest == selected %}selected{% endif %}>{{ dest }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label for="schedule_json">Schedule JSON:</label>
-        <textarea name="schedule_json" id="schedule_json" rows="10">{{ current_schedule }}</textarea>
-      </div>
-      <div>
-        <input class="btn" type="submit" value="Load Schedule">
-      </div>
-    </form>
+  <h2>Publish Destinations</h2>
+  <ul>
+    {% for dest in all_destinations %}
+      <li>
+        <strong>{{ dest }}</strong>
+        <button class="btn" type="button" onclick="openCreateEditor('{{ dest }}')">Create</button>
+      </li>
+    {% endfor %}
+  </ul>
 
-    <h2>Running Schedulers</h2>
+  <h2>Running Schedulers</h2>
     {% if running_schedulers %}
       {% for dest in running_schedulers %}
         <div class="scheduler-info">
           <h3>{{ dest }}</h3>
           <div>
             <span class="status">Status: <span id="scheduler-status-{{ dest }}" class="scheduler-status running">running</span></span>
-            <form method="POST" action="/test-scheduler?stop={{ dest }}" style="display:inline">
-              <input class="btn" type="submit" value="Stop">
-            </form>
+        <form method="POST" action="/test-scheduler?stop={{ dest }}" style="display:inline">
+          <input class="btn" type="submit" value="Stop">
+        </form>
             <button class="btn" onclick="toggleSchedulerPause('{{ dest }}', 'pause')">Pause</button>
             <button class="btn" onclick="toggleSchedulerPause('{{ dest }}', 'unpause')">Unpause</button>
+            <button class="btn" type="button" onclick="clearContext('{{ dest }}')">Clear Context</button>
           </div>
           
           {% if dest in schedule_stacks %}
@@ -262,7 +307,7 @@ HTML_TEMPLATE = """
                   <div>
                     <strong>Layer {{ loop.index }}</strong>
                     <div>
-                      <a class="btn" href="/test-scheduler?edit={{ dest }}&layer={{ loop.index0 }}">Edit</a>
+                      <a class="btn" href="/test-scheduler?edit={{ dest }}&layer={{ loop.index0 }}" target="_blank">Edit</a>
                       <a class="btn" href="/test-scheduler?context={{ dest }}&layer={{ loop.index0 }}">View Context</a>
                     </div>
                   </div>
@@ -319,7 +364,7 @@ HTML_TEMPLATE = """
             <span class="status">Status: <span id="scheduler-status-{{ dest }}" class="scheduler-status stopped">stopped</span></span>
             <form method="POST" action="/test-scheduler?start={{ dest }}" style="display:inline">
               <input class="btn" type="submit" value="Start">
-            </form>
+        </form>
           </div>
           
           {% if dest in schedule_stacks %}
@@ -330,7 +375,7 @@ HTML_TEMPLATE = """
                   <div>
                     <strong>Layer {{ loop.index }}</strong>
                     <div>
-                      <a class="btn" href="/test-scheduler?edit={{ dest }}&layer={{ loop.index0 }}">Edit</a>
+                      <a class="btn" href="/test-scheduler?edit={{ dest }}&layer={{ loop.index0 }}" target="_blank">Edit</a>
                       <a class="btn" href="/test-scheduler?context={{ dest }}&layer={{ loop.index0 }}">View Context</a>
                     </div>
                   </div>
@@ -352,12 +397,12 @@ HTML_TEMPLATE = """
                                     <li><strong>{{ hist_key }}:</strong> {{ hist_value }}</li>
                                   {% endfor %}
                                 </ul>
-                              </li>
+      </li>
                             {% else %}
                               <li><strong>{{ key }}:</strong> {{ value }}</li>
                             {% endif %}
-                          {% endfor %}
-                        </ul>
+    {% endfor %}
+  </ul>
                       </div>
                     {% endif %}
                   </div>
@@ -470,7 +515,7 @@ EDITOR_TEMPLATE = """
     <div class="alert {% if error %}alert-danger{% else %}alert-success{% endif %}">
       {{ message }}
     </div>
-    {% endif %}
+  {% endif %}
     
     <form method="POST" action="/test-scheduler/edit">
       <input type="hidden" name="destination" value="{{ destination }}">
@@ -493,6 +538,7 @@ def test_scheduler():
         if "edit" in request.args:
             dest = request.args["edit"]
             layer = int(request.args.get("layer", 0))
+            debug(f"Edit request received for {dest} layer {layer}")
             return schedule_editor(dest, layer)
             
         # Get all scheduler states
@@ -691,76 +737,46 @@ def get_important_triggers(publish_destination: str) -> List[Dict[str, Any]]:
     return []
 
 def schedule_editor(destination, layer, message=None, error=False):
-    """Server-side schedule editor page."""
-    debug(f"Opening editor for {destination} layer {layer}")
-    
-    # Fetch the schedule
+    """Get editor URL with state"""
     try:
+        # Get the current schedule data
         response = requests.get(f"{BASE_URL}/api/schedulers/{destination}/schedule/{layer}")
-        debug(f"Schedule response: {response.status_code} - {response.text}")
-        
         if not response.ok:
-            return f"Error: Failed to load schedule. Status {response.status_code} - {response.text}"
+            raise Exception(f"Failed to get schedule: {response.text}")
             
-        data = response.json()
-        if "error" in data:
-            return f"Error: {data['error']}"
+        current_schedule = response.json().get("schedule", {})
+        
+        # Get the schema
+        schema_path = os.path.join(SCHEDULER_DIR, "schedule_schema.json")
+        with open(schema_path, 'r') as f:
+            schema = json.load(f)
+        
+        # Load VITE URL from environment
+        vite_url = os.getenv('VITE_URL', 'http://localhost:5173')
+        if vite_url.endswith('/'):
+            vite_url = vite_url[:-1]
             
-        schedule_json = json.dumps(data["schedule"], indent=2)
+        # Construct the editor URL with state
+        editor_state = {
+            'schema': schema,  # This is now always the current schema from the file
+            'currentData': current_schedule,
+            'returnUrl': f'/test-scheduler?destination={destination}',
+            'saveEndpoint': f'/api/schedulers/{destination}/schedule/{layer}',
+            'saveMethod': 'PUT'
+        }
         
-        return render_template_string(
-            EDITOR_TEMPLATE,
-            destination=destination,
-            layer=layer,
-            schedule_json=schedule_json,
-            message=message,
-            error=error
-        )
+        # Convert state to JSON and properly encode it
+        state_json = json.dumps(editor_state, separators=(',', ':'))  # Compact JSON
+        state_b64 = base64.urlsafe_b64encode(state_json.encode('utf-8')).decode('utf-8')
         
+        # Construct the final URL - no need for additional URL encoding since urlsafe_b64encode is used
+        editor_url = f'{vite_url}/schema-editor?state={state_b64}'
+        
+        debug(f"Redirecting to editor URL: {editor_url}")
+        return redirect(editor_url)
     except Exception as e:
-        error_msg = f"Error loading schedule: {str(e)}"
-        error(error_msg)
-        return error_msg
-
-@test_scheduler_bp.route("/test-scheduler/edit", methods=["POST"])
-def save_schedule():
-    """Handle schedule save from the editor."""
-    debug("Handling schedule save")
-    
-    try:
-        destination = request.form["destination"]
-        layer = int(request.form["layer"])
-        schedule_json = request.form["schedule_json"]
-        
-        debug(f"Saving schedule for {destination} layer {layer}")
-        
-        # Parse and validate JSON
-        try:
-            schedule = json.loads(schedule_json)
-        except json.JSONDecodeError as e:
-            error_msg = f"Invalid JSON format: {str(e)}"
-            error(error_msg)
-            return schedule_editor(destination, layer, message=error_msg, error=True)
-            
-        # Send to API
-        response = requests.put(
-            f"{BASE_URL}/api/schedulers/{destination}/schedule/{layer}",
-            json=schedule
-        )
-        debug(f"Save response: {response.status_code} - {response.text}")
-        
-        if not response.ok:
-            error_msg = f"Failed to save schedule: {response.text}"
-            error(error_msg)
-            return schedule_editor(destination, layer, message=error_msg, error=True)
-            
-        # Success, redirect back to main page
-        return redirect(url_for('test_scheduler.test_scheduler', log=destination))
-        
-    except Exception as e:
-        error_msg = f"Error saving schedule: {str(e)}"
-        error(error_msg)
-        return error_msg
+        error(f"Error preparing schedule editor: {str(e)}")
+        return f"Error: {str(e)}", 500
 
 def initialize_from_schedule_files():
     """Initialize schedulers from JSON files in schedule directories."""
@@ -829,3 +845,26 @@ def initialize_from_schedule_files():
         return False
     
     return True
+
+@test_scheduler_bp.route("/test-scheduler/create-editor-url")
+def create_editor_url():
+    destination = request.args.get("destination")
+    if not destination:
+        return jsonify({"error": "No destination specified"}), 400
+    # Generate minimal valid schedule
+    minimal_schedule = minimal_valid_data(SCHEDULE_SCHEMA)
+    # Build state for SchemaEditor
+    editor_state = {
+        'schema': SCHEDULE_SCHEMA,
+        'currentData': minimal_schedule,
+        'returnUrl': f'/test-scheduler?destination={destination}',
+        'saveEndpoint': f'/api/schedulers/{destination}/schedule',
+        'saveMethod': 'POST'
+    }
+    state_json = json.dumps(editor_state, separators=(',', ':'))
+    state_b64 = base64.urlsafe_b64encode(state_json.encode('utf-8')).decode('utf-8')
+    vite_url = os.getenv('VITE_URL', 'http://localhost:5173')
+    if vite_url.endswith('/'):
+        vite_url = vite_url[:-1]
+    editor_url = f'{vite_url}/schema-editor?state={state_b64}'
+    return jsonify({"url": editor_url})

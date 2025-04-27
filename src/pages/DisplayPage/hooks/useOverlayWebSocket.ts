@@ -66,7 +66,7 @@ export default function useOverlayWebSocket(
             return;
           }
 
-          const { html, duration, position, clear } = msg;
+          const { html, duration, position, clear, fadein } = msg;
           const id = generateId();
           const showDuration = typeof duration === "number" ? duration : 5000;
           const displayTime = Math.max(0, showDuration);
@@ -77,12 +77,12 @@ export default function useOverlayWebSocket(
               id,
               html,
               position,
-              visible: msg.fadein === 0,
-              fadein: msg.fadein
+              visible: fadein === 0,
+              fadein
             }];
           });
 
-          if (msg.fadein !== 0) {
+          if (fadein !== 0) {
             setTimeout(() => {
               setOverlays((prev) =>
                 prev.map((o) => (o.id === id ? { ...o, visible: true } : o))
