@@ -34,14 +34,13 @@ def default_context():
     }
 
 # === Instruction Execution ===
-def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: datetime, output: List[str]):
+def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: datetime, output: List[str], publish_destination: str):
     action = instruction["action"]
     log_msg = f"[{now.strftime('%H:%M')}] Running {action}"
     output.append(log_msg)
     info(log_msg)
 
     handler_map = {
-        "clear_history": handle_clear_history,
         "random_choice": handle_random_choice,
         "devise_prompt": handle_devise_prompt,
         "generate": handle_generate,
@@ -52,7 +51,8 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
         "unload": handle_unload,
         "device-media-sync": handle_device_media_sync,
         "device-wake": handle_device_wake,
-        "device-sleep": handle_device_sleep
+        "device-sleep": handle_device_sleep,
+        "set_var": handle_set_var
     }
 
     if action in handler_map:
@@ -61,51 +61,33 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
             handler_map[action](instruction, context, now, output)
             
             # After running the instruction, update the context in the global stack
-            if "publish_destination" in context:
-                dest = context["publish_destination"]
-                stack = get_context_stack(dest)
-                if stack:
-                    # Get the existing context
-                    existing_context = stack[-1]
-                    
-                    # Create new context by starting with existing context
-                    new_context = dict(existing_context)
-                    
-                    # Update vars dictionary
-                    new_context["vars"] = {**existing_context.get("vars", {}), **context.get("vars", {})}
-                    
-                    # Update last_generated if it exists
-                    if "last_generated" in context:
-                        new_context["last_generated"] = context["last_generated"]
-                    
-                    # Preserve all history arrays from existing context
-                    for key, value in existing_context.items():
-                        if isinstance(value, list):
-                            new_context[key] = list(value)
-                    
-                    # Add any new history arrays from current context
-                    for key, value in context.items():
-                        if isinstance(value, list) and key not in new_context:
-                            new_context[key] = list(value)
-                        elif isinstance(value, list) and key in new_context:
-                            # Merge history arrays if they exist in both
-                            new_context[key] = list(set(new_context[key] + value))
-                    
-                    # Ensure publish_destination is preserved
-                    if "publish_destination" in existing_context:
-                        new_context["publish_destination"] = existing_context["publish_destination"]
-                    
-                    stack[-1] = new_context
-                    
-                    # Get the current schedule stack
-                    schedule_stack = scheduler_schedule_stacks.get(dest, [])
-                    
-                    # Update both stacks in the state
-                    update_scheduler_state(
-                        dest,
-                        schedule_stack=schedule_stack,
-                        context_stack=stack
-                    )
+            stack = get_context_stack(publish_destination)
+            if stack:
+                # Get the existing context
+                existing_context = stack[-1]
+                
+                # Create new context by starting with existing context
+                new_context = dict(existing_context)
+                
+                # Update vars dictionary and copy everything else
+                new_context["vars"] = {**existing_context.get("vars", {}), **context.get("vars", {})}
+                for key, value in context.items():
+                    if key != "vars":
+                        new_context[key] = value
+                
+                # Update both the stack item and the global stack
+                stack[-1] = new_context
+                scheduler_contexts_stacks[publish_destination] = stack
+                
+                # Get the current schedule stack
+                schedule_stack = scheduler_schedule_stacks.get(publish_destination, [])
+                
+                # Update both stacks in the state
+                update_scheduler_state(
+                    publish_destination,
+                    schedule_stack=schedule_stack,
+                    context_stack=stack
+                )
         except Exception as e:
             error_msg = f"[{now.strftime('%H:%M')}] Error in {action}: {str(e)}"
             error(error_msg)
@@ -114,15 +96,6 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
         error_msg = f"[{now.strftime('%H:%M')}] Unknown action: {action}"
         error(error_msg)
         output.append(error_msg)
-
-
-def handle_clear_history(instruction, context, now, output):
-    var_name = instruction["var"]
-    if var_name in context:
-        context[var_name] = []
-        output.append(f"[{now.strftime('%H:%M')}] Cleared {var_name}.")
-    else:
-        output.append(f"[{now.strftime('%H:%M')}] Warning: {var_name} not found in context.")
 
 
 def handle_random_choice(instruction, context, now, output):
@@ -145,9 +118,13 @@ def handle_devise_prompt(instruction, context, now, output):
     
     if "history" in instruction:
         history_var = instruction["history"]
-        if history_var not in context:
-            context[history_var] = []
-        context[history_var].append(prompt)
+        if history_var not in context["vars"]:
+            context["vars"][history_var] = []
+        # Append timestamp and prompt to history
+        context["vars"][history_var].append({
+            "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "prompt": prompt
+        })
     
     output.append(f"[{now.strftime('%H:%M')}] Devised prompt: {prompt}")
 
@@ -158,9 +135,13 @@ def handle_generate(instruction, context, now, output):
     
     if "history" in instruction:
         history_var = instruction["history"]
-        if history_var not in context:
-            context[history_var] = []
-        context[history_var].append(prompt)
+        if history_var not in context["vars"]:
+            context["vars"][history_var] = []
+        # Append timestamp and prompt to history
+        context["vars"][history_var].append({
+            "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "prompt": prompt
+        })
     
     output.append(f"[{now.strftime('%H:%M')}] Generated image from: '{prompt}'.")
 
@@ -241,6 +222,13 @@ def handle_device_sleep(instruction, context, now, output):
     # This is where we would call the device sleep endpoint
     # ...
     output.append(f"[{now.strftime('%H:%M')}] Putting device to sleep")
+
+
+def handle_set_var(instruction, context, now, output):
+    var_name = instruction["var"]
+    value = instruction["value"]
+    context["vars"][var_name] = value
+    output.append(f"[{now.strftime('%H:%M')}] Set {var_name} to {value}.")
 
 
 # === Schedule Resolver ===
@@ -369,28 +357,38 @@ def api_get_scheduler_log(publish_destination):
 
 # Global event loop for background tasks
 _event_loop = None
-_thread_executor = ThreadPoolExecutor(max_workers=1)
 _loop_thread = None
+_event_loop_lock = threading.Lock()
 
 def get_event_loop():
     global _event_loop, _loop_thread
     
-    if _event_loop is None:
-        def run_event_loop():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            global _event_loop
-            _event_loop = loop
-            loop.run_forever()
+    with _event_loop_lock:
+        if _event_loop is None:
+            def run_event_loop():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                global _event_loop
+                _event_loop = loop
+                loop.run_forever()
+                
+            _loop_thread = threading.Thread(target=run_event_loop, daemon=True)
+            _loop_thread.start()
             
-        _loop_thread = threading.Thread(target=run_event_loop, daemon=True)
-        _loop_thread.start()
-        
-        # Wait for event loop to be created
-        while _event_loop is None:
-            pass
+            # Wait for event loop to be created
+            while _event_loop is None:
+                pass
             
     return _event_loop
+
+def stop_event_loop():
+    global _event_loop, _loop_thread
+    
+    with _event_loop_lock:
+        if _event_loop is not None:
+            _event_loop.stop()
+            _event_loop = None
+            _loop_thread = None
 
 def start_scheduler(publish_destination: str, schedule: Dict[str, Any]):
     """Start a scheduler for the given destination with the provided schedule."""
@@ -400,10 +398,18 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any]):
             stop_scheduler(publish_destination)
             scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Stopped existing scheduler")
             
+        # Load existing state from disk
+        state = load_scheduler_state(publish_destination)
+        
         # Initialize in-memory state
         scheduler_states[publish_destination] = "running"
         scheduler_schedule_stacks[publish_destination] = [schedule]
-        scheduler_contexts_stacks[publish_destination] = [default_context()]
+        
+        # Use existing context stack from disk if available, otherwise use default
+        if state.get("context_stack"):
+            scheduler_contexts_stacks[publish_destination] = state["context_stack"]
+        else:
+            scheduler_contexts_stacks[publish_destination] = [default_context()]
         
         # Start the scheduler
         loop = get_event_loop()
@@ -516,6 +522,8 @@ def add_important_trigger(publish_destination: str, trigger: Dict[str, Any], now
 def api_pause_scheduler(publish_destination):
     try:
         scheduler_states[publish_destination] = "paused"
+        # Persist state to disk
+        update_scheduler_state(publish_destination, state="paused")
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Scheduler paused")
         return jsonify({"status": "paused", "destination": publish_destination})
     except Exception as e:
@@ -527,6 +535,8 @@ def api_pause_scheduler(publish_destination):
 def api_unpause_scheduler(publish_destination):
     try:
         scheduler_states[publish_destination] = "running"
+        # Persist state to disk
+        update_scheduler_state(publish_destination, state="running")
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Scheduler unpaused")
         return jsonify({"status": "running", "destination": publish_destination})
     except Exception as e:
@@ -553,43 +563,9 @@ def api_get_scheduler_status(publish_destination):
 # Modify run_scheduler to check paused state
 async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step_minutes: int = 1):
     try:
-        # Initialize scheduler state if not exists
-        if publish_destination not in scheduler_states:
-            scheduler_states[publish_destination] = "running"
-            # Sync state to disk
-            update_scheduler_state(publish_destination, state="running")
-            
-        # Only create new context if one doesn't exist
-        if not scheduler_contexts_stacks.get(publish_destination):
-            debug(f"Initializing new context for {publish_destination}")
-            context = default_context()
-            context["publish_destination"] = publish_destination  # Add destination to context
-            push_context(publish_destination, context)
-            debug(f"Initial context: {context}")
-        else:
-            # Ensure publish_destination is set in existing context
-            current_context = get_current_context(publish_destination)
-            if current_context and "publish_destination" not in current_context:
-                debug(f"Adding publish_destination to existing context for {publish_destination}")
-                current_context["publish_destination"] = publish_destination
-                update_scheduler_state(
-                    publish_destination,
-                    context_stack=scheduler_contexts_stacks[publish_destination]
-                )
-        
+        # Initialize logs
         scheduler_logs[publish_destination] = []
-        scheduler_schedule_stacks[publish_destination] = [schedule]  # Initialize with base schedule
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Starting scheduler")
-        
-        # Sync initial state to disk
-        debug(f"Syncing initial state for {publish_destination}")
-        update_scheduler_state(
-            publish_destination,
-            schedule_stack=scheduler_schedule_stacks[publish_destination],
-            context_stack=scheduler_contexts_stacks[publish_destination],
-            state="running"
-        )
-        debug(f"Initial state synced for {publish_destination}")
         
         # Run initial check immediately
         now = datetime.now()
@@ -604,7 +580,7 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
         if instructions:
             for instr in instructions:
                 try:
-                    should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination])
+                    should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
                     if should_unload:
                         scheduler_schedule_stacks[publish_destination].pop()
                         pop_context(publish_destination)  # Pop the context too
@@ -649,44 +625,12 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
                 current_schedule = scheduler_schedule_stacks[publish_destination][-1]
                 current_context = get_current_context(publish_destination)
                 
-                # Ensure publish_destination is set in context
-                if current_context and "publish_destination" not in current_context:
-                    current_context["publish_destination"] = publish_destination
-                    debug(f"Added publish_destination to context: {publish_destination}")
-                
-                # Check if we're in a wait period
-                if "wait_until" in current_context:
-                    if now >= current_context["wait_until"]:
-                        scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] Wait period complete")
-                        del current_context["wait_until"]  # Clear the wait state
-                        # Unload the schedule and its context after wait
-                        scheduler_schedule_stacks[publish_destination].pop()
-                        pop_context(publish_destination)
-                        scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] Unloaded wait schedule")
-                        
-                        # Sync state after unload
-                        update_scheduler_state(
-                            publish_destination,
-                            schedule_stack=scheduler_schedule_stacks[publish_destination],
-                            context_stack=scheduler_contexts_stacks[publish_destination]
-                        )
-                        
-                        if not scheduler_schedule_stacks[publish_destination]:
-                            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] No schedules left in stack, stopping scheduler")
-                            return
-                    else:
-                        remaining = (current_context["wait_until"] - now).total_seconds() / 60
-                        scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] In wait period, {remaining:.1f} minutes remaining")
-                        last_check_minute = current_minute
-                        await asyncio.sleep(1)  # Sleep a short time before next check
-                        continue
-                
                 # Execute instructions
                 instructions = resolve_schedule(current_schedule, now, publish_destination)
                 if instructions:
                     for instr in instructions:
                         try:
-                            should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination])
+                            should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
                             if should_unload:
                                 scheduler_schedule_stacks[publish_destination].pop()
                                 pop_context(publish_destination)  # Pop the context too
@@ -706,63 +650,6 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
                             error_msg = f"Error running instruction: {str(e)}"
                             scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] {error_msg}")
                 
-                # Check if schedule has any pending triggers
-                has_pending_triggers = False
-                if "triggers" in current_schedule:
-                    for trigger in current_schedule["triggers"]:
-                        if trigger["type"] == "time":
-                            if "window" in trigger:
-                                # For window triggers, check if we're in the window
-                                start = datetime.strptime(trigger["window"][0], "%H:%M").time()
-                                end = datetime.strptime(trigger["window"][1], "%H:%M").time()
-                                start_minutes = start.hour * 60 + start.minute
-                                end_minutes = end.hour * 60 + end.minute
-                                
-                                if end_minutes < start_minutes:
-                                    end_minutes += 24 * 60
-                                    if current_minutes < start_minutes:
-                                        current_minutes += 24 * 60
-                                
-                                if start_minutes <= current_minutes <= end_minutes:
-                                    has_pending_triggers = True
-                                    break
-                            else:
-                                # For single time triggers, check if it's in the future
-                                scheduled_time = datetime.strptime(trigger["value"], "%H:%M").time()
-                                scheduled_minutes = scheduled_time.hour * 60 + scheduled_time.minute
-                                if scheduled_minutes > current_minutes:
-                                    has_pending_triggers = True
-                                    break
-                        elif trigger["type"] == "day_of_week":
-                            # For day of week triggers, check if it's today or a future day
-                            current_day = now.strftime("%A")
-                            if trigger["value"] == current_day or trigger["value"] in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]:
-                                has_pending_triggers = True
-                                break
-                        elif trigger["type"] == "day_of_year":
-                            # For day of year triggers, check if it's today or a future date
-                            current_date = now.strftime("%-d-%b")
-                            if trigger["value"] == current_date or trigger["value"] > current_date:
-                                has_pending_triggers = True
-                                break
-                
-                # If no pending triggers, unload the schedule and its context
-                if not has_pending_triggers:
-                    scheduler_schedule_stacks[publish_destination].pop()
-                    pop_context(publish_destination)  # Pop the context too
-                    scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] No pending triggers, unloaded schedule")
-                    
-                    # Sync state after unload
-                    update_scheduler_state(
-                        publish_destination,
-                        schedule_stack=scheduler_schedule_stacks[publish_destination],
-                        context_stack=scheduler_contexts_stacks[publish_destination]
-                    )
-                    
-                    if not scheduler_schedule_stacks[publish_destination]:
-                        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] No schedules left in stack, stopping scheduler")
-                        return
-                
                 last_check_minute = current_minute
             
             # Sleep a short time before next check
@@ -776,13 +663,19 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
         raise
     finally:
-        # Ensure state is synced when stopping
-        update_scheduler_state(
-            publish_destination,
-            schedule_stack=scheduler_schedule_stacks.get(publish_destination, []),
-            context_stack=scheduler_contexts_stacks.get(publish_destination, []),
-            state="stopped"
-        )
+        # Only update state if we're actually stopping
+        if publish_destination not in running_schedulers:
+            # Get current state before updating
+            current_state = scheduler_states.get(publish_destination)
+            # Only set to stopped if we're not paused
+            if current_state != "paused":
+                scheduler_states[publish_destination] = "stopped"
+                update_scheduler_state(
+                    publish_destination,
+                    schedule_stack=scheduler_schedule_stacks.get(publish_destination, []),
+                    context_stack=scheduler_contexts_stacks.get(publish_destination, []),
+                    state="stopped"
+                )
 
 def get_scheduler_log(publish_destination: str) -> List[str]:
     return scheduler_logs.get(publish_destination, [])
@@ -812,6 +705,10 @@ def stop_scheduler(publish_destination: str):
         
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Stopped scheduler while preserving state")
         
+        # If no schedulers are running, stop the event loop
+        if not running_schedulers:
+            stop_event_loop()
+        
     except Exception as e:
         error_msg = f"Error stopping scheduler: {str(e)}"
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
@@ -828,7 +725,7 @@ def simulate_schedule(schedule: Dict[str, Any], start_time: str, end_time: str, 
     while now <= end:
         instructions = resolve_schedule(schedule, now, "")
         for instr in instructions:
-            run_instruction(instr, context, now, output)
+            run_instruction(instr, context, now, output, "")
         now += timedelta(minutes=step_minutes)
 
     return output
@@ -1072,10 +969,20 @@ def get_current_context(publish_destination: str) -> Optional[Dict[str, Any]]:
 
 def copy_context(context: Dict[str, Any]) -> Dict[str, Any]:
     """Create a deep copy of a context."""
-    return {
-        "vars": dict(context.get("vars", {})),
+    new_context = {
+        "vars": {},
         "last_generated": context.get("last_generated")
     }
+    
+    # Deep copy the vars dictionary
+    for key, value in context.get("vars", {}).items():
+        if isinstance(value, list):
+            # For lists (like history), make a deep copy
+            new_context["vars"][key] = [dict(item) if isinstance(item, dict) else item for item in value]
+        else:
+            new_context["vars"][key] = value
+            
+    return new_context
 
 # === Persistence Functions ===
 def get_scheduler_storage_path(publish_destination: str) -> str:
@@ -1128,85 +1035,97 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
 def save_scheduler_state(publish_destination: str, state: Dict[str, Any]) -> None:
     """Save scheduler state to disk."""
     path = get_scheduler_storage_path(publish_destination)
-    try:
-        # Create a deep copy of the state to avoid modifying the original
-        state_to_save = {
-            "schedule_stack": state.get("schedule_stack", []),
-            "context_stack": [],  # Will be populated below
-            "state": state.get("state", "stopped"),
-            "last_updated": datetime.now().isoformat()
-        }
+    # try:
+    # Get the current context stack from global state if not in state
+    context_stack = state.get("context_stack", scheduler_contexts_stacks.get(publish_destination, []))
+    
+    debug(f"*** context_stack: {context_stack}")
+
+    # Create a deep copy of the state to avoid modifying the original
+    state_to_save = {
+        "schedule_stack": state.get("schedule_stack", []),
+        "context_stack": [],  # Will be populated below
+        "state": state.get("state", "stopped"),
+        "last_updated": datetime.now().isoformat()
+    }
+
+    debug(f"*** state_to_Save: {state_to_save}")
+    
+    # Deep copy each context in the stack
+    for context in context_stack:
+        # Start with a copy of the entire context
+        context_copy = dict(context)
         
-        # Deep copy each context in the stack
-        for context in state.get("context_stack", []):
-            # Start with a copy of the entire context
-            context_copy = dict(context)
+        # Ensure vars is a deep copy
+        if "vars" in context_copy:
+            context_copy["vars"] = dict(context_copy["vars"])
             
-            # Ensure vars is a deep copy
-            if "vars" in context_copy:
-                context_copy["vars"] = dict(context_copy["vars"])
+        # Ensure all list values (including history arrays) are deep copied
+        for key, value in context_copy.items():
+            if isinstance(value, list):
+                context_copy[key] = list(value)
+        
+        # Ensure publish_destination is preserved
+        if "publish_destination" in context:
+            context_copy["publish_destination"] = context["publish_destination"]
                 
-            # Ensure all list values (including history arrays) are deep copied
-            for key, value in context_copy.items():
-                if isinstance(value, list):
-                    context_copy[key] = list(value)
+        state_to_save["context_stack"].append(context_copy)
+                
+    with open(path, 'w') as f:
+        json.dump(state_to_save, f, indent=2)
             
-            # Ensure publish_destination is preserved
-            if "publish_destination" in context:
-                context_copy["publish_destination"] = context["publish_destination"]
-                    
-            state_to_save["context_stack"].append(context_copy)
-                    
-        with open(path, 'w') as f:
-            json.dump(state_to_save, f, indent=2)
-            
-    except Exception as e:
-        error(f"Error saving scheduler state for {publish_destination}: {str(e)}")
+    #except Exception as e:
+    #    error(f"Error saving scheduler state for {publish_destination}: {str(e)}")
 
 def update_scheduler_state(publish_destination: str, 
                          schedule_stack: List[Dict[str, Any]] = None,
                          context_stack: List[Dict[str, Any]] = None,
                          state: str = None) -> None:
     """Update and persist scheduler state."""
+    debug(f"*** update_scheduler_state called from {__name__}")
+    import traceback
+    debug(f"*** Stack trace: {traceback.format_stack()}")
+    
     current_state = load_scheduler_state(publish_destination)
     
     if schedule_stack is not None:
         current_state["schedule_stack"] = schedule_stack
     if context_stack is not None:
-        # Ensure we preserve the context data when updating
-        for i, context in enumerate(context_stack):
-            if i < len(current_state.get("context_stack", [])):
-                # Preserve existing context data
-                existing_context = current_state["context_stack"][i]
-                
-                # Start with a copy of the existing context to preserve all fields
-                new_context = dict(existing_context)
-                
-                # Update vars and last_generated
-                new_context["vars"] = {**existing_context.get("vars", {}), **context.get("vars", {})}
-                new_context["last_generated"] = context.get("last_generated", existing_context.get("last_generated"))
-                
-                # Preserve all list fields (history arrays)
-                for key, value in existing_context.items():
-                    if isinstance(value, list):
-                        new_context[key] = list(value)
-                
-                # Add any new history arrays from current context
-                for key, value in context.items():
-                    if isinstance(value, list):
-                        if key not in new_context:
-                            new_context[key] = list(value)
-                        else:
-                            # Merge history arrays
-                            new_context[key] = list(set(value + new_context[key]))
-                
-                # Preserve publish_destination
-                if "publish_destination" in existing_context:
-                    new_context["publish_destination"] = existing_context["publish_destination"]
-                
-                context_stack[i] = new_context
+        # Create a new context stack to store the merged contexts
+        new_context_stack = []
         
-        current_state["context_stack"] = context_stack
+        # Process each context in the new stack
+        for i, context in enumerate(context_stack):
+            # Start with a new context
+            new_context = {}
+            
+            # If there's an existing context at this position, use it as base
+            if i < len(current_state.get("context_stack", [])):
+                existing_context = current_state["context_stack"][i]
+                # Copy existing context as base
+                new_context = dict(existing_context)
+                # Update vars dictionary
+                new_context["vars"] = {**existing_context.get("vars", {}), **context.get("vars", {})}
+            else:
+                # For new contexts, just copy the entire context
+                new_context = dict(context)
+                new_context["vars"] = dict(context.get("vars", {}))
+            
+            # Copy non-vars fields from the new context
+            for key, value in context.items():
+                if key != "vars":
+                    new_context[key] = value
+            
+            # Ensure publish_destination is preserved/set
+            if "publish_destination" in context:
+                new_context["publish_destination"] = context["publish_destination"]
+            elif i < len(current_state.get("context_stack", [])) and "publish_destination" in current_state["context_stack"][i]:
+                new_context["publish_destination"] = current_state["context_stack"][i]["publish_destination"]
+            
+            new_context_stack.append(new_context)
+        
+        current_state["context_stack"] = new_context_stack
+        
     if state is not None:
         current_state["state"] = state
         
@@ -1367,5 +1286,28 @@ def api_remove_schedule_at_position(publish_destination: str, position: int):
         
     except Exception as e:
         error_msg = f"Error removing schedule at position {position}: {str(e)}"
+        error(error_msg)
+        return jsonify({"error": error_msg}), 500
+
+@scheduler_bp.route("/api/schedulers/<publish_destination>/context/clear", methods=["POST"])
+def api_clear_scheduler_context(publish_destination):
+    try:
+        # Get the context stack for the destination
+        if publish_destination not in scheduler_contexts_stacks or not scheduler_contexts_stacks[publish_destination]:
+            return jsonify({"error": "No context found for scheduler"}), 404
+        # Reset the top context to default_context, but preserve publish_destination
+        new_context = default_context()
+        new_context["publish_destination"] = publish_destination
+        scheduler_contexts_stacks[publish_destination][-1] = new_context
+        # Persist the change
+        update_scheduler_state(
+            publish_destination,
+            schedule_stack=scheduler_schedule_stacks.get(publish_destination, []),
+            context_stack=scheduler_contexts_stacks[publish_destination]
+        )
+        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Cleared context for scheduler")
+        return jsonify({"status": "context_cleared", "destination": publish_destination})
+    except Exception as e:
+        error_msg = f"Error clearing scheduler context: {str(e)}"
         error(error_msg)
         return jsonify({"error": error_msg}), 500

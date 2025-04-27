@@ -1,42 +1,39 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Schedule Configuration",
+  "description": "Configure automated triggers and instructions for this schedule.",
   "type": "object",
   "properties": {
     "instructions": {
-      "$ref": "#/definitions/instruction_array"
+      "$ref": "#/definitions/instruction_array",
+      "title": "Instructions",
+      "description": "A list of instructions to execute when triggered."
     },
     "triggers": {
       "type": "array",
+      "title": "Triggers",
+      "description": "Conditions that cause instructions to run.",
       "items": {
         "type": "object",
+        "title": "Trigger",
+        "description": "A single trigger condition.",
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["time", "day_of_week", "day_of_year", "event"]
+            "enum": ["time", "day_of_week", "day_of_year", "event"],
+            "title": "Trigger Type",
+            "description": "The type of trigger (time, day of week, etc.)."
           },
           "value": {
-            "oneOf": [
-              {
-                "type": "string",
-                "pattern": "^[0-9]{2}:[0-9]{2}$"
-              },
-              {
-                "type": "string",
-                "enum": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-              },
-              {
-                "type": "string",
-                "pattern": "^[0-9]{1,2}-[A-Z][a-z]{2}$"
-              },
-              {
-                "type": "string",
-                "enum": ["user-started-generation"]
-              }
-            ]
+            "type": "string",
+            "title": "Trigger Value",
+            "description": "The value for the trigger (e.g., time or event name)."
           },
           "repeat": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "title": "Repeat",
+            "description": "How many times to repeat this trigger."
           },
           "window": {
             "type": "array",
@@ -45,61 +42,85 @@
               "pattern": "^[0-9]{2}:[0-9]{2}$"
             },
             "minItems": 2,
-            "maxItems": 2
+            "maxItems": 2,
+            "title": "Window",
+            "description": "Time window for the trigger (start and end)."
           },
           "important": {
-            "type": "boolean"
+            "type": "boolean",
+            "title": "Important",
+            "description": "Mark this trigger as important."
           },
           "urgent": {
-            "type": "boolean"
+            "type": "boolean",
+            "title": "Urgent",
+            "description": "Mark this trigger as urgent."
           },
           "instructions": {
-            "$ref": "#/definitions/instruction_array"
+            "$ref": "#/definitions/instruction_array",
+            "title": "Nested Instructions",
+            "description": "Instructions to execute for this trigger."
           }
         },
         "required": ["type", "value"],
         "allOf": [
           {
             "if": {
-              "properties": { "type": { "const": "time" } },
-              "required": ["type"]
+              "properties": {
+                "type": { "const": "time" }
+              }
             },
             "then": {
               "properties": {
-                "value": { "pattern": "^[0-9]{2}:[0-9]{2}$" }
+                "value": {
+                  "type": "string",
+                  "pattern": "^[0-9]{2}:[0-9]{2}$"
+                }
               }
             }
           },
           {
             "if": {
-              "properties": { "type": { "const": "day_of_week" } },
-              "required": ["type"]
+              "properties": {
+                "type": { "const": "day_of_week" }
+              }
             },
             "then": {
               "properties": {
-                "value": { "enum": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] }
+                "value": {
+                  "type": "string",
+                  "enum": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                }
               }
             }
           },
           {
             "if": {
-              "properties": { "type": { "const": "day_of_year" } },
-              "required": ["type"]
+              "properties": {
+                "type": { "const": "day_of_year" }
+              }
             },
             "then": {
               "properties": {
-                "value": { "pattern": "^[0-9]{1,2}-[A-Z][a-z]{2}$" }
+                "value": {
+                  "type": "string",
+                  "pattern": "^[0-9]{1,2}-[A-Z][a-z]{2}$"
+                }
               }
             }
           },
           {
             "if": {
-              "properties": { "type": { "const": "event" } },
-              "required": ["type"]
+              "properties": {
+                "type": { "const": "event" }
+              }
             },
             "then": {
               "properties": {
-                "value": { "enum": ["user-started-generation"] }
+                "value": {
+                  "type": "string",
+                  "enum": ["user-started-generation"]
+                }
               }
             }
           }
@@ -110,12 +131,16 @@
   "definitions": {
     "instruction_array": {
       "type": "array",
+      "title": "Instruction Array",
+      "description": "An array of instruction objects.",
       "items": {
         "$ref": "#/definitions/instruction"
       }
     },
     "instruction": {
       "type": "object",
+      "title": "Instruction",
+      "description": "A single instruction step.",
       "properties": {
         "action": {
           "type": "string",
@@ -125,59 +150,98 @@
             "devise_prompt",
             "sleep",
             "wait",
-            "clear_history",
             "random_choice",
             "animate",
             "device-media-sync",
             "device-wake",
-            "device-sleep"
-          ]
+            "device-sleep",
+            "set_var"
+          ],
+          "title": "Action",
+          "description": "The action to perform."
         },
         "prompt_var": {
-          "type": "string"
+          "type": "string",
+          "title": "Prompt Variable",
+          "description": "Variable for the prompt, if applicable."
         },
         "theme": {
-          "type": "string"
+          "type": "string",
+          "title": "Theme",
+          "description": "Theme to use for this instruction."
         },
         "theme_var": {
-          "type": "string"
+          "type": "string",
+          "title": "Theme Variable",
+          "description": "Variable for the theme, if applicable."
         },
         "var": {
-          "type": "string"
+          "type": "string",
+          "title": "Variable",
+          "description": "Variable name for set_var action."
+        },
+        "value": {
+          "oneOf": [
+            {
+              "type": "string",
+              "title": "String Value"
+            },
+            {
+              "type": "number",
+              "title": "Numeric Value"
+            },
+            {
+              "type": "array",
+              "title": "Array Value",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "boolean",
+              "title": "Boolean Value"
+            }
+          ],
+          "default": ""
         },
         "history": {
-          "type": "string"
+          "type": "string",
+          "title": "History",
+          "description": "History context for this instruction."
         },
         "mode": {
           "type": "string",
-          "enum": [
-            "next",
-            "random"
-          ]
+          "enum": ["next", "random"],
+          "title": "Mode",
+          "description": "Mode for this instruction (next/random)."
         },
         "duration": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "title": "Duration",
+          "description": "Duration in seconds."
         },
         "choices": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "minItems": 1
+          "minItems": 1,
+          "title": "Choices",
+          "description": "Choices for random_choice action."
         }
       },
-      "required": [
-        "action"
-      ],
+      "required": ["action"],
       "allOf": [
         {
           "if": {
-            "properties": { "action": { "const": "clear_history" } },
+            "properties": {
+              "action": { "const": "set_var" }
+            },
             "required": ["action"]
           },
           "then": {
-            "required": ["var"]
+            "required": ["var", "value"]
           }
         }
       ]

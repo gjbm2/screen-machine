@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Scheduler</title>
+    <style>
+        .btn {
+            padding: 8px 16px;
+            margin: 4px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            text-decoration: none;
+            color: black;
+        }
+        .btn:hover {
+            background-color: #eee;
+        }
+        .schedule-layer {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Scheduler UI</h1>
+    <div id="schedules">
+        {% if destination %}
+            <h2>Schedules for {{ destination }}</h2>
+            {% for schedule in schedules %}
+            <div class="schedule-layer">
+                <h3>Layer {{ loop.index0 }}</h3>
+                <pre>{{ schedule | tojson(indent=2) }}</pre>
+                <a class="btn" href="/test-scheduler?edit={{ destination }}&layer={{ loop.index0 }}" target="_blank">Edit</a>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p>No destination specified</p>
+        {% endif %}
+    </div>
+</body>
+</html> 
