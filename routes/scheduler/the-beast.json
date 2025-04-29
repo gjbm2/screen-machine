@@ -61,7 +61,7 @@
   "context_stack": [
     {
       "vars": {
-        "value": "Be good company",
+        "value": "Change begins at home",
         "test": 5,
         "prompt_history": [
           {
@@ -88,13 +88,18 @@
             "timestamp": "2025-04-29 17:00:00",
             "prompt": "Be good company",
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/30093441-bd51-498b-8199-0fcfda494325-e1/4c84cc93.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250429%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250429T160038Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=85bbe3b127a9b79981ece53dfb2d196cf2ce42f9603f4389390f18538a1acb70"
+          },
+          {
+            "timestamp": "2025-04-29 18:00:00",
+            "prompt": "Change begins at home",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/61d1c728-18e7-4de6-9b92-de6182b09535-e1/6424e9d1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250429%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250429T170020Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=547338446dc4283171a239c59c93174561c2c34c6e3c61f63aed541fdf17fd59"
           }
         ]
       },
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/30093441-bd51-498b-8199-0fcfda494325-e1/4c84cc93.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250429%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250429T160038Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=85bbe3b127a9b79981ece53dfb2d196cf2ce42f9603f4389390f18538a1acb70",
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/61d1c728-18e7-4de6-9b92-de6182b09535-e1/6424e9d1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250429%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250429T170020Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=547338446dc4283171a239c59c93174561c2c34c6e3c61f63aed541fdf17fd59",
       "publish_destination": "the-beast"
     }
   ],
   "state": "running",
-  "last_updated": "2025-04-29T17:32:04.974273"
+  "last_updated": "2025-04-29T23:42:21.861063"
 }

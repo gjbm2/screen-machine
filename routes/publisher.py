@@ -273,12 +273,11 @@ def publish_local_file(
         ensure_sidecar_for(dest)
 
     # append media + side-car into bucket and generate thumbnail for the bucket copy
-    new_pub = _append_to_bucket(screen, dest)
+    # new_pub = _append_to_bucket(screen, dest)
     
-
     # record that we've now published this file with the correct bucket filename
     published_at = ISO_NOW()
-    _record_publish(screen, new_pub.name, published_at)
+    _record_publish(screen, dest, published_at)
 
     # send overlay prompt to screen
     _send_overlay_prompt(screen, meta)
