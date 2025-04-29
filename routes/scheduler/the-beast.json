@@ -1,0 +1,71 @@
+{
+  "schedule_stack": [
+    {
+      "initial_actions": {
+        "instructions_block": []
+      },
+      "triggers": [
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "08:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "random_choice",
+                    "choices": [
+                      "Change begins at home",
+                      "Tech to power",
+                      "See through",
+                      "Solve for people",
+                      "Action this day",
+                      "Be good company"
+                    ],
+                    "var": "value"
+                  },
+                  {
+                    "action": "generate",
+                    "input": {
+                      "prompt_var": "value"
+                    },
+                    "refiner": "nous_values"
+                  },
+                  {
+                    "action": "animate",
+                    "refiner": "animator"
+                  }
+                ]
+              },
+              "repeat_schedule": {
+                "every": 60,
+                "until": "19:00"
+              }
+            }
+          ]
+        }
+      ],
+      "final_actions": {
+        "instructions_block": []
+      }
+    }
+  ],
+  "context_stack": [
+    {
+      "vars": {
+        "value": "Tech to power"
+      },
+      "last_generated": "[image_path]",
+      "publish_destination": "the-beast"
+    }
+  ],
+  "state": "running",
+  "last_updated": "2025-04-29T11:14:22.478911"
+}

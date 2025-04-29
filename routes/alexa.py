@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from flask import current_app
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
 from routes.manage_jobs import cancel_all_jobs
+from typing import Dict, Any
 
 def Brianize(text: str) -> str:
     # Already contains Brian *and* prosody — leave untouched
@@ -300,34 +301,13 @@ def process(data):
         #info(f"> intent: {intent}; response_ssml: {response_ssml}")    
 
         match intent:
-            case "animate":            
+            case "animate": 
+                
                 # Fetch relevant image inputs
                 targets = result.get("data", {}).get("targets", []) if isinstance(result.get("data", {}).get("targets"), list) else []
-                
-                # Resolve the file associated with the first target
-                target_image_file = resolve_runtime_value("destination", targets[0], return_key="file") if targets else None
 
-                # Inject base64 image into result["data"]["images"]
-                image_payload = get_image_from_target(target_image_file) if target_image_file else None
-                result.setdefault("data", {})["images"] = [image_payload]
-
-                
-                info(
-                    f"Will address: {target_image_file}, "
-                    f"image present: {image_payload is not None}, "
-                    f"image length: {len(image_payload.get('image')) if image_payload else 'N/A'}"
-                )
-                
-                # Ensure we're using the currently selected refiner
-                result.setdefault("data", {})["refiner"] = resolve_runtime_value("refiner", "animate")
-                
-                # Run the refinement + generation flow in background
-                threading.Thread(
-                    target=handle_image_generation,
-                    kwargs={
-                        "input_obj": result
-                    }
-                ).start()
+                async_amimate(targets = targets, obj = result)
+  
             case "generate_image":
                 # Ensure we're using the currently selected refiner
                 result.setdefault("data", {})["refiner"] = current_app.config.get("REFINER", "Enrich")
@@ -352,3 +332,40 @@ def process(data):
         response_ssml = routes.alexa.Brianize("Sorry, I can't help with that.")
     
     return response_ssml
+
+def async_amimate(targets, obj = {}):
+    # TODO: make this smarter; handle multiple targets, accept input prompts, refiners, etc.
+
+    result = obj
+    result.setdefault("data", {}).setdefault(
+        "targets",
+        targets if isinstance(targets, list) else []
+    )
+
+    # Resolve the file associated with the first target
+    target_image_file = resolve_runtime_value("destination", targets[0], return_key="file") if targets else None
+
+    # Create a result dictionary
+
+    # Inject base64 image into result["data"]["images"]
+    image_payload = get_image_from_target(target_image_file) if target_image_file else None
+    result.setdefault("data", {})["images"] = [image_payload]
+    
+    info(
+        f"Will address: {target_image_file}, "
+        f"image present: {image_payload is not None}, "
+        f"image length: {len(image_payload.get('image')) if image_payload else 'N/A'}"
+    )
+    
+    # Ensure we're using the currently selected refiner
+    result.setdefault("data", {})["refiner"] = resolve_runtime_value("refiner", "animate")
+    
+    # Run the refinement + generation flow in background
+    threading.Thread(
+        target=handle_image_generation,
+        kwargs={
+            "input_obj": result
+        }
+    ).start()
+
+    return None

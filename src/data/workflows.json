@@ -257,7 +257,7 @@
 	"processing_stages": [
 		{"name": "Rendering", "weight": 70},
 		{"name": "Interpolating", "weight": 20},
-		{"name": "Upscaling", "weight": 10}
+		{"name": "Scaling", "weight": 10}
 	],
     "params": [
       { 
@@ -302,7 +302,7 @@
         "id": "video_length",
         "name": "Video length",
         "type": "number",
-        "default": 50
+        "default": 30
       },
       {
         "id": "interpolate_frames",

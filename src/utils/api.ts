@@ -1,8 +1,19 @@
 // API service for all backend requests
-import { toast } from 'sonner';
+import { toast as sonnerToast } from 'sonner';
+// Create a simple toast wrapper for API error messages (matches the shadcn/ui toast API)
+const toast = {
+  error: (message: string) => {
+    sonnerToast.error(message, {
+      duration: 5000 // Auto-hide after 5 seconds
+    });
+  }
+};
 
 // Define default API URLs
 const DEFAULT_API_URL = import.meta.env.VITE_API_URL || '/api';
+
+// Import the PublishService
+import { getPublishDestinations, PublishDestination } from '@/services/PublishService';
 
 // Type for image generation params
 interface GenerateImageParams {
@@ -44,6 +55,59 @@ class ApiService {
   // Get the API URL
   getApiUrl(): string {
     return this.apiUrl;
+  }
+
+  // Get all available destinations with scheduler status
+  async getDestinations() {
+    // First get all publish destinations
+    const publishDestinations = getPublishDestinations();
+    
+    // For each destination, check if scheduler is running
+    const destinationsWithStatus = await Promise.all(
+      publishDestinations.map(async (destination) => {
+        try {
+          // In mock mode, just return mock status
+          if (this.mockMode) {
+            return {
+              ...destination,
+              scheduler_running: Math.random() > 0.5, // Randomly set status for mock
+              scheduler_status: Math.random() > 0.7 ? 'paused' : 'running'
+            };
+          }
+          
+          // Get scheduler status for this destination
+          const response = await fetch(`${this.apiUrl}/schedulers/${destination.id}/status`, {
+            method: 'GET',
+          });
+          
+          if (!response.ok) {
+            return {
+              ...destination,
+              scheduler_running: false,
+              scheduler_status: 'stopped'
+            };
+          }
+          
+          const status = await response.json();
+          return {
+            ...destination,
+            scheduler_running: status.is_running || status.is_paused,
+            scheduler_status: status.status
+          };
+        } catch (error) {
+          console.error(`Error checking scheduler status for ${destination.id}:`, error);
+          return {
+            ...destination,
+            scheduler_running: false,
+            scheduler_status: 'error'
+          };
+        }
+      })
+    );
+    
+    return {
+      destinations: destinationsWithStatus
+    };
   }
 
   // Generate images through the API
@@ -640,6 +704,91 @@ class ApiService {
     }
   }
 
+  // Get the next scheduled action for a destination
+  async getNextScheduledAction(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Getting next scheduled action for ID:', destinationId);
+      return {
+        success: true,
+        destination: destinationId,
+        next_action: {
+          has_next_action: true,
+          next_time: "12:00",
+          description: "Mock scheduled action",
+          minutes_until_next: 60,
+          timestamp: new Date().toISOString()
+        }
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/next_action`, {
+        method: 'GET',
+      });
+
+      // If we get a 404, it just means the scheduler doesn't exist yet
+      if (response.status === 404) {
+        return {
+          success: true,
+          destination: destinationId,
+          next_action: {
+            has_next_action: false,
+            next_time: null,
+            description: null,
+            minutes_until_next: null,
+            timestamp: new Date().toISOString()
+          }
+        };
+      }
+
+      if (!response.ok) {
+        // Try to parse the error response as JSON, but handle it gracefully if it's HTML
+        try {
+          const errorText = await response.text();
+          // Check if the response looks like HTML
+          if (errorText.trim().startsWith('<!DOCTYPE') || errorText.trim().startsWith('<html')) {
+            console.error('Received HTML response instead of JSON for next_action endpoint');
+            return {
+              success: false,
+              destination: destinationId,
+              next_action: null,
+              error: 'Received HTML response from API'
+            };
+          }
+          
+          // Try to parse as JSON
+          const err = JSON.parse(errorText);
+          throw new Error(err.error || 'Failed to get next scheduled action');
+        } catch (parseError) {
+          throw new Error('Failed to parse API response');
+        }
+      }
+
+      // Try to handle the content safely
+      try {
+        const data = await response.json();
+        return data;
+      } catch (jsonError) {
+        console.error('Error parsing next action JSON:', jsonError);
+        return {
+          success: false,
+          destination: destinationId,
+          next_action: null,
+          error: 'Invalid JSON response'
+        };
+      }
+    } catch (error) {
+      console.error('Error getting next scheduled action:', error);
+      // Don't toast this error as it might be expected
+      return {
+        success: false,
+        destination: destinationId,
+        next_action: null,
+        error: error.message || 'Unknown error'
+      };
+    }
+  }
+
   // Get scheduler context
   async getSchedulerContext(destinationId: string) {
     if (this.mockMode) {
@@ -656,16 +805,30 @@ class ApiService {
         method: 'GET',
       });
 
+      // If we get a 404, it just means the scheduler doesn't exist yet, return empty context
+      if (response.status === 404) {
+        return {
+          success: true,
+          context: { vars: {} },
+          context_stack: []
+        };
+      }
+
       if (!response.ok) {
-        const err = await response.json();
+        const err = await response.json().catch(() => ({ error: 'Unknown error' }));
         throw new Error(err.error || 'Failed to get scheduler context');
       }
 
       return await response.json();
     } catch (error) {
       console.error('Error getting scheduler context:', error);
-      toast.error('Failed to get scheduler context');
-      throw error;
+      // Don't toast this error as it's expected for new destinations
+      // Return empty context instead of throwing
+      return {
+        success: true,
+        context: { vars: {} },
+        context_stack: []
+      };
     }
   }
 
@@ -780,16 +943,28 @@ class ApiService {
         method: 'GET',
       });
 
+      // If we get a 404, it just means the scheduler doesn't exist yet, return an empty stack
+      if (response.status === 404) {
+        return {
+          success: true,
+          stack: []
+        };
+      }
+
       if (!response.ok) {
-        const err = await response.json();
+        const err = await response.json().catch(() => ({ error: 'Unknown error' }));
         throw new Error(err.error || 'Failed to get schedule stack');
       }
 
       return await response.json();
     } catch (error) {
       console.error('Error getting schedule stack:', error);
-      toast.error('Failed to get schedule stack');
-      throw error;
+      // Don't toast this error as it's expected for new destinations
+      // Return an empty stack instead of throwing
+      return {
+        success: true,
+        stack: []
+      };
     }
   }
 
