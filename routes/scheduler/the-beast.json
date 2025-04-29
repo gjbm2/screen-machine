@@ -36,7 +36,8 @@
                     "input": {
                       "prompt_var": "value"
                     },
-                    "refiner": "nous_values"
+                    "refiner": "nous_values",
+                    "history_output_var": "prompt_history"
                   },
                   {
                     "action": "animate",
@@ -60,12 +61,13 @@
   "context_stack": [
     {
       "vars": {
-        "value": "Tech to power"
+        "value": "Tech to power",
+        "test": null
       },
       "last_generated": "[image_path]",
       "publish_destination": "the-beast"
     }
   ],
   "state": "running",
-  "last_updated": "2025-04-29T11:14:22.478911"
+  "last_updated": "2025-04-29T12:35:27.054058"
 }

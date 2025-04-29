@@ -819,7 +819,21 @@ class ApiService {
         throw new Error(err.error || 'Failed to get scheduler context');
       }
 
-      return await response.json();
+      const responseData = await response.json();
+      
+      // Log the response structure to help with debugging
+      console.debug(`API: Scheduler context response structure for ${destinationId}:`, 
+                   Object.keys(responseData));
+      
+      // Handle the case when the response is a direct context object
+      if (responseData.vars !== undefined || responseData.last_generated !== undefined) {
+        console.debug(`API: Detected direct context object for ${destinationId}`);
+        // If the response is a direct context object, wrap it in our expected format
+        return responseData;
+      }
+      
+      // Otherwise return the response as is
+      return responseData;
     } catch (error) {
       console.error('Error getting scheduler context:', error);
       // Don't toast this error as it's expected for new destinations
@@ -860,6 +874,43 @@ class ApiService {
     } catch (error) {
       console.error('Error setting scheduler context:', error);
       toast.error('Failed to set scheduler context');
+      throw error;
+    }
+  }
+
+  // Set a specific context variable for a scheduler
+  async setSchedulerContextVar(destinationId: string, varName: string, varValue: any) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Setting context variable for scheduler ID:', destinationId, `${varName}=`, varValue);
+      return {
+        status: 'success',
+        var_name: varName,
+        var_value: varValue,
+        vars: { [varName]: varValue }
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/context`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          var_name: varName,
+          var_value: varValue
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to set variable');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error(`Error setting scheduler variable ${varName}:`, error);
+      toast.error(`Failed to set variable ${varName}`);
       throw error;
     }
   }
