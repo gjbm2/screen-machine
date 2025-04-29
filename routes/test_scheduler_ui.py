@@ -162,36 +162,51 @@ HTML_TEMPLATE = """
       font-family: monospace;
       font-size: 12px;
     }
+    /* Destination context preview */
+    .destination-context-preview {
+      display: inline-block;
+      font-size: 12px;
+      color: #666;
+      margin-left: 10px;
+      max-width: 300px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* Tab styles */
+    .tab-container {
+      margin-top: 10px;
+    }
+    .tab-buttons {
+      display: flex;
+      border-bottom: 1px solid #ddd;
+    }
+    .tab-button {
+      padding: 8px 16px;
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-bottom: none;
+      cursor: pointer;
+      margin-right: 2px;
+    }
+    .tab-button.active {
+      background: white;
+      border-bottom: 1px solid white;
+      margin-bottom: -1px;
+    }
+    .tab-content {
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-top: none;
+    }
+    .tab-panel {
+      display: none;
+    }
+    .tab-panel.active {
+      display: block;
+    }
   </style>
   <script>
-    // Function to fetch and update logs
-    //async function updateLogs() {
-    //  const logDestination = document.getElementById('log-destination');
-    //  const selectedDest = logDestination.value;
-    //  if (!selectedDest) return;
-    //  
-    //  try {
-    //    const response = await fetch(`/api/schedulers/${selectedDest}`);
-    //    const data = await response.json();
-    //    const logContent = document.getElementById('log-content');
-    //    
-    //    if (data.log && data.log.length > 0) {
-    //      logContent.textContent = data.log.join('\\n');
-    //      logContent.classList.remove('empty');
-    //      // Auto-scroll to bottom if already at bottom
-    //      const isAtBottom = logContent.scrollHeight - logContent.clientHeight <= logContent.scrollTop + 1;
-    //      if (isAtBottom) {
-    //        logContent.scrollTop = logContent.scrollHeight;
-    //      }
-    //    } else {
-    //      logContent.textContent = 'No logs available. Start a scheduler to view logs.';
-    //      logContent.classList.add('empty');
-    //    }
-    //  } catch (error) {
-    //    console.error('Error fetching logs:', error);
-    //  }
-    //}
-
     // Function to fetch and update scheduler status
     async function updateSchedulerStatus(destination) {
       try {
@@ -224,9 +239,6 @@ HTML_TEMPLATE = """
 
     // Start auto-refresh when page loads
     document.addEventListener('DOMContentLoaded', function() {
-      // Update logs every 5 seconds
-      // setInterval(updateLogs, 5000);
-      
       // Update status for all schedulers every 5 seconds
       const statusElements = document.querySelectorAll('.scheduler-status');
       if (statusElements.length > 0) {
@@ -239,10 +251,29 @@ HTML_TEMPLATE = """
       }
       
       // Initial updates
-      // updateLogs();
       statusElements.forEach(element => {
         const destination = element.id.replace('scheduler-status-', '');
         updateSchedulerStatus(destination);
+      });
+
+      // Set up tab switching
+      document.querySelectorAll('.tab-button').forEach(button => {
+        button.addEventListener('click', function() {
+          const layerId = this.getAttribute('data-layer');
+          const tabId = this.getAttribute('data-tab');
+          
+          // Deactivate all tabs in this layer
+          document.querySelectorAll(`[data-layer="${layerId}"] .tab-button`).forEach(btn => {
+            btn.classList.remove('active');
+          });
+          document.querySelectorAll(`#layer-${layerId} .tab-panel`).forEach(panel => {
+            panel.classList.remove('active');
+          });
+          
+          // Activate the clicked tab
+          this.classList.add('active');
+          document.querySelector(`#layer-${layerId} .tab-panel-${tabId}`).classList.add('active');
+        });
       });
     });
 
@@ -297,7 +328,14 @@ HTML_TEMPLATE = """
     {% if running_schedulers %}
       {% for dest in running_schedulers %}
         <div class="scheduler-info">
-          <h3>{{ dest }}</h3>
+          <h3>
+            {{ dest }}
+            {% if dest in layer_contexts and 0 in layer_contexts[dest] and layer_contexts[dest][0].vars %}
+              <span class="destination-context-preview">
+                Context: {% for key, value in layer_contexts[dest][0].vars.items() %}{{ key }}={{ value|truncate(20) }}{% if not loop.last %}, {% endif %}{% endfor %}
+              </span>
+            {% endif %}
+          </h3>
           <div>
             <span class="status">Status: <span id="scheduler-status-{{ dest }}" class="scheduler-status running">running</span></span>
             <button class="btn" type="button" onclick="openCreateEditor('{{ dest }}')">Create</button>
@@ -314,39 +352,59 @@ HTML_TEMPLATE = """
             <div class="schedule-stack">
               <h4>Schedule Stack</h4>
               {% for layer in schedule_stacks[dest] %}
-                <div class="stack-layer">
+                <div id="layer-{{ dest }}-{{ loop.index0 }}" class="stack-layer">
                   <div>
                     <strong>Layer {{ loop.index }}</strong>
                     <div>
                       <a class="btn" href="/test-scheduler?edit={{ dest }}&layer={{ loop.index0 }}" target="_blank">Edit</a>
                     </div>
                   </div>
-                  <div>
-                    <pre>{{ layer|tojson(indent=2) }}</pre>
-                    {% if dest in layer_contexts and loop.index0 in layer_contexts[dest] %}
-                      <div class="context-vars">
-                        <h4>Context Variables:</h4>
-                        <ul>
-                          {% for key, value in layer_contexts[dest][loop.index0].items() %}
-                            {% if key == "vars" %}
-                              {% for var_key, var_value in value.items() %}
-                                <li><strong>{{ var_key }}:</strong> {{ var_value }}</li>
-                              {% endfor %}
-                            {% elif key == "history" %}
-                              <li><strong>History:</strong>
-                                <ul>
-                                  {% for hist_key, hist_value in value.items() %}
-                                    <li><strong>{{ hist_key }}:</strong> {{ hist_value }}</li>
-                                  {% endfor %}
-                                </ul>
-                              </li>
-                            {% else %}
-                              <li><strong>{{ key }}:</strong> {{ value }}</li>
-                            {% endif %}
-                          {% endfor %}
-                        </ul>
+                  
+                  <div class="tab-container">
+                    <!-- Tab buttons -->
+                    <div class="tab-buttons" data-layer="{{ dest }}-{{ loop.index0 }}">
+                      <button class="tab-button active" data-layer="{{ dest }}-{{ loop.index0 }}" data-tab="schedule">Schedule</button>
+                      <button class="tab-button" data-layer="{{ dest }}-{{ loop.index0 }}" data-tab="context">Context</button>
+                    </div>
+                    
+                    <!-- Tab content -->
+                    <div class="tab-content">
+                      <!-- Schedule tab -->
+                      <div class="tab-panel tab-panel-schedule active">
+                        <pre>{{ layer|tojson(indent=2) }}</pre>
                       </div>
-                    {% endif %}
+                      
+                      <!-- Context tab -->
+                      <div class="tab-panel tab-panel-context">
+                        {% if dest in layer_contexts and loop.index0 in layer_contexts[dest] %}
+                          <div class="context-vars">
+                            <h4>Context Variables:</h4>
+                            <pre>{{ layer_contexts[dest][loop.index0]|tojson(indent=2) }}</pre>
+                            <ul>
+                              {% for key, value in layer_contexts[dest][loop.index0].items() %}
+                                {% if key == "vars" %}
+                                  {% for var_key, var_value in value.items() %}
+                                    <li><strong>{{ var_key }}:</strong> {{ var_value }}</li>
+                                  {% endfor %}
+                                {% elif key == "history" %}
+                                  <li><strong>History:</strong>
+                                    <ul>
+                                      {% for hist_key, hist_value in value.items() %}
+                                        <li><strong>{{ hist_key }}:</strong> {{ hist_value }}</li>
+                                      {% endfor %}
+                                    </ul>
+                                  </li>
+                                {% else %}
+                                  <li><strong>{{ key }}:</strong> {{ value }}</li>
+                                {% endif %}
+                              {% endfor %}
+                            </ul>
+                          </div>
+                        {% else %}
+                          <p>No context information available for this layer.</p>
+                        {% endif %}
+                      </div>
+                    </div>
                   </div>
                 </div>
               {% endfor %}
@@ -369,7 +427,14 @@ HTML_TEMPLATE = """
     {% if stopped_schedulers %}
       {% for dest in stopped_schedulers %}
         <div class="scheduler-info stopped">
-          <h3>{{ dest }}</h3>
+          <h3>
+            {{ dest }}
+            {% if dest in layer_contexts and 0 in layer_contexts[dest] and layer_contexts[dest][0].vars %}
+              <span class="destination-context-preview">
+                Context: {% for key, value in layer_contexts[dest][0].vars.items() %}{{ key }}={{ value|truncate(20) }}{% if not loop.last %}, {% endif %}{% endfor %}
+              </span>
+            {% endif %}
+          </h3>
           <div>
             <span class="status">Status: <span id="scheduler-status-{{ dest }}" class="scheduler-status stopped">stopped</span></span>
             <button class="btn" type="button" onclick="openCreateEditor('{{ dest }}')">Create</button>
@@ -383,39 +448,59 @@ HTML_TEMPLATE = """
             <div class="schedule-stack">
               <h4>Schedule Stack</h4>
               {% for layer in schedule_stacks[dest] %}
-                <div class="stack-layer">
+                <div id="layer-{{ dest }}-{{ loop.index0 }}" class="stack-layer">
                   <div>
                     <strong>Layer {{ loop.index }}</strong>
                     <div>
                       <a class="btn" href="/test-scheduler?edit={{ dest }}&layer={{ loop.index0 }}" target="_blank">Edit</a>
                     </div>
                   </div>
-                  <div>
-                    <pre>{{ layer|tojson(indent=2) }}</pre>
-                    {% if dest in layer_contexts and loop.index0 in layer_contexts[dest] %}
-                      <div class="context-vars">
-                        <h4>Context Variables:</h4>
-                        <ul>
-                          {% for key, value in layer_contexts[dest][loop.index0].items() %}
-                            {% if key == "vars" %}
-                              {% for var_key, var_value in value.items() %}
-                                <li><strong>{{ var_key }}:</strong> {{ var_value }}</li>
-                              {% endfor %}
-                            {% elif key == "history" %}
-                              <li><strong>History:</strong>
-                                <ul>
-                                  {% for hist_key, hist_value in value.items() %}
-                                    <li><strong>{{ hist_key }}:</strong> {{ hist_value }}</li>
-                                  {% endfor %}
-                                </ul>
-      </li>
-                            {% else %}
-                              <li><strong>{{ key }}:</strong> {{ value }}</li>
-                            {% endif %}
-    {% endfor %}
-  </ul>
+                  
+                  <div class="tab-container">
+                    <!-- Tab buttons -->
+                    <div class="tab-buttons" data-layer="{{ dest }}-{{ loop.index0 }}">
+                      <button class="tab-button active" data-layer="{{ dest }}-{{ loop.index0 }}" data-tab="schedule">Schedule</button>
+                      <button class="tab-button" data-layer="{{ dest }}-{{ loop.index0 }}" data-tab="context">Context</button>
+                    </div>
+                    
+                    <!-- Tab content -->
+                    <div class="tab-content">
+                      <!-- Schedule tab -->
+                      <div class="tab-panel tab-panel-schedule active">
+                        <pre>{{ layer|tojson(indent=2) }}</pre>
                       </div>
-                    {% endif %}
+                      
+                      <!-- Context tab -->
+                      <div class="tab-panel tab-panel-context">
+                        {% if dest in layer_contexts and loop.index0 in layer_contexts[dest] %}
+                          <div class="context-vars">
+                            <h4>Context Variables:</h4>
+                            <pre>{{ layer_contexts[dest][loop.index0]|tojson(indent=2) }}</pre>
+                            <ul>
+                              {% for key, value in layer_contexts[dest][loop.index0].items() %}
+                                {% if key == "vars" %}
+                                  {% for var_key, var_value in value.items() %}
+                                    <li><strong>{{ var_key }}:</strong> {{ var_value }}</li>
+                                  {% endfor %}
+                                {% elif key == "history" %}
+                                  <li><strong>History:</strong>
+                                    <ul>
+                                      {% for hist_key, hist_value in value.items() %}
+                                        <li><strong>{{ hist_key }}:</strong> {{ hist_value }}</li>
+                                      {% endfor %}
+                                    </ul>
+                                  </li>
+                                {% else %}
+                                  <li><strong>{{ key }}:</strong> {{ value }}</li>
+                                {% endif %}
+                              {% endfor %}
+                            </ul>
+                          </div>
+                        {% else %}
+                          <p>No context information available for this layer.</p>
+                        {% endif %}
+                      </div>
+                    </div>
                   </div>
                 </div>
               {% endfor %}

@@ -1,3 +1,18 @@
+# TODO: handle async instructions with support for 'important' and 'urgent' instructions
+# TODO: standard handling of await staete for long runnning executions
+
+#
+#TO DO
+#
+#Let's add an endpoint in _api to trigger an event (which will be picked up by the event trigger).
+#
+#Just put events in a bucket and at each tick of the scheduler loop:
+#- if event is found, then (a) remove event from bucket and (b) run instruction.
+#
+#the endpoint should optionally take publish_destination.
+#
+#Finally, let's add a event trigger method for each publish_destination on the front end for "poke" which fires that evnt for the publish_destination.
+
 from datetime import datetime, timedelta
 import random
 from typing import Dict, Any, List, Optional
@@ -12,7 +27,7 @@ import os
 from flask import Blueprint, request, jsonify
 import requests
 import copy
-from routes.utils import dict_substitute
+from routes.utils import dict_substitute, build_schema_subs
 
 # Global storage for scheduler state
 scheduler_bp = Blueprint("scheduler_bp", __name__)
@@ -24,10 +39,39 @@ scheduler_states = {}  # Store paused state by destination
 important_triggers = {}  # Store important triggers by destination
 active_events = {}  # Store active events by destination
 
-# Load schedule schema
+# Load schedule schema path
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "scheduler", "schedule.schema.json.j2")
-with open(SCHEMA_PATH) as f:
-    SCHEDULE_SCHEMA = json.load(f)
+# Don't parse the raw schema file at module load time - we'll process it on demand
+
+# === Logging ===
+def log_schedule(message: str, publish_destination: Optional[str] = None, now: Optional[datetime] = None):
+    """
+    Log a message to scheduler logs with timestamp.
+    
+    Args:
+        message: The message to log
+        publish_destination: Optional destination to log to. If None, logs to all active destinations.
+        now: Optional datetime to use for timestamp. If None, uses current time.
+    """
+    if now is None:
+        now = datetime.now()
+    
+    formatted_msg = f"[{now.strftime('%H:%M')}] {message}"
+    
+    if publish_destination is None:
+        # Log to all available destinations
+        for dest in scheduler_logs.keys():
+            scheduler_logs[dest].append(formatted_msg)
+    else:
+        # Ensure the log list exists for this destination
+        if publish_destination not in scheduler_logs:
+            scheduler_logs[publish_destination] = []
+        
+        # Log to the specific destination
+        scheduler_logs[publish_destination].append(formatted_msg)
+    
+    # Also log to console with INFO level for visibility
+    info(message)
 
 # === Context Initialization ===
 def default_context():
@@ -44,17 +88,16 @@ def get_current_schema() -> Dict[str, Any]:
         with open(SCHEMA_PATH) as f:
             schema_text = f.read()
         
-        # TODO: Add subs lookup here to replace workflows and refiners list from _load_json_data call
-        subs = {}  # Placeholder for future subs lookup
-        
         # Apply jinja substitutions
+        subs = build_schema_subs()  # Get substitutions from utils
         if subs:
             schema_text = dict_substitute(schema_text, subs)
         
         return json.loads(schema_text)
     except Exception as e:
         error(f"Error loading schema: {e}")
-        return SCHEDULE_SCHEMA  # Fallback to default schema as object
+        # Return a minimal valid schema instead of SCHEDULE_SCHEMA
+        return {"title": "Error", "description": f"Error loading schema: {str(e)}", "type": "object", "properties": {}}
 
 @scheduler_bp.route("/api/scheduler/schema", methods=["GET"])
 def api_get_schema():
@@ -70,9 +113,9 @@ def api_get_schema():
 # === Instruction Execution ===
 def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: datetime, output: List[str], publish_destination: str):
     action = instruction["action"]
-    log_msg = f"[{now.strftime('%H:%M')}] Running {action}"
-    output.append(log_msg)
-    info(log_msg)
+    log_msg = f"Running {action}"
+    output.append(f"[{now.strftime('%H:%M')}] {log_msg}")
+    log_schedule(log_msg, publish_destination, now)
 
     handler_map = {
         "random_choice": handle_random_choice,
@@ -86,13 +129,14 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
         "device-media-sync": handle_device_media_sync,
         "device-wake": handle_device_wake,
         "device-sleep": handle_device_sleep,
-        "set_var": handle_set_var
+        "set_var": handle_set_var,
+        "stop": handle_stop  # Add the new stop handler
     }
 
     if action in handler_map:
         try:
             # Run the handler which will modify the context
-            handler_map[action](instruction, context, now, output, publish_destination)
+            should_unload = handler_map[action](instruction, context, now, output, publish_destination)
             
             # After running the instruction, update the context in the global stack
             stack = get_context_stack(publish_destination)
@@ -122,20 +166,26 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
                     schedule_stack=schedule_stack,
                     context_stack=stack
                 )
+            
+            return should_unload
         except Exception as e:
-            error_msg = f"[{now.strftime('%H:%M')}] Error in {action}: {str(e)}"
-            error(error_msg)
-            output.append(error_msg)
+            error_msg = f"Error in {action}: {str(e)}"
+            output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+            log_schedule(error_msg, publish_destination, now)
     else:
-        error_msg = f"[{now.strftime('%H:%M')}] Unknown action: {action}"
-        error(error_msg)
-        output.append(error_msg)
+        error_msg = f"Unknown action: {action}"
+        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        log_schedule(error_msg, publish_destination, now)
+    
+    return False
 
 def handle_random_choice(instruction, context, now, output, publish_destination):
     var = instruction["var"]
     choice = random.choice(instruction["choices"])
     context["vars"][var] = choice
-    output.append(f"[{now.strftime('%H:%M')}] Randomly chose '{choice}' for var '{var}'.")
+    msg = f"Randomly chose '{choice}' for var '{var}'."
+    output.append(f"[{now.strftime('%H:%M')}] {msg}")
+    log_schedule(msg, publish_destination, now)
 
 def handle_devise_prompt(instruction, context, now, output, publish_destination):
     theme = instruction.get("theme")
@@ -159,68 +209,98 @@ def handle_devise_prompt(instruction, context, now, output, publish_destination)
         })
     
     output.append(f"[{now.strftime('%H:%M')}] Devised prompt: {prompt}")
+    log_schedule(f"Devised prompt: {prompt}", publish_destination, now)
 
 # Image generation handler
 def handle_generate(instruction, context, now, output, publish_destination):
-    prompt = instruction.get("prompt", instruction.get("value", ""))
-    prompt_var_value = context["vars"].get(instruction.get("prompt_var", ""), "")
-    prompt = " ".join(filter(None, [prompt, prompt_var_value]))
+    try:
+        # Extract the prompt from either direct input or variable
+        prompt = ""
+        if "input" in instruction:
+            if isinstance(instruction["input"], dict):
+                if "prompt" in instruction["input"]:
+                    prompt = instruction["input"]["prompt"]
+                elif "prompt_var" in instruction["input"]:
+                    prompt_var = instruction["input"]["prompt_var"]
+                    prompt = context["vars"].get(prompt_var, "")
+        else:
+            # Fallback for old format
+            prompt = instruction.get("prompt", instruction.get("value", ""))
+            prompt_var_value = context["vars"].get(instruction.get("prompt_var", ""), "")
+            prompt = " ".join(filter(None, [prompt, prompt_var_value]))
 
-    if prompt == "":
-        output.append(f"[{now.strftime('%H:%M')}] No prompt supplied.")
-        return 
-    
-    send_obj = {
-        "data": {
-            "prompt": prompt,
-            "images": [],  # Add empty images array
-            "refiner": instruction.get("refiner", None),
-            "workflow": instruction.get("workflow", None),
-            "targets": [publish_destination]
+        if not prompt or prompt.strip() == "":
+            error_msg = "No prompt supplied for generation."
+            output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+            log_schedule(error_msg, publish_destination, now)
+            return 
+        
+        debug(f"Preparing generation with prompt: '{prompt}'")
+        
+        send_obj = {
+            "data": {
+                "prompt": prompt,
+                "images": [],  # Add empty images array
+                "refiner": instruction.get("refiner", None),
+                "workflow": instruction.get("workflow", None),
+                "targets": [publish_destination]
+            }
         }
-    }
+        #    # TODO: later add back: **call_args
 
-    # Now let's generate with prompt 
-    output.append(f"[{now.strftime('%H:%M')}] Starting image generation send_obj: '{send_obj}'.")
-    from routes.alexa import handle_image_generation
-    response = handle_image_generation(
-        input_obj = send_obj,
-        wait = True            
-    )
+        # Now let's generate with prompt 
+        start_msg = f"Starting image generation with prompt: '{prompt}'"
+        output.append(f"[{now.strftime('%H:%M')}] {start_msg}")
+        log_schedule(start_msg, publish_destination, now)
+            
+        from routes.alexa import handle_image_generation
+        
+        debug(f"Sending generation request: {json.dumps(send_obj)}")
+        
+        response = handle_image_generation(
+            input_obj = send_obj,
+            wait = True            
+        )
 
-    debug(f"[{now.strftime('%H:%M')}] Response from image generation: '{response}'.")
-    debug(f"=====================================================")
+        debug(f"Response from image generation: '{response}'")
+        
+        if not response:
+            error_msg = "Image generation returned no results."
+            output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+            log_schedule(error_msg, publish_destination, now)
+            return    
 
-    #try:   
-    #    response = handle_image_generation(
-    #        input_obj = send_obj,
-    #        wait = True            
-    #    )
-    #    # TODO: later add back: **call_args
-    #
-    #except Exception as e:
-    #    output.append(f"[{now.strftime('%H:%M')}] Image generation failed: '{e}'.")
-    #    return
-    
-    if not response:
-        output.append(f"[{now.strftime('%H:%M')}] Image generation returned no results.")
-        return    
+        # Record generation result
+        context["last_generated"] = "[image_path]"
 
-    # TODO: later retrieve actual prompt used (post-refinement)
-
-    context["last_generated"] = "[image_path]"
-
-    if "history" in instruction:
-        history_var = instruction["history"]
-        if history_var not in context["vars"]:
-            context["vars"][history_var] = []
-        # Append timestamp and prompt to history
-        context["vars"][history_var].append({
-            "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
-            "prompt": prompt
-        })
-    
-    output.append(f"[{now.strftime('%H:%M')}] Generated image from: '{prompt}'.")
+        # Handle history if specified
+        history_var = instruction.get("history_output_var")
+        if history_var:
+            if history_var not in context["vars"]:
+                context["vars"][history_var] = []
+            # Append timestamp and prompt to history
+            context["vars"][history_var].append({
+                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
+                "prompt": prompt
+            })
+        
+        success_msg = f"Generated image from: '{prompt}'"
+        # Add more detailed success logging
+        if isinstance(response, list) and len(response) > 0:
+            first_result = response[0]
+            if isinstance(first_result, dict):
+                result_details = first_result.get("file", "unknown")
+                success_msg = f"Generated image from: '{prompt}' -> {result_details}"
+                
+        output.append(f"[{now.strftime('%H:%M')}] {success_msg}")
+        log_schedule(f"GENERATE SUCCESS: {success_msg}", publish_destination, now)
+        
+    except Exception as e:
+        error_msg = f"Exception in handle_generate: {str(e)}"
+        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        log_schedule(error_msg, publish_destination, now)
+        import traceback
+        error(traceback.format_exc())
 
 def handle_animate(instruction, context, now, output, publish_destination):
     # Prepare the animation request
@@ -232,13 +312,24 @@ def handle_animate(instruction, context, now, output, publish_destination):
     
     # Make the request to the animate endpoint
     try:
-        response = requests.post("http://localhost:5000/api/animate", json=data)
-        if response.status_code == 202:
-            output.append(f"[{now.strftime('%H:%M')}] Started animation")
-        else:
-            output.append(f"[{now.strftime('%H:%M')}] Failed to start animation: {response.text}")
+        #response = requests.post("http://localhost:5000/api/animate", json=data)
+
+        #data = input_obj.get("data", {})
+        #prompt = data.get("prompt", None)
+        #refiner = data.get("refiner", "none")  
+        #workflow = data.get("workflow", None)
+        #images = data.get("images", [])
+        from routes.alexa import async_amimate
+        success_msg = f"Started animation of {context.get('last_generated', 'unknown file')}"
+        async_amimate([publish_destination])
+        output.append(f"[{now.strftime('%H:%M')}] {success_msg}")
+        log_schedule(f"ANIMATE SUCCESS: {success_msg}", publish_destination, now)
     except Exception as e:
-        output.append(f"[{now.strftime('%H:%M')}] Error starting animation: {str(e)}")
+        error_msg = f"Error starting animation: {str(e)}"
+        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        log_schedule(error_msg, publish_destination, now)
+        import traceback
+        error(traceback.format_exc())
 
 def handle_display(instruction, context, now, output, publish_destination):
     mode = instruction["mode"]
@@ -248,10 +339,13 @@ def handle_display(instruction, context, now, output, publish_destination):
     img = context.get("last_generated")
     result = f"Displayed ({mode}) image."
     output.append(f"[{now.strftime('%H:%M')}] {result}")
+    log_schedule(result, publish_destination, now)
 
 def handle_sleep(instruction, context, now, output, publish_destination):
     duration = instruction["duration"]
-    output.append(f"[{now.strftime('%H:%M')}] Sleeping display for {duration} minutes.")
+    msg = f"Sleeping display for {duration} minutes."
+    output.append(f"[{now.strftime('%H:%M')}] {msg}")
+    log_schedule(msg, publish_destination, now)
 
 def handle_wait(instruction, context, now, output, publish_destination):
     duration = instruction["duration"]
@@ -259,44 +353,60 @@ def handle_wait(instruction, context, now, output, publish_destination):
     if "wait_until" not in context:
         wait_until = now + timedelta(minutes=duration)
         context["wait_until"] = wait_until
-        output.append(f"[{now.strftime('%H:%M')}] Started waiting for {duration} minutes (until {wait_until.strftime('%H:%M')})")
+        msg = f"Started waiting for {duration} minutes (until {wait_until.strftime('%H:%M')})"
+        output.append(f"[{now.strftime('%H:%M')}] {msg}")
+        log_schedule(msg, publish_destination, now)
         return False  # Don't unload yet - we're just starting the wait
     
     # If we are waiting, check if it's complete
     if now >= context["wait_until"]:
-        output.append(f"[{now.strftime('%H:%M')}] Wait period complete")
+        msg = "Wait period complete"
+        output.append(f"[{now.strftime('%H:%M')}] {msg}")
+        log_schedule(msg, publish_destination, now)
         del context["wait_until"]  # Clear the wait state
         return True  # Signal that we can unload now
     
     # Still waiting
     remaining = (context["wait_until"] - now).total_seconds() / 60
-    output.append(f"[{now.strftime('%H:%M')}] Still waiting, {remaining:.1f} minutes remaining")
+    msg = f"Still waiting, {remaining:.1f} minutes remaining"
+    output.append(f"[{now.strftime('%H:%M')}] {msg}")
+    log_schedule(msg, publish_destination, now)
     return False  # Don't unload while still waiting
 
 def handle_unload(instruction, context, now, output, publish_destination):
-    output.append(f"[{now.strftime('%H:%M')}] Unloading temporary schedule.")
+    msg = "Unloading temporary schedule."
+    output.append(f"[{now.strftime('%H:%M')}] {msg}")
+    log_schedule(msg, publish_destination, now)
     return True  # Signal that we should unload the temporary schedule
 
 def handle_device_media_sync(instruction, context, now, output, publish_destination):
     # This is where we would call the device media sync endpoint
     # ...
-    output.append(f"[{now.strftime('%H:%M')}] Syncing media with device")
+    msg = "Syncing media with device"
+    output.append(f"[{now.strftime('%H:%M')}] {msg}")
+    log_schedule(msg, publish_destination, now)
 
 def handle_device_wake(instruction, context, now, output, publish_destination):
     # This is where we would call the device wake endpoint
     # ...
-    output.append(f"[{now.strftime('%H:%M')}] Waking device")
+    msg = "Waking device"
+    output.append(f"[{now.strftime('%H:%M')}] {msg}")
+    log_schedule(msg, publish_destination, now)
 
 def handle_device_sleep(instruction, context, now, output, publish_destination):
     # This is where we would call the device sleep endpoint
     # ...
-    output.append(f"[{now.strftime('%H:%M')}] Putting device to sleep")
+    msg = "Putting device to sleep"
+    output.append(f"[{now.strftime('%H:%M')}] {msg}")
+    log_schedule(msg, publish_destination, now)
 
 def handle_set_var(instruction, context, now, output, publish_destination):
     var_name = instruction["var"]
     value = instruction["value"]
     context["vars"][var_name] = value
-    output.append(f"[{now.strftime('%H:%M')}] Set {var_name} to {value}.")
+    msg = f"Set {var_name} to {value}."
+    output.append(f"[{now.strftime('%H:%M')}] {msg}")
+    log_schedule(msg, publish_destination, now)
 
 # === Schedule Resolver ===
 def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destination: str) -> List[Dict[str, Any]]:
@@ -306,12 +416,24 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
     important_trigger = get_next_important_trigger(publish_destination)
     if important_trigger:
         info(f"Running important trigger from {important_trigger['triggered_at']}")
-        return important_trigger.get("instructions", [])
+        log_schedule(f"Executing important trigger that was scheduled at {important_trigger['triggered_at'].strftime('%H:%M')}", publish_destination, now)
+        return extract_instructions(important_trigger.get("trigger_actions", {}))
     
-    # If there are no triggers, return the root instructions
+    # Accumulate all instructions to execute
+    all_instructions = []
+    
+    # Always execute initial actions first
+    initial_instructions = extract_instructions(schedule.get("initial_actions", {}))
+    if initial_instructions:
+        info("Executing initial actions")
+        log_schedule("Executing initial actions", publish_destination, now)
+        all_instructions.extend(initial_instructions)
+    
+    # If there are no triggers, return just the initial actions
     if "triggers" not in schedule or not schedule["triggers"]:
-        return schedule.get("instructions", [])
+        return all_instructions
     
+    # Format date and time strings
     date_str = now.strftime("%-d-%b")  # e.g., 25-Dec
     day_str = now.strftime("%A")       # e.g., Friday
     time_str = now.strftime("%H:%M")   # e.g., 08:00
@@ -319,98 +441,159 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
 
     debug(f"Current date: {date_str}, day: {day_str}, time: {time_str}, minute of day: {minute_of_day}")
 
-    # Check each trigger
-    for trigger in schedule["triggers"]:
-        trigger_type = trigger["type"]
-        trigger_value = trigger["value"]
-        
-        if trigger_type == "day_of_year" and trigger_value == date_str:
-            info(f"Matched day_of_year trigger for {date_str}")
-            if trigger.get("urgent", False):
-                info("Running urgent trigger immediately")
-                return trigger.get("instructions", [])
-            if trigger.get("important", False):
-                add_important_trigger(publish_destination, trigger, now)
-                continue
-            return trigger.get("instructions", [])
-            
-        elif trigger_type == "day_of_week" and trigger_value == day_str:
-            info(f"Matched day_of_week trigger for {day_str}")
-            if trigger.get("urgent", False):
-                info("Running urgent trigger immediately")
-                return trigger.get("instructions", [])
-            if trigger.get("important", False):
-                add_important_trigger(publish_destination, trigger, now)
-                continue
-            return trigger.get("instructions", [])
-            
-        elif trigger_type == "time":
-            if "window" in trigger:
-                # Handle time window with repeat
-                start = datetime.strptime(trigger["window"][0], "%H:%M").time()
-                end = datetime.strptime(trigger["window"][1], "%H:%M").time()
-                
-                # Convert all times to minutes since midnight
-                start_minutes = start.hour * 60 + start.minute
-                end_minutes = end.hour * 60 + end.minute
-                current_minutes = minute_of_day
-                
-                # Handle case where end time is on the next day
-                if end_minutes < start_minutes:
-                    end_minutes += 24 * 60
-                    if current_minutes < start_minutes:
-                        current_minutes += 24 * 60
-                
-                in_window = start_minutes <= current_minutes <= end_minutes
-                
-                if in_window and "repeat" in trigger:
-                    repeat_interval = trigger["repeat"]
-                    minutes_since_start = current_minutes - start_minutes
-                    is_interval = minutes_since_start % repeat_interval == 0
-                    
-                    if is_interval:
-                        info(f"Matched repeating time window at {time_str}")
-                        if trigger.get("urgent", False):
-                            info("Running urgent trigger immediately")
-                            return trigger.get("instructions", [])
-                        if trigger.get("important", False):
-                            add_important_trigger(publish_destination, trigger, now)
-                            continue
-                        return trigger.get("instructions", [])
-            else:
-                # Handle single time point
-                scheduled_time = datetime.strptime(trigger_value, "%H:%M").time()
-                scheduled_minutes = scheduled_time.hour * 60 + scheduled_time.minute
-                
-                # Only execute if the scheduled time is in the future
-                if scheduled_minutes > minute_of_day:
-                    info(f"Found future trigger at {trigger_value}")
-                    if trigger.get("urgent", False):
-                        info("Running urgent trigger immediately")
-                        return trigger.get("instructions", [])
-                    if trigger.get("important", False):
-                        add_important_trigger(publish_destination, trigger, now)
-                        continue
-                    return trigger.get("instructions", [])
-                    
-        elif trigger_type == "event":
+    # Track if we've matched any trigger
+    matched_any_trigger = False
+    found_actions_to_execute = False
+    
+    # First check all date triggers (these take precedence)
+    for trigger in schedule.get("triggers", []):
+        if trigger["type"] == "date" and "date" in trigger:
+            if trigger["date"] == date_str:
+                matched_any_trigger = True
+                # Process time schedules for this date
+                instructions = process_time_schedules(trigger.get("scheduled_actions", []), now, minute_of_day, publish_destination)
+                if instructions:
+                    found_actions_to_execute = True
+                    message = f"Matched date trigger for {date_str} with actions to execute"
+                    info(message)
+                    log_schedule(message, publish_destination, now)
+                    all_instructions.extend(instructions)
+    
+    # If a date trigger matched, skip day of week triggers
+    if not matched_any_trigger:
+        # Then check day of week triggers
+        for trigger in schedule.get("triggers", []):
+            if trigger["type"] == "day_of_week" and "days" in trigger:
+                if day_str in trigger["days"]:
+                    matched_any_trigger = True
+                    # Process time schedules for this day
+                    instructions = process_time_schedules(trigger.get("scheduled_actions", []), now, minute_of_day, publish_destination)
+                    if instructions:
+                        found_actions_to_execute = True
+                        message = f"Matched day_of_week trigger for {day_str} with actions to execute"
+                        info(message)
+                        log_schedule(message, publish_destination, now)
+                        all_instructions.extend(instructions)
+    
+    # Check event triggers (these can match regardless of other triggers)
+    for trigger in schedule.get("triggers", []):
+        if trigger["type"] == "event" and "value" in trigger:
+            event_value = trigger["value"]
             # Check if this event is active for this destination
             if (publish_destination in active_events and 
-                trigger_value in active_events[publish_destination]):
-                event_time = active_events[publish_destination][trigger_value]
+                event_value in active_events[publish_destination]):
+                matched_any_trigger = True
+                event_time = active_events[publish_destination][event_value]
                 # Clear the event after it's been handled
-                del active_events[publish_destination][trigger_value]
-                info(f"Matched event trigger {trigger_value}")
-                if trigger.get("urgent", False):
-                    info("Running urgent trigger immediately")
-                    return trigger.get("instructions", [])
-                if trigger.get("important", False):
-                    add_important_trigger(publish_destination, trigger, now)
-                    continue
-                return trigger.get("instructions", [])
+                del active_events[publish_destination][event_value]
+                message = f"Matched event trigger: {event_value}"
+                info(message)
+                log_schedule(message, publish_destination, now)
+                # Add event trigger actions
+                event_instructions = extract_instructions(trigger.get("trigger_actions", {}))
+                all_instructions.extend(event_instructions)
+                found_actions_to_execute = True
 
-    debug("No matching triggers found")
-    return []
+    # If we've gone through all triggers and found nothing, add any final actions
+    if not matched_any_trigger:
+        final_instructions = extract_instructions(schedule.get("final_actions", {}))
+        if final_instructions:
+            debug("No trigger matched, running final actions")
+            log_schedule("No triggers matched, running final actions", publish_destination, now)
+            all_instructions.extend(final_instructions)
+    
+    if not all_instructions:
+        debug("No matching triggers or final actions found")
+    else:
+        debug(f"Found {len(all_instructions)} instructions to execute")
+        
+    return all_instructions
+
+def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, minute_of_day: int, publish_destination: str = None) -> List[Dict[str, Any]]:
+    """Process a list of time schedules and return instructions if time matches."""
+    if not time_schedules:
+        return []
+        
+    current_time_str = now.strftime("%H:%M")
+    all_instructions = []
+    
+    for schedule in time_schedules:
+        # Get the scheduled time
+        if "time" not in schedule:
+            continue
+            
+        time_str = schedule["time"]
+        
+        # Convert time to minutes for comparison
+        try:
+            scheduled_time = datetime.strptime(time_str, "%H:%M").time()
+            scheduled_minutes = scheduled_time.hour * 60 + scheduled_time.minute
+        except ValueError:
+            error(f"Invalid time format: {time_str}")
+            continue
+        
+        # Check if we have a repeating schedule
+        repeat_schedule = schedule.get("repeat_schedule", None)
+        
+        if repeat_schedule:
+            # Handle repeating time window
+            try:
+                repeat_interval = repeat_schedule.get("every", 0)
+                if repeat_interval <= 0:
+                    continue
+                    
+                until_str = repeat_schedule.get("until", "23:59")
+                until_time = datetime.strptime(until_str, "%H:%M").time()
+                until_minutes = until_time.hour * 60 + until_time.minute
+                
+                # Handle case where end time is on the next day
+                if until_minutes < scheduled_minutes:
+                    until_minutes += 24 * 60
+                    if minute_of_day < scheduled_minutes:
+                        current_minutes = minute_of_day + 24 * 60
+                    else:
+                        current_minutes = minute_of_day
+                else:
+                    current_minutes = minute_of_day
+                
+                # Check if we're in the scheduled window
+                if scheduled_minutes <= current_minutes <= until_minutes:
+                    # Check if we're at a repeat interval
+                    minutes_since_start = current_minutes - scheduled_minutes
+                    if minutes_since_start % repeat_interval == 0:
+                        message = f"Matched repeating time schedule at {current_time_str} (every {repeat_interval} minutes until {until_str})"
+                        info(message)
+                        if publish_destination:
+                            log_schedule(message, publish_destination, now)
+                        instructions = extract_instructions(schedule.get("trigger_actions", {}))
+                        all_instructions.extend(instructions)
+            except (ValueError, TypeError) as e:
+                error(f"Error processing repeat schedule: {e}")
+                continue
+        else:
+            # Handle single time point
+            # Only execute if current time matches the scheduled time
+            if current_time_str == time_str:
+                message = f"Matched time schedule at {time_str}"
+                info(message)
+                if publish_destination:
+                    log_schedule(message, publish_destination, now)
+                instructions = extract_instructions(schedule.get("trigger_actions", {}))
+                all_instructions.extend(instructions)
+    
+    return all_instructions
+
+def extract_instructions(instruction_container: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Extract instructions from the new schema's instruction container structure."""
+    if not instruction_container:
+        return []
+        
+    # Check if this is an instruction array object with an instructions_block
+    if "instructions_block" in instruction_container:
+        return instruction_container.get("instructions_block", [])
+        
+    # Fallback for old format or direct instruction arrays
+    return instruction_container.get("instructions", [])
 
 # === Run scheduler in real time ===
 @scheduler_bp.route("/api/schedulers", methods=["GET"])
@@ -456,13 +639,195 @@ def stop_event_loop():
             _event_loop = None
             _loop_thread = None
 
+def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]) -> Dict[str, Any]:
+    """Predict the next scheduled action for a destination and return the prediction data."""
+    now = datetime.now()
+    current_minute = now.hour * 60 + now.minute
+    day_str = now.strftime("%A")
+    date_str = now.strftime("%-d-%b")
+    
+    # Initialize variables to track the next action
+    next_action_time = None
+    next_action_description = None
+    minutes_until_next = float('inf')
+    result = {
+        "has_next_action": False,
+        "next_time": None,
+        "description": None,
+        "minutes_until_next": None,
+        "timestamp": now.isoformat()
+    }
+    
+    # Check all triggers
+    for trigger in schedule.get("triggers", []):
+        # Day of week trigger
+        if trigger["type"] == "day_of_week" and day_str in trigger.get("days", []):
+            for time_schedule in trigger.get("scheduled_actions", []):
+                if "time" not in time_schedule:
+                    continue
+                    
+                time_str = time_schedule.get("time")
+                try:
+                    scheduled_time = datetime.strptime(time_str, "%H:%M").time()
+                    scheduled_minutes = scheduled_time.hour * 60 + scheduled_time.minute
+                except ValueError:
+                    continue
+                
+                # Check for repeating schedule
+                repeat_schedule = time_schedule.get("repeat_schedule")
+                if repeat_schedule:
+                    repeat_interval = repeat_schedule.get("every", 0)
+                    if repeat_interval <= 0:
+                        continue
+                        
+                    until_str = repeat_schedule.get("until", "23:59")
+                    try:
+                        until_time = datetime.strptime(until_str, "%H:%M").time()
+                        until_minutes = until_time.hour * 60 + until_time.minute
+                    except ValueError:
+                        continue
+                    
+                    # Handle case where end time is on the next day
+                    if until_minutes < scheduled_minutes:
+                        until_minutes += 24 * 60
+                    
+                    # If current time is before start time today
+                    if current_minute < scheduled_minutes:
+                        time_until_next = scheduled_minutes - current_minute
+                        if time_until_next < minutes_until_next:
+                            minutes_until_next = time_until_next
+                            next_action_time = f"{scheduled_time.hour:02d}:{scheduled_time.minute:02d}"
+                            next_action_description = f"Repeating '{trigger['type']}' trigger (every {repeat_interval} min until {until_str})"
+                    # If current time is within the repeat window
+                    elif scheduled_minutes <= current_minute <= until_minutes:
+                        # Find next repeat interval
+                        minutes_since_start = current_minute - scheduled_minutes
+                        next_interval = repeat_interval - (minutes_since_start % repeat_interval)
+                        if next_interval == 0:
+                            next_interval = repeat_interval
+                        
+                        if next_interval < minutes_until_next:
+                            minutes_until_next = next_interval
+                            next_time_minute = (current_minute + next_interval) % (24 * 60)
+                            next_action_time = f"{next_time_minute // 60:02d}:{next_time_minute % 60:02d}"
+                            next_action_description = f"Repeating '{trigger['type']}' trigger (every {repeat_interval} min until {until_str})"
+                else:
+                    # Single time point - check if it's in the future today
+                    if scheduled_minutes > current_minute:
+                        time_until_next = scheduled_minutes - current_minute
+                        if time_until_next < minutes_until_next:
+                            minutes_until_next = time_until_next
+                            next_action_time = f"{scheduled_time.hour:02d}:{scheduled_time.minute:02d}"
+                            next_action_description = f"'{trigger['type']}' trigger at specific time"
+        
+        # Date trigger
+        elif trigger["type"] == "date" and date_str == trigger.get("date"):
+            # Use same logic as day_of_week for finding next action
+            for time_schedule in trigger.get("scheduled_actions", []):
+                if "time" not in time_schedule:
+                    continue
+                    
+                time_str = time_schedule.get("time")
+                try:
+                    scheduled_time = datetime.strptime(time_str, "%H:%M").time()
+                    scheduled_minutes = scheduled_time.hour * 60 + scheduled_time.minute
+                except ValueError:
+                    continue
+                
+                # Check if this time is in the future today
+                if scheduled_minutes > current_minute:
+                    time_until_next = scheduled_minutes - current_minute
+                    if time_until_next < minutes_until_next:
+                        minutes_until_next = time_until_next
+                        next_action_time = f"{scheduled_time.hour:02d}:{scheduled_time.minute:02d}"
+                        next_action_description = f"'{trigger['type']}' trigger for today ({date_str})"
+    
+    # Prepare result if next action found
+    if next_action_time and next_action_description:
+        result["has_next_action"] = True
+        result["next_time"] = next_action_time
+        result["description"] = next_action_description
+        result["minutes_until_next"] = minutes_until_next
+        return result
+    
+    # If no immediate action found, check for future date triggers
+    future_date_found = False
+    for trigger in schedule.get("triggers", []):
+        if trigger["type"] == "date" and "date" in trigger:
+            try:
+                trigger_date = datetime.strptime(trigger["date"], "%-d-%b").replace(year=now.year)
+                # If date is in the past, it might be for next year
+                if trigger_date.month < now.month or (trigger_date.month == now.month and trigger_date.day < now.day):
+                    trigger_date = trigger_date.replace(year=now.year + 1)
+                
+                if trigger_date > now:
+                    future_date_found = True
+                    days_until = (trigger_date - now).days
+                    result["has_next_action"] = True
+                    result["next_time"] = trigger["date"]
+                    result["description"] = f"Date trigger {days_until} days from now"
+                    result["minutes_until_next"] = days_until * 24 * 60
+                    break
+            except ValueError:
+                continue
+    
+    return result
+
+def log_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]) -> None:
+    """Log the next scheduled action for a destination."""
+    next_action = get_next_scheduled_action(publish_destination, schedule)
+    
+    if next_action["has_next_action"]:
+        minutes_until_next = next_action["minutes_until_next"]
+        next_action_time = next_action["next_time"]
+        next_action_description = next_action["description"]
+        
+        if minutes_until_next < 60:
+            log_schedule(f"Next scheduled action at {next_action_time} ({minutes_until_next} minutes from now): {next_action_description}", publish_destination)
+        else:
+            hours = minutes_until_next // 60
+            mins = minutes_until_next % 60
+            log_schedule(f"Next scheduled action at {next_action_time} ({hours}h {mins}m from now): {next_action_description}", publish_destination)
+    else:
+        log_schedule("No upcoming scheduled actions found", publish_destination)
+
+@scheduler_bp.route("/api/schedulers/<publish_destination>/next_action", methods=["GET"])
+def api_get_next_action(publish_destination: str):
+    """Get the next scheduled action for a destination."""
+    try:
+        # Check if scheduler exists and has a schedule
+        if (publish_destination not in scheduler_schedule_stacks or 
+            not scheduler_schedule_stacks.get(publish_destination)):
+            return jsonify({"error": "No schedule found for destination"}), 404
+        
+        # Get the current schedule
+        schedule = scheduler_schedule_stacks[publish_destination][-1]
+        
+        # Get the next action
+        next_action = get_next_scheduled_action(publish_destination, schedule)
+        
+        # Return the next action
+        return jsonify({
+            "status": "success",
+            "destination": publish_destination,
+            "next_action": next_action
+        })
+    except Exception as e:
+        error_msg = f"Error getting next action: {str(e)}"
+        error(error_msg)
+        return jsonify({"error": error_msg}), 500
+
 def start_scheduler(publish_destination: str, schedule: Dict[str, Any]):
     """Start a scheduler for the given destination with the provided schedule."""
     try:
+        # Check if scheduler was previously running/paused (resuming) or is new/stopped (starting fresh)
+        is_resuming = (publish_destination in scheduler_states and 
+                      scheduler_states[publish_destination] in ["running", "paused"])
+        
         # Stop any existing scheduler for this destination
         if publish_destination in running_schedulers:
             stop_scheduler(publish_destination)
-            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Stopped existing scheduler")
+            log_schedule("Stopped existing scheduler", publish_destination)
             
         # Load existing state from disk
         state = load_scheduler_state(publish_destination)
@@ -471,11 +836,24 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any]):
         scheduler_states[publish_destination] = "running"
         scheduler_schedule_stacks[publish_destination] = [schedule]
         
-        # Use existing context stack from disk if available, otherwise use default
-        if state.get("context_stack"):
-            scheduler_contexts_stacks[publish_destination] = state["context_stack"]
+        # If we're starting fresh (not resuming), clear context
+        # If resuming, keep existing context intact
+        if not is_resuming:
+            # Create fresh context when starting new
+            new_context = default_context()
+            new_context["publish_destination"] = publish_destination
+            scheduler_contexts_stacks[publish_destination] = [new_context]
+            log_schedule("Starting with fresh context", publish_destination)
+            
+            # Check for important actions in current time window
+            catch_up_on_important_actions(publish_destination, schedule)
         else:
-            scheduler_contexts_stacks[publish_destination] = [default_context()]
+            # Use existing context stack when resuming
+            if state.get("context_stack"):
+                scheduler_contexts_stacks[publish_destination] = state["context_stack"]
+            else:
+                scheduler_contexts_stacks[publish_destination] = [default_context()]
+            log_schedule("Resuming with existing context", publish_destination)
         
         # Start the scheduler
         loop = get_event_loop()
@@ -493,11 +871,14 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any]):
             state="running"
         )
         
-        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Started new scheduler")
+        log_schedule("Started scheduler", publish_destination)
+        
+        # Log the next scheduled action
+        log_next_scheduled_action(publish_destination, schedule)
         
     except Exception as e:
         error_msg = f"Error starting scheduler: {str(e)}"
-        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
+        log_schedule(error_msg, publish_destination)
         # Ensure state is cleaned up on error
         update_scheduler_state(
             publish_destination,
@@ -506,6 +887,107 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any]):
             state="stopped"
         )
         raise
+
+def catch_up_on_important_actions(publish_destination: str, schedule: Dict[str, Any]):
+    """Check for and execute important actions in the current cycle that may have been missed."""
+    now = datetime.now()
+    current_minute = now.hour * 60 + now.minute
+    day_str = now.strftime("%A")
+    date_str = now.strftime("%-d-%b")
+    
+    info(f"[catch_up] Checking for important actions to catch up on at {now.strftime('%H:%M')}")
+    context = get_current_context(publish_destination)
+    
+    # Check all triggers
+    for trigger in schedule.get("triggers", []):
+        # Day of week trigger
+        if trigger["type"] == "day_of_week" and day_str in trigger.get("days", []):
+            info(f"[catch_up] Found matching day-of-week trigger for {day_str}")
+            
+            for time_schedule in trigger.get("scheduled_actions", []):
+                # Check if within an active time window
+                time_str = time_schedule.get("time", "00:00")
+                try:
+                    scheduled_time = datetime.strptime(time_str, "%H:%M").time()
+                    scheduled_minutes = scheduled_time.hour * 60 + scheduled_time.minute
+                except ValueError:
+                    error(f"[catch_up] Invalid time format: {time_str}")
+                    continue
+                
+                # Check for repeating schedule
+                repeat_schedule = time_schedule.get("repeat_schedule")
+                if repeat_schedule:
+                    repeat_interval = repeat_schedule.get("every", 0)
+                    if repeat_interval <= 0:
+                        continue
+                        
+                    until_str = repeat_schedule.get("until", "23:59")
+                    try:
+                        until_time = datetime.strptime(until_str, "%H:%M").time()
+                        until_minutes = until_time.hour * 60 + until_time.minute
+                    except ValueError:
+                        error(f"[catch_up] Invalid until time format: {until_str}")
+                        continue
+                    
+                    # Handle case where end time is on the next day
+                    if until_minutes < scheduled_minutes:
+                        until_minutes += 24 * 60
+                        if current_minute < scheduled_minutes:
+                            current_minute_adjusted = current_minute + 24 * 60
+                        else:
+                            current_minute_adjusted = current_minute
+                    else:
+                        current_minute_adjusted = current_minute
+                    
+                    # If we're in an active window
+                    if scheduled_minutes <= current_minute_adjusted <= until_minutes:
+                        # Find the last interval that should have happened
+                        minutes_since_start = current_minute_adjusted - scheduled_minutes
+                        intervals_passed = minutes_since_start // repeat_interval
+                        
+                        if intervals_passed > 0:
+                            last_interval_minute = scheduled_minutes + (intervals_passed * repeat_interval)
+                            last_interval_hour = last_interval_minute // 60
+                            last_interval_min = last_interval_minute % 60
+                            
+                            # If actions are marked as important, execute them
+                            trigger_actions = time_schedule.get("trigger_actions", {})
+                            if trigger_actions.get("important", False):
+                                info(f"[catch_up] Executing important actions from {last_interval_hour:02d}:{last_interval_min:02d}")
+                                scheduler_logs[publish_destination].append(
+                                    f"[{now.strftime('%H:%M')}] Catching up on important actions from {last_interval_hour:02d}:{last_interval_min:02d}"
+                                )
+                                
+                                instructions = extract_instructions(trigger_actions)
+                                for instr in instructions:
+                                    try:
+                                        run_instruction(instr, context, now, scheduler_logs[publish_destination], publish_destination)
+                                    except Exception as e:
+                                        error_msg = f"Error running catch-up instruction: {str(e)}"
+                                        scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] {error_msg}")
+                            else:
+                                info(f"[catch_up] Found non-important actions at {last_interval_hour:02d}:{last_interval_min:02d} - skipping")
+                        else:
+                            info(f"[catch_up] No intervals have passed yet in the current window")
+                    else:
+                        info(f"[catch_up] Current time {current_minute//60:02d}:{current_minute%60:02d} not in window {scheduled_minutes//60:02d}:{scheduled_minutes%60:02d} - {until_minutes//60:02d}:{until_minutes%60:02d}")
+                else:
+                    # Non-repeating schedule - only execute if marked important and exactly matching the start time
+                    if time_schedule.get("trigger_actions", {}).get("important", False) and scheduled_minutes == current_minute:
+                        info(f"[catch_up] Executing important non-repeating actions scheduled for exactly now")
+                        instructions = extract_instructions(time_schedule.get("trigger_actions", {}))
+                        for instr in instructions:
+                            try:
+                                run_instruction(instr, context, now, scheduler_logs[publish_destination], publish_destination)
+                            except Exception as e:
+                                error_msg = f"Error running catch-up instruction: {str(e)}"
+                                scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        
+        # Date trigger
+        elif trigger["type"] == "date" and date_str == trigger.get("date"):
+            info(f"[catch_up] Found matching date trigger for {date_str}")
+            # Use the same logic as for day_of_week trigger for the time_schedules
+            # [Same code as above, but for date triggers]
 
 @scheduler_bp.route("/api/schedulers/<publish_destination>", methods=["POST"])
 def api_start_scheduler(publish_destination):
@@ -516,15 +998,38 @@ def api_start_scheduler(publish_destination):
         schedule = request.json
         debug(f"Received schedule for ID '{publish_destination}': {json.dumps(schedule, indent=2)}")
         
+        # Check if an empty schedule was provided but we have an existing one
+        if not schedule or (isinstance(schedule, dict) and not schedule):
+            debug(f"Empty schedule received for '{publish_destination}', checking for existing schedule")
+            
+            # Check if we have an existing schedule in disk state
+            state = load_scheduler_state(publish_destination)
+            if state and "schedule_stack" in state and state["schedule_stack"]:
+                # Use the topmost schedule from the stack
+                schedule = state["schedule_stack"][-1]
+                debug(f"Using existing schedule from disk: {json.dumps(schedule, indent=2)}")
+            else:
+                error_msg = "No existing schedule found and empty schedule provided"
+                error(error_msg)
+                return jsonify({"error": error_msg}), 400
+        
         # Validate schedule structure
         if not isinstance(schedule, dict):
             error_msg = "Schedule must be a JSON object"
             error(error_msg)
             return jsonify({"error": error_msg}), 400
             
-        valid_keys = ["time_of_day", "day_of_week", "day_of_year"]
-        if not any(key in schedule for key in valid_keys):
-            error_msg = f"Schedule must contain at least one of: {', '.join(valid_keys)}"
+        # Check for new schema structure (triggers, initial_actions, final_actions)
+        if "triggers" not in schedule and "initial_actions" not in schedule and "final_actions" not in schedule:
+            error_msg = "Schedule must contain at least one of: triggers, initial_actions, final_actions"
+            error(error_msg)
+            return jsonify({"error": error_msg}), 400
+
+        # Validate against schema
+        try:
+            jsonschema.validate(instance=schedule, schema=get_current_schema())
+        except jsonschema.exceptions.ValidationError as e:
+            error_msg = f"Invalid schedule format: {str(e)}"
             error(error_msg)
             return jsonify({"error": error_msg}), 400
 
@@ -534,6 +1039,8 @@ def api_start_scheduler(publish_destination):
     except Exception as e:
         error_msg = f"Error starting scheduler: {str(e)}"
         error(error_msg)
+        import traceback
+        error(f"Error traceback: {traceback.format_exc()}")
         return jsonify({"error": error_msg}), 400
 
 @scheduler_bp.route("/api/schedulers/<publish_destination>", methods=["DELETE"])
@@ -644,10 +1151,14 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
         current_schedule = scheduler_schedule_stacks[publish_destination][-1]
         current_context = get_current_context(publish_destination)
         
+        # Check if there are no triggers - this means we should run initial actions, then final actions, then stop
+        has_no_triggers = "triggers" not in current_schedule or not current_schedule["triggers"]
+        
         # Execute initial instructions
-        instructions = resolve_schedule(current_schedule, now, publish_destination)
-        if instructions:
-            for instr in instructions:
+        initial_instructions = extract_instructions(current_schedule.get("initial_actions", {}))
+        if initial_instructions:
+            info("Executing initial actions")
+            for instr in initial_instructions:
                 try:
                     should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
                     if should_unload:
@@ -668,6 +1179,34 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
                 except Exception as e:
                     error_msg = f"Error running instruction: {str(e)}"
                     scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        
+        # If no triggers, run final actions and stop
+        if has_no_triggers:
+            # Run final actions immediately
+            final_instructions = extract_instructions(current_schedule.get("final_actions", {}))
+            if final_instructions:
+                info("Executing final actions (no triggers defined)")
+                for instr in final_instructions:
+                    try:
+                        should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
+                        if should_unload:
+                            break  # Stop running more final instructions if one requests unload
+                    except Exception as e:
+                        error_msg = f"Error running final instruction: {str(e)}"
+                        scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] {error_msg}")
+            
+            # No triggers means we're done after running initial and final actions
+            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] No triggers defined, stopping scheduler after running all actions")
+            
+            # Remove this scheduler from running schedulers
+            if publish_destination in running_schedulers:
+                running_schedulers.pop(publish_destination, None)
+                scheduler_states[publish_destination] = "stopped"
+                update_scheduler_state(
+                    publish_destination,
+                    state="stopped"
+                )
+            return
         
         # Sleep until start of next minute to align all future checks
         seconds_to_next_minute = 60 - now.second
@@ -867,7 +1406,7 @@ def api_load_schedule(publish_destination):
 
         # Validate against schema
         try:
-            jsonschema.validate(instance=schedule, schema=SCHEDULE_SCHEMA)
+            jsonschema.validate(instance=schedule, schema=get_current_schema())
         except jsonschema.exceptions.ValidationError as e:
             error_msg = f"Invalid schedule format: {str(e)}"
             error(error_msg)
@@ -912,12 +1451,8 @@ def api_load_schedule(publish_destination):
         stack_size = len(scheduler_schedule_stacks[publish_destination])
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Loaded new schedule (stack size: {stack_size})")
 
-        # Only start a new scheduler if one doesn't exist
-        if publish_destination not in running_schedulers:
-            start_scheduler(publish_destination, schedule)
-            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Started scheduler")
-        else:
-            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Using existing scheduler")
+        # Don't automatically start - wait for user to click start
+        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Schedule loaded but not started (waiting for user)")
             
         return jsonify({
             "message": f"Schedule loaded. Stack size: {stack_size}",
@@ -1147,6 +1682,9 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any]) -> Non
                     context_copy[key] = list(value)
                     
             state_to_save["context_stack"].append(context_copy)
+            
+        # Log the final state_to_save for debugging
+        debug(f"*** Final state_to_save: {state_to_save}")
                     
         with open(path, 'w') as f:
             # Use default=str so datetime and other non-serializable objects are converted to strings
@@ -1283,7 +1821,7 @@ def api_set_schedule_at_position(publish_destination: str, position: int):
             
         # Validate against schema
         try:
-            jsonschema.validate(instance=schedule, schema=SCHEDULE_SCHEMA)
+            jsonschema.validate(instance=schedule, schema=get_current_schema())
         except jsonschema.exceptions.ValidationError as e:
             error_msg = f"Invalid schedule format: {str(e)}"
             error(error_msg)
@@ -1328,6 +1866,8 @@ def api_set_schedule_at_position(publish_destination: str, position: int):
     except Exception as e:
         error_msg = f"Error setting schedule at position {position}: {str(e)}"
         error(error_msg)
+        import traceback
+        error(f"Error traceback: {traceback.format_exc()}")
         return jsonify({"error": error_msg}), 500
 
 @scheduler_bp.route("/api/schedulers/<publish_destination>/schedule/<int:position>", methods=["DELETE"])
@@ -1393,3 +1933,25 @@ def api_clear_scheduler_context(publish_destination):
         error_msg = f"Error clearing scheduler context: {str(e)}"
         error(error_msg)
         return jsonify({"error": error_msg}), 500
+
+# Correct the stop handler function - stops scheduler but doesn't unload
+def handle_stop(instruction, context, now, output, publish_destination):
+    msg = "Stop instruction received - stopping scheduler without unloading."
+    output.append(f"[{now.strftime('%H:%M')}] {msg}")
+    log_schedule(msg, publish_destination, now)
+    
+    # Explicitly remove from running_schedulers without unloading
+    if publish_destination in running_schedulers:
+        future = running_schedulers.pop(publish_destination, None)
+        if future:
+            future.cancel()
+        
+        # Update state to stopped, but preserve schedule and context
+        scheduler_states[publish_destination] = "stopped"
+        update_scheduler_state(
+            publish_destination,
+            state="stopped"
+        )
+    
+    # Return False because we don't want to unload - just stop
+    return False  

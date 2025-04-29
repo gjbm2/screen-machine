@@ -342,6 +342,9 @@ def build_schema_subs():
         destinations = _load_json_once("destination", "publish-destinations.json")
 
         # --- WORKFLOWS ---
+
+        subs["ALL_WORKFLOWS"] = [None] + [r["id"] for r in workflows]
+
         visible_workflows = [w for w in workflows if w.get("alexavisible")]
 
         subs["ALEXA_WORKFLOWS"] = [w["id"] for w in visible_workflows]
@@ -362,7 +365,10 @@ def build_schema_subs():
 
         # --- REFINERS ---
         visible_refiners = [r for r in refiners if r.get("alexavisible")]
-
+        
+        # Add ALL_REFINERS with null as first item
+        subs["ALL_REFINERS"] = [None] + [r["id"] for r in refiners]
+        
         subs["ALEXA_REFINERS"] = [r["id"] for r in visible_refiners]
         subs["ALEXA_REFINERS_DESCRIPTIONS"] = [r.get("description", "") for r in visible_refiners]
         subs["ALEXA_REFINERS_LABELLED"] = [

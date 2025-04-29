@@ -9,7 +9,7 @@ import Display from "./pages/Display";
 import NotFound from "./pages/NotFound";
 import SchemaEdit from './pages/SchemaEdit';
 import SchemaDynamicForm from './pages/SchemaDynamicForm';
-import Scheduler from '@/pages/scheduler';
+import Scheduler from './pages/scheduler.tsx';
 
 const queryClient = new QueryClient();
 

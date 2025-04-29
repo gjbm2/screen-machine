@@ -73,7 +73,7 @@
       "oneOf": [
         {
           "title": "Set Variable",
-          "description": "Instructs the system to assign a value to a named variable, either directly or by referencing another variable’s value.",
+          "description": "Instructs the system to assign a value to a named variable, either directly or by referencing another variable's value.",
           "type": "object",
           "properties": {
             "action": {
@@ -151,7 +151,7 @@
                 }
               ],
               "title": "Fallback Value",
-              "description": "Fallback value to use if the referenced variable doesn’t exist or is undefined."
+              "description": "Fallback value to use if the referenced variable doesn't exist or is undefined."
             }
           },
           "required": [
@@ -199,12 +199,7 @@
                 "null"
               ],
               "title": "Refiner",
-              "enum": [
-                null,
-                "refinerA",
-                "refinerB",
-                "refinerC"
-              ],
+              "enum": {{ ALL_REFINERS | default([null]) | tojson }},
               "description": "Optional: choose a post-process refinement model."
             },
             "workflow": {
@@ -213,11 +208,7 @@
                 "null"
               ],
               "title": "Workflow",
-              "enum": [
-                null,
-                "workflow1",
-                "workflow2"
-              ],
+              "enum": {{ ALL_WORKFLOWS | default([null]) | tojson }},
               "description": "Optional: select a predefined generation workflow."
             },
             "history_output_var": {
@@ -242,7 +233,7 @@
               "type": "string",
               "const": "devise_prompt",
               "default": "devise_prompt",
-              "description": "Fixed to ‘devise_prompt’ to select this instruction type.",
+              "description": "Fixed to 'devise_prompt' to select this instruction type.",
               "uniforms": {
                 "hidden": true
               }
@@ -353,7 +344,10 @@
               "type": "string",
               "const": "display",
               "default": "display",
-              "description": "Fixed to ‘display’ to select this instruction type."
+              "description": "Fixed to 'display' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
             },
             "show": {
               "type": "string",
@@ -369,6 +363,41 @@
           "required": [
             "action",
             "show"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Select at Random",
+          "description": "Select an item at random from a list.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "random_choice",
+              "default": "random_choice",
+              "description": "Fixed to 'random_choice' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "choices": {
+              "type": "array",
+              "title": "List of choices",
+              "description": "Enter a list of items to choose from randomly.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "var": {
+              "type": "string",
+              "title": "Variable Name",
+              "description": "The variable to store the randomly selected value in."
+            }
+          },
+          "required": [
+            "action", 
+            "choices",
+            "var"
           ],
           "additionalProperties": false
         },
@@ -481,12 +510,7 @@
                 "null"
               ],
               "title": "Refiner",
-              "enum": [
-                null,
-                "refinerA",
-                "refinerB",
-                "refinerC"
-              ],
+              "enum": {{ ALL_REFINERS | default([null]) | tojson }},
               "description": "Optional: choose a post-process refinement model."
             },
             "history": {
@@ -495,6 +519,46 @@
               "description": "Optional: variable name where past prompts/results are stored."
             },
             "dontwait": { "$ref": "#/definitions/dontWaitProp" }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Unload Schedule",
+          "description": "Unload the current schedule and terminate.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "unload",
+              "default": "unload",
+              "description": "Fixed to 'unload' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Stop Schedule",
+          "description": "Stop the current schedule and terminate.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "stop",
+              "default": "stop",
+              "description": "Fixed to 'stop' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            }
           },
           "required": [
             "action"
@@ -550,25 +614,6 @@
       },
       "minItems": 1
     },
-    "repeat_schedule": {
-      "type": "object",
-      "title": "Repeat Schedule",
-      "properties": {
-        "every": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "until": {
-          "type": "string",
-          "pattern": "^[0-9]{2}:[0-9]{2}$"
-        }
-      },
-      "required": [
-        "every",
-        "until"
-      ],
-      "additionalProperties": false
-    },
     "day_of_week_trigger": {
       "type": "object",
       "title": "Day-of-Week Trigger",
@@ -616,7 +661,7 @@
           "type": "string",
           "const": "date",
           "default": "date",
-          "description": "Fixed to ‘date’ to select this trigger type.",
+          "description": "Fixed to 'date' to select this trigger type.",
           "uniforms": {
             "hidden": true
           }
@@ -652,14 +697,15 @@
           "uniforms": {
             "hidden": true
           },
-          "description": "Fixed to “event” to select this trigger type."
+          "description": "Fixed to 'event' to select this trigger type."
         },
         "value": {
           "type": "string",
           "title": "Event Type",
           "enum": [
             "UserInteractedWithScreen",
-            "NewSlackMessageDetected"
+            "NewSlackMessageDetected",
+            "Poke"
           ],
           "description": "Select which external event will fire this trigger."
         },

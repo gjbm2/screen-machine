@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -43,6 +43,19 @@ interface Destination {
   contextStack?: Record<string, Context>;
 }
 
+interface NextAction {
+  has_next_action: boolean;
+  next_time: string | null;
+  description: string | null;
+  minutes_until_next: number | null;
+  timestamp: string;
+}
+
+interface SchedulerStatus {
+  is_running: boolean;
+  next_action: NextAction | null;
+}
+
 const Scheduler = () => {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,11 +79,15 @@ const Scheduler = () => {
     saveMethod: string;
   } | null>(null);
 
-  useEffect(() => {
-    fetchSchedulers();
-  }, []);
+  const [showAlert, setShowAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
+  const [alertSeverity, setAlertSeverity] = useState('success');
+  const [localLogs, setLocalLogs] = useState<{[key: string]: string[]}>({});
+  const [showLogs, setShowLogs] = useState<{[key: string]: boolean}>({});
+  const [showSchedule, setShowSchedule] = useState<{[key: string]: boolean}>({});
+  const [schedulerStatus, setSchedulerStatus] = useState<{[key: string]: SchedulerStatus}>({});
 
-  const fetchSchedulers = async () => {
+  const fetchDestinations = useCallback(async () => {
     setLoading(true);
     try {
       // Get list of running schedulers
@@ -118,12 +135,26 @@ const Scheduler = () => {
               destination.isPaused = statusResponse.status === 'paused';
               
               // Get schedule stack
-              const stackResponse = await apiService.getScheduleStack(destId);
-              destination.scheduleStack = stackResponse.stack || [];
+              try {
+                const stackResponse = await apiService.getScheduleStack(destId);
+                destination.scheduleStack = stackResponse.stack || [];
+              } catch (stackError) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn(`No schedule stack for running scheduler ${destId}`);
+                }
+                destination.scheduleStack = [];
+              }
               
               // Get context
-              const contextResponse = await apiService.getSchedulerContext(destId);
-              destination.contextStack = contextResponse.context_stack || {};
+              try {
+                const contextResponse = await apiService.getSchedulerContext(destId);
+                destination.contextStack = contextResponse.context_stack || {};
+              } catch (contextError) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn(`No context for running scheduler ${destId}`);
+                }
+                destination.contextStack = {};
+              }
               
               // Convert schedule stack items to individual schedules for the UI
               if (destination.scheduleStack && destination.scheduleStack.length > 0) {
@@ -142,36 +173,9 @@ const Scheduler = () => {
             }
           } else {
             // If it's not running, we still want to show it in the UI
-            // Try to fetch schedule details anyway
-            try {
-              // Get schedule stack - might exist even if stopped
-              const stackResponse = await apiService.getScheduleStack(destId);
-              if (stackResponse && !stackResponse.error) {
-                destination.scheduleStack = stackResponse.stack || [];
-                
-                // Get context if we have a schedule
-                const contextResponse = await apiService.getSchedulerContext(destId);
-                if (contextResponse && !contextResponse.error) {
-                  destination.contextStack = contextResponse.context_stack || {};
-                }
-                
-                // Convert schedule stack items to individual schedules for the UI
-                if (destination.scheduleStack && destination.scheduleStack.length > 0) {
-                  destination.schedules = destination.scheduleStack.map((schedule, index) => ({
-                    id: `${destId}-schedule-${index}`,
-                    name: schedule.name || `Schedule ${index + 1}`,
-                    cron: schedule.cron || 'Unknown',
-                    is_running: false,
-                    is_paused: false,
-                    last_run: 'N/A',
-                    next_run: 'N/A'
-                  }));
-                }
-              }
-            } catch (error) {
-              console.error(`Error fetching details for stopped scheduler ${destId}:`, error);
-              // Continue with empty schedule details
-            }
+            // But don't log errors for missing schedules - this is expected
+            destination.scheduleStack = [];
+            destination.contextStack = {};
             
             destination.isRunning = false;
             destination.isPaused = false;
@@ -191,6 +195,14 @@ const Scheduler = () => {
       }
       
       setDestinations(enhancedDestinations);
+      
+      // Immediately fetch the next action for all running destinations
+      for (const destination of enhancedDestinations) {
+        if (destination.isRunning) {
+          await fetchSchedulerStatus(destination.id);
+        }
+      }
+      
       addLog({ type: 'info', message: 'Fetched scheduler data successfully' });
     } catch (error) {
       console.error('Error fetching schedulers:', error);
@@ -198,26 +210,162 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to fetch schedulers',
         variant: 'destructive',
+        duration: 5000, // Auto-hide after 5 seconds
       });
       addLog({ type: 'error', message: 'Failed to fetch schedulers' });
     } finally {
       setLoading(false);
     }
+  }, [toast]);
+
+  useEffect(() => {
+    fetchDestinations();
+  }, [fetchDestinations]);
+
+  useEffect(() => {
+    // Initialize local state for destinations
+    const initialLogs = {};
+    const initialShowLogs = {};
+    const initialShowSchedule = {};
+    const initialStatus = {};
+
+    destinations.forEach(destination => {
+      initialLogs[destination.id] = destination.logs || [];
+      initialShowLogs[destination.id] = false;
+      initialShowSchedule[destination.id] = false;
+      initialStatus[destination.id] = {
+        is_running: false,
+        next_action: null
+      };
+    });
+
+    setLocalLogs(initialLogs);
+    setShowLogs(initialShowLogs);
+    setShowSchedule(initialShowSchedule);
+    setSchedulerStatus(initialStatus);
+  }, [destinations]);
+
+  useEffect(() => {
+    // Set up polling for logs and status
+    const pollingIntervalId = setInterval(() => {
+      destinations.forEach(destination => {
+        if (showLogs[destination.id]) {
+          fetchLogs(destination.id);
+        }
+        // Always fetch scheduler status 
+        fetchSchedulerStatus(destination.id);
+      });
+    }, 15000); // Poll every 15 seconds
+
+    return () => {
+      clearInterval(pollingIntervalId);
+    };
+  }, [destinations, showLogs]);
+
+  const fetchLogs = async (destinationId: string) => {
+    try {
+      const response = await apiService.getSchedulerLogs(destinationId);
+      setLocalLogs(prevLogs => ({
+        ...prevLogs,
+        [destinationId]: response.log || []
+      }));
+    } catch (error) {
+      console.error(`Error fetching logs for destination ${destinationId}:`, error);
+    }
+  };
+
+  const fetchSchedulerStatus = async (destinationId: string) => {
+    try {
+      // First check if scheduler is running
+      const runningResponse = await apiService.getDestinations();
+      const destination = runningResponse.destinations.find(d => d.id === destinationId);
+      const isRunning = destination?.scheduler_running || false;
+      
+      // Only log in debug mode
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Destination ${destinationId} running status:`, isRunning);
+      }
+      
+      // Then get next action if scheduler is running
+      let nextAction = null;
+      if (isRunning) {
+        try {
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`Fetching next action for destination ${destinationId}`);
+            const apiUrl = apiService.getApiUrl();
+            console.log(`Using API URL: ${apiUrl}/schedulers/${destinationId}/next_action`);
+          }
+          
+          const actionResponse = await apiService.getNextScheduledAction(destinationId);
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`Next action response:`, actionResponse);
+          }
+          
+          if (actionResponse && actionResponse.success !== false && actionResponse.next_action) {
+            nextAction = actionResponse.next_action;
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`Next action received:`, nextAction);
+            }
+          } else if (actionResponse && actionResponse.error) {
+            console.warn(`Warning fetching next action: ${actionResponse.error}`);
+          }
+        } catch (actionError) {
+          // Error already handled in the API service
+          console.error(`Error fetching next action for destination ${destinationId}:`, actionError);
+        }
+      }
+      
+      setSchedulerStatus(prevStatus => ({
+        ...prevStatus,
+        [destinationId]: {
+          is_running: isRunning,
+          next_action: nextAction
+        }
+      }));
+    } catch (error) {
+      console.error(`Error fetching scheduler status for destination ${destinationId}:`, error);
+      // Don't break the UI on error
+      setSchedulerStatus(prevStatus => ({
+        ...prevStatus,
+        [destinationId]: {
+          is_running: false,
+          next_action: null
+        }
+      }));
+    }
   };
 
   const handleToggleSchedule = async (destinationId: string, isRunning: boolean) => {
     try {
+      // Save previous state
+      const previousStatus = schedulerStatus[destinationId];
+      
+      // Update UI immediately for better UX
+      setSchedulerStatus(prevStatus => ({
+        ...prevStatus,
+        [destinationId]: {
+          ...prevStatus[destinationId],
+          is_running: !isRunning // Toggle the running state
+        }
+      }));
+      
       if (isRunning) {
         await apiService.pauseScheduler(destinationId);
       } else {
         await apiService.unpauseScheduler(destinationId);
       }
       
-      await fetchSchedulers();
+      // Refresh the data to ensure we have accurate state
+      await fetchDestinations();
+      
+      // Immediately fetch updated status
+      await fetchSchedulerStatus(destinationId);
       
       toast({
         title: 'Success',
         description: `Scheduler ${isRunning ? 'paused' : 'started'} successfully`,
+        duration: 3000, // Auto-hide after 3 seconds
       });
     } catch (error) {
       console.error('Error toggling scheduler:', error);
@@ -225,6 +373,7 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to toggle scheduler',
         variant: 'destructive',
+        duration: 5000, // Auto-hide after 5 seconds
       });
     }
   };
@@ -265,6 +414,7 @@ const Scheduler = () => {
       toast({
         title: 'Info',
         description: 'Opening schedule editor...',
+        duration: 3000, // Auto-hide after 3 seconds
       });
     } catch (error) {
       console.error('Error creating schedule:', error);
@@ -272,6 +422,7 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to create schedule',
         variant: 'destructive',
+        duration: 5000, // Auto-hide after 5 seconds
       });
     }
   };
@@ -282,11 +433,12 @@ const Scheduler = () => {
       await apiService.startScheduler(destinationId, {});
       
       // Refresh the data
-      await fetchSchedulers();
+      await fetchDestinations();
       
       toast({
         title: 'Success',
         description: `Started scheduler successfully`,
+        duration: 3000, // Auto-hide after 3 seconds
       });
     } catch (error) {
       console.error('Error starting scheduler:', error);
@@ -294,6 +446,7 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to start scheduler',
         variant: 'destructive',
+        duration: 5000, // Auto-hide after 5 seconds
       });
     }
   };
@@ -304,11 +457,12 @@ const Scheduler = () => {
       await apiService.stopScheduler(destinationId);
       
       // Refresh the data
-      await fetchSchedulers();
+      await fetchDestinations();
       
       toast({
         title: 'Success',
         description: `Stopped scheduler successfully`,
+        duration: 3000, // Auto-hide after 3 seconds
       });
     } catch (error) {
       console.error('Error stopping scheduler:', error);
@@ -316,6 +470,7 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to stop scheduler',
         variant: 'destructive',
+        duration: 5000, // Auto-hide after 5 seconds
       });
     }
   };
@@ -326,11 +481,12 @@ const Scheduler = () => {
       await apiService.unloadSchedule(destinationId);
       
       // Refresh the data
-      await fetchSchedulers();
+      await fetchDestinations();
       
       toast({
         title: 'Success',
         description: `Unloaded top schedule successfully`,
+        duration: 3000, // Auto-hide after 3 seconds
       });
     } catch (error) {
       console.error('Error unloading schedule:', error);
@@ -338,6 +494,7 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to unload schedule',
         variant: 'destructive',
+        duration: 5000, // Auto-hide after 5 seconds
       });
     }
   };
@@ -373,6 +530,7 @@ const Scheduler = () => {
       toast({
         title: 'Info',
         description: 'Opening schedule editor...',
+        duration: 3000, // Auto-hide after 3 seconds
       });
     } catch (error) {
       console.error('Error editing schedule:', error);
@@ -380,17 +538,19 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to get schedule for editing',
         variant: 'destructive',
+        duration: 5000, // Auto-hide after 5 seconds
       });
     }
   };
   
   const handleSchemaEditSave = () => {
     // Refresh the data after successful save
-    fetchSchedulers();
+    fetchDestinations();
     
     toast({
       title: 'Success',
       description: 'Schedule saved successfully',
+      duration: 3000, // Auto-hide after 3 seconds
     });
   };
 
@@ -428,7 +588,7 @@ const Scheduler = () => {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">Scheduler Control Panel</h1>
-          <Button onClick={fetchSchedulers} variant="outline" size="sm">
+          <Button onClick={fetchDestinations} variant="outline" size="sm">
             <RefreshCcw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
@@ -455,6 +615,7 @@ const Scheduler = () => {
                       onStop={handleStopScheduler}
                       onUnload={handleUnloadSchedule}
                       onEdit={handleEditSchedule}
+                      schedulerStatus={schedulerStatus}
                     />
                   ))}
                 </div>
@@ -482,6 +643,7 @@ const Scheduler = () => {
                       onStop={handleStopScheduler}
                       onUnload={handleUnloadSchedule}
                       onEdit={handleEditSchedule}
+                      schedulerStatus={schedulerStatus}
                     />
                   ))}
                 </div>
@@ -516,6 +678,7 @@ interface SchedulerCardProps {
   onStop: (destinationId: string) => Promise<void>;
   onUnload: (destinationId: string) => Promise<void>;
   onEdit: (destinationId: string, layer: number) => Promise<void>;
+  schedulerStatus?: Record<string, SchedulerStatus>;
 }
 
 const SchedulerCard: React.FC<SchedulerCardProps> = ({ 
@@ -525,10 +688,59 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
   onStart, 
   onStop, 
   onUnload,
-  onEdit
+  onEdit,
+  schedulerStatus
 }) => {
   const [showLogs, setShowLogs] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [logs, setLogs] = useState<string[]>(destination.logs || []);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Set up polling for logs when they're visible
+  useEffect(() => {
+    // Don't poll if logs aren't visible
+    if (!showLogs) return;
+    
+    // Function to fetch the latest logs
+    const fetchLogs = async () => {
+      try {
+        const response = await apiService.getSchedulerLogs(destination.id);
+        if (response && response.log) {
+          setLogs(response.log);
+        }
+      } catch (error) {
+        console.error(`Error fetching logs for ${destination.id}:`, error);
+      }
+    };
+    
+    // Fetch logs immediately when becoming visible
+    fetchLogs();
+    
+    // Set up polling interval (15 seconds)
+    const intervalId = setInterval(fetchLogs, 15000);
+    
+    // Clean up interval when component unmounts or logs hidden
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [showLogs, destination.id]); // Re-run effect when showLogs changes
+  
+  // When destination.logs updates from parent (e.g., on manual refresh), update our local state
+  useEffect(() => {
+    setLogs(destination.logs || []);
+  }, [destination.logs]);
+  
+  // Scroll logs to bottom whenever they change or become visible
+  useEffect(() => {
+    if (showLogs && logsContainerRef.current) {
+      // Use requestAnimationFrame to ensure DOM has updated before scrolling
+      requestAnimationFrame(() => {
+        if (logsContainerRef.current) {
+          logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+        }
+      });
+    }
+  }, [logs, showLogs]);
   
   // Display status more prominently
   const statusBadge = () => {
@@ -552,16 +764,37 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
       );
     }
   };
+
+  // Format next scheduled action time
+  const formatNextAction = (nextAction: NextAction | null) => {
+    if (!nextAction || !nextAction.has_next_action) {
+      return <p className="text-sm text-muted-foreground">No upcoming actions</p>;
+    }
+
+    return (
+      <div className="text-sm border-l-4 border-primary pl-2 mt-2">
+        <p className="font-medium">Next action: {nextAction.next_time}</p>
+        <p className="text-muted-foreground">{nextAction.description}</p>
+        {nextAction.minutes_until_next !== null && (
+          <p className="text-xs">
+            {nextAction.minutes_until_next < 60 
+              ? `${nextAction.minutes_until_next} minutes from now`
+              : `${Math.floor(nextAction.minutes_until_next / 60)}h ${nextAction.minutes_until_next % 60}m from now`}
+          </p>
+        )}
+      </div>
+    );
+  };
   
   return (
     <Card className="shadow-md">
       <CardHeader className="bg-muted/30">
-        <CardTitle className="flex items-center justify-between">
+        <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
             <span>{destination.name}</span>
             {statusBadge()}
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
               onClick={() => onCreate(destination.id)}
@@ -611,6 +844,14 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
         </CardTitle>
       </CardHeader>
       <CardContent className="mt-4">
+        {/* Next Scheduled Action */}
+        {destination.isRunning && (
+          <div className="mb-4 p-3 bg-accent/30 rounded-md">
+            <h4 className="text-sm font-medium mb-1">Status</h4>
+            {formatNextAction(schedulerStatus?.[destination.id]?.next_action || null)}
+          </div>
+        )}
+      
         {/* Empty State Message */}
         {(!destination.scheduleStack || destination.scheduleStack.length === 0) && (
           <div className="text-center py-4 text-muted-foreground">
@@ -716,7 +957,7 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
                         {destination.contextStack && destination.contextStack[index] && (
                           <div className="mt-4">
                             <h5 className="font-medium mb-2">Context Variables:</h5>
-                            <div className="bg-muted p-2 rounded-md overflow-auto max-h-40">
+                            <div className="bg-muted p-2 rounded-md overflow-auto max-h-40" data-lov-id={`scheduler-context-${destination.id}-${index}`}>
                               <ul className="text-xs">
                                 {Object.entries(destination.contextStack[index].vars || {}).map(([key, value]) => (
                                   <li key={key}>
@@ -750,9 +991,12 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
           </Button>
           
           {showLogs && (
-            <div className="bg-black text-green-400 p-4 rounded-lg font-mono text-xs overflow-auto max-h-60">
-              {destination.logs && destination.logs.length > 0 ? (
-                destination.logs.map((log, index) => (
+            <div 
+              ref={logsContainerRef}
+              className="bg-black text-green-400 p-4 rounded-lg font-mono text-xs overflow-auto max-h-60"
+            >
+              {logs && logs.length > 0 ? (
+                logs.map((log, index) => (
                   <div key={index}>{log}</div>
                 ))
               ) : (
