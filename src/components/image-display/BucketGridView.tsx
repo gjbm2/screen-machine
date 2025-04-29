@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, Settings, ExternalLink, Send, Trash2, Copy, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -15,7 +16,6 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getPublishDestinations } from '@/services/PublishService';
 import { format, formatDistance } from 'date-fns';
-import * as LucideIcons from 'lucide-react';
 
 // Define the expected types based on the API response
 interface BucketItem {
@@ -513,12 +513,6 @@ export function BucketGridView({
     }
   };
 
-  // Get icon component based on icon name
-  const renderIcon = () => {
-    // Just use the Image icon for now as a fallback
-    return <ImageIcon className="h-5 w-5" />;
-  };
-
   // Drag and drop handlers
   const handleDragStart = (event: React.DragEvent, image: BucketImage, currentIndex: number) => {
     event.dataTransfer.setData('application/json', JSON.stringify({
@@ -552,10 +546,10 @@ export function BucketGridView({
     <div className="flex flex-col h-full">
       {/* Enhanced bucket header panel with triple height */}
       {bucketDetails && (
-        <div className="flex flex-col mb-4 p-4 bg-muted rounded-md space-y-3">
-          <div className="flex justify-between items-start">
+        <div className="flex flex-col mb-4 p-2 sm:p-4 bg-muted rounded-md w-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {/* Left side: Bucket info and current image thumbnail */}
-            <div className="flex items-start gap-4">
+            <div className="flex flex-wrap items-start gap-3">
               {/* Current published image thumbnail - hide if headless */}
               {currentPublishedImage && !headless && (
                 <div className="w-24 h-24 rounded-md overflow-hidden bg-black/10 flex-shrink-0">
@@ -567,146 +561,142 @@ export function BucketGridView({
                 </div>
               )}
               
-              <div className="flex flex-col space-y-1">
-                {/* Published info with friendly date - hide if headless */}
-                {bucketDetails.published && !headless && (
-                  <div className="text-sm text-muted-foreground">
-                    <span className="font-medium">Published:</span> {bucketDetails.published}
-                    {bucketDetails.publishedAt && (
-                      <span className="text-xs ml-2 text-muted-foreground">
-                        ({formatPublishDate(bucketDetails.publishedAt)})
-                      </span>
-                    )}
-                  </div>
-                )}
-                
+              <div className="flex-1 flex flex-col space-y-1 min-w-0">
                 {/* Show metadata about current published image - hide if headless */}
                 {currentPublishedImage && currentPublishedImage.prompt && !headless && (
-                  <div className="text-sm text-muted-foreground max-w-md truncate">
+                  <div className="text-sm text-muted-foreground truncate">
                     <span className="font-medium">Prompt:</span> {currentPublishedImage.prompt}
                   </div>
                 )}
                 
-                {/* Scheduler status and mini controls - hide if headless */}
-                {!headless && (
-                  <div className="flex items-center gap-2 mt-1">
-                    <div className={`flex items-center ${statusDisplay.colorClass}`}>
-                      {statusDisplay.icon}
-                      <span className="text-sm ml-1">{statusDisplay.text}</span>
-                    </div>
-                    
-                    <div className="flex items-center ml-4 space-x-1">
-                      {!schedulerStatus.is_running && (
-                        <Button 
-                          variant="outline" 
-                          size="xs"
-                          onClick={() => handleSchedulerAction('start')}
-                          className="h-6 px-2 text-xs"
-                        >
-                          Start
-                        </Button>
+                {/* Controls in a flex layout to use available space */}
+                <div className="flex flex-wrap gap-2">
+                  {/* Star button with counts */}
+                  <Button
+                    variant={showFavoritesFirst ? "secondary" : "outline"}
+                    size="sm"
+                    className="flex items-center h-8"
+                    onClick={() => setShowFavoritesFirst(!showFavoritesFirst)}
+                  >
+                    <Star className={`h-4 w-4 ${showFavoritesFirst ? "fill-current" : ""}`} />
+                    <span className="ml-1 text-xs">{bucketDetails.favorites_count} / {bucketDetails.count}</span>
+                  </Button>
+                  
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    onClick={handleRefresh} 
+                    disabled={loading || isLoading}
+                    className="flex-nowrap h-8"
+                  >
+                    <RefreshCw 
+                      className={`h-4 w-4 ${(loading || isLoading) ? 'animate-spin' : ''}`} 
+                    />
+                    <span className="ml-1 hidden sm:inline">Refresh</span>
+                  </Button>
+                  
+                  <Button 
+                    size="sm" 
+                    variant="secondary"
+                    onClick={() => setShowUploadModal(true)}
+                    className="flex-nowrap h-8"
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span className="ml-1 hidden sm:inline">Upload</span>
+                  </Button>
+                  
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline" className="flex-nowrap h-8">
+                        <Settings className="h-4 w-4" />
+                        <span className="ml-1 hidden sm:inline">Maintenance</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onClick={handlePurgeNonFavorites}>
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Purge Non-Favorites
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleReindex}>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Re-Index
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleExtractJson}>
+                        <Copy className="h-4 w-4 mr-2" />
+                        Extract JSON
+                      </DropdownMenuItem>
+                      {!headless && (
+                        <DropdownMenuItem onClick={handleOpenSchedulerPage}>
+                          <Settings className="h-4 w-4 mr-2" />
+                          Scheduler
+                        </DropdownMenuItem>
                       )}
-                      
-                      {schedulerStatus.is_running && !schedulerStatus.is_paused && (
-                        <Button 
-                          variant="outline" 
-                          size="xs"
-                          onClick={() => handleSchedulerAction('pause')}
-                          className="h-6 px-2 text-xs"
-                        >
-                          Pause
-                        </Button>
-                      )}
-                      
-                      {schedulerStatus.is_running && schedulerStatus.is_paused && (
-                        <Button 
-                          variant="outline" 
-                          size="xs"
-                          onClick={() => handleSchedulerAction('unpause')}
-                          className="h-6 px-2 text-xs"
-                        >
-                          Resume
-                        </Button>
-                      )}
-                      
-                      {schedulerStatus.is_running && (
-                        <Button 
-                          variant="outline" 
-                          size="xs"
-                          onClick={() => handleSchedulerAction('stop')}
-                          className="h-6 px-2 text-xs"
-                        >
-                          Stop
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
             </div>
             
-            {/* Right side: Actions */}
-            <div className="flex items-center gap-2">
-              {/* Star button with counts */}
-              <Button
-                variant={showFavoritesFirst ? "secondary" : "outline"}
-                size="sm"
-                className="flex items-center"
-                onClick={() => setShowFavoritesFirst(!showFavoritesFirst)}
-              >
-                <Star className={`h-4 w-4 ${showFavoritesFirst ? "fill-current" : ""}`} />
-                <span className="ml-1 text-xs">{bucketDetails.favorites_count} / {bucketDetails.count}</span>
-              </Button>
+            {/* Right side: Align items to the end and add justify-end */}
+            <div className="flex flex-col justify-between items-end">
+              {/* Empty div to push scheduler controls to bottom */}
+              <div></div>
               
-              <Button 
-                size="sm" 
-                variant="ghost" 
-                onClick={handleRefresh} 
-                disabled={loading || isLoading}
-                className="flex-nowrap"
-              >
-                <RefreshCw 
-                  className={`h-4 w-4 ${(loading || isLoading) ? 'animate-spin' : ''}`} 
-                />
-                <span className="ml-1 hidden sm:inline">Refresh</span>
-              </Button>
-              
-              <Button 
-                size="sm" 
-                variant="secondary"
-                onClick={() => setShowUploadModal(true)}
-                className="flex-nowrap"
-              >
-                <Upload className="h-4 w-4" />
-                <span className="ml-1 hidden sm:inline">Upload</span>
-              </Button>
-              
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="outline" className="flex-nowrap">
-                    <Settings className="h-4 w-4" />
-                    <span className="ml-1 hidden sm:inline">Maintenance</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={handlePurgeNonFavorites}>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Purge Non-Favorites
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleReindex}>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Re-Index
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExtractJson}>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Extract JSON
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleOpenSchedulerPage}>
-                    <Settings className="h-4 w-4 mr-2" />
-                    Scheduler
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {/* Scheduler controls - hide if headless */}
+              {!headless && (
+                <div className="flex items-center gap-2 self-end mt-2 md:mt-0">
+                  <div className={`flex items-center ${statusDisplay.colorClass}`}>
+                    {statusDisplay.icon}
+                    <span className="text-sm ml-1">{statusDisplay.text}</span>
+                  </div>
+                  
+                  <div className="flex items-center ml-2 space-x-1">
+                    {!headless && !schedulerStatus.is_running && (
+                      <Button 
+                        variant="outline" 
+                        size="xs"
+                        onClick={() => handleSchedulerAction('start')}
+                        className="h-6 px-2 text-xs"
+                      >
+                        Start
+                      </Button>
+                    )}
+                    
+                    {!headless && schedulerStatus.is_running && !schedulerStatus.is_paused && (
+                      <Button 
+                        variant="outline" 
+                        size="xs"
+                        onClick={() => handleSchedulerAction('pause')}
+                        className="h-6 px-2 text-xs"
+                      >
+                        Pause
+                      </Button>
+                    )}
+                    
+                    {!headless && schedulerStatus.is_running && schedulerStatus.is_paused && (
+                      <Button 
+                        variant="outline" 
+                        size="xs"
+                        onClick={() => handleSchedulerAction('unpause')}
+                        className="h-6 px-2 text-xs"
+                      >
+                        Resume
+                      </Button>
+                    )}
+                    
+                    {!headless && schedulerStatus.is_running && (
+                      <Button 
+                        variant="outline" 
+                        size="xs"
+                        onClick={() => handleSchedulerAction('stop')}
+                        className="h-6 px-2 text-xs"
+                      >
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

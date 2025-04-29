@@ -203,20 +203,39 @@ export function ImageDisplay(props: ImageDisplayProps) {
   // Check if we need scroll indicators
   const checkScroll = () => {
     if (!tabsRef.current) return;
+    
     const { scrollLeft, scrollWidth, clientWidth } = tabsRef.current;
-    setShowLeftScroll(scrollLeft > 0);
-    setShowRightScroll(scrollLeft + clientWidth < scrollWidth);
+    
+    // Show left scroll indicator if scrolled at least 10px
+    setShowLeftScroll(scrollLeft > 10);
+    
+    // Show right scroll indicator if there's at least 10px more to scroll
+    // This threshold helps with fractional pixels and rounding errors
+    setShowRightScroll(scrollLeft + clientWidth < scrollWidth - 10);
+    
+    // Force a reflow to ensure the UI updates correctly
+    // This helps with rendering issues in some browsers
+    if (tabsRef.current.offsetHeight) {
+      // This access to offsetHeight forces a reflow
+    }
   };
 
   // Handle scrolling tabs
   const scrollTabs = (direction: 'left' | 'right') => {
     if (!tabsRef.current) return;
-    const scrollAmount = 200; // px to scroll
+    
+    // Calculate a better scroll amount based on container width
+    const containerWidth = tabsRef.current.clientWidth;
+    const scrollAmount = Math.max(100, containerWidth * 0.6); // 60% of visible width or at least 100px
+    
     const currentScroll = tabsRef.current.scrollLeft;
     tabsRef.current.scrollTo({
       left: direction === 'left' ? currentScroll - scrollAmount : currentScroll + scrollAmount,
       behavior: 'smooth'
     });
+    
+    // Update scroll indicators after scrolling
+    setTimeout(checkScroll, 400); // Check after animation completes
   };
 
   // Check scroll on window resize and tab changes
@@ -224,8 +243,35 @@ export function ImageDisplay(props: ImageDisplayProps) {
     checkScroll();
     const handleResize = () => checkScroll();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    
+    // Force an additional check after the component has fully rendered
+    setTimeout(checkScroll, 100);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
   }, [destinationTabs, selectedTab]);
+  
+  // Scroll selected tab into view when it changes
+  useEffect(() => {
+    if (tabsRef.current) {
+      const selectedTabElement = tabsRef.current.querySelector(`button[data-tab-id="${selectedTab}"]`) as HTMLButtonElement;
+      if (selectedTabElement) {
+        // Calculate the center position to scroll to
+        const containerWidth = tabsRef.current.clientWidth;
+        const tabWidth = selectedTabElement.clientWidth;
+        const tabLeft = selectedTabElement.offsetLeft;
+        
+        // Scroll to center the tab
+        tabsRef.current.scrollTo({
+          left: tabLeft - (containerWidth / 2) + (tabWidth / 2),
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, [selectedTab]);
 
   // Function to toggle expansion of a batch container
   const handleToggleExpand = (batchId: string) => {
@@ -288,61 +334,87 @@ export function ImageDisplay(props: ImageDisplayProps) {
     });
   }
 
+  // Set tab and scroll it into view
+  const handleTabClick = (tabId: string) => {
+    setSelectedTab(tabId);
+    
+    // Find the selected tab element and scroll it into view
+    setTimeout(() => {
+      if (tabsRef.current) {
+        const selectedTabElement = tabsRef.current.querySelector(`button[data-tab-id="${tabId}"]`) as HTMLButtonElement;
+        if (selectedTabElement) {
+          // Calculate the center position to scroll to
+          const containerWidth = tabsRef.current.clientWidth;
+          const tabWidth = selectedTabElement.clientWidth;
+          const tabLeft = selectedTabElement.offsetLeft;
+          
+          // Scroll to center the tab
+          tabsRef.current.scrollTo({
+            left: tabLeft - (containerWidth / 2) + (tabWidth / 2),
+            behavior: 'smooth'
+          });
+        }
+      }
+    }, 10);
+  };
+
   return (
     <div className="bg-background overflow-hidden h-full">
       {/* Tabs for switching between Generated view and Destinations - frameless design */}
-      <div className="border-b relative flex w-full max-w-full">
-        {/* Left scroll indicator */}
-        {showLeftScroll && (
-          <button 
-            onClick={() => scrollTabs('left')}
-            className="absolute left-0 z-10 bg-background/80 h-full px-1 flex items-center justify-center hover:bg-background/90"
-            aria-label="Scroll tabs left"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-        )}
-        
-        <div 
-          className="flex-1 overflow-x-auto no-scrollbar" 
-          ref={tabsRef}
-          onScroll={checkScroll}
-          style={{ 
-            msOverflowStyle: 'none', 
-            scrollbarWidth: 'none',
-            WebkitOverflowScrolling: 'touch' 
-          }}
-        >
-          <div className="flex space-x-1 p-1 whitespace-nowrap min-w-fit">
-            {destinationTabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setSelectedTab(tab.id)}
-                className={`px-4 py-2 text-sm flex items-center rounded-md transition-colors flex-shrink-0
-                  ${tab.highlight && selectedTab === tab.id 
-                    ? 'bg-primary text-primary-foreground' 
-                    : selectedTab === tab.id
-                      ? 'text-primary border-b-2 border-primary'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                  }`}
+      <div className="border-b w-full">
+        <div className="relative grid grid-cols-1">
+          {/* Scroll indicators */}
+          <div className="absolute inset-y-0 left-0 z-10 flex items-center pointer-events-none">
+            {showLeftScroll && (
+              <button 
+                onClick={() => scrollTabs('left')}
+                className="bg-background/80 h-full px-1 flex items-center justify-center hover:bg-background/90 pointer-events-auto"
+                aria-label="Scroll tabs left"
               >
-                {tab.icon}
-                <span>{tab.label}</span>
+                <ChevronLeft className="h-4 w-4" />
               </button>
-            ))}
+            )}
+          </div>
+          
+          <div className="absolute inset-y-0 right-0 z-10 flex items-center pointer-events-none">
+            {showRightScroll && (
+              <button 
+                onClick={() => scrollTabs('right')}
+                className="bg-background/80 h-full px-1 flex items-center justify-center hover:bg-background/90 pointer-events-auto"
+                aria-label="Scroll tabs right"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          
+          {/* Scrollable tabs */}
+          <div 
+            ref={tabsRef}
+            onScroll={checkScroll}
+            className="w-full overflow-x-auto scrollbar-hide px-6"
+          >
+            <div className="inline-flex items-center space-x-1 p-1">
+              {destinationTabs.map(tab => (
+                <button
+                  key={tab.id}
+                  data-tab-id={tab.id}
+                  onClick={() => handleTabClick(tab.id)}
+                  className={`px-2 py-1.5 text-xs sm:text-sm sm:px-3 sm:py-2 inline-flex items-center rounded-md transition-colors
+                    ${tab.highlight && selectedTab === tab.id 
+                      ? 'bg-primary text-primary-foreground' 
+                      : selectedTab === tab.id
+                        ? 'text-primary border-b-2 border-primary'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    }`}
+                >
+                  {tab.icon}
+                  <span className="truncate max-w-[60px] sm:max-w-[100px]">{tab.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-        
-        {/* Right scroll indicator */}
-        {showRightScroll && (
-          <button 
-            onClick={() => scrollTabs('right')}
-            className="absolute right-0 z-10 bg-background/80 h-full px-1 flex items-center justify-center hover:bg-background/90"
-            aria-label="Scroll tabs right"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        )}
       </div>
 
       {/* Content based on selected tab */}
