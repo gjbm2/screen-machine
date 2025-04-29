@@ -235,8 +235,10 @@ def handle_generate(instruction, context, now, output, publish_destination):
             log_schedule(error_msg, publish_destination, now)
             return 
         
-        debug(f"Preparing generation with prompt: '{prompt}'")
-        
+        refiner = instruction.get("refiner", None)  
+
+        debug(f"Preparing generation with prompt: '{prompt}', refiner: {refiner}")
+
         send_obj = {
             "data": {
                 "prompt": prompt,
@@ -249,7 +251,7 @@ def handle_generate(instruction, context, now, output, publish_destination):
         #    # TODO: later add back: **call_args
 
         # Now let's generate with prompt 
-        start_msg = f"Starting image generation with prompt: '{prompt}'"
+        start_msg = f"Starting image generation with prompt: '{prompt}', refiner: {refiner}"
         output.append(f"[{now.strftime('%H:%M')}] {start_msg}")
         log_schedule(start_msg, publish_destination, now)
             
@@ -475,6 +477,9 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
     matched_any_trigger = False
     found_actions_to_execute = False
     
+    # Keep track of matched schedules to avoid duplicate processing
+    processed_schedule_ids = set()
+    
     # First check all date triggers (these take precedence)
     for trigger in schedule.get("triggers", []):
         if trigger["type"] == "date" and "date" in trigger:
@@ -487,10 +492,18 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                     message = f"Matched date trigger for {date_str} with actions to execute"
                     info(message)
                     log_schedule(message, publish_destination, now)
+                    
                     # Extract instructions from matched schedules
                     for matched_schedule in matched_schedules:
-                        instructions = extract_instructions(matched_schedule.get("trigger_actions", {}))
-                        all_instructions.extend(instructions)
+                        # Generate a unique ID for this schedule to avoid duplicates
+                        schedule_id = id(matched_schedule)
+                        if schedule_id not in processed_schedule_ids:
+                            processed_schedule_ids.add(schedule_id)
+                            instructions = extract_instructions(matched_schedule.get("trigger_actions", {}))
+                            debug(f"Extracted {len(instructions)} instructions from date trigger schedule")
+                            all_instructions.extend(instructions)
+                        else:
+                            debug(f"Skipping duplicate schedule in date trigger")
     
     # If a date trigger matched, skip day of week triggers
     if not matched_any_trigger:
@@ -506,10 +519,18 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                         message = f"Matched day_of_week trigger for {day_str} with actions to execute"
                         info(message)
                         log_schedule(message, publish_destination, now)
-                        # Extract instructions from matched schedules
+                        
+                        # Extract instructions from matched schedules (only once per schedule)
                         for matched_schedule in matched_schedules:
-                            instructions = extract_instructions(matched_schedule.get("trigger_actions", {}))
-                            all_instructions.extend(instructions)
+                            # Generate a unique ID for this schedule to avoid duplicates
+                            schedule_id = id(matched_schedule)
+                            if schedule_id not in processed_schedule_ids:
+                                processed_schedule_ids.add(schedule_id)
+                                instructions = extract_instructions(matched_schedule.get("trigger_actions", {}))
+                                debug(f"Extracted {len(instructions)} instructions from day_of_week trigger schedule")
+                                all_instructions.extend(instructions)
+                            else:
+                                debug(f"Skipping duplicate schedule in day_of_week trigger")
     
     # Check event triggers (these can match regardless of other triggers)
     for trigger in schedule.get("triggers", []):
@@ -527,6 +548,7 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                 log_schedule(message, publish_destination, now)
                 # Add event trigger actions
                 event_instructions = extract_instructions(trigger.get("trigger_actions", {}))
+                debug(f"Extracted {len(event_instructions)} instructions from event trigger")
                 all_instructions.extend(event_instructions)
                 found_actions_to_execute = True
 
