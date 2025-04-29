@@ -125,11 +125,16 @@ def fuzzy_match(name, candidates, key="name"):
     return None
 
 def resolve_runtime_value(category, input_value, return_key="id", match_key=None):
+    debug(f"category: {category}, input_value: {input_value}, return_key: {return_key}, match_key: {match_key}")
     """
     Resolve a single category (refiner, workflow, destination) to a specific field from the matched item.
     
     If match_key is not provided, tries all string fields and selects the best fuzzy match.
     """
+
+    if not isinstance(input_value, str):
+        return None
+
     mapping = {
         "refiner": "refiners.json",
         "workflow": "workflows.json",

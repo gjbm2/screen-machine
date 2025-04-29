@@ -55,6 +55,16 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     workflow = data.get("workflow", None)
     images = data.get("images", [])
 
+    # If no workflow specified, get default workflow from workflows.json
+    if not workflow:
+        workflows = _load_json_once("workflow", "workflows.json")
+        default_workflow = next((w for w in workflows if w.get("default", False)), None)
+        if not default_workflow:
+            error("No default workflow found in workflows.json")
+            return None
+        workflow = default_workflow["id"]
+        debug(f"Using default workflow: {workflow}")
+
     # Get "targets" from input data
     targets = data.get("targets", [])
 
@@ -65,22 +75,25 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     # Ensure it's a list at this point
     targets = targets if isinstance(targets, list) else [targets]
 
+
     # Final fallback if empty
     publish_targets = targets if targets else [None]
-    
-    info(f"publish_targets {publish_targets}")
-    
+
+
     if not prompt and not images:
-        return 
+        return None
     
     # Refine the prompt
     input_dict = {
         "prompt": prompt,
         "workflow": workflow
     }
+
+    debug(f"****input_dict {input_dict}")
     
     corrected_refiner = resolve_runtime_value("refiner", refiner, return_key="system_prompt")
     
+    # TODO: should be done with a proper lookup NOT runtimevalue -- which should ONLY be used to resolve informal strings
     images_required = resolve_runtime_value("refiner", refiner, return_key="uploadimages") or 0
     
     # Normalize input images list
@@ -182,6 +195,8 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
             t.join()
         info(" * All generator threads completed.")
         return results
+    else:
+        return None
 
 def process(data):
     alexa_intent = data.get("request", {}).get("intent", {}).get("name", "unspecified")

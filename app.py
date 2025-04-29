@@ -522,6 +522,10 @@ def test_overlay():
 @app.route('/<path:path>')
 def serve(path):
     if path != "" and os.path.exists(app.static_folder + '/' + path):
+        if path.endswith('.js'):
+            return send_from_directory(app.static_folder, path, mimetype='application/javascript')
+        elif path.endswith('.mjs'):
+            return send_from_directory(app.static_folder, path, mimetype='application/javascript')
         return send_from_directory(app.static_folder, path)
     else:
         return send_from_directory(app.static_folder, 'index.html')

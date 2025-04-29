@@ -1,0 +1,681 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Schedule Configuration",
+  "description": "Configure automated triggers and instruction blocks for this schedule.",
+  "type": "object",
+  "properties": {
+    "initial_actions": {
+      "$ref": "#/definitions/instruction_array",
+      "title": "Initial actions",
+      "description": "Steps to execute when the schedule starts."
+    },
+    "triggers": {
+      "type": "array",
+      "title": "Triggers",
+      "description": "Condition blocks that fire their nested schedules or instructions.",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/definitions/day_of_week_trigger"
+          },
+          {
+            "$ref": "#/definitions/date_trigger"
+          },
+          {
+            "$ref": "#/definitions/event_trigger"
+          }
+        ]
+      }
+    },
+    "final_actions": {
+      "$ref": "#/definitions/instruction_array",
+      "title": "Final actions",
+      "description": "Steps to execute after all trigger blocks have fired."
+    }
+  },
+  "definitions": {
+    "dontWaitProp": {
+      "type": "boolean",
+      "title": "Don't wait",
+      "description": "If true, proceed immediately without waiting."
+    },
+    "instruction_array": {
+      "type": "object",
+      "title": "Instruction Array",
+      "description": "A list of instructions, optionally annotated as important or urgent.",
+      "properties": {
+        "instructions_block": {
+          "title": "Instructions block",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/instruction"
+          },
+          "description": "Ordered list of instruction steps."
+        },
+        "important": {
+          "type": "boolean",
+          "description": "If true, this instruction block is important and should be queued."
+        },
+        "urgent": {
+          "type": "boolean",
+          "description": "If true, this instruction block should run immediately."
+        }
+      },
+      "required": [
+        "instructions_block"
+      ],
+      "additionalProperties": false
+    },
+    "instruction": {
+      "type": "object",
+      "title": "Instruction",
+      "description": "A single instruction step.",
+      "oneOf": [
+        {
+          "title": "Set Variable",
+          "description": "Instructs the system to assign a value to a named variable, either directly or by referencing another variable’s value.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "set_var",
+              "default": "set_var",
+              "description": "Identifies this instruction as a variable-setting operation.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "var": {
+              "type": "string",
+              "title": "Variable Name",
+              "description": "The name of the variable to set."
+            },
+            "input": {
+              "type": "object",
+              "title": "Value or Reference",
+              "description": "Fill in either a literal value or a variable name to copy.",
+              "properties": {
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "title": "String"
+                    },
+                    {
+                      "type": "number",
+                      "title": "Number"
+                    },
+                    {
+                      "type": "boolean",
+                      "title": "True / False"
+                    },
+                    {
+                      "type": "array",
+                      "title": "Array of strings",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ],
+                  "title": "Literal Value",
+                  "description": "Use this literal to populate your variable."
+                },
+                "var_ref": {
+                  "type": "string",
+                  "title": "Use Value From Another Variable",
+                  "description": "Enter the name of an existing variable to copy its value."
+                }
+              },
+              "additionalProperties": false
+            },
+            "default": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "title": "String"
+                },
+                {
+                  "type": "number",
+                  "title": "Number"
+                },
+                {
+                  "type": "boolean",
+                  "title": "True / False"
+                },
+                {
+                  "type": "array",
+                  "title": "Array of strings",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "title": "Fallback Value",
+              "description": "Fallback value to use if the referenced variable doesn’t exist or is undefined."
+            }
+          },
+          "required": [
+            "action",
+            "var"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Generate",
+          "description": "Creates new content based on a prompt variable, with optional refinement and workflow settings.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "generate",
+              "default": "generate",
+              "description": "Automatically set to 'generate' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "input": {
+              "type": "object",
+              "title": "Input",
+              "description": "Fill in either a variable name or a literal prompt.",
+              "properties": {
+                "prompt_var": {
+                  "type": "string",
+                  "title": "Prompt Variable",
+                  "description": "Name of the variable containing your input prompt."
+                },
+                "prompt": {
+                  "type": "string",
+                  "title": "Literal Prompt",
+                  "description": "Directly enter the prompt text to use."
+                }
+              },
+              "minProperties": 1,
+              "additionalProperties": false
+            },
+            "refiner": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "title": "Refiner",
+              "enum": [
+                null,
+                "refinerA",
+                "refinerB",
+                "refinerC"
+              ],
+              "description": "Optional: choose a post-process refinement model."
+            },
+            "workflow": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "title": "Workflow",
+              "enum": [
+                null,
+                "workflow1",
+                "workflow2"
+              ],
+              "description": "Optional: select a predefined generation workflow."
+            },
+            "history_output_var": {
+              "type": "string",
+              "title": "History Output",
+              "description": "Optional: variable name where past prompts/results are stored."
+            },
+            "dontwait": { "$ref": "#/definitions/dontWaitProp" }
+          },
+          "required": [
+            "action",
+            "input"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Devise Prompt",
+          "description": "Craft a new prompt using an existing prompt variable, with optional theme and style refinements.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "devise_prompt",
+              "default": "devise_prompt",
+              "description": "Fixed to ‘devise_prompt’ to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "deviser": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "title": "Deviser",
+              "enum": [
+                null,
+                "deviserA",
+                "deviserB",
+                "deviserC"
+              ],
+              "description": "Optional: which script to use to devise a prompt."
+            },
+            "prompt_input": {
+              "type": "object",
+              "title": "Prompt or Prompt variable",
+              "description": "Provide either a literal prompt or reference a variable for the prompt.",
+              "properties": {
+                "prompt": {
+                  "type": "string",
+                  "title": "Literal Prompt",
+                  "description": "Enter the theme text directly."
+                },
+                "prompt_var": {
+                  "type": "string",
+                  "title": "Prompt Variable",
+                  "description": "Name of a variable whose value will be used as the prompt."
+                }
+              },
+              "minProperties": 1,
+              "additionalProperties": false
+            },
+            "theme_input": {
+              "type": "object",
+              "title": "Theme or Theme Variable",
+              "description": "Provide either a literal theme or reference a variable for the theme.",
+              "properties": {
+                "theme": {
+                  "type": "string",
+                  "title": "Literal Theme",
+                  "description": "Enter the theme text directly."
+                },
+                "theme_var": {
+                  "type": "string",
+                  "title": "Theme Variable",
+                  "description": "Name of a variable whose value will be used as the theme."
+                }
+              },
+              "minProperties": 1,
+              "additionalProperties": false
+            },
+            "style_input": {
+              "type": "object",
+              "title": "Style or Style Variable",
+              "description": "Provide either a literal style or reference a variable for the style.",
+              "properties": {
+                "style": {
+                  "type": "string",
+                  "title": "Literal Style",
+                  "description": "Enter the style text directly."
+                },
+                "style_var": {
+                  "type": "string",
+                  "title": "Style Variable",
+                  "description": "Name of a variable whose value will be used as the style."
+                }
+              },
+              "minProperties": 1,
+              "additionalProperties": false
+            },
+            "history_input_vars": {
+              "type": "array",
+              "title": "History Input Variables",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional: list of variable names containing past prompts or responses."
+            },
+            "prompt_output_var": {
+              "type": "string",
+              "title": "Prompt Output",
+              "description": "Variable name where generated prompt is stored."
+            },
+            "history_output_var": {
+              "type": "string",
+              "title": "History Output",
+              "description": "Optional: variable name where results are stored."
+            },
+            "dontwait": { "$ref": "#/definitions/dontWaitProp" }
+          },
+          "required": [
+            "action",
+            "prompt_output_var"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Display",
+          "description": "Show the next or a random picture in the bucket for this screen.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "display",
+              "default": "display",
+              "description": "Fixed to ‘display’ to select this instruction type."
+            },
+            "show": {
+              "type": "string",
+              "title": "Display Mode",
+              "enum": [
+                "Next",
+                "Random",
+                "Blank"
+              ],
+              "description": "Choose whether to display the next item in order or pick one at random."
+            }
+          },
+          "required": [
+            "action",
+            "show"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Device Media Sync",
+          "description": "Synchronize media on the device, with optional non-blocking behavior.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "device-media-sync",
+              "default": "device-media-sync",
+              "description": "Fixed to 'device-media-sync' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "dontwait": { "$ref": "#/definitions/dontWaitProp" }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Device Wake",
+          "description": "Wake the device from sleep or standby, with optional non-blocking behavior.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "device-wake",
+              "default": "device-wake",
+              "description": "Fixed to 'device-wake' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "dontwait": { "$ref": "#/definitions/dontWaitProp" }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Device Sleep",
+          "description": "Put the device to sleep or standby, with optional non-blocking behavior.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "device-sleep",
+              "default": "device-sleep",
+              "description": "Fixed to 'device-sleep' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "dontwait": { "$ref": "#/definitions/dontWaitProp" }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Wait",
+          "description": "Pause execution for a specified duration.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "wait",
+              "default": "wait",
+              "description": "Fixed to 'wait' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "value": {
+              "type": "integer",
+              "title": "Duration",
+              "description": "Time to wait, in minutes."
+            }
+          },
+          "required": [
+            "action",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Animate",
+          "description": "Animate the image on the screen.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "animate",
+              "default": "animate",
+              "description": "Fixed to 'animate' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "refiner": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "title": "Refiner",
+              "enum": [
+                null,
+                "refinerA",
+                "refinerB",
+                "refinerC"
+              ],
+              "description": "Optional: choose a post-process refinement model."
+            },
+            "history": {
+              "type": "string",
+              "title": "History Key",
+              "description": "Optional: variable name where past prompts/results are stored."
+            },
+            "dontwait": { "$ref": "#/definitions/dontWaitProp" }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "time_schedule": {
+      "type": "object",
+      "title": "Time Schedule",
+      "description": "Specify time of day (in local time) to begin",
+      "properties": {
+        "time": {
+          "type": "string",
+          "pattern": "^[0-9]{2}:[0-9]{2}$",
+          "default": "00:01"
+        },
+        "repeat_schedule": {
+          "type": "object",
+          "title": "Repeat Schedule",
+          "description": "If included, specify both the interval in minutes and the end time.",
+          "properties": {
+            "every": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "until": {
+              "type": "string",
+              "pattern": "^[0-9]{2}:[0-9]{2}$"
+            }
+          },
+          "required": [
+            "every"
+          ],
+          "additionalProperties": false
+        },
+        "trigger_actions": {
+          "$ref": "#/definitions/instruction_array"
+        }
+      },
+      "required": [
+        "trigger_actions",
+        "time"
+      ],
+      "additionalProperties": false
+    },
+    "time_schedule_array": {
+      "type": "array",
+      "title": "Schedules",
+      "items": {
+        "$ref": "#/definitions/time_schedule"
+      },
+      "minItems": 1
+    },
+    "repeat_schedule": {
+      "type": "object",
+      "title": "Repeat Schedule",
+      "properties": {
+        "every": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "until": {
+          "type": "string",
+          "pattern": "^[0-9]{2}:[0-9]{2}$"
+        }
+      },
+      "required": [
+        "every",
+        "until"
+      ],
+      "additionalProperties": false
+    },
+    "day_of_week_trigger": {
+      "type": "object",
+      "title": "Day-of-Week Trigger",
+      "uniforms": {
+        "hidden": true
+      },
+      "description": "Which days of the week to run this.",
+      "properties": {
+        "type": {
+          "const": "day_of_week"
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday",
+              "Saturday",
+              "Sunday"
+            ]
+          },
+          "minItems": 1
+        },
+        "scheduled_actions": {
+          "$ref": "#/definitions/time_schedule_array"
+        }
+      },
+      "required": [
+        "type",
+        "days",
+        "scheduled_actions"
+      ],
+      "additionalProperties": false
+    },
+    "date_trigger": {
+      "title": "Date Trigger",
+      "description": "Execute the nested schedules on a specific day and month (no year).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "date",
+          "default": "date",
+          "description": "Fixed to ‘date’ to select this trigger type.",
+          "uniforms": {
+            "hidden": true
+          }
+        },
+        "date": {
+          "type": "string",
+          "title": "Trigger Date",
+          "description": "The day and month in D-MMM format (e.g. 5-Apr).",
+          "pattern": "^(0?[1-9]|[12][0-9]|3[01])-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$"
+        },
+        "scheduled_actions": {
+          "title": "Schedules",
+          "description": "One or more time-of-day entries (with optional repeats) to run on the trigger date.",
+          "$ref": "#/definitions/time_schedule_array"
+        }
+      },
+      "required": [
+        "type",
+        "date",
+        "scheduled_actions"
+      ],
+      "additionalProperties": false
+    },
+    "event_trigger": {
+      "type": "object",
+      "title": "Event Trigger",
+      "description": "Run a nested instruction sequence when a named external event occurs.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "event",
+          "default": "event",
+          "uniforms": {
+            "hidden": true
+          },
+          "description": "Fixed to “event” to select this trigger type."
+        },
+        "value": {
+          "type": "string",
+          "title": "Event Type",
+          "enum": [
+            "UserInteractedWithScreen",
+            "NewSlackMessageDetected"
+          ],
+          "description": "Select which external event will fire this trigger."
+        },
+        "trigger_actions": {
+          "$ref": "#/definitions/instruction_array",
+          "title": "Event Instructions",
+          "description": "Steps to execute when the selected event occurs."
+        }
+      },
+      "required": [
+        "type",
+        "value",
+        "trigger_actions"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

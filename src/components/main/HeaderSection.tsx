@@ -1,9 +1,8 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
-import { Terminal, Menu, Info, FileText, Settings } from 'lucide-react';
+import { Terminal, Menu, Info, FileText, Settings, Clock } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
@@ -107,6 +106,13 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               <Link to="/display" target="_blank" rel="noopener noreferrer">
                 <FileText className="h-4 w-4 mr-2" />
                 <span>Display Editor</span>
+              </Link>
+            </DropdownMenuItem>
+            
+            <DropdownMenuItem asChild>
+              <Link to="/scheduler" target="_blank" rel="noopener noreferrer">
+                <Clock className="h-4 w-4 mr-2" />
+                <span>Scheduler</span>
               </Link>
             </DropdownMenuItem>
             

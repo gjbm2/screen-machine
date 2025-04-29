@@ -11,6 +11,8 @@ import jsonschema
 import os
 from flask import Blueprint, request, jsonify
 import requests
+import copy
+from routes.utils import dict_substitute
 
 # Global storage for scheduler state
 scheduler_bp = Blueprint("scheduler_bp", __name__)
@@ -23,15 +25,47 @@ important_triggers = {}  # Store important triggers by destination
 active_events = {}  # Store active events by destination
 
 # Load schedule schema
-with open(os.path.join(os.path.dirname(__file__), "scheduler", "schedule_schema.json")) as f:
+SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "scheduler", "schedule.schema.json.j2")
+with open(SCHEMA_PATH) as f:
     SCHEDULE_SCHEMA = json.load(f)
 
 # === Context Initialization ===
 def default_context():
+    """Create a new default context."""
     return {
         "vars": {},
         "last_generated": None
     }
+
+# === Schema Management ===
+def get_current_schema() -> Dict[str, Any]:
+    """Get the current schema with jinja substitutions as a JSON object."""
+    try:
+        with open(SCHEMA_PATH) as f:
+            schema_text = f.read()
+        
+        # TODO: Add subs lookup here to replace workflows and refiners list from _load_json_data call
+        subs = {}  # Placeholder for future subs lookup
+        
+        # Apply jinja substitutions
+        if subs:
+            schema_text = dict_substitute(schema_text, subs)
+        
+        return json.loads(schema_text)
+    except Exception as e:
+        error(f"Error loading schema: {e}")
+        return SCHEDULE_SCHEMA  # Fallback to default schema as object
+
+@scheduler_bp.route("/api/scheduler/schema", methods=["GET"])
+def api_get_schema():
+    """Get the current schema with jinja substitutions as a string."""
+    try:
+        schema = get_current_schema()
+        # debug(f"schema: {json.dumps(schema)}")
+        return json.dumps(schema), 200, {'Content-Type': 'application/json; charset=utf-8'}
+    except Exception as e:
+        error(f"Error in api_get_schema: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # === Instruction Execution ===
 def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: datetime, output: List[str], publish_destination: str):
@@ -58,7 +92,7 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
     if action in handler_map:
         try:
             # Run the handler which will modify the context
-            handler_map[action](instruction, context, now, output)
+            handler_map[action](instruction, context, now, output, publish_destination)
             
             # After running the instruction, update the context in the global stack
             stack = get_context_stack(publish_destination)
@@ -72,7 +106,7 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
                 # Update vars dictionary and copy everything else
                 new_context["vars"] = {**existing_context.get("vars", {}), **context.get("vars", {})}
                 for key, value in context.items():
-                    if key != "vars":
+                    if key != "vars":  # Only copy non-vars keys
                         new_context[key] = value
                 
                 # Update both the stack item and the global stack
@@ -97,15 +131,13 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
         error(error_msg)
         output.append(error_msg)
 
-
-def handle_random_choice(instruction, context, now, output):
+def handle_random_choice(instruction, context, now, output, publish_destination):
     var = instruction["var"]
     choice = random.choice(instruction["choices"])
     context["vars"][var] = choice
     output.append(f"[{now.strftime('%H:%M')}] Randomly chose '{choice}' for var '{var}'.")
 
-
-def handle_devise_prompt(instruction, context, now, output):
+def handle_devise_prompt(instruction, context, now, output, publish_destination):
     theme = instruction.get("theme")
     theme_var = instruction.get("theme_var")
     var = instruction["var"]
@@ -128,11 +160,56 @@ def handle_devise_prompt(instruction, context, now, output):
     
     output.append(f"[{now.strftime('%H:%M')}] Devised prompt: {prompt}")
 
+# Image generation handler
+def handle_generate(instruction, context, now, output, publish_destination):
+    prompt = instruction.get("prompt", instruction.get("value", ""))
+    prompt_var_value = context["vars"].get(instruction.get("prompt_var", ""), "")
+    prompt = " ".join(filter(None, [prompt, prompt_var_value]))
 
-def handle_generate(instruction, context, now, output):
-    prompt = context["vars"].get(instruction["prompt_var"])
-    context["last_generated"] = "[image_path]"
+    if prompt == "":
+        output.append(f"[{now.strftime('%H:%M')}] No prompt supplied.")
+        return 
     
+    send_obj = {
+        "data": {
+            "prompt": prompt,
+            "images": [],  # Add empty images array
+            "refiner": instruction.get("refiner", None),
+            "workflow": instruction.get("workflow", None),
+            "targets": [publish_destination]
+        }
+    }
+
+    # Now let's generate with prompt 
+    output.append(f"[{now.strftime('%H:%M')}] Starting image generation send_obj: '{send_obj}'.")
+    from routes.alexa import handle_image_generation
+    response = handle_image_generation(
+        input_obj = send_obj,
+        wait = True            
+    )
+
+    debug(f"[{now.strftime('%H:%M')}] Response from image generation: '{response}'.")
+    debug(f"=====================================================")
+
+    #try:   
+    #    response = handle_image_generation(
+    #        input_obj = send_obj,
+    #        wait = True            
+    #    )
+    #    # TODO: later add back: **call_args
+    #
+    #except Exception as e:
+    #    output.append(f"[{now.strftime('%H:%M')}] Image generation failed: '{e}'.")
+    #    return
+    
+    if not response:
+        output.append(f"[{now.strftime('%H:%M')}] Image generation returned no results.")
+        return    
+
+    # TODO: later retrieve actual prompt used (post-refinement)
+
+    context["last_generated"] = "[image_path]"
+
     if "history" in instruction:
         history_var = instruction["history"]
         if history_var not in context["vars"]:
@@ -145,8 +222,7 @@ def handle_generate(instruction, context, now, output):
     
     output.append(f"[{now.strftime('%H:%M')}] Generated image from: '{prompt}'.")
 
-
-def handle_animate(instruction, context, now, output):
+def handle_animate(instruction, context, now, output, publish_destination):
     # Prepare the animation request
     data = {
         "data": {
@@ -164,8 +240,7 @@ def handle_animate(instruction, context, now, output):
     except Exception as e:
         output.append(f"[{now.strftime('%H:%M')}] Error starting animation: {str(e)}")
 
-
-def handle_display(instruction, context, now, output):
+def handle_display(instruction, context, now, output, publish_destination):
     mode = instruction["mode"]
     # This is where we would call display endpoint
     # ...
@@ -174,13 +249,11 @@ def handle_display(instruction, context, now, output):
     result = f"Displayed ({mode}) image."
     output.append(f"[{now.strftime('%H:%M')}] {result}")
 
-
-def handle_sleep(instruction, context, now, output):
+def handle_sleep(instruction, context, now, output, publish_destination):
     duration = instruction["duration"]
     output.append(f"[{now.strftime('%H:%M')}] Sleeping display for {duration} minutes.")
 
-
-def handle_wait(instruction, context, now, output):
+def handle_wait(instruction, context, now, output, publish_destination):
     duration = instruction["duration"]
     # If we're not already waiting, start the wait
     if "wait_until" not in context:
@@ -200,36 +273,30 @@ def handle_wait(instruction, context, now, output):
     output.append(f"[{now.strftime('%H:%M')}] Still waiting, {remaining:.1f} minutes remaining")
     return False  # Don't unload while still waiting
 
-
-def handle_unload(instruction, context, now, output):
+def handle_unload(instruction, context, now, output, publish_destination):
     output.append(f"[{now.strftime('%H:%M')}] Unloading temporary schedule.")
     return True  # Signal that we should unload the temporary schedule
 
-
-def handle_device_media_sync(instruction, context, now, output):
+def handle_device_media_sync(instruction, context, now, output, publish_destination):
     # This is where we would call the device media sync endpoint
     # ...
     output.append(f"[{now.strftime('%H:%M')}] Syncing media with device")
 
-
-def handle_device_wake(instruction, context, now, output):
+def handle_device_wake(instruction, context, now, output, publish_destination):
     # This is where we would call the device wake endpoint
     # ...
     output.append(f"[{now.strftime('%H:%M')}] Waking device")
 
-
-def handle_device_sleep(instruction, context, now, output):
+def handle_device_sleep(instruction, context, now, output, publish_destination):
     # This is where we would call the device sleep endpoint
     # ...
     output.append(f"[{now.strftime('%H:%M')}] Putting device to sleep")
 
-
-def handle_set_var(instruction, context, now, output):
+def handle_set_var(instruction, context, now, output, publish_destination):
     var_name = instruction["var"]
     value = instruction["value"]
     context["vars"][var_name] = value
     output.append(f"[{now.strftime('%H:%M')}] Set {var_name} to {value}.")
-
 
 # === Schedule Resolver ===
 def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destination: str) -> List[Dict[str, Any]]:
@@ -345,7 +412,6 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
     debug("No matching triggers found")
     return []
 
-
 # === Run scheduler in real time ===
 @scheduler_bp.route("/api/schedulers", methods=["GET"])
 def api_list_schedulers():
@@ -443,9 +509,12 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any]):
 
 @scheduler_bp.route("/api/schedulers/<publish_destination>", methods=["POST"])
 def api_start_scheduler(publish_destination):
+    """Start a scheduler with the provided publish_destination ID."""
     try:
+        # IMPORTANT: publish_destination should always be the ID, not the display name
+        # If this is receiving display names instead of IDs, the frontend needs fixing
         schedule = request.json
-        debug(f"Received schedule for {publish_destination}: {json.dumps(schedule, indent=2)}")
+        debug(f"Received schedule for ID '{publish_destination}': {json.dumps(schedule, indent=2)}")
         
         # Validate schedule structure
         if not isinstance(schedule, dict):
@@ -460,7 +529,7 @@ def api_start_scheduler(publish_destination):
             return jsonify({"error": error_msg}), 400
 
         start_scheduler(publish_destination, schedule)
-        info(f"Successfully started scheduler for {publish_destination}")
+        info(f"Successfully started scheduler for ID '{publish_destination}'")
         return jsonify({"status": "started", "destination": publish_destination})
     except Exception as e:
         error_msg = f"Error starting scheduler: {str(e)}"
@@ -470,7 +539,7 @@ def api_start_scheduler(publish_destination):
 @scheduler_bp.route("/api/schedulers/<publish_destination>", methods=["DELETE"])
 def api_stop_scheduler(publish_destination):
     stop_scheduler(publish_destination)
-    return jsonify({"status": "stopped", "destination": publish_destination})
+    return jsonify({"status": "stopped", "context_reset": True, "destination": publish_destination})
 
 @scheduler_bp.route("/api/schedulers/<publish_destination>/schedule", methods=["GET"])
 def api_get_scheduler_schedule(publish_destination):
@@ -692,18 +761,31 @@ def stop_scheduler(publish_destination: str):
         # Update in-memory state
         scheduler_states[publish_destination] = "stopped"
         
-        # Update persisted state to stopped but preserve stacks
+        # Get current schedule stack
         current_schedule_stack = scheduler_schedule_stacks.get(publish_destination, [])
-        current_context_stack = scheduler_contexts_stacks.get(publish_destination, [])
         
+        # Reset context stack to default values while preserving stack structure
+        current_context_stack = scheduler_contexts_stacks.get(publish_destination, [])
+        new_context_stack = []
+        
+        # Create new default contexts for each item in the stack
+        for _ in range(len(current_context_stack)):
+            new_context = default_context()
+            new_context["publish_destination"] = publish_destination
+            new_context_stack.append(new_context)
+        
+        # Update context stack in memory
+        scheduler_contexts_stacks[publish_destination] = new_context_stack
+        
+        # Update persisted state to stopped and reset contexts while preserving schedule
         update_scheduler_state(
             publish_destination,
             state="stopped",
             schedule_stack=current_schedule_stack,
-            context_stack=current_context_stack
+            context_stack=new_context_stack
         )
         
-        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Stopped scheduler while preserving state")
+        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Stopped scheduler while preserving schedule and resetting context")
         
         # If no schedulers are running, stop the event loop
         if not running_schedulers:
@@ -967,26 +1049,25 @@ def get_current_context(publish_destination: str) -> Optional[Dict[str, Any]]:
     stack = get_context_stack(publish_destination)
     return stack[-1] if stack else None
 
-def copy_context(context: Dict[str, Any]) -> Dict[str, Any]:
+def copy_context(context):
     """Create a deep copy of a context."""
     new_context = {
-        "vars": {},
+        "vars": copy.deepcopy(context.get("vars", {})),
         "last_generated": context.get("last_generated")
     }
-    
-    # Deep copy the vars dictionary
-    for key, value in context.get("vars", {}).items():
-        if isinstance(value, list):
-            # For lists (like history), make a deep copy
-            new_context["vars"][key] = [dict(item) if isinstance(item, dict) else item for item in value]
-        else:
-            new_context["vars"][key] = value
-            
+    # Handle lists in vars
+    if "vars" in context:
+        for key, value in context["vars"].items():
+            if isinstance(value, list):
+                new_context["vars"][key] = value.copy()
     return new_context
 
 # === Persistence Functions ===
 def get_scheduler_storage_path(publish_destination: str) -> str:
     """Get the path to store scheduler data for a destination."""
+    # IMPORTANT: Use the exact publish_destination as the filename
+    # This is critical because the filename is used to determine which 
+    # destinations have schedules during initialization
     storage_dir = os.path.join(os.path.dirname(__file__), "scheduler")
     os.makedirs(storage_dir, exist_ok=True)
     return os.path.join(storage_dir, f"{publish_destination}.json")
@@ -1035,47 +1116,45 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
 def save_scheduler_state(publish_destination: str, state: Dict[str, Any]) -> None:
     """Save scheduler state to disk."""
     path = get_scheduler_storage_path(publish_destination)
-    # try:
-    # Get the current context stack from global state if not in state
-    context_stack = state.get("context_stack", scheduler_contexts_stacks.get(publish_destination, []))
-    
-    debug(f"*** context_stack: {context_stack}")
-
-    # Create a deep copy of the state to avoid modifying the original
-    state_to_save = {
-        "schedule_stack": state.get("schedule_stack", []),
-        "context_stack": [],  # Will be populated below
-        "state": state.get("state", "stopped"),
-        "last_updated": datetime.now().isoformat()
-    }
-
-    debug(f"*** state_to_Save: {state_to_save}")
-    
-    # Deep copy each context in the stack
-    for context in context_stack:
-        # Start with a copy of the entire context
-        context_copy = dict(context)
+    try:
+        # Get the current context stack from global state if not in state
+        context_stack = state.get("context_stack", scheduler_contexts_stacks.get(publish_destination, []))
         
-        # Ensure vars is a deep copy
-        if "vars" in context_copy:
-            context_copy["vars"] = dict(context_copy["vars"])
-            
-        # Ensure all list values (including history arrays) are deep copied
-        for key, value in context_copy.items():
-            if isinstance(value, list):
-                context_copy[key] = list(value)
+        debug(f"*** context_stack: {context_stack}")
+
+        # Create a deep copy of the state to avoid modifying the original
+        state_to_save = {
+            "schedule_stack": state.get("schedule_stack", []),
+            "context_stack": [],  # Will be populated below
+            "state": state.get("state", "stopped"),
+            "last_updated": datetime.now().isoformat()
+        }
         
-        # Ensure publish_destination is preserved
-        if "publish_destination" in context:
-            context_copy["publish_destination"] = context["publish_destination"]
-                
-        state_to_save["context_stack"].append(context_copy)
-                
-    with open(path, 'w') as f:
-        json.dump(state_to_save, f, indent=2)
+        debug(f"*** state_to_Save: {state_to_save}")
             
-    #except Exception as e:
-    #    error(f"Error saving scheduler state for {publish_destination}: {str(e)}")
+        # Deep copy each context in the stack
+        for context in context_stack:
+            # Start with a copy of the entire context
+            context_copy = dict(context)
+            
+            # Ensure vars is a deep copy
+            if "vars" in context_copy:
+                context_copy["vars"] = dict(context_copy["vars"])
+                
+            # Ensure all list values (including history arrays) are deep copied
+            for key, value in context_copy.items():
+                if isinstance(value, list):
+                    context_copy[key] = list(value)
+                    
+            state_to_save["context_stack"].append(context_copy)
+                    
+        with open(path, 'w') as f:
+            # Use default=str so datetime and other non-serializable objects are converted to strings
+            json.dump(state_to_save, f, indent=2, default=str)
+            
+    except Exception as e:
+        error(f"Error saving scheduler state for {publish_destination}: {str(e)}")
+        raise
 
 def update_scheduler_state(publish_destination: str, 
                          schedule_stack: List[Dict[str, Any]] = None,
@@ -1148,7 +1227,10 @@ def initialize_schedulers_from_disk():
         
     for filename in os.listdir(storage_dir):
         if filename.endswith('.json'):
+            # CRITICAL: This assumes the filename (minus .json) is the publish_destination ID
+            # If display names are being used for filenames, schedulers won't load correctly
             publish_destination = filename[:-5]  # Remove .json extension
+            info(f"Loading scheduler state for ID '{publish_destination}'")
             state = load_scheduler_state(publish_destination)
             
             # Initialize the schedule stack
