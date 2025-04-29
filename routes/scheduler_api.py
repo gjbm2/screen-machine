@@ -270,8 +270,24 @@ def handle_generate(instruction, context, now, output, publish_destination):
             log_schedule(error_msg, publish_destination, now)
             return    
 
-        # Record generation result
-        context["last_generated"] = "[image_path]"
+        # Extract the image URL from the response
+        image_url = None
+        if isinstance(response, list) and len(response) > 0:
+            first_result = response[0]
+            if isinstance(first_result, dict):
+                # Get the image URL from the message field, similar to app.py
+                image_url = first_result.get("message", None)
+                if image_url:
+                    # Record generation result with the actual image URL
+                    context["last_generated"] = image_url
+                    debug(f"Stored image URL in context: {image_url}")
+                else:
+                    debug("No image URL found in response message field")
+        
+        # Default if no URL was found in the response
+        if not image_url:
+            context["last_generated"] = "[image_path]"
+            debug("Using default image path placeholder")
 
         # Handle history if specified
         history_var = instruction.get("history_output_var")
@@ -281,7 +297,8 @@ def handle_generate(instruction, context, now, output, publish_destination):
             # Append timestamp and prompt to history
             context["vars"][history_var].append({
                 "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
-                "prompt": prompt
+                "prompt": prompt,
+                "image_url": image_url  # Add the image URL to history as well
             })
         
         success_msg = f"Generated image from: '{prompt}'"
@@ -289,7 +306,7 @@ def handle_generate(instruction, context, now, output, publish_destination):
         if isinstance(response, list) and len(response) > 0:
             first_result = response[0]
             if isinstance(first_result, dict):
-                result_details = first_result.get("file", "unknown")
+                result_details = first_result.get("file", image_url or "unknown")
                 success_msg = f"Generated image from: '{prompt}' -> {result_details}"
                 
         output.append(f"[{now.strftime('%H:%M')}] {success_msg}")
@@ -303,25 +320,38 @@ def handle_generate(instruction, context, now, output, publish_destination):
         error(traceback.format_exc())
 
 def handle_animate(instruction, context, now, output, publish_destination):
-    # Prepare the animation request
-    data = {
-        "data": {
-            "targets": [context.get("last_generated")] if context.get("last_generated") else []
-        }
-    }
+    # Extract the prompt from either direct input or variable (similar to handle_generate)
+    prompt = ""
+    if "input" in instruction:
+        if isinstance(instruction["input"], dict):
+            if "prompt" in instruction["input"]:
+                prompt = instruction["input"]["prompt"]
+            elif "prompt_var" in instruction["input"]:
+                prompt_var = instruction["input"]["prompt_var"]
+                prompt = context["vars"].get(prompt_var, "")
+    else:
+        # Fallback for old format
+        prompt = instruction.get("prompt", "")
+        prompt_var_value = context["vars"].get(instruction.get("prompt_var", ""), "")
+        prompt = " ".join(filter(None, [prompt, prompt_var_value]))
     
     # Make the request to the animate endpoint
     try:
-        #response = requests.post("http://localhost:5000/api/animate", json=data)
-
-        #data = input_obj.get("data", {})
-        #prompt = data.get("prompt", None)
-        #refiner = data.get("refiner", "none")  
-        #workflow = data.get("workflow", None)
-        #images = data.get("images", [])
         from routes.alexa import async_amimate
         success_msg = f"Started animation of {context.get('last_generated', 'unknown file')}"
-        async_amimate([publish_destination])
+        
+        # Create an obj dictionary similar to what alexa.process provides
+        obj = {
+            "data": {
+                "targets": [publish_destination],
+                "refiner": instruction.get("refiner", "animator"),
+                "prompt": prompt if prompt else None
+            }
+        }
+        
+        # Call with both targets and obj parameters
+        async_amimate(targets=[publish_destination], obj=obj)
+        
         output.append(f"[{now.strftime('%H:%M')}] {success_msg}")
         log_schedule(f"ANIMATE SUCCESS: {success_msg}", publish_destination, now)
     except Exception as e:
@@ -451,13 +481,16 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
             if trigger["date"] == date_str:
                 matched_any_trigger = True
                 # Process time schedules for this date
-                instructions = process_time_schedules(trigger.get("scheduled_actions", []), now, minute_of_day, publish_destination)
-                if instructions:
+                matched_schedules = process_time_schedules(trigger.get("scheduled_actions", []), now, minute_of_day, publish_destination)
+                if matched_schedules:
                     found_actions_to_execute = True
                     message = f"Matched date trigger for {date_str} with actions to execute"
                     info(message)
                     log_schedule(message, publish_destination, now)
-                    all_instructions.extend(instructions)
+                    # Extract instructions from matched schedules
+                    for matched_schedule in matched_schedules:
+                        instructions = extract_instructions(matched_schedule.get("trigger_actions", {}))
+                        all_instructions.extend(instructions)
     
     # If a date trigger matched, skip day of week triggers
     if not matched_any_trigger:
@@ -467,13 +500,16 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                 if day_str in trigger["days"]:
                     matched_any_trigger = True
                     # Process time schedules for this day
-                    instructions = process_time_schedules(trigger.get("scheduled_actions", []), now, minute_of_day, publish_destination)
-                    if instructions:
+                    matched_schedules = process_time_schedules(trigger.get("scheduled_actions", []), now, minute_of_day, publish_destination)
+                    if matched_schedules:
                         found_actions_to_execute = True
                         message = f"Matched day_of_week trigger for {day_str} with actions to execute"
                         info(message)
                         log_schedule(message, publish_destination, now)
-                        all_instructions.extend(instructions)
+                        # Extract instructions from matched schedules
+                        for matched_schedule in matched_schedules:
+                            instructions = extract_instructions(matched_schedule.get("trigger_actions", {}))
+                            all_instructions.extend(instructions)
     
     # Check event triggers (these can match regardless of other triggers)
     for trigger in schedule.get("triggers", []):
@@ -510,12 +546,12 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
     return all_instructions
 
 def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, minute_of_day: int, publish_destination: str = None) -> List[Dict[str, Any]]:
-    """Process a list of time schedules and return instructions if time matches."""
+    """Process a list of time schedules and return matched schedules without extracting instructions yet."""
     if not time_schedules:
         return []
         
     current_time_str = now.strftime("%H:%M")
-    all_instructions = []
+    matched_schedules = []
     
     for schedule in time_schedules:
         # Get the scheduled time
@@ -565,8 +601,7 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                         info(message)
                         if publish_destination:
                             log_schedule(message, publish_destination, now)
-                        instructions = extract_instructions(schedule.get("trigger_actions", {}))
-                        all_instructions.extend(instructions)
+                        matched_schedules.append(schedule)
             except (ValueError, TypeError) as e:
                 error(f"Error processing repeat schedule: {e}")
                 continue
@@ -578,10 +613,9 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                 info(message)
                 if publish_destination:
                     log_schedule(message, publish_destination, now)
-                instructions = extract_instructions(schedule.get("trigger_actions", {}))
-                all_instructions.extend(instructions)
+                matched_schedules.append(schedule)
     
-    return all_instructions
+    return matched_schedules
 
 def extract_instructions(instruction_container: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Extract instructions from the new schema's instruction container structure."""
@@ -1388,9 +1422,48 @@ def api_set_scheduler_context(publish_destination):
 
         if "vars" not in context:
             context["vars"] = {}
-        context["vars"][var_name] = var_value
-        info(f"Set context variable {var_name}={var_value} for scheduler {publish_destination}")
-        return jsonify({"status": "success", "var_name": var_name, "var_value": var_value})
+        
+        # If var_value is null, delete the variable instead of setting it to null
+        now = datetime.now()
+        if var_value is None:
+            if var_name in context["vars"]:
+                del context["vars"][var_name]
+                log_msg = f"Deleted context variable '{var_name}'"
+                log_schedule(log_msg, publish_destination, now)
+                info(f"Deleted context variable {var_name} from scheduler {publish_destination}")
+            else:
+                log_msg = f"Attempted to delete non-existent context variable '{var_name}'"
+                log_schedule(log_msg, publish_destination, now)
+                info(f"Attempted to delete non-existent variable {var_name} from scheduler {publish_destination}")
+        else:
+            # Set the variable value - can be any type (string, number, boolean, object, array)
+            context["vars"][var_name] = var_value
+            
+            # Add log entry
+            value_desc = str(var_value)
+            if isinstance(var_value, dict) or isinstance(var_value, list):
+                value_desc = f"{type(var_value).__name__} with {len(var_value)} items"
+            
+            log_msg = f"Set context variable '{var_name}' to {value_desc}"
+            log_schedule(log_msg, publish_destination, now)
+            info(f"Set context variable {var_name}={var_value} for scheduler {publish_destination}")
+        
+        # Update the context stack in memory
+        scheduler_contexts_stacks[publish_destination][-1] = context
+        
+        # Persist changes to disk
+        update_scheduler_state(
+            publish_destination,
+            context_stack=scheduler_contexts_stacks[publish_destination]
+        )
+        
+        return jsonify({
+            "status": "success", 
+            "var_name": var_name, 
+            "var_value": var_value,
+            "vars": context["vars"],  # Return the updated vars object for convenience
+            "deleted": var_value is None
+        })
     except Exception as e:
         error_msg = f"Error setting scheduler context: {str(e)}"
         error(error_msg)

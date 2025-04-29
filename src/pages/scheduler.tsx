@@ -3,13 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
-import { Play, Pause, Plus, AlertCircle, RefreshCcw, ArrowDownToLine, X } from 'lucide-react';
+import { Play, Pause, Plus, AlertCircle, RefreshCcw, ArrowDownToLine, X, Settings } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { useConsoleManagement } from '@/hooks/use-console-management';
 import apiService from '@/utils/api';
 import { getPublishDestinations } from '@/services/PublishService';
 import { useNavigate } from 'react-router-dom';
 import { SchemaEditModal } from '../components/scheduler/SchemaEditModal';
+import { SetVarsButton } from '../components/scheduler/SetVarsButton';
 
 interface Schedule {
   id: string;
@@ -40,7 +41,7 @@ interface Destination {
   isPaused?: boolean;
   logs?: string[];
   scheduleStack?: any[];
-  contextStack?: Record<string, Context>;
+  contextStack?: Context[];  // Changed from Record<string, Context> to Context[]
 }
 
 interface NextAction {
@@ -148,12 +149,32 @@ const Scheduler = () => {
               // Get context
               try {
                 const contextResponse = await apiService.getSchedulerContext(destId);
-                destination.contextStack = contextResponse.context_stack || {};
+                console.log(`Context response for ${destId}:`, contextResponse);
+                
+                // Check if the response is a direct context object or contains a context_stack
+                if (contextResponse.context_stack) {
+                  // Use the context_stack if available
+                  destination.contextStack = contextResponse.context_stack || [];
+                } else if (contextResponse.vars || contextResponse.last_generated) {
+                  // If it's a direct context object, create a single-item array
+                  destination.contextStack = [contextResponse];
+                  console.log(`Created context stack with direct context for ${destId}`, destination.contextStack);
+                } else {
+                  // Default to empty array
+                  destination.contextStack = [];
+                  console.warn(`Destination ${destId} has no usable context data`);
+                }
+                
+                if (destination.contextStack && destination.contextStack.length > 0) {
+                  console.log(`Destination ${destId} context[0]:`, destination.contextStack[0]);
+                } else {
+                  console.warn(`Destination ${destId} has empty contextStack`);
+                }
               } catch (contextError) {
                 if (process.env.NODE_ENV === 'development') {
                   console.warn(`No context for running scheduler ${destId}`);
                 }
-                destination.contextStack = {};
+                destination.contextStack = [];
               }
               
               // Convert schedule stack items to individual schedules for the UI
@@ -175,7 +196,7 @@ const Scheduler = () => {
             // If it's not running, we still want to show it in the UI
             // But don't log errors for missing schedules - this is expected
             destination.scheduleStack = [];
-            destination.contextStack = {};
+            destination.contextStack = [];
             
             destination.isRunning = false;
             destination.isPaused = false;
@@ -693,8 +714,22 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
 }) => {
   const [showLogs, setShowLogs] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [activeTab, setActiveTab] = useState<'context' | 'script'>('context');
   const [logs, setLogs] = useState<string[]>(destination.logs || []);
   const logsContainerRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
+  
+  // Debug logs
+  useEffect(() => {
+    console.log(`SchedulerCard for ${destination.name} (${destination.id}):`);
+    console.log(`- isRunning: ${destination.isRunning}`);
+    console.log(`- isPaused: ${destination.isPaused}`);
+    console.log(`- Has scheduleStack: ${destination.scheduleStack ? destination.scheduleStack.length : 0} items`);
+    console.log(`- Has contextStack: ${destination.contextStack ? destination.contextStack.length : 0} items`);
+    if (destination.contextStack && destination.contextStack.length > 0) {
+      console.log(`- First context:`, destination.contextStack[0]);
+    }
+  }, [destination]);
   
   // Set up polling for logs when they're visible
   useEffect(() => {
@@ -785,6 +820,53 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
       </div>
     );
   };
+
+  // Render context variables
+  const renderContextVariables = (context: any) => {
+    console.log("Rendering context:", context);
+    
+    if (!context) {
+      console.warn("Context is undefined or null");
+      return <p className="text-sm text-muted-foreground">No context available</p>;
+    }
+    
+    if (!context.vars) {
+      console.warn("Context has no vars property:", context);
+      return <p className="text-sm text-muted-foreground">No variables in context</p>;
+    }
+    
+    if (Object.keys(context.vars).length === 0) {
+      console.warn("Context vars is empty");
+      return <p className="text-sm text-muted-foreground">No variables in context</p>;
+    }
+
+    console.log("Context variables:", Object.entries(context.vars));
+
+    return (
+      <div className="bg-accent/10 p-2 rounded-md">
+        <h5 className="text-sm font-medium mb-2">Variables:</h5>
+        <ul className="text-xs space-y-1">
+          {Object.entries(context.vars).map(([key, value]) => (
+            <li key={key} className="flex items-start">
+              <span className="font-semibold mr-2">{key}:</span>
+              <span className="text-muted-foreground whitespace-pre-wrap break-all">
+                {typeof value === 'object' 
+                  ? JSON.stringify(value, null, 2)
+                  : String(value)
+                }
+              </span>
+            </li>
+          ))}
+        </ul>
+        {context.last_generated && (
+          <div className="mt-2">
+            <h5 className="text-sm font-medium">Last Generated:</h5>
+            <p className="text-xs text-muted-foreground">{context.last_generated}</p>
+          </div>
+        )}
+      </div>
+    );
+  };
   
   return (
     <Card className="shadow-md">
@@ -859,56 +941,6 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
             <p className="text-sm mt-2">Click "Create" to add a schedule or "Start" to create a default schedule.</p>
           </div>
         )}
-      
-        {/* Schedules */}
-        {destination.schedules && destination.schedules.length > 0 && (
-          <div className="space-y-4 mb-6">
-            <h3 className="text-lg font-semibold">Schedules</h3>
-            {destination.schedules.map((schedule) => (
-              <div
-                key={schedule.id}
-                className="flex items-center justify-between p-4 border rounded-lg"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{schedule.name}</span>
-                    <Badge variant={schedule.is_paused ? "outline" : schedule.is_running ? "default" : "secondary"}>
-                      {schedule.is_paused ? "Paused" : schedule.is_running ? "Running" : "Stopped"}
-                    </Badge>
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    <p>Cron: {schedule.cron}</p>
-                    <p>Last run: {schedule.last_run}</p>
-                    <p>Next run: {schedule.next_run}</p>
-                  </div>
-                  {schedule.error && (
-                    <div className="flex items-center gap-2 text-destructive text-sm">
-                      <AlertCircle className="h-4 w-4" />
-                      <span>{schedule.error}</span>
-                    </div>
-                  )}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onToggle(destination.id, destination.isRunning)}
-                >
-                  {destination.isRunning ? (
-                    <>
-                      <Pause className="h-4 w-4 mr-2" />
-                      Pause
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-4 w-4 mr-2" />
-                      Start
-                    </>
-                  )}
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
         
         {/* Schedule Stack - Only show if we have schedules */}
         {destination.scheduleStack && destination.scheduleStack.length > 0 && (
@@ -919,7 +951,7 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
                 size="sm" 
                 onClick={() => setShowSchedule(!showSchedule)}
               >
-                {showSchedule ? 'Hide Schedule Stack' : 'Show Schedule Stack'}
+                {showSchedule ? 'Hide details' : 'Show details'}
               </Button>
               {showSchedule && destination.scheduleStack && destination.scheduleStack.length > 0 && (
                 <Button 
@@ -941,32 +973,70 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
                       <div key={index} className="border rounded-lg p-4 bg-card">
                         <div className="flex justify-between items-center mb-2">
                           <h4 className="font-semibold">Layer {index + 1}</h4>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onEdit(destination.id, index)}
-                          >
-                            Edit
-                          </Button>
-                        </div>
-                        <pre className="text-xs bg-muted p-2 rounded-md overflow-auto max-h-40">
-                          {JSON.stringify(layer, null, 2)}
-                        </pre>
-                        
-                        {/* Show context variables if available */}
-                        {destination.contextStack && destination.contextStack[index] && (
-                          <div className="mt-4">
-                            <h5 className="font-medium mb-2">Context Variables:</h5>
-                            <div className="bg-muted p-2 rounded-md overflow-auto max-h-40" data-lov-id={`scheduler-context-${destination.id}-${index}`}>
-                              <ul className="text-xs">
-                                {Object.entries(destination.contextStack[index].vars || {}).map(([key, value]) => (
-                                  <li key={key}>
-                                    <strong>{key}:</strong> {JSON.stringify(value)}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onEdit(destination.id, index)}
+                            >
+                              Edit
+                            </Button>
+                            <SetVarsButton
+                              destinationId={destination.id}
+                              contextVars={destination.contextStack && destination.contextStack[index] ? destination.contextStack[index].vars || {} : {}}
+                              onVarsSaved={() => {
+                                toast({
+                                  title: "Variable saved",
+                                  description: "Context updated successfully. Refresh to see all changes.",
+                                });
+                              }}
+                            />
                           </div>
+                        </div>
+                        
+                        {/* Tabs for Context and Script */}
+                        <div className="border-b mb-4">
+                          <div className="flex space-x-2">
+                            <button
+                              className={`pb-2 px-1 text-sm transition-colors relative ${
+                                activeTab === 'context' 
+                                  ? 'font-medium text-primary' 
+                                  : 'text-muted-foreground hover:text-foreground'
+                              }`}
+                              onClick={() => setActiveTab('context')}
+                            >
+                              Context
+                              {activeTab === 'context' && (
+                                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+                              )}
+                            </button>
+                            <button
+                              className={`pb-2 px-1 text-sm transition-colors relative ${
+                                activeTab === 'script' 
+                                  ? 'font-medium text-primary' 
+                                  : 'text-muted-foreground hover:text-foreground'
+                              }`}
+                              onClick={() => setActiveTab('script')}
+                            >
+                              Script
+                              {activeTab === 'script' && (
+                                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {/* Tab content */}
+                        {activeTab === 'context' && destination.contextStack && destination.contextStack[index] && (
+                          <div className="mb-4">
+                            {renderContextVariables(destination.contextStack[index])}
+                          </div>
+                        )}
+                        
+                        {activeTab === 'script' && (
+                          <pre className="text-xs bg-muted p-2 rounded-md overflow-auto max-h-40">
+                            {JSON.stringify(layer, null, 2)}
+                          </pre>
                         )}
                       </div>
                     ))}
