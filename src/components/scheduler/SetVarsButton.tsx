@@ -49,7 +49,7 @@ export const SetVarsButton: React.FC<SetVarsButtonProps> = ({
       toast({
         title: "Warning",
         description: "Variable was saved but UI may not reflect changes. Refresh the page to see updated context.",
-        variant: "warning"
+        variant: "destructive"
       });
     }
   };

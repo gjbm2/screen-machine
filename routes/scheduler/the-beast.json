@@ -61,13 +61,40 @@
   "context_stack": [
     {
       "vars": {
-        "value": "Tech to power",
-        "test": null
+        "value": "Be good company",
+        "test": 5,
+        "prompt_history": [
+          {
+            "timestamp": "2025-04-29 13:00:00",
+            "prompt": "See through",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/d16ba6fc-3517-4e15-8a87-f050a8682870-e1/e6609638.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250429%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250429T120020Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7e2cd0b8d738e7aeb264f9ed48d70c2394ef260739fa168b7c6fa95297f4ac7b"
+          },
+          {
+            "timestamp": "2025-04-29 14:00:00",
+            "prompt": "Change begins at home",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/151744af-febd-4ad7-bbe1-92fc535a843c-e1/92287211.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250429%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250429T130019Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=14e591e1ccd10c006d89c136bf59bd246fa867c9b47adeac74499f329839f4fe"
+          },
+          {
+            "timestamp": "2025-04-29 15:00:00",
+            "prompt": "Action this day",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/61555b33-cbdc-4590-8e71-0278c6972a56-e1/4ef2b441.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250429%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250429T140043Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=fc47364fac2e9316b586d9d3912ebf69fa238f128805463a40e1ec9d9dd31961"
+          },
+          {
+            "timestamp": "2025-04-29 16:00:00",
+            "prompt": "See through",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/26ac115a-699f-4f38-be9a-d2aa59efe50f-e1/8edcb1ee.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250429%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250429T150035Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d01eb43d7128368e83041076d3eed5e5ea968a3ff84798c8588fdc455402249e"
+          },
+          {
+            "timestamp": "2025-04-29 17:00:00",
+            "prompt": "Be good company",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/30093441-bd51-498b-8199-0fcfda494325-e1/4c84cc93.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250429%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250429T160038Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=85bbe3b127a9b79981ece53dfb2d196cf2ce42f9603f4389390f18538a1acb70"
+          }
+        ]
       },
-      "last_generated": "[image_path]",
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/30093441-bd51-498b-8199-0fcfda494325-e1/4c84cc93.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250429%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250429T160038Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=85bbe3b127a9b79981ece53dfb2d196cf2ce42f9603f4389390f18538a1acb70",
       "publish_destination": "the-beast"
     }
   ],
   "state": "running",
-  "last_updated": "2025-04-29T12:35:27.054058"
+  "last_updated": "2025-04-29T17:32:04.974273"
 }

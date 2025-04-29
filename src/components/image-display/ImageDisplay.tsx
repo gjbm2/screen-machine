@@ -1,9 +1,10 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import FullscreenDialog from './FullscreenDialog';
 import ViewModeContent from './ViewModeContent';
 import ImageDisplayHeader from './ImageDisplayHeader';
 import useImageDisplayState from './hooks/useImageDisplayState';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import ViewModeSelector from './ViewModeSelector';
 
 export type ViewMode = 'normal' | 'small' | 'table';
 export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
@@ -46,9 +47,15 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
   onDeleteContainer,
   fullscreenRefreshTrigger
 }) => {
-  // Debug logging for image URL
-  React.useEffect(() => {
+  // State for section expansion - start rolled up as requested
+  const [isSectionExpanded, setIsSectionExpanded] = useState(false);
+  
+  // Debug logging for image URL and other crucial data
+  useEffect(() => {
     console.log('[ImageDisplay] Component rendered with imageUrl:', imageUrl);
+    console.log('[ImageDisplay] Generated images count:', generatedImages.length);
+    console.log('[ImageDisplay] Image container order:', imageContainerOrder);
+    
     if (imageUrl) {
       // Test if image loads
       const testImg = new Image();
@@ -56,7 +63,7 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
       testImg.onerror = (e) => console.error('[ImageDisplay] Test image FAILED to load:', imageUrl, e);
       testImg.src = imageUrl;
     }
-  }, [imageUrl]);
+  }, [imageUrl, generatedImages, imageContainerOrder]);
 
   const {
     viewMode,
@@ -106,38 +113,65 @@ const ImageDisplay: React.FC<ImageDisplayProps> = ({
     }
   };
   
+  const toggleSectionExpansion = () => {
+    setIsSectionExpanded(!isSectionExpanded);
+  };
+
+  // Always show the small grid view content even when collapsed
+  // if viewMode is 'small' or 'table'
+  const alwaysShowContent = viewMode === 'small' || viewMode === 'table';
+  
   return (
     <div className="mt-4">
-      {hasBatches && (
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 cursor-pointer" onClick={toggleSectionExpansion}>
+          {isSectionExpanded ? (
+            <ChevronUp className="h-5 w-5 text-gray-500" />
+          ) : (
+            <ChevronDown className="h-5 w-5 text-gray-500" />
+          )}
+          <h2 className="text-xl font-bold">Generated Images</h2>
+        </div>
+        
+        {/* Always show view mode selector */}
+        <ViewModeSelector 
+          viewMode={viewMode} 
+          onViewModeChange={(value) => setViewMode(value as ViewMode)} 
+        />
+      </div>
+      
+      {/* Show content if section is expanded OR if in small/table view mode */}
+      {(isSectionExpanded || alwaysShowContent) && (
         <div className="mt-2">
-          <ImageDisplayHeader
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-          />
-          
           <div className="pr-2">
-            <ViewModeContent
-              viewMode={viewMode}
-              imageContainerOrder={imageContainerOrder}
-              batches={batches}
-              expandedContainers={expandedContainers}
-              handleToggleExpand={handleToggleExpand}
-              onUseGeneratedAsInput={onUseGeneratedAsInput}
-              onCreateAgain={onCreateAgain}
-              onDeleteImage={onDeleteImage}
-              onDeleteContainer={onDeleteContainer}
-              onFullScreenClick={handleFullScreenClick}
-              imageUrl={imageUrl}
-              getAllImages={getAllImages}
-              handleSmallImageClick={handleSmallImageClick}
-              sortField={sortField}
-              sortDirection={sortDirection}
-              handleSortClick={handleSortClick}
-              getSortedContainers={getSortedContainers}
-              handleTableRowClick={handleTableRowClick}
-              isLoading={isLoading}
-              onReorderContainers={onReorderContainers}
-            />
+            {hasBatches ? (
+              <ViewModeContent
+                viewMode={viewMode}
+                imageContainerOrder={imageContainerOrder}
+                batches={batches}
+                expandedContainers={expandedContainers}
+                handleToggleExpand={handleToggleExpand}
+                onUseGeneratedAsInput={onUseGeneratedAsInput}
+                onCreateAgain={onCreateAgain}
+                onDeleteImage={onDeleteImage}
+                onDeleteContainer={onDeleteContainer}
+                onFullScreenClick={handleFullScreenClick}
+                imageUrl={imageUrl}
+                getAllImages={getAllImages}
+                handleSmallImageClick={handleSmallImageClick}
+                sortField={sortField}
+                sortDirection={sortDirection}
+                handleSortClick={handleSortClick}
+                getSortedContainers={getSortedContainers}
+                handleTableRowClick={handleTableRowClick}
+                isLoading={isLoading}
+                onReorderContainers={onReorderContainers}
+              />
+            ) : (
+              <div className="p-4 border border-dashed rounded-md text-gray-500 text-center">
+                No generated images yet. Submit a prompt to generate images.
+              </div>
+            )}
           </div>
           
           <FullscreenDialog 
