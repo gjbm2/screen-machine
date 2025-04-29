@@ -12,6 +12,7 @@ import { nanoid } from '@/lib/utils';
 import typedWorkflows from '@/data/typedWorkflows';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
+import { getPublishDestinations } from '@/services/PublishService';
 
 interface OverlayMessage {
   html: string;
@@ -866,6 +867,7 @@ const Index = () => {
           onDeleteImage={handleDeleteImage}
           onDeleteContainer={handleDeleteContainer}
           fullscreenRefreshTrigger={fullscreenRefreshTrigger}
+          publishDestinations={getPublishDestinations().map(dest => dest.id)}
         />
       </MainLayout>
       

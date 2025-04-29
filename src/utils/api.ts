@@ -6,6 +6,11 @@ const toast = {
     sonnerToast.error(message, {
       duration: 5000 // Auto-hide after 5 seconds
     });
+  },
+  success: (message: string) => {
+    sonnerToast.success(message, {
+      duration: 3000 // Auto-hide after 3 seconds
+    });
   }
 };
 
@@ -33,6 +38,23 @@ interface GenerateImageParams {
   is_async?: boolean;
 }
 
+// Bucket API Types
+export interface BucketItem {
+  filename: string;
+  bucket: string;
+  thumbnail: string;
+  isFavorite: boolean;
+  index: number;
+  url?: string;
+}
+
+export interface Bucket {
+  name: string;
+  items: BucketItem[];
+  published?: string;
+  publishedAt?: string;
+}
+
 class ApiService {
   private apiUrl: string;
   private mockMode: boolean;
@@ -52,9 +74,395 @@ class ApiService {
     }
   }
 
+  // Get all available buckets
+  async fetchAllBuckets(): Promise<string[]> {
+    try {
+      if (this.mockMode) {
+        // Return mock bucket names
+        return ['mock-bucket-1', 'mock-bucket-2', 'mock-bucket-3'];
+      }
+
+      const response = await fetch(`${this.apiUrl}/buckets/`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch buckets: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching buckets:', error);
+      toast.error('Failed to fetch buckets');
+      return [];
+    }
+  }
+
+  // Get detailed info for a specific bucket
+  async fetchBucketDetails(bucketName: string): Promise<Bucket> {
+    try {
+      if (this.mockMode) {
+        // Return mock bucket details
+        return {
+          name: bucketName,
+          items: Array.from({ length: 5 }, (_, i) => ({
+            filename: `mock-image-${i}.jpg`,
+            bucket: bucketName,
+            thumbnail: `https://placeholder.pics/svg/300x300/DEDEDE/555555/Mock%20${i}`,
+            isFavorite: Math.random() > 0.5,
+            index: i
+          }))
+        };
+      }
+
+      const response = await fetch(`${this.apiUrl}/buckets/${bucketName}/items`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch bucket details: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Transform API response to our expected format
+      const items: BucketItem[] = (data.sequence || []).map((filename: string, index: number) => ({
+        filename,
+        bucket: bucketName,
+        thumbnail: `${this.apiUrl}/buckets/${bucketName}/thumbnail/${filename}`,
+        url: `${this.apiUrl}/buckets/${bucketName}/raw/${filename}`,
+        isFavorite: (data.favorites || []).includes(filename),
+        index
+      }));
+      
+      return {
+        name: bucketName,
+        items,
+        published: data.published_meta?.filename,
+        publishedAt: data.published_meta?.published_at
+      };
+    } catch (error) {
+      console.error(`Error fetching bucket details for ${bucketName}:`, error);
+      toast.error(`Failed to fetch details for bucket: ${bucketName}`);
+      return { name: bucketName, items: [] };
+    }
+  }
+
+  // Toggle favorite status of an item
+  async toggleFavorite(bucket: string, filename: string, currentState: boolean): Promise<boolean> {
+    try {
+      if (this.mockMode) {
+        return true;
+      }
+
+      const method = currentState ? 'DELETE' : 'POST';
+      const endpoint = `${this.apiUrl}/buckets/${bucket}/favorite/${filename}`;
+      
+      const response = await fetch(endpoint, { method });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to ${currentState ? 'unfavorite' : 'favorite'} image`);
+      }
+      
+      const data = await response.json();
+      toast.success(`Image ${currentState ? 'unfavorited' : 'favorited'}`);
+      return true;
+    } catch (error) {
+      console.error('Error toggling favorite status:', error);
+      toast.error('Failed to update favorite status');
+      return false;
+    }
+  }
+
+  // Delete an image from a bucket
+  async deleteImage(bucket: string, filename: string): Promise<boolean> {
+    try {
+      if (this.mockMode) {
+        return true;
+      }
+
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/${filename}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete image');
+      }
+      
+      toast.success('Image deleted');
+      return true;
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      toast.error('Failed to delete image');
+      return false;
+    }
+  }
+
+  // Move an image up or down in sequence
+  async moveImage(bucket: string, filename: string, direction: 'up' | 'down'): Promise<boolean> {
+    try {
+      if (this.mockMode) {
+        return true;
+      }
+
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/move-${direction}/${filename}`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to move image ${direction}`);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error(`Error moving image ${direction}:`, error);
+      toast.error(`Failed to move image ${direction}`);
+      return false;
+    }
+  }
+
+  // Move an image to a specific position in sequence
+  async moveImageToPosition(bucket: string, filename: string, position: number): Promise<boolean> {
+    try {
+      if (this.mockMode) {
+        return true;
+      }
+
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/move-to/${filename}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ position })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to move image to position');
+      }
+      
+      toast.success(`Image moved to position ${position}`);
+      return true;
+    } catch (error) {
+      console.error('Error moving image to position:', error);
+      toast.error('Failed to move image to position');
+      return false;
+    }
+  }
+
+  // Copy an image to another bucket
+  async copyImageToBucket(sourceBucket: string, targetBucket: string, filename: string): Promise<boolean> {
+    try {
+      if (this.mockMode) {
+        return true;
+      }
+
+      const response = await fetch(`${this.apiUrl}/buckets/move`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          source_bucket: sourceBucket,
+          dest_bucket: targetBucket,
+          filename: filename,
+          copy: true
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to copy image');
+      }
+      
+      toast.success(`Image copied to ${targetBucket}`);
+      return true;
+    } catch (error) {
+      console.error('Error copying image:', error);
+      toast.error('Failed to copy image');
+      return false;
+    }
+  }
+
+  // Publish an image from a bucket
+  async publishBucketImage(bucket: string, filename: string): Promise<boolean> {
+    try {
+      if (this.mockMode) {
+        return true;
+      }
+
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/publish/${filename}`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to publish image');
+      }
+      
+      toast.success('Image published');
+      return true;
+    } catch (error) {
+      console.error('Error publishing image:', error);
+      toast.error('Failed to publish image');
+      return false;
+    }
+  }
+
+  // Get the currently published image info for a bucket
+  async getPublishedInfo(bucket: string): Promise<any> {
+    try {
+      if (this.mockMode) {
+        return {
+          filename: 'mock-published.jpg',
+          published_at: new Date().toISOString(),
+          raw_url: 'https://placeholder.pics/svg/800x600/DEDEDE/555555/Published%20Image',
+          thumbnail_url: 'https://placeholder.pics/svg/300x300/DEDEDE/555555/Thumbnail'
+        };
+      }
+
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/published`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to get published image info');
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting published image info:', error);
+      return null;
+    }
+  }
+
+  // Upload an image to a bucket
+  async uploadToBucket(bucket: string, file: File): Promise<any> {
+    try {
+      if (this.mockMode) {
+        return {
+          status: 'stored',
+          filename: file.name,
+          thumbnail: 'ok'
+        };
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to upload image');
+      }
+      
+      const result = await response.json();
+      toast.success('Image uploaded successfully');
+      return result;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('Failed to upload image to bucket');
+      return null;
+    }
+  }
+
+  // Create a new bucket
+  async createBucket(bucketName: string): Promise<boolean> {
+    try {
+      if (this.mockMode) {
+        return true;
+      }
+
+      const response = await fetch(`${this.apiUrl}/buckets/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ bucket_name: bucketName })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to create bucket');
+      }
+      
+      toast.success(`Bucket "${bucketName}" created`);
+      return true;
+    } catch (error) {
+      console.error('Error creating bucket:', error);
+      toast.error('Failed to create bucket');
+      return false;
+    }
+  }
+
   // Get the API URL
   getApiUrl(): string {
     return this.apiUrl;
+  }
+
+  // Purge non-favorite images from a bucket
+  async purgeNonFavorites(bucket: string): Promise<boolean> {
+    try {
+      if (this.mockMode) {
+        return true;
+      }
+
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/purge-non-favorites`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to purge non-favorite images');
+      }
+      
+      toast.success('Non-favorite images purged');
+      return true;
+    } catch (error) {
+      console.error('Error purging non-favorite images:', error);
+      toast.error('Failed to purge non-favorite images');
+      return false;
+    }
+  }
+
+  // Re-index a bucket
+  async reindexBucket(bucket: string): Promise<boolean> {
+    try {
+      if (this.mockMode) {
+        return true;
+      }
+
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/reindex`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to re-index bucket');
+      }
+      
+      toast.success('Bucket re-indexed');
+      return true;
+    } catch (error) {
+      console.error('Error re-indexing bucket:', error);
+      toast.error('Failed to re-index bucket');
+      return false;
+    }
+  }
+
+  // Extract JSON from a bucket
+  async extractJson(bucket: string): Promise<boolean> {
+    try {
+      if (this.mockMode) {
+        return true;
+      }
+
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/extract-json`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to extract JSON');
+      }
+      
+      toast.success('JSON extracted');
+      return true;
+    } catch (error) {
+      console.error('Error extracting JSON:', error);
+      toast.error('Failed to extract JSON');
+      return false;
+    }
   }
 
   // Get all available destinations with scheduler status

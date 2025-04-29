@@ -11,6 +11,7 @@ export interface PublishDestination {
   file?: string;
   maxwidth?: number;
   maxheight?: number;
+  headless?: boolean;
 }
 
 export const getPublishDestinations = (): PublishDestination[] => {
