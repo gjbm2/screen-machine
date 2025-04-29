@@ -1,4 +1,3 @@
-
 // API service for all backend requests
 import { toast } from 'sonner';
 
@@ -40,6 +39,11 @@ class ApiService {
     } else { 
       console.info('API Service running in normal mode - backend live');
     }
+  }
+
+  // Get the API URL
+  getApiUrl(): string {
+    return this.apiUrl;
   }
 
   // Generate images through the API
@@ -294,6 +298,649 @@ class ApiService {
     } catch (error) {
       console.error('Error publishing image:', error);
       toast.error('Failed to publish image');
+      throw error;
+    }
+  }
+  
+  // Save a scheduler schedule via backend
+  async saveSchedule(destinationId: string, position: number | null, scheduleData: any) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Saving schedule for destination ID:', destinationId, 
+                   position !== null ? `at position ${position}` : '(new)',
+                   'with data:', scheduleData);
+      return {
+        success: true,
+        message: 'Mock schedule save succeeded',
+        position: position || 0
+      };
+    }
+
+    try {
+      // IMPORTANT: destinationId should be the ID of the destination, not the display name
+      const endpoint = position !== null 
+        ? `${this.apiUrl}/schedulers/${destinationId}/schedule/${position}` 
+        : `${this.apiUrl}/schedulers/${destinationId}/schedule`;
+      
+      const method = position !== null ? 'PUT' : 'POST';
+      
+      console.log(`[api] Saving schedule to ${endpoint} with method ${method}`);
+      
+      const response = await fetch(endpoint, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(scheduleData),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Schedule save failed');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error saving schedule:', error);
+      toast.error('Failed to save schedule');
+      throw error;
+    }
+  }
+
+  // Get the scheduler schema
+  async getSchedulerSchema() {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Fetching scheduler schema');
+      return JSON.stringify({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          cron: { type: 'string' },
+          params: { type: 'object' }
+        },
+        required: ['name', 'cron']
+      });
+    }
+
+    try {
+      console.log('Fetching schema from API endpoint');
+      const response = await fetch(`${this.apiUrl}/scheduler/schema`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to fetch scheduler schema');
+      }
+
+      // Get the raw text response instead of parsing as JSON
+      const schemaText = await response.text();
+      console.log('RAW schema text received from backend (first 100 chars):', schemaText.substring(0, 100));
+      console.log('RAW schema text received from backend (full length):', schemaText.length);
+      
+      // Check if the first property is initial_actions
+      const parsedForCheck = JSON.parse(schemaText);
+      const firstKey = Object.keys(parsedForCheck.properties)[0];
+      console.log('First property in schema.properties:', firstKey);
+      
+      return schemaText;
+    } catch (error) {
+      console.error('Error fetching scheduler schema:', error);
+      toast.error('Failed to fetch scheduler schema');
+      throw error;
+    }
+  }
+
+  // List all schedulers
+  async listSchedulers() {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Listing schedulers');
+      return {
+        success: true,
+        running: ['mock-scheduler-1', 'mock-scheduler-2']
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to list schedulers');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error listing schedulers:', error);
+      toast.error('Failed to list schedulers');
+      throw error;
+    }
+  }
+
+  // Get scheduler logs
+  async getSchedulerLogs(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Fetching logs for scheduler ID:', destinationId);
+      return {
+        success: true,
+        log: [
+          '[MOCK LOG] Scheduler started',
+          '[MOCK LOG] Task executed successfully',
+          '[MOCK LOG] Waiting for next execution'
+        ]
+      };
+    }
+
+    try {
+      // IMPORTANT: destinationId should be the ID of the destination, not the display name
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to fetch scheduler logs');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching scheduler logs:', error);
+      toast.error('Failed to fetch scheduler logs');
+      throw error;
+    }
+  }
+
+  // Start a scheduler
+  async startScheduler(destinationId: string, schedule: any) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Starting scheduler ID:', destinationId);
+      return {
+        success: true,
+        status: 'started',
+        destination: destinationId
+      };
+    }
+
+    try {
+      // IMPORTANT: destinationId should be the ID of the destination, not the display name
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(schedule),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to start scheduler');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error starting scheduler:', error);
+      toast.error('Failed to start scheduler');
+      throw error;
+    }
+  }
+
+  // Stop a scheduler
+  async stopScheduler(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Stopping scheduler ID:', destinationId);
+      return {
+        success: true,
+        status: 'stopped',
+        destination: destinationId
+      };
+    }
+
+    try {
+      // IMPORTANT: destinationId should be the ID of the destination, not the display name
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to stop scheduler');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error stopping scheduler:', error);
+      toast.error('Failed to stop scheduler');
+      throw error;
+    }
+  }
+
+  // Get current schedule
+  async getSchedule(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Getting schedule for ID:', destinationId);
+      return {
+        success: true,
+        schedule: {
+          name: 'Mock Schedule',
+          cron: '* * * * *'
+        },
+        destination: destinationId
+      };
+    }
+
+    try {
+      // IMPORTANT: destinationId should be the ID of the destination, not the display name
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to get schedule');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting schedule:', error);
+      toast.error('Failed to get schedule');
+      throw error;
+    }
+  }
+
+  // Pause a scheduler
+  async pauseScheduler(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Pausing scheduler ID:', destinationId);
+      return {
+        success: true,
+        status: 'paused',
+        destination: destinationId
+      };
+    }
+
+    try {
+      // IMPORTANT: destinationId should be the ID of the destination, not the display name
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/pause`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to pause scheduler');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error pausing scheduler:', error);
+      toast.error('Failed to pause scheduler');
+      throw error;
+    }
+  }
+
+  // Unpause a scheduler
+  async unpauseScheduler(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Unpausing scheduler ID:', destinationId);
+      return {
+        success: true,
+        status: 'running',
+        destination: destinationId
+      };
+    }
+
+    try {
+      // IMPORTANT: destinationId should be the ID of the destination, not the display name
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/unpause`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to unpause scheduler');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error unpausing scheduler:', error);
+      toast.error('Failed to unpause scheduler');
+      throw error;
+    }
+  }
+
+  // Get scheduler status
+  async getSchedulerStatus(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Getting status for scheduler ID:', destinationId);
+      return {
+        success: true,
+        status: 'running',
+        destination: destinationId
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/status`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to get scheduler status');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting scheduler status:', error);
+      toast.error('Failed to get scheduler status');
+      throw error;
+    }
+  }
+
+  // Get scheduler context
+  async getSchedulerContext(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Getting context for scheduler ID:', destinationId);
+      return {
+        success: true,
+        context: { vars: { key: 'value' } },
+        context_stack: [{ vars: { key: 'value' } }]
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/context`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to get scheduler context');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting scheduler context:', error);
+      toast.error('Failed to get scheduler context');
+      throw error;
+    }
+  }
+
+  // Set scheduler context
+  async setSchedulerContext(destinationId: string, context: any) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Setting context for scheduler ID:', destinationId);
+      return {
+        success: true,
+        context
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/context`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(context),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to set scheduler context');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error setting scheduler context:', error);
+      toast.error('Failed to set scheduler context');
+      throw error;
+    }
+  }
+
+  // Load a schedule
+  async loadSchedule(destinationId: string, schedule: any) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Loading schedule for ID:', destinationId);
+      return {
+        success: true,
+        schedule,
+        destination: destinationId
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(schedule),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to load schedule');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error loading schedule:', error);
+      toast.error('Failed to load schedule');
+      throw error;
+    }
+  }
+
+  // Unload a schedule
+  async unloadSchedule(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Unloading schedule for ID:', destinationId);
+      return {
+        success: true,
+        destination: destinationId
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to unload schedule');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error unloading schedule:', error);
+      toast.error('Failed to unload schedule');
+      throw error;
+    }
+  }
+
+  // Get schedule stack
+  async getScheduleStack(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Getting schedule stack for ID:', destinationId);
+      return {
+        success: true,
+        stack: [
+          { name: 'Mock Schedule 1', cron: '* * * * *' },
+          { name: 'Mock Schedule 2', cron: '0 * * * *' }
+        ]
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/stack`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to get schedule stack');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting schedule stack:', error);
+      toast.error('Failed to get schedule stack');
+      throw error;
+    }
+  }
+
+  // Trigger an event
+  async triggerEvent(destinationId: string, eventData: any) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Triggering event for ID:', destinationId);
+      return {
+        success: true,
+        event: eventData.event
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(eventData),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to trigger event');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error triggering event:', error);
+      toast.error('Failed to trigger event');
+      throw error;
+    }
+  }
+
+  // Get schedule at position
+  async getScheduleAtPosition(destinationId: string, position: number) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Getting schedule at position:', position, 'for ID:', destinationId);
+      return {
+        success: true,
+        schedule: {
+          name: `Mock Schedule at position ${position}`,
+          cron: '* * * * *'
+        },
+        position
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/${position}`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to get schedule at position');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting schedule at position:', error);
+      toast.error('Failed to get schedule at position');
+      throw error;
+    }
+  }
+
+  // Set schedule at position
+  async setScheduleAtPosition(destinationId: string, position: number, schedule: any) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Setting schedule at position:', position, 'for ID:', destinationId);
+      return {
+        success: true,
+        schedule,
+        position
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/${position}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(schedule),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to set schedule at position');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error setting schedule at position:', error);
+      toast.error('Failed to set schedule at position');
+      throw error;
+    }
+  }
+
+  // Remove schedule at position
+  async removeScheduleAtPosition(destinationId: string, position: number) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Removing schedule at position:', position, 'for ID:', destinationId);
+      return {
+        success: true,
+        position
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/${position}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to remove schedule at position');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error removing schedule at position:', error);
+      toast.error('Failed to remove schedule at position');
+      throw error;
+    }
+  }
+
+  // Clear scheduler context
+  async clearSchedulerContext(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Clearing context for scheduler ID:', destinationId);
+      return {
+        success: true
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/context/clear`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to clear scheduler context');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error clearing scheduler context:', error);
+      toast.error('Failed to clear scheduler context');
       throw error;
     }
   }

@@ -33,35 +33,45 @@ test_scheduler_bp = Blueprint("test_scheduler", __name__)
 from routes.utils import _load_json_once
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
 
-# Path to scheduler state directory
-SCHEDULER_DIR = os.path.join(os.path.dirname(__file__), "scheduler")
-
-# Ensure scheduler_states directory exists
-SCHEDULER_STATES_DIR = "scheduler_states"
-if not os.path.exists(SCHEDULER_STATES_DIR):
-    os.makedirs(SCHEDULER_STATES_DIR)
-    debug(f"Created scheduler_states directory at {os.path.abspath(SCHEDULER_STATES_DIR)}")
-
-# Helper to generate a minimal valid schedule from the schema
-with open(os.path.join(SCHEDULER_DIR, "schedule_schema.json"), 'r') as f:
-    SCHEDULE_SCHEMA = json.load(f)
+# Get schema from API
+def get_schema():
+    """Get the schema from the API endpoint."""
+    try:
+        response = requests.get(f"{BASE_URL}/api/scheduler/schema")
+        if response.ok:
+            return response.json()
+        else:
+            error(f"Failed to get schema from API: {response.status_code} {response.text}")
+            return None
+    except Exception as e:
+        error(f"Error getting schema from API: {str(e)}")
+        return None
 
 # Generate minimal valid data for a schema
-# (This is a simple version; for more complex schemas, use a library or extend as needed)
 def minimal_valid_data(schema):
-    if 'default' in schema:
-        return schema['default']
-    if schema.get('type') == 'object':
-        return {k: minimal_valid_data(v) for k, v in schema.get('properties', {}).items() if 'default' in v or v.get('type') in ['string', 'number', 'boolean', 'array', 'object']}
-    if schema.get('type') == 'array':
+    """Generate minimal valid data for a schema."""
+    if not schema:
+        return {}
+        
+    if schema.get("type") == "object":
+        result = {}
+        for prop_name, prop_schema in schema.get("properties", {}).items():
+            if not prop_schema.get("required", False):
+                continue
+            result[prop_name] = minimal_valid_data(prop_schema)
+        return result
+    elif schema.get("type") == "array":
         return []
-    if schema.get('type') == 'string':
+    elif schema.get("type") == "string":
         return ""
-    if schema.get('type') == 'number':
+    elif schema.get("type") == "number":
         return 0
-    if schema.get('type') == 'boolean':
+    elif schema.get("type") == "boolean":
         return False
-    return None
+    elif schema.get("type") == "null":
+        return None
+    else:
+        return None
 
 HTML_TEMPLATE = """
 <!doctype html>
@@ -155,32 +165,32 @@ HTML_TEMPLATE = """
   </style>
   <script>
     // Function to fetch and update logs
-    async function updateLogs() {
-      const logDestination = document.getElementById('log-destination');
-      const selectedDest = logDestination.value;
-      if (!selectedDest) return;
-      
-      try {
-        const response = await fetch(`/api/schedulers/${selectedDest}`);
-        const data = await response.json();
-        const logContent = document.getElementById('log-content');
-        
-        if (data.log && data.log.length > 0) {
-          logContent.textContent = data.log.join('\\n');
-          logContent.classList.remove('empty');
-          // Auto-scroll to bottom if already at bottom
-          const isAtBottom = logContent.scrollHeight - logContent.clientHeight <= logContent.scrollTop + 1;
-          if (isAtBottom) {
-            logContent.scrollTop = logContent.scrollHeight;
-          }
-        } else {
-          logContent.textContent = 'No logs available. Start a scheduler to view logs.';
-          logContent.classList.add('empty');
-        }
-      } catch (error) {
-        console.error('Error fetching logs:', error);
-      }
-    }
+    //async function updateLogs() {
+    //  const logDestination = document.getElementById('log-destination');
+    //  const selectedDest = logDestination.value;
+    //  if (!selectedDest) return;
+    //  
+    //  try {
+    //    const response = await fetch(`/api/schedulers/${selectedDest}`);
+    //    const data = await response.json();
+    //    const logContent = document.getElementById('log-content');
+    //    
+    //    if (data.log && data.log.length > 0) {
+    //      logContent.textContent = data.log.join('\\n');
+    //      logContent.classList.remove('empty');
+    //      // Auto-scroll to bottom if already at bottom
+    //      const isAtBottom = logContent.scrollHeight - logContent.clientHeight <= logContent.scrollTop + 1;
+    //      if (isAtBottom) {
+    //        logContent.scrollTop = logContent.scrollHeight;
+    //      }
+    //    } else {
+    //      logContent.textContent = 'No logs available. Start a scheduler to view logs.';
+    //      logContent.classList.add('empty');
+    //    }
+    //  } catch (error) {
+    //    console.error('Error fetching logs:', error);
+    //  }
+    //}
 
     // Function to fetch and update scheduler status
     async function updateSchedulerStatus(destination) {
@@ -215,7 +225,7 @@ HTML_TEMPLATE = """
     // Start auto-refresh when page loads
     document.addEventListener('DOMContentLoaded', function() {
       // Update logs every 5 seconds
-      setInterval(updateLogs, 5000);
+      // setInterval(updateLogs, 5000);
       
       // Update status for all schedulers every 5 seconds
       const statusElements = document.querySelectorAll('.scheduler-status');
@@ -225,11 +235,11 @@ HTML_TEMPLATE = """
             const destination = element.id.replace('scheduler-status-', '');
             updateSchedulerStatus(destination);
           });
-        }, 5000);
+        }, 30000);
       }
       
       // Initial updates
-      updateLogs();
+      // updateLogs();
       statusElements.forEach(element => {
         const destination = element.id.replace('scheduler-status-', '');
         updateSchedulerStatus(destination);
@@ -253,15 +263,22 @@ HTML_TEMPLATE = """
     }
 
     function openCreateEditor(destination) {
-      fetch('/test-scheduler/create-editor-url?destination=' + encodeURIComponent(destination))
+      fetch(`/test-scheduler/create-editor-url?destination=${destination}`)
         .then(response => response.json())
         .then(data => {
           if (data.url) {
             window.open(data.url, '_blank');
           } else {
-            alert('Failed to open editor: ' + (data.error || 'Unknown error'));
+            console.error('Invalid response from server:', data);
           }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          alert('Failed to open editor: ' + error.message);
         });
+    }
+    function openLogs(destination) {
+      window.open('/test-scheduler/logs?destination=' + encodeURIComponent(destination), '_blank');
     }
   </script>
 </head>
@@ -271,18 +288,10 @@ HTML_TEMPLATE = """
     
     <div class="actions-bar">
       <strong>Global Actions:</strong>
-      <a href="/test-scheduler?load_from_files=true" class="btn">Load Schedules from Files</a>
+      <!-- Removed Load Schedules from Files button -->
     </div>
 
-  <h2>Publish Destinations</h2>
-  <ul>
-    {% for dest in all_destinations %}
-      <li>
-        <strong>{{ dest }}</strong>
-        <button class="btn" type="button" onclick="openCreateEditor('{{ dest }}')">Create</button>
-      </li>
-    {% endfor %}
-  </ul>
+  <!-- Removed Publish Destinations section and log side panel -->
 
   <h2>Running Schedulers</h2>
     {% if running_schedulers %}
@@ -291,12 +300,14 @@ HTML_TEMPLATE = """
           <h3>{{ dest }}</h3>
           <div>
             <span class="status">Status: <span id="scheduler-status-{{ dest }}" class="scheduler-status running">running</span></span>
+            <button class="btn" type="button" onclick="openCreateEditor('{{ dest }}')">Create</button>
         <form method="POST" action="/test-scheduler?stop={{ dest }}" style="display:inline">
           <input class="btn" type="submit" value="Stop">
         </form>
             <button class="btn" onclick="toggleSchedulerPause('{{ dest }}', 'pause')">Pause</button>
             <button class="btn" onclick="toggleSchedulerPause('{{ dest }}', 'unpause')">Unpause</button>
             <button class="btn" type="button" onclick="clearContext('{{ dest }}')">Clear Context</button>
+            <button class="btn" type="button" onclick="openLogs('{{ dest }}')">Show logs</button>
           </div>
           
           {% if dest in schedule_stacks %}
@@ -308,7 +319,6 @@ HTML_TEMPLATE = """
                     <strong>Layer {{ loop.index }}</strong>
                     <div>
                       <a class="btn" href="/test-scheduler?edit={{ dest }}&layer={{ loop.index0 }}" target="_blank">Edit</a>
-                      <a class="btn" href="/test-scheduler?context={{ dest }}&layer={{ loop.index0 }}">View Context</a>
                     </div>
                   </div>
                   <div>
@@ -362,9 +372,11 @@ HTML_TEMPLATE = """
           <h3>{{ dest }}</h3>
           <div>
             <span class="status">Status: <span id="scheduler-status-{{ dest }}" class="scheduler-status stopped">stopped</span></span>
+            <button class="btn" type="button" onclick="openCreateEditor('{{ dest }}')">Create</button>
             <form method="POST" action="/test-scheduler?start={{ dest }}" style="display:inline">
               <input class="btn" type="submit" value="Start">
         </form>
+            <button class="btn" type="button" onclick="openLogs('{{ dest }}')">Show logs</button>
           </div>
           
           {% if dest in schedule_stacks %}
@@ -376,7 +388,6 @@ HTML_TEMPLATE = """
                     <strong>Layer {{ loop.index }}</strong>
                     <div>
                       <a class="btn" href="/test-scheduler?edit={{ dest }}&layer={{ loop.index0 }}" target="_blank">Edit</a>
-                      <a class="btn" href="/test-scheduler?context={{ dest }}&layer={{ loop.index0 }}">View Context</a>
                     </div>
                   </div>
                   <div>
@@ -422,25 +433,6 @@ HTML_TEMPLATE = """
     {% else %}
       <p>No stopped schedulers.</p>
     {% endif %}
-  </div>
-  
-  <div class="log-panel">
-    <h3>
-      <span>Logs</span>
-      <select id="log-destination" onchange="updateLogs()">
-        <option value="">Select a destination</option>
-        {% for dest in schedulers %}
-          <option value="{{ dest }}" {% if dest == selected %}selected{% endif %}>{{ dest }}</option>
-        {% endfor %}
-      </select>
-    </h3>
-    <div id="log-content" class="log-content {% if not selected or not logs[selected] %}empty{% endif %}">
-      {% if selected and logs[selected] %}
-        {{ logs[selected]|join('\n') }}
-      {% else %}
-        No logs available. Start a scheduler to view logs.
-      {% endif %}
-    </div>
   </div>
 </body>
 </html>
@@ -747,21 +739,23 @@ def schedule_editor(destination, layer, message=None, error=False):
         current_schedule = response.json().get("schedule", {})
         
         # Get the schema
-        schema_path = os.path.join(SCHEDULER_DIR, "schedule_schema.json")
-        with open(schema_path, 'r') as f:
-            schema = json.load(f)
+        schema = get_schema()
         
         # Load VITE URL from environment
         vite_url = os.getenv('VITE_URL', 'http://localhost:5173')
         if vite_url.endswith('/'):
             vite_url = vite_url[:-1]
             
+        # Match the config.ts pattern: use absolute URL in development, relative in production
+        is_dev = not os.path.exists('./.env.production')
+        api_url = f"{BASE_URL}/api" if is_dev else '/api'
+        
         # Construct the editor URL with state
         editor_state = {
             'schema': schema,  # This is now always the current schema from the file
             'currentData': current_schedule,
             'returnUrl': f'/test-scheduler?destination={destination}',
-            'saveEndpoint': f'/api/schedulers/{destination}/schedule/{layer}',
+            'saveEndpoint': f'{BASE_URL}/api/schedulers/{destination}/schedule/{layer}',
             'saveMethod': 'PUT'
         }
         
@@ -770,7 +764,7 @@ def schedule_editor(destination, layer, message=None, error=False):
         state_b64 = base64.urlsafe_b64encode(state_json.encode('utf-8')).decode('utf-8')
         
         # Construct the final URL - no need for additional URL encoding since urlsafe_b64encode is used
-        editor_url = f'{vite_url}/schema-editor?state={state_b64}'
+        editor_url = f'{vite_url}/SchemaEditor?state={state_b64}'
         
         debug(f"Redirecting to editor URL: {editor_url}")
         return redirect(editor_url)
@@ -778,93 +772,111 @@ def schedule_editor(destination, layer, message=None, error=False):
         error(f"Error preparing schedule editor: {str(e)}")
         return f"Error: {str(e)}", 500
 
-def initialize_from_schedule_files():
-    """Initialize schedulers from JSON files in schedule directories."""
-    # Check in multiple potential directories for schedule files
-    schedule_dirs = [
-        os.path.join(os.path.dirname(__file__), "scheduler"),
-        os.path.join(os.path.dirname(__file__), "scheduled")
-    ]
-    
-    schedule_files_found = False
-    
-    # Check if any schedulers are already running
-    running_schedulers = []
-    try:
-        response = requests.get(f"{BASE_URL}/api/schedulers")
-        if response.ok:
-            running_schedulers = response.json().get('running', [])
-            debug(f"Currently running schedulers: {running_schedulers}")
-    except Exception as e:
-        error(f"Error checking running schedulers: {str(e)}")
-    
-    for scheduler_dir in schedule_dirs:
-        if not os.path.exists(scheduler_dir):
-            debug(f"Scheduler directory {scheduler_dir} does not exist")
-            continue
-        
-        debug(f"Checking for schedule files in {scheduler_dir}")
-        schedule_files = [f for f in os.listdir(scheduler_dir) 
-                         if f.endswith('.json') and not f.endswith('_state.json')]
-        
-        if not schedule_files:
-            debug(f"No schedule files found in {scheduler_dir}")
-            continue
-            
-        schedule_files_found = True
-        debug(f"Found schedule files in {scheduler_dir}: {schedule_files}")
-        
-        for filename in schedule_files:
-            dest_name = os.path.splitext(filename)[0]
-            file_path = os.path.join(scheduler_dir, filename)
-            
-            # Skip if already running
-            if dest_name in running_schedulers:
-                debug(f"Scheduler for {dest_name} is already running, skipping")
-                continue
-                
-            debug(f"Loading schedule file from {file_path} for destination {dest_name}")
-            try:
-                with open(file_path, 'r') as f:
-                    schedule_data = json.load(f)
-                
-                # Use the API to load the schedule, which will handle context automatically
-                debug(f"Sending schedule to API for {dest_name}")
-                response = requests.post(f"{BASE_URL}/api/schedulers/{dest_name}/schedule", json=schedule_data)
-                
-                if response.ok:
-                    info(f"Successfully initialized scheduler for {dest_name}")
-                else:
-                    error(f"Failed to initialize scheduler for {dest_name}: {response.text}")
-                    
-            except Exception as e:
-                error(f"Error loading schedule file {file_path}: {str(e)}")
-    
-    if not schedule_files_found:
-        debug("No schedule files found in any directory")
-        return False
-    
-    return True
-
-@test_scheduler_bp.route("/test-scheduler/create-editor-url")
-def create_editor_url():
+# Add a new route for logs view
+@test_scheduler_bp.route("/test-scheduler/logs")
+def logs_view():
     destination = request.args.get("destination")
     if not destination:
-        return jsonify({"error": "No destination specified"}), 400
-    # Generate minimal valid schedule
-    minimal_schedule = minimal_valid_data(SCHEDULE_SCHEMA)
-    # Build state for SchemaEditor
-    editor_state = {
-        'schema': SCHEDULE_SCHEMA,
-        'currentData': minimal_schedule,
-        'returnUrl': f'/test-scheduler?destination={destination}',
-        'saveEndpoint': f'/api/schedulers/{destination}/schedule',
-        'saveMethod': 'POST'
-    }
-    state_json = json.dumps(editor_state, separators=(',', ':'))
-    state_b64 = base64.urlsafe_b64encode(state_json.encode('utf-8')).decode('utf-8')
-    vite_url = os.getenv('VITE_URL', 'http://localhost:5173')
-    if vite_url.endswith('/'):
-        vite_url = vite_url[:-1]
-    editor_url = f'{vite_url}/schema-editor?state={state_b64}'
-    return jsonify({"url": editor_url})
+        return "No destination specified", 400
+    return render_template_string("""
+    <!doctype html>
+    <html>
+    <head>
+      <title>Logs for {{ destination }}</title>
+      <style>
+        body { background: #111; color: #0f0; font-family: monospace; margin: 0; padding: 0; }
+        .log-content { padding: 2vw; font-size: 1.1em; white-space: pre-wrap; }
+        .header { background: #222; color: #fff; padding: 1vw; font-size: 1.5em; }
+      </style>
+      <script>
+        async function fetchLogs() {
+          try {
+            const resp = await fetch('/api/schedulers/{{ destination }}');
+            if (!resp.ok) {
+              document.getElementById('log-content').textContent = 'Failed to load logs: ' + resp.statusText;
+              return;
+            }
+            const contentType = resp.headers.get('content-type') || '';
+            const logContent = document.getElementById('log-content');
+            if (!contentType.includes('application/json')) {
+              const text = await resp.text();
+              logContent.textContent = 'Failed to load logs: Invalid response format.\\n' + text;
+              console.error('Non-JSON response:', text);
+              return;
+            }
+            try {
+              const data = await resp.json();
+              logContent.textContent = (data.log || []).join('\\n');
+            } catch (e) {
+              const text = await resp.text();
+              logContent.textContent = 'Failed to parse logs as JSON.\\n' + text;
+              console.error('JSON parse error:', e, 'Response text:', text);
+            }
+          } catch (e) {
+            document.getElementById('log-content').textContent = 'Failed to load logs.';
+            console.error('Fetch error:', e);
+          }
+        }
+        setInterval(fetchLogs, 10000);
+        window.onload = fetchLogs;
+      </script>
+    </head>
+    <body>
+      <div class="header">Logs for {{ destination }}</div>
+      <div id="log-content" class="log-content">Loading...</div>
+    </body>
+    </html>
+    """, destination=destination)
+
+@test_scheduler_bp.route("/test-scheduler/create-editor-url")
+def create_editor_url_route():
+    """Route to create editor URL"""
+    destination = request.args.get('destination')
+    if not destination:
+        return jsonify({"error": "No destination provided"}), 400
+    return create_editor_url(destination)
+
+def create_editor_url(destination):
+    """Create a URL for the schema editor with the current state."""
+    try:
+        schema = get_schema()
+        if not schema:
+            return jsonify({"error": "Failed to get schema"}), 500
+
+        # Get current schedule data
+        schedule_data = get_schedule_data()
+        
+        # Construct editor state
+        editor_state = {
+            "schema": schema,
+            "initialData": schedule_data,
+            "returnUrl": destination,
+            "saveEndpoint": "/api/test-scheduler/save",
+            "saveMethod": "POST"
+        }
+
+        # Get Vite URL from environment
+        vite_url = os.getenv('VITE_URL', 'http://localhost:5173')
+        if vite_url.endswith('/'):
+            vite_url = vite_url[:-1]
+
+        # Return URL to SchemaEdit component with state
+        editor_url = f"{vite_url}/schema-edit?state={base64.b64encode(json.dumps(editor_state).encode()).decode()}"
+        debug(f"len(editor_url): {len(editor_url)}")
+        return jsonify({"url": editor_url, "state": editor_state})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def get_schedule_data():
+    """Get the current schedule data from the API."""
+    try:
+        response = requests.get(f"{BASE_URL}/api/scheduler/schedule")
+        if response.ok:
+            return response.json()
+        else:
+            error(f"Failed to get schedule data from API: {response.status_code} {response.text}")
+            return {}
+    except Exception as e:
+        error(f"Error getting schedule data from API: {str(e)}")
+        return {}

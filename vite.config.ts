@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    maxHttpHeaderSize: 32 * 1024, // 32KB
   },
   plugins: [
     react(),

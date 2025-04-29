@@ -1,0 +1,43 @@
+{
+  "schedule_stack": [
+    {
+      "initial_actions": {
+        "instructions_block": []
+      },
+      "triggers": [
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "00:01",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "wait",
+                    "value": 10
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "final_actions": {
+        "instructions_block": []
+      }
+    }
+  ],
+  "context_stack": [
+    {
+      "vars": {},
+      "last_generated": null,
+      "publish_destination": "devtest"
+    }
+  ],
+  "state": "running",
+  "last_updated": "2025-04-29T01:16:39.225062"
+}
