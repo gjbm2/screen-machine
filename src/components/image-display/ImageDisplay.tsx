@@ -161,22 +161,32 @@ export function ImageDisplay(props: ImageDisplayProps) {
       if (!destinations || destinations.length === 0) return;
       
       try {
-        const statusMap: Record<string, {is_running: boolean, is_paused: boolean}> = {};
+        // Use the batch endpoint to get all statuses at once
+        const response = await apiService.getAllSchedulerStatuses();
         
-        await Promise.all(destinations.map(async (destId) => {
-          try {
-            const status = await apiService.getSchedulerStatus(destId);
-            statusMap[destId] = {
-              is_running: status.is_running || false,
-              is_paused: status.is_paused || false
-            };
-          } catch (error) {
-            console.error(`Failed to get scheduler status for ${destId}:`, error);
-            statusMap[destId] = { is_running: false, is_paused: false };
-          }
-        }));
-        
-        setSchedulerStatuses(statusMap);
+        if (response && response.statuses) {
+          // The response contains statuses for all destinations
+          setSchedulerStatuses(response.statuses);
+        } else {
+          // Fallback to individual requests if the batch endpoint fails
+          console.warn("Batch scheduler status endpoint failed, falling back to individual requests");
+          const statusMap: Record<string, {is_running: boolean, is_paused: boolean}> = {};
+          
+          await Promise.all(destinations.map(async (destId) => {
+            try {
+              const status = await apiService.getSchedulerStatus(destId);
+              statusMap[destId] = {
+                is_running: status.is_running || false,
+                is_paused: status.is_paused || false
+              };
+            } catch (error) {
+              console.error(`Failed to get scheduler status for ${destId}:`, error);
+              statusMap[destId] = { is_running: false, is_paused: false };
+            }
+          }));
+          
+          setSchedulerStatuses(statusMap);
+        }
       } catch (error) {
         console.error("Failed to fetch scheduler statuses:", error);
       }
@@ -184,8 +194,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
     
     fetchSchedulerStatuses();
     
-    // Set up periodic refresh
-    const intervalId = setInterval(fetchSchedulerStatuses, 30000); // refresh every 30 seconds
+    // Set up periodic refresh with a longer interval since we're batching
+    const intervalId = setInterval(fetchSchedulerStatuses, 60000); // refresh every 60 seconds
     
     return () => clearInterval(intervalId);
   }, [destinations]);

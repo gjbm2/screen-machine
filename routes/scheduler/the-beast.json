@@ -120,6 +120,6 @@
       "publish_destination": "the-beast"
     }
   ],
-  "state": "paused",
-  "last_updated": "2025-04-30T11:16:12.536588"
+  "state": "running",
+  "last_updated": "2025-05-01T00:27:15.095335"
 }

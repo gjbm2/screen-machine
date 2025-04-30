@@ -2051,3 +2051,32 @@ def handle_stop(instruction, context, now, output, publish_destination):
     
     # Return False because we don't want to unload - just stop
     return False  
+
+@scheduler_bp.route("/api/schedulers/all/status", methods=["GET"])
+def api_get_all_scheduler_statuses():
+    """Get the status of all schedulers at once."""
+    statuses = {}
+    
+    for destination_id in scheduler_states:
+        # Get the current state for this destination
+        state = scheduler_states.get(destination_id, 'stopped')
+        
+        # Get the current schedule stack
+        schedule_stack = scheduler_schedule_stacks.get(destination_id, [])
+        
+        # If there's a schedule, get the next action
+        next_action = None
+        if schedule_stack:
+            # Get the current schedule from the top of the stack
+            current_schedule = schedule_stack[-1]
+            next_action = get_next_scheduled_action(destination_id, current_schedule)
+        
+        # Add to the response
+        statuses[destination_id] = {
+            "status": state,
+            "is_running": state == "running",
+            "is_paused": state == "paused",
+            "next_action": next_action
+        }
+    
+    return jsonify({"statuses": statuses})
