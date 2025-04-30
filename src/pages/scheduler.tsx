@@ -107,6 +107,10 @@ const Scheduler = () => {
       // Create empty destinations array to populate
       const enhancedDestinations: Destination[] = [];
       
+      // Get all scheduler statuses in one batch request
+      const allStatusesResponse = await apiService.getAllSchedulerStatuses();
+      const allStatuses = allStatusesResponse.statuses || {};
+      
       // Get details for each destination
       for (const destId of allDestinations) {
         try {
@@ -122,18 +126,20 @@ const Scheduler = () => {
             isPaused: false,
           };
           
+          // Get status from the batch response
+          const statusInfo = allStatuses[destId];
+          if (statusInfo) {
+            destination.isRunning = statusInfo.is_running || statusInfo.status === 'running' || statusInfo.status === 'paused';
+            destination.isPaused = statusInfo.is_paused || statusInfo.status === 'paused';
+          }
+          
           // Check if this destination is in the running list
           if (runningSchedulers.includes(destId)) {
-            // If it's running, get all the details
+            // If it's running, get additional details
             try {
               // Get logs
               const logsResponse = await apiService.getSchedulerLogs(destId);
               destination.logs = logsResponse.log || [];
-              
-              // Get status
-              const statusResponse = await apiService.getSchedulerStatus(destId);
-              destination.isRunning = statusResponse.status === 'running' || statusResponse.status === 'paused';
-              destination.isPaused = statusResponse.status === 'paused';
               
               // Get schedule stack
               try {
@@ -251,12 +257,8 @@ const Scheduler = () => {
       
       setDestinations(enhancedDestinations);
       
-      // Immediately fetch the next action for all running destinations
-      for (const destination of enhancedDestinations) {
-        if (destination.isRunning) {
-          await fetchSchedulerStatus(destination.id);
-        }
-      }
+      // Also update the scheduler status state from the batch response
+      setSchedulerStatus(allStatuses);
       
       addLog({ type: 'info', message: 'Fetched scheduler data successfully' });
     } catch (error) {
@@ -303,13 +305,15 @@ const Scheduler = () => {
   useEffect(() => {
     // Set up polling for logs and status
     const pollingIntervalId = setInterval(() => {
+      // Fetch logs for destinations with visible logs
       destinations.forEach(destination => {
         if (showLogs[destination.id]) {
           fetchLogs(destination.id);
         }
-        // Always fetch scheduler status 
-        fetchSchedulerStatus(destination.id);
       });
+      
+      // Fetch all scheduler statuses in a single request
+      fetchAllSchedulerStatuses();
     }, 15000); // Poll every 15 seconds
 
     return () => {
@@ -388,6 +392,18 @@ const Scheduler = () => {
           next_action: null
         }
       }));
+    }
+  };
+
+  // New function to fetch all scheduler statuses at once
+  const fetchAllSchedulerStatuses = async () => {
+    try {
+      const response = await apiService.getAllSchedulerStatuses();
+      if (response && response.statuses) {
+        setSchedulerStatus(response.statuses);
+      }
+    } catch (error) {
+      console.error('Error fetching all scheduler statuses:', error);
     }
   };
 

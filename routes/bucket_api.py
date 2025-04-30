@@ -308,7 +308,34 @@ def get_published(bucket: str):
 
 @buckets_bp.route("/<bucket>/items", methods=["GET"])
 def list_items(bucket: str):
-    return jsonify(load_meta(bucket))
+    bucket_meta = load_meta(bucket)
+    
+    # Get the paths for thumbnails
+    thumb_dir = bucket_path(bucket) / "thumbnails"
+    
+    # Enhance response with embedded thumbnails
+    if "sequence" in bucket_meta:
+        items_with_thumbnails = []
+        for filename in bucket_meta["sequence"]:
+            item = {"filename": filename}
+            
+            # Try to load and embed the thumbnail
+            thumb_path = thumb_dir / f"{Path(filename).stem}.jpg"
+            if thumb_path.exists():
+                try:
+                    with open(thumb_path, "rb") as f:
+                        thumb_data = f.read()
+                        thumb_b64 = base64.b64encode(thumb_data).decode("ascii")
+                        item["thumbnail_embedded"] = f"data:image/jpeg;base64,{thumb_b64}"
+                except Exception as e:
+                    warning(f"Failed to read thumbnail for {filename}: {e}")
+            
+            items_with_thumbnails.append(item)
+        
+        # Add the enhanced items to the response
+        bucket_meta["items_with_thumbnails"] = items_with_thumbnails
+    
+    return jsonify(bucket_meta)
 
 
 @buckets_bp.route("/<bucket>/upload", methods=["POST"])

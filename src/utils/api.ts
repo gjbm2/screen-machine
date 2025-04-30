@@ -121,6 +121,31 @@ class ApiService {
       
       const data = await response.json();
       
+      // Check if response includes embedded thumbnails
+      if (data.items_with_thumbnails && data.items_with_thumbnails.length > 0) {
+        console.log(`Using ${data.items_with_thumbnails.length} embedded thumbnails for ${bucketName}`);
+        
+        // Use embedded thumbnails
+        const items: BucketItem[] = data.items_with_thumbnails.map((item, index) => ({
+          filename: item.filename,
+          bucket: bucketName,
+          thumbnail: item.thumbnail_embedded || `${this.apiUrl}/buckets/${bucketName}/thumbnail/${item.filename}`,
+          url: `${this.apiUrl}/buckets/${bucketName}/raw/${item.filename}`,
+          isFavorite: (data.favorites || []).includes(item.filename),
+          index
+        }));
+        
+        return {
+          name: bucketName,
+          items,
+          published: data.published_meta?.filename,
+          publishedAt: data.published_meta?.published_at
+        };
+      }
+      
+      // Fallback to constructing thumbnail URLs if no embedded thumbnails
+      console.log(`No embedded thumbnails available for ${bucketName}, using URL references`);
+      
       // Transform API response to our expected format
       const items: BucketItem[] = (data.sequence || []).map((filename: string, index: number) => ({
         filename,
@@ -1576,6 +1601,56 @@ class ApiService {
       console.error('Error clearing scheduler context:', error);
       toast.error('Failed to clear scheduler context');
       throw error;
+    }
+  }
+
+  // Get all scheduler statuses at once
+  async getAllSchedulerStatuses() {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Getting all scheduler statuses');
+      return {
+        success: true,
+        statuses: {
+          'mock-destination-1': {
+            status: 'running',
+            is_running: true,
+            is_paused: false,
+            next_action: {
+              has_next_action: true,
+              next_time: "12:00",
+              description: "Mock scheduled action",
+              minutes_until_next: 60,
+              timestamp: new Date().toISOString()
+            }
+          },
+          'mock-destination-2': {
+            status: 'paused',
+            is_running: false,
+            is_paused: true,
+            next_action: null
+          }
+        }
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/all/status`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to get all scheduler statuses');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting all scheduler statuses:', error);
+      // Don't toast this error as it might be called frequently
+      return {
+        success: false,
+        statuses: {}
+      };
     }
   }
 }

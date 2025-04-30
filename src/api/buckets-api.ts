@@ -49,6 +49,38 @@ export async function fetchAllBuckets(): Promise<string[]> {
 export async function fetchBucketDetails(bucketName: string): Promise<Bucket> {
   try {
     console.log(`Fetching details for bucket: ${bucketName}`);
+    
+    // First try the new API endpoint that includes embedded thumbnails
+    const apiResponse = await fetch(`/api/buckets/${bucketName}/items`);
+    
+    if (apiResponse.ok) {
+      const bucketData = await apiResponse.json();
+      console.log(`Got bucket data from API for ${bucketName}`);
+      
+      // Check if the response includes embedded thumbnails
+      if (bucketData.items_with_thumbnails && bucketData.items_with_thumbnails.length > 0) {
+        console.log(`Using ${bucketData.items_with_thumbnails.length} embedded thumbnails`);
+        
+        // Map the items_with_thumbnails to our BucketItem format
+        const items: BucketItem[] = bucketData.items_with_thumbnails.map((item, index) => ({
+          filename: item.filename,
+          thumbnail: item.thumbnail_embedded || `/api/buckets/${bucketName}/thumbnail/${item.filename}`,
+          isFavorite: bucketData.favorites ? bucketData.favorites.includes(item.filename) : false,
+          index,
+          bucket: bucketName
+        }));
+        
+        return {
+          name: bucketName,
+          items,
+          published: bucketData.published_meta?.filename,
+          publishedAt: bucketData.published_meta?.published_at
+        };
+      }
+    }
+    
+    // Fall back to the old method if the API endpoint fails or doesn't include thumbnails
+    console.log(`Falling back to old method for bucket ${bucketName}`);
     const response = await fetch(`/test-buckets/${bucketName}/`);
     
     if (!response.ok) {
