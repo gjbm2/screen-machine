@@ -547,30 +547,32 @@ export function BucketGridView({
       {/* Enhanced bucket header panel with triple height */}
       {bucketDetails && (
         <div className="flex flex-col mb-4 p-2 sm:p-4 bg-muted rounded-md w-full">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* Left side: Bucket info and current image thumbnail */}
-            <div className="flex flex-wrap items-start gap-3">
-              {/* Current published image thumbnail - hide if headless */}
-              {currentPublishedImage && !headless && (
-                <div className="w-24 h-24 rounded-md overflow-hidden bg-black/10 flex-shrink-0">
-                  <img 
-                    src={currentPublishedImage.thumbnail || currentPublishedImage.url} 
-                    alt="Published" 
-                    className="w-full h-full object-cover"
-                  />
+          {/* Single row with image, controls and scheduler status */}
+          <div className="flex items-start">
+            {/* Left side with image */}
+            {currentPublishedImage && !headless && (
+              <div className="w-24 h-24 rounded-md overflow-hidden bg-black/10 flex-shrink-0 mr-3">
+                <img 
+                  src={currentPublishedImage.thumbnail || currentPublishedImage.url} 
+                  alt="Published" 
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+            
+            {/* Middle and right content */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {/* Show metadata about current published image - hide if headless */}
+              {currentPublishedImage && currentPublishedImage.prompt && !headless && (
+                <div className="text-sm text-muted-foreground truncate">
+                  <span className="font-medium">Prompt:</span> {currentPublishedImage.prompt}
                 </div>
               )}
               
-              <div className="flex-1 flex flex-col space-y-1 min-w-0">
-                {/* Show metadata about current published image - hide if headless */}
-                {currentPublishedImage && currentPublishedImage.prompt && !headless && (
-                  <div className="text-sm text-muted-foreground truncate">
-                    <span className="font-medium">Prompt:</span> {currentPublishedImage.prompt}
-                  </div>
-                )}
-                
-                {/* Controls in a flex layout to use available space */}
-                <div className="flex flex-wrap gap-2">
+              {/* Button row with all controls on same line */}
+              <div className="flex justify-between items-center mt-1">
+                {/* Left side buttons */}
+                <div className="flex flex-wrap gap-1 items-center">
                   {/* Star button with counts */}
                   <Button
                     variant={showFavoritesFirst ? "secondary" : "outline"}
@@ -634,69 +636,63 @@ export function BucketGridView({
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
+                
+                {/* Scheduler controls on same line */}
+                {!headless && (
+                  <div className="flex items-center gap-1 ml-2">
+                    <div className={`flex items-center ${statusDisplay.colorClass}`}>
+                      {statusDisplay.icon}
+                      <span className="text-sm ml-1">{statusDisplay.text}</span>
+                    </div>
+                    
+                    <div className="flex items-center ml-1 space-x-1">
+                      {!schedulerStatus.is_running && (
+                        <Button 
+                          variant="outline" 
+                          size="xs"
+                          onClick={() => handleSchedulerAction('start')}
+                          className="h-6 px-2 text-xs"
+                        >
+                          Start
+                        </Button>
+                      )}
+                      
+                      {schedulerStatus.is_running && !schedulerStatus.is_paused && (
+                        <Button 
+                          variant="outline" 
+                          size="xs"
+                          onClick={() => handleSchedulerAction('pause')}
+                          className="h-6 px-2 text-xs"
+                        >
+                          Pause
+                        </Button>
+                      )}
+                      
+                      {schedulerStatus.is_running && schedulerStatus.is_paused && (
+                        <Button 
+                          variant="outline" 
+                          size="xs"
+                          onClick={() => handleSchedulerAction('unpause')}
+                          className="h-6 px-2 text-xs"
+                        >
+                          Resume
+                        </Button>
+                      )}
+                      
+                      {schedulerStatus.is_running && (
+                        <Button 
+                          variant="outline" 
+                          size="xs"
+                          onClick={() => handleSchedulerAction('stop')}
+                          className="h-6 px-2 text-xs"
+                        >
+                          Stop
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-            
-            {/* Right side: Align items to the end and add justify-end */}
-            <div className="flex flex-col justify-between items-end">
-              {/* Empty div to push scheduler controls to bottom */}
-              <div></div>
-              
-              {/* Scheduler controls - hide if headless */}
-              {!headless && (
-                <div className="flex items-center gap-2 self-end mt-2 md:mt-0">
-                  <div className={`flex items-center ${statusDisplay.colorClass}`}>
-                    {statusDisplay.icon}
-                    <span className="text-sm ml-1">{statusDisplay.text}</span>
-                  </div>
-                  
-                  <div className="flex items-center ml-2 space-x-1">
-                    {!headless && !schedulerStatus.is_running && (
-                      <Button 
-                        variant="outline" 
-                        size="xs"
-                        onClick={() => handleSchedulerAction('start')}
-                        className="h-6 px-2 text-xs"
-                      >
-                        Start
-                      </Button>
-                    )}
-                    
-                    {!headless && schedulerStatus.is_running && !schedulerStatus.is_paused && (
-                      <Button 
-                        variant="outline" 
-                        size="xs"
-                        onClick={() => handleSchedulerAction('pause')}
-                        className="h-6 px-2 text-xs"
-                      >
-                        Pause
-                      </Button>
-                    )}
-                    
-                    {!headless && schedulerStatus.is_running && schedulerStatus.is_paused && (
-                      <Button 
-                        variant="outline" 
-                        size="xs"
-                        onClick={() => handleSchedulerAction('unpause')}
-                        className="h-6 px-2 text-xs"
-                      >
-                        Resume
-                      </Button>
-                    )}
-                    
-                    {!headless && schedulerStatus.is_running && (
-                      <Button 
-                        variant="outline" 
-                        size="xs"
-                        onClick={() => handleSchedulerAction('stop')}
-                        className="h-6 px-2 text-xs"
-                      >
-                        Stop
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>

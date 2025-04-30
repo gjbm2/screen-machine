@@ -44,7 +44,7 @@ SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "scheduler", "schedule.sch
 # Don't parse the raw schema file at module load time - we'll process it on demand
 
 # === Logging ===
-def log_schedule(message: str, publish_destination: Optional[str] = None, now: Optional[datetime] = None):
+def log_schedule(message: str, publish_destination: Optional[str] = None, now: Optional[datetime] = None, output: Optional[List[str]] = None):
     """
     Log a message to scheduler logs with timestamp.
     
@@ -52,6 +52,7 @@ def log_schedule(message: str, publish_destination: Optional[str] = None, now: O
         message: The message to log
         publish_destination: Optional destination to log to. If None, logs to all active destinations.
         now: Optional datetime to use for timestamp. If None, uses current time.
+        output: Optional list to append the log message to. If None, logs to console only.
     """
     if now is None:
         now = datetime.now()
@@ -72,6 +73,8 @@ def log_schedule(message: str, publish_destination: Optional[str] = None, now: O
     
     # Also log to console with INFO level for visibility
     info(message)
+    if output:
+        output.append(formatted_msg)
 
 # === Context Initialization ===
 def default_context():
@@ -114,8 +117,10 @@ def api_get_schema():
 def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: datetime, output: List[str], publish_destination: str):
     action = instruction["action"]
     log_msg = f"Running {action}"
-    output.append(f"[{now.strftime('%H:%M')}] {log_msg}")
-    log_schedule(log_msg, publish_destination, now)
+    
+    # Only log through log_schedule, which will add to output array
+    # This prevents duplicate logging of the same message
+    log_schedule(log_msg, publish_destination, now, output)
 
     handler_map = {
         "random_choice": handle_random_choice,
@@ -170,12 +175,10 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
             return should_unload
         except Exception as e:
             error_msg = f"Error in {action}: {str(e)}"
-            output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
-            log_schedule(error_msg, publish_destination, now)
+            log_schedule(error_msg, publish_destination, now, output)
     else:
         error_msg = f"Unknown action: {action}"
-        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
-        log_schedule(error_msg, publish_destination, now)
+        log_schedule(error_msg, publish_destination, now, output)
     
     return False
 
@@ -184,8 +187,7 @@ def handle_random_choice(instruction, context, now, output, publish_destination)
     choice = random.choice(instruction["choices"])
     context["vars"][var] = choice
     msg = f"Randomly chose '{choice}' for var '{var}'."
-    output.append(f"[{now.strftime('%H:%M')}] {msg}")
-    log_schedule(msg, publish_destination, now)
+    log_schedule(msg, publish_destination, now, output)
 
 def handle_devise_prompt(instruction, context, now, output, publish_destination):
     theme = instruction.get("theme")
@@ -208,8 +210,7 @@ def handle_devise_prompt(instruction, context, now, output, publish_destination)
             "prompt": prompt
         })
     
-    output.append(f"[{now.strftime('%H:%M')}] Devised prompt: {prompt}")
-    log_schedule(f"Devised prompt: {prompt}", publish_destination, now)
+    log_schedule(f"Devised prompt: {prompt}", publish_destination, now, output)
 
 # Image generation handler
 def handle_generate(instruction, context, now, output, publish_destination):

@@ -272,7 +272,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
       }
     }
   }, [selectedTab]);
-
+  
   // Function to toggle expansion of a batch container
   const handleToggleExpand = (batchId: string) => {
     if (setExpandedContainers) {
@@ -319,7 +319,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
       });
     }
   };
-
+  
   // Organize batches by batch ID
   const batches: Record<string, any[]> = {};
   if (isIndexProps && generatedImages) {
@@ -353,11 +353,11 @@ export function ImageDisplay(props: ImageDisplayProps) {
             left: tabLeft - (containerWidth / 2) + (tabWidth / 2),
             behavior: 'smooth'
           });
-        }
+    }
       }
     }, 10);
   };
-
+  
   return (
     <div className="bg-background overflow-hidden h-full">
       {/* Tabs for switching between Generated view and Destinations - frameless design */}
@@ -431,30 +431,30 @@ export function ImageDisplay(props: ImageDisplayProps) {
                 <ViewModeSelector 
                   viewMode={viewMode}
                   onViewModeChange={(value) => setViewMode(value as ViewMode)}
-                />
+          />
               </div>
               
               {/* Render appropriate content for Index.tsx props */}
-              <ViewModeContent
-                viewMode={viewMode}
-                imageContainerOrder={imageContainerOrder}
-                batches={batches}
-                expandedContainers={expandedContainers}
-                handleToggleExpand={handleToggleExpand}
+            <ViewModeContent
+              viewMode={viewMode}
+              imageContainerOrder={imageContainerOrder}
+              batches={batches}
+              expandedContainers={expandedContainers}
+              handleToggleExpand={handleToggleExpand}
                 onUseGeneratedAsInput={onUseGeneratedAsInput || (() => {})}
                 onCreateAgain={onCreateAgain || (() => {})}
                 onDeleteImage={onDeleteImage || (() => {})}
                 onDeleteContainer={onDeleteContainer || (() => {})}
                 onFullScreenClick={handleImageClick}
-                imageUrl={imageUrl}
-                getAllImages={getAllImages}
-                handleSmallImageClick={handleSmallImageClick}
-                sortField={sortField}
-                sortDirection={sortDirection}
-                handleSortClick={handleSortClick}
-                getSortedContainers={getSortedContainers}
-                handleTableRowClick={handleTableRowClick}
-                isLoading={isLoading}
+              imageUrl={imageUrl}
+              getAllImages={getAllImages}
+              handleSmallImageClick={handleSmallImageClick}
+              sortField={sortField}
+              sortDirection={sortDirection}
+              handleSortClick={handleSortClick}
+              getSortedContainers={getSortedContainers}
+              handleTableRowClick={handleTableRowClick}
+              isLoading={isLoading}
                 onReorderContainers={onReorderContainers || (() => {})}
               />
             </>
@@ -465,8 +465,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
                   src={imageUrl}
                   alt={currentPrompt || 'Generated image'}
                   className="h-full w-full object-contain mx-auto"
-                />
-              </div>
+            />
+          </div>
               {currentPrompt && (
                 <div className="mt-4 text-sm text-center text-muted-foreground">
                   <p className="italic">"{currentPrompt}"</p>
@@ -530,7 +530,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
             icon={getPublishDestinations().find(d => d.id === selectedTab)?.icon || 'image'}
           />
         )}
-      </div>
+        </div>
     </div>
   );
 }

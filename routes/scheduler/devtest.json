@@ -1,6 +1,32 @@
 {
-  "schedule_stack": [],
-  "context_stack": [],
+  "schedule_stack": [
+    {
+      "initial_actions": {
+        "instructions_block": [
+          {
+            "action": "generate",
+            "input": {
+              "prompt": "cat in a hat"
+            }
+          },
+          {
+            "action": "animate"
+          }
+        ]
+      },
+      "triggers": [],
+      "final_actions": {
+        "instructions_block": []
+      }
+    }
+  ],
+  "context_stack": [
+    {
+      "vars": {},
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/97b0f0c5-78e7-44a5-8976-ba824a0ff7a2-e1/bee6a15f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250430%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250430T215155Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ea21853b659b467f6e753a456db963b02d90c5a07c7afbffe4a2d5f7cb154387",
+      "publish_destination": "devtest"
+    }
+  ],
   "state": "stopped",
-  "last_updated": "2025-04-29T09:07:24.882541"
+  "last_updated": "2025-04-30T22:51:57.812843"
 }
