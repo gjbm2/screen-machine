@@ -194,12 +194,46 @@ const Scheduler = () => {
             }
           } else {
             // If it's not running, we still want to show it in the UI
-            // But don't log errors for missing schedules - this is expected
-            destination.scheduleStack = [];
-            destination.contextStack = [];
-            
             destination.isRunning = false;
             destination.isPaused = false;
+            
+            // Even though it's not running, try to get the schedule stack
+            try {
+              const stackResponse = await apiService.getScheduleStack(destId);
+              destination.scheduleStack = stackResponse.stack || [];
+              
+              // Try to get context as well
+              try {
+                const contextResponse = await apiService.getSchedulerContext(destId);
+                if (contextResponse.context_stack) {
+                  destination.contextStack = contextResponse.context_stack || [];
+                } else if (contextResponse.vars || contextResponse.last_generated) {
+                  destination.contextStack = [contextResponse];
+                } else {
+                  destination.contextStack = [];
+                }
+              } catch (contextError) {
+                // Silently handle - context may not exist for stopped schedulers
+                destination.contextStack = [];
+              }
+              
+              // Convert schedule stack items to individual schedules for the UI
+              if (destination.scheduleStack && destination.scheduleStack.length > 0) {
+                destination.schedules = destination.scheduleStack.map((schedule, index) => ({
+                  id: `${destId}-schedule-${index}`,
+                  name: schedule.name || `Schedule ${index + 1}`,
+                  cron: schedule.cron || 'Unknown',
+                  is_running: false,
+                  is_paused: false,
+                  last_run: 'N/A',
+                  next_run: 'N/A'
+                }));
+              }
+            } catch (stackError) {
+              // Silently handle - schedule may not exist for stopped schedulers
+              destination.scheduleStack = [];
+              destination.contextStack = [];
+            }
           }
           
           enhancedDestinations.push(destination);
@@ -565,13 +599,28 @@ const Scheduler = () => {
   };
   
   const handleSchemaEditSave = () => {
-    // Refresh the data after successful save
-    fetchDestinations();
+    // Get the current destination from schemaEditData
+    const destinationId = schemaEditData?.destination;
     
-    toast({
-      title: 'Success',
-      description: 'Schedule saved successfully',
-      duration: 3000, // Auto-hide after 3 seconds
+    // Refresh the data after successful save
+    fetchDestinations().then(() => {
+      // Auto-start the scheduler if it's a new schedule (POST method)
+      if (destinationId && schemaEditData?.saveMethod === 'POST') {
+        console.log(`Auto-starting scheduler for ${destinationId} after creating new schedule`);
+        handleStartScheduler(destinationId);
+        
+        toast({
+          title: 'Success',
+          description: 'Schedule saved and started automatically',
+          duration: 3000, // Auto-hide after 3 seconds
+        });
+      } else {
+        toast({
+          title: 'Success',
+          description: 'Schedule saved successfully',
+          duration: 3000, // Auto-hide after 3 seconds
+        });
+      }
     });
   };
 
@@ -835,31 +884,30 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
       return <p className="text-sm text-muted-foreground">No variables in context</p>;
     }
     
-    if (Object.keys(context.vars).length === 0) {
-      console.warn("Context vars is empty");
-      return <p className="text-sm text-muted-foreground">No variables in context</p>;
-    }
-
-    console.log("Context variables:", Object.entries(context.vars));
-
     return (
       <div className="bg-accent/10 p-2 rounded-md">
-        <h5 className="text-sm font-medium mb-2">Variables:</h5>
-        <ul className="text-xs space-y-1">
-          {Object.entries(context.vars).map(([key, value]) => (
-            <li key={key} className="flex items-start">
-              <span className="font-semibold mr-2">{key}:</span>
-              <span className="text-muted-foreground whitespace-pre-wrap break-all">
-                {typeof value === 'object' 
-                  ? JSON.stringify(value, null, 2)
-                  : String(value)
-                }
-              </span>
-            </li>
-          ))}
-        </ul>
+        {Object.keys(context.vars).length === 0 ? (
+          <p className="text-sm text-muted-foreground mb-2">No variables in context</p>
+        ) : (
+          <>
+            <h5 className="text-sm font-medium mb-2">Variables:</h5>
+            <ul className="text-xs space-y-1">
+              {Object.entries(context.vars).map(([key, value]) => (
+                <li key={key} className="flex items-start">
+                  <span className="font-semibold mr-2">{key}:</span>
+                  <span className="text-muted-foreground whitespace-pre-wrap break-all">
+                    {typeof value === 'object' 
+                      ? JSON.stringify(value, null, 2)
+                      : String(value)
+                    }
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         {context.last_generated && (
-          <div className="mt-2">
+          <div className={Object.keys(context.vars).length === 0 ? "" : "mt-2"}>
             <h5 className="text-sm font-medium">Last Generated:</h5>
             <p className="text-xs text-muted-foreground">{context.last_generated}</p>
           </div>
@@ -1027,9 +1075,13 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
                         </div>
                         
                         {/* Tab content */}
-                        {activeTab === 'context' && destination.contextStack && destination.contextStack[index] && (
+                        {activeTab === 'context' && (
                           <div className="mb-4">
-                            {renderContextVariables(destination.contextStack[index])}
+                            {destination.contextStack && destination.contextStack[index] ? (
+                              renderContextVariables(destination.contextStack[index])
+                            ) : (
+                              <p className="text-sm text-muted-foreground">No context available for this schedule layer</p>
+                            )}
                           </div>
                         )}
                         
