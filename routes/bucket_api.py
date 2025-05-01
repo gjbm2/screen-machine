@@ -39,7 +39,7 @@ from routes.publisher import (
     _extract_mp4_comment_json,
     generate_thumbnail,           # new for thumbnail generation
 )
-from routes.utils import get_image_from_target
+from routes.utils import get_image_from_target, _load_json_once
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
 
 # ----------------------------------------------------------------------------
@@ -317,16 +317,32 @@ def list_items(bucket: str):
     if "sequence" in bucket_meta:
         items_with_thumbnails = []
         for filename in bucket_meta["sequence"]:
-            item = {"filename": filename}
+            # Get metadata from sidecar if it exists
+            file_path = bucket_path(bucket) / filename
+            metadata = {}
+            sidecar = sidecar_path(file_path)
+            if sidecar.exists():
+                try:
+                    metadata = json.loads(sidecar.read_text("utf-8"))
+                except Exception as e:
+                    warning(f"Failed to read sidecar for {filename}: {e}")
             
-            # Try to load and embed the thumbnail
+            # Create item with metadata and favorite status
+            item = {
+                "filename": filename,
+                "metadata": metadata,
+                "favorite": filename in bucket_meta.get("favorites", []),
+                "thumbnail_url": url_for("buckets.thumbnail", bucket=bucket, filename=filename, _external=True)
+            }
+            
+            # Try to load and embed the thumbnail if needed
             thumb_path = thumb_dir / f"{Path(filename).stem}.jpg"
             if thumb_path.exists():
                 try:
                     with open(thumb_path, "rb") as f:
                         thumb_data = f.read()
                         thumb_b64 = base64.b64encode(thumb_data).decode("ascii")
-                        item["thumbnail_embedded"] = f"data:image/jpeg;base64,{thumb_b64}"
+                        item["thumbnail_embedded"] = thumb_b64
                 except Exception as e:
                     warning(f"Failed to read thumbnail for {filename}: {e}")
             
@@ -486,39 +502,70 @@ def delete(bucket: str, filename: str):
 @buckets_bp.route("/move", methods=["POST"])
 def move():
     d = request.get_json(True) or {}
-    src, dst, fname = d.get("source_bucket"), d.get("dest_bucket"), d.get("filename")
+    src_id, dst_id, fname = d.get("source_publish_destination"), d.get("target_publish_destination"), d.get("filename")
     copy = bool(d.get("copy", False))
-    if not all([src, dst, fname]):
-        abort(400, "source_bucket, dest_bucket, filename required")
+    if not all([src_id, dst_id, fname]):
+        abort(400, "source_publish_destination, target_publish_destination, filename required")
 
-    spath = bucket_path(src) / fname
+    # Get publish destination details
+    try:
+        dests = _load_json_once("publish_destinations", "publish-destinations.json")
+        src_dest = next(d for d in dests if d["id"] == src_id)
+        dst_dest = next(d for d in dests if d["id"] == dst_id)
+    except (StopIteration, FileNotFoundError) as e:
+        abort(404, f"Could not find publish destination: {str(e)}")
+
+    # Resolve paths using publish destination file fields
+    spath = bucket_path(src_dest["file"]) / fname
     if not spath.exists():
         abort(404, "source file not found")
 
-    dpath = bucket_path(dst) / fname
+    dpath = bucket_path(dst_dest["file"]) / fname
     dpath.parent.mkdir(parents=True, exist_ok=True)
     if dpath.exists():
         fname = unique_name(fname)
-        dpath = bucket_path(dst) / fname
+        dpath = bucket_path(dst_dest["file"]) / fname
+
+    # Copy main file
     shutil.copy2(spath, dpath)
 
-    # copy side-car
+    # Copy sidecar
     sc_src, sc_dst = sidecar_path(spath), sidecar_path(dpath)
     if sc_src.exists():
         shutil.copy2(sc_src, sc_dst)
 
-    # generate thumbnail in destination bucket
-    thumb_dir = bucket_path(dst) / 'thumbnails'
-    thumb_dir.mkdir(parents=True, exist_ok=True)
-    thumb_path = thumb_dir / (dpath.stem + '.jpg')
-    generate_thumbnail(dpath, thumb_path)
+    # Copy thumbnail
+    src_thumb_dir = bucket_path(src_dest["file"]) / 'thumbnails'
+    dst_thumb_dir = bucket_path(dst_dest["file"]) / 'thumbnails'
+    dst_thumb_dir.mkdir(parents=True, exist_ok=True)
+    
+    src_thumb_path = src_thumb_dir / f"{Path(fname).stem}.jpg"
+    dst_thumb_path = dst_thumb_dir / f"{Path(fname).stem}.jpg"
+    
+    if src_thumb_path.exists():
+        shutil.copy2(src_thumb_path, dst_thumb_path)
+    else:
+        # Generate thumbnail if source doesn't have one
+        generate_thumbnail(dpath, dst_thumb_path)
 
-    dmeta = load_meta(dst)
+    # Update destination metadata
+    dmeta = load_meta(dst_dest["file"])
     dmeta.setdefault("sequence", []).append(fname)
-    save_meta(dst, dmeta)
+    save_meta(dst_dest["file"], dmeta)
 
+    # Handle source deletion if this is a move (not copy)
     if not copy:
-        delete(src, fname)
+        # Remove from source sequence
+        smeta = load_meta(src_dest["file"])
+        if "sequence" in smeta and fname in smeta["sequence"]:
+            smeta["sequence"].remove(fname)
+            save_meta(src_dest["file"], smeta)
+        
+        # Delete source files
+        spath.unlink(missing_ok=True)
+        sc_src.unlink(missing_ok=True)
+        src_thumb_path.unlink(missing_ok=True)
+
     return jsonify({"status": "copied" if copy else "moved", "filename": fname})
 
 # -- sequence reorder --------------------------------------------------------
@@ -677,3 +724,62 @@ def extract_json(bucket: str):
             warning(f"[extract] Failed to generate thumbnail for {fp.name}: {e}")
 
     return jsonify({"status": "extractjson-complete", "updated": updated})
+
+@buckets_bp.route("/<bucket>/complete", methods=["GET"])
+def get_complete_bucket(bucket: str):
+    """Return complete bucket data including thumbnails, metadata, and URLs."""
+    meta = load_meta(bucket)
+    seq = meta.get("sequence", [])
+    favs = set(meta.get("favorites", []))
+    
+    # Get published info
+    pm = meta.get("published_meta", {})
+    published = pm.get("filename")
+    published_at = pm.get("published_at")
+    
+    # Build complete item data
+    items = []
+    
+    for filename in seq:
+        # Get raw and thumbnail URLs
+        raw_url = url_for("buckets.raw", bucket=bucket, filename=filename, _external=True)
+        thumb_url = url_for("buckets.thumbnail", bucket=bucket, filename=filename, _external=True)
+        
+        # Get metadata from sidecar file
+        file_path = bucket_path(bucket) / filename
+        metadata = {}
+        sidecar = sidecar_path(file_path)
+        if sidecar.exists():
+            try:
+                metadata = json.loads(sidecar.read_text("utf-8"))
+            except Exception as e:
+                warning(f"Failed to read sidecar for {filename}: {e}")
+        
+        # Get embedded thumbnail
+        thumb_path = bucket_path(bucket) / "thumbnails" / f"{Path(filename).stem}.jpg"
+        thumbnail_embedded = None
+        if thumb_path.exists():
+            try:
+                with open(thumb_path, "rb") as f:
+                    thumb_data = f.read()
+                    thumbnail_embedded = base64.b64encode(thumb_data).decode("ascii")
+            except Exception as e:
+                warning(f"Failed to read thumbnail for {filename}: {e}")
+        
+        items.append({
+            "filename": filename,
+            "raw_url": raw_url,
+            "thumbnail_url": thumb_url,
+            "thumbnail_embedded": thumbnail_embedded,
+            "favorite": filename in favs,
+            "metadata": metadata
+        })
+    
+    return jsonify({
+        "name": bucket,
+        "items": items,
+        "published": published,
+        "published_at": published_at,
+        "favorites": list(favs),
+        "sequence": seq
+    })

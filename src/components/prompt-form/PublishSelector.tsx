@@ -11,7 +11,8 @@ import {
   HoverCardTrigger,
   HoverCardContent,
 } from '@/components/ui/hover-card';
-import { getPublishDestinations } from '@/services/PublishService';
+import apiService from '@/utils/api';
+import { PublishDestination } from '@/utils/api';
 import { Share2, ScreenShareOff } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -28,8 +29,21 @@ const PublishSelector: React.FC<PublishSelectorProps> = ({
   isCompact = false,
 }) => {
   const isMobile = useIsMobile();
-  const publishDestinations = getPublishDestinations();
+  const [publishDestinations, setPublishDestinations] = useState<PublishDestination[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchDestinations = async () => {
+      try {
+        const destinations = await apiService.getPublishDestinations();
+        setPublishDestinations(destinations);
+      } catch (error) {
+        console.error('Error fetching publish destinations:', error);
+      }
+    };
+
+    fetchDestinations();
+  }, []);
 
   const [selectedDestinations, setSelectedDestinations] = useState<string[]>(
     selectedPublish === 'none' ? [] : selectedPublish.split(',')

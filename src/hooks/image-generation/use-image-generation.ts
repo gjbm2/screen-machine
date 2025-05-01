@@ -154,6 +154,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     handleDownloadImage,
     handleDeleteImage,
     handleReorderContainers,
-    handleDeleteContainer
+    handleDeleteContainer,
+    setGeneratedImages
   };
 };

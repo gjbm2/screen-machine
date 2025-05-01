@@ -1,23 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import * as LucideIcons from 'lucide-react';
-import { fetchAllBuckets } from '@/api/buckets-api';
-
-interface PublishDestination {
-  id: string;
-  name: string;
-  icon: string;
-  type: string;
-  file: string;
-  description: string;
-  maxwidth?: number;
-  maxheight?: number;
-  alexavisible?: boolean;
-  alexadefault?: boolean;
-  alexaclosest?: string;
-}
+import apiService from '@/utils/api';
+import { PublishDestination } from '@/utils/api';
 
 interface PublishDestinationsProps {
   selectedDestination: string | null;
@@ -25,7 +11,7 @@ interface PublishDestinationsProps {
 }
 
 export function PublishDestinations({ selectedDestination, onSelectDestination }: PublishDestinationsProps) {
-  const [destinations, setDestinations] = useState<PublishDestination[]>([]);
+  const [publishDestinations, setPublishDestinations] = useState<PublishDestination[]>([]);
   const [buckets, setBuckets] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   
@@ -34,14 +20,12 @@ export function PublishDestinations({ selectedDestination, onSelectDestination }
     const loadDestinations = async () => {
       try {
         console.log('Loading publish destinations');
-        const response = await fetch('/src/data/publish-destinations.json');
-        const data = await response.json();
-        console.log('Loaded destinations:', data);
-        setDestinations(data);
+        const destinations = await apiService.getPublishDestinations();
+        setPublishDestinations(destinations);
         
         // Select first destination by default if none is selected
-        if (!selectedDestination && data.length > 0) {
-          onSelectDestination(data[0]);
+        if (!selectedDestination && destinations.length > 0) {
+          onSelectDestination(destinations[0]);
         }
       } catch (error) {
         console.error('Error loading publish destinations:', error);
@@ -57,7 +41,7 @@ export function PublishDestinations({ selectedDestination, onSelectDestination }
       setLoading(true);
       try {
         console.log('Fetching bucket list');
-        const bucketList = await fetchAllBuckets();
+        const bucketList = await apiService.fetchAllBuckets();
         console.log('Available buckets:', bucketList);
         setBuckets(bucketList);
       } catch (error) {
@@ -78,17 +62,17 @@ export function PublishDestinations({ selectedDestination, onSelectDestination }
   
   // Check if the destination has a corresponding bucket
   const destinationHasBucket = (destination: PublishDestination) => {
-    return buckets.includes(destination.file);
+    return buckets.includes(destination.id);
   };
   
   return (
     <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 dark:bg-gray-800 rounded-md">
       {loading ? (
         <div className="text-sm text-gray-500 p-2">Loading destinations...</div>
-      ) : destinations.length === 0 ? (
+      ) : publishDestinations.length === 0 ? (
         <div className="text-sm text-gray-500 p-2">No publish destinations found</div>
       ) : (
-        destinations.map((destination) => {
+        publishDestinations.map((destination) => {
           const isSelected = selectedDestination === destination.id;
           const hasBucket = destinationHasBucket(destination);
           

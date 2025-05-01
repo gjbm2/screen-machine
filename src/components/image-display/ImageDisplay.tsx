@@ -2,13 +2,13 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import FullscreenDialog from './FullscreenDialog';
 import ViewModeContent from './ViewModeContent';
 import useImageDisplayState from './hooks/useImageDisplayState';
-import { getPublishDestinations } from '@/services/PublishService';
+import apiService from '@/utils/api';
+import { PublishDestination } from '@/utils/api';
 import * as LucideIcons from 'lucide-react';
 import { BucketGridView } from './BucketGridView';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import ViewModeSelector from './ViewModeSelector';
 import { CirclePause, CirclePlay, CircleStop, Settings, Image, ImagePlus, ChevronRight, ChevronLeft } from 'lucide-react';
-import apiService from '@/utils/api';
 
 export type ViewMode = 'normal' | 'small' | 'table';
 export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
@@ -73,6 +73,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [publishDestinations, setPublishDestinations] = useState<PublishDestination[]>([]);
+  const [schedulerStatuses, setSchedulerStatuses] = useState<Record<string, any>>({});
   
   // Function to trigger a refresh for a specific bucket
   const refreshBucket = (bucket: string) => {
@@ -120,7 +122,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
   // Convert array of destinations to tabs format
   const destinationTabs = useMemo(() => {
     // Get all publish destinations with their display names
-    const allDestinations = getPublishDestinations();
+    const allDestinations = publishDestinations;
     
     return [
       { 
@@ -143,7 +145,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         } as DestinationTab;
       }) : [])
     ];
-  }, [destinations]);
+  }, [destinations, publishDestinations]);
 
   // Find file property for a destination ID
   const getDestinationFile = (destinationId: string) => {
@@ -152,53 +154,26 @@ export function ImageDisplay(props: ImageDisplayProps) {
     return destTab.file;
   };
 
-  // Track scheduler status for each destination
-  const [schedulerStatuses, setSchedulerStatuses] = useState<Record<string, {is_running: boolean, is_paused: boolean}>>({});
-
   // Get scheduler status for all destinations
   useEffect(() => {
     const fetchSchedulerStatuses = async () => {
-      if (!destinations || destinations.length === 0) return;
-      
       try {
-        // Use the batch endpoint to get all statuses at once
-        const response = await apiService.getAllSchedulerStatuses();
-        
-        if (response && response.statuses) {
-          // The response contains statuses for all destinations
-          setSchedulerStatuses(response.statuses);
-        } else {
-          // Fallback to individual requests if the batch endpoint fails
-          console.warn("Batch scheduler status endpoint failed, falling back to individual requests");
-          const statusMap: Record<string, {is_running: boolean, is_paused: boolean}> = {};
-          
-          await Promise.all(destinations.map(async (destId) => {
-            try {
-              const status = await apiService.getSchedulerStatus(destId);
-              statusMap[destId] = {
-                is_running: status.is_running || false,
-                is_paused: status.is_paused || false
-              };
-            } catch (error) {
-              console.error(`Failed to get scheduler status for ${destId}:`, error);
-              statusMap[destId] = { is_running: false, is_paused: false };
-            }
-          }));
-          
-          setSchedulerStatuses(statusMap);
-        }
+        const statuses = await Promise.all(
+          publishDestinations.map(async (dest) => {
+            const status = await apiService.getSchedulerStatus(dest.id);
+            return { [dest.id]: status };
+          })
+        );
+        setSchedulerStatuses(Object.assign({}, ...statuses));
       } catch (error) {
-        console.error("Failed to fetch scheduler statuses:", error);
+        console.error('Error fetching scheduler statuses:', error);
       }
     };
-    
-    fetchSchedulerStatuses();
-    
-    // Set up periodic refresh with a longer interval since we're batching
-    const intervalId = setInterval(fetchSchedulerStatuses, 60000); // refresh every 60 seconds
-    
-    return () => clearInterval(intervalId);
-  }, [destinations]);
+
+    if (publishDestinations.length > 0) {
+      fetchSchedulerStatuses();
+    }
+  }, [publishDestinations]);
 
   // Get status for a destination to be passed to BucketGridView
   const getStatusForDestination = (destId: string) => {
@@ -273,7 +248,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         const containerWidth = tabsRef.current.clientWidth;
         const tabWidth = selectedTabElement.clientWidth;
         const tabLeft = selectedTabElement.offsetLeft;
-        
+  
         // Scroll to center the tab
         tabsRef.current.scrollTo({
           left: tabLeft - (containerWidth / 2) + (tabWidth / 2),
@@ -368,6 +343,19 @@ export function ImageDisplay(props: ImageDisplayProps) {
     }, 10);
   };
   
+  useEffect(() => {
+    const fetchDestinations = async () => {
+      try {
+        const destinations = await apiService.getPublishDestinations();
+        setPublishDestinations(destinations);
+      } catch (error) {
+        console.error('Error fetching publish destinations:', error);
+      }
+    };
+
+    fetchDestinations();
+  }, []);
+  
   return (
     <div className="bg-background overflow-hidden h-full">
       {/* Tabs for switching between Generated view and Destinations - frameless design */}
@@ -439,11 +427,11 @@ export function ImageDisplay(props: ImageDisplayProps) {
               {/* View Mode Selector */}
               <div className="flex justify-end mb-4">
                 <ViewModeSelector 
-                  viewMode={viewMode}
+            viewMode={viewMode}
                   onViewModeChange={(value) => setViewMode(value as ViewMode)}
           />
               </div>
-              
+          
               {/* Render appropriate content for Index.tsx props */}
             <ViewModeContent
               viewMode={viewMode}
@@ -537,7 +525,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
             isLoading={false}
             schedulerStatus={getStatusForDestination(selectedTab)}
             headless={destinationTabs.find(tab => tab.id === selectedTab)?.headless || false}
-            icon={getPublishDestinations().find(d => d.id === selectedTab)?.icon || 'image'}
+            icon={publishDestinations.find(d => d.id === selectedTab)?.icon || 'image'}
           />
         )}
         </div>

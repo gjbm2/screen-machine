@@ -1,43 +1,35 @@
-
-import React, { useState } from 'react';
-import { BucketGridView } from './BucketView/BucketGridView';
-import { BucketItem } from '@/api/buckets-api';
+import React from 'react';
+import { BucketItem } from '@/utils/api';
+import { Card } from '@/components/ui/card';
+import { Image as ImageIcon } from 'lucide-react';
 
 interface SmallGridViewProps {
-  images: any[];
-  isLoading: boolean;
-  onSmallImageClick: (image: any) => void;
-  onCreateAgain: (batchId?: string) => void;
-  onDeleteImage: (batchId: string, index: number) => void;
+  items: BucketItem[];
+  onFullScreenView?: (item: BucketItem) => void;
 }
 
-const SmallGridView: React.FC<SmallGridViewProps> = ({
-  images,
-  isLoading,
-  onSmallImageClick,
-  onCreateAgain,
-  onDeleteImage
-}) => {
-  // Handle opening a bucket image in fullscreen view
-  const handleOpenBucketImage = (bucketImage: BucketItem) => {
-    console.log('Opening bucket image in fullscreen:', bucketImage);
-    
-    // Create a compatible image object that the existing fullscreen view can understand
-    const compatibleImage = {
-      url: bucketImage.thumbnail.replace('/thumbnail/', '/raw/'),
-      prompt: bucketImage.filename, // Use filename as prompt since we don't have actual prompt data
-      batchId: `bucket-${bucketImage.bucket}-${bucketImage.filename}`,
-      batchIndex: bucketImage.index,
-      status: 'completed',
-      timestamp: Date.now()
-    };
-
-    onSmallImageClick(compatibleImage);
-  };
-
+const SmallGridView: React.FC<SmallGridViewProps> = ({ items, onFullScreenView }) => {
   return (
-    <div className="bucket-grid-container w-full">
-      <BucketGridView onFullScreenView={handleOpenBucketImage} />
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+      {items.map((item) => (
+        <Card
+          key={item.filename}
+          className="aspect-square overflow-hidden cursor-pointer hover:border-primary transition-all"
+          onClick={() => onFullScreenView?.(item)}
+        >
+          <div className="w-full h-full flex items-center justify-center bg-muted">
+            {item.thumbnail_url ? (
+              <img
+                src={item.thumbnail_url}
+                alt={item.filename}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <ImageIcon className="h-8 w-8 text-muted-foreground" />
+            )}
+          </div>
+        </Card>
+      ))}
     </div>
   );
 };

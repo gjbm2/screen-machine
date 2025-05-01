@@ -1,24 +1,35 @@
 // API service for all backend requests
-import { toast as sonnerToast } from 'sonner';
-// Create a simple toast wrapper for API error messages (matches the shadcn/ui toast API)
-const toast = {
-  error: (message: string) => {
-    sonnerToast.error(message, {
-      duration: 5000 // Auto-hide after 5 seconds
-    });
-  },
-  success: (message: string) => {
-    sonnerToast.success(message, {
-      duration: 3000 // Auto-hide after 3 seconds
-    });
-  }
-};
+import { toast } from 'sonner';
 
 // Define default API URLs
 const DEFAULT_API_URL = import.meta.env.VITE_API_URL || '/api';
 
-// Import the PublishService
-import { getPublishDestinations, PublishDestination } from '@/services/PublishService';
+// Types for buckets
+export interface BucketItem {
+  filename: string;
+  url: string;
+  thumbnail_url?: string;
+  thumbnail_embedded?: string;
+  favorite?: boolean;
+  metadata?: Record<string, any>;
+}
+
+export interface Bucket {
+  name: string;
+  items: BucketItem[];
+  metadata?: Record<string, any>;
+  published?: string;
+  publishedAt?: string;
+  favorites?: string[];
+  sequence?: string[];
+}
+
+export interface PublishDestination {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
 
 // Type for image generation params
 interface GenerateImageParams {
@@ -36,23 +47,6 @@ interface GenerateImageParams {
   refiner?: string;
   refiner_params?: Record<string, any>;
   is_async?: boolean;
-}
-
-// Bucket API Types
-export interface BucketItem {
-  filename: string;
-  bucket: string;
-  thumbnail: string;
-  isFavorite: boolean;
-  index: number;
-  url?: string;
-}
-
-export interface Bucket {
-  name: string;
-  items: BucketItem[];
-  published?: string;
-  publishedAt?: string;
 }
 
 class ApiService {
@@ -74,473 +68,9 @@ class ApiService {
     }
   }
 
-  // Get all available buckets
-  async fetchAllBuckets(): Promise<string[]> {
-    try {
-      if (this.mockMode) {
-        // Return mock bucket names
-        return ['mock-bucket-1', 'mock-bucket-2', 'mock-bucket-3'];
-      }
-
-      const response = await fetch(`${this.apiUrl}/buckets/`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch buckets: ${response.statusText}`);
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching buckets:', error);
-      toast.error('Failed to fetch buckets');
-      return [];
-    }
-  }
-
-  // Get detailed info for a specific bucket
-  async fetchBucketDetails(bucketName: string): Promise<Bucket> {
-    try {
-      if (this.mockMode) {
-        // Return mock bucket details
-        return {
-          name: bucketName,
-          items: Array.from({ length: 5 }, (_, i) => ({
-            filename: `mock-image-${i}.jpg`,
-            bucket: bucketName,
-            thumbnail: `https://placeholder.pics/svg/300x300/DEDEDE/555555/Mock%20${i}`,
-            isFavorite: Math.random() > 0.5,
-            index: i
-          }))
-        };
-      }
-
-      const response = await fetch(`${this.apiUrl}/buckets/${bucketName}/items`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch bucket details: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      // Check if response includes embedded thumbnails
-      if (data.items_with_thumbnails && data.items_with_thumbnails.length > 0) {
-        console.log(`Using ${data.items_with_thumbnails.length} embedded thumbnails for ${bucketName}`);
-        
-        // Use embedded thumbnails
-        const items: BucketItem[] = data.items_with_thumbnails.map((item, index) => ({
-          filename: item.filename,
-          bucket: bucketName,
-          thumbnail: item.thumbnail_embedded || `${this.apiUrl}/buckets/${bucketName}/thumbnail/${item.filename}`,
-          url: `${this.apiUrl}/buckets/${bucketName}/raw/${item.filename}`,
-          isFavorite: (data.favorites || []).includes(item.filename),
-          index
-        }));
-        
-        return {
-          name: bucketName,
-          items,
-          published: data.published_meta?.filename,
-          publishedAt: data.published_meta?.published_at
-        };
-      }
-      
-      // Fallback to constructing thumbnail URLs if no embedded thumbnails
-      console.log(`No embedded thumbnails available for ${bucketName}, using URL references`);
-      
-      // Transform API response to our expected format
-      const items: BucketItem[] = (data.sequence || []).map((filename: string, index: number) => ({
-        filename,
-        bucket: bucketName,
-        thumbnail: `${this.apiUrl}/buckets/${bucketName}/thumbnail/${filename}`,
-        url: `${this.apiUrl}/buckets/${bucketName}/raw/${filename}`,
-        isFavorite: (data.favorites || []).includes(filename),
-        index
-      }));
-      
-      return {
-        name: bucketName,
-        items,
-        published: data.published_meta?.filename,
-        publishedAt: data.published_meta?.published_at
-      };
-    } catch (error) {
-      console.error(`Error fetching bucket details for ${bucketName}:`, error);
-      toast.error(`Failed to fetch details for bucket: ${bucketName}`);
-      return { name: bucketName, items: [] };
-    }
-  }
-
-  // Toggle favorite status of an item
-  async toggleFavorite(bucket: string, filename: string, currentState: boolean): Promise<boolean> {
-    try {
-      if (this.mockMode) {
-        return true;
-      }
-
-      const method = currentState ? 'DELETE' : 'POST';
-      const endpoint = `${this.apiUrl}/buckets/${bucket}/favorite/${filename}`;
-      
-      const response = await fetch(endpoint, { method });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to ${currentState ? 'unfavorite' : 'favorite'} image`);
-      }
-      
-      const data = await response.json();
-      toast.success(`Image ${currentState ? 'unfavorited' : 'favorited'}`);
-      return true;
-    } catch (error) {
-      console.error('Error toggling favorite status:', error);
-      toast.error('Failed to update favorite status');
-      return false;
-    }
-  }
-
-  // Delete an image from a bucket
-  async deleteImage(bucket: string, filename: string): Promise<boolean> {
-    try {
-      if (this.mockMode) {
-        return true;
-      }
-
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/${filename}`, {
-        method: 'DELETE'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete image');
-      }
-      
-      toast.success('Image deleted');
-      return true;
-    } catch (error) {
-      console.error('Error deleting image:', error);
-      toast.error('Failed to delete image');
-      return false;
-    }
-  }
-
-  // Move an image up or down in sequence
-  async moveImage(bucket: string, filename: string, direction: 'up' | 'down'): Promise<boolean> {
-    try {
-      if (this.mockMode) {
-        return true;
-      }
-
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/move-${direction}/${filename}`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to move image ${direction}`);
-      }
-      
-      return true;
-    } catch (error) {
-      console.error(`Error moving image ${direction}:`, error);
-      toast.error(`Failed to move image ${direction}`);
-      return false;
-    }
-  }
-
-  // Move an image to a specific position in sequence
-  async moveImageToPosition(bucket: string, filename: string, position: number): Promise<boolean> {
-    try {
-      if (this.mockMode) {
-        return true;
-      }
-
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/move-to/${filename}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ position })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to move image to position');
-      }
-      
-      toast.success(`Image moved to position ${position}`);
-      return true;
-    } catch (error) {
-      console.error('Error moving image to position:', error);
-      toast.error('Failed to move image to position');
-      return false;
-    }
-  }
-
-  // Copy an image to another bucket
-  async copyImageToBucket(sourceBucket: string, targetBucket: string, filename: string): Promise<boolean> {
-    try {
-      if (this.mockMode) {
-        return true;
-      }
-
-      const response = await fetch(`${this.apiUrl}/buckets/move`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          source_bucket: sourceBucket,
-          dest_bucket: targetBucket,
-          filename: filename,
-          copy: true
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to copy image');
-      }
-      
-      toast.success(`Image copied to ${targetBucket}`);
-      return true;
-    } catch (error) {
-      console.error('Error copying image:', error);
-      toast.error('Failed to copy image');
-      return false;
-    }
-  }
-
-  // Publish an image from a bucket
-  async publishBucketImage(bucket: string, filename: string): Promise<boolean> {
-    try {
-      if (this.mockMode) {
-        return true;
-      }
-
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/publish/${filename}`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to publish image');
-      }
-      
-      toast.success('Image published');
-      return true;
-    } catch (error) {
-      console.error('Error publishing image:', error);
-      toast.error('Failed to publish image');
-      return false;
-    }
-  }
-
-  // Get the currently published image info for a bucket
-  async getPublishedInfo(bucket: string): Promise<any> {
-    try {
-      if (this.mockMode) {
-        return {
-          filename: 'mock-published.jpg',
-          published_at: new Date().toISOString(),
-          raw_url: 'https://placeholder.pics/svg/800x600/DEDEDE/555555/Published%20Image',
-          thumbnail_url: 'https://placeholder.pics/svg/300x300/DEDEDE/555555/Thumbnail'
-        };
-      }
-
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/published`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to get published image info');
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('Error getting published image info:', error);
-      return null;
-    }
-  }
-
-  // Upload an image to a bucket
-  async uploadToBucket(bucket: string, file: File): Promise<any> {
-    try {
-      if (this.mockMode) {
-        return {
-          status: 'stored',
-          filename: file.name,
-          thumbnail: 'ok'
-        };
-      }
-
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/upload`, {
-        method: 'POST',
-        body: formData
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to upload image');
-      }
-      
-      const result = await response.json();
-      toast.success('Image uploaded successfully');
-      return result;
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      toast.error('Failed to upload image to bucket');
-      return null;
-    }
-  }
-
-  // Create a new bucket
-  async createBucket(bucketName: string): Promise<boolean> {
-    try {
-      if (this.mockMode) {
-        return true;
-      }
-
-      const response = await fetch(`${this.apiUrl}/buckets/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ bucket_name: bucketName })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to create bucket');
-      }
-      
-      toast.success(`Bucket "${bucketName}" created`);
-      return true;
-    } catch (error) {
-      console.error('Error creating bucket:', error);
-      toast.error('Failed to create bucket');
-      return false;
-    }
-  }
-
   // Get the API URL
   getApiUrl(): string {
     return this.apiUrl;
-  }
-
-  // Purge non-favorite images from a bucket
-  async purgeNonFavorites(bucket: string): Promise<boolean> {
-    try {
-      if (this.mockMode) {
-        return true;
-      }
-
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/purge-non-favorites`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to purge non-favorite images');
-      }
-      
-      toast.success('Non-favorite images purged');
-      return true;
-    } catch (error) {
-      console.error('Error purging non-favorite images:', error);
-      toast.error('Failed to purge non-favorite images');
-      return false;
-    }
-  }
-
-  // Re-index a bucket
-  async reindexBucket(bucket: string): Promise<boolean> {
-    try {
-      if (this.mockMode) {
-        return true;
-      }
-
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/reindex`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to re-index bucket');
-      }
-      
-      toast.success('Bucket re-indexed');
-      return true;
-    } catch (error) {
-      console.error('Error re-indexing bucket:', error);
-      toast.error('Failed to re-index bucket');
-      return false;
-    }
-  }
-
-  // Extract JSON from a bucket
-  async extractJson(bucket: string): Promise<boolean> {
-    try {
-      if (this.mockMode) {
-        return true;
-      }
-
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/extract-json`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to extract JSON');
-      }
-      
-      toast.success('JSON extracted');
-      return true;
-    } catch (error) {
-      console.error('Error extracting JSON:', error);
-      toast.error('Failed to extract JSON');
-      return false;
-    }
-  }
-
-  // Get all available destinations with scheduler status
-  async getDestinations() {
-    // First get all publish destinations
-    const publishDestinations = getPublishDestinations();
-    
-    // For each destination, check if scheduler is running
-    const destinationsWithStatus = await Promise.all(
-      publishDestinations.map(async (destination) => {
-        try {
-          // In mock mode, just return mock status
-          if (this.mockMode) {
-            return {
-              ...destination,
-              scheduler_running: Math.random() > 0.5, // Randomly set status for mock
-              scheduler_status: Math.random() > 0.7 ? 'paused' : 'running'
-            };
-          }
-          
-          // Get scheduler status for this destination
-          const response = await fetch(`${this.apiUrl}/schedulers/${destination.id}/status`, {
-            method: 'GET',
-          });
-          
-          if (!response.ok) {
-            return {
-              ...destination,
-              scheduler_running: false,
-              scheduler_status: 'stopped'
-            };
-          }
-          
-          const status = await response.json();
-          return {
-            ...destination,
-            scheduler_running: status.is_running || status.is_paused,
-            scheduler_status: status.status
-          };
-        } catch (error) {
-          console.error(`Error checking scheduler status for ${destination.id}:`, error);
-          return {
-            ...destination,
-            scheduler_running: false,
-            scheduler_status: 'error'
-          };
-        }
-      })
-    );
-    
-    return {
-      destinations: destinationsWithStatus
-    };
   }
 
   // Generate images through the API
@@ -893,27 +423,17 @@ class ApiService {
   // List all schedulers
   async listSchedulers() {
     if (this.mockMode) {
-      console.info('[MOCK BACKEND] Listing schedulers');
-      return {
-        success: true,
-        running: ['mock-scheduler-1', 'mock-scheduler-2']
-      };
+      return { running: ['destination1', 'destination2'] };
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/schedulers`, {
-        method: 'GET',
-      });
-
+      const response = await fetch(`${this.apiUrl}/schedulers`);
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to list schedulers');
+        throw new Error('Failed to list schedulers');
       }
-
       return await response.json();
     } catch (error) {
       console.error('Error listing schedulers:', error);
-      toast.error('Failed to list schedulers');
       throw error;
     }
   }
@@ -921,32 +441,17 @@ class ApiService {
   // Get scheduler logs
   async getSchedulerLogs(destinationId: string) {
     if (this.mockMode) {
-      console.info('[MOCK BACKEND] Fetching logs for scheduler ID:', destinationId);
-      return {
-        success: true,
-        log: [
-          '[MOCK LOG] Scheduler started',
-          '[MOCK LOG] Task executed successfully',
-          '[MOCK LOG] Waiting for next execution'
-        ]
-      };
+      return { log: ['Mock log entry 1', 'Mock log entry 2'] };
     }
 
     try {
-      // IMPORTANT: destinationId should be the ID of the destination, not the display name
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}`, {
-        method: 'GET',
-      });
-
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}`);
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to fetch scheduler logs');
+        throw new Error('Failed to fetch scheduler logs');
       }
-
       return await response.json();
     } catch (error) {
       console.error('Error fetching scheduler logs:', error);
-      toast.error('Failed to fetch scheduler logs');
       throw error;
     }
   }
@@ -1111,171 +616,36 @@ class ApiService {
   // Get scheduler status
   async getSchedulerStatus(destinationId: string) {
     if (this.mockMode) {
-      console.info('[MOCK BACKEND] Getting status for scheduler ID:', destinationId);
-      return {
-        success: true,
-        status: 'running',
-        destination: destinationId
-      };
+      return { is_running: false, is_paused: false };
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/status`, {
-        method: 'GET',
-      });
-
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/status`);
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to get scheduler status');
+        throw new Error('Failed to fetch scheduler status');
       }
-
       return await response.json();
     } catch (error) {
-      console.error('Error getting scheduler status:', error);
-      toast.error('Failed to get scheduler status');
+      console.error('Error fetching scheduler status:', error);
       throw error;
-    }
-  }
-
-  // Get the next scheduled action for a destination
-  async getNextScheduledAction(destinationId: string) {
-    if (this.mockMode) {
-      console.info('[MOCK BACKEND] Getting next scheduled action for ID:', destinationId);
-      return {
-        success: true,
-        destination: destinationId,
-        next_action: {
-          has_next_action: true,
-          next_time: "12:00",
-          description: "Mock scheduled action",
-          minutes_until_next: 60,
-          timestamp: new Date().toISOString()
-        }
-      };
-    }
-
-    try {
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/next_action`, {
-        method: 'GET',
-      });
-
-      // If we get a 404, it just means the scheduler doesn't exist yet
-      if (response.status === 404) {
-        return {
-          success: true,
-          destination: destinationId,
-          next_action: {
-            has_next_action: false,
-            next_time: null,
-            description: null,
-            minutes_until_next: null,
-            timestamp: new Date().toISOString()
-          }
-        };
-      }
-
-      if (!response.ok) {
-        // Try to parse the error response as JSON, but handle it gracefully if it's HTML
-        try {
-          const errorText = await response.text();
-          // Check if the response looks like HTML
-          if (errorText.trim().startsWith('<!DOCTYPE') || errorText.trim().startsWith('<html')) {
-            console.error('Received HTML response instead of JSON for next_action endpoint');
-            return {
-              success: false,
-              destination: destinationId,
-              next_action: null,
-              error: 'Received HTML response from API'
-            };
-          }
-          
-          // Try to parse as JSON
-          const err = JSON.parse(errorText);
-          throw new Error(err.error || 'Failed to get next scheduled action');
-        } catch (parseError) {
-          throw new Error('Failed to parse API response');
-        }
-      }
-
-      // Try to handle the content safely
-      try {
-        const data = await response.json();
-        return data;
-      } catch (jsonError) {
-        console.error('Error parsing next action JSON:', jsonError);
-        return {
-          success: false,
-          destination: destinationId,
-          next_action: null,
-          error: 'Invalid JSON response'
-        };
-      }
-    } catch (error) {
-      console.error('Error getting next scheduled action:', error);
-      // Don't toast this error as it might be expected
-      return {
-        success: false,
-        destination: destinationId,
-        next_action: null,
-        error: error.message || 'Unknown error'
-      };
     }
   }
 
   // Get scheduler context
   async getSchedulerContext(destinationId: string) {
     if (this.mockMode) {
-      console.info('[MOCK BACKEND] Getting context for scheduler ID:', destinationId);
-      return {
-        success: true,
-        context: { vars: { key: 'value' } },
-        context_stack: [{ vars: { key: 'value' } }]
-      };
+      return { vars: {}, last_generated: null };
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/context`, {
-        method: 'GET',
-      });
-
-      // If we get a 404, it just means the scheduler doesn't exist yet, return empty context
-      if (response.status === 404) {
-        return {
-          success: true,
-          context: { vars: {} },
-          context_stack: []
-        };
-      }
-
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/context`);
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(err.error || 'Failed to get scheduler context');
+        throw new Error('Failed to fetch scheduler context');
       }
-
-      const responseData = await response.json();
-      
-      // Log the response structure to help with debugging
-      console.debug(`API: Scheduler context response structure for ${destinationId}:`, 
-                   Object.keys(responseData));
-      
-      // Handle the case when the response is a direct context object
-      if (responseData.vars !== undefined || responseData.last_generated !== undefined) {
-        console.debug(`API: Detected direct context object for ${destinationId}`);
-        // If the response is a direct context object, wrap it in our expected format
-        return responseData;
-      }
-      
-      // Otherwise return the response as is
-      return responseData;
+      return await response.json();
     } catch (error) {
-      console.error('Error getting scheduler context:', error);
-      // Don't toast this error as it's expected for new destinations
-      // Return empty context instead of throwing
-      return {
-        success: true,
-        context: { vars: {} },
-        context_stack: []
-      };
+      console.error('Error fetching scheduler context:', error);
+      throw error;
     }
   }
 
@@ -1307,43 +677,6 @@ class ApiService {
     } catch (error) {
       console.error('Error setting scheduler context:', error);
       toast.error('Failed to set scheduler context');
-      throw error;
-    }
-  }
-
-  // Set a specific context variable for a scheduler
-  async setSchedulerContextVar(destinationId: string, varName: string, varValue: any) {
-    if (this.mockMode) {
-      console.info('[MOCK BACKEND] Setting context variable for scheduler ID:', destinationId, `${varName}=`, varValue);
-      return {
-        status: 'success',
-        var_name: varName,
-        var_value: varValue,
-        vars: { [varName]: varValue }
-      };
-    }
-
-    try {
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/context`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          var_name: varName,
-          var_value: varValue
-        }),
-      });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to set variable');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error(`Error setting scheduler variable ${varName}:`, error);
-      toast.error(`Failed to set variable ${varName}`);
       throw error;
     }
   }
@@ -1412,43 +745,18 @@ class ApiService {
   // Get schedule stack
   async getScheduleStack(destinationId: string) {
     if (this.mockMode) {
-      console.info('[MOCK BACKEND] Getting schedule stack for ID:', destinationId);
-      return {
-        success: true,
-        stack: [
-          { name: 'Mock Schedule 1', cron: '* * * * *' },
-          { name: 'Mock Schedule 2', cron: '0 * * * *' }
-        ]
-      };
+      return { stack: [], stack_size: 0 };
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/stack`, {
-        method: 'GET',
-      });
-
-      // If we get a 404, it just means the scheduler doesn't exist yet, return an empty stack
-      if (response.status === 404) {
-        return {
-          success: true,
-          stack: []
-        };
-      }
-
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/stack`);
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(err.error || 'Failed to get schedule stack');
+        throw new Error('Failed to fetch schedule stack');
       }
-
       return await response.json();
     } catch (error) {
-      console.error('Error getting schedule stack:', error);
-      // Don't toast this error as it's expected for new destinations
-      // Return an empty stack instead of throwing
-      return {
-        success: true,
-        stack: []
-      };
+      console.error('Error fetching schedule stack:', error);
+      throw error;
     }
   }
 
@@ -1604,53 +912,228 @@ class ApiService {
     }
   }
 
-  // Get all scheduler statuses at once
+  // Get publish destinations
+  async getPublishDestinations(): Promise<any[]> {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Getting publish destinations');
+      return [
+        { id: 'mock-dest-1', name: 'Mock Destination 1', file: 'mock-file-1' },
+        { id: 'mock-dest-2', name: 'Mock Destination 2', file: 'mock-file-2' }
+      ];
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/publish-destinations`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch publish destinations: ${response.statusText}`);
+      }
+      
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching publish destinations:', error);
+      throw error;
+    }
+  }
+
+  async getBucketDetails(bucket: string): Promise<any> {
+    try {
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/complete`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch bucket details: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Transform the data to match our expected format
+      return {
+        name: data.name,
+        items: data.items.map((item: any) => ({
+          filename: item.filename,
+          url: item.raw_url,
+          thumbnail_url: item.thumbnail_url,
+          thumbnail_embedded: item.thumbnail_embedded,
+          favorite: item.favorite,
+          metadata: item.metadata
+        })),
+        published: data.published,
+        publishedAt: data.published_at,
+        favorites: data.favorites,
+        sequence: data.sequence
+      };
+    } catch (error) {
+      console.error('Error fetching bucket details:', error);
+      throw error;
+    }
+  }
+
+  // Get all buckets
+  async fetchAllBuckets(): Promise<string[]> {
+    if (this.mockMode) {
+      return ['mock-bucket-1', 'mock-bucket-2'];
+    }
+
+    try {
+      const destinations = await this.getPublishDestinations();
+      return destinations.map(d => d.id);
+    } catch (error) {
+      console.error('Error fetching all buckets:', error);
+      throw error;
+    }
+  }
+
+  // Toggle favorite status for an image
+  async toggleFavorite(bucket: string, filename: string, currentState: boolean): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/favorite/${filename}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ favorite: !currentState }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to toggle favorite');
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      toast.error('Failed to toggle favorite');
+      return false;
+    }
+  }
+
+  // Delete an image from a bucket
+  async deleteImage(bucket: string, filename: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/images/${filename}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete image');
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      toast.error('Failed to delete image');
+      return false;
+    }
+  }
+
+  // Move an image up or down in a bucket
+  async moveImage(bucket: string, filename: string, direction: 'up' | 'down'): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/move/${filename}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ direction }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to move image');
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error moving image:', error);
+      toast.error('Failed to move image');
+      return false;
+    }
+  }
+
+  // Copy an image to another bucket
+  async copyImageToBucket(sourcePublishDestination: string, targetPublishDestination: string, filename: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.apiUrl}/buckets/move`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source_publish_destination: sourcePublishDestination,
+          target_publish_destination: targetPublishDestination,
+          filename: filename,
+          copy: true
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to copy image');
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error copying image:', error);
+      toast.error('Failed to copy image');
+      return false;
+    }
+  }
+
+  // Perform bucket maintenance
+  async performBucketMaintenance(bucket: string, action: 'purge' | 'reindex' | 'extract'): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/maintenance/${action}`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to perform ${action}`);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error performing maintenance:', error);
+      toast.error(`Failed to perform ${action}`);
+      return false;
+    }
+  }
+
+  // Get all scheduler statuses
   async getAllSchedulerStatuses() {
     if (this.mockMode) {
-      console.info('[MOCK BACKEND] Getting all scheduler statuses');
       return {
-        success: true,
         statuses: {
-          'mock-destination-1': {
-            status: 'running',
-            is_running: true,
-            is_paused: false,
-            next_action: {
-              has_next_action: true,
-              next_time: "12:00",
-              description: "Mock scheduled action",
-              minutes_until_next: 60,
-              timestamp: new Date().toISOString()
-            }
-          },
-          'mock-destination-2': {
-            status: 'paused',
-            is_running: false,
-            is_paused: true,
-            next_action: null
-          }
+          'destination1': { is_running: true, is_paused: false },
+          'destination2': { is_running: false, is_paused: false }
         }
       };
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/schedulers/all/status`, {
-        method: 'GET',
-      });
-
+      const response = await fetch(`${this.apiUrl}/schedulers/all/status`);
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to get all scheduler statuses');
+        throw new Error('Failed to fetch scheduler statuses');
       }
-
       return await response.json();
     } catch (error) {
-      console.error('Error getting all scheduler statuses:', error);
-      // Don't toast this error as it might be called frequently
-      return {
-        success: false,
-        statuses: {}
-      };
+      console.error('Error fetching scheduler statuses:', error);
+      throw error;
+    }
+  }
+
+  // Get next scheduled action
+  async getNextScheduledAction(destinationId: string) {
+    if (this.mockMode) {
+      return { next_action: { type: 'generate', scheduled_time: new Date().toISOString() } };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/next_action`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch next scheduled action');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching next scheduled action:', error);
+      throw error;
     }
   }
 }

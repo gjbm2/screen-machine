@@ -1,9 +1,8 @@
-
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { BucketImage } from './BucketImage';
-import { BucketItem } from '@/api/buckets-api';
+import { BucketItem } from '@/utils/api';
 
 interface SortableBucketImageProps {
   id: string;
