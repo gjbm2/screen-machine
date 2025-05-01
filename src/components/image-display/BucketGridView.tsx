@@ -1,4 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { format, formatDistance } from 'date-fns';
+import apiService from '@/utils/api';
+import { Input } from '@/components/ui/input';
+import { BucketItem as ApiBucketItem, Bucket as ApiBucket } from '@/utils/api';
 import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, Settings, ExternalLink, Send, Trash2, Copy, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,39 +14,21 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { toast } from 'sonner';
-import apiService from '@/utils/api';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getPublishDestinations } from '@/services/PublishService';
-import { format, formatDistance } from 'date-fns';
+import { BucketImage } from './BucketImage';
+import { BucketDetails } from './BucketDetails';
+import { UploadModal } from './UploadModal';
+import { MaintenanceModal } from './MaintenanceModal';
 
 // Define the expected types based on the API response
-interface BucketItem {
-  filename: string;
-  url?: string;
-  thumbnail?: string;
-  prompt?: string;
-  isFavorite?: boolean;
-  timestamp?: string;
-}
+interface BucketItem extends ApiBucketItem {}
 
-interface Bucket {
-  name: string;
-  items?: BucketItem[];
-  error?: string;
-  size_mb?: number;
-  last_modified?: string;
-  published?: string;
-  publishedAt?: string;
-}
+interface Bucket extends ApiBucket {}
 
 interface BucketImage {
   id: string;
   url: string;
-  thumbnail?: string;
+  thumbnail_url?: string;
+  thumbnail_embedded?: string;
   prompt?: string;
   metadata?: Record<string, any>;
 }
@@ -52,121 +40,132 @@ interface BucketDetails {
   size_mb: number;
   last_modified: string;
   published?: string;
-  publishedAt?: string;
+  published_at?: string;
 }
 
 interface BucketGridViewProps {
-  destination: string;  // This is the file/directory name used for API calls
-  destinationName?: string; // This is the display name shown in the UI
+  destination: string;
+  destinationName?: string;
   onImageClick?: (image: BucketImage) => void;
   refreshBucket: (bucket: string) => void;
   isLoading: boolean;
   schedulerStatus?: { is_running: boolean; is_paused: boolean };
-  headless?: boolean; // Add headless property
-  icon?: string; // Add icon property
+  headless?: boolean;
+  icon?: string;
 }
 
-export function BucketGridView({ 
-  destination, 
+export const BucketGridView = ({
+  destination,
   destinationName,
-  onImageClick, 
+  onImageClick,
   refreshBucket,
-  isLoading,
-  schedulerStatus = { is_running: false, is_paused: false },
-  headless = false, // Default to false
-  icon = 'image' // Default icon
-}: BucketGridViewProps) {
-  const [bucketDetails, setBucketDetails] = useState<BucketDetails | null>(null);
+  isLoading: externalLoading,
+  schedulerStatus,
+  headless = false,
+  icon
+}: BucketGridViewProps) => {
   const [bucketImages, setBucketImages] = useState<BucketImage[]>([]);
+  const [bucketDetails, setBucketDetails] = useState<BucketDetails | null>(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadUrl, setUploadUrl] = useState('');
+  const [currentPublishedImage, setCurrentPublishedImage] = useState<BucketImage | null>(null);
+  const [destinations, setDestinations] = useState<{id: string, name: string}[]>([]);
+  const [showFavoritesFirst, setShowFavoritesFirst] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadTab, setUploadTab] = useState<'file' | 'url'>('file');
   const [selectedImage, setSelectedImage] = useState<BucketImage | null>(null);
   const [showImageDetail, setShowImageDetail] = useState(false);
-  const [showFavoritesFirst, setShowFavoritesFirst] = useState(true);
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadUrl, setUploadUrl] = useState('');
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadTab, setUploadTab] = useState('file'); // file, url, camera
-  const [currentPublishedImage, setCurrentPublishedImage] = useState<BucketImage | null>(null);
+  const [refreshTimeout, setRefreshTimeout] = useState<NodeJS.Timeout | null>(null);
 
-  // Use the destinationName in the UI if provided, otherwise fall back to the destination
-  const displayName = destinationName || destination;
+  const debouncedFetchBucketDetails = useCallback(() => {
+    if (refreshTimeout) {
+      clearTimeout(refreshTimeout);
+    }
+    const timeout = setTimeout(() => {
+      fetchBucketDetails();
+    }, 500);
+    setRefreshTimeout(timeout);
+  }, [refreshTimeout]);
+
+  useEffect(() => {
+    return () => {
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
+      }
+    };
+  }, [refreshTimeout]);
 
   useEffect(() => {
     fetchBucketDetails();
+    fetchDestinations();
   }, [destination]);
 
+  const fetchDestinations = async () => {
+    try {
+      const buckets = await apiService.getPublishDestinations();
+      setDestinations(buckets.map(bucket => ({
+        id: bucket.id,
+        name: bucket.name || bucket.id
+      })));
+    } catch (error) {
+      console.error('Error fetching destinations:', error);
+      toast.error('Failed to fetch destinations');
+    }
+  };
+
   const fetchBucketDetails = async () => {
-    if (!destination) return;
-    
     setLoading(true);
     setError(null);
-    
     try {
-      const details = await apiService.fetchBucketDetails(destination);
-      
-      if (details && 'error' in details) {
-        setError(details.error as string);
-        setBucketImages([]);
-        setBucketDetails(null);
-        return;
+      const details = await apiService.getBucketDetails(destination);
+      if (details.error) {
+        throw new Error(details.error);
       }
-      
-      // Try to get the current published image directly from API
-      let publishedImage = await fetchPublishedImage();
-      
-      // Transform the data to match our expected format
-      const bucketImages = details.items?.map((item: BucketItem) => ({
+
+      const images = details.items.map((item: BucketItem) => ({
         id: item.filename,
-        url: item.url || `${apiService.getApiUrl()}/bucket/${destination}/${item.filename}`,
-        thumbnail: item.thumbnail || `${apiService.getApiUrl()}/bucket/${destination}/${item.filename}/thumbnail`,
-        prompt: item.prompt || '',
+        url: item.url || '',
+        thumbnail_url: item.thumbnail_url,
+        thumbnail_embedded: item.thumbnail_embedded,
+        prompt: item.metadata?.prompt,
         metadata: {
-          favorite: item.isFavorite || false,
-          timestamp: item.timestamp || '',
+          ...item.metadata,
+          favorite: item.favorite
         }
-      })) || [];
-      
-      // Sort by favorite status first, then by timestamp (newest first)
-      bucketImages.sort((a, b) => {
-        if ((a.metadata?.favorite && b.metadata?.favorite) || (!a.metadata?.favorite && !b.metadata?.favorite)) {
-          return (b.metadata?.timestamp || '') > (a.metadata?.timestamp || '') ? 1 : -1;
+      }));
+
+      // Sort images by favorite status and timestamp
+      const sortedImages = images.sort((a: BucketImage, b: BucketImage) => {
+        if (showFavoritesFirst) {
+          if (a.metadata?.favorite && !b.metadata?.favorite) return -1;
+          if (!a.metadata?.favorite && b.metadata?.favorite) return 1;
         }
-        return a.metadata?.favorite ? -1 : 1;
-      });
-      
-      setBucketImages(bucketImages);
-      
-      // If we found a published image from the API, try to enrich it with any additional metadata from bucketImages
-      if (publishedImage) {
-        const matchingImage = bucketImages.find(img => img.id === publishedImage.id);
-        if (matchingImage) {
-          publishedImage = { ...publishedImage, ...matchingImage };
-        }
-      }
-      
-      // Set bucket details
-      setBucketDetails({
-        name: destination,
-        count: bucketImages.length,
-        favorites_count: bucketImages.filter(img => img.metadata?.favorite).length,
-        size_mb: 'size_mb' in details ? Number(details.size_mb) : 0,
-        last_modified: 'last_modified' in details ? details.last_modified as string : '',
-        published: details.published,
-        publishedAt: details.publishedAt,
+        return 0;
       });
 
-      // Manually set currentPublishedImage if we have it
-      if (publishedImage) {
-        setCurrentPublishedImage(publishedImage);
-      } else if (details.published) {
-        // Fall back to finding the image in bucketImages
-        setCurrentPublishedImage(bucketImages.find(img => img.id === details.published) || null);
-      } else {
-        setCurrentPublishedImage(null);
+      setBucketImages(sortedImages);
+      setBucketDetails({
+        name: details.name,
+        count: details.items.length,
+        favorites_count: details.items.filter((item: BucketItem) => item.favorite).length,
+        size_mb: details.size_mb || 0,
+        last_modified: details.last_modified || '',
+        published: details.published,
+        published_at: details.published_at
+      });
+
+      if (details.published) {
+        const publishedImage = sortedImages.find(img => img.id === details.published);
+        if (publishedImage) {
+          setCurrentPublishedImage(publishedImage);
+        }
       }
-    } catch (err) {
-      console.error('Error fetching bucket details:', err);
+    } catch (error) {
+      console.error('Error fetching bucket details:', error);
+      toast.error('Failed to fetch bucket details');
       setError('Failed to fetch bucket details');
     } finally {
       setLoading(false);
@@ -189,174 +188,106 @@ export function BucketGridView({
 
   const handleToggleFavorite = async (image: BucketImage) => {
     try {
-      const currentState = image.metadata?.favorite || false;
-      await apiService.toggleFavorite(destination, image.id, currentState);
-      
-      // Update local state
-      setBucketImages(prevImages => 
-        prevImages.map(img => 
-          img.id === image.id 
-            ? { ...img, metadata: { ...img.metadata, favorite: !currentState } } 
-            : img
-        )
-      );
-
-      if (bucketDetails) {
-        setBucketDetails({
-          ...bucketDetails,
-          favorites_count: currentState 
-            ? bucketDetails.favorites_count - 1 
-            : bucketDetails.favorites_count + 1
-        });
+      const newFavoriteState = !image.metadata?.favorite;
+      const success = await apiService.toggleFavorite(destination, image.id, newFavoriteState);
+      if (success) {
+        // Update local state immediately
+        setBucketImages(prevImages => 
+          prevImages.map(img => 
+            img.id === image.id 
+              ? { ...img, metadata: { ...img.metadata, favorite: newFavoriteState } }
+              : img
+          )
+        );
+        // Update bucket details
+        setBucketDetails(prev => prev ? {
+          ...prev,
+          favorites_count: prev.favorites_count + (newFavoriteState ? 1 : -1)
+        } : null);
       }
-      
-      toast.success(`Image ${currentState ? 'removed from' : 'added to'} favorites`);
-    } catch (err) {
-      console.error('Error toggling favorite:', err);
-      toast.error('Failed to update favorite status');
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      toast.error('Failed to toggle favorite');
     }
   };
 
   const handleDeleteImage = async (image: BucketImage) => {
-    // Only show confirmation for favorited images
-    const shouldProceed = !image.metadata?.favorite || 
-      window.confirm('Are you sure you want to delete this favorited image?');
-
-    if (shouldProceed) {
+    if (confirm('Are you sure you want to delete this image?')) {
       try {
         const success = await apiService.deleteImage(destination, image.id);
-        
         if (success) {
-          // Update local state
+          // Update local state immediately
           setBucketImages(prevImages => prevImages.filter(img => img.id !== image.id));
-          
-          if (bucketDetails) {
-            setBucketDetails({
-              ...bucketDetails,
-              count: bucketDetails.count - 1,
-              favorites_count: image.metadata?.favorite 
-                ? bucketDetails.favorites_count - 1 
-                : bucketDetails.favorites_count
-            });
-          }
-          
-          toast.success('Image deleted');
-          
-          // If we deleted the current published image, update that state
-          if (currentPublishedImage && currentPublishedImage.id === image.id) {
-            setCurrentPublishedImage(null);
-          }
+          // Update bucket details
+          setBucketDetails(prev => prev ? {
+            ...prev,
+            count: prev.count - 1,
+            favorites_count: image.metadata?.favorite ? prev.favorites_count - 1 : prev.favorites_count
+          } : null);
         }
-      } catch (err) {
-        console.error('Error deleting image:', err);
+      } catch (error) {
+        console.error('Error deleting image:', error);
         toast.error('Failed to delete image');
       }
     }
   };
 
-  const handlePublishImage = async (image: BucketImage) => {
+  const handlePublish = async (bucket: string, filename: string) => {
     try {
-      await apiService.publishBucketImage(destination, image.id);
-      
-      // Update bucket details to reflect the new published image
-      if (bucketDetails) {
-        setBucketDetails({
-          ...bucketDetails,
-          published: image.id,
-          publishedAt: new Date().toISOString()
-        });
+      const success = await apiService.publishImage({
+        bucket,
+        filename,
+        destination: bucket
+      });
+      if (success) {
+        // Update local state immediately
+        setBucketDetails(prev => prev ? {
+          ...prev,
+          published: filename,
+          published_at: new Date().toISOString()
+        } : null);
+        toast.success('Image published successfully');
       }
-      
-      toast.success('Image published successfully');
-    } catch (err) {
-      console.error('Error publishing image:', err);
+    } catch (error) {
+      console.error('Error publishing image:', error);
       toast.error('Failed to publish image');
     }
   };
 
   const handleCopyToDestination = async (image: BucketImage, targetBucket: string) => {
     try {
-      await apiService.copyImageToBucket(destination, targetBucket, image.id);
-      toast.success(`Image copied to ${targetBucket}`);
-    } catch (err) {
-      console.error('Error copying image:', err);
-      toast.error('Failed to copy image');
-    }
-  };
-
-  // Get the published image data
-  const fetchPublishedImage = async () => {
-    try {
-      console.log(`Fetching published image for ${destination} (display: ${displayName})`);
-      
-      // First try the /info endpoint which has more fields
-      try {
-        const publishedInfo = await apiService.getPublishedInfo(destination);
-        console.log("Got published info:", publishedInfo);
-        
-        if (publishedInfo && publishedInfo.filename) {
-          console.log("Found published image for", destination, publishedInfo);
-          return {
-            id: publishedInfo.filename,
-            thumbnail: publishedInfo.thumbnail_url || `${apiService.getApiUrl()}/buckets/${destination}/thumbnail/${publishedInfo.filename}`,
-            url: publishedInfo.raw_url || `${apiService.getApiUrl()}/buckets/${destination}/raw/${publishedInfo.filename}`,
-            prompt: publishedInfo.meta?.prompt || '',
-            // Add any other properties you need
-          };
-        }
-      } catch (infoError) {
-        console.log("Info endpoint failed, trying published endpoint:", infoError);
-      }
-      
-      // Fall back to the /published endpoint
-      const publishedData = await fetch(`${apiService.getApiUrl()}/buckets/${destination}/published`);
-      
-      if (!publishedData.ok) {
-        throw new Error(`Failed to get published data for ${destination}`);
-      }
-      
-      const data = await publishedData.json();
-      
-      if (data && data.published) {
-        console.log("Found published data via /published endpoint:", data);
-        return {
-          id: data.published,
-          thumbnail: data.thumbnail ? `data:image/jpeg;base64,${data.thumbnail}` : null,
-          url: data.raw_url,
-          prompt: data.meta?.prompt || '',
-        };
+      const success = await apiService.copyImageToBucket(destination, targetBucket, image.id);
+      if (success) {
+        toast.success('Image copied successfully');
       }
     } catch (error) {
-      console.error(`Error fetching published image for ${destination}:`, error);
+      console.error('Error copying image:', error);
+      toast.error('Failed to copy image');
     }
-    return null;
   };
 
   // Handle scheduler actions
   const handleSchedulerAction = async (action: 'start' | 'stop' | 'pause' | 'unpause') => {
     try {
-      let result;
       switch (action) {
         case 'start':
-          result = await apiService.startScheduler(destination, {});
-          toast.success(`Started scheduler for ${destination}`);
+          await apiService.startScheduler(destination, {});
           break;
         case 'stop':
-          result = await apiService.stopScheduler(destination);
-          toast.success(`Stopped scheduler for ${destination}`);
+          await apiService.stopScheduler(destination);
           break;
         case 'pause':
-          result = await apiService.pauseScheduler(destination);
-          toast.success(`Paused scheduler for ${destination}`);
+          await apiService.pauseScheduler(destination);
           break;
         case 'unpause':
-          result = await apiService.unpauseScheduler(destination);
-          toast.success(`Resumed scheduler for ${destination}`);
+          await apiService.unpauseScheduler(destination);
           break;
       }
-      refreshBucket(destination); // Refresh to update UI
+      toast.success(`Scheduler ${action}ed successfully`);
+      debouncedFetchBucketDetails();
+      refreshBucket(destination);
     } catch (error) {
-      console.error(`Error with scheduler action ${action}:`, error);
+      console.error(`Error ${action}ing scheduler:`, error);
       toast.error(`Failed to ${action} scheduler`);
     }
   };
@@ -377,11 +308,6 @@ export function BucketGridView({
     }
   };
 
-  // Get all possible destination buckets for copy feature
-  const getAllDestinations = () => {
-    return getPublishDestinations().filter(dest => dest.id !== destination);
-  };
-
   // Sort images with favorites first if enabled
   const getSortedImages = () => {
     if (!showFavoritesFirst) return bucketImages;
@@ -394,6 +320,10 @@ export function BucketGridView({
     });
   };
 
+  const handleUploadTabChange = (value: 'file' | 'url') => {
+    setUploadTab(value);
+  };
+
   const handleUpload = async () => {
     if (!uploadFile && !uploadUrl) {
       toast.error('Please select a file or enter a URL');
@@ -402,23 +332,30 @@ export function BucketGridView({
 
     try {
       if (uploadFile) {
-        await apiService.uploadToBucket(destination, uploadFile);
-        toast.success('File uploaded successfully');
+        const formData = new FormData();
+        formData.append('file', uploadFile);
+        const response = await fetch(`${apiService.getApiUrl()}/buckets/${destination}/upload`, {
+          method: 'POST',
+          body: formData
+        });
+        if (!response.ok) throw new Error('Upload failed');
       } else if (uploadUrl) {
-        // This would require backend endpoint support
-        // For now, we'll show a toast indicating this isn't implemented
-        toast.error('URL upload not yet implemented on backend');
+        const response = await fetch(`${apiService.getApiUrl()}/buckets/${destination}/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: uploadUrl })
+        });
+        if (!response.ok) throw new Error('Upload failed');
       }
       
-      // Reset state and refresh bucket
+      setShowUploadModal(false);
       setUploadFile(null);
       setUploadUrl('');
-      setShowUploadModal(false);
       fetchBucketDetails();
-      refreshBucket(destination);
-    } catch (err) {
-      console.error('Error uploading:', err);
-      toast.error('Failed to upload file');
+      toast.success('Image uploaded successfully');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('Failed to upload image');
     }
   };
 
@@ -459,39 +396,39 @@ export function BucketGridView({
 
   // Handle maintenance actions
   const handlePurgeNonFavorites = async () => {
-    try {
-      if (window.confirm('Are you sure you want to delete all non-favorite images? This cannot be undone.')) {
-        await apiService.purgeNonFavorites(destination);
-        toast.success('Purged non-favorite images');
-        fetchBucketDetails();
-        refreshBucket(destination);
+    if (confirm('Are you sure you want to purge non-favorite images?')) {
+      try {
+        const success = await apiService.performBucketMaintenance(destination, 'purge');
+        if (success) {
+          debouncedFetchBucketDetails();
+        }
+      } catch (error) {
+        console.error('Error purging non-favorites:', error);
+        toast.error('Failed to purge non-favorites');
       }
-    } catch (err) {
-      console.error('Error purging non-favorites:', err);
-      toast.error('Failed to purge non-favorite images');
     }
   };
 
   const handleReindex = async () => {
     try {
-      await apiService.reindexBucket(destination);
-      toast.success('Bucket re-indexed');
-      fetchBucketDetails();
-      refreshBucket(destination);
-    } catch (err) {
-      console.error('Error re-indexing bucket:', err);
-      toast.error('Failed to re-index bucket');
+      const success = await apiService.performBucketMaintenance(destination, 'reindex');
+      if (success) {
+        debouncedFetchBucketDetails();
+      }
+    } catch (error) {
+      console.error('Error reindexing bucket:', error);
+      toast.error('Failed to reindex bucket');
     }
   };
 
   const handleExtractJson = async () => {
     try {
-      await apiService.extractJson(destination);
-      toast.success('JSON extracted');
-      fetchBucketDetails();
-      refreshBucket(destination);
-    } catch (err) {
-      console.error('Error extracting JSON:', err);
+      const success = await apiService.performBucketMaintenance(destination, 'extract');
+      if (success) {
+        debouncedFetchBucketDetails();
+      }
+    } catch (error) {
+      console.error('Error extracting JSON:', error);
       toast.error('Failed to extract JSON');
     }
   };
@@ -499,16 +436,12 @@ export function BucketGridView({
   // Add moveToPosition method for reordering
   const moveToPosition = async (filename: string, position: number) => {
     try {
-      if (position < 0 || position >= bucketImages.length) {
-        throw new Error('Invalid position');
+      const success = await apiService.moveImage(destination, filename, position > 0 ? 'up' : 'down');
+      if (success) {
+        debouncedFetchBucketDetails();
       }
-      
-      await apiService.moveImageToPosition(destination, filename, position);
-      toast.success('Image moved successfully');
-      fetchBucketDetails();
-      refreshBucket(destination);
-    } catch (err) {
-      console.error('Error moving image:', err);
+    } catch (error) {
+      console.error('Error moving image:', error);
       toast.error('Failed to move image');
     }
   };
@@ -548,12 +481,12 @@ export function BucketGridView({
       {bucketDetails && (
         <div className="flex flex-col mb-4 p-2 sm:p-4 bg-muted rounded-md w-full">
           {/* Single row with image, controls and scheduler status */}
-          <div className="flex items-start">
+          <div className="flex items-start gap-3">
             {/* Left side with image */}
             {currentPublishedImage && !headless && (
-              <div className="w-24 h-24 rounded-md overflow-hidden bg-black/10 flex-shrink-0 mr-3">
+              <div className="w-24 h-24 rounded-md overflow-hidden bg-black/10 flex-shrink-0">
                 <img 
-                  src={currentPublishedImage.thumbnail || currentPublishedImage.url} 
+                  src={currentPublishedImage.thumbnail_url || currentPublishedImage.url} 
                   alt="Published" 
                   className="w-full h-full object-cover"
                 />
@@ -562,13 +495,6 @@ export function BucketGridView({
             
             {/* Middle and right content */}
             <div className="flex-1 flex flex-col min-w-0">
-              {/* Show metadata about current published image - hide if headless */}
-              {currentPublishedImage && currentPublishedImage.prompt && !headless && (
-                <div className="text-sm text-muted-foreground truncate">
-                  <span className="font-medium">Prompt:</span> {currentPublishedImage.prompt}
-                </div>
-              )}
-              
               {/* Button row with all controls on same line */}
               <div className="flex justify-between items-center mt-1">
                 {/* Left side buttons */}
@@ -588,11 +514,11 @@ export function BucketGridView({
                     size="sm" 
                     variant="ghost" 
                     onClick={handleRefresh} 
-                    disabled={loading || isLoading}
+                    disabled={loading || externalLoading}
                     className="flex-nowrap h-8"
                   >
                     <RefreshCw 
-                      className={`h-4 w-4 ${(loading || isLoading) ? 'animate-spin' : ''}`} 
+                      className={`h-4 w-4 ${(loading || externalLoading) ? 'animate-spin' : ''}`} 
                     />
                     <span className="ml-1 hidden sm:inline">Refresh</span>
                   </Button>
@@ -708,7 +634,7 @@ export function BucketGridView({
       )}
       
       {/* Image grid */}
-      {loading || isLoading ? (
+      {loading || externalLoading ? (
         <div className="flex justify-center items-center h-full">
           <RefreshCw className="h-8 w-8 animate-spin opacity-50" />
         </div>
@@ -762,20 +688,32 @@ export function BucketGridView({
                   
                   {/* Image thumbnail */}
                   <div className="aspect-square overflow-hidden bg-muted">
-                    <img
-                      src={image.thumbnail || image.url}
-                      alt={image.prompt || 'Image in bucket'}
-                      className="w-full h-full object-cover transition-all group-hover:scale-105"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.src = 'https://placehold.co/400x400?text=Error+loading+image';
-                      }}
-                    />
+                    {image.thumbnail_embedded ? (
+                      <img
+                        src={`data:image/jpeg;base64,${image.thumbnail_embedded}`}
+                        alt={image.prompt || 'Image in bucket'}
+                        className="w-full h-full object-cover transition-all group-hover:scale-105"
+                      />
+                    ) : (
+                      <img
+                        src={image.thumbnail_url || 'https://placehold.co/400x400?text=Loading...'}
+                        alt={image.prompt || 'Image in bucket'}
+                        className="w-full h-full object-cover transition-all group-hover:scale-105"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          if (image.url) {
+                            target.src = image.url;
+                          } else {
+                            target.src = 'https://placehold.co/400x400?text=Error+loading+image';
+                          }
+                        }}
+                      />
+                    )}
                   </div>
                   
                   {/* Overlay with actions */}
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3">
-                    <div className="text-white text-xs truncate">
+                    <div className="text-white text-xs break-words whitespace-pre-wrap line-clamp-3">
                       {image.prompt || 'No prompt available'}
                     </div>
                     
@@ -800,7 +738,7 @@ export function BucketGridView({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handlePublishImage(image);
+                                handlePublish(destination, image.id);
                               }}
                             >
                               <Send className="h-4 w-4 mr-2" />
@@ -834,7 +772,7 @@ export function BucketGridView({
                                 </div>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent side="right">
-                                {getAllDestinations().map(dest => (
+                                {destinations.map(dest => (
                                   <DropdownMenuItem
                                     key={dest.id}
                                     onClick={(e) => {
@@ -897,10 +835,10 @@ export function BucketGridView({
       <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Upload to {displayName}</DialogTitle>
+            <DialogTitle>Upload to {destinationName || destination}</DialogTitle>
           </DialogHeader>
           
-          <Tabs defaultValue="file" value={uploadTab} onValueChange={setUploadTab}>
+          <Tabs defaultValue="file" value={uploadTab} onValueChange={handleUploadTabChange}>
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="file" className="flex items-center justify-center">
                 <Upload className="h-4 w-4 mr-2" />
@@ -1030,7 +968,7 @@ export function BucketGridView({
                   <Button 
                     variant="secondary" 
                     className="w-full justify-start"
-                    onClick={() => handlePublishImage(selectedImage)}
+                    onClick={() => handlePublish(destination, selectedImage.id)}
                   >
                     <Send className="h-4 w-4 mr-2" />
                     Publish Image

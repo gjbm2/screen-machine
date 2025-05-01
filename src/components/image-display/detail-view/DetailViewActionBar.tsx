@@ -1,9 +1,8 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { CopyPlus, SquareArrowUpRight, Trash2, Download, Share } from 'lucide-react';
+import { CopyPlus, SquareArrowUpRight, Trash2, Download, Share, Loader2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { publishImage, getPublishDestinations } from '@/services/PublishService';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -12,6 +11,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import * as LucideIcons from 'lucide-react';
+import { usePublishDestinations } from '@/hooks/usePublishDestinations';
+import apiService from '@/utils/api';
 
 interface DetailViewActionBarProps {
   imageUrl: string;
@@ -36,7 +37,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
   generationInfo
 }) => {
   const isMobile = useIsMobile();
-  const publishDestinations = getPublishDestinations();
+  const { destinations, isLoading } = usePublishDestinations();
   
   const handleDownload = () => {
     const filename = imageUrl.split('/').pop() || `generated-image-${Date.now()}.png`;
@@ -76,7 +77,15 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
   
   const handlePublish = async (destinationId: string) => {
     try {
-      await publishImage(imageUrl, destinationId, generationInfo);
+      // Extract bucket and filename from the image URL
+      const urlParts = imageUrl.split('/');
+      const bucket = urlParts[urlParts.length - 2];
+      const filename = urlParts[urlParts.length - 1];
+      
+      const success = await apiService.publishImage(bucket, filename, destinationId, generationInfo);
+      if (success) {
+        toast.success('Image published successfully');
+      }
     } catch (error) {
       console.error('Error in publish handler:', error);
       toast.error('Failed to publish image');
@@ -131,13 +140,20 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
               type="button" 
               variant="outline" 
               className={`${publishButtonClass} p-2 text-xs flex items-center gap-1.5`}
+              disabled={isLoading}
             >
+              {isLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <>
               <Share className="h-3.5 w-3.5" /> 
               <span>Publish</span>
+                </>
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {publishDestinations.map((destination) => (
+            {destinations.map((destination) => (
               <DropdownMenuItem 
                 key={destination.id}
                 onClick={() => handlePublish(destination.id)}

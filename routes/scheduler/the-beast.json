@@ -61,7 +61,7 @@
   "context_stack": [
     {
       "vars": {
-        "value": "Action this day",
+        "value": "Solve for people",
         "test": 5,
         "prompt_history": [
           {
@@ -113,13 +113,73 @@
             "timestamp": "2025-04-30 11:00:00",
             "prompt": "Action this day",
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/eadbed5a-5972-4d9a-ae7f-7e791a98aae1-e1/0b59dddf.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250430%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250430T100038Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=03780bb58a28c3c6950db10634afe09350d1ad7fd32432b3869a25180ff8702f"
+          },
+          {
+            "timestamp": "2025-05-01 08:00:00",
+            "prompt": "Solve for people",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a72dd69f-091d-4c8c-b907-4fc6b919acae-e1/a1e5be6a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250501%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250501T070056Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b97bb0cdf3fe1df6d422de1c5499088b6b4800d14a3102a683a27216684464ac"
+          },
+          {
+            "timestamp": "2025-05-01 09:00:00",
+            "prompt": "Solve for people",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/bb4cd708-1ef8-4b1a-a242-ae27d730461a-e1/592f36b4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250501%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250501T080018Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=abf5f84a0a5424e06553429839fffcc79d3c01c20cefad4903ffa15a9fc209e0"
+          },
+          {
+            "timestamp": "2025-05-01 10:00:00",
+            "prompt": "See through",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9a55a3a7-eb74-49eb-8197-2d92314fcf10-e1/a1938d8a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250501%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250501T090019Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=87aeec8fcc12ce250230a4ba8db5dcd0e85cfaadefbd3e18f29740030b3a47ae"
+          },
+          {
+            "timestamp": "2025-05-01 11:00:00",
+            "prompt": "Change begins at home",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/add85dad-9c50-4e5c-82fc-e6a4bf228cfa-e1/beb24b27.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250501%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250501T100040Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a4b207c4f88c83839bd8eb19d6e71da6a268b73cc63aca715dcb991c838e74ea"
+          },
+          {
+            "timestamp": "2025-05-01 12:00:00",
+            "prompt": "Tech to power",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/97fd42f6-5b26-41dc-95ed-3ae218483912-e1/53314ef3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250501%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250501T110042Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=957f525ccc5566f8f3cb4582ea2d811247a7e90e8ad3e2aafef5ca3380c069dc"
+          },
+          {
+            "timestamp": "2025-05-01 13:00:00",
+            "prompt": "Tech to power",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/57c11184-c36b-426a-b399-483bef052bf1-e1/72db1cef.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250501%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250501T120054Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9b07c272161e302d1ef72c80d50f2ab1782685b47dafbd4c7f6d0a73992a447c"
+          },
+          {
+            "timestamp": "2025-05-01 14:00:00",
+            "prompt": "Be good company",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9520bda8-73ed-4573-8136-df91e0a557f4-e1/34ec676c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250501%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250501T130019Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=bb19730b269e9d5a6f74ee46e885bdf6d6eb5ef9d8dfcd888523f71afa240f2f"
+          },
+          {
+            "timestamp": "2025-05-01 15:00:00",
+            "prompt": "Solve for people",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e10b3546-4483-4280-abd7-81ff6697650b-e1/a553524c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250501%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250501T140258Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4e447f8a82e665d41afbbb192194d5d951f074f04c7f75ef612829f75a8f663a"
+          },
+          {
+            "timestamp": "2025-05-01 16:00:00",
+            "prompt": "Solve for people",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/11d9acf2-c95a-4757-b870-bb0474cbcf79-e1/93c04244.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250501%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250501T150246Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=460cc7503e34eb5124b4c256be8f0017f387986c4c28845cdb463f397d316af8"
+          },
+          {
+            "timestamp": "2025-05-01 17:00:00",
+            "prompt": "Change begins at home",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e2c894d6-4d8a-4707-8753-4256d54d829d-u1/d240d90f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250501%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250501T160037Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d27c4023c5a4598907b1771046c16e63d5d0944d6ae6accf6f70ceb21a2d08ee"
+          },
+          {
+            "timestamp": "2025-05-01 18:00:00",
+            "prompt": "Action this day",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4fc877ab-ca14-4d9a-b675-2a5094490ca0-e1/6c4cfc6e.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250501%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250501T170051Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b5a52cc70d97369c8671baca73bf7eca15f46764603fb2d2f5dbd568068b6357"
+          },
+          {
+            "timestamp": "2025-05-01 19:00:00",
+            "prompt": "Solve for people",
+            "image_url": null
           }
         ]
       },
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/eadbed5a-5972-4d9a-ae7f-7e791a98aae1-e1/0b59dddf.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250430%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250430T100038Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=03780bb58a28c3c6950db10634afe09350d1ad7fd32432b3869a25180ff8702f",
+      "last_generated": null,
       "publish_destination": "the-beast"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-01T00:27:15.095335"
+  "last_updated": "2025-05-02T00:13:57.513120"
 }

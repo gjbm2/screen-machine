@@ -7,7 +7,6 @@ import { Play, Pause, Plus, AlertCircle, RefreshCcw, ArrowDownToLine, X, Setting
 import MainLayout from '@/components/layout/MainLayout';
 import { useConsoleManagement } from '@/hooks/use-console-management';
 import apiService from '@/utils/api';
-import { getPublishDestinations } from '@/services/PublishService';
 import { useNavigate } from 'react-router-dom';
 import { SchemaEditModal } from '../components/scheduler/SchemaEditModal';
 import { SetVarsButton } from '../components/scheduler/SetVarsButton';
@@ -96,7 +95,7 @@ const Scheduler = () => {
       const runningSchedulers = response.running || [];
       
       // Get publish destinations from the service
-      const publishDestinations = getPublishDestinations();
+      const publishDestinations = await apiService.getPublishDestinations();
       
       // Extract destination IDs from the publish destinations
       const destinationIds = publishDestinations.map(dest => dest.id);
@@ -267,7 +266,6 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to fetch schedulers',
         variant: 'destructive',
-        duration: 5000, // Auto-hide after 5 seconds
       });
       addLog({ type: 'error', message: 'Failed to fetch schedulers' });
     } finally {
@@ -323,13 +321,18 @@ const Scheduler = () => {
 
   const fetchLogs = async (destinationId: string) => {
     try {
-      const response = await apiService.getSchedulerLogs(destinationId);
+      const logs = await apiService.getSchedulerLogs(destinationId);
       setLocalLogs(prevLogs => ({
         ...prevLogs,
-        [destinationId]: response.log || []
+        [destinationId]: logs.log || []
       }));
     } catch (error) {
-      console.error(`Error fetching logs for destination ${destinationId}:`, error);
+      console.error('Error fetching logs:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch logs',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -404,6 +407,11 @@ const Scheduler = () => {
       }
     } catch (error) {
       console.error('Error fetching all scheduler statuses:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch scheduler statuses',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -436,7 +444,6 @@ const Scheduler = () => {
       toast({
         title: 'Success',
         description: `Scheduler ${isRunning ? 'paused' : 'started'} successfully`,
-        duration: 3000, // Auto-hide after 3 seconds
       });
     } catch (error) {
       console.error('Error toggling scheduler:', error);
@@ -444,7 +451,6 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to toggle scheduler',
         variant: 'destructive',
-        duration: 5000, // Auto-hide after 5 seconds
       });
     }
   };
@@ -485,7 +491,6 @@ const Scheduler = () => {
       toast({
         title: 'Info',
         description: 'Opening schedule editor...',
-        duration: 3000, // Auto-hide after 3 seconds
       });
     } catch (error) {
       console.error('Error creating schedule:', error);
@@ -493,7 +498,6 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to create schedule',
         variant: 'destructive',
-        duration: 5000, // Auto-hide after 5 seconds
       });
     }
   };
@@ -509,7 +513,6 @@ const Scheduler = () => {
       toast({
         title: 'Success',
         description: `Started scheduler successfully`,
-        duration: 3000, // Auto-hide after 3 seconds
       });
     } catch (error) {
       console.error('Error starting scheduler:', error);
@@ -517,7 +520,6 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to start scheduler',
         variant: 'destructive',
-        duration: 5000, // Auto-hide after 5 seconds
       });
     }
   };
@@ -533,7 +535,6 @@ const Scheduler = () => {
       toast({
         title: 'Success',
         description: `Stopped scheduler successfully`,
-        duration: 3000, // Auto-hide after 3 seconds
       });
     } catch (error) {
       console.error('Error stopping scheduler:', error);
@@ -541,7 +542,6 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to stop scheduler',
         variant: 'destructive',
-        duration: 5000, // Auto-hide after 5 seconds
       });
     }
   };
@@ -557,7 +557,6 @@ const Scheduler = () => {
       toast({
         title: 'Success',
         description: `Unloaded top schedule successfully`,
-        duration: 3000, // Auto-hide after 3 seconds
       });
     } catch (error) {
       console.error('Error unloading schedule:', error);
@@ -565,7 +564,6 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to unload schedule',
         variant: 'destructive',
-        duration: 5000, // Auto-hide after 5 seconds
       });
     }
   };
@@ -601,7 +599,6 @@ const Scheduler = () => {
       toast({
         title: 'Info',
         description: 'Opening schedule editor...',
-        duration: 3000, // Auto-hide after 3 seconds
       });
     } catch (error) {
       console.error('Error editing schedule:', error);
@@ -609,7 +606,6 @@ const Scheduler = () => {
         title: 'Error',
         description: 'Failed to get schedule for editing',
         variant: 'destructive',
-        duration: 5000, // Auto-hide after 5 seconds
       });
     }
   };
@@ -628,16 +624,60 @@ const Scheduler = () => {
         toast({
           title: 'Success',
           description: 'Schedule saved and started automatically',
-          duration: 3000, // Auto-hide after 3 seconds
         });
       } else {
         toast({
           title: 'Success',
           description: 'Schedule saved successfully',
-          duration: 3000, // Auto-hide after 3 seconds
         });
       }
     });
+  };
+
+  const handleSaveSchedule = async (schema: any) => {
+    try {
+      await apiService.saveSchedulerSchema(selectedDestinationId, schema);
+      if (autoStart) {
+        handleStartScheduler(selectedDestinationId);
+        
+        toast({
+          title: 'Success',
+          description: 'Schedule saved and started automatically',
+        });
+      } else {
+        toast({
+          title: 'Success',
+          description: 'Schedule saved successfully',
+        });
+      }
+    } catch (error) {
+      console.error('Error saving schedule:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save schedule',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleEditScheduleAtPosition = async (destinationId: string, position: number) => {
+    try {
+      const schedule = await apiService.getScheduleAtPosition(destinationId, position);
+      setSchema(schedule);
+      setSchemaEditModalOpen(true);
+      
+      toast({
+        title: 'Info',
+        description: 'Opening schedule editor...',
+      });
+    } catch (error) {
+      console.error('Error editing schedule:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to get schedule for editing',
+        variant: 'destructive',
+      });
+    }
   };
 
   if (loading) {
@@ -804,9 +844,9 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
     // Function to fetch the latest logs
     const fetchLogs = async () => {
       try {
-        const response = await apiService.getSchedulerLogs(destination.id);
-        if (response && response.log) {
-          setLogs(response.log);
+        const logs = await apiService.getSchedulerLogs(destination.id);
+        if (logs && logs.log) {
+          setLogs(logs.log);
         }
       } catch (error) {
         console.error(`Error fetching logs for ${destination.id}:`, error);
@@ -1049,10 +1089,7 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
                               destinationId={destination.id}
                               contextVars={destination.contextStack && destination.contextStack[index] ? destination.contextStack[index].vars || {} : {}}
                               onVarsSaved={() => {
-                                toast({
-                                  title: "Variable saved",
-                                  description: "Context updated successfully. Refresh to see all changes.",
-                                });
+                                toast.success("Variable saved");
                               }}
                             />
                           </div>

@@ -1,4 +1,3 @@
-
 import { nanoid } from '@/lib/utils';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
@@ -250,49 +249,59 @@ export const generateImage = async (
             const updatedImages = processGenerationResults(response, currentBatchId, prevImages);
             return updatedImages;
           });
-
-          // Success message (only for non-async workflows since we already showed a toast for async)
-          if (response.images?.length > 0) {
-            toast.success(`Generated ${response.images.length} image${response.images.length > 1 ? 's' : ''} successfully`);
-          }
+        } else {
+          // For async workflows, we'll handle the results through WebSocket messages
+          addConsoleLog({
+            type: 'info',
+            message: `Async generation started for batch ${currentBatchId}. Results will be delivered via WebSocket.`
+          });
         }
-      } catch (error: any) {
-        console.error('Image generation error:', error);
         
+        // Remove from active generations
+        setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
+        
+        return currentBatchId;
+      } catch (error) {
+        console.error('[image-generator] Error generating image:', error);
+        
+        // Log the error
         addConsoleLog({
           type: 'error',
-          message: `Failed to generate image: ${error.message || 'Unknown error'}`,
+          message: 'Error generating image',
           details: error
         });
         
-        // Only update image placeholders for non-async workflows
-        if (!isAsync && placeholders.length > 0) {
+        // Mark the batch as error if it exists
+        if (!isAsync) {
           setGeneratedImages(prevImages => {
             return markBatchAsError(currentBatchId, prevImages);
           });
         }
         
-        toast.error(`Failed to generate image: ${error.message || 'Unknown error'}`);
-      } finally {
         // Remove from active generations
         setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
+        
+        // Show error toast
+        toast.error('Failed to generate image. Check console for details.');
+        
+        return null;
       }
-    }, 100); // Minimal delay to unblock the UI
+    }, 0);
 
     return currentBatchId;
-  } catch (error: any) {
-    console.error('Error setting up image generation:', error);
+  } catch (error) {
+    console.error('[image-generator] Error in generateImage:', error);
     
+    // Log the error
     addConsoleLog({
       type: 'error',
-      message: `Failed to set up image generation: ${error.message || 'Unknown error'}`,
+      message: 'Error in generateImage',
       details: error
     });
     
     // Remove from active generations
     setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
     
-    toast.error(`Failed to generate image: ${error.message || 'Unknown error'}`);
     return null;
   }
 };

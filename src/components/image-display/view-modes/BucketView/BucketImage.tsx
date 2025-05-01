@@ -1,10 +1,9 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Star, Trash2, Plus, ChevronDown, ChevronUp, ArrowUpDown, Move, ExternalLink } from 'lucide-react';
-import { BucketItem } from '@/api/buckets-api';
+import { BucketItem } from '@/utils/api';
 
 interface BucketImageProps {
   bucket: string;
@@ -52,16 +51,16 @@ export function BucketImage({
       onMouseLeave={() => setIsHovered(false)}
       onTouchStart={handleTouch}
     >
-      {/* Image */}
+      {/* Image - using only embedded thumbnail from get_complete_bucket */}
       <img 
-        src={item.thumbnail}
+        src={item.thumbnail_embedded}
         alt={item.filename}
         className="w-full h-full object-cover cursor-pointer"
         onClick={() => onOpen(item)}
       />
       
       {/* Favorite indicator */}
-      {item.isFavorite && (
+      {item.favorite && (
         <div className="absolute top-2 left-2 text-yellow-400">
           <Star className="h-5 w-5 fill-yellow-400" />
         </div>
@@ -84,12 +83,12 @@ export function BucketImage({
           {/* Toggle favorite */}
           <Button 
             size="sm" 
-            variant={item.isFavorite ? "default" : "outline"}
-            className={`rounded-full h-8 w-8 p-0 ${item.isFavorite ? "bg-yellow-500 hover:bg-yellow-600" : "bg-gray-700"}`}
-            onClick={() => onToggleFavorite(bucket, item.filename, item.isFavorite)}
+            variant={item.favorite ? "default" : "outline"}
+            className={`rounded-full h-8 w-8 p-0 ${item.favorite ? "bg-yellow-500 hover:bg-yellow-600" : "bg-gray-700"}`}
+            onClick={() => onToggleFavorite(bucket, item.filename, item.favorite)}
           >
-            <Star className={`h-4 w-4 ${item.isFavorite ? "fill-white" : ""}`} />
-            <span className="sr-only">{item.isFavorite ? "Unfavorite" : "Favorite"}</span>
+            <Star className={`h-4 w-4 ${item.favorite ? "fill-white" : ""}`} />
+            <span className="sr-only">{item.favorite ? "Unfavorite" : "Favorite"}</span>
           </Button>
           
           {/* Move up */}
@@ -114,7 +113,7 @@ export function BucketImage({
             <span className="sr-only">Move down</span>
           </Button>
           
-          {/* Copy to other bucket */}
+          {/* Add to bucket */}
           {availableBuckets.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -124,7 +123,7 @@ export function BucketImage({
                   className="rounded-full h-8 w-8 p-0 bg-gray-700"
                 >
                   <Plus className="h-4 w-4" />
-                  <span className="sr-only">Add to bucket</span>
+                  <span className="sr-only">Add to destination</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>

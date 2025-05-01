@@ -26,6 +26,7 @@ from threading import Thread
 from overlay_ws_server import start_ws_server, send_overlay_to_clients
 from routes.utils import encode_image_uploads, encode_reference_urls
 from routes.publisher import publish_remote_asset, publish_to_destination
+from routes.publish_api import publish_api
 
 app = Flask(__name__, static_folder='build')
 CORS(app)  # Enable CORS for all routes
@@ -100,6 +101,9 @@ refiners_data = load_json_data('refiners.json')
 refiner_params_data = load_json_data('refiner-params.json')
 global_options_data = load_json_data('global-options.json')
 
+# Register blueprints
+app.register_blueprint(publish_api, url_prefix='/api')
+
 # Add a new endpoint for running scripts
 @app.route('/api/run-script', methods=['POST'])
 def run_script():
@@ -158,38 +162,6 @@ def run_script():
         error_msg = f"Error executing script: {str(e)}"
         error(error_msg)
         return jsonify({"success": False, "error": error_msg}), 500
-
-# Add a new route for publishing images
-@app.route("/api/publish-image", methods=["POST"])
-def publish_image():
-    data = request.get_json(force=True, silent=True) or {}
-
-    url        = data.get("imageUrl") or data.get("url")
-    dest_id    = data.get("destination")            # new way
-    meta       = data.get("metadata", {})
-
-    if not url or not dest_id:
-        # ── fall-back to legacy keys ────────────────────────────────────
-        dtype = data.get("destinationType")
-        dfile = data.get("destinationFile")
-        if not url or not (dtype and dfile):
-            return jsonify({
-                "success": False,
-                "error": "Required fields: imageUrl + destination "
-                         "or imageUrl + destinationType + destinationFile"
-            }), 400
-
-        result = publish_remote_asset(url, dtype, dfile, meta)
-        return jsonify(result), (200 if result.get("success") else 500)
-
-    # ── preferred path: destination id only ─────────────────────────────
-    try:
-        result = publish_to_destination(url, dest_id, meta)
-    except KeyError as e:                 # unknown destination id
-        return jsonify({"success": False, "error": str(e)}), 400
-
-    return jsonify(result), 200
-
 
 # Add a new endpoint to get console logs
 @app.route('/api/logs', methods=['GET'])

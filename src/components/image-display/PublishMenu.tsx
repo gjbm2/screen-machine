@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -7,10 +6,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Share } from 'lucide-react';
+import { Share, Share2, Loader2 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
-import { getPublishDestinations, publishImage } from '@/services/PublishService';
 import { toast } from 'sonner';
+import apiService from '@/utils/api';
+import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
 interface PublishMenuProps {
   imageUrl: string;
@@ -31,7 +31,7 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
   showLabel = true,
   includePublish = true
 }) => {
-  const publishDestinations = getPublishDestinations();
+  const { destinations, isLoading } = usePublishDestinations();
   
   // If includePublish is false, return null
   if (!includePublish) {
@@ -39,11 +39,16 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
   }
   
   const handlePublish = async (destinationId: string) => {
-    try {
-      await publishImage(imageUrl, destinationId, generationInfo);
-    } catch (error) {
-      console.error('Error in publish handler:', error);
-      toast.error('Failed to publish image');
+    if (!imageUrl) return;
+    
+    // Extract bucket and filename from the image URL
+    const urlParts = imageUrl.split('/');
+    const bucket = urlParts[urlParts.length - 2];
+    const filename = urlParts[urlParts.length - 1];
+    
+    const success = await apiService.publishImage(bucket, filename, destinationId, generationInfo);
+    if (success) {
+      toast.success('Image published successfully');
     }
   };
 
@@ -57,6 +62,14 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
   const buttonSizeClass = isRolledUp ? 'h-8 w-8 p-0' : 'h-9 px-2 py-2 text-xs';
   const buttonClass = `rounded-full backdrop-blur-sm text-white font-medium shadow-sm transition-all duration-200 flex items-center justify-center bg-green-600/90 hover:bg-green-600 ${buttonSizeClass} image-action-button`;
 
+  if (isLoading) {
+    return (
+      <Button variant="ghost" className={buttonClass} disabled>
+        <Loader2 className="h-4 w-4 animate-spin" />
+      </Button>
+    );
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -66,7 +79,7 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {publishDestinations.map((destination) => (
+        {destinations.map((destination) => (
           <DropdownMenuItem 
             key={destination.id}
             onClick={() => handlePublish(destination.id)}

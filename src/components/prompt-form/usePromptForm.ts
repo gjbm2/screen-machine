@@ -1,8 +1,7 @@
-
 import { useState, useEffect } from 'react';
 import typedWorkflows from '@/data/typedWorkflows';
 import refinersData from '@/data/refiners.json';
-import { getPublishDestinations } from '@/services/PublishService';
+import apiService from '@/utils/api';
 
 interface PromptFormInitialValues {
   selectedWorkflow?: string;
@@ -44,6 +43,7 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
     batch_size: 1, // Default batch size is now 1
   });
   const [refinerParams, setRefinerParams] = useState<Record<string, any>>(initialValues.refinerParams || {});
+  const [publishDestinations, setPublishDestinations] = useState<any[]>([]);
   
   // Verify that selectedWorkflow is set correctly
   useEffect(() => {
@@ -89,6 +89,18 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
       });
     }
   }, [selectedWorkflow]);
+
+  useEffect(() => {
+    const fetchDestinations = async () => {
+      try {
+        const destinations = await apiService.getPublishDestinations();
+        setPublishDestinations(destinations);
+      } catch (error) {
+        console.error('Error fetching publish destinations:', error);
+      }
+    };
+    fetchDestinations();
+  }, []);
 
   const handleWorkflowChange = (workflowId: string) => {
     console.log(`usePromptForm: User changed workflow to ${workflowId}`);
@@ -173,7 +185,7 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
     refinerParams,
     workflows: typedWorkflows,
     refiners: refinersData,
-    publishDestinations: getPublishDestinations(),
+    publishDestinations,
     handleWorkflowChange,
     handleRefinerChange,
     handlePublishChange,

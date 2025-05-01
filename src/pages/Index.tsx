@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
 import PromptForm from '@/components/prompt-form/PromptForm';
@@ -7,12 +7,14 @@ import MainLayout from '@/components/layout/MainLayout';
 import AdvancedOptionsContainer from '@/components/advanced/AdvancedOptionsContainer';
 import { useImageGeneration } from '@/hooks/image-generation/use-image-generation';
 import { useConsoleManagement } from '@/hooks/use-console-management';
-import { WebSocketMessage, AsyncGenerationUpdate } from '@/hooks/image-generation/types';
+import { WebSocketMessage, AsyncGenerationUpdate, GeneratedImage } from '@/hooks/image-generation/types';
 import { nanoid } from '@/lib/utils';
 import typedWorkflows from '@/data/typedWorkflows';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
-import { getPublishDestinations } from '@/services/PublishService';
+import apiService from '@/utils/api';
+import { PublishDestination } from '@/utils/api';
+import { processGenerationResults, markBatchAsError } from '@/hooks/image-generation/api/result-handler';
 
 interface OverlayMessage {
   html: string;
@@ -67,6 +69,9 @@ const Index = () => {
   const [overlays, setOverlays] = useState<Overlay[]>([]);
   const [jobStatuses, setJobStatuses] = useState<Record<string, JobStatus>>({});
   const [wsConnected, setWsConnected] = useState(false);
+  const [publishDestinations, setPublishDestinations] = useState<PublishDestination[]>([]);
+  const wsRef = React.useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const { 
     consoleVisible, 
@@ -78,7 +83,6 @@ const Index = () => {
   
   const [selectedRefiner, setSelectedRefiner] = useState('none');
   const [refinerParams, setRefinerParams] = useState<Record<string, any>>({});
-  
   const [selectedPublish, setSelectedPublish] = useState('none');
 
   const {
@@ -108,33 +112,22 @@ const Index = () => {
     handleDownloadImage,
     handleDeleteImage,
     handleReorderContainers,
-    handleDeleteContainer
+    handleDeleteContainer,
+    setGeneratedImages
   } = useImageGeneration(addConsoleLog);
   
   const handleJobStatusMessage = useCallback((message: JobStatusMessage) => {
-    console.log("🕵️ Job Status Message Received:", message);
-    addConsoleLog({
-      type: 'info',
-      message: `Job status message received: ${JSON.stringify(message).substring(0, 100)}...`
-    });
-    
     const screens = message.screens || "";
-    console.log("📋 Message screens property:", screens);
-  
     const isForThisScreen = 
       !message.screens || 
       message.screens === 'index' || 
       (Array.isArray(message.screens) && 
        (message.screens.includes('index') || message.screens.includes('*')));
 
-    console.log("🔍 Is message for this screen?", isForThisScreen, "Screen filter:", message.screens);
-
     if (!isForThisScreen) {
-      console.log("🚫 Message NOT intended for index screen. Screens:", message.screens);
       return;
     }
 
-    console.log("✅ Processing job status message for index screen:", message);
     const messageHash = hashMessage(message);
     const jobId = message.job_id;
 
@@ -195,53 +188,39 @@ const Index = () => {
   }, []);
   
   const handleGenerationUpdate = useCallback((update: AsyncGenerationUpdate) => {
-    console.log("📈 Generation update received:", update);
-    
-    addConsoleLog({
-      type: update.status === 'error' ? 'error' : 'info',
-      message: `Async generation update for batch ${update.batch_id}: ${update.status}`,
-      details: update
-    });
-    
     if (update.status === 'progress' && update.progress !== undefined) {
-      console.log(`Generation progress: ${update.progress}%`);
+      toast.info(`Generation progress: ${update.progress}%`);
     } else if (update.status === 'completed') {
       if (update.images && update.images.length > 0) {
         toast.success(`Completed async generation with ${update.images.length} images`);
-        console.log("Completed async images:", update.images);
+        setGeneratedImages(prevImages => {
+          const updatedImages = processGenerationResults(update, update.batch_id, prevImages);
+          return updatedImages;
+        });
       }
     } else if (update.status === 'error') {
       toast.error(`Generation failed: ${update.error || 'Unknown error'}`);
+      setGeneratedImages(prevImages => {
+        return markBatchAsError(update.batch_id, prevImages);
+      });
     }
-  }, [addConsoleLog]);
+  }, [addConsoleLog, setGeneratedImages]);
 
   const handleWebSocketMessage = useCallback((event: MessageEvent) => {
-    console.log("📬 Raw WS message received:", event.data);
-    
-    addConsoleLog({
-      type: 'info',
-      message: `WebSocket message received (raw): ${event.data.substring(0, 100)}...`
-    });
-    
     try {
       const msg = JSON.parse(event.data);
-      console.log("🔍 Parsed WS message:", msg);
       
       if (msg.job_id && typeof msg.html === 'string') {
-        console.log("📋 Found job status message:", msg);
         handleJobStatusMessage(msg);
         return;
       }
       
       if (msg.type === 'generation_update') {
-        console.log("🚀 Found generation update message:", msg);
-        handleGenerationUpdate(msg as WebSocketMessage);
+        handleGenerationUpdate(msg);
         return;
       }
       
       if (msg.html) {
-        console.log("🖼️ Found overlay message:", msg);
-        
         const screens = msg.screens || null;
         const isForThisScreen = 
           !screens || 
@@ -249,130 +228,107 @@ const Index = () => {
           (Array.isArray(screens) && 
            (screens.includes('index') || screens.includes('*')));
         
-        console.log("🔍 Is overlay for this screen?", isForThisScreen, "Screen filter:", screens);
-        
-        if (!isForThisScreen) {
-          console.log("🚫 Overlay NOT intended for index screen. Screens:", screens);
-          return;
-        }
-        
-        console.log("✅ Processing overlay message for index screen");
-        const { html, duration, position, clear, fadein } = msg;
-        const id = generateId();
-        const showDuration = typeof duration === "number" ? duration : 5000;
-        const displayTime = Math.max(0, showDuration);
-        
-        setOverlays((prev) => {
-          const base = clear ? [] : [...prev];
-          return [...base, {
-            id,
-            html,
-            position,
-            visible: fadein === 0,
-            fadein
-          }];
-        });
-        
-        if (fadein !== 0) {
-          setTimeout(() => {
-            setOverlays((prev) =>
-              prev.map((o) => (o.id === id ? { ...o, visible: true } : o))
-            );
-          }, 50);
-        }
-        
-        setTimeout(() => {
-          setOverlays((prev) =>
-            prev.map((o) => (o.id === id ? { ...o, visible: false } : o))
-          );
+        if (isForThisScreen) {
+          const overlay: Overlay = {
+            id: generateId(),
+            html: msg.html,
+            position: msg.position,
+            visible: true,
+            fadein: msg.fadein
+          };
           
-          setTimeout(() => {
-            setOverlays((prev) => prev.filter((o) => o.id !== id));
-          }, 5000);
-        }, displayTime);
+          setOverlays(prev => [...prev, overlay]);
+          
+          if (msg.duration) {
+            setTimeout(() => {
+              setOverlays(prev => prev.filter(o => o.id !== overlay.id));
+            }, msg.duration);
+          }
+        }
+        return;
       }
-    } catch (err) {
-      console.error("Failed to process WebSocket message:", err);
+    } catch (error) {
+      console.error("Error parsing WebSocket message:", error);
     }
   }, [handleJobStatusMessage, handleGenerationUpdate, addConsoleLog]);
   
   useEffect(() => {
-    const WS_HOST = import.meta.env.VITE_WS_HOST;
-    if (!WS_HOST) {
-      console.error("❌ No WebSocket host defined in environment variables");
-      addConsoleLog({
-        type: 'error',
-        message: 'No WebSocket host defined in environment variables'
-      });
-      return;
-    }
-    
-    console.log("🔄 Attempting to connect to WebSocket at:", WS_HOST);
-    
-    let socket: WebSocket | null = null;
-    let reconnectAttempts = 0;
-    let reconnectTimeout: ReturnType<typeof setTimeout>;
-    
     const connect = () => {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        console.log("⚠️ WebSocket already connected, closing before reconnecting");
-        socket.close();
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        return;
       }
-      
-      socket = new WebSocket(WS_HOST);
-      
-      socket.onopen = () => {
-        console.log("🟢 WebSocket connected to", WS_HOST);
+
+      const ws = new WebSocket(import.meta.env.VITE_WS_HOST || 'ws://185.254.136.253:8765');
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('WebSocket connection established');
         setWsConnected(true);
-        reconnectAttempts = 0;
-        
         addConsoleLog({
-          type: 'info',
-          message: 'WebSocket connected as overlay client'
+          type: 'success',
+          message: 'WebSocket connection established'
         });
+        
+        // Clear any existing reconnect timeout
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
       };
-      
-      socket.onclose = (event) => {
-        console.warn("🔌 WebSocket closed with code:", event.code, "reason:", event.reason || "No reason provided");
+
+      ws.onclose = () => {
+        console.log('WebSocket connection closed');
         setWsConnected(false);
-        
-        addConsoleLog({
-          type: 'warning',
-          message: `WebSocket disconnected: Code ${event.code} - ${event.reason || "No reason provided"}`
-        });
-        
-        reconnectAttempts++;
-        const delay = Math.min(10000, 1000 * 2 ** reconnectAttempts);
-        console.log(`🔄 Will attempt to reconnect in ${delay}ms (attempt #${reconnectAttempts})`);
-        reconnectTimeout = setTimeout(connect, delay);
-      };
-      
-      socket.onerror = (err) => {
-        console.error("🔴 WebSocket error:", err);
-        console.error("❌ Closing socket due to error");
-        
         addConsoleLog({
           type: 'error',
-          message: 'WebSocket connection error',
-          details: err
+          message: 'WebSocket connection closed'
         });
-        
-        socket?.close();
+
+        // Attempt to reconnect after a delay
+        if (!reconnectTimeoutRef.current) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            console.log('Attempting to reconnect...');
+            connect();
+          }, 5000); // 5 second delay before reconnecting
+        }
       };
-      
-      socket.onmessage = handleWebSocketMessage;
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        addConsoleLog({
+          type: 'error',
+          message: 'WebSocket error occurred'
+        });
+      };
+
+      ws.onmessage = handleWebSocketMessage;
     };
-    
+
     connect();
-    
+
     return () => {
-      console.log("🧹 Cleaning up WebSocket connection");
-      if (socket) {
-        socket.close();
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
       }
-      clearTimeout(reconnectTimeout);
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
     };
-  }, [sessionId, handleWebSocketMessage, addConsoleLog]);
+  }, [handleWebSocketMessage, addConsoleLog]);
+
+  const sendWebSocketMessage = useCallback((message: any) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(message));
+    } else {
+      console.warn('WebSocket is not connected');
+      addConsoleLog({
+        type: 'warning',
+        message: 'Cannot send message: WebSocket is not connected'
+      });
+    }
+  }, [addConsoleLog]);
 
   const processUrlParam = (value: string): any => {
     if ((value.startsWith('"') && value.endsWith('"')) || 
@@ -762,7 +718,7 @@ const Index = () => {
       style={{
         position: "absolute",
         zIndex: 10000,
-		fontSize: "10px",
+        fontSize: "10px",
         opacity: o.visible ? 1 : 0,
         transition: o.fadein === 0 ? "none" : `opacity ${o.fadein || 2000}ms ease`,
         pointerEvents: "none",
@@ -821,6 +777,19 @@ const Index = () => {
       </div>
     ));
 
+  useEffect(() => {
+    const fetchDestinations = async () => {
+      try {
+        const destinations = await apiService.getPublishDestinations();
+        setPublishDestinations(destinations);
+      } catch (error) {
+        console.error('Error fetching publish destinations:', error);
+      }
+    };
+
+    fetchDestinations();
+  }, []);
+
   return (
     <>
       <MainLayout
@@ -867,7 +836,7 @@ const Index = () => {
           onDeleteImage={handleDeleteImage}
           onDeleteContainer={handleDeleteContainer}
           fullscreenRefreshTrigger={fullscreenRefreshTrigger}
-          publishDestinations={getPublishDestinations().map(dest => dest.id)}
+          publishDestinations={publishDestinations.map(dest => dest.id)}
         />
       </MainLayout>
       
