@@ -499,40 +499,58 @@ def delete(bucket: str, filename: str):
 
 # -- move / copy -------------------------------------------------------------
 
-@buckets_bp.route("/move", methods=["POST"])
-def move():
+@buckets_bp.route("/add_image_to_new_bucket", methods=["POST"])
+def add_image_to_new_bucket():
     d = request.get_json(True) or {}
     src_id, dst_id, fname = d.get("source_publish_destination"), d.get("target_publish_destination"), d.get("filename")
     copy = bool(d.get("copy", False))
     if not all([src_id, dst_id, fname]):
         abort(400, "source_publish_destination, target_publish_destination, filename required")
 
+    debug(f"[add_image_to_new_bucket] Starting operation: src_id={src_id}, dst_id={dst_id}, fname={fname}, copy={copy}")
+
     # Get publish destination details
     try:
         dests = _load_json_once("publish_destinations", "publish-destinations.json")
         src_dest = next(d for d in dests if d["id"] == src_id)
         dst_dest = next(d for d in dests if d["id"] == dst_id)
+        debug(f"[add_image_to_new_bucket] Resolved publish destinations: src_file={src_dest['file']}, dst_file={dst_dest['file']}")
     except (StopIteration, FileNotFoundError) as e:
+        error(f"[add_image_to_new_bucket] Failed to resolve publish destinations: {str(e)}")
         abort(404, f"Could not find publish destination: {str(e)}")
 
     # Resolve paths using publish destination file fields
     spath = bucket_path(src_dest["file"]) / fname
+    dpath = bucket_path(dst_dest["file"]) / fname
+    debug(f"[add_image_to_new_bucket] Resolved paths: src={spath}, dst={dpath}")
+
     if not spath.exists():
+        error(f"[add_image_to_new_bucket] Source file not found: {spath}")
         abort(404, "source file not found")
 
-    dpath = bucket_path(dst_dest["file"]) / fname
     dpath.parent.mkdir(parents=True, exist_ok=True)
     if dpath.exists():
         fname = unique_name(fname)
         dpath = bucket_path(dst_dest["file"]) / fname
+        debug(f"[add_image_to_new_bucket] Destination file exists, using new name: {fname}")
 
     # Copy main file
-    shutil.copy2(spath, dpath)
+    try:
+        shutil.copy2(spath, dpath)
+        debug(f"[add_image_to_new_bucket] Copied main file: {spath} -> {dpath}")
+    except Exception as e:
+        error(f"[add_image_to_new_bucket] Failed to copy main file: {str(e)}")
+        raise
 
     # Copy sidecar
     sc_src, sc_dst = sidecar_path(spath), sidecar_path(dpath)
     if sc_src.exists():
-        shutil.copy2(sc_src, sc_dst)
+        try:
+            shutil.copy2(sc_src, sc_dst)
+            debug(f"[add_image_to_new_bucket] Copied sidecar: {sc_src} -> {sc_dst}")
+        except Exception as e:
+            error(f"[add_image_to_new_bucket] Failed to copy sidecar: {str(e)}")
+            raise
 
     # Copy thumbnail
     src_thumb_dir = bucket_path(src_dest["file"]) / 'thumbnails'
@@ -543,28 +561,38 @@ def move():
     dst_thumb_path = dst_thumb_dir / f"{Path(fname).stem}.jpg"
     
     if src_thumb_path.exists():
-        shutil.copy2(src_thumb_path, dst_thumb_path)
+        try:
+            shutil.copy2(src_thumb_path, dst_thumb_path)
+            debug(f"[add_image_to_new_bucket] Copied thumbnail: {src_thumb_path} -> {dst_thumb_path}")
+        except Exception as e:
+            error(f"[add_image_to_new_bucket] Failed to copy thumbnail: {str(e)}")
+            raise
     else:
-        # Generate thumbnail if source doesn't have one
-        generate_thumbnail(dpath, dst_thumb_path)
+        try:
+            generate_thumbnail(dpath, dst_thumb_path)
+            debug(f"[add_image_to_new_bucket] Generated new thumbnail: {dst_thumb_path}")
+        except Exception as e:
+            error(f"[add_image_to_new_bucket] Failed to generate thumbnail: {str(e)}")
+            raise
 
     # Update destination metadata
-    dmeta = load_meta(dst_dest["file"])
-    dmeta.setdefault("sequence", []).append(fname)
-    save_meta(dst_dest["file"], dmeta)
+    try:
+        dmeta = load_meta(dst_dest["file"])
+        dmeta.setdefault("sequence", []).append(fname)
+        save_meta(dst_dest["file"], dmeta)
+        debug(f"[add_image_to_new_bucket] Updated destination metadata: added {fname} to sequence")
+    except Exception as e:
+        error(f"[add_image_to_new_bucket] Failed to update destination metadata: {str(e)}")
+        raise
 
     # Handle source deletion if this is a move (not copy)
     if not copy:
-        # Remove from source sequence
-        smeta = load_meta(src_dest["file"])
-        if "sequence" in smeta and fname in smeta["sequence"]:
-            smeta["sequence"].remove(fname)
-            save_meta(src_dest["file"], smeta)
-        
-        # Delete source files
-        spath.unlink(missing_ok=True)
-        sc_src.unlink(missing_ok=True)
-        src_thumb_path.unlink(missing_ok=True)
+        try:
+            delete(src_dest["file"], fname)
+            debug(f"[add_image_to_new_bucket] Deleted source files for {fname}")
+        except Exception as e:
+            error(f"[add_image_to_new_bucket] Failed to delete source files: {str(e)}")
+            raise
 
     return jsonify({"status": "copied" if copy else "moved", "filename": fname})
 
@@ -649,12 +677,27 @@ def purge_bucket(bucket: str):
     save_meta(bucket, {**meta, "sequence": seq})
     return jsonify({"status": "purged", "removed": removed})
 
-@buckets_bp.route("/<bucket>/reindex", methods=["POST"])
-def reindex_bucket(bucket: str):
+@buckets_bp.route("/reindex", methods=["POST"])
+def reindex_bucket():
     """
     Rebuild sequence[] from the files actually present on disk.
     Keeps favourites that still exist and re-generates thumbnails.
     """
+    d = request.get_json(True) or {}
+    pub_dest_id = d.get("publish_destination")
+    if not pub_dest_id:
+        abort(400, "publish_destination required")
+
+    # Get publish destination details
+    try:
+        dests = _load_json_once("publish_destinations", "publish-destinations.json")
+        pub_dest = next(d for d in dests if d["id"] == pub_dest_id)
+    except (StopIteration, FileNotFoundError) as e:
+        abort(404, f"Could not find publish destination: {str(e)}")
+
+    # Use the file field from publish destination
+    bucket = pub_dest["file"]
+    
     media_files = sorted(
         p.name for p in bucket_path(bucket).iterdir()
         if p.is_file() and p.suffix.lower() in ALLOWED_EXT
