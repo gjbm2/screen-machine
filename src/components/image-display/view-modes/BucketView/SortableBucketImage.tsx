@@ -16,6 +16,8 @@ interface SortableBucketImageProps {
   onMoveDown: (bucket: string, filename: string) => Promise<void>;
   onOpen: (item: BucketItem) => void;
   onPublish: (bucket: string, filename: string) => Promise<void>;
+  selectedDestination?: { id: string };
+  publishDestinations: { id: string; name: string }[];
 }
 
 export function SortableBucketImage({
@@ -29,7 +31,9 @@ export function SortableBucketImage({
   onMoveUp,
   onMoveDown,
   onOpen,
-  onPublish
+  onPublish,
+  selectedDestination,
+  publishDestinations
 }: SortableBucketImageProps) {
   const {
     attributes,
@@ -61,6 +65,8 @@ export function SortableBucketImage({
         onMoveDown={onMoveDown}
         onOpen={onOpen}
         onPublish={onPublish}
+        selectedDestination={selectedDestination}
+        publishDestinations={publishDestinations}
       />
       {/* Drag handle indicator */}
       <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded pointer-events-none">

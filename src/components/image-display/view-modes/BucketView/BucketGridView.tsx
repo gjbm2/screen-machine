@@ -139,7 +139,12 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
   };
   
   const handleCopyTo = async (sourcePublishDestination: string, targetPublishDestination: string, filename: string) => {
-    console.log('Copying image:', sourcePublishDestination, targetPublishDestination, filename);
+    console.log('Copying image with IDs:', {
+      sourcePublishDestination,
+      targetPublishDestination,
+      filename,
+      publishDestinations
+    });
     const success = await apiService.copyImageToBucket(sourcePublishDestination, targetPublishDestination, filename);
     if (success) {
       // Invalidate both source and target bucket queries
@@ -301,9 +306,8 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
           >
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                 {bucketDetails.items.map((item) => (
-                  <SortableBucketImage
+                  <BucketImage
                     key={item.filename}
-                    id={item.filename}
                     bucket={selectedDestination.id}
                     item={item}
                     buckets={publishDestinations.map(dest => dest.id)}
@@ -314,6 +318,8 @@ export function BucketGridView({ onFullScreenView }: BucketGridViewProps) {
                     onMoveDown={handleMoveDown}
                     onOpen={handleOpenImage}
                     onPublish={handlePublish}
+                    selectedDestination={selectedDestination}
+                    publishDestinations={publishDestinations}
                   />
                 ))}
             </div>

@@ -16,6 +16,8 @@ interface BucketImageProps {
   onMoveDown: (bucket: string, filename: string) => Promise<void>;
   onOpen: (item: BucketItem) => void;
   onPublish: (bucket: string, filename: string) => Promise<void>;
+  selectedDestination?: { id: string };
+  publishDestinations: { id: string; name: string }[];
 }
 
 export function BucketImage({
@@ -28,7 +30,9 @@ export function BucketImage({
   onMoveUp,
   onMoveDown,
   onOpen,
-  onPublish
+  onPublish,
+  selectedDestination,
+  publishDestinations
 }: BucketImageProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isTouched, setIsTouched] = useState(false);
@@ -127,14 +131,20 @@ export function BucketImage({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                {availableBuckets.map(targetBucket => (
-                  <DropdownMenuItem 
-                    key={targetBucket}
-                    onClick={() => onCopyTo(bucket, targetBucket, item.filename)}
-                  >
-                    {targetBucket}
-                  </DropdownMenuItem>
-                ))}
+                {availableBuckets.map(targetBucket => {
+                  // Source bucket is already the ID
+                  const sourceDest = publishDestinations.find(dest => dest.id === bucket);
+                  // Target bucket is already the ID
+                  const targetDest = publishDestinations.find(dest => dest.id === targetBucket);
+                  return (
+                    <DropdownMenuItem 
+                      key={targetBucket}
+                      onClick={() => onCopyTo(bucket, targetBucket, item.filename)}
+                    >
+                      {targetDest?.name || targetBucket}
+                    </DropdownMenuItem>
+                  );
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
