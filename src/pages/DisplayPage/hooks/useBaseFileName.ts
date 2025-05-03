@@ -11,13 +11,17 @@ export default function useBaseFileName(screenId: string | undefined): string | 
     const getDestinations = async () => {
       try {
         const destinations = await apiService.getPublishDestinations();
-    const matched = destinations.find(d => d.id === screenId && d.type === "output_file");
-    if (matched) {
-      setBaseFileName(matched.file.replace(/\.(jpg|mp4)$/, ""));
-    }
+        const matched = destinations.find(d => d.id === screenId && d.type === "output_file");
+        if (matched) {
+          setBaseFileName(matched.file.replace(/\.(jpg|mp4)$/, ""));
+        } else {
+          // Fallback to using screen ID directly
+          setBaseFileName(screenId);
+        }
       } catch (error) {
         console.error('Error fetching destinations:', error);
-        setBaseFileName(null);
+        // Fallback to using screen ID directly
+        setBaseFileName(screenId);
       }
     };
 

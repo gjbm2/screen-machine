@@ -10,7 +10,7 @@ publish_api = Blueprint('publish_api', __name__)
 PUBLISH_DESTINATIONS_FILE = findfile("publish-destinations.json")
 publish_destinations = _load_json_once("publish_destinations", PUBLISH_DESTINATIONS_FILE)
 
-@publish_api.route('/api/publish-destinations', methods=['GET'])
+@publish_api.route('/publish-destinations', methods=['GET'])
 def get_publish_destinations():
     """Get all available publish destinations"""
     try:
@@ -19,7 +19,7 @@ def get_publish_destinations():
         logging.error(f"Error getting publish destinations: {str(e)}")
         return jsonify({"error": "Failed to get publish destinations"}), 500
 
-@publish_api.route('/api/publish/<filename>', methods=['POST'])
+@publish_api.route('/publish/<filename>', methods=['POST'])
 def publish_image(filename):
     """Publish an image to a destination"""
     try:
@@ -53,7 +53,7 @@ def publish_image(filename):
         logging.error(f"Error publishing image: {str(e)}")
         return jsonify({"error": "Failed to publish image"}), 500
 
-@publish_api.route('/api/published/<publish_destination_id>', methods=['GET'])
+@publish_api.route('/published/<publish_destination_id>', methods=['GET'])
 def get_published(publish_destination_id: str):
     """
     Get published info for a destination.
@@ -102,7 +102,7 @@ def get_published(publish_destination_id: str):
         "meta":          pm.get("meta", {})
     })
 
-@publish_api.route("/api/publish/<publish_destination_id>/display", methods=["POST"])
+@publish_api.route("/publish/<publish_destination_id>/display", methods=["POST"])
 def api_display_from_bucket(publish_destination_id):
     """
     Display an image from a bucket based on the specified mode.
