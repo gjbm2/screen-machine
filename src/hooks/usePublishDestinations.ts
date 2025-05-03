@@ -1,28 +1,37 @@
 import { useState, useEffect } from 'react';
-import apiService from '@/utils/api';
-import { PublishDestination } from '@/utils/api';
+import { Api, PublishDestination } from '../utils/api';
+
+const api = new Api();
 
 export function usePublishDestinations() {
   const [destinations, setDestinations] = useState<PublishDestination[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchDestinations = async () => {
+    async function fetchDestinations() {
       try {
-        setIsLoading(true);
-        const data = await apiService.getPublishDestinations();
+        const data = await api.getPublishDestinations();
         setDestinations(data);
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch publish destinations');
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
-    };
+    }
 
     fetchDestinations();
   }, []);
 
-  return { destinations, isLoading, error };
+  const getDestinationsWithBuckets = () => {
+    return destinations.filter(dest => dest.has_bucket);
+  };
+
+  return {
+    destinations,
+    destinationsWithBuckets: getDestinationsWithBuckets(),
+    loading,
+    error
+  };
 } 

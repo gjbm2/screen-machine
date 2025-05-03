@@ -365,14 +365,28 @@ def handle_animate(instruction, context, now, output, publish_destination):
         error(traceback.format_exc())
 
 def handle_display(instruction, context, now, output, publish_destination):
-    mode = instruction["mode"]
-    # This is where we would call display endpoint
-    # ...
-    # end of roundtrip
-    img = context.get("last_generated")
-    result = f"Displayed ({mode}) image."
-    output.append(f"[{now.strftime('%H:%M')}] {result}")
-    log_schedule(result, publish_destination, now)
+    show = instruction["show"]
+    if show not in ["Next", "Random", "Blank"]:
+        error_msg = f"Invalid display mode: {show}. Must be 'Next', 'Random', or 'Blank'."
+        log_schedule(error_msg, publish_destination, now, output)
+        return False
+
+    # Use the new display_from_bucket function
+    from routes.publisher import display_from_bucket
+    result = display_from_bucket(
+        publish_destination_id=publish_destination,
+        mode=show,
+        silent=instruction.get("silent", False)
+    )
+
+    if not result.get("success"):
+        error_msg = f"Failed to display {show.lower()} image: {result.get('error')}"
+        log_schedule(error_msg, publish_destination, now, output)
+        return False
+
+    msg = f"Displayed {show.lower()} favorite" if show != "Blank" else "Displayed blank screen"
+    log_schedule(msg, publish_destination, now, output)
+    return False  # Don't unload the schedule
 
 def handle_sleep(instruction, context, now, output, publish_destination):
     duration = instruction["duration"]

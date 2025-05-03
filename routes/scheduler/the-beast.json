@@ -61,7 +61,7 @@
   "context_stack": [
     {
       "vars": {
-        "value": "Change begins at home",
+        "value": "Action this day",
         "test": 5,
         "prompt_history": [
           {
@@ -183,13 +183,23 @@
             "timestamp": "2025-05-02 09:00:00",
             "prompt": "Change begins at home",
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d95d4878-603d-4bf3-a9e0-47f64b827fde-e1/4eca5c28.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250502%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250502T080017Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0a86755b60a9448c8190fcced4c3792e617eea1a10b9d03954c73817ab1391f1"
+          },
+          {
+            "timestamp": "2025-05-02 10:00:00",
+            "prompt": "Change begins at home",
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b468b808-4ff7-43af-a94d-129bd293e5ac-e1/a4c071e8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250502%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250502T090018Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b53ce2730c7c3de0e44df285311359b5f7db7a3ee5433cb01701e60053d0f209"
+          },
+          {
+            "timestamp": "2025-05-02 11:00:00",
+            "prompt": "Be good company",
+            "image_url": null
           }
         ]
       },
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d95d4878-603d-4bf3-a9e0-47f64b827fde-e1/4eca5c28.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250502%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250502T080017Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0a86755b60a9448c8190fcced4c3792e617eea1a10b9d03954c73817ab1391f1",
+      "last_generated": "[image_path]",
       "publish_destination": "the-beast"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-02T09:00:20.891659"
+  "last_updated": "2025-05-03T15:37:42.861646"
 }

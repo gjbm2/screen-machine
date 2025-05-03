@@ -31,7 +31,7 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
   showLabel = true,
   includePublish = true
 }) => {
-  const { destinations, isLoading } = usePublishDestinations();
+  const { destinations, loading } = usePublishDestinations();
   
   // If includePublish is false, return null
   if (!includePublish) {
@@ -46,9 +46,21 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
     const bucket = urlParts[urlParts.length - 2];
     const filename = urlParts[urlParts.length - 1];
     
-    const success = await apiService.publishImage(bucket, filename, destinationId, generationInfo);
-    if (success) {
-      toast.success('Image published successfully');
+    try {
+        const success = await apiService.publishImage({
+            publish_destination_id: destinationId,
+            source_url: `${apiService.getApiUrl()}/api/buckets/${bucket}/${filename}`,
+            generation_info: generationInfo,
+            skip_bucket: false // Default to saving to bucket
+        });
+        if (success) {
+            toast.success('Image published successfully');
+        } else {
+            toast.error('Failed to publish image');
+        }
+    } catch (error) {
+        console.error('Error publishing image:', error);
+        toast.error('Failed to publish image');
     }
   };
 
@@ -62,7 +74,7 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
   const buttonSizeClass = isRolledUp ? 'h-8 w-8 p-0' : 'h-9 px-2 py-2 text-xs';
   const buttonClass = `rounded-full backdrop-blur-sm text-white font-medium shadow-sm transition-all duration-200 flex items-center justify-center bg-green-600/90 hover:bg-green-600 ${buttonSizeClass} image-action-button`;
 
-  if (isLoading) {
+  if (loading) {
     return (
       <Button variant="ghost" className={buttonClass} disabled>
         <Loader2 className="h-4 w-4 animate-spin" />

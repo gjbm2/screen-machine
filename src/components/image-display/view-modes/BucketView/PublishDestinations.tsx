@@ -4,35 +4,39 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import * as LucideIcons from 'lucide-react';
 import apiService from '@/utils/api';
 import { PublishDestination } from '@/utils/api';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
 
 interface PublishDestinationsProps {
   selectedDestination: string | null;
-  onSelectDestination: (destination: PublishDestination) => void;
+  onSelectDestination: (destination: string) => void;
 }
 
 export function PublishDestinations({ selectedDestination, onSelectDestination }: PublishDestinationsProps) {
-  const [publishDestinations, setPublishDestinations] = useState<PublishDestination[]>([]);
+  const [destinations, setDestinations] = useState<PublishDestination[]>([]);
   const [buckets, setBuckets] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   
   // Load publish destinations
   useEffect(() => {
-    const loadDestinations = async () => {
+    const fetchDestinations = async () => {
       try {
         console.log('Loading publish destinations');
-        const destinations = await apiService.getPublishDestinations();
-        setPublishDestinations(destinations);
+        const dests = await apiService.getPublishDestinations();
+        // Filter to only destinations with has_bucket=true
+        const bucketDests = dests.filter(d => d.has_bucket);
+        setDestinations(bucketDests);
         
         // Select first destination by default if none is selected
-        if (!selectedDestination && destinations.length > 0) {
-          onSelectDestination(destinations[0]);
+        if (!selectedDestination && bucketDests.length > 0) {
+          onSelectDestination(bucketDests[0].id);
         }
       } catch (error) {
-        console.error('Error loading publish destinations:', error);
+        console.error('Error fetching destinations:', error);
       }
     };
     
-    loadDestinations();
+    fetchDestinations();
   }, [selectedDestination, onSelectDestination]);
   
   // Load buckets to verify which ones exist
@@ -65,44 +69,26 @@ export function PublishDestinations({ selectedDestination, onSelectDestination }
     return buckets.includes(destination.id);
   };
   
+  const selectedDest = destinations.find(d => d.id === selectedDestination);
+  
   return (
-    <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 dark:bg-gray-800 rounded-md">
-      {loading ? (
-        <div className="text-sm text-gray-500 p-2">Loading destinations...</div>
-      ) : publishDestinations.length === 0 ? (
-        <div className="text-sm text-gray-500 p-2">No publish destinations found</div>
-      ) : (
-        publishDestinations.map((destination) => {
-          const isSelected = selectedDestination === destination.id;
-          const hasBucket = destinationHasBucket(destination);
-          
-          return (
-            <Tooltip key={destination.id}>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={isSelected ? "default" : "outline"}
-                  size="sm"
-                  className={`px-3 ${!hasBucket ? 'opacity-50' : ''}`}
-                  onClick={() => {
-                    console.log('Destination clicked:', destination.id, 'Has bucket:', hasBucket);
-                    if (hasBucket) {
-                      onSelectDestination(destination);
-                    }
-                  }}
-                  disabled={!hasBucket}
-                >
-                  {getIcon(destination.icon)}
-                  <span className="ml-2 hidden sm:inline">{destination.name}</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{destination.description}</p>
-                {!hasBucket && <p className="text-xs text-red-500">Bucket not found</p>}
-              </TooltipContent>
-            </Tooltip>
-          );
-        })
-      )}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="w-[200px] justify-between">
+          {selectedDest ? selectedDest.name || selectedDest.id : 'Select Destination'}
+          <ChevronDown className="ml-2 h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {destinations.map((dest) => (
+          <DropdownMenuItem
+            key={dest.id}
+            onClick={() => onSelectDestination(dest.id)}
+          >
+            {dest.name || dest.id}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
