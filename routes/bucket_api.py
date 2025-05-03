@@ -266,8 +266,8 @@ def published_info(bucket_id: str):
         abort(404, "nothing published yet")
     filename    = pm["filename"]
     published_at= pm["published_at"]
-    raw_url     = url_for("buckets.raw", bucket_id=bucket_id, filename=filename)
-    thumb_url   = url_for("buckets.thumbnail", bucket_id=bucket_id, filename=filename)
+    raw_url     = f"/output/{bucket_id}/{filename}"
+    thumb_url   = f"/output/{bucket_id}/thumbnails/{Path(filename).stem}{Path(filename).suffix}.jpg"
     return jsonify({
         "filename": filename,
         "published_at": published_at,
@@ -563,7 +563,7 @@ def get_bucket_complete(bucket_id: str):
             "metadata": file_meta,
             "favorite": file_path.name in meta.get("favorites", []),
             "sequence_index": meta.get("sequence", []).index(file_path.name),
-            "thumbnail_url": url_for("buckets.thumbnail", bucket_id=bucket_id, filename=file_path.name)
+            "thumbnail_url": f"/output/{bucket_id}/thumbnails/{file_path.stem}{file_path.suffix}.jpg"
         })
     
     # Sort files by sequence

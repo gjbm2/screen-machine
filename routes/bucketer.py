@@ -440,43 +440,27 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
     
     debug(f"[copy_image_from_bucket_to_bucket] Starting operation: src_id={source_publish_destination}, dst_id={target_publish_destination}, fname={filename}")
 
-    # Get publish destination details
-    try:
-        dests = _load_json_once("publish_destinations", "publish-destinations.json")
-        src_dest = next(d for d in dests if d["id"] == source_publish_destination)
-        dst_dest = next(d for d in dests if d["id"] == target_publish_destination)
-        debug(f"[copy_image_from_bucket_to_bucket] Resolved publish destinations: src_file={src_dest['file']}, dst_file={dst_dest['file']}")
-    except (StopIteration, FileNotFoundError) as e:
-        error(f"[copy_image_from_bucket_to_bucket] Failed to resolve publish destinations: {str(e)}")
-        raise ValueError(f"Could not find publish destination: {str(e)}")
-
-    # Resolve paths using publish destination file fields
-    spath = bucket_path(src_dest["file"]) / filename
-    dpath = bucket_path(dst_dest["file"]) / filename
-    debug(f"[copy_image_from_bucket_to_bucket] Resolved paths: src={spath}, dst={dpath}")
-
-    if not spath.exists():
-        error(f"[copy_image_from_bucket_to_bucket] Source file not found: {spath}")
+    # Get source and target paths
+    src_path = bucket_path(source_publish_destination) / filename
+    if not src_path.exists():
+        error(f"[copy_image_from_bucket_to_bucket] Source file not found: {src_path}")
         raise FileNotFoundError("source file not found")
 
-    dpath.parent.mkdir(parents=True, exist_ok=True)
-    if dpath.exists():
-        fname = unique_name(filename)
-        dpath = bucket_path(dst_dest["file"]) / fname
-        debug(f"[copy_image_from_bucket_to_bucket] Destination file exists, using new name: {fname}")
-    else:
-        fname = filename
+    # Generate unique name for target
+    target_filename = unique_name(filename)
+    dst_path = bucket_path(target_publish_destination) / target_filename
+    dst_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Copy main file
     try:
-        shutil.copy2(spath, dpath)
-        debug(f"[copy_image_from_bucket_to_bucket] Copied main file: {spath} -> {dpath}")
+        shutil.copy2(src_path, dst_path)
+        debug(f"[copy_image_from_bucket_to_bucket] Copied main file: {src_path} -> {dst_path}")
     except Exception as e:
         error(f"[copy_image_from_bucket_to_bucket] Failed to copy main file: {str(e)}")
         raise
 
     # Copy sidecar
-    sc_src, sc_dst = sidecar_path(spath), sidecar_path(dpath)
+    sc_src, sc_dst = sidecar_path(src_path), sidecar_path(dst_path)
     if sc_src.exists():
         try:
             shutil.copy2(sc_src, sc_dst)
@@ -486,12 +470,12 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
             raise
 
     # Copy thumbnail
-    src_thumb_dir = bucket_path(src_dest["file"]) / 'thumbnails'
-    dst_thumb_dir = bucket_path(dst_dest["file"]) / 'thumbnails'
+    src_thumb_dir = bucket_path(source_publish_destination) / 'thumbnails'
+    dst_thumb_dir = bucket_path(target_publish_destination) / 'thumbnails'
     dst_thumb_dir.mkdir(parents=True, exist_ok=True)
     
-    src_thumb_path = src_thumb_dir / f"{Path(fname).stem}{Path(fname).suffix}.jpg"
-    dst_thumb_path = dst_thumb_dir / f"{Path(fname).stem}{Path(fname).suffix}.jpg"
+    src_thumb_path = src_thumb_dir / f"{Path(filename).stem}{Path(filename).suffix}.jpg"
+    dst_thumb_path = dst_thumb_dir / f"{Path(target_filename).stem}{Path(target_filename).suffix}.jpg"
     
     if src_thumb_path.exists():
         try:
@@ -502,7 +486,7 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
             raise
     else:
         try:
-            generate_thumbnail(dpath, dst_thumb_path)
+            generate_thumbnail(dst_path, dst_thumb_path)
             debug(f"[copy_image_from_bucket_to_bucket] Generated new thumbnail: {dst_thumb_path}")
         except Exception as e:
             error(f"[copy_image_from_bucket_to_bucket] Failed to generate thumbnail: {str(e)}")
@@ -510,10 +494,10 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
 
     # Update destination metadata
     try:
-        dmeta = load_meta(dst_dest["file"])
-        dmeta.setdefault("sequence", []).append(fname)
-        save_meta(dst_dest["file"], dmeta)
-        debug(f"[copy_image_from_bucket_to_bucket] Updated destination metadata: added {fname} to sequence")
+        dmeta = load_meta(target_publish_destination)
+        dmeta.setdefault("sequence", []).append(target_filename)
+        save_meta(target_publish_destination, dmeta)
+        debug(f"[copy_image_from_bucket_to_bucket] Updated destination metadata: added {target_filename} to sequence")
     except Exception as e:
         error(f"[copy_image_from_bucket_to_bucket] Failed to update destination metadata: {str(e)}")
         raise
@@ -521,13 +505,13 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
     # Handle source deletion if this is a move (not copy)
     if not copy:
         try:
-            delete_file(source_publish_destination, fname)
-            debug(f"[copy_image_from_bucket_to_bucket] Deleted source files for {fname}")
+            delete_file(source_publish_destination, filename)
+            debug(f"[copy_image_from_bucket_to_bucket] Deleted source files for {filename}")
         except Exception as e:
             error(f"[copy_image_from_bucket_to_bucket] Failed to delete source files: {str(e)}")
             raise
 
     return {
         "status": "copied" if copy else "moved",
-        "filename": fname
+        "filename": target_filename
     } 

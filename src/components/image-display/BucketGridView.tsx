@@ -235,9 +235,8 @@ export const BucketGridView = ({
   const handlePublish = async (bucket: string, filename: string) => {
     try {
       const success = await apiService.publishImage({
-        bucket,
-        filename,
-        destination: bucket
+        publish_destination_id: bucket,
+        source: `/api/buckets/${bucket}/raw/${filename}`
       });
       if (success) {
         // Update local state immediately
@@ -246,6 +245,10 @@ export const BucketGridView = ({
           published: filename,
           published_at: new Date().toISOString()
         } : null);
+        
+        // Refresh bucket details to ensure everything is in sync
+        await fetchBucketDetails();
+        
         toast.success('Image published successfully');
       }
     } catch (error) {

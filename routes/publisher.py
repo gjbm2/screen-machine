@@ -220,33 +220,25 @@ def _publish_to_destination(
     """Internal helper for publish_to_destination."""
     try:
         dest = get_destination(publish_destination_id)
-        dest_path = Path(dest["file"])
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # First, optionally append to bucket
+        bucket_filename = None
+        if not skip_bucket:
+            bucket_path = _append_to_bucket(publish_destination_id, source)
+            # Use the bucket version as the source for publishing
+            source = bucket_path
+            bucket_filename = bucket_path.name
 
-        # Copy the file
-        shutil.copy2(source, dest_path)
-        dest_path.touch()  # Ensure fresh mtime for watchdogs
+        # Copy to /output/<id>.ext for display
+        display_path = Path(f"output/{dest['id']}{source.suffix}")
+        shutil.copy2(source, display_path)
+        display_path.touch()  # Ensure fresh mtime for watchdogs
 
         # Ensure sidecar exists
-        ensure_sidecar_for(dest_path)
+        ensure_sidecar_for(display_path)
 
-        # Optionally append to bucket
-        if not skip_bucket:
-            _append_to_bucket(publish_destination_id, dest_path)
-
-        # Generate thumbnail
-        thumb_dir = dest_path.parent / "thumbnails"
-        thumb_dir.mkdir(parents=True, exist_ok=True)
-        thumb_path = thumb_dir / f"{dest_path.stem}{dest_path.suffix}.jpg"
-        try:
-            generate_thumbnail(dest_path, thumb_path)
-            debug(f"[publish] Generated thumbnail: {thumb_path}")
-        except Exception as e:
-            error(f"[publish] Failed to generate thumbnail: {str(e)}")
-            raise
-
-        # Record publish
-        _record_publish(publish_destination_id, dest_path.name, datetime.utcnow().isoformat() + "Z")
+        # Record publish with bucket filename
+        _record_publish(publish_destination_id, bucket_filename or source.name, datetime.utcnow().isoformat() + "Z")
 
         # Show overlay if not silent
         if not silent:
@@ -255,7 +247,7 @@ def _publish_to_destination(
         return {
             "success": True,
             "meta": {
-                "filename": dest_path.name,
+                "filename": bucket_filename or source.name,
                 "published_at": datetime.utcnow().isoformat() + "Z"
             }
         }

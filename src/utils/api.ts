@@ -317,18 +317,16 @@ export class Api {
   // Publish an image via backend (handled by Flask)
   async publishImage(data: {
     publish_destination_id: string;
-    source_url: string;
+    source: string;
     generation_info?: any;
     skip_bucket?: boolean;
   }): Promise<{ success: boolean; error?: string }> {
-    const response = await fetch(`${this.apiUrl}/publish/${data.source_url.split('/').pop()}`, {
+    const response = await fetch(`${this.apiUrl}/buckets/${data.publish_destination_id}/publish/${data.source.split('/').pop()}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        publish_destination_id: data.publish_destination_id,
-        source_url: data.source_url,
         generation_info: data.generation_info,
         skip_bucket: data.skip_bucket
       }),
@@ -964,12 +962,15 @@ export class Api {
       metadata: file.metadata || {}
     })) : [];
     
+    // Get published info from the published object
+    const published = data.published || null;
+    
     // Ensure we have a valid BucketDetails object
     const bucketDetails = {
       name: data.bucket_id || bucketId,
       items: items,
-      published: data.published || null,
-      publishedAt: data.publishedAt || null,
+      published: published?.filename || null,
+      publishedAt: published?.published_at || null,
       favorites: Array.isArray(data.favorites) ? data.favorites : [],
       sequence: Array.isArray(data.sequence) ? data.sequence : []
     };
@@ -997,11 +998,15 @@ export class Api {
   async toggleFavorite(bucketId: string, filename: string, currentState: boolean): Promise<boolean> {
     const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/favorite/${filename}`, {
       method: currentState ? 'DELETE' : 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
     });
     if (!response.ok) {
       throw new Error(`Failed to toggle favorite: ${response.statusText}`);
     }
-    return !currentState;
+    const data = await response.json();
+    return data.status === 'favorited' || data.status === 'unfavorited';
   }
 
   // Delete an image from a bucket
