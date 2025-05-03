@@ -15,18 +15,18 @@ export function BucketGridView({ bucketId, onImageClick }: BucketGridViewProps) 
   const [images, setImages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { destinations, loading: destinationsLoading } = usePublishDestinations();
+  const { destinationsWithBuckets, loading: destinationsLoading } = usePublishDestinations();
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [bucketDetails, destinations] = await Promise.all([
-          api.getBucketDetails(bucketId),
-          api.getPublishDestinations()
-        ]);
-        setImages(bucketDetails.items);
+        console.log('Fetching bucket details for:', bucketId);
+        const bucketDetails = await api.getBucketDetails(bucketId);
+        console.log('Bucket details received:', bucketDetails);
+        setImages(bucketDetails.items || []);
         setError(null);
       } catch (err) {
+        console.error('Error fetching bucket details:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch bucket details');
       } finally {
         setLoading(false);
@@ -131,7 +131,7 @@ export function BucketGridView({ bucketId, onImageClick }: BucketGridViewProps) 
           key={image.filename}
           bucket={bucketId}
           item={image}
-          buckets={destinations}
+          buckets={destinationsWithBuckets}
           onToggleFavorite={(currentState) => handleToggleFavorite(image.filename, currentState)}
           onDelete={() => handleDelete(image.filename)}
           onCopy={(targetBucketId) => handleCopy(image.filename, targetBucketId)}

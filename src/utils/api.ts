@@ -30,6 +30,8 @@ export interface PublishDestination {
   description?: string;
   icon?: string;
   has_bucket: boolean;
+  file?: string;
+  headless?: boolean;
 }
 
 // Type for image generation params
@@ -319,7 +321,7 @@ export class Api {
     generation_info?: any;
     skip_bucket?: boolean;
   }): Promise<{ success: boolean; error?: string }> {
-    const response = await fetch(`${this.apiUrl}/api/publish/${data.source_url.split('/').pop()}`, {
+    const response = await fetch(`${this.apiUrl}/publish/${data.source_url.split('/').pop()}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -926,7 +928,7 @@ export class Api {
   // Get publish destinations
   async getPublishDestinations(): Promise<PublishDestination[]> {
     try {
-      const response = await fetch('/api/publish-destinations');
+      const response = await fetch(`${this.apiUrl}/publish-destinations`);
       if (!response.ok) {
         throw new Error('Failed to fetch publish destinations');
       }
@@ -945,11 +947,35 @@ export class Api {
   }
 
   async getBucketDetails(bucketId: string): Promise<BucketDetails> {
-    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/complete`);
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/complete`);
     if (!response.ok) {
       throw new Error(`Failed to get bucket details: ${response.statusText}`);
     }
-    return response.json();
+    const data = await response.json();
+    console.log('Raw bucket details response:', data);
+    
+    // Map files to items with the correct fields
+    const items = Array.isArray(data.files) ? data.files.map(file => ({
+      filename: file.filename,
+      url: file.url,
+      thumbnail_url: file.thumbnail_url,
+      thumbnail_embedded: file.thumbnail_embedded,
+      favorite: file.favorite || false,
+      metadata: file.metadata || {}
+    })) : [];
+    
+    // Ensure we have a valid BucketDetails object
+    const bucketDetails = {
+      name: data.bucket_id || bucketId,
+      items: items,
+      published: data.published || null,
+      publishedAt: data.publishedAt || null,
+      favorites: Array.isArray(data.favorites) ? data.favorites : [],
+      sequence: Array.isArray(data.sequence) ? data.sequence : []
+    };
+    
+    console.log('Processed bucket details:', bucketDetails);
+    return bucketDetails;
   }
 
   // Get all buckets
@@ -969,79 +995,51 @@ export class Api {
 
   // Toggle favorite status for an image
   async toggleFavorite(bucketId: string, filename: string, currentState: boolean): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/favorite/${filename}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ favorite: !currentState }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to toggle favorite');
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error toggling favorite:', error);
-      toast.error('Failed to toggle favorite');
-      return false;
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/favorite/${filename}`, {
+      method: currentState ? 'DELETE' : 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to toggle favorite: ${response.statusText}`);
     }
+    return !currentState;
   }
 
   // Delete an image from a bucket
   async deleteImage(bucketId: string, filename: string): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/${filename}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete image');
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error deleting image:', error);
-      toast.error('Failed to delete image');
-      return false;
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/${filename}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete image: ${response.statusText}`);
     }
+    return true;
   }
 
   // Move an image up or down in a bucket
   async moveImage(bucketId: string, filename: string, direction: 'up' | 'down'): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/move/${filename}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ direction }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to move image');
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error moving image:', error);
-      toast.error('Failed to move image');
-      return false;
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/move/${filename}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ direction }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to move image: ${response.statusText}`);
     }
+    return true;
   }
 
   // Copy an image to another bucket
   async copyImageToBucket(sourceBucketId: string, targetBucketId: string, filename: string, copy: boolean = false): Promise<{ status: string; filename: string }> {
-    const response = await fetch(`${this.apiUrl}/api/buckets/add_image_to_new_bucket`, {
+    const response = await fetch(`${this.apiUrl}/buckets/add_image_to_new_bucket`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        source_publish_destination: sourceBucketId,
-        target_publish_destination: targetBucketId,
+        source_bucket: sourceBucketId,
+        target_bucket: targetBucketId,
         filename,
         copy,
       }),
@@ -1054,21 +1052,13 @@ export class Api {
 
   // Perform bucket maintenance
   async performBucketMaintenance(bucketId: string, action: 'purge' | 'reindex' | 'extract'): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/maintenance/${action}`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to perform ${action}`);
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error performing maintenance:', error);
-      toast.error(`Failed to perform ${action}`);
-      return false;
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/maintenance/${action}`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to perform maintenance: ${response.statusText}`);
     }
+    return true;
   }
 
   // Get all scheduler statuses
@@ -1113,7 +1103,7 @@ export class Api {
   }
 
   async getBuckets(): Promise<string[]> {
-    const response = await fetch(`${this.apiUrl}/api/buckets/`);
+    const response = await fetch(`${this.apiUrl}/buckets/`);
     if (!response.ok) {
       throw new Error(`Failed to get buckets: ${response.statusText}`);
     }
@@ -1121,7 +1111,7 @@ export class Api {
   }
 
   async createBucket(bucketId: string): Promise<{ status: string; bucket_id: string }> {
-    const response = await fetch(`${this.apiUrl}/api/buckets/`, {
+    const response = await fetch(`${this.apiUrl}/buckets/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1137,90 +1127,87 @@ export class Api {
   async uploadToBucket(bucketId: string, file: File): Promise<{ filename: string }> {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/upload`, {
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/upload`, {
       method: 'POST',
       body: formData,
     });
     if (!response.ok) {
-      throw new Error(`Failed to upload file: ${response.statusText}`);
+      throw new Error(`Failed to upload to bucket: ${response.statusText}`);
     }
     return response.json();
   }
 
   async publishFromBucket(bucketId: string, filename: string, skip_bucket?: boolean): Promise<{ success: boolean; error?: string }> {
-    const response = await fetch(`${this.apiUrl}/api/publish/${filename}`, {
+    const response = await fetch(`${this.apiUrl}/publish/publish`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         publish_destination_id: bucketId,
-        source_url: `${this.apiUrl}/api/buckets/${bucketId}/${filename}`,
-        skip_bucket: skip_bucket
+        source_url: `${this.apiUrl}/buckets/${bucketId}/${filename}`,
+        skip_bucket,
       }),
     });
-
     if (!response.ok) {
-      const error = await response.json();
-      return { success: false, error: error.error };
+      throw new Error(`Failed to publish from bucket: ${response.statusText}`);
     }
-
-    return { success: true };
+    return response.json();
   }
 
   async favoriteInBucket(bucketId: string, filename: string): Promise<{ status: string }> {
-    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/favorite/${filename}`, {
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/favorite/${filename}`, {
       method: 'POST',
     });
     if (!response.ok) {
-      throw new Error(`Failed to favorite file: ${response.statusText}`);
+      throw new Error(`Failed to favorite in bucket: ${response.statusText}`);
     }
     return response.json();
   }
 
   async unfavoriteInBucket(bucketId: string, filename: string): Promise<{ status: string }> {
-    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/favorite/${filename}`, {
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/favorite/${filename}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
-      throw new Error(`Failed to unfavorite file: ${response.statusText}`);
+      throw new Error(`Failed to unfavorite in bucket: ${response.statusText}`);
     }
     return response.json();
   }
 
   async deleteFromBucket(bucketId: string, filename: string): Promise<{ status: string }> {
-    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/${filename}`, {
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/${filename}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
-      throw new Error(`Failed to delete file: ${response.statusText}`);
+      throw new Error(`Failed to delete from bucket: ${response.statusText}`);
     }
     return response.json();
   }
 
   async moveUpInBucket(bucketId: string, filename: string): Promise<{ status: string; index: number }> {
-    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/move-up/${filename}`, {
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/move-up/${filename}`, {
       method: 'POST',
     });
     if (!response.ok) {
-      throw new Error(`Failed to move file up: ${response.statusText}`);
+      throw new Error(`Failed to move up in bucket: ${response.statusText}`);
     }
     return response.json();
   }
 
   async moveDownInBucket(bucketId: string, filename: string): Promise<{ status: string; index: number }> {
-    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/move-down/${filename}`, {
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/move-down/${filename}`, {
       method: 'POST',
     });
     if (!response.ok) {
-      throw new Error(`Failed to move file down: ${response.statusText}`);
+      throw new Error(`Failed to move down in bucket: ${response.statusText}`);
     }
     return response.json();
   }
 
   async purgeBucket(bucketId: string): Promise<{ status: string; removed: string[] }> {
-    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/purge`, {
-      method: 'DELETE',
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/purge`, {
+      method: 'POST',
     });
     if (!response.ok) {
       throw new Error(`Failed to purge bucket: ${response.statusText}`);
@@ -1229,7 +1216,7 @@ export class Api {
   }
 
   async reindexBuckets(): Promise<{ status: string; count: number }> {
-    const response = await fetch(`${this.apiUrl}/api/buckets/reindex`, {
+    const response = await fetch(`${this.apiUrl}/buckets/reindex`, {
       method: 'POST',
     });
     if (!response.ok) {
@@ -1239,18 +1226,18 @@ export class Api {
   }
 
   async extractJsonFromBucket(bucketId: string): Promise<{ status: string; updated: string[] }> {
-    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/extractjson`, {
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/extractjson`, {
       method: 'POST',
     });
     if (!response.ok) {
-      throw new Error(`Failed to extract JSON: ${response.statusText}`);
+      throw new Error(`Failed to extract JSON from bucket: ${response.statusText}`);
     }
     return response.json();
   }
 
   async publish(imagePath: string, destinationId: string): Promise<void> {
     try {
-      const response = await fetch('/api/publish/publish', {
+      const response = await fetch(`${this.apiUrl}/publish/publish`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -9,6 +9,7 @@ import { BucketGridView } from './BucketGridView';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import ViewModeSelector from './ViewModeSelector';
 import { CirclePause, CirclePlay, CircleStop, Settings, Image, ImagePlus, ChevronRight, ChevronLeft } from 'lucide-react';
+import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
 export type ViewMode = 'normal' | 'small' | 'table';
 export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
@@ -68,12 +69,12 @@ interface DestinationTab {
 }
 
 export function ImageDisplay(props: ImageDisplayProps) {
-  const [selectedTab, setSelectedTab] = useState<string>('generated');
+  const { destinationsWithBuckets, loading: destinationsLoading } = usePublishDestinations();
+  const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const [bucketRefreshFlags, setBucketRefreshFlags] = useState<Record<string, number>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [publishDestinations, setPublishDestinations] = useState<PublishDestination[]>([]);
   const [schedulerStatuses, setSchedulerStatuses] = useState<Record<string, any>>({});
   
   // Function to trigger a refresh for a specific bucket
@@ -119,10 +120,13 @@ export function ImageDisplay(props: ImageDisplayProps) {
   const onDeleteContainer = isIndexProps ? (props as IndexImageDisplayProps).onDeleteContainer : undefined;
   const onReorderContainers = isIndexProps ? (props as IndexImageDisplayProps).onReorderContainers : undefined;
 
+  // Use destinationsWithBuckets instead of publishDestinations
+  const allDestinations = destinationsWithBuckets;
+
   // Convert array of destinations to tabs format
   const destinationTabs = useMemo(() => {
     // Get all publish destinations with their display names
-    const allDestinations = publishDestinations;
+    const allDestinations = destinationsWithBuckets;
     
     return [
       { 
@@ -145,7 +149,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         } as DestinationTab;
       }) : [])
     ];
-  }, [destinations, publishDestinations]);
+  }, [destinations, destinationsWithBuckets]);
 
   // Find file property for a destination ID
   const getDestinationFile = (destinationId: string) => {
@@ -159,9 +163,9 @@ export function ImageDisplay(props: ImageDisplayProps) {
     const fetchSchedulerStatuses = async () => {
       try {
         const statuses = await Promise.all(
-          publishDestinations.map(async (dest) => {
-            const status = await apiService.getSchedulerStatus(dest.id);
-            return { [dest.id]: status };
+          destinations.map(async (dest) => {
+            const status = await apiService.getSchedulerStatus(dest);
+            return { [dest]: status };
           })
         );
         setSchedulerStatuses(Object.assign({}, ...statuses));
@@ -170,10 +174,10 @@ export function ImageDisplay(props: ImageDisplayProps) {
       }
     };
 
-    if (publishDestinations.length > 0) {
+    if (destinations.length > 0) {
       fetchSchedulerStatuses();
     }
-  }, [publishDestinations]);
+  }, [destinations]);
 
   // Get status for a destination to be passed to BucketGridView
   const getStatusForDestination = (destId: string) => {
@@ -342,19 +346,6 @@ export function ImageDisplay(props: ImageDisplayProps) {
       }
     }, 10);
   };
-  
-  useEffect(() => {
-    const fetchDestinations = async () => {
-      try {
-        const destinations = await apiService.getPublishDestinations();
-        setPublishDestinations(destinations);
-      } catch (error) {
-        console.error('Error fetching publish destinations:', error);
-      }
-    };
-
-    fetchDestinations();
-  }, []);
   
   return (
     <div className="bg-background overflow-hidden h-full">
@@ -525,7 +516,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
             isLoading={false}
             schedulerStatus={getStatusForDestination(selectedTab)}
             headless={destinationTabs.find(tab => tab.id === selectedTab)?.headless || false}
-            icon={publishDestinations.find(d => d.id === selectedTab)?.icon || 'image'}
+            icon={destinationsWithBuckets.find(d => d.id === selectedTab)?.icon || 'image'}
           />
         )}
         </div>
