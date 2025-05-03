@@ -125,9 +125,6 @@ export function ImageDisplay(props: ImageDisplayProps) {
 
   // Convert array of destinations to tabs format
   const destinationTabs = useMemo(() => {
-    // Get all publish destinations with their display names
-    const allDestinations = destinationsWithBuckets;
-    
     return [
       { 
         id: 'generated', 
@@ -136,20 +133,16 @@ export function ImageDisplay(props: ImageDisplayProps) {
         highlight: true,
         file: null
       } as DestinationTab,
-      ...(destinations ? destinations.map(destId => {
-        // Find the destination info to get the display name
-        const destInfo = allDestinations.find(d => d.id === destId);
-        return { 
-          id: destId, 
-          label: destInfo ? destInfo.name : destId, // Use display name if found, fall back to ID
-          icon: <Image className="h-4 w-4 mr-2" />,
-          highlight: false,
-          file: destInfo?.file || destId, // Use file property if available, otherwise fall back to ID
-          headless: destInfo?.headless || false // Pass through headless property
-        } as DestinationTab;
-      }) : [])
+      ...destinationsWithBuckets.map(dest => ({
+        id: dest.id,
+        label: dest.name,
+        icon: <Image className="h-4 w-4 mr-2" />,
+        highlight: false,
+        file: dest.file || dest.id,
+        headless: dest.headless || false
+      }))
     ];
-  }, [destinations, destinationsWithBuckets]);
+  }, [destinationsWithBuckets]);
 
   // Find file property for a destination ID
   const getDestinationFile = (destinationId: string) => {

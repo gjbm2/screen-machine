@@ -15,22 +15,28 @@ export default function useFilePolling(baseFileName: string | null) {
 
     const detectInitialFile = async () => {
       const jpgUrl = `${base}.jpg`;
+      const JPGUrl = `${base}.JPG`;
       const mp4Url = `${base}.mp4`;
 
-      const [jpgRes, mp4Res] = await Promise.allSettled([
+      const [jpgRes, JPGRes, mp4Res] = await Promise.allSettled([
         fetch(jpgUrl, { method: "HEAD" }),
+        fetch(JPGUrl, { method: "HEAD" }),
         fetch(mp4Url, { method: "HEAD" }),
       ]);
 
       const jpgModified = jpgRes.status === "fulfilled"
         ? new Date(jpgRes.value.headers.get("last-modified") || 0).getTime()
         : 0;
+      const JPGModified = JPGRes.status === "fulfilled"
+        ? new Date(JPGRes.value.headers.get("last-modified") || 0).getTime()
+        : 0;
       const mp4Modified = mp4Res.status === "fulfilled"
         ? new Date(mp4Res.value.headers.get("last-modified") || 0).getTime()
         : 0;
 
-      const latestType = jpgModified > mp4Modified ? "jpg" : "mp4";
-      const latestModified = Math.max(jpgModified, mp4Modified);
+      const latestType = Math.max(jpgModified, JPGModified) > mp4Modified ? 
+        (jpgModified > JPGModified ? "jpg" : "JPG") : "mp4";
+      const latestModified = Math.max(jpgModified, JPGModified, mp4Modified);
       lastModifiedRef.current = latestModified;
 
       const initialUrl = `${base}.${latestType}?t=${latestModified}`;
@@ -40,22 +46,28 @@ export default function useFilePolling(baseFileName: string | null) {
 
     const checkForChange = async () => {
       const jpgUrl = `${base}.jpg`;
+      const JPGUrl = `${base}.JPG`;
       const mp4Url = `${base}.mp4`;
 
-      const [jpgRes, mp4Res] = await Promise.allSettled([
+      const [jpgRes, JPGRes, mp4Res] = await Promise.allSettled([
         fetch(jpgUrl, { method: "HEAD" }),
+        fetch(JPGUrl, { method: "HEAD" }),
         fetch(mp4Url, { method: "HEAD" }),
       ]);
 
       const jpgModified = jpgRes.status === "fulfilled"
         ? new Date(jpgRes.value.headers.get("last-modified") || 0).getTime()
         : 0;
+      const JPGModified = JPGRes.status === "fulfilled"
+        ? new Date(JPGRes.value.headers.get("last-modified") || 0).getTime()
+        : 0;
       const mp4Modified = mp4Res.status === "fulfilled"
         ? new Date(mp4Res.value.headers.get("last-modified") || 0).getTime()
         : 0;
 
-      const latestType = jpgModified > mp4Modified ? "jpg" : "mp4";
-      const latestModified = Math.max(jpgModified, mp4Modified);
+      const latestType = Math.max(jpgModified, JPGModified) > mp4Modified ? 
+        (jpgModified > JPGModified ? "jpg" : "JPG") : "mp4";
+      const latestModified = Math.max(jpgModified, JPGModified, mp4Modified);
 
       if (latestModified > lastModifiedRef.current) {
         lastModifiedRef.current = latestModified;
