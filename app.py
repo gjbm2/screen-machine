@@ -25,7 +25,6 @@ import logging
 from threading import Thread
 from overlay_ws_server import start_ws_server, send_overlay_to_clients
 from routes.utils import encode_image_uploads, encode_reference_urls
-from routes.publisher import publish_remote_asset, publish_to_destination
 from routes.publish_api import publish_api
 
 app = Flask(__name__, static_folder='build')
@@ -489,10 +488,15 @@ def test_overlay():
     )
     return {"status": "sent"}
 
-# Serve the React frontend
+# Serve the React frontend and output directory
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
+    # Handle output directory requests
+    if path.startswith('output/'):
+        return send_from_directory('output', path[7:])
+    
+    # Handle React frontend requests
     if path != "" and os.path.exists(app.static_folder + '/' + path):
         if path.endswith('.js'):
             return send_from_directory(app.static_folder, path, mimetype='application/javascript')
@@ -501,6 +505,7 @@ def serve(path):
         return send_from_directory(app.static_folder, path)
     else:
         return send_from_directory(app.static_folder, 'index.html')
+
 
 if __name__ == '__main__':
     info("Starting websockets server (to listen for front end messages on localhost:8765.")

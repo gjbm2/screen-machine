@@ -5,7 +5,7 @@
     "name": "North screen",
     "icon": "SquareArrowUp",
     "type": "output_file",
-    "file": "screen-north",
+    "has_bucket": true,
 	"maxwidth": 3840,
 	"maxheight": 2160,
     "description": "Publish to big screen (north)",
@@ -18,7 +18,7 @@
     "name": "South screen",
     "icon": "SquareArrowDown",
     "type": "output_file",
-    "file": "screen-south",
+    "has_bucket": true,
 	"maxwidth": 3840,
 	"maxheight": 2160,
     "description": "Publish to big screen (south)",
@@ -31,7 +31,6 @@
     "name": "Work laptop - main",
     "icon": "LaptopMinimal",
     "type": "output_file",
-    "file": "work-laptop-background",
         "maxwidth": 3840,
         "maxheight": 2160,
     "description": "Publish to work laptop"
@@ -41,7 +40,7 @@
     "name": "Dev test screen",
     "icon": "Presentation",
     "type": "output_file",
-    "file": "devtest",
+    "has_bucket": true,
         "maxwidth": 2160,
         "maxheight": 3840,
     "description": "Dev test screen",
@@ -53,7 +52,7 @@
     "name": "Nous - The Beast",
     "icon": "PawPrint",
     "type": "output_file",
-    "file": "the-beast",
+    "has_bucket": true,
         "maxwidth": 3840,
         "maxheight": 2160,
     "description": "Publish to The Neast at Nous HQ",
@@ -65,7 +64,7 @@
     "icon": "Cloud",
     "headless" :  true,
     "type": "output_file",
-    "file": "cloud-storage",
+    "has_bucket": true,
     "description": "Publish to cloud storage"
   }
 ]

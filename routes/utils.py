@@ -16,6 +16,7 @@ import qrcode
 from urllib.parse import urlencode, urlparse
 from pathlib import Path
 from flask import url_for
+from typing import Any
 
 # image processing
 from PIL import Image
@@ -80,7 +81,7 @@ def detect_file_type(url: str) -> str:
         return "image"
     return "unknown"
 
-def _load_json_once(name, filename):
+def _load_json_once(cache_key: str, filename: str, force_reload: bool = False) -> Any:
     """
     Find and load a JSON file using findfile(), cache it by name,
     and automatically reload if the source file has changed on disk.
@@ -95,22 +96,21 @@ def _load_json_once(name, filename):
         error(f"[_load_json_once] Failed to get mtime for {path}: {e}")
         mtime = None
 
-    cache_entry = _json_cache.get(name)
+    cache_entry = _json_cache.get(cache_key)
 
     if not cache_entry or cache_entry["timestamp"] != mtime:
         if mtime:
-            debug(f"[_load_json_once] Reloading {name} from disk (changed)")
+            debug(f"[_load_json_once] Reloading {cache_key} from disk (changed)")
         else:
-            debug(f"[_load_json_once] Reloading {name} from disk (no timestamp)")
+            debug(f"[_load_json_once] Reloading {cache_key} from disk (no timestamp)")
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        _json_cache[name] = {
+        _json_cache[cache_key] = {
             "data": data,
             "timestamp": mtime
         }
 
-    return _json_cache[name]["data"]
-
+    return _json_cache[cache_key]["data"]
 
 def fuzzy_match(name, candidates, key="name"):
     """Fuzzy match input name to item in candidate list by key."""
@@ -428,6 +428,38 @@ def encode_single_image(pil_image: Image.Image, name="image.jpg", max_file_size_
     encoded = encode_image_uploads([fake_file], max_file_size_mb=max_file_size_mb)
     return encoded[0]["image"] if encoded else None
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Thumbnail helper
+# ─────────────────────────────────────────────────────────────────────────────
+def generate_thumbnail(source: Path, thumb: Path = None) -> None:
+    """
+    Create a 256×256 JPEG thumbnail for an image or the first frame of a video.
+    """
+    if thumb:
+        thumb.parent.mkdir(parents=True, exist_ok=True)
+        
+    ext = source.suffix.lower()
+    try:
+        if ext in {".jpg", ".jpeg", ".png", ".webp"}:
+            img = Image.open(source)
+        else:
+            # video: capture first frame
+            cap = cv2.VideoCapture(str(source))
+            success, frame = cap.read()
+            cap.release()
+            if not success:
+                return
+            img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        img.thumbnail((256, 256))
+        info(f"Generated thumbnail: {thumb}")
+        if thumb:
+            img.save(thumb, "JPEG")
+        else:
+            return img
+        
+    except Exception as e:
+        warning(f"Failed to generate thumbnail for {source}: {e}")
+
 def get_image_from_target(file_prefix: str, thumbnail: bool = False) -> dict | None:
     """
     Chooses the newer of filename.jpg or filename.mp4 in /output/,
@@ -585,3 +617,66 @@ def save_jpeg_with_metadata(url: str, img_metadata: dict, save_path: Path):
     save_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(save_path, "JPEG", exif=exif_bytes, quality=95)
     info(f"Saved JPEG with metadata to {save_path}")
+
+# THESE NEED TESTING
+
+
+def _extract_exif_json(img_path: Path) -> dict[str, Any] | None:
+    """Extract EXIF metadata from an image file."""
+    try:
+        img = Image.open(img_path)
+        exif = img._getexif()
+        if not exif:
+            return None
+
+        meta = {}
+        for tag_id in exif:
+            tag = ExifTags.TAGS.get(tag_id, tag_id)
+            data = exif.get(tag_id)
+            if isinstance(data, bytes):
+                data = data.decode()
+            meta[tag] = data
+
+        return meta
+    except Exception as e:
+        warning(f"Failed to extract EXIF from {img_path}: {e}")
+        return None
+
+def _extract_mp4_comment_json(video_path: Path) -> dict[str, Any] | None:
+    """Extract comment metadata from an MP4 file."""
+    try:
+        cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(video_path)]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            return None
+
+        data = json.loads(result.stdout)
+        comment = data.get("format", {}).get("tags", {}).get("comment")
+        if not comment:
+            return None
+
+        return json.loads(comment)
+    except Exception as e:
+        warning(f"Failed to extract comment from {video_path}: {e}")
+        return None
+
+def ensure_sidecar_for(file_path: Path) -> None:
+    """Ensure a sidecar exists for the given file, creating it if needed."""
+    sidecar = sidecar_path(file_path)
+    if not sidecar.exists():
+        # Extract metadata based on file type
+        if file_path.suffix.lower() in ['.jpg', '.jpeg', '.png']:
+            metadata = _extract_exif_json(file_path)
+        elif file_path.suffix.lower() == '.mp4':
+            metadata = _extract_mp4_comment_json(file_path)
+        else:
+            metadata = None
+
+        # Write metadata to sidecar
+        if metadata:
+            with open(sidecar, 'w') as f:
+                json.dump(metadata, f, indent=2)
+
+def sidecar_path(file_path: Path) -> Path:
+    """Return the path for a file's sidecar JSON."""
+    return file_path.with_suffix(file_path.suffix + '.json')

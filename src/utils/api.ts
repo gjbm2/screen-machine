@@ -27,8 +27,9 @@ export interface Bucket {
 export interface PublishDestination {
   id: string;
   name: string;
-  description: string;
-  icon: string;
+  description?: string;
+  icon?: string;
+  has_bucket: boolean;
 }
 
 // Type for image generation params
@@ -49,7 +50,23 @@ interface GenerateImageParams {
   is_async?: boolean;
 }
 
-class ApiService {
+interface BucketDetails {
+  name: string;
+  items: Array<{
+    filename: string;
+    url: string;
+    thumbnail_url: string;
+    thumbnail_embedded?: string;
+    favorite: boolean;
+    metadata: Record<string, any>;
+  }>;
+  published: string | null;
+  publishedAt: string | null;
+  favorites: string[];
+  sequence: string[];
+}
+
+export class Api {
   private apiUrl: string;
   private mockMode: boolean;
 
@@ -296,37 +313,31 @@ class ApiService {
   }
   
   // Publish an image via backend (handled by Flask)
-  async publishImage(data: any) {
-	// console.info('api.ts', data);
-    if (this.mockMode) {
-      console.info('[MOCK BACKEND] Publishing image with data:', data);
-      return {
-        success: true,
-        message: 'Mock publish succeeded',
-        path: '/mock/path/to/image.jpg'
-      };
+  async publishImage(data: {
+    publish_destination_id: string;
+    source_url: string;
+    generation_info?: any;
+    skip_bucket?: boolean;
+  }): Promise<{ success: boolean; error?: string }> {
+    const response = await fetch(`${this.apiUrl}/api/publish/${data.source_url.split('/').pop()}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        publish_destination_id: data.publish_destination_id,
+        source_url: data.source_url,
+        generation_info: data.generation_info,
+        skip_bucket: data.skip_bucket
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, error: error.error };
     }
 
-    try {
-      const response = await fetch(`${this.apiUrl}/publish-image`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Publish failed');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error publishing image:', error);
-      toast.error('Failed to publish image');
-      throw error;
-    }
+    return { success: true };
   }
   
   // Save a scheduler schedule via backend
@@ -913,59 +924,32 @@ class ApiService {
   }
 
   // Get publish destinations
-  async getPublishDestinations(): Promise<any[]> {
-    if (this.mockMode) {
-      console.info('[MOCK BACKEND] Getting publish destinations');
-      return [
-        { id: 'mock-dest-1', name: 'Mock Destination 1', file: 'mock-file-1' },
-        { id: 'mock-dest-2', name: 'Mock Destination 2', file: 'mock-file-2' }
-      ];
-    }
-
+  async getPublishDestinations(): Promise<PublishDestination[]> {
     try {
-      const response = await fetch(`${this.apiUrl}/publish-destinations`);
-      
+      const response = await fetch('/api/publish-destinations');
       if (!response.ok) {
-        throw new Error(`Failed to fetch publish destinations: ${response.statusText}`);
+        throw new Error('Failed to fetch publish destinations');
       }
-      
-      return response.json();
+      const destinations = await response.json();
+      return destinations.map((dest: any) => ({
+        id: dest.id,
+        name: dest.name || dest.id,
+        description: dest.description,
+        icon: dest.icon,
+        has_bucket: dest.has_bucket || false
+      }));
     } catch (error) {
       console.error('Error fetching publish destinations:', error);
       throw error;
     }
   }
 
-  async getBucketDetails(bucket: string): Promise<any> {
-    try {
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/complete`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch bucket details: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      // Transform the data to match our expected format
-      return {
-        name: data.name,
-        items: data.items.map((item: any) => ({
-          filename: item.filename,
-          url: item.raw_url,
-          thumbnail_url: item.thumbnail_url,
-          thumbnail_embedded: item.thumbnail_embedded,
-          favorite: item.favorite,
-          metadata: item.metadata
-        })),
-        published: data.published,
-        publishedAt: data.published_at,
-        favorites: data.favorites,
-        sequence: data.sequence
-      };
-    } catch (error) {
-      console.error('Error fetching bucket details:', error);
-      throw error;
+  async getBucketDetails(bucketId: string): Promise<BucketDetails> {
+    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/complete`);
+    if (!response.ok) {
+      throw new Error(`Failed to get bucket details: ${response.statusText}`);
     }
+    return response.json();
   }
 
   // Get all buckets
@@ -984,9 +968,9 @@ class ApiService {
   }
 
   // Toggle favorite status for an image
-  async toggleFavorite(bucket: string, filename: string, currentState: boolean): Promise<boolean> {
+  async toggleFavorite(bucketId: string, filename: string, currentState: boolean): Promise<boolean> {
     try {
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/favorite/${filename}`, {
+      const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/favorite/${filename}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1007,9 +991,9 @@ class ApiService {
   }
 
   // Delete an image from a bucket
-  async deleteImage(bucket: string, filename: string): Promise<boolean> {
+  async deleteImage(bucketId: string, filename: string): Promise<boolean> {
     try {
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/images/${filename}`, {
+      const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/${filename}`, {
         method: 'DELETE',
       });
 
@@ -1026,9 +1010,9 @@ class ApiService {
   }
 
   // Move an image up or down in a bucket
-  async moveImage(bucket: string, filename: string, direction: 'up' | 'down'): Promise<boolean> {
+  async moveImage(bucketId: string, filename: string, direction: 'up' | 'down'): Promise<boolean> {
     try {
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/move/${filename}`, {
+      const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/move/${filename}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1049,38 +1033,29 @@ class ApiService {
   }
 
   // Copy an image to another bucket
-  async copyImageToBucket(sourcePublishDestination: string, targetPublishDestination: string, filename: string): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.apiUrl}/buckets/move`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          source_publish_destination: sourcePublishDestination,
-          target_publish_destination: targetPublishDestination,
-          filename: filename,
-          copy: true
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to copy image');
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error copying image:', error);
-      toast.error('Failed to copy image');
-      return false;
+  async copyImageToBucket(sourceBucketId: string, targetBucketId: string, filename: string, copy: boolean = false): Promise<{ status: string; filename: string }> {
+    const response = await fetch(`${this.apiUrl}/api/buckets/add_image_to_new_bucket`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        source_publish_destination: sourceBucketId,
+        target_publish_destination: targetBucketId,
+        filename,
+        copy,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to copy image: ${response.statusText}`);
     }
+    return response.json();
   }
 
   // Perform bucket maintenance
-  async performBucketMaintenance(bucket: string, action: 'purge' | 'reindex' | 'extract'): Promise<boolean> {
+  async performBucketMaintenance(bucketId: string, action: 'purge' | 'reindex' | 'extract'): Promise<boolean> {
     try {
-      const response = await fetch(`${this.apiUrl}/buckets/${bucket}/maintenance/${action}`, {
+      const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/maintenance/${action}`, {
         method: 'POST',
       });
 
@@ -1136,10 +1111,168 @@ class ApiService {
       throw error;
     }
   }
+
+  async getBuckets(): Promise<string[]> {
+    const response = await fetch(`${this.apiUrl}/api/buckets/`);
+    if (!response.ok) {
+      throw new Error(`Failed to get buckets: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async createBucket(bucketId: string): Promise<{ status: string; bucket_id: string }> {
+    const response = await fetch(`${this.apiUrl}/api/buckets/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ bucket_id: bucketId }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to create bucket: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async uploadToBucket(bucketId: string, file: File): Promise<{ filename: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to upload file: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async publishFromBucket(bucketId: string, filename: string, skip_bucket?: boolean): Promise<{ success: boolean; error?: string }> {
+    const response = await fetch(`${this.apiUrl}/api/publish/${filename}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        publish_destination_id: bucketId,
+        source_url: `${this.apiUrl}/api/buckets/${bucketId}/${filename}`,
+        skip_bucket: skip_bucket
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, error: error.error };
+    }
+
+    return { success: true };
+  }
+
+  async favoriteInBucket(bucketId: string, filename: string): Promise<{ status: string }> {
+    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/favorite/${filename}`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to favorite file: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async unfavoriteInBucket(bucketId: string, filename: string): Promise<{ status: string }> {
+    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/favorite/${filename}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to unfavorite file: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async deleteFromBucket(bucketId: string, filename: string): Promise<{ status: string }> {
+    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/${filename}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete file: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async moveUpInBucket(bucketId: string, filename: string): Promise<{ status: string; index: number }> {
+    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/move-up/${filename}`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to move file up: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async moveDownInBucket(bucketId: string, filename: string): Promise<{ status: string; index: number }> {
+    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/move-down/${filename}`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to move file down: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async purgeBucket(bucketId: string): Promise<{ status: string; removed: string[] }> {
+    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/purge`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to purge bucket: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async reindexBuckets(): Promise<{ status: string; count: number }> {
+    const response = await fetch(`${this.apiUrl}/api/buckets/reindex`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to reindex buckets: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async extractJsonFromBucket(bucketId: string): Promise<{ status: string; updated: string[] }> {
+    const response = await fetch(`${this.apiUrl}/api/buckets/${bucketId}/extractjson`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to extract JSON: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async publish(imagePath: string, destinationId: string): Promise<void> {
+    try {
+      const response = await fetch('/api/publish/publish', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image_path: imagePath,
+          destination_id: destinationId
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to publish image');
+      }
+    } catch (error) {
+      console.error('Error publishing image:', error);
+      throw error;
+    }
+  }
 }
 
 // Create a singleton instance of the API service
-const apiService = new ApiService();
+const apiService = new Api();
 
 // Export the singleton instance
 export default apiService;

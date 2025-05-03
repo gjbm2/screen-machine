@@ -20,11 +20,10 @@ interface DetailViewActionBarProps {
   onUseAsInput?: () => void;
   onDeleteImage: () => void;
   onClose?: () => void; // Added for closing fullscreen view
-  generationInfo: {
-    prompt: string;
-    workflow: string;
+  generationInfo?: {
+    prompt?: string;
+    workflow?: string;
     params?: Record<string, any>;
-    referenceImageUrl?: string;
   };
 }
 
@@ -37,7 +36,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
   generationInfo
 }) => {
   const isMobile = useIsMobile();
-  const { destinations, isLoading } = usePublishDestinations();
+  const { destinations, loading } = usePublishDestinations();
   
   const handleDownload = () => {
     const filename = imageUrl.split('/').pop() || `generated-image-${Date.now()}.png`;
@@ -76,19 +75,28 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
   };
   
   const handlePublish = async (destinationId: string) => {
+    if (!imageUrl) return;
+    
+    // Extract bucket and filename from the image URL
+    const urlParts = imageUrl.split('/');
+    const bucket = urlParts[urlParts.length - 2];
+    const filename = urlParts[urlParts.length - 1];
+    
     try {
-      // Extract bucket and filename from the image URL
-      const urlParts = imageUrl.split('/');
-      const bucket = urlParts[urlParts.length - 2];
-      const filename = urlParts[urlParts.length - 1];
-      
-      const success = await apiService.publishImage(bucket, filename, destinationId, generationInfo);
-      if (success) {
-        toast.success('Image published successfully');
-      }
+        const success = await apiService.publishImage({
+            publish_destination_id: destinationId,
+            source_url: `${apiService.getApiUrl()}/api/buckets/${bucket}/${filename}`,
+            generation_info: generationInfo,
+            skip_bucket: false // Default to saving to bucket
+        });
+        if (success) {
+            toast.success('Image published successfully');
+        } else {
+            toast.error('Failed to publish image');
+        }
     } catch (error) {
-      console.error('Error in publish handler:', error);
-      toast.error('Failed to publish image');
+        console.error('Error publishing image:', error);
+        toast.error('Failed to publish image');
     }
   };
 
@@ -140,9 +148,9 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
               type="button" 
               variant="outline" 
               className={`${publishButtonClass} p-2 text-xs flex items-center gap-1.5`}
-              disabled={isLoading}
+              disabled={loading}
             >
-              {isLoading ? (
+              {loading ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <>
