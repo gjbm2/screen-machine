@@ -1,0 +1,12 @@
+{
+  "schedule_stack": [],
+  "context_stack": [
+    {
+      "vars": {
+        "shared_var": "new_value"
+      }
+    }
+  ],
+  "state": "stopped",
+  "last_updated": "2025-05-05T00:01:52.436385"
+}

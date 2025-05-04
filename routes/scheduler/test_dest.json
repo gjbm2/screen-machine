@@ -1,0 +1,26 @@
+{
+  "schedule_stack": [
+    {
+      "initial_actions": {
+        "instructions_block": [
+          {
+            "action": "set_var",
+            "var": "test_var",
+            "input": {
+              "value": "initial_value"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "context_stack": [
+    {
+      "vars": {},
+      "last_generated": null,
+      "publish_destination": "test_dest"
+    }
+  ],
+  "state": "stopped",
+  "last_updated": "2025-05-05T00:01:50.658642"
+}

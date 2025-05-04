@@ -71,10 +71,152 @@ def current_time():
     return datetime.now()
 
 @pytest.fixture
+def mock_now():
+    """Return the current time (alternative name)."""
+    return datetime.now()
+
+@pytest.fixture
+def output_list():
+    """Provide an empty output list for logging."""
+    return []
+
+@pytest.fixture
 def mock_scheduler_storage_path(tmp_path, monkeypatch):
     """Mock the scheduler storage path to use a temp directory."""
     def mock_path(dest_id):
         return str(tmp_path / f"{dest_id}.json")
     
     monkeypatch.setattr('routes.scheduler_utils.get_scheduler_storage_path', mock_path)
-    return tmp_path 
+    return tmp_path
+
+@pytest.fixture
+def enable_testing_mode(monkeypatch):
+    """Set the TESTING environment variable to use mock services."""
+    # Save previous value
+    previous_value = os.environ.get('TESTING')
+    # Set testing mode
+    os.environ['TESTING'] = 'true'
+    
+    yield
+    
+    # Restore previous value or remove if it wasn't set
+    if previous_value is not None:
+        os.environ['TESTING'] = previous_value
+    else:
+        os.environ.pop('TESTING', None)
+
+@pytest.fixture
+def test_schedule_basic():
+    """Create a basic test schedule with just initial_actions."""
+    return {
+        "initial_actions": {
+            "instructions_block": [
+                {"action": "set_var", "var": "test_var", "input": {"value": "initial_value"}}
+            ]
+        }
+    }
+
+@pytest.fixture
+def test_schedule_with_final():
+    """Create a test schedule with initial and final actions."""
+    return {
+        "initial_actions": {
+            "instructions_block": [
+                {"action": "set_var", "var": "initial_var", "input": {"value": "initial_value"}}
+            ]
+        },
+        "final_actions": {
+            "instructions_block": [
+                {"action": "set_var", "var": "final_var", "input": {"value": "final_value"}}
+            ]
+        }
+    }
+
+@pytest.fixture
+def test_schedule_with_trigger():
+    """Create a test schedule with a day_of_week trigger."""
+    today = datetime.now().strftime("%A")  # Current day of week
+    current_time = datetime.now().strftime("%H:%M")  # Current time
+    
+    return {
+        "initial_actions": {
+            "instructions_block": [
+                {"action": "set_var", "var": "initial_var", "input": {"value": "initial_value"}}
+            ]
+        },
+        "triggers": [
+            {
+                "type": "day_of_week",
+                "days": [today],
+                "scheduled_actions": [
+                    {
+                        "time": current_time,
+                        "trigger_actions": {
+                            "instructions_block": [
+                                {"action": "set_var", "var": "trigger_var", "input": {"value": "trigger_value"}}
+                            ]
+                        }
+                    }
+                ]
+            }
+        ],
+        "final_actions": {
+            "instructions_block": [
+                {"action": "set_var", "var": "final_var", "input": {"value": "final_value"}}
+            ]
+        }
+    }
+
+@pytest.fixture
+def test_schedule_with_event():
+    """Create a test schedule with an event trigger."""
+    return {
+        "initial_actions": {
+            "instructions_block": [
+                {"action": "set_var", "var": "initial_var", "input": {"value": "initial_value"}}
+            ]
+        },
+        "triggers": [
+            {
+                "type": "event",
+                "value": "TestEvent",
+                "trigger_actions": {
+                    "instructions_block": [
+                        {"action": "set_var", "var": "event_var", "input": {"value": "event_value"}}
+                    ]
+                }
+            }
+        ],
+        "final_actions": {
+            "instructions_block": [
+                {"action": "set_var", "var": "final_var", "input": {"value": "final_value"}}
+            ]
+        }
+    }
+
+@pytest.fixture
+def test_schedule_generate_animate():
+    """Create a test schedule that uses generate and animate instructions."""
+    return {
+        "initial_actions": {
+            "instructions_block": [
+                {"action": "set_var", "var": "prompt", "input": {"value": "test prompt for generation"}},
+                {
+                    "action": "generate",
+                    "input": {
+                        "prompt_var": "prompt"
+                    },
+                    "refiner": "test_refiner",
+                    "workflow": "text-to-image",
+                    "history_output_var": "generation_history"
+                },
+                {
+                    "action": "animate",
+                    "input": {
+                        "prompt": "animate the generated image"
+                    },
+                    "refiner": "animator"
+                }
+            ]
+        }
+    } 
