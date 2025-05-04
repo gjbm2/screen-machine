@@ -220,11 +220,26 @@ def _publish_to_destination(
     """Internal helper for publish_to_destination."""
     try:
         dest = get_destination(publish_destination_id)
-        
+
+        # If headless, skip publishing to output, but still append to bucket
+        if dest.get("headless", False):
+            bucket_filename = None
+            if not skip_bucket:
+                bucket_path = _append_to_bucket(publish_destination_id, source, metadata)
+                bucket_filename = bucket_path.name
+            return {
+                "success": True,
+                "meta": {
+                    "filename": bucket_filename or source.name,
+                    "published_at": datetime.utcnow().isoformat() + "Z",
+                    "headless": True
+                }
+            }
+
         # First, optionally append to bucket
         bucket_filename = None
         if not skip_bucket:
-            bucket_path = _append_to_bucket(publish_destination_id, source)
+            bucket_path = _append_to_bucket(publish_destination_id, source, metadata)
             # Use the bucket version as the source for publishing
             source = bucket_path
             bucket_filename = bucket_path.name
@@ -234,8 +249,21 @@ def _publish_to_destination(
         shutil.copy2(source, display_path)
         display_path.touch()  # Ensure fresh mtime for watchdogs
 
-        # Ensure sidecar exists
-        ensure_sidecar_for(display_path)
+        # Create sidecar with provided metadata
+        sc_path = sidecar_path(display_path)
+        if not sc_path.exists() and metadata:
+            # Use the provided metadata to create the sidecar
+            try:
+                with open(sc_path, 'w', encoding='utf-8') as f:
+                    json.dump(metadata, f, indent=2)
+                info(f"Created sidecar with provided metadata: {sc_path}")
+            except Exception as e:
+                warning(f"Failed to create sidecar with provided metadata: {e}")
+                # Fall back to standard extraction if direct creation fails
+                ensure_sidecar_for(display_path)
+        else:
+            # Fall back to standard extraction if no metadata was provided
+            ensure_sidecar_for(display_path)
 
         # Record publish with bucket filename
         _record_publish(publish_destination_id, bucket_filename or source.name, datetime.utcnow().isoformat() + "Z")

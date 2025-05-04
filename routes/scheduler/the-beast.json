@@ -196,10 +196,10 @@
           }
         ]
       },
-      "last_generated": "[image_path]",
+      "last_generated": null,
       "publish_destination": "the-beast"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-03T18:09:38.643410"
+  "last_updated": "2025-05-04T11:19:27.978140"
 }
