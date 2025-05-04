@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional
 from utils.logger import info, error, debug
 import random
 import json
-from routes.scheduler_utils import log_schedule
+from routes.scheduler_utils import log_schedule, scheduler_contexts_stacks
 from routes.service_factory import get_generation_service, get_animation_service, get_display_service
 
 def handle_random_choice(instruction, context, now, output, publish_destination):
@@ -13,7 +13,8 @@ def handle_random_choice(instruction, context, now, output, publish_destination)
     choice = random.choice(instruction["choices"])
     context["vars"][var] = choice
     msg = f"Randomly chose '{choice}' for var '{var}'."
-    log_schedule(msg, publish_destination, now, output)
+    output.append(f"[{now.strftime('%H:%M')}] {msg}")
+    log_schedule(msg, publish_destination, now)
     return False
 
 def handle_devise_prompt(instruction, context, now, output, publish_destination):
@@ -37,7 +38,9 @@ def handle_devise_prompt(instruction, context, now, output, publish_destination)
             "prompt": prompt
         })
     
-    log_schedule(f"Devised prompt: {prompt}", publish_destination, now, output)
+    msg = f"Devised prompt: {prompt}"
+    output.append(f"[{now.strftime('%H:%M')}] {msg}")
+    log_schedule(msg, publish_destination, now)
     return False
 
 def handle_generate(instruction, context, now, output, publish_destination):
@@ -286,7 +289,26 @@ def handle_device_sleep(instruction, context, now, output, publish_destination):
 
 def handle_set_var(instruction, context, now, output, publish_destination):
     var_name = instruction["var"]
-    value = instruction["value"]
+    # Support both direct value and nested input.value format
+    value = None
+    if "value" in instruction:
+        value = instruction["value"]
+    elif "input" in instruction and isinstance(instruction["input"], dict):
+        if "value" in instruction["input"]:
+            value = instruction["input"]["value"]
+        elif "var_ref" in instruction["input"]:
+            ref_var = instruction["input"]["var_ref"]
+            if "vars" in context and ref_var in context["vars"]:
+                value = context["vars"][ref_var]
+            elif "default" in instruction:
+                value = instruction["default"]
+    
+    if value is None:
+        error_msg = f"Error in set_var: could not determine value"
+        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        log_schedule(error_msg, publish_destination, now)
+        return False
+    
     context["vars"][var_name] = value
     msg = f"Set {var_name} to {value}."
     output.append(f"[{now.strftime('%H:%M')}] {msg}")
@@ -355,6 +377,8 @@ def handle_import_var(instruction, context, now, output, publish_destination):
         bool: False (don't unload the schedule)
     """
     from routes.scheduler_utils import get_exported_variables_with_values, register_imported_var, load_vars_registry, remove_imported_var
+    # Explicitly import scheduler_contexts_stacks again to be safe
+    from routes.scheduler_utils import scheduler_contexts_stacks
     
     var_name = instruction["var_name"]
     # The var name to import as - use the same name if not specified

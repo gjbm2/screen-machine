@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime
 from routes.scheduler_handlers import handle_export_var, handle_import_var, handle_set_var
-from routes.scheduler_utils import load_vars_registry
+from routes.scheduler_utils import load_vars_registry, scheduler_contexts_stacks
 
 def test_export_var_handler(temp_registry_file, setup_test_destination, current_time):
     """Test the export variable handler function."""
@@ -104,6 +104,10 @@ def test_import_var_handler(temp_registry_file, clean_scheduler_state, current_t
         "vars": {}
     }]
     
+    # Add to global scheduler_contexts_stacks
+    scheduler_contexts_stacks[source_id] = clean_scheduler_state["contexts"][source_id]
+    scheduler_contexts_stacks[dest_id] = clean_scheduler_state["contexts"][dest_id]
+    
     # First export the variable from source
     source_context = clean_scheduler_state["contexts"][source_id][0]
     export_instruction = {
@@ -153,6 +157,10 @@ def test_import_var_handler_with_rename(temp_registry_file, clean_scheduler_stat
     clean_scheduler_state["contexts"][dest_id] = [{
         "vars": {}
     }]
+    
+    # Add to global scheduler_contexts_stacks
+    scheduler_contexts_stacks[source_id] = clean_scheduler_state["contexts"][source_id]
+    scheduler_contexts_stacks[dest_id] = clean_scheduler_state["contexts"][dest_id]
     
     # First export the variable from source
     source_context = clean_scheduler_state["contexts"][source_id][0]
@@ -226,6 +234,10 @@ def test_import_var_handler_remove_import(temp_registry_file, clean_scheduler_st
         "vars": {}
     }]
     
+    # Add to global scheduler_contexts_stacks
+    scheduler_contexts_stacks[source_id] = clean_scheduler_state["contexts"][source_id]
+    scheduler_contexts_stacks[dest_id] = clean_scheduler_state["contexts"][dest_id]
+    
     # First export the variable from source
     source_context = clean_scheduler_state["contexts"][source_id][0]
     export_instruction = {
@@ -283,6 +295,10 @@ def test_var_update_propagation(temp_registry_file, clean_scheduler_state, curre
     clean_scheduler_state["contexts"][dest_id] = [{
         "vars": {}
     }]
+    
+    # Add to global scheduler_contexts_stacks
+    scheduler_contexts_stacks[source_id] = clean_scheduler_state["contexts"][source_id]
+    scheduler_contexts_stacks[dest_id] = clean_scheduler_state["contexts"][dest_id]
     
     # First export the variable from source
     source_context = clean_scheduler_state["contexts"][source_id][0]

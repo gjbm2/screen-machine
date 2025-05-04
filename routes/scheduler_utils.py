@@ -1051,3 +1051,170 @@ def get_registry_summary() -> Dict[str, Any]:
         "imports": import_relationships,
         "last_updated": registry.get("last_updated")
     } 
+
+# Add a new utility function to directly set an exported variable
+def set_exported_variable(var_name: str, new_value: Any) -> Dict[str, Any]:
+    """
+    Set the value of an exported variable using its exported name.
+    The function will look up the variable in the registry, find its owner,
+    and update the value in the owner's context.
+    
+    Args:
+        var_name: The exported variable name in the registry
+        new_value: The new value to set
+        
+    Returns:
+        Dictionary with the operation status and details
+    """
+    # Load the registry to find the variable
+    registry = load_vars_registry()
+    
+    # Look for the variable in global scope
+    owner_id = None
+    friendly_name = None
+    actual_var_name = None
+    
+    # Check global scope first
+    for actual_name, var_info in registry.get("global", {}).items():
+        if actual_name == var_name:
+            owner_id = var_info["owner"]
+            friendly_name = var_info["friendly_name"]
+            actual_var_name = actual_name
+            break
+    
+    # If not found in global, check all groups
+    if not owner_id:
+        for group, group_vars in registry.get("groups", {}).items():
+            for actual_name, var_info in group_vars.items():
+                if actual_name == var_name:
+                    owner_id = var_info["owner"]
+                    friendly_name = var_info["friendly_name"]
+                    actual_var_name = actual_name
+                    break
+            if owner_id:
+                break
+    
+    # If we didn't find the variable, return an error
+    if not owner_id:
+        return {
+            "error": f"Exported variable '{var_name}' not found in registry",
+            "status": "error"
+        }
+    
+    # Now that we have the owner, update their context
+    if owner_id not in scheduler_contexts_stacks or not scheduler_contexts_stacks[owner_id]:
+        return {
+            "error": f"Context for owner '{owner_id}' not found or empty",
+            "status": "error"
+        }
+    
+    # Update the variable value in the owner's context
+    context = scheduler_contexts_stacks[owner_id][-1]
+    if "vars" not in context:
+        context["vars"] = {}
+    
+    # Set the value in the context
+    context["vars"][actual_var_name] = new_value
+    
+    # Update the context stack in memory and on disk
+    update_scheduler_state(
+        owner_id,
+        context_stack=scheduler_contexts_stacks[owner_id]
+    )
+    
+    # Log the update in the owner's log
+    now = datetime.now()
+    value_desc = str(new_value)
+    if isinstance(new_value, dict) or isinstance(new_value, list):
+        value_desc = f"{type(new_value).__name__} with {len(new_value)} items"
+    
+    log_msg = f"Updated exported variable '{var_name}' ('{friendly_name}') to {value_desc}"
+    if owner_id in scheduler_logs:
+        scheduler_logs[owner_id].append(f"[{now.strftime('%H:%M')}] {log_msg}")
+    info(log_msg)
+    
+    # Now cascade the update to all destinations that have imported this variable
+    updated_importers = update_imported_variables(var_name, new_value)
+    
+    # Log updates to importer logs
+    for importer_id, imported_vars in updated_importers.items():
+        imported_vars_str = ", ".join([f"'{v}'" for v in imported_vars])
+        importer_log_msg = f"Imported variable(s) {imported_vars_str} updated from '{var_name}' change in '{owner_id}'"
+        if importer_id in scheduler_logs:
+            scheduler_logs[importer_id].append(f"[{now.strftime('%H:%M')}] {importer_log_msg}")
+        info(f"Cascaded update to {importer_id}: {importer_log_msg}")
+    
+    return {
+        "status": "success",
+        "var_name": var_name,
+        "friendly_name": friendly_name,
+        "owner": owner_id,
+        "value": new_value,
+        "updated_importers": updated_importers
+    }
+
+# Similarly, add a function to set a context variable directly
+def set_context_variable(publish_destination: str, var_name: str, var_value: Any) -> Dict[str, Any]:
+    """
+    Set a variable in a destination's context.
+    
+    Args:
+        publish_destination: The destination ID
+        var_name: The variable name
+        var_value: The value to set
+        
+    Returns:
+        Dictionary with operation status and details
+    """
+    # Get the context from the top of the stack
+    context = get_current_context(publish_destination)
+    if not context:
+        return {
+            "error": "No scheduler context found",
+            "status": "error"
+        }
+
+    if "vars" not in context:
+        context["vars"] = {}
+    
+    # If var_value is null, delete the variable instead of setting it to null
+    now = datetime.now()
+    if var_value is None:
+        if var_name in context["vars"]:
+            del context["vars"][var_name]
+            log_msg = f"Deleted context variable '{var_name}'"
+            log_schedule(log_msg, publish_destination, now)
+            info(f"Deleted context variable {var_name} from scheduler {publish_destination}")
+        else:
+            log_msg = f"Attempted to delete non-existent context variable '{var_name}'"
+            log_schedule(log_msg, publish_destination, now)
+            info(f"Attempted to delete non-existent variable {var_name} from scheduler {publish_destination}")
+    else:
+        # Set the variable value - can be any type (string, number, boolean, object, array)
+        context["vars"][var_name] = var_value
+        
+        # Add log entry
+        value_desc = str(var_value)
+        if isinstance(var_value, dict) or isinstance(var_value, list):
+            value_desc = f"{type(var_value).__name__} with {len(var_value)} items"
+        
+        log_msg = f"Set context variable '{var_name}' to {value_desc}"
+        log_schedule(log_msg, publish_destination, now)
+        info(f"Set context variable {var_name}={var_value} for scheduler {publish_destination}")
+    
+    # Update the context stack in memory
+    scheduler_contexts_stacks[publish_destination][-1] = context
+    
+    # Persist changes to disk
+    update_scheduler_state(
+        publish_destination,
+        context_stack=scheduler_contexts_stacks[publish_destination]
+    )
+    
+    return {
+        "status": "success", 
+        "var_name": var_name, 
+        "var_value": var_value,
+        "vars": context["vars"],
+        "deleted": var_value is None
+    } 

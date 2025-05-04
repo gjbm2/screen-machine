@@ -212,75 +212,64 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
     return all_instructions
 
 # === Instruction Execution ===
-def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: datetime, output: List[str], publish_destination: str):
-    action = instruction["action"]
-    log_msg = f"Running {action}"
+def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: datetime, output: List[str], publish_destination: str) -> bool:
+    """Run a single instruction."""
+    action = instruction.get("action")
+    # Don't add running message to output - will be added by handlers with the result
+    log_schedule(f"Running {action}", publish_destination, now)
     
-    # Only log through log_schedule, which will add to output array
-    # This prevents duplicate logging of the same message
-    log_schedule(log_msg, publish_destination, now, output)
+    try:
+        if action == "random_choice":
+            return handle_random_choice(instruction, context, now, output, publish_destination)
+        elif action == "devise_prompt":
+            return handle_devise_prompt(instruction, context, now, output, publish_destination)
+        elif action == "generate":
+            return handle_generate(instruction, context, now, output, publish_destination) or False  # Ensure boolean
+        elif action == "animate":
+            return handle_animate(instruction, context, now, output, publish_destination) or False  # Ensure boolean
+        elif action == "display":
+            return handle_display(instruction, context, now, output, publish_destination)
+        elif action == "sleep":
+            return handle_sleep(instruction, context, now, output, publish_destination)
+        elif action == "wait":
+            return handle_wait(instruction, context, now, output, publish_destination)
+        elif action == "unload":
+            return handle_unload(instruction, context, now, output, publish_destination)
+        elif action == "device-media-sync":
+            return handle_device_media_sync(instruction, context, now, output, publish_destination)
+        elif action == "device-wake":
+            return handle_device_wake(instruction, context, now, output, publish_destination)
+        elif action == "device-sleep":
+            return handle_device_sleep(instruction, context, now, output, publish_destination)
+        elif action == "set_var":
+            return handle_set_var(instruction, context, now, output, publish_destination)
+        elif action == "stop":
+            return handle_stop(instruction, context, now, output, publish_destination)
+        elif action == "import_var":
+            return handle_import_var(instruction, context, now, output, publish_destination) or False  # Ensure boolean
+        elif action == "export_var":
+            return handle_export_var(instruction, context, now, output, publish_destination) or False  # Ensure boolean
+        else:
+            error_msg = f"Unknown action: {action}"
+            output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+            log_schedule(error_msg, publish_destination, now)
+            return False
+    except Exception as e:
+        error_msg = f"Error in {action}: {str(e)}"
+        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        log_schedule(error_msg, publish_destination, now)
+        error(f"Exception in run_instruction: {str(e)}")
+        import traceback
+        error(traceback.format_exc())
+        return False  # Ensure we return False on exceptions
 
-    handler_map = {
-        "random_choice": handle_random_choice,
-        "devise_prompt": handle_devise_prompt,
-        "generate": handle_generate,
-        "animate": handle_animate,
-        "display": handle_display,
-        "sleep": handle_sleep,
-        "wait": handle_wait,
-        "unload": handle_unload,
-        "device-media-sync": handle_device_media_sync,
-        "device-wake": handle_device_wake,
-        "device-sleep": handle_device_sleep,
-        "set_var": handle_set_var,
-        "stop": handle_stop,  # Add the new stop handler
-        "import_var": handle_import_var,  # Add import_var handler
-        "export_var": handle_export_var   # Add export_var handler
-    }
-
-    if action in handler_map:
-        try:
-            # Run the handler which will modify the context
-            should_unload = handler_map[action](instruction, context, now, output, publish_destination)
-            
-            # After running the instruction, update the context in the global stack
-            stack = get_context_stack(publish_destination)
-            if stack:
-                # Get the existing context
-                existing_context = stack[-1]
-                
-                # Create new context by starting with existing context
-                new_context = dict(existing_context)
-                
-                # Update vars dictionary and copy everything else
-                new_context["vars"] = {**existing_context.get("vars", {}), **context.get("vars", {})}
-                for key, value in context.items():
-                    if key != "vars":  # Only copy non-vars keys
-                        new_context[key] = value
-                
-                # Update both the stack item and the global stack
-                stack[-1] = new_context
-                scheduler_contexts_stacks[publish_destination] = stack
-                
-                # Get the current schedule stack
-                schedule_stack = scheduler_schedule_stacks[publish_destination]
-                
-                # Update both stacks in the state
-                update_scheduler_state(
-                    publish_destination,
-                    schedule_stack=schedule_stack,
-                    context_stack=stack
-                )
-            
-            return should_unload
-        except Exception as e:
-            error_msg = f"Error in {action}: {str(e)}"
-            log_schedule(error_msg, publish_destination, now, output)
-    else:
-        error_msg = f"Unknown action: {action}"
-        log_schedule(error_msg, publish_destination, now, output)
+    # Update global context after execution
+    context_stack = get_context_stack(publish_destination)
+    if context_stack and len(context_stack) > 0:
+        context_stack[-1] = context
+        update_scheduler_state(publish_destination, context_stack=context_stack)
     
-    return False
+    return False  # Default return if the handler doesn't return a value
 
 # === Scheduler Runtime ===
 async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step_minutes: int = 1):
@@ -288,14 +277,31 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
         # Initialize logs
         scheduler_logs[publish_destination] = []
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Starting scheduler")
+
+        # Ensure scheduler_schedule_stacks and scheduler_contexts_stacks are initialized
+        if publish_destination not in scheduler_schedule_stacks:
+            scheduler_schedule_stacks[publish_destination] = []
         
+        if publish_destination not in scheduler_contexts_stacks:
+            scheduler_contexts_stacks[publish_destination] = []
+            
+        # Initialize stacks if they're empty
+        if not scheduler_schedule_stacks[publish_destination]:
+            scheduler_schedule_stacks[publish_destination] = [schedule]
+            
+        if not scheduler_contexts_stacks[publish_destination]:
+            scheduler_contexts_stacks[publish_destination] = [{
+                "vars": {},
+                "publish_destination": publish_destination
+            }]
+
         # Run initial check immediately
         now = datetime.now()
         current_minutes = now.hour * 60 + now.minute
-        
+
         # Get current schedule and context from top of stacks
         current_schedule = scheduler_schedule_stacks[publish_destination][-1]
-        current_context = get_current_context(publish_destination)
+        current_context = scheduler_contexts_stacks[publish_destination][-1]
         
         # Check if there are no triggers - this means we should run initial actions, then final actions, then stop
         has_no_triggers = "triggers" not in current_schedule or not current_schedule["triggers"]
@@ -469,76 +475,59 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
                     state="stopped"
                 )
 
-def start_scheduler(publish_destination: str, schedule: Dict[str, Any]):
-    """Start a scheduler for the given destination with the provided schedule."""
+def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, **kwargs) -> None:
+    """
+    Start a scheduler for a destination. This will first stop any existing scheduler.
+    """
     try:
-        # Check if scheduler was previously running/paused (resuming) or is new/stopped (starting fresh)
-        is_resuming = (publish_destination in scheduler_states and 
-                      scheduler_states[publish_destination] in ["running", "paused"])
+        info(f"Starting scheduler for {publish_destination}")
+        # First stop any existing scheduler
+        stop_scheduler(publish_destination)
         
-        # Stop any existing scheduler for this destination
-        if publish_destination in running_schedulers:
-            stop_scheduler(publish_destination)
-            log_schedule("Stopped existing scheduler", publish_destination)
-            
-        # Load existing state from disk
-        state = load_scheduler_state(publish_destination)
+        # Load existing context and schedule from state
+        loaded_state = load_scheduler_state(publish_destination)
         
-        # Initialize in-memory state
-        scheduler_states[publish_destination] = "running"
-        scheduler_schedule_stacks[publish_destination] = [schedule]
+        # Initialize context and schedule stacks
+        context_stack = loaded_state.get("context_stack", [])
+        schedule_stack = loaded_state.get("schedule_stack", [])
         
-        # If we're starting fresh (not resuming), clear context
-        # If resuming, keep existing context intact
-        if not is_resuming:
-            # Create fresh context when starting new
-            new_context = default_context()
-            new_context["publish_destination"] = publish_destination
-            scheduler_contexts_stacks[publish_destination] = [new_context]
-            log_schedule("Starting with fresh context", publish_destination)
-            
-            # Check for important actions in current time window
-            catch_up_on_important_actions(publish_destination, schedule)
+        # Create a fresh context if none exists
+        if not context_stack:
+            context_stack = [{
+                "vars": {},
+                "publish_destination": publish_destination
+            }]
+        
+        # Add the new schedule to the stack (or initialize it)
+        if schedule_stack:
+            schedule_stack.append(schedule)
         else:
-            # Use existing context stack when resuming
-            if state.get("context_stack"):
-                scheduler_contexts_stacks[publish_destination] = state["context_stack"]
-            else:
-                scheduler_contexts_stacks[publish_destination] = [default_context()]
-            log_schedule("Resuming with existing context", publish_destination)
+            schedule_stack = [schedule]
         
-        # Start the scheduler
+        # Update global stacks
+        scheduler_contexts_stacks[publish_destination] = context_stack
+        scheduler_schedule_stacks[publish_destination] = schedule_stack
+        scheduler_states[publish_destination] = "running"
+        
+        # Create coroutine for the scheduler
+        coro = run_scheduler(schedule, publish_destination, *args, **kwargs)
+        
+        # Add to running schedulers
         loop = get_event_loop()
-        future = asyncio.run_coroutine_threadsafe(
-            run_scheduler(schedule, publish_destination),
-            loop
-        )
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
         running_schedulers[publish_destination] = future
         
-        # Update persisted state after successful start
+        # Update state
         update_scheduler_state(
             publish_destination,
-            schedule_stack=scheduler_schedule_stacks[publish_destination],
-            context_stack=scheduler_contexts_stacks[publish_destination],
+            context_stack=context_stack,
+            schedule_stack=schedule_stack,
             state="running"
         )
-        
-        log_schedule("Started scheduler", publish_destination)
-        
-        # Log the next scheduled action
-        log_next_scheduled_action(publish_destination, schedule)
-        
     except Exception as e:
         error_msg = f"Error starting scheduler: {str(e)}"
-        log_schedule(error_msg, publish_destination)
-        # Ensure state is cleaned up on error
-        update_scheduler_state(
-            publish_destination,
-            schedule_stack=[],
-            context_stack=[],
-            state="stopped"
-        )
-        raise
+        info(error_msg)
+        log_schedule(error_msg, publish_destination, datetime.now())
 
 def initialize_schedulers_from_disk():
     """Initialize scheduler states from disk on startup."""

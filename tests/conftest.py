@@ -63,6 +63,13 @@ def setup_test_destination(clean_scheduler_state):
     # Setup empty logs
     clean_scheduler_state["logs"][dest_id] = []
     
+    # Add to global stacks to ensure they exist
+    from routes.scheduler_utils import scheduler_contexts_stacks, scheduler_schedule_stacks, scheduler_states
+    
+    scheduler_contexts_stacks[dest_id] = clean_scheduler_state["contexts"][dest_id]
+    scheduler_schedule_stacks[dest_id] = clean_scheduler_state["schedules"][dest_id]
+    scheduler_states[dest_id] = clean_scheduler_state["states"][dest_id]
+    
     return dest_id
 
 @pytest.fixture

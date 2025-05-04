@@ -5,6 +5,88 @@
         "instructions_block": [
           {
             "action": "set_var",
+            "var": "initial_executed",
+            "input": {
+              "value": true
+            }
+          }
+        ]
+      },
+      "triggers": [
+        {
+          "type": "event",
+          "value": "TestEvent",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "set_var",
+                "var": "trigger_executed",
+                "input": {
+                  "value": true
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "final_actions": {
+        "instructions_block": [
+          {
+            "action": "set_var",
+            "var": "final_executed",
+            "input": {
+              "value": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "initial_actions": {
+        "instructions_block": [
+          {
+            "action": "set_var",
+            "var": "initial_executed",
+            "input": {
+              "value": true
+            }
+          }
+        ]
+      },
+      "triggers": [
+        {
+          "type": "event",
+          "value": "TestEvent",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "set_var",
+                "var": "trigger_executed",
+                "input": {
+                  "value": true
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "final_actions": {
+        "instructions_block": [
+          {
+            "action": "set_var",
+            "var": "final_executed",
+            "input": {
+              "value": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "initial_actions": {
+        "instructions_block": [
+          {
+            "action": "set_var",
             "var": "test_var",
             "input": {
               "value": "initial_value"
@@ -16,11 +98,15 @@
   ],
   "context_stack": [
     {
-      "vars": {},
+      "vars": {
+        "initial_executed": true,
+        "test_var": "initial_value"
+      },
       "last_generated": null,
-      "publish_destination": "test_dest"
+      "publish_destination": "test_dest",
+      "stopping": true
     }
   ],
   "state": "stopped",
-  "last_updated": "2025-05-05T00:01:50.658642"
+  "last_updated": "2025-05-05T00:41:46.781593"
 }
