@@ -527,6 +527,12 @@ export const BucketGridView = ({
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     
+    console.log("Drag ended:", { 
+      active: active?.id, 
+      over: over?.id,
+      data: over?.data?.current
+    });
+    
     if (!over) {
       setActiveId(null);
       setActiveDraggedImage(null);
@@ -537,18 +543,20 @@ export const BucketGridView = ({
     
     // Check if we're dropping onto the publish area
     if (over.id === 'publish-dropzone') {
+      console.log("Publishing image:", active.id);
       const draggedImageId = active.id as string;
       const draggedImage = bucketImages.find(img => img.id === draggedImageId);
       
       if (draggedImage) {
         try {
           // Show a toast notification that we're publishing
-          toast.loading(`Publishing ${draggedImage.id}...`);
+          toast.loading(`Publishing ${draggedImage.id}...`, { id: 'publish-toast' });
           
           // Call the publish API
           await handlePublish(destination, draggedImage.id);
           
           // Success toast will be shown by handlePublish
+          toast.dismiss('publish-toast');
         } catch (error) {
           console.error('Error publishing image:', error);
           toast.error('Failed to publish image');
@@ -915,166 +923,166 @@ export const BucketGridView = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Enhanced bucket header panel with triple height */}
-      {bucketDetails && (
-        <div className="flex flex-col mb-4 p-2 sm:p-4 bg-muted rounded-md w-full">
-          <div className="flex items-start gap-3">
-            {/* Left side with droppable published image area */}
-            <PublishedImageDroppable currentImage={currentPublishedImage} />
-            <div className="flex-1 flex flex-col min-w-0">
-              <div className="flex justify-between items-center mt-1">
-                <div className="flex flex-wrap gap-1 items-center">
-                  {/* Star button with counts */}
-                  <Button
-                    variant={showFavoritesFirst ? "secondary" : "outline"}
-                    size="sm"
-                    className="flex items-center h-8"
-                    onClick={() => setShowFavoritesFirst(!showFavoritesFirst)}
-                  >
-                    <Star className={`h-4 w-4 ${showFavoritesFirst ? "fill-current" : ""}`} />
-                    <span className="ml-1 text-xs">{bucketDetails.favorites_count} / {bucketDetails.count}</span>
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    onClick={handleRefresh} 
-                    disabled={loading || externalLoading}
-                    className="flex-nowrap h-8"
-                  >
-                    <RefreshCw 
-                      className={`h-4 w-4 ${(loading || externalLoading) ? 'animate-spin' : ''}`} 
-                    />
-                    <span className="ml-1 hidden sm:inline">Refresh</span>
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="secondary"
-                    onClick={() => setShowUploadModal(true)}
-                    className="flex-nowrap h-8"
-                  >
-                    <Upload className="h-4 w-4" />
-                    <span className="ml-1 hidden sm:inline">Upload</span>
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="sm" variant="outline" className="flex-nowrap h-8">
-                        <Settings className="h-4 w-4" />
-                        <span className="ml-1 hidden sm:inline">Maintenance</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem onClick={handlePurgeNonFavorites}>
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Purge Non-Favorites
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleReindex}>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Re-Index
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleExtractJson}>
-                        <Copy className="h-4 w-4 mr-2" />
-                        Extract JSON
-                      </DropdownMenuItem>
-                      {!headless && (
-                        <DropdownMenuItem onClick={handleOpenSchedulerPage}>
-                          <Settings className="h-4 w-4 mr-2" />
-                          Scheduler
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
+      >
+        {/* Enhanced bucket header panel with the droppable image area */}
+        {bucketDetails && (
+          <div className="flex flex-col mb-4 p-2 sm:p-4 bg-muted rounded-md w-full">
+            <div className="flex items-start gap-3">
+              {/* Left side with droppable published image area */}
+              <PublishedImageDroppable currentImage={currentPublishedImage} />
+              <div className="flex-1 flex flex-col min-w-0">
+                <div className="flex justify-between items-center mt-1">
+                  <div className="flex flex-wrap gap-1 items-center">
+                    {/* Star button with counts */}
+                    <Button
+                      variant={showFavoritesFirst ? "secondary" : "outline"}
+                      size="sm"
+                      className="flex items-center h-8"
+                      onClick={() => setShowFavoritesFirst(!showFavoritesFirst)}
+                    >
+                      <Star className={`h-4 w-4 ${showFavoritesFirst ? "fill-current" : ""}`} />
+                      <span className="ml-1 text-xs">{bucketDetails.favorites_count} / {bucketDetails.count}</span>
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      onClick={handleRefresh} 
+                      disabled={loading || externalLoading}
+                      className="flex-nowrap h-8"
+                    >
+                      <RefreshCw 
+                        className={`h-4 w-4 ${(loading || externalLoading) ? 'animate-spin' : ''}`} 
+                      />
+                      <span className="ml-1 hidden sm:inline">Refresh</span>
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="secondary"
+                      onClick={() => setShowUploadModal(true)}
+                      className="flex-nowrap h-8"
+                    >
+                      <Upload className="h-4 w-4" />
+                      <span className="ml-1 hidden sm:inline">Upload</span>
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="outline" className="flex-nowrap h-8">
+                          <Settings className="h-4 w-4" />
+                          <span className="ml-1 hidden sm:inline">Maintenance</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem onClick={handlePurgeNonFavorites}>
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Purge Non-Favorites
                         </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                {/* Scheduler controls on same line (only if not headless) */}
-                {!headless && (
-                  <div className="flex items-center gap-1 ml-2">
-                    <div className={`flex items-center ${statusDisplay.colorClass}`}>
-                      {statusDisplay.icon}
-                      <span className="text-sm ml-1">{statusDisplay.text}</span>
-                    </div>
-                    <div className="flex items-center ml-1 space-x-1">
-                      {!schedulerStatus.is_running && (
-                        <Button 
-                          variant="outline" 
-                          size="xs"
-                          onClick={() => handleSchedulerAction('start')}
-                          className="h-6 px-2 text-xs"
-                        >
-                          Start
-                        </Button>
-                      )}
-                      {schedulerStatus.is_running && !schedulerStatus.is_paused && (
-                        <Button 
-                          variant="outline" 
-                          size="xs"
-                          onClick={() => handleSchedulerAction('pause')}
-                          className="h-6 px-2 text-xs"
-                        >
-                          Pause
-                        </Button>
-                      )}
-                      {schedulerStatus.is_running && schedulerStatus.is_paused && (
-                        <Button 
-                          variant="outline" 
-                          size="xs"
-                          onClick={() => handleSchedulerAction('unpause')}
-                          className="h-6 px-2 text-xs"
-                        >
-                          Resume
-                        </Button>
-                      )}
-                      {schedulerStatus.is_running && (
-                        <Button 
-                          variant="outline" 
-                          size="xs"
-                          onClick={() => handleSchedulerAction('stop')}
-                          className="h-6 px-2 text-xs"
-                        >
-                          Stop
-                        </Button>
-                      )}
-                    </div>
+                        <DropdownMenuItem onClick={handleReindex}>
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Re-Index
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleExtractJson}>
+                          <Copy className="h-4 w-4 mr-2" />
+                          Extract JSON
+                        </DropdownMenuItem>
+                        {!headless && (
+                          <DropdownMenuItem onClick={handleOpenSchedulerPage}>
+                            <Settings className="h-4 w-4 mr-2" />
+                            Scheduler
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                )}
+                  {/* Scheduler controls on same line (only if not headless) */}
+                  {!headless && (
+                    <div className="flex items-center gap-1 ml-2">
+                      <div className={`flex items-center ${statusDisplay.colorClass}`}>
+                        {statusDisplay.icon}
+                        <span className="text-sm ml-1">{statusDisplay.text}</span>
+                      </div>
+                      <div className="flex items-center ml-1 space-x-1">
+                        {!schedulerStatus.is_running && (
+                          <Button 
+                            variant="outline" 
+                            size="xs"
+                            onClick={() => handleSchedulerAction('start')}
+                            className="h-6 px-2 text-xs"
+                          >
+                            Start
+                          </Button>
+                        )}
+                        {schedulerStatus.is_running && !schedulerStatus.is_paused && (
+                          <Button 
+                            variant="outline" 
+                            size="xs"
+                            onClick={() => handleSchedulerAction('pause')}
+                            className="h-6 px-2 text-xs"
+                          >
+                            Pause
+                          </Button>
+                        )}
+                        {schedulerStatus.is_running && schedulerStatus.is_paused && (
+                          <Button 
+                            variant="outline" 
+                            size="xs"
+                            onClick={() => handleSchedulerAction('unpause')}
+                            className="h-6 px-2 text-xs"
+                          >
+                            Resume
+                          </Button>
+                        )}
+                        {schedulerStatus.is_running && (
+                          <Button 
+                            variant="outline" 
+                            size="xs"
+                            onClick={() => handleSchedulerAction('stop')}
+                            className="h-6 px-2 text-xs"
+                          >
+                            Stop
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-      
-      {/* Error message */}
-      {error && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      
-      {/* Image grid */}
-      {loading || externalLoading ? (
-        <div className="flex justify-center items-center h-full">
-          <RefreshCw className="h-8 w-8 animate-spin opacity-50" />
-        </div>
-      ) : bucketImages.length === 0 ? (
-        <div className="flex flex-col justify-center items-center h-full p-6">
-          <ImageIcon className="h-12 w-12 mb-4 opacity-20" />
-          <p className="text-lg font-medium mb-2">No images found</p>
-          <p className="text-sm text-muted-foreground mb-4">
-            Upload some images to get started.
-          </p>
-          <Button variant="secondary" onClick={() => setShowUploadModal(true)}>
-            <Upload className="h-4 w-4 mr-2" />
-            Upload Images
-          </Button>
-        </div>
-      ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragOver={handleDragOver}
-        >
+        )}
+        
+        {/* Error message */}
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        
+        {/* Image grid */}
+        {loading || externalLoading ? (
+          <div className="flex justify-center items-center h-full">
+            <RefreshCw className="h-8 w-8 animate-spin opacity-50" />
+          </div>
+        ) : bucketImages.length === 0 ? (
+          <div className="flex flex-col justify-center items-center h-full p-6">
+            <ImageIcon className="h-12 w-12 mb-4 opacity-20" />
+            <p className="text-lg font-medium mb-2">No images found</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Upload some images to get started.
+            </p>
+            <Button variant="secondary" onClick={() => setShowUploadModal(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Upload Images
+            </Button>
+          </div>
+        ) : (
           <SortableContext
             items={sortedImages.map(img => img.id)}
             strategy={rectSortingStrategy}
@@ -1082,33 +1090,35 @@ export const BucketGridView = ({
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 overflow-y-auto">
               {sortedImages.map((image, index) => (
                 <SortableImageCard key={image.id} image={image} index={index} />
-          ))}
-        </div>
+              ))}
+            </div>
           </SortableContext>
-          <DragOverlay>
-            {activeDraggedImage ? (
-              <Card className="relative overflow-hidden cursor-grabbing border-primary shadow-lg transform scale-105">
-                {/* Overlay Image Content */}
-                  <div className="aspect-square overflow-hidden bg-muted">
-                  {activeDraggedImage.thumbnail_embedded ? (
+        )}
+        
+        {/* Drag overlay */}
+        <DragOverlay>
+          {activeDraggedImage ? (
+            <Card className="relative overflow-hidden cursor-grabbing border-primary shadow-lg transform scale-105">
+              {/* Overlay Image Content */}
+                <div className="aspect-square overflow-hidden bg-muted">
+                {activeDraggedImage.thumbnail_embedded ? (
+                  <img
+                    src={`data:image/jpeg;base64,${activeDraggedImage.thumbnail_embedded}`}
+                    alt={activeDraggedImage.prompt || 'Image in bucket'}
+                    className="w-full h-full object-cover"
+                    />
+                  ) : (
                     <img
-                      src={`data:image/jpeg;base64,${activeDraggedImage.thumbnail_embedded}`}
-                      alt={activeDraggedImage.prompt || 'Image in bucket'}
-                      className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <img
-                      src={activeDraggedImage.thumbnail_url || activeDraggedImage.url}
-                      alt={activeDraggedImage.prompt || 'Image in bucket'}
-                      className="w-full h-full object-cover"
-                      />
-                    )}
-                  </div>
-                </Card>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      )}
+                    src={activeDraggedImage.thumbnail_url || activeDraggedImage.url}
+                    alt={activeDraggedImage.prompt || 'Image in bucket'}
+                    className="w-full h-full object-cover"
+                    />
+                  )}
+                </div>
+              </Card>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
       
       {/* Tabbed upload modal */}
       <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
