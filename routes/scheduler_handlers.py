@@ -6,6 +6,7 @@ from utils.logger import info, error, debug
 import random
 import json
 from routes.scheduler_utils import log_schedule
+from routes.service_factory import get_generation_service, get_animation_service, get_display_service
 
 def handle_random_choice(instruction, context, now, output, publish_destination):
     var = instruction["var"]
@@ -82,11 +83,13 @@ def handle_generate(instruction, context, now, output, publish_destination):
         output.append(f"[{now.strftime('%H:%M')}] {start_msg}")
         log_schedule(start_msg, publish_destination, now)
             
-        from routes.alexa import handle_image_generation
+        # Get the generation service from our factory
+        generation_service = get_generation_service()
         
         debug(f"Sending generation request: {json.dumps(send_obj)}")
         
-        response = handle_image_generation(
+        # Call the service
+        response = generation_service(
             input_obj = send_obj,
             wait = True            
         )
@@ -166,7 +169,9 @@ def handle_animate(instruction, context, now, output, publish_destination):
     
     # Make the request to the animate endpoint
     try:
-        from routes.alexa import async_amimate
+        # Get the animation service from our factory
+        animation_service = get_animation_service()
+        
         success_msg = f"Started animation of {context.get('last_generated', 'unknown file')}"
         
         # Create an obj dictionary similar to what alexa.process provides
@@ -174,12 +179,13 @@ def handle_animate(instruction, context, now, output, publish_destination):
             "data": {
                 "targets": [publish_destination],
                 "refiner": instruction.get("refiner", "animator"),
-                "prompt": prompt if prompt else None
+                "prompt": prompt if prompt else None,
+                "image_path": context.get("last_generated")
             }
         }
         
         # Call with both targets and obj parameters
-        async_amimate(targets=[publish_destination], obj=obj)
+        animation_service(targets=[publish_destination], obj=obj)
         
         output.append(f"[{now.strftime('%H:%M')}] {success_msg}")
         log_schedule(f"ANIMATE SUCCESS: {success_msg}", publish_destination, now)
@@ -197,8 +203,9 @@ def handle_display(instruction, context, now, output, publish_destination):
         log_schedule(error_msg, publish_destination, now, output)
         return False
 
-    # Use the new display_from_bucket function
-    from routes.publisher import display_from_bucket
+    # Use the display service from the factory
+    display_from_bucket = get_display_service()
+    
     result = display_from_bucket(
         publish_destination_id=publish_destination,
         mode=show,
