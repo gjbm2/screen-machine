@@ -1090,8 +1090,8 @@ export const BucketGridView = ({
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 overflow-y-auto">
               {sortedImages.map((image, index) => (
                 <SortableImageCard key={image.id} image={image} index={index} />
-              ))}
-            </div>
+          ))}
+        </div>
           </SortableContext>
         )}
         
