@@ -10,6 +10,7 @@ import apiService from '@/utils/api';
 import { useNavigate } from 'react-router-dom';
 import { SchemaEditModal } from '../components/scheduler/SchemaEditModal';
 import { SetVarsButton } from '../components/scheduler/SetVarsButton';
+import { VarsRegistryCard } from '../components/scheduler/VarsRegistryCard';
 
 interface Schedule {
   id: string;
@@ -721,6 +722,9 @@ const Scheduler = () => {
         </div>
         
         <div className="grid grid-cols-1 gap-6">
+          {/* Variables Registry */}
+          <VarsRegistryCard />
+          
           {/* Running Schedulers */}
           <Card>
             <CardHeader>

@@ -161,6 +161,117 @@
           "additionalProperties": false
         },
         {
+          "title": "Import Variable",
+          "description": "Import a variable from another scheduler's context, a group, or global scope.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "import_var",
+              "default": "import_var",
+              "description": "Identifies this instruction as a variable-import operation.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "var_name": {
+              "type": "string",
+              "title": "Variable Name",
+              "description": "The name of the variable to import."
+            },
+            "as": {
+              "type": "string",
+              "title": "Import As",
+              "description": "Optional: Import the variable under this name. If not specified, uses the same name as the source variable."
+            },
+            "dest_id": {
+              "type": "string",
+              "title": "Source Destination ID",
+              "description": "The ID of the specific destination to import the variable from. Use this OR group OR scope, not multiple.",
+              "enum": {{ ALL_DESTINATIONS | default([]) | tojson }}
+            },
+            "group": {
+              "type": "string",
+              "title": "Source Group",
+              "description": "Import the variable from this group. Use this OR dest_id OR scope, not multiple.",
+              "enum": [
+                {% if DEST_GROUPS %}
+                {% for group in DEST_GROUPS %}
+                "{{ group }}"{% if not loop.last %},{% endif %}
+                {% endfor %}
+                {% endif %}
+              ]
+            },
+            "scope": {
+              "type": "string",
+              "title": "Source Scope",
+              "description": "Import the variable from this scope. Currently only 'global' is supported. Use this OR dest_id OR group, not multiple.",
+              "enum": ["global"]
+            }
+          },
+          "required": [
+            "action",
+            "var_name"
+          ],
+          "oneOf": [
+            {
+              "required": ["dest_id"]
+            },
+            {
+              "required": ["group"]
+            },
+            {
+              "required": ["scope"]
+            }
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Export Variable",
+          "description": "Export a variable to make it available to other schedulers.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "export_var",
+              "default": "export_var",
+              "description": "Identifies this instruction as a variable-export operation.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "var_name": {
+              "type": "string",
+              "title": "Variable Name",
+              "description": "The name of the variable to export."
+            },
+            "friendly_name": {
+              "type": "string",
+              "title": "Friendly Name",
+              "description": "A user-friendly name for this variable."
+            },
+            "scope": {
+              "type": "string",
+              "title": "Export Scope",
+              "enum": [
+                "global"
+                {% if DEST_GROUPS %}
+                {% for group in DEST_GROUPS %}
+                ,"{{ group }}"
+                {% endfor %}
+                {% endif %}
+              ],
+              "description": "The scope to which this variable should be exported."
+            }
+          },
+          "required": [
+            "action",
+            "var_name",
+            "scope"
+          ],
+          "additionalProperties": false
+        },
+        {
           "title": "Generate",
           "description": "Creates new content based on a prompt variable, with optional refinement and workflow settings.",
           "type": "object",
@@ -563,6 +674,12 @@
               "uniforms": {
                 "hidden": true
               }
+            },
+            "mode": {
+              "type": "string",
+              "enum": ["normal", "immediate"],
+              "default": "normal",
+              "description": "Stop mode: 'normal' executes final_instructions before stopping, 'immediate' stops without final_instructions."
             }
           },
           "required": [

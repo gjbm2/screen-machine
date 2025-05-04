@@ -1119,6 +1119,147 @@ export class Api {
     }
   }
 
+  // Get variables registry
+  async getVarsRegistry() {
+    if (this.mockMode) {
+      return {
+        status: 'success',
+        registry: {
+          global: {
+            'theme': {
+              friendly_name: 'Daily Theme',
+              owner: 'destination1',
+              value: 'apples',
+              timestamp: new Date().toISOString()
+            }
+          },
+          groups: {
+            'living-room': {
+              'mood': {
+                friendly_name: 'Room Mood',
+                owner: 'destination2',
+                value: 'calm',
+                timestamp: new Date().toISOString()
+              }
+            }
+          },
+          imports: {
+            'theme': {
+              'destination2': {
+                imported_as: '_theme',
+                source: 'destination1',
+                timestamp: new Date().toISOString()
+              }
+            }
+          },
+          last_updated: new Date().toISOString()
+        }
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/vars-registry`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch variables registry');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching variables registry:', error);
+      throw error;
+    }
+  }
+
+  // Get exported variables for a destination
+  async getExportedVars(destinationId: string) {
+    if (this.mockMode) {
+      return {
+        status: 'success',
+        destination: destinationId,
+        exported_vars: {
+          'theme': {
+            friendly_name: 'Daily Theme',
+            owner: 'destination1',
+            value: 'apples',
+            timestamp: new Date().toISOString()
+          }
+        }
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/exported-vars`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch exported variables');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching exported variables:', error);
+      throw error;
+    }
+  }
+
+  // Set an exported variable value
+  async setExportedVar(varName: string, value: any) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Setting exported variable:', varName, 'to value:', value);
+      return {
+        status: 'success',
+        var_name: varName,
+        value: value,
+        updated_importers: {}
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/exported-vars/${varName}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ value }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to set exported variable');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error setting exported variable:', error);
+      toast.error('Failed to set exported variable');
+      throw error;
+    }
+  }
+
+  // Delete an exported variable
+  async deleteExportedVar(varName: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Deleting exported variable:', varName);
+      return {
+        status: 'success',
+        message: `Exported variable '${varName}' was deleted`
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/exported-vars/${varName}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to delete exported variable');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error deleting exported variable:', error);
+      toast.error('Failed to delete exported variable');
+      throw error;
+    }
+  }
+
   async getBuckets(): Promise<string[]> {
     const response = await fetch(`${this.apiUrl}/buckets/`);
     if (!response.ok) {

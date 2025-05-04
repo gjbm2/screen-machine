@@ -79,6 +79,12 @@ from routes.simulate_scheduler_ui import simulate_scheduler_handler
 def simulate_scheduler():
     return simulate_scheduler_handler()
 
+# Initialize schedulers from saved states
+# We import and run this after all blueprints are registered
+with app.app_context():
+    from routes.scheduler import initialize_schedulers_from_disk
+    initialize_schedulers_from_disk()
+
 # Load workflow data from JSON files
 def load_json_data(file_name):
     try:

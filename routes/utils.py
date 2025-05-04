@@ -384,6 +384,19 @@ def build_schema_subs():
         visible_screens = [d for d in destinations if d.get("alexavisible")]
         default_screens = [d for d in destinations if d.get("alexadefault")]
 
+        # Add ALL_DESTINATIONS for variable importing/exporting
+        subs["ALL_DESTINATIONS"] = [d["id"] for d in destinations]
+        
+        # Extract unique groups from destinations for DEST_GROUPS
+        all_groups = set()
+        for d in destinations:
+            if "groups" in d and isinstance(d["groups"], list):
+                for group in d["groups"]:
+                    if isinstance(group, str) and group.strip():
+                        all_groups.add(group.strip())
+        
+        subs["DEST_GROUPS"] = sorted(list(all_groups))
+        
         subs["ALEXA_SCREENS"] = [d["id"] for d in visible_screens]
         subs["ALEXA_SCREENS_DESCRIPTIONS"] = [d.get("description", "") for d in visible_screens]
         subs["ALEXA_SCREENS_LABELLED"] = [
