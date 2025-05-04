@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Api, PublishDestination } from '../utils/api';
 
 const api = new Api();
@@ -24,13 +24,13 @@ export function usePublishDestinations() {
     fetchDestinations();
   }, []);
 
-  const getDestinationsWithBuckets = () => {
+  const destinationsWithBuckets = useMemo(() => {
     return destinations.filter(dest => dest.has_bucket);
-  };
+  }, [destinations]);
 
   return {
     destinations,
-    destinationsWithBuckets: getDestinationsWithBuckets(),
+    destinationsWithBuckets,
     loading,
     error
   };

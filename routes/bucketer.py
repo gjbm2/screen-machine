@@ -332,7 +332,7 @@ def extract_metadata(file_path: Path, force_rebuild: bool = False) -> bool:
         warning(f"Metadata inference failed for {file_path.name}: {e}")
     return False
 
-def _append_to_bucket(screen: str, published_path: Path) -> Path:
+def _append_to_bucket(screen: str, published_path: Path, metadata: dict = None) -> Path:
     """
     Copy *published_path* plus side-car into <bucket>/ preserving history:
     • If that exact filename already exists in the bucket, create a
@@ -352,8 +352,27 @@ def _append_to_bucket(screen: str, published_path: Path) -> Path:
     # copy media + side-car
     shutil.copy2(published_path, target_path)
     sc_src, sc_dst = sidecar_path(published_path), sidecar_path(target_path)
+    
+    # Handle sidecar creation/copying
     if sc_src.exists():
+        # If source sidecar exists, copy it
         shutil.copy2(sc_src, sc_dst)
+        debug(f"Copied sidecar: {sc_src} -> {sc_dst}")
+    elif metadata:
+        # If we have metadata but no source sidecar, create a new one
+        try:
+            with open(sc_dst, 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, indent=2)
+            debug(f"Created new sidecar with provided metadata: {sc_dst}")
+        except Exception as e:
+            warning(f"Failed to create sidecar with provided metadata: {e}")
+    else:
+        # Try to extract metadata from the file itself
+        try:
+            extract_metadata(target_path)
+            debug(f"Extracted metadata for: {target_path}")
+        except Exception as e:
+            warning(f"Failed to extract metadata for {target_path.name}: {e}")
 
     # update bucket metadata
     meta = load_meta(screen)

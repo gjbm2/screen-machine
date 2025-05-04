@@ -936,7 +936,8 @@ export class Api {
         name: dest.name || dest.id,
         description: dest.description,
         icon: dest.icon,
-        has_bucket: dest.has_bucket || false
+        has_bucket: dest.has_bucket || false,
+        headless: dest.headless || false
       }));
     } catch (error) {
       console.error('Error fetching publish destinations:', error);
@@ -995,9 +996,13 @@ export class Api {
   }
 
   // Toggle favorite status for an image
-  async toggleFavorite(bucketId: string, filename: string, currentState: boolean): Promise<boolean> {
+  async toggleFavorite(bucketId: string, filename: string, isFavorite: boolean): Promise<boolean> {
+    // If isFavorite is true, we want to favorite it (POST)
+    // If isFavorite is false, we want to unfavorite it (DELETE)
+    const method = isFavorite ? 'POST' : 'DELETE';
+    
     const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/favorite/${filename}`, {
-      method: currentState ? 'DELETE' : 'POST',
+      method,
       headers: {
         'Content-Type': 'application/json',
       }
@@ -1037,22 +1042,29 @@ export class Api {
 
   // Copy an image to another bucket
   async copyImageToBucket(sourceBucketId: string, targetBucketId: string, filename: string, copy: boolean = false): Promise<{ status: string; filename: string }> {
-    const response = await fetch(`${this.apiUrl}/buckets/add_image_to_new_bucket`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        source_bucket: sourceBucketId,
-        target_bucket: targetBucketId,
-        filename,
-        copy,
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to copy image: ${response.statusText}`);
+    try {
+      const response = await fetch(`${this.apiUrl}/buckets/add_image_to_new_bucket`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source_publish_destination: sourceBucketId,
+          target_publish_destination: targetBucketId,
+          filename,
+          copy,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to copy image: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error copying image:', error);
+      throw error;
     }
-    return response.json();
   }
 
   // Perform bucket maintenance
@@ -1260,6 +1272,21 @@ export class Api {
       console.error('Error publishing image:', error);
       throw error;
     }
+  }
+
+  // Move an image to a position after another image in a bucket
+  async moveToPosition(bucketId: string, filename: string, targetFilename: string | null = null): Promise<{ status: string; index: number }> {
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/move-to/${filename}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ insert_after: targetFilename }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to move image to position: ${response.statusText}`);
+    }
+    return await response.json();
   }
 }
 

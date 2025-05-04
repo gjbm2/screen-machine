@@ -70,7 +70,7 @@ interface DestinationTab {
 
 export function ImageDisplay(props: ImageDisplayProps) {
   const { destinationsWithBuckets, loading: destinationsLoading } = usePublishDestinations();
-  const [selectedTab, setSelectedTab] = useState<string | null>(null);
+  const [selectedTab, setSelectedTab] = useState<string>('generated');
   const [bucketRefreshFlags, setBucketRefreshFlags] = useState<Record<string, number>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [sortField, setSortField] = useState<SortField>('timestamp');
@@ -78,11 +78,24 @@ export function ImageDisplay(props: ImageDisplayProps) {
   const [schedulerStatuses, setSchedulerStatuses] = useState<Record<string, any>>({});
   
   // Function to trigger a refresh for a specific bucket
-  const refreshBucket = (bucket: string) => {
+  const refreshBucket = async (bucket: string) => {
+    // Increment the refresh flag to trigger a re-render of the BucketGridView
     setBucketRefreshFlags(prev => ({
       ...prev,
       [bucket]: (prev[bucket] || 0) + 1
     }));
+    
+    // Also immediately fetch the latest scheduler status for this bucket
+    try {
+      const status = await apiService.getSchedulerStatus(bucket);
+      // Update just this one scheduler status without affecting others
+      setSchedulerStatuses(prev => ({
+        ...prev,
+        [bucket]: status
+      }));
+    } catch (error) {
+      console.error(`Error fetching scheduler status for ${bucket}:`, error);
+    }
   };
 
   const handleImageClick = (image: any) => {
@@ -153,24 +166,38 @@ export function ImageDisplay(props: ImageDisplayProps) {
 
   // Get scheduler status for all destinations
   useEffect(() => {
+    let isMounted = true;
     const fetchSchedulerStatuses = async () => {
+      if (!isMounted) return;
       try {
         const statuses = await Promise.all(
-          destinations.map(async (dest) => {
-            const status = await apiService.getSchedulerStatus(dest);
-            return { [dest]: status };
+          destinationsWithBuckets.map(async (dest) => {
+            const status = await apiService.getSchedulerStatus(dest.id);
+            return { [dest.id]: status };
           })
         );
-        setSchedulerStatuses(Object.assign({}, ...statuses));
+        if (isMounted) {
+          setSchedulerStatuses(Object.assign({}, ...statuses));
+        }
       } catch (error) {
         console.error('Error fetching scheduler statuses:', error);
       }
     };
 
-    if (destinations.length > 0) {
+    if (destinationsWithBuckets.length > 0) {
+      // Initial fetch
       fetchSchedulerStatuses();
+      
+      // Set up polling interval (every 15 seconds)
+      const intervalId = setInterval(fetchSchedulerStatuses, 15000);
+      
+      // Cleanup interval and mounted flag on unmount or when destinations change
+      return () => {
+        isMounted = false;
+        clearInterval(intervalId);
+      };
     }
-  }, [destinations]);
+  }, [destinationsWithBuckets]);
 
   // Get status for a destination to be passed to BucketGridView
   const getStatusForDestination = (destId: string) => {
@@ -499,18 +526,19 @@ export function ImageDisplay(props: ImageDisplayProps) {
             </div>
           )
         ) : (
-          // Display bucket content for the selected destination
-          <BucketGridView
-            key={`${selectedTab}-${bucketRefreshFlags[selectedTab] || 0}`}
-            destination={getDestinationFile(selectedTab)}
-            destinationName={destinationTabs.find(tab => tab.id === selectedTab)?.label || selectedTab}
-            onImageClick={handleImageClick}
-            refreshBucket={refreshBucket}
-            isLoading={false}
-            schedulerStatus={getStatusForDestination(selectedTab)}
-            headless={destinationTabs.find(tab => tab.id === selectedTab)?.headless || false}
-            icon={destinationsWithBuckets.find(d => d.id === selectedTab)?.icon || 'image'}
-          />
+          selectedTab && selectedTab !== 'generated' && (
+            <BucketGridView
+              key={`${selectedTab}-${bucketRefreshFlags[selectedTab] || 0}`}
+              destination={getDestinationFile(selectedTab)}
+              destinationName={destinationTabs.find(tab => tab.id === selectedTab)?.label || selectedTab}
+              onImageClick={handleImageClick}
+              refreshBucket={refreshBucket}
+              isLoading={false}
+              schedulerStatus={getStatusForDestination(selectedTab)}
+              headless={destinationTabs.find(tab => tab.id === selectedTab)?.headless || false}
+              icon={destinationsWithBuckets.find(d => d.id === selectedTab)?.icon || 'image'}
+            />
+          )
         )}
         </div>
     </div>

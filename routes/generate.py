@@ -550,22 +550,27 @@ def start(
                 ]
     
             if publish_destination:
-                # Actually publish into your screen’s bucket
+                # Actually publish into your screen's bucket
                 pub_res = publish_to_destination(
-                    url                    = output["message"],
+                    source = output["message"],
                     publish_destination_id = publish_destination,
-                    metadata               = vars(args_namespace),
+                    metadata = vars(args_namespace),
                 )
                 if not pub_res["success"]:
                     raise RuntimeError(f"Publish failed: {pub_res.get('error')}")
 
-                info(f"✅ Published to {pub_res['path']}")
-                dest_info = pub_res["destination"]
-
-                # Merge publish info into the returned payload
-                output["published_path"] = pub_res["path"]
-                output["published_meta"] = pub_res.get("meta", {})
-                output["destination"]   = dest_info
+                # Only access meta data if publish was successful
+                if "meta" in pub_res and "filename" in pub_res["meta"]:
+                    info(f"✅ Published to {pub_res['meta']['filename']}")
+                    dest_info = pub_res["meta"]
+                    output["published_path"] = pub_res["meta"]["filename"]
+                    output["published_meta"] = pub_res.get("meta", {})
+                    output["destination"] = dest_info
+                else:
+                    info("✅ Published successfully")
+                    output["published_path"] = output["message"]
+                    output["published_meta"] = {}
+                    output["destination"] = {}
            
                 '''routes.display.send_overlay(
                     html="overlay_prompt.html.j2",
