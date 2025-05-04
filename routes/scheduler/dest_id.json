@@ -3,10 +3,10 @@
   "context_stack": [
     {
       "vars": {
-        "shared_var": "new_value"
+        "source_var": "updated_value"
       }
     }
   ],
   "state": "stopped",
-  "last_updated": "2025-05-05T00:41:47.502065"
+  "last_updated": "2025-05-05T00:41:46.912197"
 }

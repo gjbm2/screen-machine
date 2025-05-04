@@ -8,8 +8,10 @@ from routes.utils import (
     get_qr,
     _load_json_once
 )
+from routes.scheduler_utils import get_exported_variables_with_values
 import routes.openai
 import routes.generate
+import routes.display
 import json
 import re
 import threading
@@ -243,6 +245,41 @@ def process(data):
             [closest_screen] if closest_screen else subs["ALEXA_DEFAULT_SCREENS"]
         )
         
+        # Add exported variable friendly names for this screen's scope
+        if closest_screen:
+            # Get all exported variables for this destination
+            exported_vars = get_exported_variables_with_values(closest_screen)
+            
+            # Extract friendly names and actual names from the exported variables
+            exported_var_friendly_names = []
+            exported_var_names = []
+            friendly_to_var_names = {}  # Map friendly names to actual variable names
+            
+            for var_name, var_info in exported_vars.items():
+                # Add actual variable name
+                exported_var_names.append(var_name)
+                
+                # Add friendly name if available
+                if "friendly_name" in var_info:
+                    friendly_name = var_info["friendly_name"]
+                    exported_var_friendly_names.append(friendly_name)
+                    friendly_to_var_names[friendly_name] = var_name
+            
+            # Add to subs
+            subs["EXPORTED_VAR_FRIENDLY_NAMES"] = exported_var_friendly_names
+            subs["EXPORTED_VAR_NAMES"] = exported_var_names
+            subs["EXPORTED_VARS"] = exported_vars  # Add complete dictionary for maximum flexibility
+            subs["FRIENDLY_TO_VAR_NAMES"] = friendly_to_var_names  # Add mapping from friendly names to actual var names
+            
+            debug(f"Added {len(exported_var_friendly_names)} exported var friendly names to subs")
+            debug(f"Added {len(exported_var_names)} exported var names to subs")
+            debug(f"Added mapping dictionary from friendly names to var names")
+        else:
+            subs["EXPORTED_VAR_FRIENDLY_NAMES"] = []
+            subs["EXPORTED_VAR_NAMES"] = []
+            subs["EXPORTED_VARS"] = {}
+            subs["FRIENDLY_TO_VAR_NAMES"] = {}
+        
         result = None
         response_ssml = "<speak><voice name='Brian'><prosody rate='slow'>I would respond, if I had the will to live.</prosody></voice></speak>"
 
@@ -262,6 +299,9 @@ def process(data):
                     response_ssml = Brianize(f"{total_cancelled} jobs cancelled.")
                 else:
                     response_ssml = Brianize(f"No running jobs.")
+            case "set":
+                # Setting global or group vars (e.g. theme, style, etc.)
+                use_system_prompt="alexa-setvars.txt.j2"
             case "animate":
                 use_system_prompt="alexa-animate.txt"
             case _:
@@ -301,6 +341,43 @@ def process(data):
         #info(f"> intent: {intent}; response_ssml: {response_ssml}")    
 
         match intent:
+            case "set_variable":
+                # Handle setting variables
+                var_data = result.get("data", {})
+                var_name = var_data.get("var_name")
+                var_value = var_data.get("value")
+                
+                if var_name and var_value is not None and closest_screen:
+                    info(f"Setting variable '{var_name}' to '{var_value}' on screen '{closest_screen}'")
+                    
+                    # If var_name is a friendly name, resolve it to actual var name using mapping
+                    actual_var_name = subs["FRIENDLY_TO_VAR_NAMES"].get(var_name, var_name)
+                    
+                    # Find the export name in the registry if this is an exported variable
+                    export_name = None
+                    for export_var, info in subs["EXPORTED_VARS"].items():
+                        if export_var == actual_var_name:
+                            export_name = export_var
+                            break
+                    
+                    # Import the utility functions
+                    from routes.scheduler_utils import set_exported_variable, set_context_variable
+                    
+                    if export_name:
+                        # This is an exported variable, set it through the registry
+                        result = set_exported_variable(export_name, var_value)
+                        info(f"Updated exported variable '{export_name}': {result['status']}")
+                    else:
+                        # This is a regular context variable for the current destination
+                        result = set_context_variable(closest_screen, actual_var_name, var_value)
+                        info(f"Set context variable '{actual_var_name}': {result['status']}")
+                
+                # Provide feedback
+                if var_name and var_value is not None:
+                    response_ssml = Brianize(f"I've set {var_name} to {var_value}.")
+                else:
+                    response_ssml = Brianize("I couldn't understand which variable to set.")
+                
             case "animate": 
                 
                 # Fetch relevant image inputs
