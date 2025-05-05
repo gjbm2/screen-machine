@@ -9,15 +9,19 @@ from routes.utils import (
     _load_json_once
 )
 from routes.scheduler_utils import get_exported_variables_with_values
+# Import modules rather than functions to avoid circular imports
 import routes.openai
 import routes.generate
 import routes.display
+import utils.logger
+import utils
 import json
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from flask import current_app
-from utils.logger import log_to_console, info, error, warning, debug, console_logs
+# Import logger module rather than individual functions
+import utils.logger 
 from routes.manage_jobs import cancel_all_jobs
 from typing import Dict, Any
 
@@ -49,6 +53,8 @@ def Brianize(text: str) -> str:
 
 # Sorts out prompt refinement and then calls out to generator, without updating webapp state
 def handle_image_generation(input_obj, wait=False, **kwargs):
+    # Re-import logging functions to ensure they're available in this scope
+    from utils.logger import info, error, warning, debug
     
     subs = build_schema_subs()
        
@@ -63,10 +69,10 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         workflows = _load_json_once("workflow", "workflows.json")
         default_workflow = next((w for w in workflows if w.get("default", False)), None)
         if not default_workflow:
-            error("No default workflow found in workflows.json")
+            utils.logger.error("No default workflow found in workflows.json")
             return None
         workflow = default_workflow["id"]
-        debug(f"Using default workflow: {workflow}")
+        utils.logger.debug(f"Using default workflow: {workflow}")
 
     # Get "targets" from input data
     targets = data.get("targets", [])
@@ -92,7 +98,7 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         "workflow": workflow
     }
 
-    debug(f"****input_dict {input_dict}")
+    utils.logger.debug(f"****input_dict {input_dict}")
     
     corrected_refiner = resolve_runtime_value("refiner", refiner, return_key="system_prompt")
     
@@ -114,7 +120,7 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     else:
         prepared_images = []  # none required
        
-    info(f"> Using refiner: '{refiner}' -> '{corrected_refiner}'")
+    utils.logger.info(f"> Using refiner: '{refiner}' -> '{corrected_refiner}'")
     
     # Refine if needed
     if corrected_refiner is not None:
@@ -126,10 +132,10 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         
         if images_required:
             openai_args["images"] = prepared_images
-            debug(f"[handle_image_generation] {len(prepared_images)} image(s) prepared for OpenAI prompt.")
+            utils.logger.debug(f"[handle_image_generation] {len(prepared_images)} image(s) prepared for OpenAI prompt.")
 
-        debug(f"[handle_image_generation] Calling openai_prompt with args:")
-        debug(json.dumps(openai_args, indent=2)[:1000])  # print first 1000 chars to avoid base64 overflow
+        utils.logger.debug(f"[handle_image_generation] Calling openai_prompt with args:")
+        utils.logger.debug(json.dumps(openai_args, indent=2)[:1000])  # print first 1000 chars to avoid base64 overflow
 
         
         refined_output = routes.openai.openai_prompt(**openai_args)
@@ -153,7 +159,7 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
             "system_prompt": dict_substitute("prompt-translate.txt", subs)
         }
         final_prompt = routes.openai.openai_prompt(**openai_args)
-        info(f"Translated: {refined_prompt} to {final_prompt}")
+        utils.logger.info(f"Translated: {refined_prompt} to {final_prompt}")
     else:
         final_prompt = refined_prompt
 
@@ -174,7 +180,7 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         if no_targets:
             corrected_publish_destination = None
         else:
-            info(f"> For destination: {publish_destination}")
+            utils.logger.info(f"> For destination: {publish_destination}")
             corrected_publish_destination = resolve_runtime_value("destination", publish_destination)
             
         def thread_fn(index=idx, destination=corrected_publish_destination):
@@ -190,26 +196,30 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         thread.start()
         threads.append(thread)
 
-    info(f" * Spawned {len(threads)} generator threads.")
+    utils.logger.info(f" * Spawned {len(threads)} generator threads.")
 
     # if we need to wait until the end, do so
     if wait:
         for t in threads:
             t.join()
-        info(" * All generator threads completed.")
+        utils.logger.info(" * All generator threads completed.")
         return results
     else:
         return None
 
 def process(data):
+    # Re-import logging functions to ensure they're available in this scope
+    from utils.logger import info, error, warning, debug
+    
     alexa_intent = data.get("request", {}).get("intent", {}).get("name", "unspecified")
     utterance = data.get("request", {}).get("intent", {}).get("slots", {}).get("utterance", {}).get("value", "unspecified")
     device_id = data.get("context", {}).get("System", {}).get("device", {}).get("deviceId", None)
     closest_screen = find_destination_by_alexaclosest(device_id)
     request_type = data.get("request", {}).get("type", "")
 
-    info(f"========================================================")
+    utils.logger.info(f"========================================================")
     
+    # == User just said 'Computer, use AI' 
     if request_type == "LaunchRequest":
         
         if closest_screen:
@@ -234,10 +244,11 @@ def process(data):
         else:
             details = "Or 'use A.I. to ask how big is the moon, and take it from there."
             
-        response_ssml = routes.alexa.Brianize(f"Hello. Try: 'use A.I. to paint a cat'. {details}")
+        response_ssml = Brianize(f"Hello. Try: 'use A.I. to paint a cat'. {details}")
     
+    # == User said something specific like 'Computer, use AI to paint a cat' ==
     elif request_type == "IntentRequest":
-        info(f"> Alexa intent: {alexa_intent}, utterance: {utterance}, location {closest_screen}")
+        utils.logger.info(f"> Alexa intent: {alexa_intent}, utterance: {utterance}, location {closest_screen}")
         
         # Build the subs dictionary
         subs = build_schema_subs()
@@ -271,19 +282,20 @@ def process(data):
             subs["EXPORTED_VARS"] = exported_vars  # Add complete dictionary for maximum flexibility
             subs["FRIENDLY_TO_VAR_NAMES"] = friendly_to_var_names  # Add mapping from friendly names to actual var names
             
-            debug(f"Added {len(exported_var_friendly_names)} exported var friendly names to subs")
-            debug(f"Added {len(exported_var_names)} exported var names to subs")
-            debug(f"Added mapping dictionary from friendly names to var names")
+            utils.logger.debug(f"Added {len(exported_var_friendly_names)} exported var friendly names to subs")
+            utils.logger.debug(f"Added {len(exported_var_names)} exported var names to subs")
+            utils.logger.debug(f"Added mapping dictionary from friendly names to var names")
         else:
             subs["EXPORTED_VAR_FRIENDLY_NAMES"] = []
             subs["EXPORTED_VAR_NAMES"] = []
             subs["EXPORTED_VARS"] = {}
             subs["FRIENDLY_TO_VAR_NAMES"] = {}
         
+        # Fall back to a default response
         result = None
         response_ssml = "<speak><voice name='Brian'><prosody rate='slow'>I would respond, if I had the will to live.</prosody></voice></speak>"
 
-        # Select system prompt based on Alexa intent
+        # == Select system prompt based on Alexa intent ==
         use_system_prompt = None
         match alexa_intent:
             case "repeat":
@@ -291,6 +303,79 @@ def process(data):
                 if not result:
                     return Brianize("Nothing to regenerate")
                 response_ssml = Brianize("Coming right up.")
+            # User wants to get variables
+            case "get_variables":
+                # Initialize global_vars with an empty dictionary
+                global_vars = {}
+                details = ""
+                
+                if closest_screen:
+                    destinations = _load_json_once("destination", "publish-destinations.json")
+                    screen_name = next(
+                        (d["name"] for d in destinations if d["id"] == closest_screen),
+                        closest_screen  # fallback if not found
+                    )
+                    duration = 60
+                    details = f"I've put more details on {screen_name}."
+                    friendly_names_with_values = get_exported_variables_with_values(closest_screen) 
+                    routes.display.send_overlay(
+                        html="overlay_variables.html.j2",
+                        screens=[closest_screen],
+                        substitutions={
+                            'EXPORTED_FRIENDLY_NAMES_WITH_VALUES': friendly_names_with_values,
+                            'SCREEN_NAME': screen_name,
+                            'QR_BASE64': get_qr(publish=closest_screen),
+                            'DURATION': duration
+                        },
+                        duration=duration * 1000,
+                        clear=True
+                    )
+                else:
+                    # Get global and group variables without a specific screen
+                    try:
+                        from routes.scheduler_utils import get_registry_summary
+                        registry_summary = get_registry_summary()
+                        global_vars = registry_summary.get("global", {}) if registry_summary else {}
+                        utils.logger.info(f"Found {len(global_vars)} global variables in registry.")
+                    except Exception as e:
+                        utils.logger.error(f"Error getting registry summary: {e}")
+                        global_vars = {}
+                        registry_summary = {}
+                    
+                    # Find default screen to display on
+                    default_screens = subs["ALEXA_DEFAULT_SCREENS"]
+                    utils.logger.info(f"Default screens from subs: {default_screens}")
+                    if default_screens:
+                        target_screen = default_screens[0]
+                        destinations = _load_json_once("destination", "publish-destinations.json")
+                        screen_name = next(
+                            (d["name"] for d in destinations if d["id"] == target_screen),
+                            target_screen  # fallback if not found
+                        )
+                        duration = 60
+                        details = f"I've put global variables on {screen_name}."
+                        
+                        routes.display.send_overlay(
+                            html="overlay_variables.html.j2",
+                            screens=[target_screen],
+                            substitutions={
+                                'EXPORTED_FRIENDLY_NAMES_WITH_VALUES': global_vars,
+                                'SCREEN_NAME': screen_name,
+                                'QR_BASE64': get_qr(publish=target_screen),
+                                'DURATION': duration
+                            },
+                            duration=duration * 1000,
+                            clear=True
+                        )
+                    else:
+                        details = "But I couldn't find a screen to display them on."
+                    
+                # Construct a safe response that handles edge cases
+                var_count = len(global_vars) if global_vars else 0
+                response_message = f"I've found {var_count} global variables."
+                if details:
+                    response_message += f" {details}"
+                response_ssml = Brianize(response_message)
             case "select_refiner":
                 use_system_prompt="alexa-refiner.txt"
             case "cancel":
@@ -307,7 +392,8 @@ def process(data):
             case _:
                 use_system_prompt="alexa-triage.txt"
 
-        if use_system_prompt:   # We need to use openai to respond
+        # == Use OpenAI to triage ==
+        if use_system_prompt:   
             # Try to get a proper triage (allow OpenAI 8s)
             
             #info(f"user prompt: {dict_substitute(use_system_prompt, subs)}")
@@ -329,10 +415,10 @@ def process(data):
                 response_ssml = result.get("response_ssml", "No response received from pre-processor.")
                 current_app.config["LASTRENDER"] = result
             except TimeoutError:
-                warning("⚠️ Triage took too long. Returning fallback response.")
+                utils.logger.warning("⚠️ Triage took too long. Returning fallback response.")
                 return response_ssml
             except Exception as e:
-                warning(f"⚠️ Triage failed: {e}")
+                utils.logger.warning(f"⚠️ Triage failed: {e}")
                 return response_ssml
             
         intent = result.get("intent", "respond_only") if result else "respond_only"
@@ -340,7 +426,9 @@ def process(data):
         #info(f"> processed object: {result}")
         #info(f"> intent: {intent}; response_ssml: {response_ssml}")    
 
+        # == After processing the intent, we can handle the result ==
         match intent:
+            # User wants to set a exported variable
             case "set_variable":
                 # Handle setting variables
                 var_data = result.get("data", {})
@@ -348,7 +436,7 @@ def process(data):
                 var_value = var_data.get("value")
                 
                 if var_name and var_value is not None and closest_screen:
-                    info(f"Setting variable '{var_name}' to '{var_value}' on screen '{closest_screen}'")
+                    utils.logger.info(f"Setting variable '{var_name}' to '{var_value}' on screen '{closest_screen}'")
                     
                     # If var_name is a friendly name, resolve it to actual var name using mapping
                     actual_var_name = subs["FRIENDLY_TO_VAR_NAMES"].get(var_name, var_name)
@@ -366,25 +454,23 @@ def process(data):
                     if export_name:
                         # This is an exported variable, set it through the registry
                         result = set_exported_variable(export_name, var_value)
-                        info(f"Updated exported variable '{export_name}': {result['status']}")
+                        utils.logger.info(f"Updated exported variable '{export_name}': {result['status']}")
                     else:
                         # This is a regular context variable for the current destination
                         result = set_context_variable(closest_screen, actual_var_name, var_value)
-                        info(f"Set context variable '{actual_var_name}': {result['status']}")
+                        utils.logger.info(f"Set context variable '{actual_var_name}': {result['status']}")
                 
                 # Provide feedback
                 if var_name and var_value is not None:
                     response_ssml = Brianize(f"I've set {var_name} to {var_value}.")
                 else:
                     response_ssml = Brianize("I couldn't understand which variable to set.")
-                
+            # User wants to animate a screen
             case "animate": 
-                
                 # Fetch relevant image inputs
                 targets = result.get("data", {}).get("targets", []) if isinstance(result.get("data", {}).get("targets"), list) else []
-
                 async_amimate(targets = targets, obj = result)
-  
+    
             case "generate_image":
                 # Ensure we're using the currently selected refiner
                 result.setdefault("data", {})["refiner"] = current_app.config.get("REFINER", "Enrich")
@@ -398,19 +484,23 @@ def process(data):
                         "input_obj": result
                     }
                 ).start()
+            # User wants to change the refiner
             case "change_refiner":
                 # Just switch to a new refiner
                 refiner = result.get("data", {}).get("refiner", None)
                 # Now match it to the json possibles
                 new_refiner = resolve_runtime_value("refiner", refiner, "system_prompt")
                 current_app.config["REFINER"] = new_refiner
-                info(f"Heard {refiner} -> corrected refiner: {current_app.config.get("REFINER")}")
+                utils.logger.info(f"Heard {refiner} -> corrected refiner: {current_app.config.get("REFINER")}")
     else:
-        response_ssml = routes.alexa.Brianize("Sorry, I can't help with that.")
+        response_ssml = Brianize("Sorry, I can't help with that.")
     
     return response_ssml
 
 def async_amimate(targets, obj = {}):
+    # Re-import logging functions to ensure they're available in this scope
+    from utils.logger import info, error, warning, debug
+    
     # TODO: make this smarter; handle multiple targets, accept input prompts, refiners, etc.
 
     result = obj
@@ -428,7 +518,7 @@ def async_amimate(targets, obj = {}):
     image_payload = get_image_from_target(target_image_file) if target_image_file else None
     result.setdefault("data", {})["images"] = [image_payload]
     
-    info(
+    utils.logger.info(
         f"Will address: {target_image_file}, "
         f"image present: {image_payload is not None}, "
         f"image length: {len(image_payload.get('image')) if image_payload else 'N/A'}"

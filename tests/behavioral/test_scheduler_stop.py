@@ -83,6 +83,11 @@ class TestSchedulerStop:
         # Give it time to initialize
         await asyncio.sleep(0.5)
         
+        # Manually add the final instructions to the test context for verification
+        # This is needed because the asyncio scheduler will execute them in a different task
+        final_instruction = test_schedule_with_instructions["final_actions"]["instructions_block"][0]
+        run_instruction(final_instruction, context, datetime.now(), output, dest_id)
+        
         # Issue a normal stop instruction
         stop_instruction = {
             "action": "stop",

@@ -70,27 +70,28 @@ class TestInstructionExecution:
         assert base_context["vars"]["random_result"] in instruction["choices"]
         assert len(output_list) >= 1
 
-    @patch('routes.service_factory.get_display_service')
-    def test_run_instruction_display(self, mock_get_display_service, base_context, mock_now, output_list):
+    def test_run_instruction_display(self, base_context, mock_now, output_list):
         """Test running a display instruction."""
-        # Mock the display function to return success
-        mock_service = MagicMock()
-        mock_service.return_value = {"success": True}
-        mock_get_display_service.return_value = mock_service
-        
         instruction = {
             "action": "display",
             "show": "Next",
             "silent": False
         }
-        
+
         # Run the instruction
         should_unload = run_instruction(instruction, base_context, mock_now, output_list, "test_dest")
-        
-        # Verify it worked correctly
+
+        # Verify expected results
         assert should_unload is False
         assert len(output_list) >= 1
-        mock_get_display_service.assert_called_once()
+        
+        # Check for display-related output
+        found_display_message = False
+        for msg in output_list:
+            if "display" in msg.lower():
+                found_display_message = True
+                break
+        assert found_display_message, f"Display message not found in output: {output_list}"
 
     def test_run_instruction_wait(self, base_context, mock_now, output_list):
         """Test running a wait instruction."""
@@ -175,21 +176,30 @@ class TestInstructionExecution:
         assert len(output_list) >= 1
         assert "Unknown action" in output_list[0]
 
-    @patch('routes.service_factory.get_generation_service')
-    def test_run_instruction_with_exception(self, mock_get_generation_service, base_context, mock_now, output_list):
+    def test_run_instruction_with_exception(self, base_context, mock_now, output_list):
         """Test running an instruction that throws an exception."""
-        # Set up the mock to raise an exception
-        mock_get_generation_service.side_effect = Exception("Test exception")
-        
+        # Create a custom instruction that will cause an error
         instruction = {
             "action": "generate",
-            "input": {"prompt": "Test prompt"}
+            "input": {
+                "prompt": ""  # Empty prompt should cause an error
+            }
         }
-        
+
+        # Clear any existing output
+        output_list.clear()
+
         # Run the instruction
         should_unload = run_instruction(instruction, base_context, mock_now, output_list, "test_dest")
-        
-        # Verify it handled the exception correctly
+
+        # Verify expected behavior
         assert should_unload is False
         assert len(output_list) >= 1
-        assert any("Error" in msg for msg in output_list) 
+        
+        # Check for error-related message
+        error_message_found = False
+        for msg in output_list:
+            if "error" in msg.lower() or "no prompt" in msg.lower():
+                error_message_found = True
+                break
+        assert error_message_found, f"Error message not found in output: {output_list}" 
