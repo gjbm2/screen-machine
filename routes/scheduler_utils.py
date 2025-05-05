@@ -1,10 +1,13 @@
 # === Scheduler Utilities ===
 
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 import json
 import os
 from utils.logger import info, error, debug
+import random
+import re
+import jinja2
 
 # === Global Storage for Scheduler State ===
 scheduler_logs: Dict[str, List[str]] = {}
@@ -553,6 +556,17 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
             # Handle repeating time window
             try:
                 repeat_interval = repeat_schedule.get("every", 0)
+                # Convert string repeat_interval to float
+                if isinstance(repeat_interval, str):
+                    try:
+                        repeat_interval = float(repeat_interval)
+                        # Convert to int if it's a whole number for display clarity
+                        if repeat_interval == int(repeat_interval):
+                            repeat_interval = int(repeat_interval)
+                    except (ValueError, TypeError):
+                        error(f"Invalid repeat interval format: {repeat_interval}")
+                        continue
+                
                 if repeat_interval <= 0:
                     continue
                     
@@ -639,7 +653,10 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
     # Check all triggers
     for trigger in schedule.get("triggers", []):
         # Day of week trigger
-        if trigger["type"] == "day_of_week" and day_str in trigger.get("days", []):
+        if trigger["type"] == "day_of_week" and "days" in trigger:
+            # Check for current day first
+            current_day_match = day_str in trigger.get("days", [])
+            
             for time_schedule in trigger.get("scheduled_actions", []):
                 if "time" not in time_schedule:
                     continue
@@ -655,6 +672,17 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                 repeat_schedule = time_schedule.get("repeat_schedule")
                 if repeat_schedule:
                     repeat_interval = repeat_schedule.get("every", 0)
+                    # Convert string repeat_interval to float
+                    if isinstance(repeat_interval, str):
+                        try:
+                            repeat_interval = float(repeat_interval)
+                            # Convert to int if it's a whole number for display clarity
+                            if repeat_interval == int(repeat_interval):
+                                repeat_interval = int(repeat_interval)
+                        except (ValueError, TypeError):
+                            error(f"Invalid repeat interval format: {repeat_interval}")
+                            continue
+                            
                     if repeat_interval <= 0:
                         continue
                         
@@ -669,15 +697,15 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                     if until_minutes < scheduled_minutes:
                         until_minutes += 24 * 60
                     
-                    # If current time is before start time today
-                    if current_minute < scheduled_minutes:
+                    # If today is the scheduled day and current time is before start time today
+                    if current_day_match and current_minute < scheduled_minutes:
                         time_until_next = scheduled_minutes - current_minute
                         if time_until_next < minutes_until_next:
                             minutes_until_next = time_until_next
                             next_action_time = f"{scheduled_time.hour:02d}:{scheduled_time.minute:02d}"
                             next_action_description = f"Repeating '{trigger['type']}' trigger (every {repeat_interval} min until {until_str})"
-                    # If current time is within the repeat window
-                    elif scheduled_minutes <= current_minute <= until_minutes:
+                    # If today is the scheduled day and current time is within the repeat window
+                    elif current_day_match and scheduled_minutes <= current_minute <= until_minutes:
                         # Find next repeat interval
                         minutes_since_start = current_minute - scheduled_minutes
                         next_interval = repeat_interval - (minutes_since_start % repeat_interval)
@@ -690,64 +718,121 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                             next_action_time = f"{next_time_minute // 60:02d}:{next_time_minute % 60:02d}"
                             next_action_description = f"Repeating '{trigger['type']}' trigger (every {repeat_interval} min until {until_str})"
                 else:
-                    # Single time point - check if it's in the future today
-                    if scheduled_minutes > current_minute:
+                    # Single time point
+                    # Check if today is the scheduled day and this time is in the future today
+                    if current_day_match and scheduled_minutes > current_minute:
                         time_until_next = scheduled_minutes - current_minute
                         if time_until_next < minutes_until_next:
                             minutes_until_next = time_until_next
                             next_action_time = f"{scheduled_time.hour:02d}:{scheduled_time.minute:02d}"
                             next_action_description = f"'{trigger['type']}' trigger at specific time"
+                    # If it's not today or the time has passed, check for future days
+                    elif not current_day_match or scheduled_minutes <= current_minute:
+                        # Calculate the next occurrence of this day of week
+                        days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                        current_day_idx = days_of_week.index(day_str)
+                        
+                        # Find the next day in the schedule
+                        days_until_next = float('inf')
+                        for schedule_day in trigger.get("days", []):
+                            if schedule_day not in days_of_week:
+                                continue
+                                
+                            schedule_day_idx = days_of_week.index(schedule_day)
+                            if schedule_day_idx > current_day_idx:
+                                # Next occurrence is later this week
+                                day_diff = schedule_day_idx - current_day_idx
+                            elif schedule_day_idx < current_day_idx:
+                                # Next occurrence is next week
+                                day_diff = 7 - (current_day_idx - schedule_day_idx)
+                            else:
+                                # Same day, but time has passed
+                                if scheduled_minutes <= current_minute:
+                                    day_diff = 7  # Next week
+                                else:
+                                    day_diff = 0  # Today
+                                    
+                            if day_diff < days_until_next:
+                                days_until_next = day_diff
+                        
+                        if days_until_next < float('inf'):
+                            # Calculate minutes until this future event
+                            total_minutes = (days_until_next * 24 * 60) + scheduled_minutes - current_minute
+                            if total_minutes < 0:
+                                total_minutes += 7 * 24 * 60  # Add a week
+                                
+                            if total_minutes < minutes_until_next:
+                                minutes_until_next = total_minutes
+                                next_action_time = f"{scheduled_time.hour:02d}:{scheduled_time.minute:02d}"
+                                next_action_description = f"'{trigger['type']}' trigger on {days_of_week[(current_day_idx + days_until_next) % 7]}"
         
         # Date trigger
-        elif trigger["type"] == "date" and date_str == trigger.get("date"):
-            # Use same logic as day_of_week for finding next action
-            for time_schedule in trigger.get("scheduled_actions", []):
-                if "time" not in time_schedule:
-                    continue
+        elif trigger["type"] == "date" and "date" in trigger:
+            # Check if it's today first
+            if date_str == trigger.get("date"):
+                # Use same logic as day_of_week for finding next action today
+                for time_schedule in trigger.get("scheduled_actions", []):
+                    if "time" not in time_schedule:
+                        continue
+                        
+                    time_str = time_schedule.get("time")
+                    try:
+                        scheduled_time = datetime.strptime(time_str, "%H:%M").time()
+                        scheduled_minutes = scheduled_time.hour * 60 + scheduled_time.minute
+                    except ValueError:
+                        continue
                     
-                time_str = time_schedule.get("time")
+                    # Check if this time is in the future today
+                    if scheduled_minutes > current_minute:
+                        time_until_next = scheduled_minutes - current_minute
+                        if time_until_next < minutes_until_next:
+                            minutes_until_next = time_until_next
+                            next_action_time = f"{scheduled_time.hour:02d}:{scheduled_time.minute:02d}"
+                            next_action_description = f"'{trigger['type']}' trigger for today ({date_str})"
+            else:
+                # Check for future date
                 try:
-                    scheduled_time = datetime.strptime(time_str, "%H:%M").time()
-                    scheduled_minutes = scheduled_time.hour * 60 + scheduled_time.minute
+                    trigger_date = datetime.strptime(trigger["date"], "%-d-%b").replace(year=now.year)
+                    # If date is in the past, it might be for next year
+                    if trigger_date.month < now.month or (trigger_date.month == now.month and trigger_date.day < now.day):
+                        trigger_date = trigger_date.replace(year=now.year + 1)
+                    
+                    if trigger_date > now:
+                        days_until = (trigger_date - now).days
+                        
+                        # Use scheduled time if available, otherwise use midnight as default
+                        scheduled_minutes_total = 0
+                        scheduled_time_str = "00:00"  # Default to midnight
+                        
+                        # Look for the earliest scheduled time on this date
+                        for time_schedule in trigger.get("scheduled_actions", []):
+                            if "time" in time_schedule:
+                                time_str = time_schedule.get("time")
+                                try:
+                                    scheduled_time = datetime.strptime(time_str, "%H:%M").time()
+                                    curr_minutes = scheduled_time.hour * 60 + scheduled_time.minute
+                                    if scheduled_minutes_total == 0 or curr_minutes < scheduled_minutes_total:
+                                        scheduled_minutes_total = curr_minutes
+                                        scheduled_time_str = time_str
+                                except ValueError:
+                                    continue
+                        
+                        # Calculate total minutes until this event
+                        minutes_until_date = days_until * 24 * 60 + scheduled_minutes_total
+                        
+                        if minutes_until_date < minutes_until_next:
+                            minutes_until_next = minutes_until_date
+                            next_action_time = f"{trigger['date']} {scheduled_time_str}"
+                            next_action_description = f"'{trigger['type']}' trigger on {trigger['date']}"
                 except ValueError:
                     continue
-                
-                # Check if this time is in the future today
-                if scheduled_minutes > current_minute:
-                    time_until_next = scheduled_minutes - current_minute
-                    if time_until_next < minutes_until_next:
-                        minutes_until_next = time_until_next
-                        next_action_time = f"{scheduled_time.hour:02d}:{scheduled_time.minute:02d}"
-                        next_action_description = f"'{trigger['type']}' trigger for today ({date_str})"
     
     # Prepare result if next action found
-    if next_action_time and next_action_description:
+    if minutes_until_next < float('inf'):
         result["has_next_action"] = True
         result["next_time"] = next_action_time
         result["description"] = next_action_description
         result["minutes_until_next"] = minutes_until_next
-        return result
-    
-    # If no immediate action found, check for future date triggers
-    future_date_found = False
-    for trigger in schedule.get("triggers", []):
-        if trigger["type"] == "date" and "date" in trigger:
-            try:
-                trigger_date = datetime.strptime(trigger["date"], "%-d-%b").replace(year=now.year)
-                # If date is in the past, it might be for next year
-                if trigger_date.month < now.month or (trigger_date.month == now.month and trigger_date.day < now.day):
-                    trigger_date = trigger_date.replace(year=now.year + 1)
-                
-                if trigger_date > now:
-                    future_date_found = True
-                    days_until = (trigger_date - now).days
-                    result["has_next_action"] = True
-                    result["next_time"] = trigger["date"]
-                    result["description"] = f"Date trigger {days_until} days from now"
-                    result["minutes_until_next"] = days_until * 24 * 60
-                    break
-            except ValueError:
-                continue
     
     return result
 
@@ -802,6 +887,17 @@ def catch_up_on_important_actions(publish_destination: str, schedule: Dict[str, 
                 repeat_schedule = time_schedule.get("repeat_schedule")
                 if repeat_schedule:
                     repeat_interval = repeat_schedule.get("every", 0)
+                    # Convert string repeat_interval to float
+                    if isinstance(repeat_interval, str):
+                        try:
+                            repeat_interval = float(repeat_interval)
+                            # Convert to int if it's a whole number for display clarity
+                            if repeat_interval == int(repeat_interval):
+                                repeat_interval = int(repeat_interval)
+                        except (ValueError, TypeError):
+                            error(f"[catch_up] Invalid repeat interval format: {repeat_interval}")
+                            continue
+                            
                     if repeat_interval <= 0:
                         continue
                         
@@ -1218,3 +1314,140 @@ def set_context_variable(publish_destination: str, var_name: str, var_value: Any
         "vars": context["vars"],
         "deleted": var_value is None
     } 
+
+# === Jinja Template Processing ===
+def process_jinja_template(value: Any, context: Dict[str, Any], publish_destination: str = None) -> Any:
+    """
+    Process Jinja templating in various data types using context variables.
+    
+    Args:
+        value: The value to process - can be string, dict, list, or other types
+        context: The current context containing variables
+        publish_destination: Optional destination ID for accessing exported variables
+        
+    Returns:
+        The processed value with any Jinja templates substituted
+    """
+    # If value is not a string and not a container, return as is
+    if not isinstance(value, (str, dict, list)):
+        return value
+        
+    # For strings, apply Jinja templating
+    if isinstance(value, str):
+        # Skip processing if no Jinja template markers
+        if '{{' not in value and '{%' not in value:
+            return value
+            
+        try:
+            # Set up Jinja environment
+            env = jinja2.Environment(
+                autoescape=False,  # Don't need HTML escaping
+                undefined=jinja2.Undefined  # Allow undefined variables
+            )
+            template = env.from_string(value)
+            
+            # Create template variables from context
+            template_vars = {}
+            
+            # Add all variables from context
+            if "vars" in context:
+                template_vars.update(context["vars"])
+                
+            # If we have a publish destination, add exported variables that are available
+            if publish_destination:
+                # Import get_exported_variables_with_values here to avoid circular imports
+                from routes.scheduler_utils import get_exported_variables_with_values
+                exported_vars = get_exported_variables_with_values(publish_destination)
+                
+                # Add exported variables to template vars
+                for var_name, var_info in exported_vars.items():
+                    if "value" in var_info:
+                        # Use the friendly name if available
+                        friendly_name = var_info.get("friendly_name", var_name)
+                        template_vars[friendly_name] = var_info["value"]
+            
+            # Render the template with our variables
+            result = template.render(**template_vars)
+            return result
+        except Exception as e:
+            error(f"Error processing Jinja template: {str(e)}")
+            # Return original if there's an error
+            return value
+    
+    # For dictionaries, process each value
+    elif isinstance(value, dict):
+        result = {}
+        for k, v in value.items():
+            result[k] = process_jinja_template(v, context, publish_destination)
+        return result
+    
+    # For lists, process each item
+    elif isinstance(value, list):
+        return [process_jinja_template(item, context, publish_destination) for item in value]
+    
+    # Default case
+    return value
+
+def process_instruction_jinja(instruction: Dict[str, Any], context: Dict[str, Any], publish_destination: str) -> Dict[str, Any]:
+    """
+    Process an entire instruction object with Jinja templating.
+    This applies Jinja templating to ALL string fields in the instruction,
+    including parameter names, field names, etc.
+    
+    Args:
+        instruction: The instruction object to process
+        context: The current context with variables
+        publish_destination: The destination ID for accessing exported variables
+        
+    Returns:
+        A new instruction object with all Jinja templates processed
+    """
+    # Process the entire instruction using the generic processor
+    processed_instruction = process_jinja_template(instruction, context, publish_destination)
+    
+    # Special handling for certain fields where we need to convert types
+    if "action" in processed_instruction:
+        action = processed_instruction["action"]
+        
+        try:
+            # Handle duration conversion for wait instruction
+            if action == "wait" and "duration" in processed_instruction:
+                # Try to convert the duration to a floating-point number if it's a string
+                if isinstance(processed_instruction["duration"], str):
+                    try:
+                        processed_instruction["duration"] = float(processed_instruction["duration"])
+                        # Convert to int if it's a whole number for backward compatibility
+                        if processed_instruction["duration"] == int(processed_instruction["duration"]):
+                            processed_instruction["duration"] = int(processed_instruction["duration"])
+                    except (ValueError, TypeError) as e:
+                        error(f"Error converting wait duration to number: {processed_instruction['duration']} - {str(e)}")
+                        
+            # Handle boolean conversions for dontwait property
+            if "dontwait" in processed_instruction:
+                if isinstance(processed_instruction["dontwait"], str):
+                    # Convert string "true"/"false" to boolean
+                    if processed_instruction["dontwait"].lower() in ["true", "yes", "1"]:
+                        processed_instruction["dontwait"] = True
+                    elif processed_instruction["dontwait"].lower() in ["false", "no", "0"]:
+                        processed_instruction["dontwait"] = False
+                    # If it's some other string, leave as is - the handler will handle it
+            
+            # Handle repeat_schedule.every conversion to floating-point number
+            if action in ["day_of_week", "date"] and "repeat_schedule" in processed_instruction:
+                if isinstance(processed_instruction["repeat_schedule"], dict) and "every" in processed_instruction["repeat_schedule"]:
+                    if isinstance(processed_instruction["repeat_schedule"]["every"], str):
+                        try:
+                            # Convert to float first
+                            every_value = float(processed_instruction["repeat_schedule"]["every"])
+                            # Convert to int if it's a whole number
+                            if every_value == int(every_value):
+                                every_value = int(every_value)
+                            processed_instruction["repeat_schedule"]["every"] = every_value
+                        except (ValueError, TypeError) as e:
+                            error(f"Error converting repeat interval to number: {processed_instruction['repeat_schedule']['every']} - {str(e)}")
+        
+        except Exception as e:
+            # Log error but continue - we don't want to block execution due to type conversion issues
+            error(f"Error during type conversion in Jinja processing: {str(e)}")
+    
+    return processed_instruction 

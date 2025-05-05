@@ -1,0 +1,13 @@
+{
+  "temporary_schedule": {
+    "duration": "1h",
+    "interval": 10,
+    "instructions_block": [
+      {
+        "action": "display",
+        "show": "Next",
+        "silent": false
+      }
+    ]
+  }
+} 

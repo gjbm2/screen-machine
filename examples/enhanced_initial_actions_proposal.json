@@ -1,0 +1,15 @@
+{
+  "initial_actions": {
+    "instructions_block": [
+      {
+        "action": "display",
+        "show": "Next",
+        "silent": false
+      }
+    ],
+    "repeat": {
+      "every": 10,
+      "duration": "1h"
+    }
+  }
+} 

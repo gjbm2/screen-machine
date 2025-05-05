@@ -1,0 +1,36 @@
+{
+  "triggers": [
+    {
+      "type": "day_of_week",
+      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+      "scheduled_actions": [
+        {
+          "time": "09:00",
+          "repeat_schedule": {
+            "every": 10,
+            "until": "10:00"
+          },
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Next",
+                "silent": false
+              }
+            ]
+          }
+        },
+        {
+          "time": "10:01",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "unload"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+} 

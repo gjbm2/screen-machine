@@ -1,0 +1,64 @@
+{
+  "final_actions": {
+    "instructions_block": [
+      {
+        "action": "unload",
+        "message": "Schedule complete"
+      }
+    ]
+  },
+  "initial_actions": {
+    "instructions_block": [
+      {
+        "action": "set_var",
+        "var": "counter",
+        "value": 0
+      },
+      {
+        "action": "set_var",
+        "var": "end_time",
+        "value": "{{ (now + timedelta(minutes=60)).strftime('%H:%M') }}"
+      },
+      {
+        "action": "display",
+        "show": "Next"
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday"
+      ],
+      "scheduled_actions": [
+        {
+          "repeat_schedule": {
+            "every": "2",
+            "until": "{{ end_time }}"
+          },
+          "time": "{{ now.strftime('%H:%M') }}",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "set_var",
+                "var": "counter",
+                "value": "{{ counter + 1 }}"
+              },
+              {
+                "action": "display",
+                "show": "Next"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "day_of_week"
+    }
+  ]
+} 

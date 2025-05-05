@@ -637,7 +637,7 @@ def api_set_exported_var(var_name):
             if importer_id in scheduler_logs:
                 scheduler_logs[importer_id].append(f"[{now.strftime('%H:%M')}] {importer_log_msg}")
             info(f"Cascaded update to {importer_id}: {importer_log_msg}")
-        
+            
         return jsonify({
             "status": "success",
             "var_name": var_name,
@@ -713,7 +713,7 @@ def api_delete_exported_var(var_name):
             return jsonify({
                 "error": f"Failed to delete variable '{var_name}' from registry"
             }), 500
-            
+        
     except Exception as e:
         error_msg = f"Error deleting exported variable: {str(e)}"
         error(error_msg)

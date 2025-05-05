@@ -5,8 +5,9 @@ from typing import Dict, Any, List, Optional
 from utils.logger import info, error, debug
 import random
 import json
-from routes.scheduler_utils import log_schedule, scheduler_contexts_stacks
+from routes.scheduler_utils import log_schedule, scheduler_contexts_stacks, get_next_scheduled_action as get_next_action, process_jinja_template
 from routes.service_factory import get_generation_service, get_animation_service, get_display_service
+from routes.utils import dict_substitute, build_schema_subs
 
 def handle_random_choice(instruction, context, now, output, publish_destination):
     var = instruction["var"]
@@ -18,64 +19,102 @@ def handle_random_choice(instruction, context, now, output, publish_destination)
     return False
 
 def handle_devise_prompt(instruction, context, now, output, publish_destination):
-    theme = instruction.get("theme")
-    theme_var = instruction.get("theme_var")
-    var = instruction["var"]
+    """Handle the devise_prompt instruction - simplified version with one input and one output."""
+    # Get the input text - already processed with Jinja at instruction level
+    input_text = instruction.get("input", "")
     
-    if theme_var:
-        theme = context["vars"].get(theme_var)
+    # Handle backward compatibility
+    if not input_text and "prompt" in instruction:
+        input_text = instruction.get("prompt", "")
     
-    prompt = f"Generated prompt for theme: {theme}"
-    context["vars"][var] = prompt
+    # Get the output variable name
+    output_var = instruction.get("output_var")
     
-    if "history" in instruction:
-        history_var = instruction["history"]
+    # Handle backward compatibility for output_var
+    if not output_var and "prompt_output_var" in instruction:
+        output_var = instruction.get("prompt_output_var")
+    
+    if not output_var:
+        error_msg = "No output variable specified in devise_prompt instruction."
+        output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+        log_schedule(error_msg, publish_destination, now)
+        return False
+    
+    # Set the output variable to the processed input text
+    context["vars"][output_var] = input_text
+    
+    # Handle history if specified
+    history_var = instruction.get("history_var")
+    
+    # Handle backward compatibility for history
+    if not history_var and "history" in instruction:
+        history_var = instruction.get("history")
+    
+    if history_var:
         if history_var not in context["vars"]:
             context["vars"][history_var] = []
-        # Append timestamp and prompt to history
+        
+        # Add results to history with standardized fields
         context["vars"][history_var].append({
             "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
-            "prompt": prompt
+            "type": "devise_prompt",
+            "input": input_text,
+            "output": input_text,
+            "output_var": output_var
         })
     
-    msg = f"Devised prompt: {prompt}"
-    output.append(f"[{now.strftime('%H:%M')}] {msg}")
-    log_schedule(msg, publish_destination, now)
+    success_msg = f"Devised result: '{input_text}' -> stored in {output_var}"
+    output.append(f"[{now.strftime('%H:%M:%S')}] {success_msg}")
+    log_schedule(success_msg, publish_destination, now)
+    
     return False
 
 def handle_generate(instruction, context, now, output, publish_destination):
-    try:
-        # Extract the prompt from either direct input or variable
-        prompt = ""
-        if "input" in instruction:
-            if isinstance(instruction["input"], dict):
-                if "prompt" in instruction["input"]:
-                    prompt = instruction["input"]["prompt"]
-                elif "prompt_var" in instruction["input"]:
-                    prompt_var = instruction["input"]["prompt_var"]
-                    prompt = context["vars"].get(prompt_var, "")
-        else:
-            # Fallback for old format
-            prompt = instruction.get("prompt", instruction.get("value", ""))
-            prompt_var_value = context["vars"].get(instruction.get("prompt_var", ""), "")
-            prompt = " ".join(filter(None, [prompt, prompt_var_value]))
+    """Handle the generate instruction."""
+    # The instruction has already been processed with Jinja templating
+    prompt = ""
+    # Extract the prompt from instruction
+    if "input" in instruction:
+        if isinstance(instruction["input"], dict):
+            if "prompt" in instruction["input"]:
+                prompt = instruction["input"]["prompt"]
+    
+    # If no prompt found, log an error
+    if not prompt:
+        error_msg = "No prompt provided for generate instruction."
+        output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+        log_schedule(error_msg, publish_destination, now)
+        return
 
+    # Get fields - no need to process Jinja again since it was done at instruction level
+    refiner = instruction.get("refiner")
+    workflow = instruction.get("workflow")
+    
+    # Log and generate
+    log_msg = f"Generating from: '{prompt}'"
+    if refiner:
+        log_msg += f" (using refiner: {refiner})"
+    if workflow:
+        log_msg += f" (using workflow: {workflow})"
+    
+    output.append(f"[{now.strftime('%H:%M:%S')}] {log_msg}")
+    log_schedule(log_msg, publish_destination, now)
+    
+    try:
         if not prompt or prompt.strip() == "":
             error_msg = "No prompt supplied for generation."
-            output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+            output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
             log_schedule(error_msg, publish_destination, now)
             return 
         
-        refiner = instruction.get("refiner", None)  
-
         debug(f"Preparing generation with prompt: '{prompt}', refiner: {refiner}")
 
         send_obj = {
             "data": {
                 "prompt": prompt,
                 "images": [],  # Add empty images array
-                "refiner": instruction.get("refiner", None),
-                "workflow": instruction.get("workflow", None),
+                "refiner": refiner,
+                "workflow": workflow,
                 "targets": [publish_destination]
             }
         }
@@ -83,7 +122,7 @@ def handle_generate(instruction, context, now, output, publish_destination):
 
         # Now let's generate with prompt 
         start_msg = f"Starting image generation with prompt: '{prompt}', refiner: {refiner}"
-        output.append(f"[{now.strftime('%H:%M')}] {start_msg}")
+        output.append(f"[{now.strftime('%H:%M:%S')}] {start_msg}")
         log_schedule(start_msg, publish_destination, now)
             
         # Get the generation service from our factory
@@ -109,7 +148,7 @@ def handle_generate(instruction, context, now, output, publish_destination):
         
         if not response:
             error_msg = "Image generation returned no results."
-            output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+            output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
             log_schedule(error_msg, publish_destination, now)
             return    
 
@@ -133,15 +172,18 @@ def handle_generate(instruction, context, now, output, publish_destination):
             debug("Using default image path placeholder")
 
         # Handle history if specified
-        history_var = instruction.get("history_output_var")
+        history_var = instruction.get("history_var")
         if history_var:
             if history_var not in context["vars"]:
                 context["vars"][history_var] = []
-            # Append timestamp and prompt to history
+            # Append entry to history with standardized fields
             context["vars"][history_var].append({
                 "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "generation",
                 "prompt": prompt,
-                "image_url": image_url  # Add the image URL to history as well
+                "refiner": refiner,
+                "workflow": workflow,
+                "image_url": image_url
             })
         
         success_msg = f"Generated image from: '{prompt}'"
@@ -152,46 +194,44 @@ def handle_generate(instruction, context, now, output, publish_destination):
                 result_details = first_result.get("file", image_url or "unknown")
                 success_msg = f"Generated image from: '{prompt}' -> {result_details}"
                 
-        output.append(f"[{now.strftime('%H:%M')}] {success_msg}")
+        output.append(f"[{now.strftime('%H:%M:%S')}] {success_msg}")
         log_schedule(f"GENERATE SUCCESS: {success_msg}", publish_destination, now)
         
     except Exception as e:
         error_msg = f"Error in handle_generate: {str(e)}"
-        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
         log_schedule(error_msg, publish_destination, now)
         import traceback
         error(traceback.format_exc())
 
 def handle_animate(instruction, context, now, output, publish_destination):
-    # Extract the prompt from either direct input or variable (similar to handle_generate)
+    # Extract the prompt - no need to process with Jinja again
     prompt = ""
+    
     if "input" in instruction:
         if isinstance(instruction["input"], dict):
             if "prompt" in instruction["input"]:
                 prompt = instruction["input"]["prompt"]
-            elif "prompt_var" in instruction["input"]:
-                prompt_var = instruction["input"]["prompt_var"]
-                prompt = context["vars"].get(prompt_var, "")
-    else:
-        # Fallback for old format
-        prompt = instruction.get("prompt", "")
-        prompt_var_value = context["vars"].get(instruction.get("prompt_var", ""), "")
-        prompt = " ".join(filter(None, [prompt, prompt_var_value]))
     
     # Make the request to the animate endpoint
     try:
         # Get the animation service from our factory
         animation_service = get_animation_service()
         
-        success_msg = f"Started animation of {context.get('last_generated', 'unknown file')}"
+        # Get the source image path
+        image_path = context.get("last_generated", "unknown file")
+        success_msg = f"Started animation of {image_path}"
+        
+        # Get refiner - no need to process with Jinja again
+        refiner = instruction.get("refiner", "animator")
         
         # Create an obj dictionary similar to what alexa.process provides
         obj = {
             "data": {
                 "targets": [publish_destination],
-                "refiner": instruction.get("refiner", "animator"),
+                "refiner": refiner,
                 "prompt": prompt if prompt else None,
-                "image_path": context.get("last_generated")
+                "image_path": image_path
             }
         }
         
@@ -209,12 +249,29 @@ def handle_animate(instruction, context, now, output, publish_destination):
                 obj=obj
             )
         
-        output.append(f"[{now.strftime('%H:%M')}] {success_msg}")
+        # Handle history tracking if specified
+        history_var = instruction.get("history_var")
+        if history_var:
+            if history_var not in context["vars"]:
+                context["vars"][history_var] = []
+            
+            # Add animation details to history with standardized fields
+            animation_id = result.get("animation_id", "unknown") if isinstance(result, dict) else "unknown"
+            context["vars"][history_var].append({
+                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "animation",
+                "prompt": prompt,
+                "image_path": image_path,
+                "refiner": refiner,
+                "animation_id": animation_id
+            })
+        
+        output.append(f"[{now.strftime('%H:%M:%S')}] {success_msg}")
         log_schedule(f"ANIMATE SUCCESS: {success_msg}", publish_destination, now)
         return result
     except Exception as e:
         error_msg = f"Error in handle_animate: {str(e)}"
-        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
         log_schedule(error_msg, publish_destination, now)
         import traceback
         error(traceback.format_exc())
@@ -257,12 +314,51 @@ def handle_sleep(instruction, context, now, output, publish_destination):
     return False
 
 def handle_wait(instruction, context, now, output, publish_destination):
-    duration = instruction["duration"]
+    # Get duration - already processed and converted by process_instruction_jinja
+    duration = instruction.get("duration")
+    
+    # Try to convert duration to float if it's still a string
+    # (This might happen if process_instruction_jinja encountered an error)
+    if isinstance(duration, str):
+        try:
+            duration = float(duration.strip())
+            # Convert to int if it's a whole number for backward compatibility
+            if duration == int(duration):
+                duration = int(duration)
+        except (ValueError, TypeError):
+            error_msg = f"Invalid wait duration string: '{duration}' - must be convertible to a number"
+            output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+            log_schedule(error_msg, publish_destination, now)
+            # Use a default duration to allow execution to continue
+            duration = 1
+            error_msg = f"Using default duration of {duration} minute"
+            output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+            log_schedule(error_msg, publish_destination, now)
+    
+    if duration is None or not isinstance(duration, (int, float)):
+        error_msg = f"Invalid or missing wait duration: {duration} (type: {type(duration).__name__})"
+        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        log_schedule(error_msg, publish_destination, now)
+        return False
+        
     # If we're not already waiting, start the wait
     if "wait_until" not in context:
-        wait_until = now + timedelta(minutes=duration)
+        # For fractional minutes, convert to seconds first, then to timedelta
+        seconds = duration * 60
+        wait_until = now + timedelta(seconds=seconds)
         context["wait_until"] = wait_until
-        msg = f"Started waiting for {duration} minutes (until {wait_until.strftime('%H:%M')})"
+        
+        # Format duration for display
+        if duration < 1:
+            duration_str = f"{int(duration * 60)} seconds"
+        elif duration == int(duration):
+            duration_str = f"{int(duration)} minute{'s' if duration != 1 else ''}"
+        else:
+            minutes = int(duration)
+            seconds = int((duration - minutes) * 60)
+            duration_str = f"{minutes} minute{'s' if minutes != 1 else ''} and {seconds} seconds"
+            
+        msg = f"Started waiting for {duration_str} (until {wait_until.strftime('%H:%M:%S')})"
         output.append(f"[{now.strftime('%H:%M')}] {msg}")
         log_schedule(msg, publish_destination, now)
         return False  # Don't unload yet - we're just starting the wait
@@ -277,7 +373,18 @@ def handle_wait(instruction, context, now, output, publish_destination):
     
     # Still waiting
     remaining = (context["wait_until"] - now).total_seconds() / 60
-    msg = f"Still waiting, {remaining:.1f} minutes remaining"
+    
+    # Format remaining time for display
+    if remaining < 1:
+        remaining_str = f"{int(remaining * 60)} seconds"
+    elif remaining == int(remaining):
+        remaining_str = f"{int(remaining)} minute{'s' if remaining != 1 else ''}"
+    else:
+        minutes = int(remaining)
+        seconds = int((remaining - minutes) * 60)
+        remaining_str = f"{minutes} minute{'s' if minutes != 1 else ''} and {seconds} seconds"
+    
+    msg = f"Still waiting, {remaining_str} remaining"
     output.append(f"[{now.strftime('%H:%M')}] {msg}")
     log_schedule(msg, publish_destination, now)
     return False  # Don't unload while still waiting
@@ -313,7 +420,27 @@ def handle_device_sleep(instruction, context, now, output, publish_destination):
     return False
 
 def handle_set_var(instruction, context, now, output, publish_destination):
+    # Get var_name - already processed with Jinja at instruction level
     var_name = instruction["var"]
+    
+    # Special case: if var_name is null, reset all variables in the context
+    if var_name is None:
+        # If context doesn't have vars dict yet, nothing to do
+        if "vars" not in context:
+            context["vars"] = {}
+            
+        # Store the old variable count for logging
+        old_var_count = len(context["vars"])
+        
+        # Clear all variables
+        context["vars"].clear()
+        
+        msg = f"Reset context: cleared {old_var_count} variables."
+        output.append(f"[{now.strftime('%H:%M')}] {msg}")
+        log_schedule(msg, publish_destination, now)
+        return False
+    
+    # Regular set_var behavior for named variables
     # Support both direct value and nested input.value format
     value = None
     if "value" in instruction:

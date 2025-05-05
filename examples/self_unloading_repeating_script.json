@@ -1,0 +1,91 @@
+{
+  "initial_actions": {
+    "instructions_block": [
+      {
+        "action": "set_var",
+        "var": "start_time",
+        "input": {
+          "value": "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+        }
+      },
+      {
+        "action": "set_var",
+        "var": "counter",
+        "input": {
+          "value": 0
+        }
+      },
+      {
+        "action": "devise_prompt",
+        "input": "Starting self-unloading script at {{ start_time }}. Will run for 1 hour with actions every 10 minutes.",
+        "output_var": "log_message"
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "type": "day_of_week",
+      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+      "scheduled_actions": [
+        {
+          "time": "{{ now().strftime('%H:%M') }}",
+          "repeat_schedule": {
+            "every": 10,
+            "until": "{{ (now() + timedelta(hours=1)).strftime('%H:%M') }}"
+          },
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "set_var",
+                "var": "counter",
+                "input": {
+                  "value": "{{ counter + 1 }}"
+                }
+              },
+              {
+                "action": "generate",
+                "input": {
+                  "prompt": "Repeating task #{{ counter }} at {{ now().strftime('%H:%M:%S') }}"
+                },
+                "history_var": "generation_history"
+              },
+              {
+                "action": "wait",
+                "duration": 0.5
+              },
+              {
+                "action": "devise_prompt",
+                "input": "Completed repeating task #{{ counter }} at {{ now().strftime('%H:%M:%S') }}",
+                "output_var": "log_message"
+              }
+            ]
+          }
+        },
+        {
+          "time": "{{ (now() + timedelta(hours=1, minutes=1)).strftime('%H:%M') }}",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "devise_prompt",
+                "input": "Completed all scheduled repeats ({{ counter }} iterations). Unloading now.",
+                "output_var": "final_message"
+              },
+              {
+                "action": "unload"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "final_actions": {
+    "instructions_block": [
+      {
+        "action": "devise_prompt",
+        "input": "Self-unloading script completed after running {{ counter }} iterations from {{ start_time }} to {{ now().strftime('%Y-%m-%d %H:%M:%S') }}",
+        "output_var": "summary"
+      }
+    ]
+  }
+} 

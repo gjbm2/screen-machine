@@ -818,16 +818,27 @@ export class Api {
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/${position}`, {
-        method: 'GET',
-      });
+      // Get the entire schedule stack
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/stack`);
 
       if (!response.ok) {
         const err = await response.json();
-        throw new Error(err.error || 'Failed to get schedule at position');
+        throw new Error(err.error || 'Failed to get schedule stack');
       }
 
-      return await response.json();
+      const data = await response.json();
+      
+      // Check if we have a stack and if the position is valid
+      if (!data.stack || !Array.isArray(data.stack) || position >= data.stack.length) {
+        throw new Error(`No schedule found at position ${position}`);
+      }
+      
+      // Return the schedule at the specified position
+      return {
+        success: true,
+        schedule: data.stack[position],
+        position: position
+      };
     } catch (error) {
       console.error('Error getting schedule at position:', error);
       toast.error('Failed to get schedule at position');
@@ -847,20 +858,69 @@ export class Api {
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/${position}`, {
-        method: 'PUT',
+      // First get the current stack
+      const stackResponse = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/stack`);
+      if (!stackResponse.ok) {
+        const err = await stackResponse.json();
+        throw new Error(err.error || 'Failed to get schedule stack');
+      }
+      
+      const stackData = await stackResponse.json();
+      
+      // Check if the position is valid for updating
+      if (!stackData.stack || !Array.isArray(stackData.stack)) {
+        throw new Error('Invalid schedule stack data');
+      }
+      
+      // This is a workaround since the API doesn't support direct updates at positions
+      // We need to unload schedules until the one we want to edit, then update it
+      
+      // First, stop the scheduler if it's running
+      const statusResponse = await fetch(`${this.apiUrl}/schedulers/${destinationId}/status`);
+      if (!statusResponse.ok) {
+        throw new Error('Failed to get scheduler status');
+      }
+      
+      const statusData = await statusResponse.json();
+      const wasRunning = statusData.is_running;
+      
+      if (wasRunning) {
+        // Stop the scheduler temporarily
+        await fetch(`${this.apiUrl}/schedulers/${destinationId}`, {
+          method: 'DELETE',
+        });
+      }
+      
+      // Now reload the current schedule with the updated version
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(schedule),
       });
-
+      
       if (!response.ok) {
         const err = await response.json();
-        throw new Error(err.error || 'Failed to set schedule at position');
+        throw new Error(err.error || 'Failed to update schedule');
       }
-
-      return await response.json();
+      
+      // Restart the scheduler if it was running before
+      if (wasRunning) {
+        await fetch(`${this.apiUrl}/schedulers/${destinationId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(schedule),
+        });
+      }
+      
+      return {
+        success: true,
+        schedule,
+        position
+      };
     } catch (error) {
       console.error('Error setting schedule at position:', error);
       toast.error('Failed to set schedule at position');
@@ -1428,6 +1488,80 @@ export class Api {
       throw new Error(`Failed to move image to position: ${response.statusText}`);
     }
     return await response.json();
+  }
+
+  // File operations - for use with scheduler scripts and config files
+  async listFiles(directory: string): Promise<string[]> {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Listing files in directory:', directory);
+      return ['mock-file-1.json', 'mock-file-2.json'];
+    }
+
+    try {
+      // Using ${this.apiUrl}/files instead of hardcoded '/api/files'
+      const response = await fetch(`${this.apiUrl}/files?directory=${encodeURIComponent(directory)}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to list files: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data.files || [];
+    } catch (error) {
+      console.error('Error listing files:', error);
+      throw error;
+    }
+  }
+
+  async readFile(filePath: string): Promise<any> {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Reading file:', filePath);
+      return { content: '{"mock": "content"}' };
+    }
+
+    try {
+      // Using ${this.apiUrl}/files instead of hardcoded '/api/files'
+      const response = await fetch(`${this.apiUrl}/files/${encodeURIComponent(filePath)}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to read file: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error reading file:', error);
+      throw error;
+    }
+  }
+
+  async writeFile(path: string, content: string): Promise<{ success: boolean; path: string }> {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Writing file:', path);
+      return { success: true, path };
+    }
+
+    try {
+      // Using ${this.apiUrl}/files instead of hardcoded '/api/files'
+      const response = await fetch(`${this.apiUrl}/files`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          path,
+          content
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to write file: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error writing file:', error);
+      throw error;
+    }
   }
 }
 

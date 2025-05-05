@@ -1,0 +1,47 @@
+{
+  "initial_actions": {
+    "instructions_block": [
+      {
+        "action": "set_var",
+        "var": "start_time",
+        "input": {
+          "value": "{{ now().strftime('%H:%M') }}"
+        }
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "type": "day_of_week",
+      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+      "scheduled_actions": [
+        {
+          "time": "{{ now().strftime('%H:%M') }}",
+          "repeat_schedule": {
+            "every": 10,
+            "until": "{{ (now() + timedelta(hours=1)).strftime('%H:%M') }}"
+          },
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Next",
+                "silent": false
+              }
+            ]
+          }
+        },
+        {
+          "time": "{{ (now() + timedelta(hours=1, minutes=1)).strftime('%H:%M') }}",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "unload"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+} 

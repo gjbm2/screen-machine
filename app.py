@@ -85,6 +85,10 @@ with app.app_context():
     from routes.scheduler import initialize_schedulers_from_disk
     initialize_schedulers_from_disk()
 
+# Files Api
+from routes.file_api import file_bp
+app.register_blueprint(file_bp)
+
 # Load workflow data from JSON files
 def load_json_data(file_name):
     try:

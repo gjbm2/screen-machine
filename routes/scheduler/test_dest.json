@@ -5,88 +5,6 @@
         "instructions_block": [
           {
             "action": "set_var",
-            "var": "initial_executed",
-            "input": {
-              "value": true
-            }
-          }
-        ]
-      },
-      "triggers": [
-        {
-          "type": "event",
-          "value": "TestEvent",
-          "trigger_actions": {
-            "instructions_block": [
-              {
-                "action": "set_var",
-                "var": "trigger_executed",
-                "input": {
-                  "value": true
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "final_actions": {
-        "instructions_block": [
-          {
-            "action": "set_var",
-            "var": "final_executed",
-            "input": {
-              "value": true
-            }
-          }
-        ]
-      }
-    },
-    {
-      "initial_actions": {
-        "instructions_block": [
-          {
-            "action": "set_var",
-            "var": "initial_executed",
-            "input": {
-              "value": true
-            }
-          }
-        ]
-      },
-      "triggers": [
-        {
-          "type": "event",
-          "value": "TestEvent",
-          "trigger_actions": {
-            "instructions_block": [
-              {
-                "action": "set_var",
-                "var": "trigger_executed",
-                "input": {
-                  "value": true
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "final_actions": {
-        "instructions_block": [
-          {
-            "action": "set_var",
-            "var": "final_executed",
-            "input": {
-              "value": true
-            }
-          }
-        ]
-      }
-    },
-    {
-      "initial_actions": {
-        "instructions_block": [
-          {
-            "action": "set_var",
             "var": "test_var",
             "input": {
               "value": "initial_value"
@@ -106,8 +24,11 @@
         "prompt": "test prompt for generation",
         "generation_history": [
           {
-            "timestamp": "2025-05-05 01:31:48",
+            "timestamp": "2025-05-05 22:06:06",
+            "type": "generation",
             "prompt": "test prompt for generation",
+            "refiner": "test_refiner",
+            "workflow": "text-to-image",
             "image_url": "mock_image_test_promp.jpg"
           }
         ]
@@ -118,5 +39,5 @@
     }
   ],
   "state": "stopped",
-  "last_updated": "2025-05-05T01:31:49.787853"
+  "last_updated": "2025-05-05T22:06:07.460653"
 }

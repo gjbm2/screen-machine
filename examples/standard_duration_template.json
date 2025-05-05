@@ -1,0 +1,84 @@
+{
+  "/* INSTRUCTIONS": "Simply change the ACTION_INTERVAL_MINUTES and TOTAL_DURATION_MINUTES below */",
+  "initial_actions": {
+    "instructions_block": [
+      {
+        "action": "set_var",
+        "var": "ACTION_INTERVAL_MINUTES",
+        "input": {
+          "value": 10
+        }
+      },
+      {
+        "action": "set_var",
+        "var": "TOTAL_DURATION_MINUTES",
+        "input": {
+          "value": 60
+        }
+      },
+      {
+        "action": "set_var",
+        "var": "start_time",
+        "input": {
+          "value": "{{ now().strftime('%H:%M') }}"
+        }
+      },
+      {
+        "action": "set_var",
+        "var": "end_time",
+        "input": {
+          "value": "{{ (now() + timedelta(minutes=TOTAL_DURATION_MINUTES)).strftime('%H:%M') }}"
+        }
+      },
+      {
+        "action": "set_var",
+        "var": "counter",
+        "input": {
+          "value": 0
+        }
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "type": "day_of_week",
+      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+      "scheduled_actions": [
+        {
+          "time": "{{ now().strftime('%H:%M') }}",
+          "repeat_schedule": {
+            "every": "{{ ACTION_INTERVAL_MINUTES }}",
+            "until": "{{ end_time }}"
+          },
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "set_var",
+                "var": "counter",
+                "input": {
+                  "value": "{{ counter + 1 }}"
+                }
+              },
+              {
+                "/* REPLACE_THIS_WITH_YOUR_ACTION */": "Put your repeating actions here",
+                "action": "display",
+                "show": "Next",
+                "silent": false
+              }
+            ]
+          }
+        },
+        {
+          "time": "{{ (now() + timedelta(minutes=TOTAL_DURATION_MINUTES + 1)).strftime('%H:%M') }}",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "unload"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+} 
