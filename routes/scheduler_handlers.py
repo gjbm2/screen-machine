@@ -8,6 +8,7 @@ import json
 from routes.scheduler_utils import log_schedule, scheduler_contexts_stacks, get_next_scheduled_action as get_next_action, process_jinja_template
 from routes.service_factory import get_generation_service, get_animation_service, get_display_service
 from routes.utils import dict_substitute, build_schema_subs
+import routes.openai
 
 def handle_random_choice(instruction, context, now, output, publish_destination):
     var = instruction["var"]
@@ -16,57 +17,6 @@ def handle_random_choice(instruction, context, now, output, publish_destination)
     msg = f"Randomly chose '{choice}' for var '{var}'."
     output.append(f"[{now.strftime('%H:%M')}] {msg}")
     log_schedule(msg, publish_destination, now)
-    return False
-
-def handle_devise_prompt(instruction, context, now, output, publish_destination):
-    """Handle the devise_prompt instruction - simplified version with one input and one output."""
-    # Get the input text - already processed with Jinja at instruction level
-    input_text = instruction.get("input", "")
-    
-    # Handle backward compatibility
-    if not input_text and "prompt" in instruction:
-        input_text = instruction.get("prompt", "")
-    
-    # Get the output variable name
-    output_var = instruction.get("output_var")
-    
-    # Handle backward compatibility for output_var
-    if not output_var and "prompt_output_var" in instruction:
-        output_var = instruction.get("prompt_output_var")
-    
-    if not output_var:
-        error_msg = "No output variable specified in devise_prompt instruction."
-        output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
-        log_schedule(error_msg, publish_destination, now)
-        return False
-    
-    # Set the output variable to the processed input text
-    context["vars"][output_var] = input_text
-    
-    # Handle history if specified
-    history_var = instruction.get("history_var")
-    
-    # Handle backward compatibility for history
-    if not history_var and "history" in instruction:
-        history_var = instruction.get("history")
-    
-    if history_var:
-        if history_var not in context["vars"]:
-            context["vars"][history_var] = []
-        
-        # Add results to history with standardized fields
-        context["vars"][history_var].append({
-            "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
-            "type": "devise_prompt",
-            "input": input_text,
-            "output": input_text,
-            "output_var": output_var
-        })
-    
-    success_msg = f"Devised result: '{input_text}' -> stored in {output_var}"
-    output.append(f"[{now.strftime('%H:%M:%S')}] {success_msg}")
-    log_schedule(success_msg, publish_destination, now)
-    
     return False
 
 def handle_generate(instruction, context, now, output, publish_destination):
@@ -710,3 +660,157 @@ def handle_export_var(instruction, context, now, output, publish_destination):
         log_schedule(msg, publish_destination, now)
     
     return False  # Don't unload the schedule 
+
+def handle_reason(instruction, context, now, output, publish_destination):
+    """
+    Handle the 'reason' instruction which processes text and/or images using a reasoner.
+    This replaces the older 'devise_prompt' instruction with more advanced capabilities.
+    """
+    # Get inputs - already processed with Jinja at instruction level
+    text_input = instruction.get("text_input", "")
+    image_inputs = instruction.get("image_inputs", [])
+    reasoner_id = instruction.get("reasoner", "default")
+    output_vars = instruction.get("output_vars", [])
+    
+    # Validate that we have at least one output variable
+    if not output_vars:
+        error_msg = "No output variables specified in reason instruction."
+        output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+        log_schedule(error_msg, publish_destination, now)
+        return False
+    
+    # Log the reasoning request
+    log_msg = f"Reasoning with '{reasoner_id}' reasoner"
+    if text_input:
+        # If text input is too long, truncate it for the log
+        if len(text_input) > 100:
+            log_msg += f", text input: '{text_input[:100]}...'"
+        else:
+            log_msg += f", text input: '{text_input}'"
+    if image_inputs:
+        log_msg += f", with {len(image_inputs)} image inputs"
+    output.append(f"[{now.strftime('%H:%M:%S')}] {log_msg}")
+    log_schedule(log_msg, publish_destination, now)
+    
+    try:
+        # Get the system prompt from the reasoner template file
+        reasoner_template = f"data/reasoners/{reasoner_id}.txt.j2"
+        
+        # Build substitutions for templates
+        subs = build_schema_subs()
+        
+        # Process the system prompt template with substitutions
+        system_prompt = dict_substitute(reasoner_template, subs)
+        
+        # Get the schema template and process it with substitutions
+        schema_template = "data/reasoner.schema.json.j2"
+        schema_json = dict_substitute(schema_template, subs)
+        
+        try:
+            schema = json.loads(schema_json)
+        except Exception as e:
+            error(f"Failed to parse schema template: {e}")
+            schema = {
+                "type": "object",
+                "properties": {
+                    "outputs": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "explanation": {
+                        "type": "string"
+                    }
+                },
+                "required": ["outputs"]
+            }
+        
+        # Use OpenAI service to process the reasoning
+        result = routes.openai.openai_prompt(
+            user_prompt=text_input,
+            system_prompt=system_prompt,
+            schema=schema,
+            images=image_inputs if image_inputs else None
+        )
+        
+        if not result or "outputs" not in result or not isinstance(result["outputs"], list):
+            error_msg = f"Reasoning with '{reasoner_id}' failed to return valid outputs array."
+            output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+            log_schedule(error_msg, publish_destination, now)
+            return False
+        
+        # Log the explanation if present
+        if "explanation" in result and result["explanation"]:
+            explanation = result["explanation"]
+            # Truncate long explanations for the log
+            log_explanation = explanation
+            if len(explanation) > 300:
+                log_explanation = explanation[:297] + "..."
+            explanation_msg = f"Reasoner explanation: {log_explanation}"
+            output.append(f"[{now.strftime('%H:%M:%S')}] {explanation_msg}")
+            log_schedule(explanation_msg, publish_destination, now)
+            
+        # Store each output variable in the context, mapping by position
+        # Store only as many variables as we have outputs, up to the number requested
+        for i, var_name in enumerate(output_vars):
+            if i < len(result["outputs"]):
+                context["vars"][var_name] = result["outputs"][i]
+                var_log = f"Set {var_name} to result from '{reasoner_id}' reasoning (position {i+1})."
+                output.append(f"[{now.strftime('%H:%M:%S')}] {var_log}")
+                log_schedule(var_log, publish_destination, now)
+            else:
+                var_error = f"Reasoner didn't return enough values for output variable '{var_name}' (position {i+1})."
+                output.append(f"[{now.strftime('%H:%M:%S')}] {var_error}")
+                log_schedule(var_error, publish_destination, now)
+        
+        # Handle history if specified
+        history_var = instruction.get("history_var")
+        if history_var:
+            if history_var not in context["vars"]:
+                context["vars"][history_var] = []
+            
+            # Add results to history with standardized fields
+            history_entry = {
+                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "reason",
+                "reasoner": reasoner_id,
+                "outputs": {}
+            }
+            
+            # Add the text input if provided
+            if text_input:
+                history_entry["text_input"] = text_input
+                
+            # Add image inputs (references only, not the actual data)
+            if image_inputs:
+                history_entry["image_inputs"] = image_inputs
+                
+            # Add the outputs in a position-indexed format
+            history_entry["outputs"] = {}
+            for i, value in enumerate(result["outputs"]):
+                if i < len(output_vars):
+                    history_entry["outputs"][output_vars[i]] = value
+                else:
+                    history_entry["outputs"][f"output_{i+1}"] = value
+            
+            # Add explanation if provided
+            if "explanation" in result:
+                history_entry["explanation"] = result["explanation"]
+                
+            # Add the entry to history
+            context["vars"][history_var].append(history_entry)
+        
+        success_msg = f"Completed reasoning with '{reasoner_id}'"
+        output.append(f"[{now.strftime('%H:%M:%S')}] {success_msg}")
+        log_schedule(success_msg, publish_destination, now)
+        
+        return False
+        
+    except Exception as e:
+        error_msg = f"Error in handle_reason: {str(e)}"
+        output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+        log_schedule(error_msg, publish_destination, now)
+        import traceback
+        error(traceback.format_exc())
+        return False 

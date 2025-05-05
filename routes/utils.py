@@ -379,6 +379,25 @@ def build_schema_subs():
             }
             for r in visible_refiners
         ]
+        
+        # --- REASONERS ---
+        # Get a list of reasoner templates from the reasoners directory
+        reasoners_dir = os.path.join(SCRIPT_DIR, "data", "reasoners")
+        reasoners = []
+        
+        # Check if directory exists
+        if os.path.exists(reasoners_dir):
+            # Get all template files in the reasoners directory
+            for file in os.listdir(reasoners_dir):
+                if file.endswith(".txt.j2"):
+                    reasoner_id = os.path.splitext(os.path.splitext(file)[0])[0]
+                    reasoners.append(reasoner_id)
+        
+        # Add default if no reasoners found
+        if not reasoners:
+            reasoners = ["default"]
+                
+        subs["ALL_REASONERS"] = reasoners
 
         # --- DESTINATIONS (SCREENS) ---
         visible_screens = [d for d in destinations if d.get("alexavisible")]

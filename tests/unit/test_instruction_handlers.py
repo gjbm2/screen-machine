@@ -4,10 +4,10 @@ from unittest.mock import patch, MagicMock
 import os
 from routes.scheduler_utils import process_instruction_jinja
 from routes.scheduler_handlers import (
-    handle_random_choice, handle_devise_prompt, handle_generate, 
+    handle_random_choice, handle_generate, 
     handle_animate, handle_display, handle_wait, handle_unload,
     handle_device_media_sync, handle_device_wake, handle_device_sleep,
-    handle_set_var
+    handle_set_var, handle_reason
 )
 
 @pytest.fixture(autouse=True)
@@ -54,71 +54,6 @@ def test_handle_random_choice(base_context, mock_now, output_list):
     assert "random_result" in base_context["vars"]
     assert base_context["vars"]["random_result"] in instruction["choices"]
     assert len(output_list) == 1  # Should log something
-
-def test_handle_devise_prompt(base_context, mock_now, output_list):
-    """Test the simplified devise_prompt instruction handler."""
-    # Create a test instruction with the new simplified schema
-    instruction = {
-        "action": "devise_prompt",
-        "input": "This is a test input",
-        "output_var": "result_text"
-    }
-    
-    # Run the handler
-    should_unload = handle_devise_prompt(instruction, base_context, mock_now, output_list, "test_dest")
-    
-    # Check that the handler behaved correctly
-    assert should_unload is False
-    assert "result_text" in base_context["vars"]
-    assert base_context["vars"]["result_text"] == "This is a test input"
-    assert len(output_list) == 1
-    assert "Devised result:" in output_list[0]
-
-def test_handle_devise_prompt_with_history(base_context, mock_now, output_list):
-    """Test the simplified devise_prompt instruction with history tracking."""
-    # Create a test instruction with history
-    instruction = {
-        "action": "devise_prompt",
-        "input": "Process this text",
-        "output_var": "result_text",
-        "history_var": "process_history"
-    }
-    
-    # Run the handler
-    should_unload = handle_devise_prompt(instruction, base_context, mock_now, output_list, "test_dest")
-    
-    # Check that the handler behaved correctly and history was updated
-    assert should_unload is False
-    assert "result_text" in base_context["vars"]
-    assert base_context["vars"]["result_text"] == "Process this text"
-    assert "process_history" in base_context["vars"]
-    assert isinstance(base_context["vars"]["process_history"], list)
-    assert len(base_context["vars"]["process_history"]) == 1
-    assert "timestamp" in base_context["vars"]["process_history"][0]
-    assert "input" in base_context["vars"]["process_history"][0]
-    assert "output" in base_context["vars"]["process_history"][0]
-    assert base_context["vars"]["process_history"][0]["input"] == "Process this text"
-    assert base_context["vars"]["process_history"][0]["output"] == "Process this text"
-
-def test_handle_devise_prompt_backward_compatibility(base_context, mock_now, output_list):
-    """Test that the devise_prompt handler uses the new format (not backward compatible)."""
-    # Create a test instruction with the new format
-    instruction = {
-        "action": "devise_prompt",
-        "input": "Legacy input",
-        "output_var": "legacy_result",
-        "history_var": "legacy_history"
-    }
-    
-    # Run the handler
-    should_unload = handle_devise_prompt(instruction, base_context, mock_now, output_list, "test_dest")
-    
-    # Check that the handler correctly handled the new format
-    assert should_unload is False
-    assert "legacy_result" in base_context["vars"]
-    assert "legacy_history" in base_context["vars"]
-    assert isinstance(base_context["vars"]["legacy_history"], list)
-    assert len(base_context["vars"]["legacy_history"]) == 1
 
 def test_handle_generate(base_context, mock_now, output_list):
     """Test the generate instruction handler."""
@@ -541,74 +476,144 @@ def test_jinja_dynamic_property_names():
     assert processed_nested["as"] == "local_test_42"
 
 def test_standardized_history_vars():
-    """Test that all three instructions (devise_prompt, generate, animate) handle history_var consistently."""
-    # Set up a context with empty vars
+    """Test that all three instructions (reason, generate, animate) handle history_var consistently."""
     context = {"vars": {}}
     now = datetime.now()
     output = []
     
-    # 1. Test devise_prompt with history_var
-    devise_instruction = {
-        "action": "devise_prompt",
-        "input": "Test input for devise",
-        "output_var": "result",
-        "history_var": "operation_history"
+    # 1. Test reason with history_var
+    reason_instruction = {
+        "action": "reason",
+        "reasoner": "test_reasoner",
+        "text_input": "Test input",
+        "output_vars": ["result_var"],
+        "history_var": "test_history"
     }
     
-    handle_devise_prompt(devise_instruction, context, now, output, "test_dest")
-    
-    # Check history was recorded correctly
-    assert "operation_history" in context["vars"]
-    assert len(context["vars"]["operation_history"]) == 1
-    history_entry = context["vars"]["operation_history"][0]
-    assert history_entry["type"] == "devise_prompt"
-    assert history_entry["input"] == "Test input for devise"
-    assert "timestamp" in history_entry
-    
-    # 2. Test generate with history_var using our mock
-    with patch('routes.scheduler_handlers.get_generation_service') as mock_service:
-        mock_generator = MagicMock()
-        mock_generator.return_value = [{"message": "test.jpg"}]
-        mock_service.return_value = mock_generator
-        
-        generate_instruction = {
-            "action": "generate",
-            "input": {"prompt": "Test prompt for generate"},
-            "history_var": "operation_history"
+    with patch('routes.openai.openai_prompt') as mock_openai:
+        # Updated to use array format for outputs
+        mock_openai.return_value = {
+            "outputs": [
+                "Test result"
+            ]
         }
+        
+        handle_reason(reason_instruction, context, now, output, "test_dest")
+    
+    # Check history structure
+    assert "test_history" in context["vars"]
+    assert len(context["vars"]["test_history"]) == 1
+    history_entry = context["vars"]["test_history"][0]
+    assert "timestamp" in history_entry
+    assert history_entry["type"] == "reason"
+    assert "text_input" in history_entry
+    assert "outputs" in history_entry
+    assert "result_var" in history_entry["outputs"]
+    assert history_entry["outputs"]["result_var"] == "Test result"
+    
+    # 2. Test generate with history_var 
+    generate_instruction = {
+        "action": "generate",
+        "input": {"prompt": "Test prompt"},
+        "history_var": "test_history"
+    }
+    
+    with patch('routes.scheduler_handlers.get_generation_service') as mock_get_gen:
+        mock_service = MagicMock()
+        mock_service.handle_image_generation.return_value = [{"message": "source_image.jpg"}]
+        mock_get_gen.return_value = mock_service
         
         handle_generate(generate_instruction, context, now, output, "test_dest")
-        
-        # Check history was appended correctly
-        assert len(context["vars"]["operation_history"]) == 2
-        history_entry = context["vars"]["operation_history"][1]
-        assert history_entry["type"] == "generation"
-        assert history_entry["prompt"] == "Test prompt for generate"
-        assert "timestamp" in history_entry
     
-    # 3. Test animate with history_var using our mock
-    with patch('routes.scheduler_handlers.get_animation_service') as mock_service:
-        mock_animator = MagicMock()
-        mock_animator.animate.return_value = {"animation_id": "anim_123"}
-        mock_service.return_value = mock_animator
-        
-        # Set last_generated for the animate function to use
-        context["last_generated"] = "source_image.jpg"
-        
-        animate_instruction = {
-            "action": "animate",
-            "input": {
-                "prompt": "Test prompt for animate"
-            },
-            "history_var": "operation_history"
-        }
+    # Check history structure - should have 2 entries now
+    assert len(context["vars"]["test_history"]) == 2
+    history_entry = context["vars"]["test_history"][1]  # Second entry
+    assert "timestamp" in history_entry
+    assert history_entry["type"] == "generation"
+    assert "prompt" in history_entry
+    assert "image_url" in history_entry
+    assert history_entry["prompt"] == "Test prompt"
+    
+    # 3. Test animate with history_var
+    animate_instruction = {
+        "action": "animate",
+        "input": {"prompt": "Test animation prompt"},
+        "history_var": "test_history"
+    }
+    
+    with patch('routes.scheduler_handlers.get_animation_service') as mock_get_anim:
+        mock_service = MagicMock()
+        mock_service.animate.return_value = {"animation_id": "anim123"}
+        mock_get_anim.return_value = mock_service
         
         handle_animate(animate_instruction, context, now, output, "test_dest")
-        
-        # Check history was appended correctly
-        assert len(context["vars"]["operation_history"]) == 3
-        history_entry = context["vars"]["operation_history"][2]
-        assert history_entry["type"] == "animation"
-        assert history_entry["prompt"] == "Test prompt for animate"
-        assert history_entry["image_path"] == "source_image.jpg"
-        assert "timestamp" in history_entry 
+    
+    # Check history structure - should have 3 entries now
+    assert len(context["vars"]["test_history"]) == 3
+    history_entry = context["vars"]["test_history"][2]  # Third entry
+    assert "timestamp" in history_entry
+    assert history_entry["type"] == "animation"
+    assert "prompt" in history_entry
+    assert "image_path" in history_entry
+    assert "animation_id" in history_entry
+    assert history_entry["animation_id"] == "anim123"
+
+@patch('routes.openai.openai_prompt')
+def test_handle_reason(mock_openai_prompt, base_context, mock_now, output_list):
+    """Test the reason instruction handler."""
+    # Set up mock
+    mock_openai_prompt.return_value = {
+        "outputs": [
+            "Generated content"
+        ],
+        "explanation": "This is an explanation of the reasoning process."
+    }
+    
+    # Create a test instruction
+    instruction = {
+        "action": "reason",
+        "reasoner": "test_reasoner",
+        "text_input": "Test input text",
+        "image_inputs": [],
+        "output_vars": ["test_var"],
+        "history_var": "reason_history"
+    }
+    
+    # Run the handler
+    should_unload = handle_reason(instruction, base_context, mock_now, output_list, "test_dest")
+    
+    # Check that the handler behaved correctly
+    assert should_unload is False
+    
+    # Verify OpenAI call
+    mock_openai_prompt.assert_called_once()
+    openai_args = mock_openai_prompt.call_args[1]
+    assert openai_args["user_prompt"] == "Test input text"
+    assert "schema" in openai_args
+    assert "images" in openai_args
+    assert openai_args["images"] is None  # Empty image list gets converted to None
+    
+    # Verify context variables
+    assert "test_var" in base_context["vars"]
+    assert base_context["vars"]["test_var"] == "Generated content"
+    
+    # Verify history
+    assert "reason_history" in base_context["vars"]
+    assert isinstance(base_context["vars"]["reason_history"], list)
+    assert len(base_context["vars"]["reason_history"]) == 1
+    
+    history_entry = base_context["vars"]["reason_history"][0]
+    assert history_entry["type"] == "reason"
+    assert history_entry["reasoner"] == "test_reasoner"
+    assert history_entry["text_input"] == "Test input text"
+    assert "outputs" in history_entry
+    assert "test_var" in history_entry["outputs"]
+    assert history_entry["outputs"]["test_var"] == "Generated content"
+    assert "explanation" in history_entry
+    assert history_entry["explanation"] == "This is an explanation of the reasoning process."
+    
+    # Verify log output
+    assert len(output_list) >= 3  # Should have at least start, variable set, and completion logs
+    assert any("Reasoning with 'test_reasoner'" in msg for msg in output_list)
+    assert any("Set test_var to result" in msg for msg in output_list)
+    assert any("Completed reasoning" in msg for msg in output_list) 

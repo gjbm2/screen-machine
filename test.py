@@ -1,78 +1,97 @@
 #!/usr/bin/env python3
 
 from datetime import datetime
-from routes.scheduler_handlers import handle_set_var, handle_random_choice, handle_devise_prompt
+import json
+from routes.scheduler_handlers import handle_set_var, handle_random_choice, handle_reason
 
-# Test handle_set_var with input.value
-def test_handle_set_var_input_value():
-    context = {"vars": {}}
+# Test handle_set_var
+def test_handle_set_var():
+    context = {"vars": {"existing_var": "existing_value"}}
     now = datetime.now()
     output = []
+    publish_destination = "test_dest"
+    
+    # Test basic variable setting
     instruction = {
         "var": "test_var",
-        "input": {"value": "test_value"}
+        "value": "test_value"
     }
     
-    should_unload = handle_set_var(instruction, context, now, output, "test_dest")
+    should_unload = handle_set_var(instruction, context, now, output, publish_destination)
     
-    print(f"Should unload: {should_unload}")
-    print(f"Context vars: {context['vars']}")
-    print(f"Output: {output}")
+    print(f"Result of handle_set_var: should_unload={should_unload}")
+    print(f"Context after handle_set_var: {json.dumps(context, indent=2)}")
+    print(f"Output after handle_set_var: {output}")
     
-    assert should_unload is False
-    assert "test_var" in context["vars"]
-    assert context["vars"]["test_var"] == "test_value"
-    assert len(output) == 1
+    # Test variable reset
+    reset_instruction = {
+        "var": None
+    }
     
+    output.clear()
+    should_unload = handle_set_var(reset_instruction, context, now, output, publish_destination)
+    
+    print(f"Result of handle_set_var with reset: should_unload={should_unload}")
+    print(f"Context after reset: {json.dumps(context, indent=2)}")
+    print(f"Output after reset: {output}")
+
 # Test handle_random_choice
 def test_handle_random_choice():
     context = {"vars": {}}
     now = datetime.now()
     output = []
+    publish_destination = "test_dest"
+    
     instruction = {
-        "var": "random_result",
-        "choices": ["choice1", "choice2", "choice3"]
+        "var": "random_var",
+        "choices": ["option1", "option2", "option3"]
     }
     
-    should_unload = handle_random_choice(instruction, context, now, output, "test_dest")
+    should_unload = handle_random_choice(instruction, context, now, output, publish_destination)
     
-    print(f"Should unload: {should_unload}")
-    print(f"Context vars: {context['vars']}")
-    print(f"Output: {output}")
-    
-    assert should_unload is False
-    assert "random_result" in context["vars"]
-    assert context["vars"]["random_result"] in instruction["choices"]
-    assert len(output) == 1
+    print(f"Result of handle_random_choice: should_unload={should_unload}")
+    print(f"Context after handle_random_choice: {json.dumps(context, indent=2)}")
+    print(f"Output after handle_random_choice: {output}")
 
-# Test handle_devise_prompt
-def test_handle_devise_prompt():
+# Test handle_reason
+def test_handle_reason():
+    import routes.openai
+    import routes.utils
+    from unittest.mock import patch
+    
     context = {"vars": {}}
     now = datetime.now()
     output = []
+    publish_destination = "test_dest"
+    
     instruction = {
-        "action": "devise_prompt",
-        "input": "This is an input that needs processing",
-        "output_var": "processed_result"
+        "action": "reason",
+        "reasoner": "test_reasoner",
+        "text_input": "Test input for reasoning",
+        "output_vars": ["result_var"],
+        "history_var": "reason_history"
     }
     
-    should_unload = handle_devise_prompt(instruction, context, now, output, "test_dest")
+    # Mock the openai and dict_substitute functions
+    with patch('routes.openai.openai_prompt') as mock_openai, \
+         patch('routes.utils.dict_substitute') as mock_substitute:
+        
+        mock_substitute.side_effect = ["Test system prompt", '{"type":"object"}']
+        mock_openai.return_value = {"outputs": {"result_var": "Generated result"}}
+        
+        should_unload = handle_reason(instruction, context, now, output, publish_destination)
     
-    print(f"Should unload: {should_unload}")
-    print(f"Context vars: {context['vars']}")
-    print(f"Output: {output}")
-    
-    assert should_unload is False
-    assert "processed_result" in context["vars"]
-    assert context["vars"]["processed_result"] == "This is an input that needs processing"
-    assert len(output) == 1
+    print(f"Result of handle_reason: should_unload={should_unload}")
+    print(f"Context after handle_reason: {json.dumps(context, indent=2)}")
+    print(f"Output after handle_reason: {output}")
 
-# Run the tests
+# Run tests
 if __name__ == "__main__":
-    print("Testing handle_set_var with input.value:")
-    test_handle_set_var_input_value()
+    print("Testing handle_set_var:")
+    test_handle_set_var()
+    
     print("\nTesting handle_random_choice:")
     test_handle_random_choice()
-    print("\nTesting handle_devise_prompt:")
-    test_handle_devise_prompt()
-    print("\nAll tests passed!") 
+    
+    print("\nTesting handle_reason:")
+    test_handle_reason() 

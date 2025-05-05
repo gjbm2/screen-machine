@@ -334,40 +334,60 @@
           "additionalProperties": false
         },
         {
-          "title": "Devise Prompt",
-          "description": "Process a text input and create a formatted output text.",
+          "title": "Reason",
+          "description": "Process input text and/or images using AI reasoning capabilities.",
           "type": "object",
           "properties": {
             "action": {
               "type": "string",
-              "const": "devise_prompt",
-              "default": "devise_prompt",
-              "description": "Fixed to 'devise_prompt' to select this instruction type.",
+              "const": "reason",
+              "default": "reason",
+              "description": "Fixed to 'reason' to select this instruction type.",
               "uniforms": {
                 "hidden": true
               }
             },
-            "input": {
+            "text_input": {
               "type": "string",
-              "title": "Input Text",
-              "description": "The input text to process. Supports Jinja expressions like {{ variable_name }}."
+              "title": "Text Input",
+              "description": "Optional: The input text to process. Supports Jinja expressions like {{ variable_name }}."
             },
-            "output_var": {
+            "image_inputs": {
+              "type": "array",
+              "title": "Image Inputs",
+              "description": "Optional: Array of image paths or variables containing images to include in the reasoning.",
+              "items": {
+                "type": "string",
+                "description": "Image path or variable name. Supports Jinja expressions."
+              }
+            },
+            "reasoner": {
               "type": "string",
-              "title": "Output Variable",
-              "description": "Variable name where the processed result will be stored."
+              "title": "Reasoner",
+              "enum": {{ ALL_REASONERS | default(["default"]) | tojson }},
+              "description": "The reasoning model to use for processing the inputs."
+            },
+            "output_vars": {
+              "type": "array",
+              "title": "Output Variables",
+              "description": "Names of variables where the reasoning results will be stored.",
+              "items": {
+                "type": "string",
+                "description": "Variable name"
+              },
+              "minItems": 1
             },
             "history_var": {
               "type": "string",
               "title": "History Variable",
-              "description": "Optional: variable name where operation history will be stored. Each entry will contain timestamp, input text, and output text."
+              "description": "Optional: variable name where operation history will be stored. Each entry will contain timestamp, inputs, and outputs."
             },
             "dontwait": { "$ref": "#/definitions/dontWaitProp" }
           },
           "required": [
             "action",
-            "input",
-            "output_var"
+            "reasoner",
+            "output_vars"
           ],
           "additionalProperties": false
         },
