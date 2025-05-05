@@ -24,7 +24,7 @@
         "prompt": "test prompt for generation",
         "generation_history": [
           {
-            "timestamp": "2025-05-05 22:06:06",
+            "timestamp": "2025-05-05 23:47:03",
             "type": "generation",
             "prompt": "test prompt for generation",
             "refiner": "test_refiner",
@@ -39,5 +39,5 @@
     }
   ],
   "state": "stopped",
-  "last_updated": "2025-05-05T22:06:07.460653"
+  "last_updated": "2025-05-05T23:47:04.326193"
 }

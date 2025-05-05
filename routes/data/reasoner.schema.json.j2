@@ -1,0 +1,22 @@
+{
+  "name": "reasoner",
+  "description": "AI reasoning output based on the provided inputs",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "outputs": {
+        "type": "array",
+        "description": "The reasoning results as an ordered list of strings",
+        "items": {
+          "type": "string",
+          "description": "Output string value"
+        }
+      },
+      "explanation": {
+        "type": "string",
+        "description": "Optional explanation of the reasoning process"
+      }
+    },
+    "required": ["outputs"]
+  }
+}
