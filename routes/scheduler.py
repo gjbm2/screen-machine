@@ -383,7 +383,7 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
             current_context = get_current_context(publish_destination)
             
             # Check if stopping flag is set (for normal mode stopping)
-            if current_context.get("stopping") == True:
+            if current_context and current_context.get("stopping") == True:
                 # Clear the stopping flag to avoid recursive execution
                 current_context["stopping"] = False
                 
@@ -398,6 +398,7 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
                     
                     for instr in final_instructions:
                         try:
+                            # Make sure we're using current_context to store the results
                             should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
                             if should_unload:
                                 break  # Skip remaining instructions if one requests unload
@@ -498,6 +499,13 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
                 "publish_destination": publish_destination
             }]
         
+        # Ensure we don't lose context when restarting
+        if schedule_stack:
+            # If we had existing schedules, preserve the context
+            debug(f"Preserving existing context: {context_stack}")
+        else:
+            debug(f"No existing context to preserve, using: {context_stack}")
+            
         # Add the new schedule to the stack (or initialize it)
         if schedule_stack:
             schedule_stack.append(schedule)
@@ -505,7 +513,7 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
             schedule_stack = [schedule]
         
         # Update global stacks
-        scheduler_contexts_stacks[publish_destination] = context_stack
+        scheduler_contexts_stacks[publish_destination] = context_stack 
         scheduler_schedule_stacks[publish_destination] = schedule_stack
         scheduler_states[publish_destination] = "running"
         
@@ -601,28 +609,21 @@ def stop_scheduler(publish_destination: str):
         # Get current schedule stack
         current_schedule_stack = scheduler_schedule_stacks.get(publish_destination, [])
         
-        # Reset context stack to default values while preserving stack structure
+        # Get current context stack, preserving variables
         current_context_stack = scheduler_contexts_stacks.get(publish_destination, [])
-        new_context_stack = []
         
-        # Create new default contexts for each item in the stack
-        for _ in range(len(current_context_stack)):
-            new_context = default_context()
-            new_context["publish_destination"] = publish_destination
-            new_context_stack.append(new_context)
+        # We now preserve the context fully without resetting to default
+        debug(f"Preserving context when stopping scheduler: {current_context_stack}")
         
-        # Update context stack in memory
-        scheduler_contexts_stacks[publish_destination] = new_context_stack
-        
-        # Update persisted state to stopped and reset contexts while preserving schedule
+        # Update persisted state to stopped and preserve context and schedule
         update_scheduler_state(
             publish_destination,
             state="stopped",
             schedule_stack=current_schedule_stack,
-            context_stack=new_context_stack
+            context_stack=current_context_stack
         )
         
-        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Stopped scheduler while preserving schedule and resetting context")
+        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Stopped scheduler while preserving schedule and context")
         
         # If no schedulers are running, stop the event loop
         if not running_schedulers:

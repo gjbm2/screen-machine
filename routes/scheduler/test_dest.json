@@ -100,13 +100,23 @@
     {
       "vars": {
         "initial_executed": true,
-        "test_var": "initial_value"
+        "test_var": "initial_value",
+        "existing_var": "existing_value",
+        "final_executed": true,
+        "prompt": "test prompt for generation",
+        "generation_history": [
+          {
+            "timestamp": "2025-05-05 01:31:48",
+            "prompt": "test prompt for generation",
+            "image_url": "mock_image_test_promp.jpg"
+          }
+        ]
       },
-      "last_generated": null,
+      "last_generated": "mock_image_test_promp.jpg",
       "publish_destination": "test_dest",
       "stopping": true
     }
   ],
   "state": "stopped",
-  "last_updated": "2025-05-05T00:41:46.781593"
+  "last_updated": "2025-05-05T01:31:49.787853"
 }
