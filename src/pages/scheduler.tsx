@@ -794,6 +794,7 @@ const Scheduler = () => {
           saveEndpoint={schemaEditData.saveEndpoint}
           saveMethod={schemaEditData.saveMethod}
           onSave={handleSchemaEditSave}
+          scriptsDirectory="routes/scheduler/scripts"
         />
       )}
     </MainLayout>

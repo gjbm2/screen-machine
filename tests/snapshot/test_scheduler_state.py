@@ -2,10 +2,10 @@ import pytest
 import os
 import json
 from datetime import datetime
-from routes.scheduler import start_scheduler, stop_scheduler
+from routes.scheduler import start_scheduler, stop_scheduler, run_instruction
 from routes.scheduler_utils import (
     load_scheduler_state, save_scheduler_state, update_scheduler_state,
-    get_scheduler_storage_path, 
+    get_scheduler_storage_path, process_instruction_jinja,
     scheduler_contexts_stacks, scheduler_schedule_stacks, scheduler_states
 )
 
@@ -229,4 +229,74 @@ def test_start_scheduler_resumes_with_existing_context(mock_scheduler_storage_pa
 
     # The existing var should still be there
     assert "existing_var" in context["vars"]
-    assert context["vars"]["existing_var"] == "existing_value" 
+    assert context["vars"]["existing_var"] == "existing_value"
+
+def test_jinja_templates_preserved_in_storage(mock_scheduler_storage_path, setup_test_destination):
+    """Test that Jinja templates in instructions are preserved in storage and only processed at runtime."""
+    dest_id = setup_test_destination
+    
+    # Create a test schedule with Jinja templates
+    test_schedule = {
+        "initial_actions": {
+            "instructions_block": [
+                {
+                    "action": "set_var", 
+                    "var": "template_var", 
+                    "input": {"value": "initial_value"}
+                },
+                {
+                    "action": "set_var",
+                    "var": "{{ template_var }}_result",
+                    "input": {"value": "Value with {{ template_var }}"}
+                },
+                {
+                    "action": "wait",
+                    "duration": "{{ 5 * 2 }}"
+                }
+            ]
+        }
+    }
+    
+    # Save the schedule to state
+    state = {
+        "schedule_stack": [test_schedule],
+        "context_stack": [{"vars": {}, "publish_destination": dest_id}],
+        "state": "stopped"
+    }
+    save_scheduler_state(dest_id, state)
+    
+    # Load the state back
+    loaded_state = load_scheduler_state(dest_id)
+    
+    # Verify that the Jinja templates are preserved in the loaded state
+    loaded_schedule = loaded_state["schedule_stack"][0]
+    instructions = loaded_schedule["initial_actions"]["instructions_block"]
+    
+    # Check that the second instruction still has the Jinja template
+    assert "{{ template_var }}_result" == instructions[1]["var"]
+    assert "Value with {{ template_var }}" == instructions[1]["input"]["value"]
+    assert "{{ 5 * 2 }}" == instructions[2]["duration"]
+    
+    # Now simulate running the instructions and verify templates get processed
+    context = {"vars": {}}
+    
+    # Run the first instruction to set template_var
+    output = []
+    run_instruction(instructions[0], context, datetime.now(), output, dest_id)
+    assert context["vars"]["template_var"] == "initial_value"
+    
+    # Run the second instruction (with Jinja templates)
+    output.clear()
+    run_instruction(instructions[1], context, datetime.now(), output, dest_id)
+    
+    # Verify the variable name was processed with Jinja
+    assert "initial_value_result" in context["vars"]
+    assert context["vars"]["initial_value_result"] == "Value with initial_value"
+    
+    # Verify the duration is processed correctly in the wait instruction
+    processed_wait = process_instruction_jinja(instructions[2], context, dest_id)
+    assert processed_wait["duration"] == 10  # Should be converted to integer after processing
+    
+    # Make sure the original instruction in storage is unchanged
+    reloaded_state = load_scheduler_state(dest_id)
+    assert "{{ 5 * 2 }}" == reloaded_state["schedule_stack"][0]["initial_actions"]["instructions_block"][2]["duration"] 

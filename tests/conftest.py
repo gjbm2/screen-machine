@@ -211,11 +211,11 @@ def test_schedule_generate_animate():
                 {
                     "action": "generate",
                     "input": {
-                        "prompt_var": "prompt"
+                        "prompt": "test prompt for generation"
                     },
                     "refiner": "test_refiner",
                     "workflow": "text-to-image",
-                    "history_output_var": "generation_history"
+                    "history_var": "generation_history"
                 },
                 {
                     "action": "animate",

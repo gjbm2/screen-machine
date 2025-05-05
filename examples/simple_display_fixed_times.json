@@ -1,0 +1,97 @@
+{
+  "triggers": [
+    {
+      "type": "day_of_week",
+      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+      "scheduled_actions": [
+        {
+          "time": "09:00",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Next",
+                "silent": false
+              }
+            ]
+          }
+        },
+        {
+          "time": "09:10",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Next",
+                "silent": false
+              }
+            ]
+          }
+        },
+        {
+          "time": "09:20",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Next",
+                "silent": false
+              }
+            ]
+          }
+        },
+        {
+          "time": "09:30",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Next",
+                "silent": false
+              }
+            ]
+          }
+        },
+        {
+          "time": "09:40",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Next",
+                "silent": false
+              }
+            ]
+          }
+        },
+        {
+          "time": "09:50",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Next",
+                "silent": false
+              }
+            ]
+          }
+        },
+        {
+          "time": "10:00",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Next",
+                "silent": false
+              },
+              {
+                "action": "unload"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+} 

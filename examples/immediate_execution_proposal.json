@@ -1,0 +1,24 @@
+{
+  "triggers": [
+    {
+      "type": "immediate",
+      "duration": "1h",
+      "scheduled_actions": [
+        {
+          "repeat_schedule": {
+            "every": 10
+          },
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Next",
+                "silent": false
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+} 

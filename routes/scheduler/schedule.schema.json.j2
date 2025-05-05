@@ -69,11 +69,11 @@
     "instruction": {
       "type": "object",
       "title": "Instruction",
-      "description": "A single instruction step.",
+      "description": "A single instruction step. ALL string fields support Jinja templating with {{ variable_name }} syntax. This includes property names/values like var, duration, prompt, etc.",
       "oneOf": [
         {
           "title": "Set Variable",
-          "description": "Instructs the system to assign a value to a named variable, either directly or by referencing another variable's value.",
+          "description": "Instructs the system to assign a value to a named variable, either directly or by referencing another variable's value. The variable name can use Jinja templating. Special case: if var is null, reset all variables in the context.",
           "type": "object",
           "properties": {
             "action": {
@@ -86,9 +86,9 @@
               }
             },
             "var": {
-              "type": "string",
+              "type": ["string", "null"],
               "title": "Variable Name",
-              "description": "The name of the variable to set."
+              "description": "The name of the variable to set. Supports Jinja templating like {{ prefix }}_varname. Use null to reset all variables in the context."
             },
             "input": {
               "type": "object",
@@ -99,7 +99,8 @@
                   "oneOf": [
                     {
                       "type": "string",
-                      "title": "String"
+                      "title": "String",
+                      "description": "Supports Jinja expressions like {{ variable_name }} to reference context variables."
                     },
                     {
                       "type": "number",
@@ -113,17 +114,17 @@
                       "type": "array",
                       "title": "Array of strings",
                       "items": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Each string supports Jinja expressions like {{ variable_name }}."
                       }
+                    },
+                    {
+                      "type": "null",
+                      "title": "Null"
                     }
                   ],
-                  "title": "Literal Value",
-                  "description": "Use this literal to populate your variable."
-                },
-                "var_ref": {
-                  "type": "string",
-                  "title": "Use Value From Another Variable",
-                  "description": "Enter the name of an existing variable to copy its value."
+                  "title": "Value",
+                  "description": "The value to assign. Supports Jinja expressions like {{ variable_name }} to include context variables."
                 }
               },
               "additionalProperties": false
@@ -132,7 +133,8 @@
               "oneOf": [
                 {
                   "type": "string",
-                  "title": "String"
+                  "title": "String",
+                  "description": "Supports Jinja expressions like {{ variable_name }}."
                 },
                 {
                   "type": "number",
@@ -146,12 +148,13 @@
                   "type": "array",
                   "title": "Array of strings",
                   "items": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Each string supports Jinja expressions like {{ variable_name }}."
                   }
                 }
               ],
               "title": "Fallback Value",
-              "description": "Fallback value to use if the referenced variable doesn't exist or is undefined."
+              "description": "Fallback value to use if referenced variables don't exist. Supports Jinja expressions."
             }
           },
           "required": [
@@ -177,12 +180,12 @@
             "var_name": {
               "type": "string",
               "title": "Variable Name",
-              "description": "The name of the variable to import."
+              "description": "The name of the variable to import. Supports Jinja templating."
             },
             "as": {
               "type": "string",
               "title": "Import As",
-              "description": "Optional: Import the variable under this name. If not specified, uses the same name as the source variable."
+              "description": "Optional: Import the variable under this name. Supports Jinja templating. If not specified, uses the same name as the source variable."
             },
             "dest_id": {
               "type": "string",
@@ -243,12 +246,12 @@
             "var_name": {
               "type": "string",
               "title": "Variable Name",
-              "description": "The name of the variable to export."
+              "description": "The name of the variable to export. Supports Jinja templating."
             },
             "friendly_name": {
               "type": "string",
               "title": "Friendly Name",
-              "description": "A user-friendly name for this variable."
+              "description": "A user-friendly name for this variable. Supports Jinja templating."
             },
             "scope": {
               "type": "string",
@@ -273,7 +276,7 @@
         },
         {
           "title": "Generate",
-          "description": "Creates new content based on a prompt variable, with optional refinement and workflow settings.",
+          "description": "Creates new content based on a prompt, with optional refinement and workflow settings.",
           "type": "object",
           "properties": {
             "action": {
@@ -288,20 +291,15 @@
             "input": {
               "type": "object",
               "title": "Input",
-              "description": "Fill in either a variable name or a literal prompt.",
+              "description": "Provide the prompt to use for generation.",
               "properties": {
-                "prompt_var": {
-                  "type": "string",
-                  "title": "Prompt Variable",
-                  "description": "Name of the variable containing your input prompt."
-                },
                 "prompt": {
                   "type": "string",
-                  "title": "Literal Prompt",
-                  "description": "Directly enter the prompt text to use."
+                  "title": "Prompt",
+                  "description": "The prompt text to use. Supports Jinja expressions like {{ variable_name }} to include context variables."
                 }
               },
-              "minProperties": 1,
+              "required": ["prompt"],
               "additionalProperties": false
             },
             "refiner": {
@@ -322,10 +320,10 @@
               "enum": {{ ALL_WORKFLOWS | default([null]) | tojson }},
               "description": "Optional: select a predefined generation workflow."
             },
-            "history_output_var": {
+            "history_var": {
               "type": "string",
-              "title": "History Output",
-              "description": "Optional: variable name where past prompts/results are stored."
+              "title": "History Variable",
+              "description": "Optional: variable name where operation history will be stored. Each entry contains timestamp, prompt, and generation results."
             },
             "dontwait": { "$ref": "#/definitions/dontWaitProp" }
           },
@@ -337,7 +335,7 @@
         },
         {
           "title": "Devise Prompt",
-          "description": "Craft a new prompt using an existing prompt variable, with optional theme and style refinements.",
+          "description": "Process a text input and create a formatted output text.",
           "type": "object",
           "properties": {
             "action": {
@@ -349,100 +347,27 @@
                 "hidden": true
               }
             },
-            "deviser": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "title": "Deviser",
-              "enum": [
-                null,
-                "deviserA",
-                "deviserB",
-                "deviserC"
-              ],
-              "description": "Optional: which script to use to devise a prompt."
-            },
-            "prompt_input": {
-              "type": "object",
-              "title": "Prompt or Prompt variable",
-              "description": "Provide either a literal prompt or reference a variable for the prompt.",
-              "properties": {
-                "prompt": {
-                  "type": "string",
-                  "title": "Literal Prompt",
-                  "description": "Enter the theme text directly."
-                },
-                "prompt_var": {
-                  "type": "string",
-                  "title": "Prompt Variable",
-                  "description": "Name of a variable whose value will be used as the prompt."
-                }
-              },
-              "minProperties": 1,
-              "additionalProperties": false
-            },
-            "theme_input": {
-              "type": "object",
-              "title": "Theme or Theme Variable",
-              "description": "Provide either a literal theme or reference a variable for the theme.",
-              "properties": {
-                "theme": {
-                  "type": "string",
-                  "title": "Literal Theme",
-                  "description": "Enter the theme text directly."
-                },
-                "theme_var": {
-                  "type": "string",
-                  "title": "Theme Variable",
-                  "description": "Name of a variable whose value will be used as the theme."
-                }
-              },
-              "minProperties": 1,
-              "additionalProperties": false
-            },
-            "style_input": {
-              "type": "object",
-              "title": "Style or Style Variable",
-              "description": "Provide either a literal style or reference a variable for the style.",
-              "properties": {
-                "style": {
-                  "type": "string",
-                  "title": "Literal Style",
-                  "description": "Enter the style text directly."
-                },
-                "style_var": {
-                  "type": "string",
-                  "title": "Style Variable",
-                  "description": "Name of a variable whose value will be used as the style."
-                }
-              },
-              "minProperties": 1,
-              "additionalProperties": false
-            },
-            "history_input_vars": {
-              "type": "array",
-              "title": "History Input Variables",
-              "items": {
-                "type": "string"
-              },
-              "description": "Optional: list of variable names containing past prompts or responses."
-            },
-            "prompt_output_var": {
+            "input": {
               "type": "string",
-              "title": "Prompt Output",
-              "description": "Variable name where generated prompt is stored."
+              "title": "Input Text",
+              "description": "The input text to process. Supports Jinja expressions like {{ variable_name }}."
             },
-            "history_output_var": {
+            "output_var": {
               "type": "string",
-              "title": "History Output",
-              "description": "Optional: variable name where results are stored."
+              "title": "Output Variable",
+              "description": "Variable name where the processed result will be stored."
+            },
+            "history_var": {
+              "type": "string",
+              "title": "History Variable",
+              "description": "Optional: variable name where operation history will be stored. Each entry will contain timestamp, input text, and output text."
             },
             "dontwait": { "$ref": "#/definitions/dontWaitProp" }
           },
           "required": [
             "action",
-            "prompt_output_var"
+            "input",
+            "output_var"
           ],
           "additionalProperties": false
         },
@@ -511,7 +436,7 @@
             }
           },
           "required": [
-            "action", 
+            "action",
             "choices",
             "var"
           ],
@@ -594,15 +519,15 @@
                 "hidden": true
               }
             },
-            "value": {
-              "type": "integer",
+            "duration": {
+              "type": "string",
               "title": "Duration",
               "description": "Time to wait, in minutes."
             }
           },
           "required": [
             "action",
-            "value"
+            "duration"
           ],
           "additionalProperties": false
         },
@@ -620,6 +545,11 @@
                 "hidden": true
               }
             },
+            "prompt": {
+              "type": "string",
+              "title": "Prompt",
+              "description": "Optional: provide a prompt for animation. Supports Jinja expressions like {{ variable_name }}."
+            },
             "refiner": {
               "type": [
                 "string",
@@ -629,10 +559,10 @@
               "enum": {{ ALL_REFINERS | default([null]) | tojson }},
               "description": "Optional: choose a post-process refinement model."
             },
-            "history": {
+            "history_var": {
               "type": "string",
-              "title": "History Key",
-              "description": "Optional: variable name where past prompts/results are stored."
+              "title": "History Variable",
+              "description": "Optional: variable name where operation history will be stored. Each entry contains timestamp, prompt, and animation details."
             },
             "dontwait": { "$ref": "#/definitions/dontWaitProp" }
           },
@@ -705,8 +635,8 @@
           "description": "If included, specify both the interval in minutes and the end time.",
           "properties": {
             "every": {
-              "type": "integer",
-              "minimum": 1
+              "type": "string",
+              "description": "In minutes."
             },
             "until": {
               "type": "string",
@@ -761,6 +691,8 @@
               "Sunday"
             ]
           },
+          "default": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+          "description": "The days of the week when this trigger should fire. Defaults to all days if not specified.",
           "minItems": 1
         },
         "scheduled_actions": {

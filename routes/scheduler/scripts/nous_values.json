@@ -1,0 +1,55 @@
+{
+  "final_actions": {
+    "instructions_block": []
+  },
+  "initial_actions": {
+    "instructions_block": []
+  },
+  "triggers": [
+    {
+      "days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday"
+      ],
+      "scheduled_actions": [
+        {
+          "repeat_schedule": {
+            "every": "60",
+            "until": "19:00"
+          },
+          "time": "08:00",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "random_choice",
+                "choices": [
+                  "Change begins at home",
+                  "Tech to power",
+                  "See through",
+                  "Solve for people",
+                  "Action this day",
+                  "Be good company"
+                ],
+                "var": "value"
+              },
+              {
+                "action": "generate",
+                "history_var": "history_var",
+                "input": {
+                  "prompt": "{{ value }}"
+                },
+                "refiner": "nous_values"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "day_of_week"
+    }
+  ]
+}

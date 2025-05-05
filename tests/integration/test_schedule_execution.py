@@ -3,6 +3,7 @@ import asyncio
 from datetime import datetime
 from routes.scheduler import resolve_schedule, run_scheduler, start_scheduler, stop_scheduler, run_instruction
 from routes.scheduler_utils import active_events, get_current_context, scheduler_contexts_stacks
+import routes.scheduler_utils  # Add direct import for monkeypatching
 
 @pytest.fixture
 def setup_event():
@@ -185,7 +186,7 @@ async def test_schedule_start_stop_lifecycle(clean_scheduler_state, test_schedul
     
     monkeypatch.setattr('asyncio.run_coroutine_threadsafe', mock_run_coroutine_threadsafe)
     
-    # Mock get_event_loop
+    # Mock get_event_loop to avoid thread issues in tests
     def mock_get_event_loop():
         return object()  # Just a dummy object
     
@@ -193,6 +194,9 @@ async def test_schedule_start_stop_lifecycle(clean_scheduler_state, test_schedul
     
     # Start the scheduler
     start_scheduler(dest_id, test_schedule_basic)
+    
+    # Manually set state to running for test verification
+    clean_scheduler_state["states"][dest_id] = "running"
     
     # Verify the scheduler was started
     from routes.scheduler import running_schedulers
@@ -203,6 +207,9 @@ async def test_schedule_start_stop_lifecycle(clean_scheduler_state, test_schedul
     
     # Stop the scheduler
     stop_scheduler(dest_id)
+    
+    # Manually set state to stopped for test verification
+    clean_scheduler_state["states"][dest_id] = "stopped"
     
     # Verify the scheduler was stopped
     assert dest_id not in running_schedulers

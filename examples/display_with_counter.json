@@ -1,0 +1,61 @@
+{
+  "initial_actions": {
+    "instructions_block": [
+      {
+        "action": "set_var",
+        "var": "counter",
+        "input": {
+          "value": 0
+        }
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "type": "day_of_week",
+      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+      "scheduled_actions": [
+        {
+          "time": "09:00",
+          "repeat_schedule": {
+            "every": 10,
+            "until": "23:59"
+          },
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "set_var",
+                "var": "counter",
+                "input": {
+                  "value": "{{ counter + 1 }}"
+                }
+              },
+              {
+                "action": "display",
+                "show": "Next",
+                "silent": false
+              },
+              {
+                "action": "set_var",
+                "var": "should_unload",
+                "input": {
+                  "value": "{{ counter >= 7 }}"
+                }
+              },
+              {
+                "action": "set_var",
+                "var": "next_action",
+                "input": {
+                  "value": "{% if counter >= 7 %}unload{% else %}continue{% endif %}"
+                }
+              },
+              {
+                "action": "{% if counter >= 7 %}unload{% endif %}"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+} 

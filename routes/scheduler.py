@@ -21,7 +21,7 @@ from routes.scheduler_utils import (
     get_context_stack, push_context, pop_context, get_current_context,
     extract_instructions, process_time_schedules,
     get_next_important_trigger, add_important_trigger, get_next_scheduled_action, log_next_scheduled_action,
-    catch_up_on_important_actions,
+    catch_up_on_important_actions, process_instruction_jinja,
     # Globals from scheduler_utils
     scheduler_logs, scheduler_schedule_stacks, scheduler_contexts_stacks, scheduler_states, running_schedulers
 )
@@ -85,7 +85,9 @@ def get_current_schema() -> Dict[str, Any]:
 
 # === Schedule Resolver ===
 def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destination: str) -> List[Dict[str, Any]]:
-    debug(f"Resolving schedule at {now}")
+    # Only log this debug message every 5 minutes to reduce log spam
+    if now.second % 30 == 0:
+        debug(f"Resolving schedule at {now}")
     
     # First check for important triggers
     important_trigger = get_next_important_trigger(publish_destination)
@@ -114,7 +116,8 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
     time_str = now.strftime("%H:%M")   # e.g., 08:00
     minute_of_day = now.hour * 60 + now.minute
 
-    debug(f"Current date: {date_str}, day: {day_str}, time: {time_str}, minute of day: {minute_of_day}")
+    if now.second % 30 == 0:
+        debug(f"Current date: {date_str}, day: {day_str}, time: {time_str}, minute of day: {minute_of_day}")
 
     # Track if we've matched any trigger
     matched_any_trigger = False
@@ -205,7 +208,9 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
             all_instructions.extend(final_instructions)
     
     if not all_instructions:
-        debug("No matching triggers or final actions found")
+        # Only log this message every 30 seconds to reduce log spam
+        if now.second % 30 == 0:
+            debug("No matching triggers or final actions found")
     else:
         debug(f"Found {len(all_instructions)} instructions to execute")
         
@@ -214,41 +219,44 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
 # === Instruction Execution ===
 def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: datetime, output: List[str], publish_destination: str) -> bool:
     """Run a single instruction."""
-    action = instruction.get("action")
+    # Process the entire instruction with Jinja templating first
+    processed_instruction = process_instruction_jinja(instruction, context, publish_destination)
+    
+    action = processed_instruction.get("action")
     # Don't add running message to output - will be added by handlers with the result
     log_schedule(f"Running {action}", publish_destination, now)
     
     try:
         if action == "random_choice":
-            return handle_random_choice(instruction, context, now, output, publish_destination)
+            return handle_random_choice(processed_instruction, context, now, output, publish_destination)
         elif action == "devise_prompt":
-            return handle_devise_prompt(instruction, context, now, output, publish_destination)
+            return handle_devise_prompt(processed_instruction, context, now, output, publish_destination)
         elif action == "generate":
-            return handle_generate(instruction, context, now, output, publish_destination) or False  # Ensure boolean
+            return handle_generate(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
         elif action == "animate":
-            return handle_animate(instruction, context, now, output, publish_destination) or False  # Ensure boolean
+            return handle_animate(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
         elif action == "display":
-            return handle_display(instruction, context, now, output, publish_destination)
+            return handle_display(processed_instruction, context, now, output, publish_destination)
         elif action == "sleep":
-            return handle_sleep(instruction, context, now, output, publish_destination)
+            return handle_sleep(processed_instruction, context, now, output, publish_destination)
         elif action == "wait":
-            return handle_wait(instruction, context, now, output, publish_destination)
+            return handle_wait(processed_instruction, context, now, output, publish_destination)
         elif action == "unload":
-            return handle_unload(instruction, context, now, output, publish_destination)
+            return handle_unload(processed_instruction, context, now, output, publish_destination)
         elif action == "device-media-sync":
-            return handle_device_media_sync(instruction, context, now, output, publish_destination)
+            return handle_device_media_sync(processed_instruction, context, now, output, publish_destination)
         elif action == "device-wake":
-            return handle_device_wake(instruction, context, now, output, publish_destination)
+            return handle_device_wake(processed_instruction, context, now, output, publish_destination)
         elif action == "device-sleep":
-            return handle_device_sleep(instruction, context, now, output, publish_destination)
+            return handle_device_sleep(processed_instruction, context, now, output, publish_destination)
         elif action == "set_var":
-            return handle_set_var(instruction, context, now, output, publish_destination)
+            return handle_set_var(processed_instruction, context, now, output, publish_destination)
         elif action == "stop":
-            return handle_stop(instruction, context, now, output, publish_destination)
+            return handle_stop(processed_instruction, context, now, output, publish_destination)
         elif action == "import_var":
-            return handle_import_var(instruction, context, now, output, publish_destination) or False  # Ensure boolean
+            return handle_import_var(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
         elif action == "export_var":
-            return handle_export_var(instruction, context, now, output, publish_destination) or False  # Ensure boolean
+            return handle_export_var(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
         else:
             error_msg = f"Unknown action: {action}"
             output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
@@ -295,10 +303,6 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
                 "publish_destination": publish_destination
             }]
 
-        # Run initial check immediately
-        now = datetime.now()
-        current_minutes = now.hour * 60 + now.minute
-
         # Get current schedule and context from top of stacks
         current_schedule = scheduler_schedule_stacks[publish_destination][-1]
         current_context = scheduler_contexts_stacks[publish_destination][-1]
@@ -312,7 +316,7 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
             info("Executing initial actions")
             for instr in initial_instructions:
                 try:
-                    should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
+                    should_unload = run_instruction(instr, current_context, datetime.now(), scheduler_logs[publish_destination], publish_destination)
                     if should_unload:
                         scheduler_schedule_stacks[publish_destination].pop()
                         pop_context(publish_destination)  # Pop the context too
@@ -330,7 +334,7 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
                             return
                 except Exception as e:
                     error_msg = f"Error running instruction: {str(e)}"
-                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] {error_msg}")
+                    scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
         
         # If no triggers, run final actions and stop
         if has_no_triggers:
@@ -340,12 +344,12 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
                 info("Executing final actions (no triggers defined)")
                 for instr in final_instructions:
                     try:
-                        should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
+                        should_unload = run_instruction(instr, current_context, datetime.now(), scheduler_logs[publish_destination], publish_destination)
                         if should_unload:
                             break  # Stop running more final instructions if one requests unload
                     except Exception as e:
                         error_msg = f"Error running final instruction: {str(e)}"
-                        scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] {error_msg}")
+                        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
             
             # No triggers means we're done after running initial and final actions
             scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] No triggers defined, stopping scheduler after running all actions")
@@ -360,99 +364,8 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
                 )
             return
         
-        # Sleep until start of next minute to align all future checks
-        seconds_to_next_minute = 60 - now.second
-        await asyncio.sleep(seconds_to_next_minute)
-        
-        last_check_minute = None
-        while True:
-            # Check if scheduler is stopped
-            if publish_destination not in running_schedulers:
-                scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Scheduler stopped")
-                break
-                
-            # Check if scheduler is paused
-            if scheduler_states.get(publish_destination) == "paused":
-                await asyncio.sleep(1)  # Sleep briefly and check again
-                continue
-                
-            now = datetime.now()
-            current_minute = now.hour * 60 + now.minute
-            
-            # Get current context to check for stopping flag
-            current_context = get_current_context(publish_destination)
-            
-            # Check if stopping flag is set (for normal mode stopping)
-            if current_context and current_context.get("stopping") == True:
-                # Clear the stopping flag to avoid recursive execution
-                current_context["stopping"] = False
-                
-                # Execute final_instructions before stopping
-                current_schedule = scheduler_schedule_stacks[publish_destination][-1]
-                final_instructions = extract_instructions(current_schedule.get("final_actions", {}))
-                
-                if final_instructions:
-                    info("Executing final actions before stopping scheduler")
-                    log_msg = "Executing final instructions before stopping (normal mode)"
-                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] {log_msg}")
-                    
-                    for instr in final_instructions:
-                        try:
-                            # Make sure we're using current_context to store the results
-                            should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
-                            if should_unload:
-                                break  # Skip remaining instructions if one requests unload
-                        except Exception as e:
-                            error_msg = f"Error running final instruction: {str(e)}"
-                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] {error_msg}")
-                
-                # Now stop the scheduler
-                if publish_destination in running_schedulers:
-                    log_msg = "Stopping scheduler after executing final instructions"
-                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] {log_msg}")
-                    running_schedulers.pop(publish_destination, None)
-                    scheduler_states[publish_destination] = "stopped"
-                    update_scheduler_state(
-                        publish_destination,
-                        state="stopped"
-                    )
-                break  # Exit the scheduler loop
-            
-            # Only run if we haven't checked this minute yet
-            if current_minute != last_check_minute:
-                # Get current schedule and context from top of stacks
-                current_schedule = scheduler_schedule_stacks[publish_destination][-1]
-                current_context = get_current_context(publish_destination)
-                
-                # Execute instructions
-                instructions = resolve_schedule(current_schedule, now, publish_destination)
-                if instructions:
-                    for instr in instructions:
-                        try:
-                            should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
-                            if should_unload:
-                                scheduler_schedule_stacks[publish_destination].pop()
-                                pop_context(publish_destination)  # Pop the context too
-                                scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Unloaded schedule")
-                                
-                                # Sync state after unload
-                                update_scheduler_state(
-                                    publish_destination,
-                                    schedule_stack=scheduler_schedule_stacks[publish_destination],
-                                    context_stack=scheduler_contexts_stacks[publish_destination]
-                                )
-                                
-                                if not scheduler_schedule_stacks[publish_destination]:
-                                    scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] No schedules left in stack, stopping scheduler")
-                                    return
-                        except Exception as e:
-                            error_msg = f"Error running instruction: {str(e)}"
-                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] {error_msg}")
-                
-                last_check_minute = current_minute
-            
-            # Sleep a short time before next check
-            await asyncio.sleep(1)
+        # Continue with the main scheduler loop
+        await run_scheduler_loop(schedule, publish_destination, step_minutes)
             
     except asyncio.CancelledError:
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Scheduler cancelled")
@@ -461,20 +374,6 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
         error_msg = f"Error in scheduler loop: {str(e)}"
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
         raise
-    finally:
-        # Only update state if we're actually stopping
-        if publish_destination not in running_schedulers:
-            # Get current state before updating
-            current_state = scheduler_states.get(publish_destination)
-            # Only set to stopped if we're not paused
-            if current_state != "paused":
-                scheduler_states[publish_destination] = "stopped"
-                update_scheduler_state(
-                    publish_destination,
-                    schedule_stack=scheduler_schedule_stacks.get(publish_destination, []),
-                    context_stack=scheduler_contexts_stacks.get(publish_destination, []),
-                    state="stopped"
-                )
 
 def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, **kwargs) -> None:
     """
@@ -499,43 +398,38 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
                 "publish_destination": publish_destination
             }]
         
-        # Ensure we don't lose context when restarting
-        if schedule_stack:
-            # If we had existing schedules, preserve the context
-            debug(f"Preserving existing context: {context_stack}")
-        else:
-            debug(f"No existing context to preserve, using: {context_stack}")
-            
-        # Add the new schedule to the stack (or initialize it)
-        if schedule_stack:
-            schedule_stack.append(schedule)
-        else:
-            schedule_stack = [schedule]
+        # Important: We no longer reset the context here
+        # Push the new schedule onto the stack instead of replacing
+        schedule_stack = [schedule]
         
-        # Update global stacks
-        scheduler_contexts_stacks[publish_destination] = context_stack 
+        # Set up global state
+        scheduler_contexts_stacks[publish_destination] = context_stack
         scheduler_schedule_stacks[publish_destination] = schedule_stack
+        
+        # Update scheduler state
         scheduler_states[publish_destination] = "running"
-        
-        # Create coroutine for the scheduler
-        coro = run_scheduler(schedule, publish_destination, *args, **kwargs)
-        
-        # Add to running schedulers
-        loop = get_event_loop()
-        future = asyncio.run_coroutine_threadsafe(coro, loop)
-        running_schedulers[publish_destination] = future
-        
-        # Update state
         update_scheduler_state(
-            publish_destination,
-            context_stack=context_stack,
+            publish_destination, 
             schedule_stack=schedule_stack,
+            context_stack=context_stack,
             state="running"
         )
+        
+        # Get the event loop
+        loop = get_event_loop()
+        
+        # Schedule the coroutine to run in the background
+        future = asyncio.run_coroutine_threadsafe(
+            run_scheduler(schedule, publish_destination, *args, **kwargs),
+            loop
+        )
+        
+        # Store the future so we can cancel it later
+        running_schedulers[publish_destination] = future
     except Exception as e:
-        error_msg = f"Error starting scheduler: {str(e)}"
-        info(error_msg)
-        log_schedule(error_msg, publish_destination, datetime.now())
+        error(f"Error starting scheduler: {str(e)}")
+        import traceback
+        error(traceback.format_exc())
 
 def initialize_schedulers_from_disk():
     """Initialize scheduler states from disk on startup."""
@@ -577,8 +471,11 @@ def initialize_schedulers_from_disk():
                         
                         # Start the scheduler if it was running
                         if state["state"] == "running":
-                            info(f"Auto-starting scheduler for {publish_destination} (state is 'running')")
-                            start_scheduler(publish_destination, state["schedule_stack"][-1])
+                            info(f"Auto-resuming scheduler for {publish_destination} (state is 'running')")
+                            schedule = state["schedule_stack"][-1]
+                            
+                            # Resume without re-running initial instructions
+                            resume_scheduler(publish_destination, schedule)
                         else:
                             info(f"Not auto-starting {publish_destination} (state is '{state['state']}')")
                     else:
@@ -593,6 +490,175 @@ def initialize_schedulers_from_disk():
                 info(f"No state file found for {publish_destination}")
     except Exception as e:
         error(f"Error in initialize_schedulers_from_disk: {str(e)}")
+
+def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None:
+    """
+    Resume a scheduler without running initial instructions.
+    This is used when restoring a scheduler that was already in the running state.
+    """
+    try:
+        info(f"Resuming scheduler for {publish_destination} without running initial instructions")
+        
+        # Make sure we're not inadvertently stopping something that's already running
+        if publish_destination in running_schedulers:
+            info(f"Scheduler for {publish_destination} is already running, not resuming")
+            return
+        
+        # Ensure the in-memory state reflects what we loaded from disk
+        scheduler_states[publish_destination] = "running"
+        update_scheduler_state(
+            publish_destination, 
+            state="running"
+        )
+        
+        # Get the event loop
+        loop = get_event_loop()
+        
+        # Create a special scheduler coroutine that doesn't run initial instructions
+        async def resume_scheduler_without_initial():
+            # Skip running initial instructions - start the main scheduler loop directly
+            try:
+                await run_scheduler_loop(schedule, publish_destination)
+            except Exception as e:
+                error(f"Error in resumed scheduler: {str(e)}")
+        
+        # Schedule the coroutine to run in the background
+        future = asyncio.run_coroutine_threadsafe(
+            resume_scheduler_without_initial(),
+            loop
+        )
+        
+        # Store the future so we can cancel it later
+        running_schedulers[publish_destination] = future
+    except Exception as e:
+        error(f"Error resuming scheduler: {str(e)}")
+        import traceback
+        error(traceback.format_exc())
+
+async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str, step_minutes: int = 1):
+    """Run just the scheduler loop part without executing initial instructions."""
+    try:
+        # Initialize logs if not already initialized
+        if publish_destination not in scheduler_logs:
+            scheduler_logs[publish_destination] = []
+        
+        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M:%S')}] Resuming scheduler (skipping initial instructions)")
+        
+        # We no longer need to wait for start of next minute - this allows for sub-minute scheduling 
+        
+        last_check_time = None
+        while True:
+            # Check if scheduler is stopped
+            if publish_destination not in running_schedulers:
+                scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M:%S')}] Scheduler stopped")
+                break
+                
+            # Check if scheduler is paused
+            if scheduler_states.get(publish_destination) == "paused":
+                await asyncio.sleep(0.1)  # Sleep briefly and check again
+                continue
+                
+            now = datetime.now()
+            # Track time at second resolution for fractional minute support
+            current_second = now.hour * 3600 + now.minute * 60 + now.second
+            
+            # Get current context to check for stopping flag
+            current_context = get_current_context(publish_destination)
+            
+            # Check if stopping flag is set (for normal mode stopping)
+            if current_context and current_context.get("stopping") == True:
+                # Clear the stopping flag to avoid recursive execution
+                current_context["stopping"] = False
+                
+                # Execute final_instructions before stopping
+                current_schedule = scheduler_schedule_stacks[publish_destination][-1]
+                final_instructions = extract_instructions(current_schedule.get("final_actions", {}))
+                
+                if final_instructions:
+                    info("Executing final actions before stopping scheduler")
+                    log_msg = "Executing final instructions before stopping (normal mode)"
+                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {log_msg}")
+                    
+                    for instr in final_instructions:
+                        try:
+                            # Make sure we're using current_context to store the results
+                            should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
+                            if should_unload:
+                                break  # Skip remaining instructions if one requests unload
+                        except Exception as e:
+                            error_msg = f"Error running final instruction: {str(e)}"
+                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+                
+                # Now stop the scheduler
+                if publish_destination in running_schedulers:
+                    log_msg = "Stopping scheduler after executing final instructions"
+                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {log_msg}")
+                    running_schedulers.pop(publish_destination, None)
+                    scheduler_states[publish_destination] = "stopped"
+                    update_scheduler_state(
+                        publish_destination,
+                        state="stopped"
+                    )
+                break  # Exit the scheduler loop
+            
+            # Check if it's time to run (5 times per second is sufficient for most sub-minute timing)
+            # Seconds-level granularity with prevention of duplicated executions
+            if last_check_time is None or (current_second - last_check_time) >= 0.2:
+                # Get current schedule and context from top of stacks
+                current_schedule = scheduler_schedule_stacks[publish_destination][-1]
+                current_context = get_current_context(publish_destination)
+                
+                # Execute instructions
+                instructions = resolve_schedule(current_schedule, now, publish_destination)
+                if instructions:
+                    for instr in instructions:
+                        try:
+                            should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
+                            if should_unload:
+                                scheduler_schedule_stacks[publish_destination].pop()
+                                pop_context(publish_destination)  # Pop the context too
+                                scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] Unloaded schedule")
+                                
+                                # Sync state after unload
+                                update_scheduler_state(
+                                    publish_destination,
+                                    schedule_stack=scheduler_schedule_stacks[publish_destination],
+                                    context_stack=scheduler_contexts_stacks[publish_destination]
+                                )
+                                
+                                if not scheduler_schedule_stacks[publish_destination]:
+                                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] No schedules left in stack, stopping scheduler")
+                                    return
+                        except Exception as e:
+                            error_msg = f"Error running instruction: {str(e)}"
+                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+                
+                last_check_time = current_second
+            
+            # Check 5 times per second - sufficient for sub-second timing without excessive CPU usage
+            await asyncio.sleep(0.2)
+            
+    except asyncio.CancelledError:
+        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M:%S')}] Scheduler cancelled")
+        raise
+    except Exception as e:
+        error_msg = f"Error in scheduler loop: {str(e)}"
+        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M:%S')}] {error_msg}")
+        raise
+    finally:
+        # Only update state if we're actually stopping
+        if publish_destination not in running_schedulers:
+            # Get current state before updating
+            current_state = scheduler_states.get(publish_destination)
+            # Only set to stopped if we're not paused
+            if current_state != "paused":
+                scheduler_states[publish_destination] = "stopped"
+                update_scheduler_state(
+                    publish_destination,
+                    schedule_stack=scheduler_schedule_stacks.get(publish_destination, []),
+                    context_stack=scheduler_contexts_stacks.get(publish_destination, []),
+                    state="stopped"
+                )
 
 def stop_scheduler(publish_destination: str):
     """Stop the scheduler for a destination while preserving its state."""
