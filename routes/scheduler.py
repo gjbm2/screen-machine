@@ -381,8 +381,17 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
     """
     try:
         info(f"Starting scheduler for {publish_destination}")
-        # First stop any existing scheduler
-        stop_scheduler(publish_destination)
+        
+        # Check if a scheduler is already running for this destination
+        if publish_destination in running_schedulers:
+            future = running_schedulers[publish_destination]
+            if not future.done() and not future.cancelled():
+                info(f"Scheduler for {publish_destination} already running, not starting a new one")
+                return
+            else:
+                # Clean up the stale entry if it's done or cancelled
+                info(f"Found stale scheduler entry for {publish_destination}, cleaning up")
+                running_schedulers.pop(publish_destination, None)
         
         # Load existing context and schedule from state
         loaded_state = load_scheduler_state(publish_destination)
@@ -426,6 +435,8 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
         
         # Store the future so we can cancel it later
         running_schedulers[publish_destination] = future
+        
+        info(f"Scheduler for {publish_destination} started successfully")
     except Exception as e:
         error(f"Error starting scheduler: {str(e)}")
         import traceback
@@ -471,6 +482,16 @@ def initialize_schedulers_from_disk():
                         
                         # Start the scheduler if it was running
                         if state["state"] == "running":
+                            # Check if a scheduler is already running for this destination
+                            if publish_destination in running_schedulers:
+                                future = running_schedulers[publish_destination]
+                                if not future.done() and not future.cancelled():
+                                    info(f"Scheduler for {publish_destination} already running, not auto-resuming")
+                                    continue
+                                else:
+                                    # Clean up stale entry
+                                    running_schedulers.pop(publish_destination, None)
+                            
                             info(f"Auto-resuming scheduler for {publish_destination} (state is 'running')")
                             schedule = state["schedule_stack"][-1]
                             
@@ -499,10 +520,16 @@ def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None
     try:
         info(f"Resuming scheduler for {publish_destination} without running initial instructions")
         
-        # Make sure we're not inadvertently stopping something that's already running
+        # Check if a scheduler is already running for this destination
         if publish_destination in running_schedulers:
-            info(f"Scheduler for {publish_destination} is already running, not resuming")
-            return
+            future = running_schedulers[publish_destination]
+            if not future.done() and not future.cancelled():
+                info(f"Scheduler for {publish_destination} already running, not resuming")
+                return
+            else:
+                # Clean up stale entry
+                info(f"Found stale scheduler entry for {publish_destination}, cleaning up")
+                running_schedulers.pop(publish_destination, None)
         
         # Ensure the in-memory state reflects what we loaded from disk
         scheduler_states[publish_destination] = "running"
@@ -521,6 +548,8 @@ def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None
                 await run_scheduler_loop(schedule, publish_destination)
             except Exception as e:
                 error(f"Error in resumed scheduler: {str(e)}")
+                import traceback
+                error(traceback.format_exc())
         
         # Schedule the coroutine to run in the background
         future = asyncio.run_coroutine_threadsafe(
@@ -530,6 +559,8 @@ def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None
         
         # Store the future so we can cancel it later
         running_schedulers[publish_destination] = future
+        
+        info(f"Scheduler for {publish_destination} resumed successfully")
     except Exception as e:
         error(f"Error resuming scheduler: {str(e)}")
         import traceback

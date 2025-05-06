@@ -1,7 +1,7 @@
 # === Scheduler Utilities ===
 
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Union, Tuple
 import json
 import os
 from utils.logger import info, error, debug
@@ -17,6 +17,10 @@ scheduler_states: Dict[str, str] = {}  # Store paused state by destination
 important_triggers: Dict[str, List[Dict[str, Any]]] = {}  # Store important triggers by destination
 active_events: Dict[str, Dict[str, datetime]] = {}  # Store active events by destination
 running_schedulers = {}  # Store running scheduler tasks
+
+# Add this global variable to store the last execution time of each trigger
+# Format: {publish_destination: {trigger_id: timestamp}}
+last_trigger_executions = {}
 
 # === Additional functions for exported variable registry ===
 
@@ -324,7 +328,7 @@ def get_scheduler_storage_path(publish_destination: str) -> str:
 
 def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
     """Load scheduler state from disk."""
-    global scheduler_schedule_stacks, scheduler_contexts_stacks, scheduler_states, scheduler_logs
+    global scheduler_schedule_stacks, scheduler_contexts_stacks, scheduler_states, scheduler_logs, last_trigger_executions
     
     # Initialize global variables if they don't exist
     if publish_destination not in scheduler_schedule_stacks:
@@ -335,6 +339,8 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
         scheduler_states[publish_destination] = "stopped"
     if publish_destination not in scheduler_logs:
         scheduler_logs[publish_destination] = []
+    if publish_destination not in last_trigger_executions:
+        last_trigger_executions[publish_destination] = {}
     
     path = get_scheduler_storage_path(publish_destination)
     
@@ -342,32 +348,70 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
         try:
             with open(path, 'r') as f:
                 state = json.load(f)
-                # Ensure state key exists
-                if 'state' not in state:
-                    state['state'] = 'stopped'
-                # Ensure context_stack exists and is properly initialized
-                if 'context_stack' not in state:
-                    state['context_stack'] = []
-                return state
+                
+            # Validate state structure
+            if not isinstance(state, dict):
+                raise ValueError("Invalid state format: not a dictionary")
+                
+            # Ensure required fields exist
+            if 'state' not in state:
+                state['state'] = 'stopped'
+            if 'context_stack' not in state:
+                state['context_stack'] = []
+            if 'schedule_stack' not in state:
+                state['schedule_stack'] = []
+                    
+            # Load last trigger executions if available
+            if 'last_trigger_executions' in state:
+                # Convert string timestamps back to datetime objects
+                trigger_executions = {}
+                for trigger_id, timestamp_str in state['last_trigger_executions'].items():
+                    try:
+                        trigger_executions[trigger_id] = datetime.fromisoformat(timestamp_str)
+                    except (ValueError, TypeError) as e:
+                        error(f"Error parsing trigger execution timestamp: {str(e)}")
+                        continue
+                
+                # Store in the global variable
+                last_trigger_executions[publish_destination] = trigger_executions
+            else:
+                # No saved execution history
+                last_trigger_executions[publish_destination] = {}
+                
+            # Update in-memory state
+            scheduler_schedule_stacks[publish_destination] = state.get("schedule_stack", [])
+            scheduler_contexts_stacks[publish_destination] = state.get("context_stack", [])
+            scheduler_states[publish_destination] = state.get("state", "stopped")
+                
+            return state
+            
+        except json.JSONDecodeError as e:
+            error(f"Error decoding scheduler state JSON for {publish_destination}: {str(e)}")
         except Exception as e:
             error(f"Error loading scheduler state for {publish_destination}: {str(e)}")
+            import traceback
+            error(f"Error traceback: {traceback.format_exc()}")
     
     # Create a new state with empty stacks
     state = {
         "schedule_stack": [],
         "context_stack": [],
         "state": "stopped",
+        "last_trigger_executions": {},
         "last_updated": datetime.now().isoformat()
     }
     
     # Save the initial state to disk
-    save_scheduler_state(publish_destination, state)
+    try:
+        save_scheduler_state(publish_destination, state)
+    except Exception as e:
+        error(f"Error saving initial scheduler state for {publish_destination}: {str(e)}")
     
     return state
 
 def save_scheduler_state(publish_destination: str, state: Dict[str, Any]) -> None:
     """Save scheduler state to disk."""
-    global scheduler_contexts_stacks
+    global scheduler_contexts_stacks, last_trigger_executions
     
     path = get_scheduler_storage_path(publish_destination)
     try:
@@ -384,33 +428,67 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any]) -> Non
             "last_updated": datetime.now().isoformat()
         }
         
+        # Add the last trigger executions to the state
+        # Convert datetime objects to ISO format strings for JSON serialization
+        trigger_executions_dict = {}
+        if publish_destination in last_trigger_executions:
+            for trigger_id, execution_time in last_trigger_executions[publish_destination].items():
+                if isinstance(execution_time, datetime):
+                    trigger_executions_dict[str(trigger_id)] = execution_time.isoformat()
+                    
+        state_to_save["last_trigger_executions"] = trigger_executions_dict
+        
+        # Clean up old executions
+        # Remove any executions that are more than 24 hours old
+        current_time = datetime.now()
+        if publish_destination in last_trigger_executions:
+            for trigger_id in list(last_trigger_executions[publish_destination].keys()):
+                execution_time = last_trigger_executions[publish_destination][trigger_id]
+                if (current_time - execution_time).total_seconds() > 86400:  # 24 hours
+                    del last_trigger_executions[publish_destination][trigger_id]
+                    debug(f"Removed old trigger execution: {trigger_id}")
+        
         debug(f"*** state_to_Save: {state_to_save}")
             
         # Deep copy each context in the stack
         for context in context_stack:
-            # Start with a copy of the entire context
-            context_copy = dict(context)
-            
-            # Ensure vars is a deep copy
-            if "vars" in context_copy:
-                context_copy["vars"] = dict(context_copy["vars"])
+            try:
+                # Start with a copy of the entire context
+                context_copy = dict(context)
                 
-            # Ensure all list values (including history arrays) are deep copied
-            for key, value in context_copy.items():
-                if isinstance(value, list):
-                    context_copy[key] = list(value)
+                # Ensure vars is a deep copy
+                if "vars" in context_copy:
+                    context_copy["vars"] = dict(context_copy["vars"])
                     
-            state_to_save["context_stack"].append(context_copy)
+                # Ensure all list values (including history arrays) are deep copied
+                for key, value in context_copy.items():
+                    if isinstance(value, list):
+                        context_copy[key] = list(value)
+                        
+                state_to_save["context_stack"].append(context_copy)
+            except Exception as e:
+                error(f"Error copying context: {str(e)}")
+                continue
             
         # Log the final state_to_save for debugging
         debug(f"*** Final state_to_save: {state_to_save}")
+        
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(path), exist_ok=True)
                     
-        with open(path, 'w') as f:
+        # Write to a temporary file first
+        temp_path = path + ".tmp"
+        with open(temp_path, 'w') as f:
             # Use default=str so datetime and other non-serializable objects are converted to strings
             json.dump(state_to_save, f, indent=2, default=str)
             
+        # Rename the temporary file to the actual file (atomic operation)
+        os.replace(temp_path, path)
+            
     except Exception as e:
         error(f"Error saving scheduler state for {publish_destination}: {str(e)}")
+        import traceback
+        error(f"Error traceback: {traceback.format_exc()}")
         raise
 
 def update_scheduler_state(publish_destination: str, 
@@ -424,59 +502,65 @@ def update_scheduler_state(publish_destination: str,
     import traceback
     debug(f"*** Stack trace: {traceback.format_stack()}")
     
-    current_state = load_scheduler_state(publish_destination)
-    
-    if schedule_stack is not None:
-        current_state["schedule_stack"] = schedule_stack
-    if context_stack is not None:
-        # Create a new context stack to store the merged contexts
-        new_context_stack = []
+    try:
+        current_state = load_scheduler_state(publish_destination)
         
-        # Process each context in the new stack
-        for i, context in enumerate(context_stack):
-            # Start with a new context
-            new_context = {}
+        if schedule_stack is not None:
+            current_state["schedule_stack"] = schedule_stack
+            # Update in-memory state immediately
+            scheduler_schedule_stacks[publish_destination] = schedule_stack
             
-            # If there's an existing context at this position, use it as base
-            if i < len(current_state.get("context_stack", [])):
-                existing_context = current_state["context_stack"][i]
-                # Copy existing context as base
-                new_context = dict(existing_context)
-                # Update vars dictionary
-                new_context["vars"] = {**existing_context.get("vars", {}), **context.get("vars", {})}
-            else:
-                # For new contexts, just copy the entire context
-                new_context = dict(context)
-                new_context["vars"] = dict(context.get("vars", {}))
+        if context_stack is not None:
+            # Create a new context stack to store the merged contexts
+            new_context_stack = []
             
-            # Copy non-vars fields from the new context
-            for key, value in context.items():
-                if key != "vars":
-                    new_context[key] = value
+            # Process each context in the new stack
+            for i, context in enumerate(context_stack):
+                # Start with a new context
+                new_context = {}
+                
+                # If there's an existing context at this position, use it as base
+                if i < len(current_state.get("context_stack", [])):
+                    existing_context = current_state["context_stack"][i]
+                    # Copy existing context as base
+                    new_context = dict(existing_context)
+                    # Update vars dictionary
+                    new_context["vars"] = {**existing_context.get("vars", {}), **context.get("vars", {})}
+                else:
+                    # For new contexts, just copy the entire context
+                    new_context = dict(context)
+                    new_context["vars"] = dict(context.get("vars", {}))
+                
+                # Copy non-vars fields from the new context
+                for key, value in context.items():
+                    if key != "vars":
+                        new_context[key] = value
+                
+                # Ensure publish_destination is preserved/set
+                if "publish_destination" in context:
+                    new_context["publish_destination"] = context["publish_destination"]
+                elif i < len(current_state.get("context_stack", [])) and "publish_destination" in current_state["context_stack"][i]:
+                    new_context["publish_destination"] = current_state["context_stack"][i]["publish_destination"]
+                
+                new_context_stack.append(new_context)
             
-            # Ensure publish_destination is preserved/set
-            if "publish_destination" in context:
-                new_context["publish_destination"] = context["publish_destination"]
-            elif i < len(current_state.get("context_stack", [])) and "publish_destination" in current_state["context_stack"][i]:
-                new_context["publish_destination"] = current_state["context_stack"][i]["publish_destination"]
+            current_state["context_stack"] = new_context_stack
+            # Update in-memory state immediately
+            scheduler_contexts_stacks[publish_destination] = new_context_stack
             
-            new_context_stack.append(new_context)
+        if state is not None:
+            current_state["state"] = state
+            # Update in-memory state immediately
+            scheduler_states[publish_destination] = state
+            
+        # Save to disk
+        save_scheduler_state(publish_destination, current_state)
         
-        current_state["context_stack"] = new_context_stack
-        
-    if state is not None:
-        current_state["state"] = state
-        
-    # Save to disk immediately
-    save_scheduler_state(publish_destination, current_state)
-    
-    # Update in-memory state
-    if schedule_stack is not None:
-        scheduler_schedule_stacks[publish_destination] = schedule_stack
-    if context_stack is not None:
-        scheduler_contexts_stacks[publish_destination] = context_stack
-    if state is not None:
-        scheduler_states[publish_destination] = state
+    except Exception as e:
+        error(f"Error updating scheduler state: {str(e)}")
+        import traceback
+        error(f"Error traceback: {traceback.format_exc()}")
+        raise
 
 # === Context Stack Management ===
 def get_context_stack(publish_destination: str) -> List[Dict[str, Any]]:
@@ -534,7 +618,26 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
     current_time_str = now.strftime("%H:%M")
     matched_schedules = []
     
+    # Initialize last execution tracking for this destination if it doesn't exist
+    global last_trigger_executions
+    if publish_destination not in last_trigger_executions:
+        last_trigger_executions[publish_destination] = {}
+    
     for schedule in time_schedules:
+        # Generate a stable ID for this schedule for tracking last execution
+        # Use a hash of the schedule content to ensure a stable string ID that persists across restarts
+        try:
+            # Create a simplified representation of the schedule for hashing
+            schedule_key = {
+                "time": schedule.get("time", ""),
+                "repeat_schedule": schedule.get("repeat_schedule", None)
+            }
+            schedule_json = json.dumps(schedule_key, sort_keys=True)
+            schedule_id = str(hash(schedule_json))
+        except:
+            # Fallback to object ID if hashing fails
+            schedule_id = str(id(schedule))
+        
         # Get the scheduled time
         if "time" not in schedule:
             continue
@@ -555,24 +658,28 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
         if repeat_schedule:
             # Handle repeating time window
             try:
-                repeat_interval = repeat_schedule.get("every", 0)
-                # Convert string repeat_interval to float
-                if isinstance(repeat_interval, str):
-                    try:
-                        repeat_interval = float(repeat_interval)
-                        # Convert to int if it's a whole number for display clarity
-                        if repeat_interval == int(repeat_interval):
-                            repeat_interval = int(repeat_interval)
-                    except (ValueError, TypeError):
-                        error(f"Invalid repeat interval format: {repeat_interval}")
-                        continue
+                repeat_interval = repeat_schedule.get("every", "0")
+                try:
+                    # Always convert to float first
+                    repeat_interval = str(repeat_interval).strip()  # Ensure it's a string and remove whitespace
+                    repeat_interval = float(repeat_interval)
+                    # Convert to int if it's a whole number for display clarity
+                    if repeat_interval == int(repeat_interval):
+                        repeat_interval = int(repeat_interval)
+                except (ValueError, TypeError, AttributeError) as e:
+                    error(f"Invalid repeat interval format: {repeat_interval} - {str(e)}")
+                    continue
                 
                 if repeat_interval <= 0:
                     continue
                     
                 until_str = repeat_schedule.get("until", "23:59")
-                until_time = datetime.strptime(until_str, "%H:%M").time()
-                until_minutes = until_time.hour * 60 + until_time.minute
+                try:
+                    until_time = datetime.strptime(until_str, "%H:%M").time()
+                    until_minutes = until_time.hour * 60 + until_time.minute
+                except ValueError:
+                    error(f"Invalid until time format: {until_str}")
+                    continue
                 
                 # Handle case where end time is on the next day
                 if until_minutes < scheduled_minutes:
@@ -586,26 +693,88 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                 
                 # Check if we're in the scheduled window
                 if scheduled_minutes <= current_minutes <= until_minutes:
-                    # Check if we're at a repeat interval
-                    minutes_since_start = current_minutes - scheduled_minutes
-                    if minutes_since_start % repeat_interval == 0:
+                    # Calculate time since start of window (in minutes and seconds for more precision)
+                    # Convert everything to seconds for accurate fractional interval calculation
+                    start_time = datetime.combine(now.date(), scheduled_time)
+                    seconds_since_start = (now - start_time).total_seconds()
+                    
+                    # Convert repeat_interval to seconds
+                    interval_seconds = repeat_interval * 60
+                    
+                    # Calculate which interval we're in - rounds down to nearest interval
+                    current_interval = int(seconds_since_start / interval_seconds)
+                    
+                    # Calculate the expected execution time for this interval
+                    expected_execution_time = start_time + timedelta(seconds=current_interval * interval_seconds)
+                    
+                    # If we crossed to a previous day, adjust the date
+                    if expected_execution_time > now and (now - start_time).total_seconds() < 0:
+                        expected_execution_time = datetime.combine(now.date() - timedelta(days=1), expected_execution_time.time())
+                    
+                    # Calculate the next expected execution time too
+                    next_expected_time = start_time + timedelta(seconds=(current_interval + 1) * interval_seconds)
+                    
+                    # Create a unique identifier for this specific interval
+                    interval_id = f"{schedule_id}_{expected_execution_time.isoformat()}"
+                    
+                    # Debug logging for execution time calculations
+                    debug(f"Schedule check: ID={interval_id}, current={now}, " +
+                          f"expected_execution={expected_execution_time}, next={next_expected_time}, " +
+                          f"interval={repeat_interval}m, seconds_since_start={seconds_since_start}s, " +
+                          f"interval_seconds={interval_seconds}s, current_interval={current_interval}")
+                    
+                    # Only execute if:
+                    # 1. This specific interval hasn't been executed yet
+                    # 2. We're within 10 seconds of the expected execution time or
+                    #    this is the most recent interval and we missed it by less than one interval
+                    time_since_expected = (now - expected_execution_time).total_seconds()
+                    is_close_to_expected = abs(time_since_expected) < 10  # Within 10 seconds of expected time
+                    is_latest_missed = (0 < time_since_expected < interval_seconds)  # We missed it but it's the latest interval
+                    
+                    if (interval_id not in last_trigger_executions[publish_destination] and
+                        (is_close_to_expected or is_latest_missed)):
+                        
+                        # Record this execution
+                        last_trigger_executions[publish_destination][interval_id] = now
+                        
                         message = f"Matched repeating time schedule at {current_time_str} (every {repeat_interval} minutes until {until_str})"
                         info(message)
                         if publish_destination:
                             log_schedule(message, publish_destination, now)
+                        
+                        debug(f"Executing schedule (ID={interval_id}): current={now}, " +
+                              f"interval={repeat_interval}m, seconds_since_start={seconds_since_start}s, " +
+                              f"expected_time={expected_execution_time}, time_since_expected={time_since_expected}s")
+                        
                         matched_schedules.append(schedule)
+                    else:
+                        if interval_id in last_trigger_executions[publish_destination]:
+                            debug(f"Skipping execution (ID={interval_id}): already executed this interval")
+                        else:
+                            debug(f"Skipping execution (ID={interval_id}): outside execution window, " +
+                                  f"now={now}, expected={expected_execution_time}, time_since_expected={time_since_expected}s")
             except (ValueError, TypeError) as e:
                 error(f"Error processing repeat schedule: {e}")
                 continue
         else:
-            # Handle single time point
-            # Only execute if current time matches the scheduled time
+            # Handle single time point - only execute if current time matches the scheduled time
+            # and we haven't executed it already
             if current_time_str == time_str:
-                message = f"Matched time schedule at {time_str}"
-                info(message)
-                if publish_destination:
-                    log_schedule(message, publish_destination, now)
-                matched_schedules.append(schedule)
+                # Create a unique identifier for this one-time trigger
+                one_time_id = f"{schedule_id}_{now.date().isoformat()}"
+                
+                # Check if we've already executed this trigger today
+                if one_time_id not in last_trigger_executions[publish_destination]:
+                    # Record that we executed this trigger
+                    last_trigger_executions[publish_destination][one_time_id] = now
+                    
+                    message = f"Matched time schedule at {time_str}"
+                    info(message)
+                    if publish_destination:
+                        log_schedule(message, publish_destination, now)
+                    matched_schedules.append(schedule)
+                else:
+                    debug(f"Skipping one-time trigger (ID={one_time_id}) that already executed today: {time_str}")
     
     return matched_schedules
 
@@ -632,145 +801,33 @@ def add_important_trigger(publish_destination: str, trigger: Dict[str, Any], now
     important_triggers[publish_destination].append(trigger)
 
 def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]) -> Dict[str, Any]:
-    """Predict the next scheduled action for a destination and return the prediction data."""
-    now = datetime.now()
-    current_minute = now.hour * 60 + now.minute
-    day_str = now.strftime("%A")
-    date_str = now.strftime("%-d-%b")
-    
-    # Initialize variables to track the next action
-    next_action_time = None
-    next_action_description = None
-    minutes_until_next = float('inf')
-    result = {
-        "has_next_action": False,
-        "next_time": None,
-        "description": None,
-        "minutes_until_next": None,
-        "timestamp": now.isoformat()
-    }
-    
-    # Check all triggers
-    for trigger in schedule.get("triggers", []):
-        # Day of week trigger
-        if trigger["type"] == "day_of_week" and "days" in trigger:
-            # Check for current day first
-            current_day_match = day_str in trigger.get("days", [])
-            
-            for time_schedule in trigger.get("scheduled_actions", []):
-                if "time" not in time_schedule:
-                    continue
-                    
-                time_str = time_schedule.get("time")
-                try:
-                    scheduled_time = datetime.strptime(time_str, "%H:%M").time()
-                    scheduled_minutes = scheduled_time.hour * 60 + scheduled_time.minute
-                except ValueError:
-                    continue
-                
-                # Check for repeating schedule
-                repeat_schedule = time_schedule.get("repeat_schedule")
-                if repeat_schedule:
-                    repeat_interval = repeat_schedule.get("every", 0)
-                    # Convert string repeat_interval to float
-                    if isinstance(repeat_interval, str):
-                        try:
-                            repeat_interval = float(repeat_interval)
-                            # Convert to int if it's a whole number for display clarity
-                            if repeat_interval == int(repeat_interval):
-                                repeat_interval = int(repeat_interval)
-                        except (ValueError, TypeError):
-                            error(f"Invalid repeat interval format: {repeat_interval}")
-                            continue
-                            
-                    if repeat_interval <= 0:
-                        continue
-                        
-                    until_str = repeat_schedule.get("until", "23:59")
-                    try:
-                        until_time = datetime.strptime(until_str, "%H:%M").time()
-                        until_minutes = until_time.hour * 60 + until_time.minute
-                    except ValueError:
-                        continue
-                    
-                    # Handle case where end time is on the next day
-                    if until_minutes < scheduled_minutes:
-                        until_minutes += 24 * 60
-                    
-                    # If today is the scheduled day and current time is before start time today
-                    if current_day_match and current_minute < scheduled_minutes:
-                        time_until_next = scheduled_minutes - current_minute
-                        if time_until_next < minutes_until_next:
-                            minutes_until_next = time_until_next
-                            next_action_time = f"{scheduled_time.hour:02d}:{scheduled_time.minute:02d}"
-                            next_action_description = f"Repeating '{trigger['type']}' trigger (every {repeat_interval} min until {until_str})"
-                    # If today is the scheduled day and current time is within the repeat window
-                    elif current_day_match and scheduled_minutes <= current_minute <= until_minutes:
-                        # Find next repeat interval
-                        minutes_since_start = current_minute - scheduled_minutes
-                        next_interval = repeat_interval - (minutes_since_start % repeat_interval)
-                        if next_interval == 0:
-                            next_interval = repeat_interval
-                        
-                        if next_interval < minutes_until_next:
-                            minutes_until_next = next_interval
-                            next_time_minute = (current_minute + next_interval) % (24 * 60)
-                            next_action_time = f"{next_time_minute // 60:02d}:{next_time_minute % 60:02d}"
-                            next_action_description = f"Repeating '{trigger['type']}' trigger (every {repeat_interval} min until {until_str})"
-                else:
-                    # Single time point
-                    # Check if today is the scheduled day and this time is in the future today
-                    if current_day_match and scheduled_minutes > current_minute:
-                        time_until_next = scheduled_minutes - current_minute
-                        if time_until_next < minutes_until_next:
-                            minutes_until_next = time_until_next
-                            next_action_time = f"{scheduled_time.hour:02d}:{scheduled_time.minute:02d}"
-                            next_action_description = f"'{trigger['type']}' trigger at specific time"
-                    # If it's not today or the time has passed, check for future days
-                    elif not current_day_match or scheduled_minutes <= current_minute:
-                        # Calculate the next occurrence of this day of week
-                        days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-                        current_day_idx = days_of_week.index(day_str)
-                        
-                        # Find the next day in the schedule
-                        days_until_next = float('inf')
-                        for schedule_day in trigger.get("days", []):
-                            if schedule_day not in days_of_week:
-                                continue
-                                
-                            schedule_day_idx = days_of_week.index(schedule_day)
-                            if schedule_day_idx > current_day_idx:
-                                # Next occurrence is later this week
-                                day_diff = schedule_day_idx - current_day_idx
-                            elif schedule_day_idx < current_day_idx:
-                                # Next occurrence is next week
-                                day_diff = 7 - (current_day_idx - schedule_day_idx)
-                            else:
-                                # Same day, but time has passed
-                                if scheduled_minutes <= current_minute:
-                                    day_diff = 7  # Next week
-                                else:
-                                    day_diff = 0  # Today
-                                    
-                            if day_diff < days_until_next:
-                                days_until_next = day_diff
-                        
-                        if days_until_next < float('inf'):
-                            # Calculate minutes until this future event
-                            total_minutes = (days_until_next * 24 * 60) + scheduled_minutes - current_minute
-                            if total_minutes < 0:
-                                total_minutes += 7 * 24 * 60  # Add a week
-                                
-                            if total_minutes < minutes_until_next:
-                                minutes_until_next = total_minutes
-                                next_action_time = f"{scheduled_time.hour:02d}:{scheduled_time.minute:02d}"
-                                next_action_description = f"'{trigger['type']}' trigger on {days_of_week[(current_day_idx + days_until_next) % 7]}"
+    """Get the next scheduled action for a destination."""
+    try:
+        now = datetime.now()
+        current_minute = now.hour * 60 + now.minute
+        day_str = now.strftime("%A")
+        date_str = now.strftime("%-d-%b")
         
-        # Date trigger
-        elif trigger["type"] == "date" and "date" in trigger:
-            # Check if it's today first
-            if date_str == trigger.get("date"):
-                # Use same logic as day_of_week for finding next action today
+        result = {
+            "has_next_action": False,
+            "next_time": None,
+            "description": None,
+            "minutes_until_next": None,
+            "timestamp": now.isoformat()
+        }
+        
+        minutes_until_next = float('inf')
+        next_action_time = None
+        next_action_description = None
+        
+        # Process each trigger in the schedule
+        for trigger in schedule.get("triggers", []):
+            # Check trigger type
+            if trigger["type"] == "day_of_week" and "days" in trigger:
+                # Day of week trigger logic
+                current_day_match = day_str in trigger.get("days", [])
+                
+                # Process each time schedule
                 for time_schedule in trigger.get("scheduled_actions", []):
                     if "time" not in time_schedule:
                         continue
@@ -782,59 +839,261 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                     except ValueError:
                         continue
                     
-                    # Check if this time is in the future today
-                    if scheduled_minutes > current_minute:
-                        time_until_next = scheduled_minutes - current_minute
-                        if time_until_next < minutes_until_next:
-                            minutes_until_next = time_until_next
-                            next_action_time = f"{scheduled_time.hour:02d}:{scheduled_time.minute:02d}"
-                            next_action_description = f"'{trigger['type']}' trigger for today ({date_str})"
-            else:
-                # Check for future date
-                try:
-                    trigger_date = datetime.strptime(trigger["date"], "%-d-%b").replace(year=now.year)
-                    # If date is in the past, it might be for next year
-                    if trigger_date.month < now.month or (trigger_date.month == now.month and trigger_date.day < now.day):
-                        trigger_date = trigger_date.replace(year=now.year + 1)
-                    
-                    if trigger_date > now:
-                        days_until = (trigger_date - now).days
+                    # Check for repeat schedule
+                    repeat_schedule = time_schedule.get("repeat_schedule")
+                    if repeat_schedule and "every" in repeat_schedule:
+                        # Get the interval as a string and convert to float
+                        repeat_interval = repeat_schedule.get("every", "0")
+                        try:
+                            # Always convert to float first
+                            repeat_interval = str(repeat_interval).strip()  # Ensure it's a string and remove whitespace
+                            repeat_interval = float(repeat_interval)
+                            # Convert to int if it's a whole number for display clarity
+                            if repeat_interval == int(repeat_interval):
+                                repeat_interval = int(repeat_interval)
+                        except (ValueError, TypeError, AttributeError) as e:
+                            error(f"Invalid repeat interval format: {repeat_interval} - {str(e)}")
+                            continue
+                            
+                        if repeat_interval <= 0:
+                            continue
+                            
+                        # Get the end time
+                        until_str = repeat_schedule.get("until", "23:59")
+                        try:
+                            until_time = datetime.strptime(until_str, "%H:%M").time()
+                            until_minutes = until_time.hour * 60 + until_time.minute
+                        except ValueError:
+                            error(f"Invalid until time format: {until_str}")
+                            continue
                         
-                        # Use scheduled time if available, otherwise use midnight as default
-                        scheduled_minutes_total = 0
-                        scheduled_time_str = "00:00"  # Default to midnight
+                        # Handle case where end time is on the next day
+                        if until_minutes < scheduled_minutes:
+                            until_minutes += 24 * 60
+                            if current_minute < scheduled_minutes:
+                                current_minute_adjusted = current_minute + 24 * 60
+                            else:
+                                current_minute_adjusted = current_minute
+                        else:
+                            current_minute_adjusted = current_minute
                         
-                        # Look for the earliest scheduled time on this date
-                        for time_schedule in trigger.get("scheduled_actions", []):
-                            if "time" in time_schedule:
-                                time_str = time_schedule.get("time")
-                                try:
-                                    scheduled_time = datetime.strptime(time_str, "%H:%M").time()
-                                    curr_minutes = scheduled_time.hour * 60 + scheduled_time.minute
-                                    if scheduled_minutes_total == 0 or curr_minutes < scheduled_minutes_total:
-                                        scheduled_minutes_total = curr_minutes
-                                        scheduled_time_str = time_str
-                                except ValueError:
+                        # If it's before the start time today
+                        if current_day_match and current_minute < scheduled_minutes:
+                            time_until_next = scheduled_minutes - current_minute
+                            if time_until_next < minutes_until_next:
+                                minutes_until_next = time_until_next
+                                next_action_time = f"{int(scheduled_time.hour):02d}:{int(scheduled_time.minute):02d}"
+                                # Format interval differently for fractional minutes
+                                if isinstance(repeat_interval, float) and repeat_interval != int(repeat_interval):
+                                    # Convert to seconds for clearer display of small intervals
+                                    seconds = int(repeat_interval * 60)
+                                    next_action_description = f"Repeating '{trigger['type']}' trigger (every {seconds} seconds until {until_str})"
+                                else:
+                                    next_action_description = f"Repeating '{trigger['type']}' trigger (every {int(repeat_interval)} min until {until_str})"
+                        # If today is the scheduled day and current time is within the repeat window
+                        elif current_day_match and scheduled_minutes <= current_minute_adjusted <= until_minutes:
+                            # Find next repeat interval
+                            current_total_minutes = now.hour * 60 + now.minute + now.second / 60
+                            minutes_since_start = current_total_minutes - scheduled_minutes
+                            
+                            # Calculate the next interval precisely
+                            next_interval_decimal = repeat_interval - (minutes_since_start % repeat_interval)
+                            if next_interval_decimal == 0 or abs(next_interval_decimal - repeat_interval) < 0.0001:
+                                next_interval_decimal = repeat_interval
+                            
+                            # Store as minutes with decimal precision for calculation
+                            next_interval = next_interval_decimal
+                            
+                            if next_interval < minutes_until_next:
+                                minutes_until_next = next_interval
+                                
+                                # Calculate next time including seconds for fractional intervals
+                                next_total_minutes = float(current_minute + next_interval)
+                                next_hour = int(next_total_minutes // 60) % 24
+                                next_min = int(next_total_minutes % 60)
+                                next_action_time = f"{next_hour:02d}:{next_min:02d}"
+                                
+                                # Format description based on interval size
+                                if isinstance(repeat_interval, float) and repeat_interval < 1:
+                                    # For intervals less than 1 minute, show in seconds
+                                    seconds = int(repeat_interval * 60)
+                                    next_action_description = f"Repeating '{trigger['type']}' trigger (every {seconds} seconds until {until_str})"
+                                else:
+                                    # For intervals >= 1 minute, show in minutes with at most 2 decimal places if needed
+                                    if repeat_interval == int(repeat_interval):
+                                        interval_str = str(int(repeat_interval))
+                                    else:
+                                        interval_str = f"{repeat_interval:.2f}".rstrip('0').rstrip('.')
+                                    next_action_description = f"Repeating '{trigger['type']}' trigger (every {interval_str} min until {until_str})"
+                    else:
+                        # Single time point
+                        # Check if today is the scheduled day and this time is in the future today
+                        if current_day_match and scheduled_minutes > current_minute:
+                            time_until_next = scheduled_minutes - current_minute
+                            if time_until_next < minutes_until_next:
+                                minutes_until_next = time_until_next
+                                next_action_time = f"{int(scheduled_time.hour):02d}:{int(scheduled_time.minute):02d}"
+                                next_action_description = f"'{trigger['type']}' trigger at specific time"
+                        # If it's not today or the time has passed, check for future days
+                        elif not current_day_match or scheduled_minutes <= current_minute:
+                            # Calculate the next occurrence of this day of week
+                            days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                            current_day_idx = days_of_week.index(day_str)
+                            
+                            # Find the next day in the schedule
+                            days_until_next = float('inf')
+                            for schedule_day in trigger.get("days", []):
+                                if schedule_day not in days_of_week:
                                     continue
+                                    
+                                schedule_day_idx = days_of_week.index(schedule_day)
+                                if schedule_day_idx > current_day_idx:
+                                    # Next occurrence is later this week
+                                    day_diff = schedule_day_idx - current_day_idx
+                                elif schedule_day_idx < current_day_idx:
+                                    # Next occurrence is next week
+                                    day_diff = 7 - (current_day_idx - schedule_day_idx)
+                                else:
+                                    # Same day, but time has passed
+                                    if scheduled_minutes <= current_minute:
+                                        day_diff = 7  # Next week
+                                    else:
+                                        day_diff = 0  # Today
+                                        
+                                if day_diff < days_until_next:
+                                    days_until_next = day_diff
+                            
+                            if days_until_next < float('inf'):
+                                # Calculate minutes until this future event
+                                total_minutes = (days_until_next * 24 * 60) + scheduled_minutes - current_minute
+                                if total_minutes < 0:
+                                    total_minutes += 7 * 24 * 60  # Add a week
+                                    
+                                if total_minutes < minutes_until_next:
+                                    minutes_until_next = total_minutes
+                                    next_action_time = f"{int(scheduled_time.hour):02d}:{int(scheduled_time.minute):02d}"
+                                    next_action_description = f"'{trigger['type']}' trigger on {days_of_week[(current_day_idx + days_until_next) % 7]}"
+            # Day of week trigger ends here
+            
+            # Date trigger
+            elif trigger["type"] == "date" and "date" in trigger:
+                # Check if it's today first
+                if date_str == trigger.get("date"):
+                    # Use same logic as day_of_week for finding next action today
+                    for time_schedule in trigger.get("scheduled_actions", []):
+                        if "time" not in time_schedule:
+                            continue
+                            
+                        time_str = time_schedule.get("time")
+                        try:
+                            scheduled_time = datetime.strptime(time_str, "%H:%M").time()
+                            scheduled_minutes = scheduled_time.hour * 60 + scheduled_time.minute
+                        except ValueError:
+                            continue
                         
-                        # Calculate total minutes until this event
-                        minutes_until_date = days_until * 24 * 60 + scheduled_minutes_total
+                        # Check if this time is in the future today
+                        if scheduled_minutes > current_minute:
+                            time_until_next = scheduled_minutes - current_minute
+                            if time_until_next < minutes_until_next:
+                                minutes_until_next = time_until_next
+                                next_action_time = f"{int(scheduled_time.hour):02d}:{int(scheduled_time.minute):02d}"
+                                next_action_description = f"'{trigger['type']}' trigger for today ({date_str})"
+                else:
+                    # Check for future date
+                    try:
+                        trigger_date = datetime.strptime(trigger["date"], "%-d-%b").replace(year=now.year)
+                        # If date is in the past, it might be for next year
+                        if trigger_date.month < now.month or (trigger_date.month == now.month and trigger_date.day < now.day):
+                            trigger_date = trigger_date.replace(year=now.year + 1)
                         
-                        if minutes_until_date < minutes_until_next:
-                            minutes_until_next = minutes_until_date
-                            next_action_time = f"{trigger['date']} {scheduled_time_str}"
-                            next_action_description = f"'{trigger['type']}' trigger on {trigger['date']}"
-                except ValueError:
-                    continue
-    
-    # Prepare result if next action found
-    if minutes_until_next < float('inf'):
-        result["has_next_action"] = True
-        result["next_time"] = next_action_time
-        result["description"] = next_action_description
-        result["minutes_until_next"] = minutes_until_next
-    
-    return result
+                        if trigger_date > now:
+                            days_until = (trigger_date - now).days
+                            
+                            # Use scheduled time if available, otherwise use midnight as default
+                            scheduled_minutes_total = 0
+                            scheduled_time_str = "00:00"  # Default to midnight
+                            
+                            # Look for the earliest scheduled time on this date
+                            for time_schedule in trigger.get("scheduled_actions", []):
+                                if "time" in time_schedule:
+                                    time_str = time_schedule.get("time")
+                                    try:
+                                        scheduled_time = datetime.strptime(time_str, "%H:%M").time()
+                                        curr_minutes = scheduled_time.hour * 60 + scheduled_time.minute
+                                        if scheduled_minutes_total == 0 or curr_minutes < scheduled_minutes_total:
+                                            scheduled_minutes_total = curr_minutes
+                                            scheduled_time_str = f"{int(scheduled_time.hour):02d}:{int(scheduled_time.minute):02d}"
+                                    except ValueError:
+                                        continue
+                            
+                            # Calculate total minutes until this event
+                            minutes_until_date = days_until * 24 * 60 + scheduled_minutes_total
+                            
+                            if minutes_until_date < minutes_until_next:
+                                minutes_until_next = minutes_until_date
+                                next_action_time = f"{trigger['date']} {scheduled_time_str}"
+                                next_action_description = f"'{trigger['type']}' trigger on {trigger['date']}"
+                    except ValueError:
+                        continue
+        
+        # Prepare result if next action found
+        if minutes_until_next < float('inf'):
+            result["has_next_action"] = True
+            result["next_time"] = next_action_time
+            result["minutes_until_next"] = float(minutes_until_next)
+            
+            # Format the time until next action in a human-friendly way
+            if minutes_until_next < 1:
+                # For less than a minute, show seconds
+                seconds = round(minutes_until_next * 60)  # Round to nearest second
+                result["time_until_display"] = f"{seconds} second{'s' if seconds != 1 else ''} from now"
+            elif minutes_until_next < 60:
+                # For less than an hour, show minutes with at most 1 decimal place if needed
+                if abs(minutes_until_next - round(minutes_until_next)) < 0.1:  # If close to a whole number
+                    result["time_until_display"] = f"{round(minutes_until_next)} minutes from now"
+                else:
+                    result["time_until_display"] = f"{minutes_until_next:.1f} minutes from now"
+            else:
+                # For an hour or more, show hours and minutes
+                hours = int(minutes_until_next // 60)
+                mins = round(minutes_until_next % 60)  # Round to nearest minute
+                if mins == 0:
+                    result["time_until_display"] = f"{hours}h from now"
+                else:
+                    result["time_until_display"] = f"{hours}h {mins}m from now"
+            
+            # Format the description more cleanly for repeating schedules
+            if "Repeating" in result["description"]:
+                # Extract the interval from the description
+                if "seconds" in result["description"]:
+                    # Keep seconds as is
+                    result["description"] = result["description"]
+                elif "min until" in result["description"]:
+                    # Clean up minute intervals
+                    parts = result["description"].split("every ")
+                    if len(parts) > 1:
+                        interval_part = parts[1].split(" min")[0]
+                        try:
+                            interval = float(interval_part)
+                            if abs(interval - round(interval)) < 0.1:  # If close to a whole number
+                                interval_str = str(round(interval))
+                            else:
+                                interval_str = f"{interval:.1f}"
+                            result["description"] = f"{parts[0]}every {interval_str} min{' min'.join(parts[1].split(' min')[1:])}"
+                        except ValueError:
+                            pass  # Keep original if parsing fails
+        
+        return result
+    except Exception as e:
+        error(f"Error in get_next_scheduled_action: {str(e)}")
+        return {
+            "has_next_action": False,
+            "next_time": None,
+            "description": f"Error predicting next action: {str(e)}",
+            "minutes_until_next": None,
+            "timestamp": datetime.now().isoformat(),
+            "error": True
+        }
 
 def log_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]) -> None:
     """Log the next scheduled action for a destination."""
@@ -1451,3 +1710,167 @@ def process_instruction_jinja(instruction: Dict[str, Any], context: Dict[str, An
             error(f"Error during type conversion in Jinja processing: {str(e)}")
     
     return processed_instruction 
+
+def reset_trigger_execution_timestamps(publish_destination: str) -> None:
+    """
+    Reset execution timestamps for the specified destination's triggers.
+    Used when a schedule is updated while running to ensure triggers are properly evaluated.
+    
+    Args:
+        publish_destination: The ID of the destination
+    """
+    global last_trigger_executions
+    
+    # Check if we need to initialize the dictionary
+    if publish_destination not in last_trigger_executions:
+        last_trigger_executions[publish_destination] = {}
+    else:
+        # Clear existing execution timestamps
+        last_trigger_executions[publish_destination] = {}
+    
+    # Persist the change
+    update_scheduler_state(publish_destination)
+    
+    # Log the reset
+    debug(f"Reset trigger execution timestamps for {publish_destination}")
+
+# Helper function for finding exports and imports in actions
+def find_exports_imports(actions: List[Dict[str, Any]]) -> Tuple[List[str], List[str]]:
+    """
+    Find export and import variable names in a list of actions.
+    
+    Args:
+        actions: List of action dictionaries
+        
+    Returns:
+        Tuple of (exports, imports) where each is a list of variable names
+    """
+    exports = []
+    imports = []
+    
+    # Handle case where actions is None
+    if not actions:
+        return exports, imports
+        
+    for action in actions:
+        # Skip if action is not a dictionary
+        if not isinstance(action, dict):
+            continue
+            
+        if action.get("type") == "export_var":
+            exports.append(action.get("var_name"))
+        elif action.get("type") == "import_var":
+            imports.append(action.get("import_as"))
+    return exports, imports
+
+def log_schedule_diff(old_schedule: Dict[str, Any], new_schedule: Dict[str, Any]) -> str:
+    """
+    Generate a summary of differences between old and new schedules.
+    
+    Args:
+        old_schedule: The previous schedule
+        new_schedule: The updated schedule
+        
+    Returns:
+        A summary string describing the changes
+    """
+    changes = []
+    
+    # Compare triggers section
+    old_triggers = old_schedule.get("triggers", [])
+    new_triggers = new_schedule.get("triggers", [])
+    
+    if len(old_triggers) != len(new_triggers):
+        changes.append(f"Trigger count changed: {len(old_triggers)} → {len(new_triggers)}")
+    
+    # Check for changes in time triggers
+    old_time_triggers = [t for t in old_triggers if t.get("type") == "time"]
+    new_time_triggers = [t for t in new_triggers if t.get("type") == "time"]
+    
+    if len(old_time_triggers) != len(new_time_triggers):
+        changes.append(f"Time trigger count changed: {len(old_time_triggers)} → {len(new_time_triggers)}")
+    
+    # Check for changes in day_of_week triggers
+    old_dow_triggers = [t for t in old_triggers if t.get("type") == "day_of_week"]
+    new_dow_triggers = [t for t in new_triggers if t.get("type") == "day_of_week"]
+    
+    if len(old_dow_triggers) != len(new_dow_triggers):
+        changes.append(f"Day of week trigger count changed: {len(old_dow_triggers)} → {len(new_dow_triggers)}")
+    
+    # Check for changes in event triggers
+    old_event_triggers = [t for t in old_triggers if t.get("type") == "event"]
+    new_event_triggers = [t for t in new_triggers if t.get("type") == "event"]
+    
+    if len(old_event_triggers) != len(new_event_triggers):
+        changes.append(f"Event trigger count changed: {len(old_event_triggers)} → {len(new_event_triggers)}")
+    
+    # Compare actions
+    old_initial = old_schedule.get("initial_actions", [])
+    new_initial = new_schedule.get("initial_actions", [])
+    
+    if len(old_initial) != len(new_initial):
+        changes.append(f"Initial actions count changed: {len(old_initial)} → {len(new_initial)}")
+    
+    # Compare instructions in triggers
+    total_old_instructions = 0
+    total_new_instructions = 0
+    
+    for trigger in old_triggers:
+        total_old_instructions += len(trigger.get("actions", []))
+    
+    for trigger in new_triggers:
+        total_new_instructions += len(trigger.get("actions", []))
+    
+    if total_old_instructions != total_new_instructions:
+        changes.append(f"Trigger actions count changed: {total_old_instructions} → {total_new_instructions}")
+    
+    # Look for changes in variable exports and imports
+    old_exports = []
+    new_exports = []
+    old_imports = []
+    new_imports = []
+    
+    # Check initial actions
+    old_initial_exports, old_initial_imports = find_exports_imports(old_initial)
+    new_initial_exports, new_initial_imports = find_exports_imports(new_initial)
+    
+    old_exports.extend(old_initial_exports)
+    new_exports.extend(new_initial_exports)
+    old_imports.extend(old_initial_imports)
+    new_imports.extend(new_initial_imports)
+    
+    # Check trigger actions
+    for trigger in old_triggers:
+        e, i = find_exports_imports(trigger.get("actions", []))
+        old_exports.extend(e)
+        old_imports.extend(i)
+    
+    for trigger in new_triggers:
+        e, i = find_exports_imports(trigger.get("actions", []))
+        new_exports.extend(e)
+        new_imports.extend(i)
+    
+    # Report changes in exports/imports
+    if set(old_exports) != set(new_exports):
+        removed = set(old_exports) - set(new_exports)
+        added = set(new_exports) - set(old_exports)
+        
+        if removed:
+            changes.append(f"Removed exports: {', '.join(removed)}")
+        if added:
+            changes.append(f"Added exports: {', '.join(added)}")
+    
+    if set(old_imports) != set(new_imports):
+        removed = set(old_imports) - set(new_imports)
+        added = set(new_imports) - set(old_imports)
+        
+        if removed:
+            changes.append(f"Removed imports: {', '.join(removed)}")
+        if added:
+            changes.append(f"Added imports: {', '.join(added)}")
+    
+    # Return the summary
+    if changes:
+        return "; ".join(changes)
+    else:
+        return "No significant changes detected" 

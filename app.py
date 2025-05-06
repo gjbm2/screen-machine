@@ -516,7 +516,6 @@ def serve(path):
     else:
         return send_from_directory(app.static_folder, 'index.html')
 
-
 if __name__ == '__main__':
     info("Starting websockets server (to listen for front end messages on localhost:8765.")
     Thread(target=start_ws_server, daemon=True).start()

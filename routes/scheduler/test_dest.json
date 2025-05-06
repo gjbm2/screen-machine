@@ -5,9 +5,37 @@
         "instructions_block": [
           {
             "action": "set_var",
-            "var": "test_var",
+            "var": "initial_executed",
             "input": {
-              "value": "initial_value"
+              "value": true
+            }
+          }
+        ]
+      },
+      "triggers": [
+        {
+          "type": "event",
+          "value": "TestEvent",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "set_var",
+                "var": "trigger_executed",
+                "input": {
+                  "value": true
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "final_actions": {
+        "instructions_block": [
+          {
+            "action": "set_var",
+            "var": "final_executed",
+            "input": {
+              "value": true
             }
           }
         ]
@@ -24,7 +52,7 @@
         "prompt": "test prompt for generation",
         "generation_history": [
           {
-            "timestamp": "2025-05-05 23:47:03",
+            "timestamp": "2025-05-06 18:09:29",
             "type": "generation",
             "prompt": "test prompt for generation",
             "refiner": "test_refiner",
@@ -39,5 +67,6 @@
     }
   ],
   "state": "stopped",
-  "last_updated": "2025-05-05T23:47:04.326193"
+  "last_updated": "2025-05-06T18:09:30.966734",
+  "last_trigger_executions": {}
 }

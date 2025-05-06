@@ -34,7 +34,8 @@ from routes.utils import (
     ensure_sidecar_for,
     _extract_exif_json,
     _extract_mp4_comment_json,
-    generate_thumbnail
+    generate_thumbnail,
+    get_image_from_target
 )
 
 
@@ -109,9 +110,18 @@ def publish_to_destination(
     """
     # Handle blank screen case first
     if blank:
-        blank_path = Path("/output/_blank.jpg")
+        blank_path = Path("output/_blank.jpg")
         if not blank_path.exists():
-            return {"success": False, "error": "Blank screen image not found"}
+            # Try to create a blank image if it doesn't exist
+            try:
+                from PIL import Image
+                # Ensure output directory exists
+                os.makedirs("output", exist_ok=True)
+                Image.new('RGB', (1, 10), color='black').save(blank_path)
+                info(f"Created blank screen image at {blank_path}")
+            except Exception as e:
+                error(f"Failed to create blank screen image: {e}")
+                return {"success": False, "error": f"Blank screen image not found and could not be created: {e}"}
         
         # Publish blank screen, always skip bucket and suppress overlay
         result = _publish_to_destination(
@@ -119,7 +129,7 @@ def publish_to_destination(
             publish_destination_id=publish_destination_id,
             metadata={},
             skip_bucket=True,
-            silent=True
+            silent=silent
         )
         return result
 
@@ -283,6 +293,150 @@ def _publish_to_destination(
         error(f"Publish failed: {e}")
         return {"success": False, "error": str(e)}
 
+def get_published_info(publish_destination_id: str) -> dict:
+    """
+    Get information about the currently published image for a destination.
+    This function is for internal use by other modules.
+    
+    Args:
+        publish_destination_id: ID of the destination to check
+        
+    Returns:
+        Dictionary with published info or empty dict if not found
+    """
+    debug(f"get_published_info called for destination: {publish_destination_id}")
+    try:
+        # Validate the destination exists
+        dest = get_destination(publish_destination_id)
+        
+        # First try to get info from the bucket
+        from routes.bucketer import meta_path
+        bucket_meta_path = meta_path(publish_destination_id)
+        debug(f"Bucket meta path: {bucket_meta_path}")
+        
+        if bucket_meta_path and os.path.exists(bucket_meta_path):
+            debug(f"Bucket meta exists, attempting to read")
+            try:
+                with open(bucket_meta_path, 'r') as f:
+                    bucket_meta = json.load(f)
+                    # Check if there's a current published file
+                    debug(f"Bucket meta content: {bucket_meta}")
+                    
+                    # First check published_meta
+                    if "published_meta" in bucket_meta and bucket_meta["published_meta"]:
+                        published_meta = bucket_meta["published_meta"]
+                        published_file = published_meta.get("filename")
+                        published_at = published_meta.get("published_at", "")
+                        debug(f"Found published file in published_meta: {published_file}")
+                        
+                        # Get metadata about the file
+                        from routes.bucket_api import bucket_path
+                        full_path = bucket_path(publish_destination_id) / published_file
+                        debug(f"Full path to published file: {full_path}")
+                        
+                        # Check for sidecar metadata
+                        from routes.utils import sidecar_path
+                        sc_path = sidecar_path(full_path)
+                        meta = {}
+                        
+                        if sc_path and os.path.exists(sc_path):
+                            debug(f"Sidecar found at {sc_path}, reading metadata")
+                            try:
+                                with open(sc_path, 'r') as f:
+                                    meta = json.load(f)
+                            except Exception as e:
+                                debug(f"Error reading sidecar: {e}")
+                                pass
+                                
+                        return {
+                            "published": published_file,
+                            "published_at": published_at,
+                            "raw_url": str(full_path),
+                            "meta": meta
+                        }
+                    # Fallback to deprecated "published" key
+                    elif "published" in bucket_meta and bucket_meta["published"]:
+                        published_file = bucket_meta["published"]
+                        published_at = bucket_meta.get("published_at", "")
+                        debug(f"Found published file in bucket meta: {published_file}")
+                        
+                        # Get metadata about the file
+                        from routes.bucket_api import bucket_path
+                        full_path = bucket_path(publish_destination_id) / published_file
+                        debug(f"Full path to published file: {full_path}")
+                        
+                        # Check for sidecar metadata
+                        from routes.utils import sidecar_path
+                        sc_path = sidecar_path(full_path)
+                        meta = {}
+                        
+                        if sc_path and os.path.exists(sc_path):
+                            debug(f"Sidecar found at {sc_path}, reading metadata")
+                            try:
+                                with open(sc_path, 'r') as f:
+                                    meta = json.load(f)
+                            except Exception as e:
+                                debug(f"Error reading sidecar: {e}")
+                                pass
+                                
+                        return {
+                            "published": published_file,
+                            "published_at": published_at,
+                            "raw_url": str(full_path),
+                            "meta": meta
+                        }
+                    else:
+                        debug(f"No published key in bucket meta or it's empty")
+            except Exception as e:
+                error(f"Error reading bucket metadata for {publish_destination_id}: {e}")
+        else:
+            debug(f"No bucket meta found, falling back to get_image_from_target")
+        
+        # If no bucket info, use get_image_from_target as a fallback
+        # This properly checks output directories and understands the system conventions
+        debug(f"Using get_image_from_target as fallback")
+        image_info = get_image_from_target(publish_destination_id, thumbnail=False)
+        debug(f"get_image_from_target returned: {image_info}")
+        
+        if image_info and "local_path" in image_info:
+            file_path = Path(image_info["local_path"])
+            raw_name = image_info.get("raw_name", file_path.name)
+            debug(f"Found image: {raw_name} at {file_path}")
+            
+            # Check for sidecar metadata
+            from routes.utils import sidecar_path
+            sc_path = sidecar_path(file_path)
+            meta = {}
+            
+            if sc_path and os.path.exists(sc_path):
+                debug(f"Found sidecar at {sc_path}")
+                try:
+                    with open(sc_path, 'r') as f:
+                        meta = json.load(f)
+                except Exception as e:
+                    debug(f"Error reading sidecar: {e}")
+                    pass
+            
+            # Use the raw URL if available, otherwise use the local path
+            raw_url = image_info.get("raw_url", str(file_path))
+            
+            return {
+                "published": raw_name,
+                "published_at": meta.get("when_generated", ""),
+                "raw_url": raw_url,
+                "meta": meta
+            }
+        else:
+            debug(f"No image found for {publish_destination_id}")
+        
+        # Nothing found
+        debug(f"No published info found for {publish_destination_id}")
+        return {}
+        
+    except Exception as e:
+        error(f"Error in get_published_info: {e}")
+        return {}
+
 def display_from_bucket(
     publish_destination_id: str,
     mode: str,
@@ -299,52 +453,89 @@ def display_from_bucket(
     Returns:
         dict with success status and optional error message
     """
+    debug(f"display_from_bucket called for {publish_destination_id} with mode={mode}, silent={silent}")
+    
     if mode not in ["Next", "Random", "Blank"]:
+        error(f"Invalid display mode: {mode}. Must be 'Next', 'Random', or 'Blank'.")
         return {"success": False, "error": f"Invalid display mode: {mode}. Must be 'Next', 'Random', or 'Blank'."}
 
     # Handle Blank mode
     if mode == "Blank":
+        debug(f"Using blank mode for {publish_destination_id}")
         return publish_to_destination(
             source="",  # Source is ignored when blank=True
             publish_destination_id=publish_destination_id,
-            blank=True
+            blank=True,
+            silent=silent
         )
 
     # Get the bucket's metadata to find favorites
     from routes.bucket_api import load_meta
     meta = load_meta(publish_destination_id)
     favorites = meta.get("favorites", [])
+    debug(f"Found {len(favorites)} favorites in bucket {publish_destination_id}")
     
     if not favorites:
+        error(f"No favorites found in bucket {publish_destination_id}.")
         return {"success": False, "error": f"No favorites found in bucket {publish_destination_id}."}
 
     # Get the currently published image
-    from routes.publish_api import get_published
-    published_info = get_published(publish_destination_id)
-    current_image = published_info.get("filename") if published_info else None
-
+    published_info = get_published_info(publish_destination_id)
+    current_image = published_info.get("published")
+    debug(f"Current published image for {publish_destination_id}: {current_image}")
+    
     # Select the next image based on mode
     if mode == "Next":
+        debug(f"Next mode - checking if current image {current_image} is in favorites")
+        
+        # The current_image might be a simple filename or the full path
+        # Try to match it in different ways
+        current_pos = -1
+        
+        # First try direct match
         if current_image in favorites:
-            # Find current position in favorites and get next favorite
             current_pos = favorites.index(current_image)
+            debug(f"Found current image directly at position {current_pos}")
+        else:
+            # Try to match just the filename part (without directory)
+            for i, fav in enumerate(favorites):
+                if os.path.basename(fav) == current_image:
+                    current_pos = i
+                    debug(f"Found current image by basename at position {current_pos}")
+                    break
+        
+        if current_pos >= 0:
+            # Found current position, get next favorite
             next_pos = (current_pos + 1) % len(favorites)
             filename = favorites[next_pos]
+            debug(f"Current image found at position {current_pos} in favorites. Next position is {next_pos}, filename: {filename}")
         else:
             # If current image not in favorites, start from first favorite
             filename = favorites[0]
+            debug(f"Current image not found in favorites. Using first favorite: {filename}")
     else:  # Random
         # For random, we can just pick any favorite
         filename = random.choice(favorites)
+        debug(f"Random mode - selected: {filename}")
 
     # Get the full path to the image
     from routes.bucket_api import bucket_path
     image_path = bucket_path(publish_destination_id) / filename
+    debug(f"Image path constructed: {image_path}")
+
+    # Check if the selected file actually exists
+    if not image_path.exists():
+        error(f"Selected file {filename} does not exist at path {image_path}")
+        return {"success": False, "error": f"Selected file {filename} not found in bucket"}
 
     # Publish the image to the destination
-    return publish_to_destination(
+    debug(f"Publishing image {filename} to {publish_destination_id}")
+    result = publish_to_destination(
         source=image_path,
         publish_destination_id=publish_destination_id,
         skip_bucket=True,  # Always skip bucket since we're displaying from a bucket
         silent=silent
     )
+    
+    debug(f"publish_to_destination result: {result}")
+    return result
