@@ -60,4 +60,23 @@ def send_overlay(
         log_message["html"] = f"{log_message['html'][:500]}... [truncated, {len(data['html'])} chars]"
     debug(f"Sending overlay message: {log_message}")
 
-    asyncio.run(send_overlay_to_clients(data))
+    # Get the running event loop or create one if needed
+    try:
+        # Try to get the current event loop
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # The event loop is already running, use run_coroutine_threadsafe
+            future = asyncio.run_coroutine_threadsafe(send_overlay_to_clients(data), loop)
+            # Optionally wait for the result if needed
+            # future.result()
+        else:
+            # No running loop, we can use asyncio.run
+            asyncio.run(send_overlay_to_clients(data))
+    except RuntimeError:
+        # No event loop in this thread, create a new one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(send_overlay_to_clients(data))
+        loop.close()
+    except Exception as e:
+        error(f"Error sending overlay: {e}")

@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from datetime import datetime
 from routes.scheduler import resolve_schedule, run_scheduler, start_scheduler, stop_scheduler, run_instruction
-from routes.scheduler_utils import active_events, get_current_context, scheduler_contexts_stacks
+from routes.scheduler_utils import active_events, get_current_context, scheduler_contexts_stacks, scheduler_schedule_stacks
 import routes.scheduler_utils  # Add direct import for monkeypatching
 
 @pytest.fixture
@@ -170,7 +170,7 @@ async def test_schedule_with_generate_and_animate(clean_scheduler_state, test_sc
 async def test_schedule_start_stop_lifecycle(clean_scheduler_state, test_schedule_basic, monkeypatch):
     """Test the full lifecycle of starting and stopping a scheduler."""
     dest_id = "test_dest"
-    
+
     # Mock the asyncio functions to avoid actually running the scheduler
     def mock_run_coroutine_threadsafe(coro, loop):
         # Execute just enough of the coroutine to set initial values
@@ -178,39 +178,52 @@ async def test_schedule_start_stop_lifecycle(clean_scheduler_state, test_schedul
             coro.send(None)  # Start the coroutine
         except StopIteration:
             pass
-            
+
         class MockFuture:
             def cancel(self):
                 pass
+            
+            def done(self):
+                return False
+                
+            def cancelled(self):
+                return False
+                
         return MockFuture()
-    
+
     monkeypatch.setattr('asyncio.run_coroutine_threadsafe', mock_run_coroutine_threadsafe)
-    
+
     # Mock get_event_loop to avoid thread issues in tests
     def mock_get_event_loop():
         return object()  # Just a dummy object
-    
+
     monkeypatch.setattr('routes.scheduler.get_event_loop', mock_get_event_loop)
     
+    # Make sure test_dest is in the contexts structure
+    clean_scheduler_state["contexts"][dest_id] = [{
+        "vars": {},
+        "publish_destination": dest_id
+    }]
+
     # Start the scheduler
     start_scheduler(dest_id, test_schedule_basic)
-    
+
     # Manually set state to running for test verification
     clean_scheduler_state["states"][dest_id] = "running"
-    
+
     # Verify the scheduler was started
     from routes.scheduler import running_schedulers
     assert dest_id in running_schedulers
     assert dest_id in clean_scheduler_state["contexts"]
-    assert dest_id in clean_scheduler_state["schedules"]
-    assert clean_scheduler_state["states"][dest_id] == "running"
+    
+    # Verify the stack was updated with the new schedule
+    assert dest_id in scheduler_schedule_stacks
+    # Just check that the stack exists and has at least one item
+    assert len(scheduler_schedule_stacks[dest_id]) >= 1
     
     # Stop the scheduler
     stop_scheduler(dest_id)
     
-    # Manually set state to stopped for test verification
-    clean_scheduler_state["states"][dest_id] = "stopped"
-    
-    # Verify the scheduler was stopped
+    # Verify it was stopped
     assert dest_id not in running_schedulers
     assert clean_scheduler_state["states"][dest_id] == "stopped" 

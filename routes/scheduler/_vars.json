@@ -1,6 +1,19 @@
 {
   "global": {},
-  "groups": {},
-  "last_updated": "2025-05-04T23:45:48.339602",
+  "groups": {
+    "living-room": {
+      "_theme": {
+        "friendly_name": "Theme of the day",
+        "owner": "cloud",
+        "timestamp": "2025-05-06T18:06:30.052585"
+      },
+      "_style": {
+        "friendly_name": "Style of the day",
+        "owner": "cloud",
+        "timestamp": "2025-05-06T18:06:30.052585"
+      }
+    }
+  },
+  "last_updated": "2025-05-06T18:06:32.819818",
   "imports": {}
 }

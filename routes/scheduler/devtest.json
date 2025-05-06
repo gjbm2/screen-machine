@@ -2,19 +2,39 @@
   "schedule_stack": [
     {
       "initial_actions": {
-        "instructions_block": [
-          {
-            "action": "reason",
-            "text_input": "think of a subject",
-            "image_inputs": [],
-            "reasoner": "devise_prompt",
-            "output_vars": [
-              "prompt"
-            ]
-          }
-        ]
+        "instructions_block": []
       },
-      "triggers": [],
+      "triggers": [
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "00:01",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "display",
+                    "show": "Next"
+                  }
+                ]
+              },
+              "repeat_schedule": {
+                "every": "0.5",
+                "until": "23:00"
+              }
+            }
+          ]
+        }
+      ],
       "final_actions": {
         "instructions_block": []
       }
@@ -30,8 +50,14 @@
       "vars": {},
       "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/97b0f0c5-78e7-44a5-8976-ba824a0ff7a2-e1/bee6a15f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250430%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250430T215155Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ea21853b659b467f6e753a456db963b02d90c5a07c7afbffe4a2d5f7cb154387",
       "publish_destination": "devtest"
+    },
+    {
+      "vars": {},
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/04-25/97b0f0c5-78e7-44a5-8976-ba824a0ff7a2-e1/bee6a15f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250430%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250430T215155Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ea21853b659b467f6e753a456db963b02d90c5a07c7afbffe4a2d5f7cb154387",
+      "publish_destination": "devtest"
     }
   ],
-  "state": "paused",
-  "last_updated": "2025-05-05T22:39:15.857454"
+  "state": "running",
+  "last_updated": "2025-05-06T18:08:11.758622",
+  "last_trigger_executions": {}
 }

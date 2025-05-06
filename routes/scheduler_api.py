@@ -474,28 +474,54 @@ def api_get_all_scheduler_statuses():
     statuses = {}
     
     for destination_id in scheduler_states:
-        # Get the current state for this destination
-        state = scheduler_states.get(destination_id, 'stopped')
-        
-        # Get the current schedule stack
-        schedule_stack = scheduler_schedule_stacks.get(destination_id, [])
-        
-        # If there's a schedule, get the next action
-        next_action = None
-        if schedule_stack:
-            # Get the current schedule from the top of the stack
-            current_schedule = schedule_stack[-1]
-            next_action = get_next_scheduled_action(destination_id, current_schedule)
-        
-        # Add to the response
-        statuses[destination_id] = {
-            "status": state,
-            "is_running": state == "running",
-            "is_paused": state == "paused",
-            "next_action": next_action
-        }
+        try:
+            # Get the current state for this destination
+            state = scheduler_states.get(destination_id, 'stopped')
+            
+            # Get the current schedule stack
+            schedule_stack = scheduler_schedule_stacks.get(destination_id, [])
+            
+            # If there's a schedule, get the next action
+            next_action = None
+            if schedule_stack:
+                try:
+                    # Get the current schedule from the top of the stack
+                    current_schedule = schedule_stack[-1]
+                    next_action = get_next_scheduled_action(destination_id, current_schedule)
+                except Exception as e:
+                    # Handle errors in getting next action for a specific schedule
+                    error(f"Error getting next action for {destination_id}: {str(e)}")
+                    next_action = {
+                        "has_next_action": False,
+                        "next_time": None,
+                        "description": f"Error: {str(e)}",
+                        "minutes_until_next": None,
+                        "timestamp": datetime.now().isoformat(),
+                        "error": True
+                    }
+            
+            # Add to the response
+            statuses[destination_id] = {
+                "status": state,
+                "is_running": state == "running",
+                "is_paused": state == "paused",
+                "next_action": next_action
+            }
+        except Exception as e:
+            # Handle errors for a specific destination
+            error(f"Error getting status for {destination_id}: {str(e)}")
+            statuses[destination_id] = {
+                "status": "error",
+                "is_running": False,
+                "is_paused": False,
+                "error": str(e),
+                "next_action": None
+            }
     
-    return jsonify({"statuses": statuses})
+    # Add CORS headers to ensure frontend can access this endpoint
+    response = jsonify({"statuses": statuses})
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
 
 # --- Variable sharing endpoints ---
 @scheduler_bp.route("/api/schedulers/<publish_destination>/exported-vars", methods=["GET"])
@@ -725,3 +751,94 @@ def api_delete_exported_var(var_name):
 from routes.scheduler_utils import load_vars_registry
 # This ensures the registry file exists when the app starts
 load_vars_registry()
+
+@scheduler_bp.route("/api/schedulers/<publish_destination>/schedule/<int:index>", methods=["PUT"])
+def api_update_schedule_by_index(publish_destination, index):
+    """Update a specific schedule by its index in the stack."""
+    try:
+        schedule = request.get_json()
+        if not schedule:
+            return jsonify({"error": "No schedule provided"}), 400
+            
+        # Validate against schema
+        try:
+            jsonschema.validate(instance=schedule, schema=get_current_schema())
+        except jsonschema.exceptions.ValidationError as e:
+            error_msg = f"Invalid schedule format: {str(e)}"
+            error(error_msg)
+            return jsonify({"error": error_msg}), 400
+            
+        # Check if scheduler exists
+        if publish_destination not in scheduler_schedule_stacks:
+            return jsonify({"error": f"No scheduler found for {publish_destination}"}), 404
+
+        # Check if index is valid
+        schedule_stack = scheduler_schedule_stacks[publish_destination]
+        if index < 0 or index >= len(schedule_stack):
+            return jsonify({"error": f"Invalid schedule index: {index}. Stack size is {len(schedule_stack)}"}), 400
+
+        # Store the old schedule for comparison
+        old_schedule = schedule_stack[index]
+        
+        try:
+            # Update the schedule at the specified index
+            schedule_stack[index] = schedule
+            
+            # Reset execution timestamps for triggers if this is the active schedule (top of stack)
+            # Only do this for the currently running schedule (top of stack)
+            if index == len(schedule_stack) - 1:
+                # Reset the execution history for time-based triggers
+                from routes.scheduler_utils import reset_trigger_execution_timestamps
+                
+                # Get the current state
+                is_running = scheduler_states.get(publish_destination) == "running"
+                
+                # Only reset timestamps when the schedule is actively running
+                if is_running:
+                    reset_trigger_execution_timestamps(publish_destination)
+                    log_msg = "Reset trigger execution timestamps due to live schedule update"
+                    scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {log_msg}")
+                    info(f"{log_msg} for {publish_destination}")
+                    
+                    # Also log which parts of the schedule were updated
+                    from routes.scheduler_utils import log_schedule_diff
+                    diff_summary = log_schedule_diff(old_schedule, schedule)
+                    if diff_summary:
+                        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Changes detected: {diff_summary}")
+                        info(f"Schedule changes for {publish_destination}: {diff_summary}")
+            
+            # Update persisted state
+            update_scheduler_state(
+                publish_destination,
+                schedule_stack=schedule_stack
+            )
+            
+            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Updated schedule at position {index}")
+            info(f"Updated schedule at position {index} for {publish_destination}")
+                
+            return jsonify({
+                "status": "success",
+                "message": f"Schedule at position {index} updated",
+                "index": index,
+                "is_active": index == len(schedule_stack) - 1,
+                "scheduler_state": scheduler_states.get(publish_destination, "stopped")
+            })
+            
+        except Exception as e:
+            # Restore the old schedule if update failed
+            schedule_stack[index] = old_schedule
+            error_msg = f"Error updating schedule: {str(e)}"
+            error(error_msg)
+            import traceback
+            error(f"Error traceback: {traceback.format_exc()}")
+            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
+            return jsonify({"error": error_msg}), 500
+            
+    except Exception as e:
+        error_msg = f"Error processing schedule update request: {str(e)}"
+        error(error_msg)
+        import traceback
+        error(f"Error traceback: {traceback.format_exc()}")
+        if publish_destination in scheduler_logs:
+            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
+        return jsonify({"error": error_msg}), 500

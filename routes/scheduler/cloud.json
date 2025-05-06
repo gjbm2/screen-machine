@@ -1,6 +1,67 @@
 {
-  "schedule_stack": [],
-  "context_stack": [],
-  "state": "stopped",
-  "last_updated": "2025-04-29T10:48:09.282618"
+  "schedule_stack": [
+    {
+      "final_actions": {
+        "instructions_block": []
+      },
+      "initial_actions": {
+        "instructions_block": []
+      },
+      "triggers": [
+        {
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "00:01",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "reason",
+                    "history_var": "_theme-and-style",
+                    "image_inputs": [],
+                    "output_vars": [
+                      "_theme",
+                      "_style"
+                    ],
+                    "reasoner": "theme_and_style"
+                  },
+                  {
+                    "action": "export_var",
+                    "friendly_name": "Theme of the day",
+                    "scope": "living-room",
+                    "var_name": "_theme"
+                  },
+                  {
+                    "action": "export_var",
+                    "friendly_name": "Style of the day",
+                    "scope": "living-room",
+                    "var_name": "_style"
+                  }
+                ]
+              }
+            }
+          ],
+          "type": "day_of_week"
+        }
+      ]
+    }
+  ],
+  "context_stack": [
+    {
+      "vars": {},
+      "last_generated": null,
+      "publish_destination": "cloud"
+    }
+  ],
+  "state": "running",
+  "last_updated": "2025-05-06T18:08:11.777280",
+  "last_trigger_executions": {}
 }

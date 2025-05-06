@@ -1,8 +1,10 @@
 from flask import Blueprint, jsonify, request, abort
 from routes.utils import _load_json_once, findfile, get_image_from_target
-from routes.publisher import publish_to_destination, display_from_bucket, get_destination
+from routes.publisher import publish_to_destination, display_from_bucket, get_destination, get_published_info
 import logging
 from utils.logger import info, error, warning, debug
+import json
+from pathlib import Path
 
 publish_api = Blueprint('publish_api', __name__)
 
@@ -67,21 +69,12 @@ def get_published(publish_destination_id: str):
       }
     Always 200.
     """
-    # Verify this is a valid destination
-    dest = next((d for d in publish_destinations if d["id"] == publish_destination_id), None)
-    if not dest:
-        abort(400, "Invalid publish_destination_id")
+    from routes.utils import get_image_from_target
     
-    # Get the published info from the destination's metadata
-    pm = dest.get("published_meta") or {}
-    filename = pm.get("filename")
-    published_at = pm.get("published_at")
-
-    # Get the image data
-    image_result = get_image_from_target(publish_destination_id, thumbnail=True)
-    image_data = image_result.get("image") if image_result else None
-
-    if not image_data:
+    # First get the published info
+    published_info = get_published_info(publish_destination_id)
+    
+    if not published_info:
         return jsonify({
             "published":     None,
             "published_at":  None,
@@ -89,30 +82,26 @@ def get_published(publish_destination_id: str):
             "thumbnail":     None,
             "meta":          {},
         })
-
-    raw_url = image_result.get("raw_url")
-    local_path = image_result.get("local_path")
-    raw_name = image_result.get("raw_name")
-
-    return jsonify({
-        "published":     filename or raw_name,
-        "published_at":  published_at,
-        "raw_url":       raw_url,
-        "thumbnail":     image_data,
-        "meta":          pm.get("meta", {})
-    })
+        
+    # Get the thumbnail for the published image
+    # get_image_from_target is the correct utility to use as it knows how to
+    # find images in the output directory and bucket system
+    image_result = get_image_from_target(publish_destination_id, thumbnail=True)
+    
+    # Add thumbnail to the response
+    result = {
+        "published":     published_info.get("published"),
+        "published_at":  published_info.get("published_at"),
+        "raw_url":       published_info.get("raw_url"),
+        "thumbnail":     image_result.get("image") if image_result else None,
+        "meta":          published_info.get("meta", {})
+    }
+        
+    return jsonify(result)
 
 @publish_api.route("/publish/<publish_destination_id>/display", methods=["POST"])
-def api_display_from_bucket(publish_destination_id):
-    """
-    Display an image from a bucket based on the specified mode.
-    
-    Request body:
-    {
-        "mode": "Next" | "Random" | "Blank",
-        "silent": bool (optional, defaults to false)
-    }
-    """
+def display_from_bucket_api(publish_destination_id: str):
+    """Display an image from the bucket."""
     try:
         # Get the request data
         data = request.get_json()
