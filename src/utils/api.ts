@@ -1179,6 +1179,29 @@ export class Api {
     }
   }
 
+  // Get the list of publish destinations
+  async getDestinations() {
+    if (this.mockMode) {
+      return {
+        destinations: [
+          { id: 'destination1', name: 'Mock Destination 1', scheduler_running: true },
+          { id: 'destination2', name: 'Mock Destination 2', scheduler_running: false }
+        ]
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/publish/destinations`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch destinations');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching destinations:', error);
+      throw error;
+    }
+  }
+
   // Get variables registry
   async getVarsRegistry() {
     if (this.mockMode) {

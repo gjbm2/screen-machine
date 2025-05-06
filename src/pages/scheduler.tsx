@@ -50,6 +50,7 @@ interface NextAction {
   description: string | null;
   minutes_until_next: number | null;
   timestamp: string;
+  time_until_display?: string;
 }
 
 interface SchedulerStatus {
@@ -313,7 +314,7 @@ const Scheduler = () => {
       
       // Fetch all scheduler statuses in a single request
       fetchAllSchedulerStatuses();
-    }, 15000); // Poll every 15 seconds
+    }, 5000); // Poll every 5 seconds
 
     return () => {
       clearInterval(pollingIntervalId);
@@ -339,10 +340,9 @@ const Scheduler = () => {
 
   const fetchSchedulerStatus = async (destinationId: string) => {
     try {
-      // First check if scheduler is running
-      const runningResponse = await apiService.getDestinations();
-      const destination = runningResponse.destinations.find(d => d.id === destinationId);
-      const isRunning = destination?.scheduler_running || false;
+      // Get scheduler status directly
+      const statusResponse = await apiService.getSchedulerStatus(destinationId);
+      const isRunning = statusResponse.is_running || false;
       
       // Only log in debug mode
       if (process.env.NODE_ENV === 'development') {
@@ -912,7 +912,7 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
 
   // Format next scheduled action time
   const formatNextAction = (nextAction: NextAction | null) => {
-    if (!nextAction || !nextAction.has_next_action) {
+    if (!nextAction || !nextAction.has_next_action || nextAction.minutes_until_next === Infinity || nextAction.minutes_until_next === 999999999) {
       return <p className="text-sm text-muted-foreground">No upcoming actions</p>;
     }
 
@@ -922,9 +922,12 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
         <p className="text-muted-foreground">{nextAction.description}</p>
         {nextAction.minutes_until_next !== null && (
           <p className="text-xs">
-            {nextAction.minutes_until_next < 60 
-              ? `${nextAction.minutes_until_next} minutes from now`
-              : `${Math.floor(nextAction.minutes_until_next / 60)}h ${nextAction.minutes_until_next % 60}m from now`}
+            {nextAction.time_until_display ? 
+              nextAction.time_until_display : 
+              nextAction.minutes_until_next < 60 ?
+                `${nextAction.minutes_until_next} minutes from now` :
+                `${Math.floor(nextAction.minutes_until_next / 60)}h ${nextAction.minutes_until_next % 60}m from now`
+            }
           </p>
         )}
       </div>
