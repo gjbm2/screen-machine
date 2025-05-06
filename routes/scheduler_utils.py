@@ -812,7 +812,7 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
             "has_next_action": False,
             "next_time": None,
             "description": None,
-            "minutes_until_next": None,
+            "minutes_until_next": float('inf'),
             "timestamp": now.isoformat()
         }
         
@@ -877,6 +877,8 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                         else:
                             current_minute_adjusted = current_minute
                         
+                        debug(f"Adjusted times - current: {current_minute_adjusted}, scheduled: {scheduled_minutes}, until: {until_minutes}")
+                        
                         # If it's before the start time today
                         if current_day_match and current_minute < scheduled_minutes:
                             time_until_next = scheduled_minutes - current_minute
@@ -884,12 +886,18 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                                 minutes_until_next = time_until_next
                                 next_action_time = f"{int(scheduled_time.hour):02d}:{int(scheduled_time.minute):02d}"
                                 # Format interval differently for fractional minutes
-                                if isinstance(repeat_interval, float) and repeat_interval != int(repeat_interval):
-                                    # Convert to seconds for clearer display of small intervals
+                                if isinstance(repeat_interval, float) and repeat_interval < 1:
+                                    # For intervals less than 1 minute, show in seconds
                                     seconds = int(repeat_interval * 60)
                                     next_action_description = f"Repeating '{trigger['type']}' trigger (every {seconds} seconds until {until_str})"
                                 else:
-                                    next_action_description = f"Repeating '{trigger['type']}' trigger (every {int(repeat_interval)} min until {until_str})"
+                                    # For intervals >= 1 minute, show in minutes with at most 1 decimal place if needed
+                                    if repeat_interval == int(repeat_interval):
+                                        interval_str = str(int(repeat_interval))
+                                    else:
+                                        interval_str = f"{repeat_interval:.1f}"
+                                    next_action_description = f"Repeating '{trigger['type']}' trigger (every {interval_str} min until {until_str})"
+                                debug(f"Found next action before start time: {next_action_time}, {next_action_description}")
                         # If today is the scheduled day and current time is within the repeat window
                         elif current_day_match and scheduled_minutes <= current_minute_adjusted <= until_minutes:
                             # Find next repeat interval
@@ -903,6 +911,8 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                             
                             # Store as minutes with decimal precision for calculation
                             next_interval = next_interval_decimal
+                            
+                            debug(f"Within repeat window - minutes_since_start: {minutes_since_start}, next_interval: {next_interval}")
                             
                             if next_interval < minutes_until_next:
                                 minutes_until_next = next_interval
@@ -919,12 +929,13 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                                     seconds = int(repeat_interval * 60)
                                     next_action_description = f"Repeating '{trigger['type']}' trigger (every {seconds} seconds until {until_str})"
                                 else:
-                                    # For intervals >= 1 minute, show in minutes with at most 2 decimal places if needed
+                                    # For intervals >= 1 minute, show in minutes with at most 1 decimal place if needed
                                     if repeat_interval == int(repeat_interval):
                                         interval_str = str(int(repeat_interval))
                                     else:
-                                        interval_str = f"{repeat_interval:.2f}".rstrip('0').rstrip('.')
+                                        interval_str = f"{repeat_interval:.1f}"
                                     next_action_description = f"Repeating '{trigger['type']}' trigger (every {interval_str} min until {until_str})"
+                                debug(f"Found next action within window: {next_action_time}, {next_action_description}")
                     else:
                         # Single time point
                         # Check if today is the scheduled day and this time is in the future today
@@ -1040,6 +1051,7 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
         if minutes_until_next < float('inf'):
             result["has_next_action"] = True
             result["next_time"] = next_action_time
+            result["description"] = next_action_description
             result["minutes_until_next"] = float(minutes_until_next)
             
             # Format the time until next action in a human-friendly way
@@ -1047,12 +1059,18 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                 # For less than a minute, show seconds
                 seconds = round(minutes_until_next * 60)  # Round to nearest second
                 result["time_until_display"] = f"{seconds} second{'s' if seconds != 1 else ''} from now"
-            elif minutes_until_next < 60:
-                # For less than an hour, show minutes with at most 1 decimal place if needed
-                if abs(minutes_until_next - round(minutes_until_next)) < 0.1:  # If close to a whole number
-                    result["time_until_display"] = f"{round(minutes_until_next)} minutes from now"
+            elif minutes_until_next < 10:
+                # For less than 10 minutes, show minutes and seconds for more precision
+                minutes_part = int(minutes_until_next)
+                seconds_part = round((minutes_until_next - minutes_part) * 60)
+                
+                if seconds_part == 0:
+                    result["time_until_display"] = f"{minutes_part}m from now"
                 else:
-                    result["time_until_display"] = f"{minutes_until_next:.1f} minutes from now"
+                    result["time_until_display"] = f"{minutes_part}m {seconds_part}s from now"
+            elif minutes_until_next < 60:
+                # For 10 minutes to an hour, show rounded minutes
+                result["time_until_display"] = f"{round(minutes_until_next)} minutes from now"
             else:
                 # For an hour or more, show hours and minutes
                 hours = int(minutes_until_next // 60)
@@ -1063,14 +1081,14 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                     result["time_until_display"] = f"{hours}h {mins}m from now"
             
             # Format the description more cleanly for repeating schedules
-            if "Repeating" in result["description"]:
+            if next_action_description and "Repeating" in next_action_description:
                 # Extract the interval from the description
-                if "seconds" in result["description"]:
+                if "seconds" in next_action_description:
                     # Keep seconds as is
-                    result["description"] = result["description"]
-                elif "min until" in result["description"]:
+                    pass
+                elif "min until" in next_action_description:
                     # Clean up minute intervals
-                    parts = result["description"].split("every ")
+                    parts = next_action_description.split("every ")
                     if len(parts) > 1:
                         interval_part = parts[1].split(" min")[0]
                         try:
@@ -1082,6 +1100,9 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                             result["description"] = f"{parts[0]}every {interval_str} min{' min'.join(parts[1].split(' min')[1:])}"
                         except ValueError:
                             pass  # Keep original if parsing fails
+        else:
+            # When no action is found, set minutes_until_next to a large numerical value (for JSON compatibility)
+            result["minutes_until_next"] = 999999999
         
         return result
     except Exception as e:
@@ -1090,8 +1111,9 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
             "has_next_action": False,
             "next_time": None,
             "description": f"Error predicting next action: {str(e)}",
-            "minutes_until_next": None,
+            "minutes_until_next": 999999999,  # Large numerical value for JSON compatibility
             "timestamp": datetime.now().isoformat(),
+            "time_until_display": None,
             "error": True
         }
 

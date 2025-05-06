@@ -23,7 +23,8 @@
                 "instructions_block": [
                   {
                     "action": "display",
-                    "show": "Next"
+                    "show": "Next",
+                    "silent": true
                   }
                 ]
               },
@@ -58,6 +59,6 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-06T18:08:11.758622",
+  "last_updated": "2025-05-06T21:22:50.710146",
   "last_trigger_executions": {}
 }
