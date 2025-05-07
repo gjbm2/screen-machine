@@ -1,0 +1,65 @@
+{
+  "initial_actions": {
+    "instructions_block": []
+  },
+  "triggers": [
+    {
+      "type": "day_of_week",
+      "days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday"
+      ],
+      "scheduled_actions": [
+        {
+          "time": "07:00",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "import_var",
+                "var_name": "theme",
+                "as": "_theme",
+                "scope": "living-room"
+              },
+              {
+                "action": "import_var",
+                "var_name": "style",
+                "as": "_style",
+                "scope": "living-room"
+              },
+              {
+                "action": "reason",
+                "text_input": "Create an image of {{ _theme }} in the style of {{ _style }}, avoiding these subjects {{ history_var[-10:] }}",
+                "image_inputs": [],
+                "output_vars": [
+                  "prompt"
+                ],
+                "history_var": "history_var",
+                "reasoner": "devise_prompt"
+              },
+              {
+                "action": "generate",
+                "input": {
+                  "prompt": "{{ prompt }}"
+                },
+                "refiner": "enrich",
+                "history_var": "prompt_history"
+              }
+            ]
+          },
+          "repeat_schedule": {
+            "every": "60"
+          }
+        }
+      ]
+    }
+  ],
+  "final_actions": {
+    "instructions_block": []
+  },
+  "prevent_unload": true
+}

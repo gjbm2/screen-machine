@@ -1,0 +1,18 @@
+{
+  "schedule_stack": [],
+  "context_stack": [
+    {
+      "vars": {
+        "var1": "value1",
+        "var2": 42,
+        "var3": {
+          "nested": "object"
+        }
+      },
+      "publish_destination": "test_dest_persistence"
+    }
+  ],
+  "state": "stopped",
+  "last_updated": "2025-05-07T10:37:46.770909",
+  "last_trigger_executions": {}
+}

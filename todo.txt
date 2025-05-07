@@ -1,3 +1,61 @@
+7-mAY
+
+top:
+
+1. Load schedule (via Alexa) -- show loadable list in display-schedules
+2. Unload schedule via Alexa
+3. Protected flag at root on schedule script (if set, cannot be unloaded)
+4. Get animation working 
+5. Set var bugs
+6. Have state update in scheduler.tsx so we can test properly 
+7. Add comprehensive tests for schedule init, also persistence and set / get vars at diff scopes
+
+1. animate not working properly
+2. simplify import to be just from an Enum list
+
+Need to have
+
+1. publishing isn't loading prompts...
+7. fullscreenview copes with mp4 and jpg (and works across buckets and generated images)
+15. Control schedule from bucket
+17. 'load' instruction in scheduler
+18. device control calls (in due course)
+19. add 'blank'  to front end
+20. add 'display next' and 'display random' to front end
+21. event triggers to delay schedule
+
+
+
+Nice to have 
+
+2. on first page load, soft link to manage images, then unfurl generator section
+3. generator tab too prominent
+4. Drag & drop to order images
+5. burger menu (and remove scripts)
+6. home icon 
+8. metadata working for bucket images
+9. repair rendering status in index
+10. "Computer, use AI to schedule" 
+12. Slack triggers
+13. Temp schedule triggers (poke, user rendered)
+15. Samsung ws sync
+17. Styletransfer
+18. Jinju for workflows (clear up generator.py)
+19. general production readiness 
+20. move host to friendly url
+21. better ws handling
+22. important & urgent scheduling
+23. async scheduling
+24. scheduler passes images in vars (from generate > animate, etc.)
+25. shared history workarounds...?
+
+
+
+
+
+
+
+
 31-Mar-25
 
 1. Sort out openai latency

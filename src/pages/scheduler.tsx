@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
-import { Play, Pause, Plus, AlertCircle, RefreshCcw, ArrowDownToLine, X, Settings } from 'lucide-react';
+import { Play, Pause, Plus, AlertCircle, RefreshCcw, ArrowDownToLine, X, Settings, StopCircle, Edit } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { useConsoleManagement } from '@/hooks/use-console-management';
 import apiService from '@/utils/api';
@@ -11,6 +11,13 @@ import { useNavigate } from 'react-router-dom';
 import { SchemaEditModal } from '../components/scheduler/SchemaEditModal';
 import { SetVarsButton } from '../components/scheduler/SetVarsButton';
 import { VarsRegistryCard } from '../components/scheduler/VarsRegistryCard';
+
+// Extend Window interface to include fetchDestinations
+declare global {
+  interface Window {
+    fetchDestinations?: () => Promise<void>;
+  }
+}
 
 interface Schedule {
   id: string;
@@ -124,14 +131,22 @@ const Scheduler = () => {
             name: publishDestInfo?.name || destId,
             schedules: [],
             isRunning: false, // Default to not running
-            isPaused: false,
+            isPaused: false,  // Default to not paused
           };
           
           // Get status from the batch response
           const statusInfo = allStatuses[destId];
           if (statusInfo) {
-            destination.isRunning = statusInfo.is_running || statusInfo.status === 'running' || statusInfo.status === 'paused';
+            // Handle paused state first
             destination.isPaused = statusInfo.is_paused || statusInfo.status === 'paused';
+            
+            // A scheduler is considered "running" for UI purposes if it's either actually running or paused
+            destination.isRunning = statusInfo.is_running || statusInfo.status === 'running' || destination.isPaused;
+            
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`Status for ${destId}:`, statusInfo);
+              console.log(`- isPaused: ${destination.isPaused}, isRunning: ${destination.isRunning}`);
+            }
           }
           
           // Check if this destination is in the running list
@@ -156,26 +171,12 @@ const Scheduler = () => {
               // Get context
               try {
                 const contextResponse = await apiService.getSchedulerContext(destId);
-                console.log(`Context response for ${destId}:`, contextResponse);
-                
-                // Check if the response is a direct context object or contains a context_stack
                 if (contextResponse.context_stack) {
-                  // Use the context_stack if available
                   destination.contextStack = contextResponse.context_stack || [];
                 } else if (contextResponse.vars || contextResponse.last_generated) {
-                  // If it's a direct context object, create a single-item array
                   destination.contextStack = [contextResponse];
-                  console.log(`Created context stack with direct context for ${destId}`, destination.contextStack);
                 } else {
-                  // Default to empty array
                   destination.contextStack = [];
-                  console.warn(`Destination ${destId} has no usable context data`);
-                }
-                
-                if (destination.contextStack && destination.contextStack.length > 0) {
-                  console.log(`Destination ${destId} context[0]:`, destination.contextStack[0]);
-                } else {
-                  console.warn(`Destination ${destId} has empty contextStack`);
                 }
               } catch (contextError) {
                 if (process.env.NODE_ENV === 'development') {
@@ -275,6 +276,9 @@ const Scheduler = () => {
     }
   }, [toast]);
 
+  // Make fetchDestinations available in component scope
+  (window as any).fetchDestinations = fetchDestinations;
+
   useEffect(() => {
     fetchDestinations();
   }, [fetchDestinations]);
@@ -314,7 +318,7 @@ const Scheduler = () => {
       
       // Fetch all scheduler statuses in a single request
       fetchAllSchedulerStatuses();
-    }, 5000); // Poll every 5 seconds
+    }, 5000); // Poll every 5 seconds (changed from 15 seconds)
 
     return () => {
       clearInterval(pollingIntervalId);
@@ -340,9 +344,10 @@ const Scheduler = () => {
 
   const fetchSchedulerStatus = async (destinationId: string) => {
     try {
-      // Get scheduler status directly
-      const statusResponse = await apiService.getSchedulerStatus(destinationId);
-      const isRunning = statusResponse.is_running || false;
+      // First check if scheduler is running
+      const runningResponse = await apiService.getDestinations();
+      const destination = runningResponse.destinations.find(d => d.id === destinationId);
+      const isRunning = destination?.scheduler_running || false;
       
       // Only log in debug mode
       if (process.env.NODE_ENV === 'development') {
@@ -404,7 +409,43 @@ const Scheduler = () => {
     try {
       const response = await apiService.getAllSchedulerStatuses();
       if (response && response.statuses) {
+        // Add logging for debugging
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Received updated scheduler statuses:", response.statuses);
+          
+          // Specifically look for paused schedulers
+          const pausedSchedulers = Object.entries(response.statuses)
+            .filter(([id, status]: [string, any]) => status.is_paused || status.status === 'paused');
+          
+          if (pausedSchedulers.length > 0) {
+            console.log("Found PAUSED schedulers:", pausedSchedulers.map(([id]) => id).join(', '));
+            
+            // Log detailed info for each paused scheduler
+            pausedSchedulers.forEach(([id, status]: [string, any]) => {
+              console.log(`Paused scheduler ${id} details:`, status);
+            });
+          }
+        }
+        
         setSchedulerStatus(response.statuses);
+        
+        // Now update destination objects based on new statuses
+        setDestinations(prevDestinations => {
+          return prevDestinations.map(dest => {
+            const status = response.statuses[dest.id];
+            if (status) {
+              const isPaused = status.is_paused || status.status === 'paused';
+              const isRunning = status.is_running || status.status === 'running' || isPaused;
+              
+              return {
+                ...dest,
+                isPaused,
+                isRunning
+              };
+            }
+            return dest;
+          });
+        });
       }
     } catch (error) {
       console.error('Error fetching all scheduler statuses:', error);
@@ -422,14 +463,35 @@ const Scheduler = () => {
       const previousStatus = schedulerStatus[destinationId];
       
       // Update UI immediately for better UX
-      setSchedulerStatus(prevStatus => ({
-        ...prevStatus,
-        [destinationId]: {
-          ...prevStatus[destinationId],
-          is_running: !isRunning // Toggle the running state
-        }
-      }));
+      if (isRunning) {
+        // Pausing a running scheduler
+        setDestinations(prev => 
+          prev.map(d => d.id === destinationId ? { ...d, isPaused: true, isRunning: true } : d)
+        );
+        setSchedulerStatus(prevStatus => ({
+          ...prevStatus,
+          [destinationId]: {
+            ...prevStatus[destinationId],
+            is_paused: true,
+            status: 'paused'
+          }
+        }));
+      } else {
+        // Unpausing a paused scheduler
+        setDestinations(prev => 
+          prev.map(d => d.id === destinationId ? { ...d, isPaused: false, isRunning: true } : d)
+        );
+        setSchedulerStatus(prevStatus => ({
+          ...prevStatus,
+          [destinationId]: {
+            ...prevStatus[destinationId],
+            is_paused: false,
+            status: 'running'
+          }
+        }));
+      }
       
+      // Call the API
       if (isRunning) {
         await apiService.pauseScheduler(destinationId);
       } else {
@@ -439,12 +501,9 @@ const Scheduler = () => {
       // Refresh the data to ensure we have accurate state
       await fetchDestinations();
       
-      // Immediately fetch updated status
-      await fetchSchedulerStatus(destinationId);
-      
       toast({
         title: 'Success',
-        description: `Scheduler ${isRunning ? 'paused' : 'started'} successfully`,
+        description: `Scheduler ${isRunning ? 'paused' : 'resumed'} successfully`,
       });
     } catch (error) {
       console.error('Error toggling scheduler:', error);
@@ -611,71 +670,62 @@ const Scheduler = () => {
     }
   };
   
-  const handleSchemaEditSave = () => {
+  const handleSchemaEditSave = async () => {
     // Get the current destination from schemaEditData
     const destinationId = schemaEditData?.destination;
     
-    // Refresh the data after successful save
-    fetchDestinations().then(() => {
-      // Auto-start the scheduler if it's a new schedule (POST method)
-      if (destinationId && schemaEditData?.saveMethod === 'POST') {
-        console.log(`Auto-starting scheduler for ${destinationId} after creating new schedule`);
-        handleStartScheduler(destinationId);
-        
-        toast({
-          title: 'Success',
-          description: 'Schedule saved and started automatically',
-        });
-      } else {
-        toast({
-          title: 'Success',
-          description: 'Schedule saved successfully',
-        });
-      }
-    });
-  };
-
-  const handleSaveSchedule = async (schema: any) => {
-    try {
-      await apiService.saveSchedulerSchema(selectedDestinationId, schema);
-      if (autoStart) {
-        handleStartScheduler(selectedDestinationId);
-        
-        toast({
-          title: 'Success',
-          description: 'Schedule saved and started automatically',
-        });
-      } else {
-        toast({
-          title: 'Success',
-          description: 'Schedule saved successfully',
-        });
-      }
-    } catch (error) {
-      console.error('Error saving schedule:', error);
+    if (!destinationId) {
+      console.error('No destination ID found for schema edit');
       toast({
         title: 'Error',
-        description: 'Failed to save schedule',
+        description: 'Failed to save schedule: Missing destination ID',
         variant: 'destructive',
       });
+      return;
     }
-  };
-
-  const handleEditScheduleAtPosition = async (destinationId: string, position: number) => {
+    
     try {
-      const schedule = await apiService.getScheduleAtPosition(destinationId, position);
-      setSchema(schedule);
-      setSchemaEditModalOpen(true);
+      // First refresh the data to ensure we have the latest state
+      await fetchDestinations();
       
-      toast({
-        title: 'Info',
-        description: 'Opening schedule editor...',
-      });
+      // Wait a short moment to ensure the schedule is saved
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Auto-start the scheduler if it's a new schedule (POST method)
+      if (schemaEditData?.saveMethod === 'POST') {
+        console.log(`Auto-starting scheduler for ${destinationId} after creating new schedule`);
+        try {
+          await handleStartScheduler(destinationId);
+          toast({
+            title: 'Success',
+            description: 'Schedule saved and started automatically',
+          });
+        } catch (error) {
+          console.error('Error starting scheduler:', error);
+          toast({
+            title: 'Warning',
+            description: 'Schedule was saved but could not be started automatically. Try starting it manually.',
+            variant: 'destructive',
+          });
+        }
+      } else {
+        // For existing schedules, ensure the state is properly updated
+        const destination = destinations.find(d => d.id === destinationId);
+        if (destination?.isRunning) {
+          // If the scheduler is running, fetch its status to update UI
+          await fetchSchedulerStatus(destinationId);
+        }
+        
+        toast({
+          title: 'Success',
+          description: 'Schedule saved successfully',
+        });
+      }
     } catch (error) {
-      console.error('Error editing schedule:', error);
+      console.error('Error updating state after schema edit:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to get schedule for editing',
+        title: 'Warning',
+        description: 'There was an error updating the UI. Please refresh the page.',
         variant: 'destructive',
       });
     }
@@ -731,11 +781,39 @@ const Scheduler = () => {
               <CardTitle>Running Schedulers</CardTitle>
             </CardHeader>
             <CardContent>
-              {sortedDestinations.filter(d => d.isRunning).length === 0 ? (
+              {sortedDestinations.filter(d => d.isRunning && !d.isPaused).length === 0 ? (
                 <p className="text-muted-foreground">No running schedulers</p>
               ) : (
                 <div className="space-y-6">
-                  {sortedDestinations.filter(d => d.isRunning).map((destination) => (
+                  {sortedDestinations.filter(d => d.isRunning && !d.isPaused).map((destination) => (
+                    <SchedulerCard 
+                      key={destination.name} 
+                      destination={destination} 
+                      onToggle={handleToggleSchedule}
+                      onCreate={handleCreateSchedule}
+                      onStart={handleStartScheduler}
+                      onStop={handleStopScheduler}
+                      onUnload={handleUnloadSchedule}
+                      onEdit={handleEditSchedule}
+                      schedulerStatus={schedulerStatus}
+                    />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          
+          {/* Paused Schedulers */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Paused Schedulers</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {sortedDestinations.filter(d => d.isPaused).length === 0 ? (
+                <p className="text-muted-foreground">No paused schedulers</p>
+              ) : (
+                <div className="space-y-6">
+                  {sortedDestinations.filter(d => d.isPaused).map((destination) => (
                     <SchedulerCard 
                       key={destination.name} 
                       destination={destination} 
@@ -759,11 +837,11 @@ const Scheduler = () => {
               <CardTitle>Stopped Schedulers</CardTitle>
             </CardHeader>
             <CardContent>
-              {sortedDestinations.filter(d => !d.isRunning).length === 0 ? (
+              {sortedDestinations.filter(d => !d.isRunning && !d.isPaused).length === 0 ? (
                 <p className="text-muted-foreground">No stopped schedulers</p>
               ) : (
                 <div className="space-y-6">
-                  {sortedDestinations.filter(d => !d.isRunning).map((destination) => (
+                  {sortedDestinations.filter(d => !d.isRunning && !d.isPaused).map((destination) => (
                     <SchedulerCard 
                       key={destination.name} 
                       destination={destination} 
@@ -803,95 +881,71 @@ const Scheduler = () => {
 
 interface SchedulerCardProps {
   destination: Destination;
-  onToggle: (destinationId: string, isRunning: boolean) => Promise<void>;
-  onCreate: (destinationId: string) => Promise<void>;
-  onStart: (destinationId: string) => Promise<void>;
-  onStop: (destinationId: string) => Promise<void>;
-  onUnload: (destinationId: string) => Promise<void>;
-  onEdit: (destinationId: string, layer: number) => Promise<void>;
-  schedulerStatus?: Record<string, SchedulerStatus>;
+  onToggle: (destinationId: string, isRunning: boolean) => void;
+  onCreate: (destinationId: string) => void;
+  onStart: (destinationId: string) => void;
+  onStop: (destinationId: string) => void;
+  onUnload: (destinationId: string) => void;
+  onEdit: (destinationId: string, layer: number) => void;
+  schedulerStatus: Record<string, any>;
 }
 
-const SchedulerCard: React.FC<SchedulerCardProps> = ({ 
-  destination, 
-  onToggle, 
-  onCreate, 
-  onStart, 
-  onStop, 
+const SchedulerCard: React.FC<SchedulerCardProps> = ({
+  destination,
+  onToggle,
+  onCreate,
+  onStart,
+  onStop,
   onUnload,
   onEdit,
-  schedulerStatus
+  schedulerStatus,
 }) => {
-  const [showLogs, setShowLogs] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [activeTab, setActiveTab] = useState<'context' | 'script'>('context');
-  const [logs, setLogs] = useState<string[]>(destination.logs || []);
-  const logsContainerRef = useRef<HTMLDivElement>(null);
-  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const toggleExpanded = () => setExpanded(!expanded);
   
   // Debug logs
   useEffect(() => {
-    console.log(`SchedulerCard for ${destination.name} (${destination.id}):`);
-    console.log(`- isRunning: ${destination.isRunning}`);
-    console.log(`- isPaused: ${destination.isPaused}`);
-    console.log(`- Has scheduleStack: ${destination.scheduleStack ? destination.scheduleStack.length : 0} items`);
-    console.log(`- Has contextStack: ${destination.contextStack ? destination.contextStack.length : 0} items`);
-    if (destination.contextStack && destination.contextStack.length > 0) {
-      console.log(`- First context:`, destination.contextStack[0]);
-    }
-  }, [destination]);
-  
-  // Set up polling for logs when they're visible
-  useEffect(() => {
-    // Don't poll if logs aren't visible
-    if (!showLogs) return;
-    
-    // Function to fetch the latest logs
-    const fetchLogs = async () => {
-      try {
-        const logs = await apiService.getSchedulerLogs(destination.id);
-        if (logs && logs.log) {
-          setLogs(logs.log);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[SchedulerCard] Rendering card for ${destination.name} (${destination.id}):`);
+      console.log(`[SchedulerCard] - isRunning: ${destination.isRunning}, isPaused: ${destination.isPaused}`);
+      console.log(`[SchedulerCard] - Has scheduleStack: ${destination.scheduleStack ? destination.scheduleStack.length : 0} items`);
+      console.log(`[SchedulerCard] - Has contextStack: ${destination.contextStack ? destination.contextStack.length : 0} items`);
+      
+      // Log the status from API for comparison
+      const apiStatus = schedulerStatus[destination.id];
+      if (apiStatus) {
+        console.log(`[SchedulerCard] - API Status for ${destination.id}: `, apiStatus);
+        console.log(`[SchedulerCard] - API is_running: ${apiStatus.is_running}, is_paused: ${apiStatus.is_paused}`);
+        console.log(`[SchedulerCard] - API status string: ${apiStatus.status}`);
+        
+        // Check for mismatches between API and local state
+        if (destination.isPaused !== (apiStatus.is_paused || apiStatus.status === 'paused')) {
+          console.warn(`[SchedulerCard] WARNING: isPaused mismatch for ${destination.id}:`, {
+            'component': destination.isPaused,
+            'api': apiStatus.is_paused || apiStatus.status === 'paused'
+          });
         }
-      } catch (error) {
-        console.error(`Error fetching logs for ${destination.id}:`, error);
+        
+        const apiIsRunning = apiStatus.is_running || apiStatus.status === 'running' || (apiStatus.is_paused || apiStatus.status === 'paused');
+        if (destination.isRunning !== apiIsRunning) {
+          console.warn(`[SchedulerCard] WARNING: isRunning mismatch for ${destination.id}:`, {
+            'component': destination.isRunning,
+            'api': apiIsRunning
+          });
+        }
       }
-    };
-    
-    // Fetch logs immediately when becoming visible
-    fetchLogs();
-    
-    // Set up polling interval (15 seconds)
-    const intervalId = setInterval(fetchLogs, 15000);
-    
-    // Clean up interval when component unmounts or logs hidden
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [showLogs, destination.id]); // Re-run effect when showLogs changes
-  
-  // When destination.logs updates from parent (e.g., on manual refresh), update our local state
-  useEffect(() => {
-    setLogs(destination.logs || []);
-  }, [destination.logs]);
-  
-  // Scroll logs to bottom whenever they change or become visible
-  useEffect(() => {
-    if (showLogs && logsContainerRef.current) {
-      // Use requestAnimationFrame to ensure DOM has updated before scrolling
-      requestAnimationFrame(() => {
-        if (logsContainerRef.current) {
-          logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
-        }
-      });
+      
+      if (destination.contextStack && destination.contextStack.length > 0) {
+        console.log(`[SchedulerCard] - First context for ${destination.id}:`, destination.contextStack[0]);
+      }
     }
-  }, [logs, showLogs]);
+  }, [destination, schedulerStatus]);
   
   // Display status more prominently
   const statusBadge = () => {
     if (destination.isPaused) {
       return (
-        <Badge variant="outline" className="px-3 py-1 bg-amber-100">
+        <Badge variant="outline" className="px-3 py-1 bg-amber-100 text-amber-800 border-amber-300 font-medium">
           Paused
         </Badge>
       );
@@ -909,77 +963,85 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
       );
     }
   };
-
-  // Format next scheduled action time
-  const formatNextAction = (nextAction: NextAction | null) => {
-    if (!nextAction || !nextAction.has_next_action || nextAction.minutes_until_next === Infinity || nextAction.minutes_until_next === 999999999) {
-      return <p className="text-sm text-muted-foreground">No upcoming actions</p>;
-    }
-
-    return (
-      <div className="text-sm border-l-4 border-primary pl-2 mt-2">
-        <p className="font-medium">Next action: {nextAction.next_time}</p>
-        <p className="text-muted-foreground">{nextAction.description}</p>
-        {nextAction.minutes_until_next !== null && (
-          <p className="text-xs">
-            {nextAction.time_until_display ? 
-              nextAction.time_until_display : 
-              nextAction.minutes_until_next < 60 ?
-                `${nextAction.minutes_until_next} minutes from now` :
-                `${Math.floor(nextAction.minutes_until_next / 60)}h ${nextAction.minutes_until_next % 60}m from now`
-            }
-          </p>
-        )}
-      </div>
-    );
-  };
-
-  // Render context variables
-  const renderContextVariables = (context: any) => {
-    console.log("Rendering context:", context);
-    
-    if (!context) {
-      console.warn("Context is undefined or null");
-      return <p className="text-sm text-muted-foreground">No context available</p>;
-    }
-    
-    if (!context.vars) {
-      console.warn("Context has no vars property:", context);
-      return <p className="text-sm text-muted-foreground">No variables in context</p>;
-    }
-    
-    return (
-      <div className="bg-accent/10 p-2 rounded-md">
-        {Object.keys(context.vars).length === 0 ? (
-          <p className="text-sm text-muted-foreground mb-2">No variables in context</p>
-        ) : (
-          <>
-            <h5 className="text-sm font-medium mb-2">Variables:</h5>
-            <ul className="text-xs space-y-1">
-              {Object.entries(context.vars).map(([key, value]) => (
-                <li key={key} className="flex items-start">
-                  <span className="font-semibold mr-2">{key}:</span>
-                  <span className="text-muted-foreground whitespace-pre-wrap break-all">
-                    {typeof value === 'object' 
-                      ? JSON.stringify(value, null, 2)
-                      : String(value)
-                    }
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-        {context.last_generated && (
-          <div className={Object.keys(context.vars).length === 0 ? "" : "mt-2"}>
-            <h5 className="text-sm font-medium">Last Generated:</h5>
-            <p className="text-xs text-muted-foreground">{context.last_generated}</p>
-          </div>
-        )}
-      </div>
-    );
-  };
   
+  // Action buttons
+  const actionButtons = () => {
+    // If the scheduler is running or paused (which means it's in the running_schedulers dict)
+    if (destination.isRunning) {
+      return (
+        <div className="flex space-x-2">
+          {destination.isPaused ? (
+            <Button
+              variant="outline" 
+              size="sm"
+              onClick={() => onToggle(destination.id, false)}
+            >
+              <Play className="h-4 w-4 mr-1" />
+              Resume
+            </Button>
+          ) : (
+            <Button
+              variant="outline" 
+              size="sm"
+              onClick={() => onToggle(destination.id, true)}
+            >
+              <Pause className="h-4 w-4 mr-1" />
+              Pause
+            </Button>
+          )}
+          <Button
+            variant="destructive" 
+            size="sm"
+            onClick={() => onStop(destination.id)}
+          >
+            <StopCircle className="h-4 w-4 mr-1" />
+            Stop
+          </Button>
+          <Button
+            variant="ghost" 
+            size="sm"
+            onClick={() => onEdit(destination.id, 0)}
+          >
+            <Edit className="h-4 w-4" />
+          </Button>
+        </div>
+      );
+    }
+    
+    // If the scheduler is not running
+    return (
+      <div className="flex space-x-2">
+        {/* If there's a schedule available */}
+        {destination.schedules && destination.schedules.length > 0 ? (
+          <Button
+            variant="outline" 
+            size="sm"
+            onClick={() => onStart(destination.id)}
+          >
+            <Play className="h-4 w-4 mr-1" />
+            Start
+          </Button>
+        ) : (
+          <Button
+            variant="outline" 
+            size="sm"
+            onClick={() => onCreate(destination.id)}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Create
+          </Button>
+        )}
+        <Button
+          variant="ghost" 
+          size="sm"
+          onClick={() => onEdit(destination.id, 0)}
+        >
+          <Edit className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  };
+
   return (
     <Card className="shadow-md">
       <CardHeader className="bg-muted/30">
@@ -989,63 +1051,11 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
             {statusBadge()}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              onClick={() => onCreate(destination.id)}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Create
-            </Button>
-            {destination.isPaused ? (
-              <Button
-                size="sm"
-                variant="default"
-                onClick={() => onToggle(destination.id, false)}
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Resume
-              </Button>
-            ) : destination.isRunning ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onToggle(destination.id, true)}
-              >
-                <Pause className="h-4 w-4 mr-2" />
-                Pause
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="default"
-                onClick={() => onStart(destination.id)}
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Start
-              </Button>
-            )}
-            {(destination.isRunning || destination.isPaused) && (
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => onStop(destination.id)}
-              >
-                <X className="h-4 w-4 mr-2" />
-                Stop
-              </Button>
-            )}
+            {actionButtons()}
           </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="mt-4">
-        {/* Next Scheduled Action */}
-        {destination.isRunning && (
-          <div className="mb-4 p-3 bg-accent/30 rounded-md">
-            <h4 className="text-sm font-medium mb-1">Status</h4>
-            {formatNextAction(schedulerStatus?.[destination.id]?.next_action || null)}
-          </div>
-        )}
-      
         {/* Empty State Message */}
         {(!destination.scheduleStack || destination.scheduleStack.length === 0) && (
           <div className="text-center py-4 text-muted-foreground">
@@ -1061,11 +1071,11 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => setShowSchedule(!showSchedule)}
+                onClick={toggleExpanded}
               >
-                {showSchedule ? 'Hide details' : 'Show details'}
+                {expanded ? 'Hide details' : 'Show details'}
               </Button>
-              {showSchedule && destination.scheduleStack && destination.scheduleStack.length > 0 && (
+              {expanded && destination.scheduleStack && destination.scheduleStack.length > 0 && (
                 <Button 
                   variant="outline" 
                   size="sm" 
@@ -1077,7 +1087,7 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
               )}
             </div>
             
-            {showSchedule && (
+            {expanded && (
               <div className="bg-muted/30 p-4 rounded-lg">
                 {destination.scheduleStack && destination.scheduleStack.length > 0 ? (
                   <div className="space-y-4">
@@ -1093,64 +1103,12 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
                             >
                               Edit
                             </Button>
-                            <SetVarsButton
-                              destinationId={destination.id}
-                              contextVars={destination.contextStack && destination.contextStack[index] ? destination.contextStack[index].vars || {} : {}}
-                              onVarsSaved={() => {
-                                toast.success("Variable saved");
-                              }}
-                            />
                           </div>
                         </div>
                         
-                        {/* Tabs for Context and Script */}
-                        <div className="border-b mb-4">
-                          <div className="flex space-x-2">
-                            <button
-                              className={`pb-2 px-1 text-sm transition-colors relative ${
-                                activeTab === 'context' 
-                                  ? 'font-medium text-primary' 
-                                  : 'text-muted-foreground hover:text-foreground'
-                              }`}
-                              onClick={() => setActiveTab('context')}
-                            >
-                              Context
-                              {activeTab === 'context' && (
-                                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-                              )}
-                            </button>
-                            <button
-                              className={`pb-2 px-1 text-sm transition-colors relative ${
-                                activeTab === 'script' 
-                                  ? 'font-medium text-primary' 
-                                  : 'text-muted-foreground hover:text-foreground'
-                              }`}
-                              onClick={() => setActiveTab('script')}
-                            >
-                              Script
-                              {activeTab === 'script' && (
-                                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                        
-                        {/* Tab content */}
-                        {activeTab === 'context' && (
-                          <div className="mb-4">
-                            {destination.contextStack && destination.contextStack[index] ? (
-                              renderContextVariables(destination.contextStack[index])
-                            ) : (
-                              <p className="text-sm text-muted-foreground">No context available for this schedule layer</p>
-                            )}
-                          </div>
-                        )}
-                        
-                        {activeTab === 'script' && (
-                          <pre className="text-xs bg-muted p-2 rounded-md overflow-auto max-h-40">
-                            {JSON.stringify(layer, null, 2)}
-                          </pre>
-                        )}
+                        <pre className="text-xs bg-muted p-2 rounded-md overflow-auto max-h-40">
+                          {JSON.stringify(layer, null, 2)}
+                        </pre>
                       </div>
                     ))}
                   </div>
@@ -1161,33 +1119,6 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
             )}
           </div>
         )}
-        
-        {/* Logs - Always show the option to view logs */}
-        <div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setShowLogs(!showLogs)}
-            className="mb-2"
-          >
-            {showLogs ? 'Hide Logs' : 'Show Logs'}
-          </Button>
-          
-          {showLogs && (
-            <div 
-              ref={logsContainerRef}
-              className="bg-black text-green-400 p-4 rounded-lg font-mono text-xs overflow-auto max-h-60"
-            >
-              {logs && logs.length > 0 ? (
-                logs.map((log, index) => (
-                  <div key={index}>{log}</div>
-                ))
-              ) : (
-                <p>No logs available</p>
-              )}
-            </div>
-          )}
-        </div>
       </CardContent>
     </Card>
   );

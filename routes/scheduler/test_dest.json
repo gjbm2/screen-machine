@@ -45,28 +45,25 @@
   "context_stack": [
     {
       "vars": {
-        "initial_executed": true,
-        "test_var": "initial_value",
-        "existing_var": "existing_value",
-        "final_executed": true,
         "prompt": "test prompt for generation",
         "generation_history": [
           {
-            "timestamp": "2025-05-06 18:09:29",
+            "timestamp": "2025-05-07 10:37:40",
             "type": "generation",
             "prompt": "test prompt for generation",
             "refiner": "test_refiner",
             "workflow": "text-to-image",
             "image_url": "mock_image_test_promp.jpg"
           }
-        ]
+        ],
+        "initial_executed": true,
+        "final_executed": true
       },
-      "last_generated": "mock_image_test_promp.jpg",
       "publish_destination": "test_dest",
-      "stopping": true
+      "last_generated": "mock_image_test_promp.jpg"
     }
   ],
   "state": "stopped",
-  "last_updated": "2025-05-06T18:09:30.966734",
+  "last_updated": "2025-05-07T10:37:41.803512",
   "last_trigger_executions": {}
 }

@@ -1,0 +1,12 @@
+{
+  "schedule_stack": [],
+  "context_stack": [
+    {
+      "vars": {},
+      "publish_destination": "local"
+    }
+  ],
+  "state": "stopped",
+  "last_updated": "2025-05-07T10:37:44.073846",
+  "last_trigger_executions": {}
+}

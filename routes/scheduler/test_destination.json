@@ -1,0 +1,56 @@
+{
+  "schedule_stack": [
+    {
+      "initial_actions": {
+        "instructions": [
+          {
+            "action": "set_var",
+            "var_name": "initialized",
+            "value": true
+          }
+        ]
+      },
+      "triggers": [
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "12:00",
+              "trigger_actions": {
+                "instructions": [
+                  {
+                    "action": "set_var",
+                    "var_name": "lunch_time",
+                    "value": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "context_stack": [
+    {
+      "vars": {
+        "test_var1": "test_value1",
+        "test_var2": 42,
+        "test_var3": {
+          "nested": "object"
+        }
+      },
+      "publish_destination": "test_destination"
+    }
+  ],
+  "state": "paused",
+  "last_updated": "2025-05-07T10:37:44.351169",
+  "last_trigger_executions": {}
+}

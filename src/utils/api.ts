@@ -449,6 +449,39 @@ export class Api {
     }
   }
 
+  // Get destinations with scheduler status
+  async getDestinations() {
+    if (this.mockMode) {
+      return { 
+        destinations: [
+          { id: 'destination1', scheduler_running: true },
+          { id: 'destination2', scheduler_running: false }
+        ]
+      };
+    }
+
+    try {
+      // First get all publish destinations
+      const publishDestinations = await this.getPublishDestinations();
+      
+      // Then get all scheduler statuses
+      const statusesResponse = await this.getAllSchedulerStatuses();
+      const statuses = statusesResponse.statuses || {};
+      
+      // Combine the information
+      const destinations = publishDestinations.map(dest => ({
+        id: dest.id,
+        name: dest.name,
+        scheduler_running: statuses[dest.id]?.is_running || false
+      }));
+      
+      return { destinations };
+    } catch (error) {
+      console.error('Error getting destinations:', error);
+      throw error;
+    }
+  }
+
   // Get scheduler logs
   async getSchedulerLogs(destinationId: string) {
     if (this.mockMode) {
@@ -1179,29 +1212,6 @@ export class Api {
     }
   }
 
-  // Get the list of publish destinations
-  async getDestinations() {
-    if (this.mockMode) {
-      return {
-        destinations: [
-          { id: 'destination1', name: 'Mock Destination 1', scheduler_running: true },
-          { id: 'destination2', name: 'Mock Destination 2', scheduler_running: false }
-        ]
-      };
-    }
-
-    try {
-      const response = await fetch(`${this.apiUrl}/publish/destinations`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch destinations');
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching destinations:', error);
-      throw error;
-    }
-  }
-
   // Get variables registry
   async getVarsRegistry() {
     if (this.mockMode) {
@@ -1583,6 +1593,55 @@ export class Api {
       return await response.json();
     } catch (error) {
       console.error('Error writing file:', error);
+      throw error;
+    }
+  }
+
+  // Set a specific variable in a scheduler's context
+  async setSchedulerContextVar(destinationId: string, varName: string, varValue: any) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Setting context variable for scheduler ID:', destinationId, 'varName:', varName, 'value:', varValue);
+      return {
+        status: 'success',
+        var_name: varName,
+        var_value: varValue,
+        vars: { [varName]: varValue },
+        deleted: varValue === null
+      };
+    }
+
+    try {
+      console.log('[API] setSchedulerContextVar - Starting request:', {
+        destinationId,
+        varName,
+        varValue,
+        endpoint: `${this.apiUrl}/schedulers/${destinationId}/context`,
+        isNull: varValue === null
+      });
+      
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/context`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          var_name: varName,
+          var_value: varValue
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        console.error('[API] setSchedulerContextVar - Error response:', err);
+        throw new Error(err.error || 'Failed to set scheduler context variable');
+      }
+
+      const data = await response.json();
+      console.log('[API] setSchedulerContextVar - Success response:', data);
+      return data;
+    } catch (error) {
+      console.error('[API] setSchedulerContextVar - Exception:', error);
+      toast.error('Failed to set scheduler context variable');
       throw error;
     }
   }

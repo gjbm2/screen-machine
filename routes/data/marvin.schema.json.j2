@@ -7,7 +7,7 @@
       "intent": {
         "type": "string",
         "enum": ["respond_only", "generate_image", "other_action", "change_refiner", "animate", "set_variable"],
-        "description": "The user's intent. One of: 'respond_only', 'generate_image', 'other_action', "animate", 'set_variable' or 'change_refiner'."
+        "description": "The user's intent. One of: 'respond_only', 'generate_image', 'other_action', 'animate', 'set_variable' or 'change_refiner'."
       },
       "response_ssml": {
         "type": "string",
@@ -25,15 +25,7 @@
             "description": "The name of the variable to set when intent is set_variable."
           },
           "value": {
-            "description": "The value to set the variable to when intent is set_variable.",
-            "oneOf": [
-              {"type": "string"},
-              {"type": "number"},
-              {"type": "boolean"},
-              {"type": "null"},
-              {"type": "array"},
-              {"type": "object"}
-            ]
+            "description": "The value to set the variable to when intent is set_variable."
           },
           "targets": {
             "type": "array",

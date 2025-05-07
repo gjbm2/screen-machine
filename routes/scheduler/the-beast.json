@@ -35,11 +35,11 @@
                   },
                   {
                     "action": "generate",
+                    "history_var": "history_var",
                     "input": {
                       "prompt": "{{ value }}"
                     },
-                    "refiner": "nous_values",
-                    "history_var": "history_var"
+                    "refiner": "nous_values"
                   }
                 ]
               },
@@ -53,7 +53,8 @@
       ],
       "final_actions": {
         "instructions_block": []
-      }
+      },
+      "prevent_unload": true
     }
   ],
   "context_stack": [
@@ -75,7 +76,7 @@
       "publish_destination": "the-beast"
     }
   ],
-  "state": "paused",
-  "last_updated": "2025-05-06T13:07:15.863963",
+  "state": "running",
+  "last_updated": "2025-05-07T22:46:32.902495",
   "last_trigger_executions": {}
 }

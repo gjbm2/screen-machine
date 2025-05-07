@@ -1,0 +1,19 @@
+{
+  "schedule_stack": [
+    {
+      "triggers": [],
+      "initial_actions": {}
+    }
+  ],
+  "context_stack": [
+    {
+      "vars": {
+        "existing_var": "existing_value"
+      },
+      "publish_destination": "test_dest_update"
+    }
+  ],
+  "state": "stopped",
+  "last_updated": "2025-05-07T10:37:46.939595",
+  "last_trigger_executions": {}
+}

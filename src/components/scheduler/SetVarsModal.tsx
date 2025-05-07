@@ -150,8 +150,7 @@ export const SetVarsModal: React.FC<SetVarsModalProps> = ({
           description: `Successfully set ${varName}`,
         });
         
-        // Close the modal and notify parent
-        onOpenChange(false);
+        // Just notify parent of change, don't close
         onSave();
       } else {
         throw new Error(response.error || 'Failed to set variable');
@@ -181,6 +180,11 @@ export const SetVarsModal: React.FC<SetVarsModalProps> = ({
     try {
       setDeleting(true);
       
+      // Debug logs
+      console.log(`Deleting variable ${selectedVar} from destination ${destination}`);
+      console.log('Using endpoint:', `${apiService.getApiUrl()}/schedulers/${destination}/context`);
+      console.log('Request payload:', { var_name: selectedVar, var_value: null });
+      
       // Call API with null value to delete the variable
       const response = await apiService.setSchedulerContextVar(
         destination,
@@ -188,20 +192,36 @@ export const SetVarsModal: React.FC<SetVarsModalProps> = ({
         null
       );
       
+      // Debug logs
+      console.log('Delete response:', response);
+      
       if (response.status === 'success' && response.deleted) {
         toast({
           title: 'Variable deleted',
           description: `Successfully deleted ${selectedVar}`,
         });
         
-        // Close the modal and notify parent
-        onOpenChange(false);
+        // Reset modal state
+        setSelectedVar('');
+        setVarValue('');
+        setValueType('string');
+        
+        // Remove the deleted variable from the list
+        setVarNames(varNames.filter(name => name !== selectedVar));
+        
+        // Notify parent of change
         onSave();
+        
+        // Close modal if no more variables
+        if (varNames.length <= 1) {
+          onOpenChange(false);
+        }
       } else {
         throw new Error(response.error || 'Failed to delete variable');
       }
     } catch (error) {
       console.error('Error deleting variable:', error);
+      console.error('Full error:', JSON.stringify(error));
       toast({
         title: 'Error',
         description: error.message || 'Failed to delete variable',
