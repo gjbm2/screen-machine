@@ -1,0 +1,19 @@
+{
+  "schedule_stack": [],
+  "context_stack": [
+    {
+      "vars": {
+        "test_var": "value_for_test_dest2",
+        "shared_var": "shared_value",
+        "var_0": "value_1_0",
+        "var_1": "value_1_1",
+        "var_3": "value_1_3",
+        "var_4": "value_1_4"
+      },
+      "publish_destination": "test_dest2"
+    }
+  ],
+  "state": "running",
+  "last_updated": "2025-05-07T10:37:47.934647",
+  "last_trigger_executions": {}
+}

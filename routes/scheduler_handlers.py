@@ -340,6 +340,18 @@ def handle_wait(instruction, context, now, output, publish_destination):
     return False  # Don't unload while still waiting
 
 def handle_unload(instruction, context, now, output, publish_destination):
+    # First check if this schedule has prevent_unload=true
+    from routes.scheduler_utils import scheduler_schedule_stacks
+    
+    # Get the current schedule (top of stack)
+    if publish_destination in scheduler_schedule_stacks and scheduler_schedule_stacks[publish_destination]:
+        current_schedule = scheduler_schedule_stacks[publish_destination][-1]
+        if current_schedule.get("prevent_unload", False):
+            msg = "Unload instruction ignored: schedule has 'prevent_unload' flag set to true"
+            output.append(f"[{now.strftime('%H:%M')}] {msg}")
+            log_schedule(msg, publish_destination, now)
+            return False  # Don't unload
+    
     msg = "Unloading temporary schedule."
     output.append(f"[{now.strftime('%H:%M')}] {msg}")
     log_schedule(msg, publish_destination, now)
@@ -427,40 +439,50 @@ def handle_set_var(instruction, context, now, output, publish_destination):
     
     return False
 
-# Stops scheduler but doesn't unload
-def handle_stop(instruction, context, now, output, publish_destination):
+def handle_stop(instruction: Dict[str, Any], context: Dict[str, Any], now: datetime, output: List[str], publish_destination: str) -> bool:
+    """
+    Stop the current scheduler after executing any remaining instructions.
+    
+    This sets a flag that will be checked at the end of each scheduler loop iteration.
+    It will execute any final actions in the schedule.
+    """
     from routes.scheduler import running_schedulers
     from routes.scheduler_utils import scheduler_states, update_scheduler_state
     
-    # Get the stop mode - 'normal' (default) or 'immediate'
-    stop_mode = instruction.get("mode", "normal")
-    
-    # Set a stopping flag in the context to indicate normal stop in progress
-    if stop_mode == "normal":
+    try:
+        # Set a flag on the context that we want to stop
         context["stopping"] = True
-        msg = "Stop instruction received (normal mode) - will run final_instructions before stopping."
-        output.append(f"[{now.strftime('%H:%M')}] {msg}")
-        log_schedule(msg, publish_destination, now)
-        return False  # Don't unload yet, let final_instructions run
-    else:  # immediate mode
-        msg = "Stop instruction received (immediate mode) - stopping scheduler immediately without running final_instructions."
-        output.append(f"[{now.strftime('%H:%M')}] {msg}")
-        log_schedule(msg, publish_destination, now)
         
-        # Explicitly remove from running_schedulers without unloading
+        # Log the action
+        message = "Scheduling stop action"
+        output.append(f"[{now.strftime('%H:%M')}] {message}")
+        
         if publish_destination in running_schedulers:
-            future = running_schedulers.pop(publish_destination, None)
-            if future:
-                future.cancel()
-            
-            # Update state to stopped, but preserve schedule and context
+            # We intentionally don't call stop_scheduler here - the flag will trigger
+            # an orderly shutdown at the end of the current loop iteration
+            message = "Scheduler will stop after completing current loop iteration"
+            output.append(f"[{now.strftime('%H:%M')}] {message}")
+        else:
+            # If the scheduler isn't running, just set the state directly
             scheduler_states[publish_destination] = "stopped"
+            from utils.logger import debug
+            debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - handle_stop instruction for non-running scheduler")
             update_scheduler_state(
                 publish_destination,
                 state="stopped"
             )
+            message = "Scheduler wasn't running, stopped immediately"
+            output.append(f"[{now.strftime('%H:%M')}] {message}")
         
-        return True  # Unload the schedule immediately
+        # Return True to indicate success, but don't unload the schedule
+        # The scheduler loop will handle unloading if needed
+        return False
+    except Exception as e:
+        from utils.logger import error
+        error_msg = f"Error executing stop action: {str(e)}"
+        error(error_msg)
+        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        return False
 
 def handle_import_var(instruction, context, now, output, publish_destination):
     """

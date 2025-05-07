@@ -14,6 +14,7 @@ import routes.openai
 import routes.generate
 import routes.display
 import utils.logger
+from utils.logger import info, error, warning, debug
 import utils
 import json
 import re
@@ -218,7 +219,7 @@ def process(data):
     request_type = data.get("request", {}).get("type", "")
 
     utils.logger.info(f"========================================================")
-    
+
     # == User just said 'Computer, use AI' 
     if request_type == "LaunchRequest":
         
@@ -396,21 +397,35 @@ def process(data):
         if use_system_prompt:   
             # Try to get a proper triage (allow OpenAI 8s)
             
-            #info(f"user prompt: {dict_substitute(use_system_prompt, subs)}")
-            #info(f"system prompt: {dict_substitute(use_system_prompt, subs)}")
-            #info(f"schema try: {dict_substitute("marvin.schema.json.j2", subs)}")
-            #info(f"schema: {json.loads(dict_substitute("marvin.schema.json.j2", subs))}")
-
+            # Add DEBUG logging to trace what's happening
+            processed_system_prompt = dict_substitute(use_system_prompt, subs)
+            user_prompt_text = f"{alexa_intent} {utterance}"
+            schema_json = json.loads(dict_substitute("marvin.schema.json.j2", subs))
+            
+            utils.logger.debug(f"Using system prompt template: {use_system_prompt}")
+            utils.logger.debug(f"User prompt: {user_prompt_text}")
+            utils.logger.debug(f"Schema: {json.dumps(schema_json)[:200]}...")
+            utils.logger.debug(f"EXPORTED_VAR_FRIENDLY_NAMES: {subs.get('EXPORTED_VAR_FRIENDLY_NAMES', [])}")
             
             try:
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(
                         routes.openai.openai_prompt,
-                        user_prompt=f"{alexa_intent} {utterance}",
-                        system_prompt=dict_substitute(use_system_prompt, subs),
-                        schema=json.loads(dict_substitute("marvin.schema.json.j2", subs))
+                        user_prompt=user_prompt_text,
+                        system_prompt=processed_system_prompt,
+                        schema=schema_json
                     )
-                    result = future.result(timeout=7)
+                    
+                    # Add a try/except block to catch JSON parsing errors
+                    try:
+                        result = future.result(timeout=7)
+                        utils.logger.debug(f"OpenAI raw response: {str(result)[:500]}...")
+                    except json.JSONDecodeError as json_err:
+                        utils.logger.error(f"JSON parse error in OpenAI response: {json_err}")
+                        utils.logger.error(f"Error location: line {json_err.lineno}, column {json_err.colno}, char {json_err.pos}")
+                        raw_result = future.result(timeout=7)  # Get the raw result
+                        utils.logger.error(f"Raw problematic JSON: {str(raw_result)[:1000]}...")
+                        raise
                     
                 response_ssml = result.get("response_ssml", "No response received from pre-processor.")
                 current_app.config["LASTRENDER"] = result
@@ -418,7 +433,7 @@ def process(data):
                 utils.logger.warning("⚠️ Triage took too long. Returning fallback response.")
                 return response_ssml
             except Exception as e:
-                utils.logger.warning(f"⚠️ Triage failed: {e}")
+                utils.logger.warning(f"⚠️ Triage failed: {str(e)}")
                 return response_ssml
             
         intent = result.get("intent", "respond_only") if result else "respond_only"
@@ -432,37 +447,45 @@ def process(data):
             case "set_variable":
                 # Handle setting variables
                 var_data = result.get("data", {})
-                var_name = var_data.get("var_name")
+                var_name = var_data.get("var_name")  # This is now the actual variable name, not the friendly name
                 var_value = var_data.get("value")
+                
+                utils.logger.debug(f"Set variable intent data: var_name={var_name}, var_value={var_value}, type={type(var_value)}")
                 
                 if var_name and var_value is not None and closest_screen:
                     utils.logger.info(f"Setting variable '{var_name}' to '{var_value}' on screen '{closest_screen}'")
                     
-                    # If var_name is a friendly name, resolve it to actual var name using mapping
-                    actual_var_name = subs["FRIENDLY_TO_VAR_NAMES"].get(var_name, var_name)
+                    # Import the utility functions
+                    from routes.scheduler_utils import set_exported_variable, set_context_variable
                     
                     # Find the export name in the registry if this is an exported variable
                     export_name = None
                     for export_var, info in subs["EXPORTED_VARS"].items():
-                        if export_var == actual_var_name:
+                        if export_var == var_name:
                             export_name = export_var
+                            utils.logger.debug(f"Found exported variable: {export_name}")
                             break
-                    
-                    # Import the utility functions
-                    from routes.scheduler_utils import set_exported_variable, set_context_variable
                     
                     if export_name:
                         # This is an exported variable, set it through the registry
-                        result = set_exported_variable(export_name, var_value)
-                        utils.logger.info(f"Updated exported variable '{export_name}': {result['status']}")
+                        set_result = set_exported_variable(export_name, var_value)
+                        utils.logger.info(f"Updated exported variable '{export_name}': {set_result['status']}")
                     else:
                         # This is a regular context variable for the current destination
-                        result = set_context_variable(closest_screen, actual_var_name, var_value)
-                        utils.logger.info(f"Set context variable '{actual_var_name}': {result['status']}")
+                        set_result = set_context_variable(closest_screen, var_name, var_value)
+                        utils.logger.info(f"Set context variable '{var_name}': {set_result['status']}")
+                else:
+                    utils.logger.warning(f"Failed to set variable: var_name={var_name}, var_value={var_value}, screen={closest_screen}")
                 
-                # Provide feedback
+                # Provide feedback - if we have a friendly name mapping for this variable, use it in the response
+                friendly_name = var_name
+                for actual_name, friendly in {v: k for k, v in subs["FRIENDLY_TO_VAR_NAMES"].items()}.items():
+                    if actual_name == var_name:
+                        friendly_name = friendly
+                        break
+                        
                 if var_name and var_value is not None:
-                    response_ssml = Brianize(f"I've set {var_name} to {var_value}.")
+                    response_ssml = Brianize(f"I've set {friendly_name} to {var_value}.")
                 else:
                     response_ssml = Brianize("I couldn't understand which variable to set.")
             # User wants to animate a screen

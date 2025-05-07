@@ -618,28 +618,14 @@ def test_scheduler():
             debug(f"Edit request received for {dest} layer {layer}")
             return schedule_editor(dest, layer)
             
-        # Get all scheduler states
-        current_running_schedulers = list(running_schedulers.keys())
-        stopped_schedulers = [dest for dest in scheduler_schedule_stacks.keys() 
-                            if dest not in current_running_schedulers]
+        # Get all scheduler states - INCLUDING those that are paused but not running
+        current_running_schedulers = []
+        paused_schedulers = []
+        stopped_schedulers = []
         
         # Get context and history for each scheduler
-        scheduler_states = {}
-        for dest in current_running_schedulers + stopped_schedulers:
-            if dest in scheduler_contexts_stacks and scheduler_contexts_stacks[dest]:
-                context = scheduler_contexts_stacks[dest][-1]
-                scheduler_states[dest] = {
-                    "context": context,
-                    "history": {k: v for k, v in context.items() if isinstance(v, list)},
-                    "vars": context.get("vars", {})
-                }
-            else:
-                scheduler_states[dest] = {
-                    "context": {},
-                    "history": {},
-                    "vars": {}
-                }
-
+        scheduler_states_data = {}
+        
         # Get all schedulers (both running and stopped) for the log dropdown
         all_schedulers = []
         try:
@@ -653,9 +639,6 @@ def test_scheduler():
         except Exception as e:
             error(f"Error getting scheduler list: {str(e)}")
         
-        # Get running schedulers
-        debug(f"Found {len(current_running_schedulers)} running schedulers: {current_running_schedulers}")
-        
         # Get schedule stacks and contexts for ALL schedulers
         schedule_stacks = {}
         layer_contexts = {}
@@ -663,6 +646,28 @@ def test_scheduler():
         scheduler_statuses = {}
         
         for dest in all_schedulers:
+            # Check the actual state from scheduler_states or disk
+            state = None
+            if dest in scheduler_states:
+                state = scheduler_states[dest]
+            else:
+                try:
+                    loaded_state = load_scheduler_state(dest)
+                    state = loaded_state.get("state", "stopped")
+                except Exception as e:
+                    debug(f"Could not load state for {dest}: {e}")
+                    state = "stopped"
+            
+            # Categorize by actual state
+            if state == "running":
+                current_running_schedulers.append(dest)
+            elif state == "paused":
+                paused_schedulers.append(dest)
+            else:
+                stopped_schedulers.append(dest)
+                
+            debug(f"Categorized {dest} as {state}")
+            
             # First try to get the schedule stack from the running scheduler
             if dest in scheduler_schedule_stacks and scheduler_schedule_stacks[dest]:
                 schedule_stacks[dest] = scheduler_schedule_stacks[dest]
@@ -670,10 +675,10 @@ def test_scheduler():
             else:
                 # If not in memory, try to load from disk
                 try:
-                    state = load_scheduler_state(dest)
-                    if "schedule_stack" in state and state["schedule_stack"]:
-                        schedule_stacks[dest] = state["schedule_stack"]
-                        debug(f"Loaded schedule stack from disk for {dest}: {len(state['schedule_stack'])} layers")
+                    loaded_state = load_scheduler_state(dest)
+                    if "schedule_stack" in loaded_state and loaded_state["schedule_stack"]:
+                        schedule_stacks[dest] = loaded_state["schedule_stack"]
+                        debug(f"Loaded schedule stack from disk for {dest}: {len(loaded_state['schedule_stack'])} layers")
                 except Exception as e:
                     error(f"Error loading state for {dest}: {str(e)}")
             
@@ -687,13 +692,13 @@ def test_scheduler():
                 debug(f"Context data for {dest}: {layer_contexts[dest]}")
             else:
                 try:
-                    state = load_scheduler_state(dest)
-                    if "context_stack" in state and state["context_stack"]:
+                    loaded_state = load_scheduler_state(dest)
+                    if "context_stack" in loaded_state and loaded_state["context_stack"]:
                         layer_contexts[dest] = {}
-                        for i, ctx in enumerate(state["context_stack"]):
+                        for i, ctx in enumerate(loaded_state["context_stack"]):
                             # Show all context variables, not just vars
                             layer_contexts[dest][i] = ctx
-                        debug(f"Loaded context stack from disk for {dest}: {len(state['context_stack'])} layers")
+                        debug(f"Loaded context stack from disk for {dest}: {len(loaded_state['context_stack'])} layers")
                         debug(f"Context data for {dest}: {layer_contexts[dest]}")
                 except Exception as e:
                     error(f"Error loading context for {dest}: {str(e)}")
@@ -709,16 +714,23 @@ def test_scheduler():
                 error(f"Error getting logs for {dest}: {str(e)}")
                 logs[dest] = ["Error fetching log."]
 
-            # Get scheduler status
-            try:
-                response = requests.get(f"{BASE_URL}/api/schedulers/{dest}/status")
-                if response.ok:
-                    scheduler_statuses[dest] = response.json().get("status", "stopped")
-                else:
-                    scheduler_statuses[dest] = "unknown"
-            except Exception as e:
-                error(f"Error getting status for {dest}: {str(e)}")
-                scheduler_statuses[dest] = "unknown"
+            # Store the state in scheduler_statuses for display
+            scheduler_statuses[dest] = state
+            
+            # Save context data for this destination
+            if dest in scheduler_contexts_stacks and scheduler_contexts_stacks[dest]:
+                context = scheduler_contexts_stacks[dest][-1]
+                scheduler_states_data[dest] = {
+                    "context": context,
+                    "history": {k: v for k, v in context.items() if isinstance(v, list)},
+                    "vars": context.get("vars", {})
+                }
+            else:
+                scheduler_states_data[dest] = {
+                    "context": {},
+                    "history": {},
+                    "vars": {}
+                }
 
         # Only auto-select log destination when submitting a new schedule
         selected_log = request.args.get('log', '')
@@ -727,12 +739,16 @@ def test_scheduler():
 
         debug(f"Rendering template with schedule_stacks: {schedule_stacks}")
         debug(f"Rendering template with layer_contexts: {layer_contexts}")
+        debug(f"Using running schedulers: {current_running_schedulers}")
+        debug(f"Using paused schedulers: {paused_schedulers}")
+        debug(f"Using stopped schedulers: {stopped_schedulers}")
 
         return render_template_string(
             HTML_TEMPLATE,
             all_destinations=all_schedulers,
             running_schedulers=current_running_schedulers,
-            stopped_schedulers=[d for d in all_schedulers if d not in current_running_schedulers],
+            paused_schedulers=paused_schedulers,
+            stopped_schedulers=stopped_schedulers,
             schedule_stacks=schedule_stacks,
             layer_contexts=layer_contexts,
             logs=logs,
@@ -745,9 +761,11 @@ def test_scheduler():
         # Handle form submissions
         if "stop" in request.args:
             dest = request.args["stop"]
+            debug(f"TEST UI stopping scheduler for {dest}")
             stop_scheduler(dest)
         elif "start" in request.args:
             dest = request.args["start"]
+            debug(f"TEST UI starting scheduler for {dest}")
             # Get the current schedule from the stack
             if dest in scheduler_schedule_stacks and scheduler_schedule_stacks[dest]:
                 schedule = scheduler_schedule_stacks[dest][-1]
@@ -756,14 +774,17 @@ def test_scheduler():
                 error(f"No schedule found for {dest}")
         elif "pause" in request.args:
             dest = request.args["pause"]
+            debug(f"TEST UI pausing scheduler for {dest}")
             api_pause_scheduler(dest)
             return jsonify({"status": "paused"})  # Return JSON instead of redirect
         elif "unpause" in request.args:
             dest = request.args["unpause"]
+            debug(f"TEST UI unpausing scheduler for {dest}")
             api_unpause_scheduler(dest)
             return jsonify({"status": "running"})  # Return JSON instead of redirect
         elif "unload_schedule" in request.args:
             dest = request.args["unload_schedule"]
+            debug(f"TEST UI unloading schedule for {dest}")
             try:
                 # First try to unload via API
                 response = requests.delete(f"{BASE_URL}/api/schedulers/{dest}/schedule")
@@ -786,6 +807,7 @@ def test_scheduler():
                             
                             # If this was the last schedule, stop the scheduler
                             if not scheduler_schedule_stacks[dest]:
+                                debug(f"TEST UI stopping scheduler after unloading last schedule for {dest}")
                                 stop_scheduler(dest)
             except Exception as e:
                 error(f"Error unloading schedule: {str(e)}")
@@ -793,6 +815,7 @@ def test_scheduler():
             # Handle schedule submission
             destination = request.form["destination"]
             schedule_json = request.form["schedule_json"]
+            debug(f"TEST UI loading schedule for {destination}")
             try:
                 schedule = json.loads(schedule_json.strip())
                 response = requests.post(f"{BASE_URL}/api/schedulers/{destination}/schedule", json=schedule)

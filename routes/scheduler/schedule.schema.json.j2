@@ -31,6 +31,12 @@
       "$ref": "#/definitions/instruction_array",
       "title": "Final actions",
       "description": "Steps to execute after all trigger blocks have fired."
+    },
+    "prevent_unload": {
+      "type": "boolean",
+      "title": "Prevent Unload",
+      "description": "If true, this schedule cannot be unloaded by the unload action or API. It can only be removed through the admin interface.",
+      "default": false
     }
   },
   "definitions": {
@@ -187,45 +193,27 @@
               "title": "Import As",
               "description": "Optional: Import the variable under this name. Supports Jinja templating. If not specified, uses the same name as the source variable."
             },
-            "dest_id": {
-              "type": "string",
-              "title": "Source Destination ID",
-              "description": "The ID of the specific destination to import the variable from. Use this OR group OR scope, not multiple.",
-              "enum": {{ ALL_DESTINATIONS | default([]) | tojson }}
-            },
-            "group": {
-              "type": "string",
-              "title": "Source Group",
-              "description": "Import the variable from this group. Use this OR dest_id OR scope, not multiple.",
-              "enum": [
-                {% if DEST_GROUPS %}
-                {% for group in DEST_GROUPS %}
-                "{{ group }}"{% if not loop.last %},{% endif %}
-                {% endfor %}
-                {% endif %}
-              ]
-            },
             "scope": {
               "type": "string",
               "title": "Source Scope",
-              "description": "Import the variable from this scope. Currently only 'global' is supported. Use this OR dest_id OR group, not multiple.",
-              "enum": ["global"]
+              "enum": [
+                "global"
+                {% if DEST_GROUPS %}
+                {% for group in DEST_GROUPS %}
+                ,"{{ group }}"
+                {% endfor %}
+                {% endif %}
+                {% for dest in ALL_DESTINATIONS | default([]) %}
+                ,"{{ dest }}"
+                {% endfor %}
+              ],
+              "description": "The scope from which to import the variable. Can be 'global', a group name, or a specific destination ID."
             }
           },
           "required": [
             "action",
-            "var_name"
-          ],
-          "oneOf": [
-            {
-              "required": ["dest_id"]
-            },
-            {
-              "required": ["group"]
-            },
-            {
-              "required": ["scope"]
-            }
+            "var_name",
+            "scope"
           ],
           "additionalProperties": false
         },

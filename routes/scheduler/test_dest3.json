@@ -1,0 +1,60 @@
+{
+  "schedule_stack": [
+    {
+      "triggers": [
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "08:00",
+              "repeat_schedule": {
+                "every": "60",
+                "until": "23:00"
+              },
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "set_var",
+                    "var": "test_var",
+                    "input": {
+                      "value": "test"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "initial_actions": {
+        "instructions_block": [
+          {
+            "action": "set_var",
+            "var": "init_var",
+            "input": {
+              "value": "initialized"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "context_stack": [
+    {
+      "vars": {},
+      "publish_destination": "test_dest3"
+    }
+  ],
+  "state": "stopped",
+  "last_updated": "2025-05-07T10:37:45.890524",
+  "last_trigger_executions": {}
+}

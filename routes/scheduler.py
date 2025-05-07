@@ -225,43 +225,46 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
     action = processed_instruction.get("action")
     # Don't add running message to output - will be added by handlers with the result
     log_schedule(f"Running {action}", publish_destination, now)
+    debug(f"[INSTRUCTION] Running {action} for {publish_destination}")
     
     try:
+        # Store the result instead of immediately returning it
+        result = False
         if action == "random_choice":
-            return handle_random_choice(processed_instruction, context, now, output, publish_destination)
+            result = handle_random_choice(processed_instruction, context, now, output, publish_destination)
         elif action == "generate":
-            return handle_generate(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
+            result = handle_generate(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
         elif action == "animate":
-            return handle_animate(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
+            result = handle_animate(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
         elif action == "display":
-            return handle_display(processed_instruction, context, now, output, publish_destination)
+            result = handle_display(processed_instruction, context, now, output, publish_destination)
         elif action == "sleep":
-            return handle_sleep(processed_instruction, context, now, output, publish_destination)
+            result = handle_sleep(processed_instruction, context, now, output, publish_destination)
         elif action == "wait":
-            return handle_wait(processed_instruction, context, now, output, publish_destination)
+            result = handle_wait(processed_instruction, context, now, output, publish_destination)
         elif action == "unload":
-            return handle_unload(processed_instruction, context, now, output, publish_destination)
+            result = handle_unload(processed_instruction, context, now, output, publish_destination)
         elif action == "device-media-sync":
-            return handle_device_media_sync(processed_instruction, context, now, output, publish_destination)
+            result = handle_device_media_sync(processed_instruction, context, now, output, publish_destination)
         elif action == "device-wake":
-            return handle_device_wake(processed_instruction, context, now, output, publish_destination)
+            result = handle_device_wake(processed_instruction, context, now, output, publish_destination)
         elif action == "device-sleep":
-            return handle_device_sleep(processed_instruction, context, now, output, publish_destination)
+            result = handle_device_sleep(processed_instruction, context, now, output, publish_destination)
         elif action == "set_var":
-            return handle_set_var(processed_instruction, context, now, output, publish_destination)
+            result = handle_set_var(processed_instruction, context, now, output, publish_destination)
         elif action == "stop":
-            return handle_stop(processed_instruction, context, now, output, publish_destination)
+            result = handle_stop(processed_instruction, context, now, output, publish_destination)
         elif action == "import_var":
-            return handle_import_var(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
+            result = handle_import_var(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
         elif action == "export_var":
-            return handle_export_var(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
+            result = handle_export_var(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
         elif action == "reason":
-            return handle_reason(processed_instruction, context, now, output, publish_destination)
+            result = handle_reason(processed_instruction, context, now, output, publish_destination)
         else:
             error_msg = f"Unknown action: {action}"
             output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
             log_schedule(error_msg, publish_destination, now)
-            return False
+            result = False
     except Exception as e:
         error_msg = f"Error in {action}: {str(e)}"
         output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
@@ -269,15 +272,25 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
         error(f"Exception in run_instruction: {str(e)}")
         import traceback
         error(traceback.format_exc())
-        return False  # Ensure we return False on exceptions
+        result = False  # Ensure we return False on exceptions
 
     # Update global context after execution
     context_stack = get_context_stack(publish_destination)
     if context_stack and len(context_stack) > 0:
+        # Store the updated context back in the context stack
         context_stack[-1] = context
+        
+        # Debug what we're about to persist
+        debug(f"[PERSISTENCE] After instruction {action}, saving context for {publish_destination}")
+        if "vars" in context:
+            debug(f"[PERSISTENCE] Context vars: {list(context.get('vars', {}).keys())}")
+        
+        # Unconditionally save all state
         update_scheduler_state(publish_destination, context_stack=context_stack)
+    else:
+        debug(f"[PERSISTENCE] Warning: No context stack found for {publish_destination} after {action}")
     
-    return False  # Default return if the handler doesn't return a value
+    return result  # Return the saved result
 
 # === Scheduler Runtime ===
 async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step_minutes: int = 1):
@@ -358,6 +371,7 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
             if publish_destination in running_schedulers:
                 running_schedulers.pop(publish_destination, None)
                 scheduler_states[publish_destination] = "stopped"
+                debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - no triggers in run_scheduler")
                 update_scheduler_state(
                     publish_destination,
                     state="stopped"
@@ -446,6 +460,8 @@ def initialize_schedulers_from_disk():
     """Initialize scheduler states from disk on startup."""
     from routes.utils import _load_json_once
     
+    debug("********** INIT SCHEDULERS: Starting initialization **********")
+    
     try:
         # Get the list of publish destinations
         dest_data = _load_json_once("publish_destinations", "publish-destinations.json")
@@ -467,21 +483,33 @@ def initialize_schedulers_from_disk():
             return
             
         for publish_destination in publish_destinations:
+            debug(f"********** INIT SCHEDULERS: Processing destination: {publish_destination} **********")
             state_path = os.path.join(storage_dir, f"{publish_destination}.json")
             
             if os.path.exists(state_path):
                 try:
+                    debug(f"********** INIT SCHEDULERS: State file exists for {publish_destination}, loading **********")
                     info(f"Loading scheduler state for ID '{publish_destination}'")
                     state = load_scheduler_state(publish_destination)
                     
+                    debug(f"********** INIT SCHEDULERS: Loaded state for {publish_destination}: state='{state.get('state', 'unknown')}' **********")
+                    
                     # Initialize the schedule stack
                     if "schedule_stack" in state and state["schedule_stack"]:
+                        debug(f"********** INIT SCHEDULERS: Schedule stack exists for {publish_destination} **********")
                         scheduler_schedule_stacks[publish_destination] = state["schedule_stack"]
                         scheduler_contexts_stacks[publish_destination] = state.get("context_stack", [])
-                        scheduler_states[publish_destination] = state.get("state", "stopped")
+                        saved_state = state.get("state", "stopped")
+                        debug(f"********** INIT SCHEDULERS: Got state '{saved_state}' from file for {publish_destination} **********")
                         
-                        # Start the scheduler if it was running
-                        if state["state"] == "running":
+                        scheduler_states[publish_destination] = saved_state
+                        if saved_state == "stopped":
+                            debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - using default state in initialize_schedulers_from_disk")
+                        debug(f"********** INIT SCHEDULERS: Set in-memory state to '{scheduler_states[publish_destination]}' for {publish_destination} **********")
+                        
+                        # Handle each state appropriately
+                        if saved_state == "running":
+                            debug(f"********** INIT SCHEDULERS: State is 'running' for {publish_destination}, will resume **********")
                             # Check if a scheduler is already running for this destination
                             if publish_destination in running_schedulers:
                                 future = running_schedulers[publish_destination]
@@ -496,21 +524,44 @@ def initialize_schedulers_from_disk():
                             schedule = state["schedule_stack"][-1]
                             
                             # Resume without re-running initial instructions
+                            debug(f"********** INIT SCHEDULERS: Calling resume_scheduler for {publish_destination} **********")
                             resume_scheduler(publish_destination, schedule)
-                        else:
-                            info(f"Not auto-starting {publish_destination} (state is '{state['state']}')")
+                        elif saved_state == "paused":
+                            debug(f"********** INIT SCHEDULERS: State is 'paused' for {publish_destination}, NOT resuming **********")
+                            info(f"Preserving paused state for {publish_destination} (not starting scheduler)")
+                            # DON'T CALL resume_scheduler for paused schedulers - this was causing the bug
+                            # Just make sure the state is correctly set
+                            scheduler_states[publish_destination] = "paused"
+                            debug(f"********** INIT SCHEDULERS: Re-set state to 'paused' for {publish_destination} **********")
+                            update_scheduler_state(
+                                publish_destination,
+                                state="paused"
+                            )
+                            debug(f"********** INIT SCHEDULERS: After update_scheduler_state, state is '{scheduler_states[publish_destination]}' for {publish_destination} **********")
+                        else:  # "stopped" or any other state
+                            debug(f"********** INIT SCHEDULERS: State is '{saved_state}' for {publish_destination}, not starting **********")
+                            info(f"Not auto-starting {publish_destination} (state is '{saved_state}')")
                     else:
+                        debug(f"********** INIT SCHEDULERS: No schedule stack for {publish_destination} **********")
                         # Initialize empty stacks if they don't exist
                         scheduler_schedule_stacks[publish_destination] = []
                         scheduler_contexts_stacks[publish_destination] = []
                         scheduler_states[publish_destination] = "stopped"
+                        debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - no schedule stack in initialize_schedulers_from_disk")
                         info(f"No schedule stack found for {publish_destination}")
                 except Exception as e:
+                    debug(f"********** INIT SCHEDULERS ERROR: Failed to initialize {publish_destination}: {str(e)} **********")
                     error(f"Error initializing scheduler for {publish_destination}: {str(e)}")
             else:
+                debug(f"********** INIT SCHEDULERS: No state file found for {publish_destination} **********")
                 info(f"No state file found for {publish_destination}")
+        
+        debug(f"********** INIT SCHEDULERS: Final states after initialization: {scheduler_states} **********")
     except Exception as e:
+        debug(f"********** INIT SCHEDULERS ERROR: Global exception: {str(e)} **********")
         error(f"Error in initialize_schedulers_from_disk: {str(e)}")
+        import traceback
+        error(traceback.format_exc())
 
 def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None:
     """
@@ -586,6 +637,10 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                 
             # Check if scheduler is paused
             if scheduler_states.get(publish_destination) == "paused":
+                # Make sure we persist the context when paused
+                current_context_stack = scheduler_contexts_stacks.get(publish_destination, [])
+                if current_context_stack:
+                    debug(f"Preserving context while scheduler is paused: {len(current_context_stack)} context(s)")
                 await asyncio.sleep(0.1)  # Sleep briefly and check again
                 continue
                 
@@ -626,9 +681,11 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                     scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {log_msg}")
                     running_schedulers.pop(publish_destination, None)
                     scheduler_states[publish_destination] = "stopped"
+                    debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - stopping flag set in run_scheduler_loop")
                     update_scheduler_state(
                         publish_destination,
-                        state="stopped"
+                        state="stopped",
+                        context_stack=current_context_stack  # Ensure context is preserved
                     )
                 break  # Exit the scheduler loop
             
@@ -681,19 +738,65 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
         if publish_destination not in running_schedulers:
             # Get current state before updating
             current_state = scheduler_states.get(publish_destination)
-            # Only set to stopped if we're not paused
+            
+            # Also check the state from disk to handle server restart cases
+            try:
+                loaded_state = load_scheduler_state(publish_destination)
+                disk_state = loaded_state.get("state", "stopped")
+                debug(f"Checking disk state for {publish_destination}: {disk_state}")
+                
+                # If disk state is paused but memory state is not, use disk state
+                # This handles cases where scheduler was paused but server restarted
+                if disk_state == "paused" and current_state != "paused":
+                    debug(f"Found paused state on disk for {publish_destination}, preserving it")
+                    current_state = "paused"
+                    scheduler_states[publish_destination] = "paused"
+            except Exception as e:
+                debug(f"Could not read disk state: {e}")
+            
+            # Only set to stopped if we're not paused (either in memory or disk)
             if current_state != "paused":
+                # Preserve the context when stopping
+                current_context_stack = scheduler_contexts_stacks.get(publish_destination, [])
                 scheduler_states[publish_destination] = "stopped"
+                debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - in finally block of run_scheduler_loop")
                 update_scheduler_state(
                     publish_destination,
                     schedule_stack=scheduler_schedule_stacks.get(publish_destination, []),
-                    context_stack=scheduler_contexts_stacks.get(publish_destination, []),
+                    context_stack=current_context_stack,
                     state="stopped"
                 )
+            else:
+                debug(f"@@@@@@@@@@@@@ KEPT PAUSED for {publish_destination} - in finally block of run_scheduler_loop")
+                debug(f"Not changing state because current_state is '{current_state}'")
+                # Explicitly update with paused state to ensure it's persisted
+                current_context_stack = scheduler_contexts_stacks.get(publish_destination, [])
+                update_scheduler_state(
+                    publish_destination,
+                    schedule_stack=scheduler_schedule_stacks.get(publish_destination, []),
+                    context_stack=current_context_stack,
+                    state="paused"
+                )
+                
+            # Note: We don't need to manage the event loop here, as that's handled in stop_scheduler
+            # which will be called to clean up properly when needed
 
 def stop_scheduler(publish_destination: str):
     """Stop the scheduler for a destination while preserving its state."""
     try:
+        # Add more detailed logging about the reason for stopping
+        caller_info = ""
+        import traceback
+        stack_frames = traceback.extract_stack()
+        if len(stack_frames) > 1:
+            caller = stack_frames[-2]  # The caller of this function
+            caller_info = f" (called from {caller.name} in {caller.filename}:{caller.lineno})"
+        
+        info(f"STOPPING SCHEDULER: {publish_destination}{caller_info}")
+        debug(f"Current schedulers BEFORE stopping {publish_destination}:")
+        debug(f"  Running: {list(running_schedulers.keys())}")
+        debug(f"  States: {scheduler_states}")
+        
         # Cancel the running future if it exists
         future = running_schedulers.pop(publish_destination, None)
         if future:
@@ -702,6 +805,7 @@ def stop_scheduler(publish_destination: str):
         
         # Update in-memory state
         scheduler_states[publish_destination] = "stopped"
+        debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - in stop_scheduler function")
         
         # Get current schedule stack
         current_schedule_stack = scheduler_schedule_stacks.get(publish_destination, [])
@@ -722,12 +826,35 @@ def stop_scheduler(publish_destination: str):
         
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Stopped scheduler while preserving schedule and context")
         
-        # If no schedulers are running, stop the event loop
-        if not running_schedulers:
-            stop_event_loop()
+        # TEMPORARY: Disable event loop stopping entirely to debug cross-destination issues
+        debug(f"⚠️ EVENT LOOP STOPPING DISABLED - keeping event loop running regardless of state")
+        debug(f"Current schedulers AFTER stopping {publish_destination}:")
+        debug(f"  Running: {list(running_schedulers.keys())}")
+        debug(f"  States: {scheduler_states}")
         
+        # Log any other active or paused schedulers
+        active_schedulers = list(running_schedulers.keys())
+        paused_schedulers = [dest for dest, state in scheduler_states.items() if state == "paused"]
+        
+        if active_schedulers:
+            debug(f"Still active schedulers: {active_schedulers}")
+        if paused_schedulers:
+            debug(f"Paused schedulers: {paused_schedulers}")
+        
+        # TEMPORARILY DISABLED:
+        # # Only stop the event loop if neither active nor paused schedulers remain
+        # if not any_active_schedulers and not any_paused_schedulers:
+        #     debug(f"No active or paused schedulers remaining after stopping {publish_destination}, stopping event loop")
+        #     stop_event_loop()
+        # else:
+        #     debug(f"Event loop kept running because there are still active or paused schedulers")
+        #     debug(f"Active schedulers: {list(running_schedulers.keys())}")
+        #     debug(f"States: {scheduler_states}")
     except Exception as e:
         error_msg = f"Error stopping scheduler: {str(e)}"
+        error(error_msg)
+        import traceback
+        error(traceback.format_exc())
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
         # Ensure state is marked as stopped even on error
         update_scheduler_state(publish_destination, state="stopped")

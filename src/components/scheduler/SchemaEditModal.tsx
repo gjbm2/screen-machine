@@ -214,10 +214,10 @@ export const SchemaEditModal: React.FC<SchemaEditModalProps> = ({
     setIsUpdatingFromEditor(true);
     setFormData(e.formData);
     
-    // Only update rawText when in the raw tab
-    if (activeTab === 1) {
-      setRawText(JSON.stringify(e.formData, null, 2));
-    }
+    // Update rawText regardless of which tab is active
+    // This ensures form edits are never lost when switching tabs
+    setRawText(JSON.stringify(e.formData, null, 2));
+    
     setIsUpdatingFromEditor(false);
   };
 
@@ -236,12 +236,17 @@ export const SchemaEditModal: React.FC<SchemaEditModalProps> = ({
       if (process.env.NODE_ENV === 'development') {
         console.log("Submitting data:", data);
       }
+
+      // Ensure we're sending the schedule data in the correct format
+      const scheduleData = activeTab === 1 ? JSON.parse(rawText) : data;
+      
+      // Send the schedule data directly without wrapping it
       const response = await fetch(saveEndpoint, {
         method: saveMethod,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(scheduleData),
       });
 
       if (!response.ok) {
@@ -249,9 +254,13 @@ export const SchemaEditModal: React.FC<SchemaEditModalProps> = ({
         throw new Error(errorData.error || 'Failed to save');
       }
 
+      // Wait a moment to ensure the schedule is saved
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       onSave();
       onOpenChange(false);
     } catch (e) {
+      console.error('Error saving schedule:', e);
       setError(e instanceof Error ? e.message : 'Failed to save');
     }
   };

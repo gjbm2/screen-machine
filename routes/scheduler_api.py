@@ -195,24 +195,65 @@ scheduler_schedules: Dict[str, Dict[str, Any]] = {}  # Store schedules by destin
 
 @scheduler_bp.route("/api/schedulers/<publish_destination>/pause", methods=["POST"])
 def api_pause_scheduler(publish_destination):
+    """Pause a running scheduler, preserving its state."""
     try:
+        if publish_destination not in running_schedulers:
+            return jsonify({"error": f"No scheduler running for {publish_destination}"}), 400
+            
+        debug(f"[PAUSE] Pausing scheduler for {publish_destination}")
+            
+        # Update in-memory state to paused
         scheduler_states[publish_destination] = "paused"
-        # Persist state to disk
-        update_scheduler_state(publish_destination, state="paused")
+        
+        # Explicitly persist the context stack to ensure it's saved while paused
+        context_stack = scheduler_contexts_stacks.get(publish_destination, [])
+        if context_stack:
+            debug(f"[PAUSE] Persisting context stack with {len(context_stack)} contexts")
+            if context_stack[-1] and "vars" in context_stack[-1]:
+                var_count = len(context_stack[-1]["vars"])
+                var_names = list(context_stack[-1]["vars"].keys())
+                debug(f"[PAUSE] Top context has {var_count} variables: {var_names}")
+                
+        # Update persisted state - this calls save_scheduler_state which should save everything
+        update_scheduler_state(
+            publish_destination, 
+            state="paused",
+            context_stack=context_stack
+        )
+        
+        # Debug check - verify state was actually saved by reading back from disk
+        try:
+            disk_state = load_scheduler_state(publish_destination)
+            saved_state = disk_state.get("state", "unknown")
+            debug(f"[PAUSE] Verified saved state is: {saved_state}")
+            if saved_state != "paused":
+                debug(f"[PAUSE] WARNING: State mismatch! Memory says 'paused' but disk says '{saved_state}'")
+        except Exception as e:
+            debug(f"[PAUSE] WARNING: Could not verify saved state: {e}")
+        
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Scheduler paused")
+        debug(f"Paused scheduler for {publish_destination}")
+        
         return jsonify({"status": "paused", "destination": publish_destination})
     except Exception as e:
-        error_msg = f"Error pausing scheduler: {str(e)}"
-        error(error_msg)
-        return jsonify({"error": error_msg}), 500
+        error(f"Error pausing scheduler: {str(e)}")
+        import traceback
+        error(traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
 
 @scheduler_bp.route("/api/schedulers/<publish_destination>/unpause", methods=["POST"])
 def api_unpause_scheduler(publish_destination):
     try:
+        # Only update the state, don't modify context
         scheduler_states[publish_destination] = "running"
+        
         # Persist state to disk
         update_scheduler_state(publish_destination, state="running")
+        
+        # Log the change
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Scheduler unpaused")
+        debug(f"Unpaused scheduler for {publish_destination}")
+        
         return jsonify({"status": "running", "destination": publish_destination})
     except Exception as e:
         error_msg = f"Error unpausing scheduler: {str(e)}"
@@ -270,6 +311,8 @@ def api_set_scheduler_context(publish_destination):
 
         # Get the context from the top of the stack
         context = get_current_context(publish_destination)
+        debug(f"Current context for {publish_destination}: {context}")
+        
         if not context:
             return jsonify({"error": "No scheduler context found"}), 404
 
@@ -279,8 +322,13 @@ def api_set_scheduler_context(publish_destination):
         # If var_value is null, delete the variable instead of setting it to null
         now = datetime.now()
         if var_value is None:
+            debug(f"Attempting to delete {var_name} from context vars: {context['vars']}")
+            debug(f"Variable exists in context: {var_name in context['vars']}")
+            
             if var_name in context["vars"]:
+                debug(f"Value before deletion: {context['vars'][var_name]}")
                 del context["vars"][var_name]
+                debug(f"Context vars after deletion: {context['vars']}")
                 log_msg = f"Deleted context variable '{var_name}'"
                 log_schedule(log_msg, publish_destination, now)
                 info(f"Deleted context variable {var_name} from scheduler {publish_destination}")
@@ -303,6 +351,7 @@ def api_set_scheduler_context(publish_destination):
         
         # Update the context stack in memory
         scheduler_contexts_stacks[publish_destination][-1] = context
+        debug(f"Updated context stack for {publish_destination}: {scheduler_contexts_stacks[publish_destination]}")
         
         # Persist changes to disk
         update_scheduler_state(
@@ -326,6 +375,12 @@ def api_set_scheduler_context(publish_destination):
 def api_load_schedule(publish_destination):
     """Load a schedule for a destination. If no scheduler exists, create one."""
     try:
+        # Add detailed debugging for scheduler state tracking
+        debug(f"🔍 api_load_schedule called for {publish_destination}")
+        debug(f"Current scheduler states BEFORE loading schedule:")
+        debug(f"  Running: {list(running_schedulers.keys())}")
+        debug(f"  All states: {scheduler_states}")
+        
         schedule = request.get_json()
         if not schedule:
             return jsonify({"error": "No schedule provided"}), 400
@@ -338,56 +393,81 @@ def api_load_schedule(publish_destination):
             error(error_msg)
             return jsonify({"error": error_msg}), 400
 
+        # Log what's happening for debugging
+        debug(f"Loading schedule for {publish_destination} - preserving other destinations' state")
+        debug(f"Current known schedulers: {list(scheduler_states.keys())}")
+        
+        # Capture PRIOR states of other schedulers for comparison later
+        other_scheduler_states = {dest: state for dest, state in scheduler_states.items() if dest != publish_destination}
+        debug(f"Other scheduler states BEFORE update: {other_scheduler_states}")
+        
         # Initialize stacks if they don't exist
         if publish_destination not in scheduler_schedule_stacks:
+            debug(f"First time initialization for {publish_destination}")
             scheduler_schedule_stacks[publish_destination] = []
             scheduler_contexts_stacks[publish_destination] = []
             scheduler_states[publish_destination] = "stopped"
+            debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - first time init in api_load_schedule")
             scheduler_logs[publish_destination] = []
             scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Initialized new scheduler")
-
-        # Add schedule to stack
-        scheduler_schedule_stacks[publish_destination].append(schedule)
-        
-        # Create new context, inheriting from previous context if it exists
-        if len(scheduler_schedule_stacks[publish_destination]) > 1:
-            # Get the previous context if it exists
-            previous_context = get_current_context(publish_destination)
-            if previous_context:
-                # Create a new context that inherits from the previous one
-                new_context = copy_context(previous_context)
-            else:
-                new_context = default_context()
-        else:
+            
+            # For first-time initialization, create a new context
             new_context = default_context()
-            
-        # Ensure publish_destination is set in the context
-        new_context["publish_destination"] = publish_destination
-        debug(f"Setting publish_destination in context: {new_context}")
-            
-        push_context(publish_destination, new_context)
+            new_context["publish_destination"] = publish_destination
+            scheduler_contexts_stacks[publish_destination] = [new_context]
+            debug(f"Created new default context for first-time initialization")
         
-        # Update persisted state
+        # Get the current context stack to preserve it
+        context_stack = scheduler_contexts_stacks.get(publish_destination, [])
+        debug(f"Preserving context stack with {len(context_stack)} contexts and keys: {[list(ctx.get('vars', {}).keys()) for ctx in context_stack]}")
+        
+        # Replace the schedule but PRESERVE the existing context stack
+        debug(f"Setting new schedule for {publish_destination}, preserving context stack")
+        scheduler_schedule_stacks[publish_destination] = [schedule]
+        debug(f"Context stack size: {len(context_stack)}")
+        
+        # CRITICAL SECTION: Update state WITH context to ensure it's properly persisted
+        debug(f"⚠️ UPDATING SCHEDULER STATE for {publish_destination}")
         update_scheduler_state(
             publish_destination,
             schedule_stack=scheduler_schedule_stacks[publish_destination],
-            context_stack=get_context_stack(publish_destination)
+            context_stack=context_stack  # Explicitly pass context to ensure it's persisted
         )
         
-        stack_size = len(scheduler_schedule_stacks[publish_destination])
-        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Loaded new schedule (stack size: {stack_size})")
-
-        # Don't automatically start - wait for user to click start
+        # Verify we didn't affect other destinations
+        changed_states = []
+        for dest, prev_state in other_scheduler_states.items():
+            current_state = scheduler_states.get(dest)
+            if current_state != prev_state:
+                changed_states.append((dest, prev_state, current_state))
+                error(f"⚠️ DETECTED STATE CHANGE for {dest}: {prev_state} → {current_state}")
+        
+        # Log all scheduler states after update
+        debug(f"Scheduler states AFTER update:")
+        debug(f"  Running: {list(running_schedulers.keys())}")
+        debug(f"  All states: {scheduler_states}")
+        
+        if changed_states:
+            error(f"⚠️ CRITICAL ERROR: Detected {len(changed_states)} unexpected state changes!")
+            for dest, old_state, new_state in changed_states:
+                error(f"  {dest}: {old_state} → {new_state}")
+        else:
+            debug(f"✅ All other schedulers maintained their states")
+        
+        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Loaded new schedule")
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Schedule loaded but not started (waiting for user)")
-            
+        
+        # Return success response
         return jsonify({
-            "message": f"Schedule loaded. Stack size: {stack_size}",
-            "position": stack_size - 1,
-            "is_active": True
+            "message": "Schedule loaded successfully",
+            "status": "ok"
         }), 200
 
     except Exception as e:
         error_msg = f"Error loading schedule: {str(e)}"
+        error(error_msg)
+        import traceback
+        error(f"Error traceback: {traceback.format_exc()}")
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
         return jsonify({"error": str(e)}), 500
 
@@ -396,6 +476,17 @@ def api_unload_schedule(publish_destination):
     try:
         if publish_destination in scheduler_schedule_stacks:
             if scheduler_schedule_stacks[publish_destination]:  # If stack is not empty
+                # Check if the current schedule has prevent_unload flag set
+                current_schedule = scheduler_schedule_stacks[publish_destination][-1]
+                if current_schedule.get("prevent_unload", False):
+                    log_msg = f"Unload prevented: schedule has 'prevent_unload' flag set to true"
+                    scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {log_msg}")
+                    info(log_msg)
+                    return jsonify({
+                        "error": "Cannot unload this schedule as it has prevent_unload=true",
+                        "message": "Schedule is protected from unloading"
+                    }), 403
+                
                 # Pop both the schedule and its context
                 scheduler_schedule_stacks[publish_destination].pop()
                 if scheduler_contexts_stacks.get(publish_destination):
@@ -784,17 +875,17 @@ def api_update_schedule_by_index(publish_destination, index):
             # Update the schedule at the specified index
             schedule_stack[index] = schedule
             
+            # Get the current state before updating
+            current_state = scheduler_states.get(publish_destination, "stopped")
+            
             # Reset execution timestamps for triggers if this is the active schedule (top of stack)
             # Only do this for the currently running schedule (top of stack)
             if index == len(schedule_stack) - 1:
                 # Reset the execution history for time-based triggers
                 from routes.scheduler_utils import reset_trigger_execution_timestamps
                 
-                # Get the current state
-                is_running = scheduler_states.get(publish_destination) == "running"
-                
                 # Only reset timestamps when the schedule is actively running
-                if is_running:
+                if current_state == "running":
                     reset_trigger_execution_timestamps(publish_destination)
                     log_msg = "Reset trigger execution timestamps due to live schedule update"
                     scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {log_msg}")
@@ -807,10 +898,11 @@ def api_update_schedule_by_index(publish_destination, index):
                         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Changes detected: {diff_summary}")
                         info(f"Schedule changes for {publish_destination}: {diff_summary}")
             
-            # Update persisted state
+            # Update persisted state while preserving the current state
             update_scheduler_state(
                 publish_destination,
-                schedule_stack=schedule_stack
+                schedule_stack=schedule_stack,
+                state=current_state  # Preserve the current state (running/paused/stopped)
             )
             
             scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Updated schedule at position {index}")
@@ -821,7 +913,7 @@ def api_update_schedule_by_index(publish_destination, index):
                 "message": f"Schedule at position {index} updated",
                 "index": index,
                 "is_active": index == len(schedule_stack) - 1,
-                "scheduler_state": scheduler_states.get(publish_destination, "stopped")
+                "scheduler_state": current_state
             })
             
         except Exception as e:

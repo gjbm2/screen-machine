@@ -8,7 +8,7 @@ import apiService from '@/utils/api';
 interface SetVarsButtonProps {
   destinationId: string;
   contextVars: Record<string, any>;
-  onVarsSaved?: () => void;
+  onVarsSaved?: (vars: Record<string, any>) => void;
 }
 
 export const SetVarsButton: React.FC<SetVarsButtonProps> = ({
@@ -37,18 +37,17 @@ export const SetVarsButton: React.FC<SetVarsButtonProps> = ({
       const response = await apiService.getSchedulerContext(destinationId);
       
       if (onVarsSaved) {
-        onVarsSaved();
+        // Pass the updated context vars to the parent
+        onVarsSaved(response.vars || {});
       }
       
-      // Force a full refresh of the page for now to show updated context
-      // In a future implementation, we'd want to update the state more elegantly
-      // without requiring a full page refresh
-      window.location.reload();
+      // Close the modal
+      setModalOpen(false);
     } catch (error) {
       console.error('Error refreshing context after changes:', error);
       toast({
         title: "Warning",
-        description: "Variable was saved but UI may not reflect changes. Refresh the page to see updated context.",
+        description: "Variable was saved but UI may not reflect changes.",
         variant: "destructive"
       });
     }
