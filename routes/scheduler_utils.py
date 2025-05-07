@@ -8,6 +8,7 @@ from utils.logger import info, error, debug
 import random
 import re
 import jinja2
+import hashlib
 
 # === Global Storage for Scheduler State ===
 scheduler_logs: Dict[str, List[str]] = {}
@@ -113,7 +114,7 @@ def register_imported_var(var_name: str, imported_as: str, source_dest_id: str,
     Args:
         var_name: The name of the variable as it appears in the registry
         imported_as: The name the variable is imported as in the importer's context
-        source_dest_id: The ID of the source destination (for verification)
+        source_dest_id: The ID of the source destination, or a special value like "group:name" or "scope:name"
         importing_dest_id: The ID of the destination importing the variable
         timestamp: When the variable was imported
     """
@@ -127,10 +128,34 @@ def register_imported_var(var_name: str, imported_as: str, source_dest_id: str,
     if var_name not in registry["imports"]:
         registry["imports"][var_name] = {}
     
-    # Store the import information
+    # Parse the source_dest_id to check for special prefixes
+    source_info = {}
+    
+    if source_dest_id.startswith("group:"):
+        # It's a group-based import
+        group_name = source_dest_id[6:]  # Remove "group:" prefix
+        source_info = {
+            "source_type": "group",
+            "source": group_name
+        }
+    elif source_dest_id.startswith("scope:"):
+        # It's a scope-based import
+        scope_name = source_dest_id[6:]  # Remove "scope:" prefix
+        source_info = {
+            "source_type": "scope", 
+            "source": scope_name
+        }
+    else:
+        # It's a direct destination import (original behavior)
+        source_info = {
+            "source_type": "destination",
+            "source": source_dest_id
+        }
+    
+    # Store the import information with additional source type info
     registry["imports"][var_name][importing_dest_id] = {
         "imported_as": imported_as,
-        "source": source_dest_id,
+        **source_info,  # Include source_type and source fields
         "timestamp": timestamp
     }
     
@@ -234,6 +259,30 @@ def update_imported_variables(var_name: str, new_value: Any) -> Dict[str, List[s
     # For each destination that imported this variable
     for dest_id, import_info in registry["imports"][var_name].items():
         imported_as = import_info["imported_as"]
+        source_type = import_info.get("source_type", "destination")  # Default to destination for backward compatibility
+        source = import_info.get("source", import_info.get("source_dest_id", ""))
+        
+        # Handle the import based on the source_type
+        if source_type in ["group", "scope"]:
+            # Find the actual variable from the registry
+            var_found = False
+            
+            if source_type == "group" and source in registry.get("groups", {}):
+                # Look in the specified group
+                if var_name in registry["groups"][source]:
+                    var_found = True
+            elif source_type == "scope" and source == "global":
+                # Look in global scope
+                if var_name in registry.get("global", {}):
+                    var_found = True
+            elif source_type == "scope":
+                # Look in the specified scope (which is a group)
+                if source in registry.get("groups", {}) and var_name in registry["groups"][source]:
+                    var_found = True
+            
+            # Only update if we found the variable
+            if not var_found:
+                continue
         
         # Update the destination's context if it exists
         if dest_id in scheduler_contexts_stacks and scheduler_contexts_stacks[dest_id]:
@@ -625,7 +674,7 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
     
     for schedule in time_schedules:
         # Generate a stable ID for this schedule for tracking last execution
-        # Use a hash of the schedule content to ensure a stable string ID that persists across restarts
+        # Use a deterministic hash function to ensure stable IDs across restarts
         try:
             # Create a simplified representation of the schedule for hashing
             schedule_key = {
@@ -633,7 +682,7 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                 "repeat_schedule": schedule.get("repeat_schedule", None)
             }
             schedule_json = json.dumps(schedule_key, sort_keys=True)
-            schedule_id = str(hash(schedule_json))
+            schedule_id = hashlib.md5(schedule_json.encode()).hexdigest()
         except:
             # Fallback to object ID if hashing fails
             schedule_id = str(id(schedule))
@@ -1633,20 +1682,11 @@ def process_jinja_template(value: Any, context: Dict[str, Any], publish_destinat
             # Add all variables from context
             if "vars" in context:
                 template_vars.update(context["vars"])
-                
-            # If we have a publish destination, add exported variables that are available
-            if publish_destination:
-                # Import get_exported_variables_with_values here to avoid circular imports
-                from routes.scheduler_utils import get_exported_variables_with_values
-                exported_vars = get_exported_variables_with_values(publish_destination)
-                
-                # Add exported variables to template vars
-                for var_name, var_info in exported_vars.items():
-                    if "value" in var_info:
-                        # Use the friendly name if available
-                        friendly_name = var_info.get("friendly_name", var_name)
-                        template_vars[friendly_name] = var_info["value"]
             
+            # REMOVED: Automatic inclusion of exported variables
+            # Variables should only be available if they've been explicitly imported
+            # into the context via import_var instruction
+                
             # Render the template with our variables
             result = template.render(**template_vars)
             return result

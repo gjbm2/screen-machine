@@ -5,15 +5,32 @@
       "style": {
         "friendly_name": "Style of the day",
         "owner": "cloud",
-        "timestamp": "2025-05-07T22:46:32.922327"
+        "timestamp": "2025-05-08T00:01:27.116827"
       },
       "theme": {
         "friendly_name": "Theme of the day",
         "owner": "cloud",
-        "timestamp": "2025-05-07T22:46:32.922327"
+        "timestamp": "2025-05-08T00:01:27.116827"
       }
     }
   },
-  "last_updated": "2025-05-07T22:46:35.761952",
-  "imports": {}
+  "last_updated": "2025-05-08T00:06:59.162547",
+  "imports": {
+    "theme": {
+      "devtest": {
+        "imported_as": "_theme",
+        "source_type": "scope",
+        "source": "living-room",
+        "timestamp": "2025-05-08T00:06:59.081814"
+      }
+    },
+    "style": {
+      "devtest": {
+        "imported_as": "_style",
+        "source_type": "scope",
+        "source": "living-room",
+        "timestamp": "2025-05-08T00:06:59.081814"
+      }
+    }
+  }
 }
