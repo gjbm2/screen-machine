@@ -197,9 +197,32 @@ scheduler_schedules: Dict[str, Dict[str, Any]] = {}  # Store schedules by destin
 def api_pause_scheduler(publish_destination):
     """Pause a running scheduler, preserving its state."""
     try:
-        if publish_destination not in running_schedulers:
-            return jsonify({"error": f"No scheduler running for {publish_destination}"}), 400
+        # Check the current state
+        current_state = scheduler_states.get(publish_destination)
+        
+        # If the scheduler is already paused, we should unpause it instead
+        if current_state == "paused":
+            debug(f"[PAUSE] Scheduler {publish_destination} is already paused, unpausing instead")
+            return api_unpause_scheduler(publish_destination)
             
+        # If it's not in running_schedulers, it may not be started yet (just loaded)
+        if publish_destination not in running_schedulers:
+            debug(f"[PAUSE] No active scheduler for {publish_destination} - setting state to paused")
+            
+            # Just set the state to paused
+            scheduler_states[publish_destination] = "paused"
+            
+            # Update persisted state
+            update_scheduler_state(
+                publish_destination, 
+                state="paused"
+            )
+            
+            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Set scheduler state to paused")
+            debug(f"Set state to paused for {publish_destination}")
+            
+            return jsonify({"status": "paused", "destination": publish_destination})
+        
         debug(f"[PAUSE] Pausing scheduler for {publish_destination}")
             
         # Update in-memory state to paused

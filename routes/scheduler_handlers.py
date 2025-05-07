@@ -126,11 +126,17 @@ def handle_generate(instruction, context, now, output, publish_destination):
         if history_var:
             if history_var not in context["vars"]:
                 context["vars"][history_var] = []
+            
+            # Truncate prompt for history to prevent large entries
+            stored_prompt = prompt
+            if len(stored_prompt) > 50:
+                stored_prompt = stored_prompt[:47] + "..."
+                
             # Append entry to history with standardized fields
             context["vars"][history_var].append({
                 "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
                 "type": "generation",
-                "prompt": prompt,
+                "prompt": stored_prompt,
                 "refiner": refiner,
                 "workflow": workflow,
                 "image_url": image_url
@@ -205,12 +211,17 @@ def handle_animate(instruction, context, now, output, publish_destination):
             if history_var not in context["vars"]:
                 context["vars"][history_var] = []
             
+            # Truncate prompt for history to prevent large entries
+            stored_prompt = prompt
+            if len(stored_prompt) > 50:
+                stored_prompt = stored_prompt[:47] + "..."
+                
             # Add animation details to history with standardized fields
             animation_id = result.get("animation_id", "unknown") if isinstance(result, dict) else "unknown"
             context["vars"][history_var].append({
                 "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
                 "type": "animation",
-                "prompt": prompt,
+                "prompt": stored_prompt,
                 "image_path": image_path,
                 "refiner": refiner,
                 "animation_id": animation_id
@@ -439,50 +450,40 @@ def handle_set_var(instruction, context, now, output, publish_destination):
     
     return False
 
-def handle_stop(instruction: Dict[str, Any], context: Dict[str, Any], now: datetime, output: List[str], publish_destination: str) -> bool:
-    """
-    Stop the current scheduler after executing any remaining instructions.
-    
-    This sets a flag that will be checked at the end of each scheduler loop iteration.
-    It will execute any final actions in the schedule.
-    """
+# Stops scheduler but doesn't unload
+def handle_stop(instruction, context, now, output, publish_destination):
     from routes.scheduler import running_schedulers
     from routes.scheduler_utils import scheduler_states, update_scheduler_state
     
-    try:
-        # Set a flag on the context that we want to stop
+    # Get the stop mode - 'normal' (default) or 'immediate'
+    stop_mode = instruction.get("mode", "normal")
+    
+    # Set a stopping flag in the context to indicate normal stop in progress
+    if stop_mode == "normal":
         context["stopping"] = True
+        msg = "Stop instruction received (normal mode) - will run final_instructions before stopping."
+        output.append(f"[{now.strftime('%H:%M')}] {msg}")
+        log_schedule(msg, publish_destination, now)
+        return False  # Don't unload yet, let final_instructions run
+    else:  # immediate mode
+        msg = "Stop instruction received (immediate mode) - stopping scheduler immediately without running final_instructions."
+        output.append(f"[{now.strftime('%H:%M')}] {msg}")
+        log_schedule(msg, publish_destination, now)
         
-        # Log the action
-        message = "Scheduling stop action"
-        output.append(f"[{now.strftime('%H:%M')}] {message}")
-        
+        # Explicitly remove from running_schedulers without unloading
         if publish_destination in running_schedulers:
-            # We intentionally don't call stop_scheduler here - the flag will trigger
-            # an orderly shutdown at the end of the current loop iteration
-            message = "Scheduler will stop after completing current loop iteration"
-            output.append(f"[{now.strftime('%H:%M')}] {message}")
-        else:
-            # If the scheduler isn't running, just set the state directly
+            future = running_schedulers.pop(publish_destination, None)
+            if future:
+                future.cancel()
+            
+            # Update state to stopped, but preserve schedule and context
             scheduler_states[publish_destination] = "stopped"
-            from utils.logger import debug
-            debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - handle_stop instruction for non-running scheduler")
             update_scheduler_state(
                 publish_destination,
                 state="stopped"
             )
-            message = "Scheduler wasn't running, stopped immediately"
-            output.append(f"[{now.strftime('%H:%M')}] {message}")
         
-        # Return True to indicate success, but don't unload the schedule
-        # The scheduler loop will handle unloading if needed
-        return False
-    except Exception as e:
-        from utils.logger import error
-        error_msg = f"Error executing stop action: {str(e)}"
-        error(error_msg)
-        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
-        return False
+        return True  # Unload the schedule immediately
 
 def handle_import_var(instruction, context, now, output, publish_destination):
     """
@@ -552,18 +553,30 @@ def handle_import_var(instruction, context, now, output, publish_destination):
                     if "vars" in owner_context and var in owner_context["vars"]:
                         value = owner_context["vars"][var]
                 
-                # Add to available vars with value
+                # Add to available vars with value - even if value is None
                 available_vars[var] = {
                     **var_info,
                     "value": value
                 }
         source_type = "group"
         source_id = source_group
-    elif source_scope == "global":
-        # Import from global scope - get all global variables
+    elif source_scope:
+        # The source_scope parameter can be used directly - no need to check for specific values
+        # Import from scope - get all variables from that scope
         registry = load_vars_registry()
         available_vars = {}
-        for var, var_info in registry.get("global", {}).items():
+        
+        if source_scope == "global":
+            # Check global scope
+            scope_vars = registry.get("global", {})
+            source_type = "global scope"
+        else:
+            # Check group scope
+            scope_vars = registry.get("groups", {}).get(source_scope, {})
+            source_type = "group scope"
+        
+        # Get values for all variables in the scope
+        for var, var_info in scope_vars.items():
             owner_id = var_info["owner"]
             # Get the actual value from the owner's context
             value = None
@@ -572,13 +585,13 @@ def handle_import_var(instruction, context, now, output, publish_destination):
                 if "vars" in owner_context and var in owner_context["vars"]:
                     value = owner_context["vars"][var]
             
-            # Add to available vars with value
+            # Add to available vars with value - even if value is None
             available_vars[var] = {
                 **var_info,
                 "value": value
             }
-        source_type = "global scope"
-        source_id = "global"
+        
+        source_id = source_scope
     else:
         # No valid source specified
         msg = f"Failed to import variable '{var_name}': No valid source (dest_id, group, or scope) specified"
@@ -587,36 +600,55 @@ def handle_import_var(instruction, context, now, output, publish_destination):
         return False
     
     # Check if the variable exists in the available variables
-    if var_name in available_vars and available_vars[var_name]["value"] is not None:
-        # Import the variable
+    if var_name in available_vars:
+        # CHANGED: Import the variable even if value is None
         value = available_vars[var_name]["value"]
         context["vars"][imported_as] = value
         
         # Get the owner for registration
         owner_id = available_vars[var_name]["owner"]
         
-        # Register the import in the registry
+        # Register the import in the registry - use different source_dest_id based on how we're importing
+        register_source = None
+        
+        if source_dest_id:
+            # Direct import from a specific destination - use owner_id
+            register_source = owner_id
+        elif source_group:
+            # Import from a group - use the group name with special prefix
+            register_source = f"group:{source_group}"
+        elif source_scope:
+            # Import from a scope - use the scope name with special prefix
+            register_source = f"scope:{source_scope}"
+        else:
+            # Fallback - shouldn't happen with earlier validation
+            register_source = owner_id
+        
         register_imported_var(
             var_name=var_name,
             imported_as=imported_as,
-            source_dest_id=owner_id,  # Always register with the actual owner
+            source_dest_id=register_source,  # Use the appropriate source based on import type
             importing_dest_id=publish_destination,
             timestamp=now.isoformat()
         )
         
         # Log success
-        value_desc = str(value)
-        if isinstance(value, dict) or isinstance(value, list):
-            value_desc = f"{type(value).__name__} with {len(value)} items"
+        if value is None:
+            msg = f"Imported variable '{var_name}' from {source_type} '{source_id}' as '{imported_as}' with null value"
+        else:
+            value_desc = str(value)
+            if isinstance(value, dict) or isinstance(value, list):
+                value_desc = f"{type(value).__name__} with {len(value)} items"
+                
+            friendly_name = available_vars[var_name].get("friendly_name", var_name)
             
-        friendly_name = available_vars[var_name]["friendly_name"]
+            msg = f"Imported variable '{var_name}' ('{friendly_name}') from {source_type} '{source_id}' as '{imported_as}' with value: {value_desc}"
         
-        msg = f"Imported variable '{var_name}' ('{friendly_name}') from {source_type} '{source_id}' as '{imported_as}' with value: {value_desc}"
         output.append(f"[{now.strftime('%H:%M')}] {msg}")
         log_schedule(msg, publish_destination, now)
     else:
         # Log failure
-        msg = f"Failed to import variable '{var_name}' from {source_type} '{source_id}': Variable not found or has no value"
+        msg = f"Failed to import variable '{var_name}' from {source_type} '{source_id}': Variable not found"
         output.append(f"[{now.strftime('%H:%M')}] {msg}")
         log_schedule(msg, publish_destination, now)
     
@@ -800,9 +832,23 @@ def handle_reason(instruction, context, now, output, publish_destination):
                 "outputs": {}
             }
             
-            # Add the text input if provided
+            # Add a truncated/sanitized version of text_input if provided
             if text_input:
-                history_entry["text_input"] = text_input
+                # Check if text contains a history_var reference
+                if history_var in text_input:
+                    # Sanitize - remove any history references which cause recursion
+                    import re
+                    # This regex matches {{ history_var[...] }} patterns
+                    pattern = re.compile(r'{{[^}]*' + re.escape(history_var) + r'\[[^}]*}}')
+                    sanitized_input = pattern.sub("[history reference]", text_input)
+                else:
+                    sanitized_input = text_input
+                
+                # Truncate to reasonable length
+                if len(sanitized_input) > 50:
+                    sanitized_input = sanitized_input[:47] + "..."
+                
+                history_entry["text_input"] = sanitized_input
                 
             # Add image inputs (references only, not the actual data)
             if image_inputs:
@@ -818,7 +864,11 @@ def handle_reason(instruction, context, now, output, publish_destination):
             
             # Add explanation if provided
             if "explanation" in result:
-                history_entry["explanation"] = result["explanation"]
+                # Also truncate explanation to reasonable length
+                explanation = result["explanation"]
+                if len(explanation) > 100:
+                    explanation = explanation[:97] + "..."
+                history_entry["explanation"] = explanation
                 
             # Add the entry to history
             context["vars"][history_var].append(history_entry)
@@ -836,3 +886,5 @@ def handle_reason(instruction, context, now, output, publish_destination):
         import traceback
         error(traceback.format_exc())
         return False 
+
+# Delete the duplicate process_time_schedules function that was copied here 

@@ -84,7 +84,7 @@ def get_current_schema() -> Dict[str, Any]:
         return {"title": "Error", "description": f"Error loading schema: {str(e)}", "type": "object", "properties": {}}
 
 # === Schedule Resolver ===
-def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destination: str) -> List[Dict[str, Any]]:
+def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destination: str, include_initial_actions: bool = False) -> List[Dict[str, Any]]:
     # Only log this debug message every 5 minutes to reduce log spam
     if now.second % 30 == 0:
         debug(f"Resolving schedule at {now}")
@@ -99,9 +99,9 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
     # Accumulate all instructions to execute
     all_instructions = []
     
-    # Always execute initial actions first
+    # Only execute initial actions if requested (on first scheduler run) or if there are no triggers
     initial_instructions = extract_instructions(schedule.get("initial_actions", {}))
-    if initial_instructions:
+    if include_initial_actions and initial_instructions:
         info("Executing initial actions")
         log_schedule("Executing initial actions", publish_destination, now)
         all_instructions.extend(initial_instructions)
@@ -641,7 +641,7 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                 current_context_stack = scheduler_contexts_stacks.get(publish_destination, [])
                 if current_context_stack:
                     debug(f"Preserving context while scheduler is paused: {len(current_context_stack)} context(s)")
-                await asyncio.sleep(0.1)  # Sleep briefly and check again
+                await asyncio.sleep(2.0)  # Sleep during pause state
                 continue
                 
             now = datetime.now()
@@ -689,15 +689,15 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                     )
                 break  # Exit the scheduler loop
             
-            # Check if it's time to run (5 times per second is sufficient for most sub-minute timing)
-            # Seconds-level granularity with prevention of duplicated executions
-            if last_check_time is None or (current_second - last_check_time) >= 0.2:
+            # Check if it's time to run (now checking once every 2 seconds, not 5 times per second)
+            # Also, don't run initial actions after the first check
+            if last_check_time is None or (current_second - last_check_time) >= 2.0:
                 # Get current schedule and context from top of stacks
                 current_schedule = scheduler_schedule_stacks[publish_destination][-1]
                 current_context = get_current_context(publish_destination)
                 
-                # Execute instructions
-                instructions = resolve_schedule(current_schedule, now, publish_destination)
+                # Execute instructions - don't include initial actions (False flag)
+                instructions = resolve_schedule(current_schedule, now, publish_destination, False)
                 if instructions:
                     for instr in instructions:
                         try:
@@ -723,8 +723,8 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                 
                 last_check_time = current_second
             
-            # Check 5 times per second - sufficient for sub-second timing without excessive CPU usage
-            await asyncio.sleep(0.2)
+            # Check once per 2 seconds - reduces CPU usage while maintaining reasonable responsiveness
+            await asyncio.sleep(2.0)
             
     except asyncio.CancelledError:
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M:%S')}] Scheduler cancelled")
@@ -866,7 +866,7 @@ def simulate_schedule(schedule: Dict[str, Any], start_time: str, end_time: str, 
     output = []
 
     while now <= end:
-        instructions = resolve_schedule(schedule, now, "")
+        instructions = resolve_schedule(schedule, now, "", True)
         for instr in instructions:
             run_instruction(instr, context, now, output, "")
         now += timedelta(minutes=step_minutes)
