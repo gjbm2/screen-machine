@@ -1,47 +1,81 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
-import { Terminal, Menu, Info, FileText, Settings, Clock } from 'lucide-react';
+import { 
+  Terminal, 
+  Menu, 
+  Info, 
+  Clock, 
+  StopCircle, 
+  Monitor, 
+  Settings,
+  Edit,
+  FileJson,
+  Sparkles
+} from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal
 } from '@/components/ui/dropdown-menu';
-import scriptsData from '@/data/scripts.json';
+import { toast } from 'sonner';
+import apiService from '@/utils/api';
+import { PublishDestination } from '@/utils/api';
 
 interface HeaderSectionProps {
   onToggleConsole: () => void;
   isConsoleVisible: boolean;
   onOpenAdvancedOptions?: () => void;
   onOpenAboutDialog?: () => void;
-  onRunScript?: (scriptFilename: string) => void;
 }
 
 const HeaderSection: React.FC<HeaderSectionProps> = ({ 
   onToggleConsole,
   isConsoleVisible,
-  onOpenAdvancedOptions,
-  onOpenAboutDialog,
-  onRunScript
+  onOpenAboutDialog
 }) => {
-  const handleRunScript = (filename: string) => {
-    if (onRunScript) {
-      onRunScript(filename);
-    }
-  };
-  
-  // Create a specific handler for the advanced options from the dropdown menu
-  const handleOpenAdvancedFromMenu = () => {
-    if (onOpenAdvancedOptions) {
-      // Ensure the dropdown menu is closed before opening the advanced panel
-      // This helps prevent event handling conflicts
-      setTimeout(() => {
-        onOpenAdvancedOptions();
-      }, 50);
+  const [destinations, setDestinations] = useState<PublishDestination[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch publish destinations on component mount
+  useEffect(() => {
+    const fetchDestinations = async () => {
+      try {
+        setIsLoading(true);
+        const dests = await apiService.getPublishDestinations();
+        // Filter out headless destinations
+        const visibleDests = dests.filter(dest => !dest.headless);
+        setDestinations(visibleDests);
+      } catch (error) {
+        console.error("Error fetching destinations:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDestinations();
+  }, []);
+
+  const handleCancelAllJobs = async () => {
+    toast.loading("Cancelling all jobs...");
+    try {
+      const result = await apiService.cancelAllJobs();
+      if (result.success) {
+        toast.success(`Cancelled ${result.cancelled} jobs`);
+      } else {
+        toast.error(`Failed to cancel jobs: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Error cancelling jobs:", error);
+      toast.error("Failed to cancel jobs due to an unexpected error");
     }
   };
 
@@ -69,8 +103,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           </Tooltip>
         )}
         
-        {/* Advanced Options button was removed from here */}
-        
         {/* Burger menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -83,32 +115,15 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            {!isConsoleVisible && (
-              <DropdownMenuItem onClick={onToggleConsole}>
-                <Terminal className="h-4 w-4 mr-2" />
-                <span>Console View</span>
-              </DropdownMenuItem>
-            )}
-            
-            {onOpenAdvancedOptions && (
-              <DropdownMenuItem onClick={handleOpenAdvancedFromMenu}>
-                <Settings className="h-4 w-4 mr-2" />
-                <span>Advanced</span>
-              </DropdownMenuItem>
-            )}
-            
-            <DropdownMenuItem onClick={onOpenAboutDialog}>
-              <Info className="h-4 w-4 mr-2" />
-              <span>About</span>
-            </DropdownMenuItem>
-            
+            {/* 0. Generate */}
             <DropdownMenuItem asChild>
-              <Link to="/display" target="_blank" rel="noopener noreferrer">
-                <FileText className="h-4 w-4 mr-2" />
-                <span>Display Editor</span>
+              <Link to="/">
+                <Sparkles className="h-4 w-4 mr-2" />
+                <span>Generate</span>
               </Link>
             </DropdownMenuItem>
             
+            {/* 1. Scheduler */}
             <DropdownMenuItem asChild>
               <Link to="/scheduler" target="_blank" rel="noopener noreferrer">
                 <Clock className="h-4 w-4 mr-2" />
@@ -116,23 +131,74 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               </Link>
             </DropdownMenuItem>
             
-            <DropdownMenuSeparator />
+            {/* 2. Displays sub-menu */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Monitor className="h-4 w-4 mr-2" />
+                <span>Displays</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent>
+                  {isLoading ? (
+                    <DropdownMenuItem disabled>
+                      <span>Loading...</span>
+                    </DropdownMenuItem>
+                  ) : destinations.length > 0 ? (
+                    destinations.map(dest => (
+                      <DropdownMenuItem key={dest.id} asChild>
+                        <Link to={`/display/${dest.id}`} target="_blank" rel="noopener noreferrer">
+                          <span>{dest.name || dest.id}</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <DropdownMenuItem disabled>
+                      <span>No displays found</span>
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
             
-            {/* Scripts section */}
-            {scriptsData.length > 0 && (
-              <>
-                <div className="px-2 py-1.5 text-sm font-semibold">Scripts</div>
-                {scriptsData.map((script) => (
-                  <DropdownMenuItem 
-                    key={script.id}
-                    onClick={() => handleRunScript(script.filename)}
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    <span>{script.title}</span>
+            {/* 3. Manage sub-menu */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Settings className="h-4 w-4 mr-2" />
+                <span>Manage</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={handleCancelAllJobs}>
+                    <StopCircle className="h-4 w-4 mr-2" />
+                    <span>Cancel All Jobs</span>
                   </DropdownMenuItem>
-                ))}
-              </>
+                  
+                  <DropdownMenuItem disabled>
+                    <Edit className="h-4 w-4 mr-2" />
+                    <span>Edit Displays</span>
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuItem disabled>
+                    <FileJson className="h-4 w-4 mr-2" />
+                    <span>Edit Workflows</span>
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
+            
+            {/* 4. Console (if not visible) */}
+            {!isConsoleVisible && (
+              <DropdownMenuItem onClick={onToggleConsole}>
+                <Terminal className="h-4 w-4 mr-2" />
+                <span>Console View</span>
+              </DropdownMenuItem>
             )}
+            
+            {/* 5. About */}
+            <DropdownMenuItem onClick={onOpenAboutDialog}>
+              <Info className="h-4 w-4 mr-2" />
+              <span>About</span>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -140,4 +206,4 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   );
 };
 
-export default HeaderSection;
+export default HeaderSection; 

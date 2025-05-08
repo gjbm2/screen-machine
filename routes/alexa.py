@@ -532,20 +532,26 @@ def async_amimate(targets, obj = {}):
         targets if isinstance(targets, list) else []
     )
 
-    # Resolve the file associated with the first target
-    target_image_file = resolve_runtime_value("destination", targets[0], return_key="file") if targets else None
+    # Get target ID directly (no need for resolve_runtime_value to fuzzy match)
+    target_image_file = targets[0] if targets and len(targets) > 0 else None
 
     # Create a result dictionary
-
-    # Inject base64 image into result["data"]["images"]
-    image_payload = get_image_from_target(target_image_file) if target_image_file else None
-    result.setdefault("data", {})["images"] = [image_payload]
-    
-    utils.logger.info(
-        f"Will address: {target_image_file}, "
-        f"image present: {image_payload is not None}, "
-        f"image length: {len(image_payload.get('image')) if image_payload else 'N/A'}"
-    )
+    if target_image_file:
+        # Inject base64 image into result["data"]["images"]
+        image_payload = get_image_from_target(target_image_file)
+        
+        if image_payload:
+            result.setdefault("data", {})["images"] = [image_payload]
+            
+            utils.logger.info(
+                f"Will address: {target_image_file}, "
+                f"image present: True, "
+                f"image length: {len(image_payload.get('image'))}"
+            )
+        else:
+            utils.logger.warning(f"No image found at ./output/{target_image_file}.jpg or ./output/{target_image_file}.mp4")
+    else:
+        utils.logger.warning("No target specified for animation")
     
     # Ensure we're using the currently selected refiner
     result.setdefault("data", {})["refiner"] = resolve_runtime_value("refiner", "animate")

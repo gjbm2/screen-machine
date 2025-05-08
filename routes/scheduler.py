@@ -25,6 +25,7 @@ from routes.scheduler_utils import (
     # Globals from scheduler_utils
     scheduler_logs, scheduler_schedule_stacks, scheduler_contexts_stacks, scheduler_states, running_schedulers
 )
+import time
 
 # === Event Loop Management ===
 # Per-destination event loops and threads
@@ -108,8 +109,18 @@ def get_current_schema() -> Dict[str, Any]:
 
 # === Schedule Resolver ===
 def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destination: str, include_initial_actions: bool = False) -> List[Dict[str, Any]]:
-    # Only log this debug message every 5 minutes to reduce log spam
-    if now.second % 30 == 0:
+    # Add rate-limiting for debug logging
+    if not hasattr(resolve_schedule, '_last_debug_log_time'):
+        resolve_schedule._last_debug_log_time = {}
+    
+    should_log = False
+    current_time = time.time()
+    if publish_destination not in resolve_schedule._last_debug_log_time or \
+       (current_time - resolve_schedule._last_debug_log_time.get(publish_destination, 0)) > 30:
+        should_log = True
+        resolve_schedule._last_debug_log_time[publish_destination] = current_time
+    
+    if should_log:
         debug(f"Resolving schedule at {now}")
     
     # First check for important triggers
@@ -139,7 +150,7 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
     time_str = now.strftime("%H:%M")   # e.g., 08:00
     minute_of_day = now.hour * 60 + now.minute
 
-    if now.second % 30 == 0:
+    if should_log:
         debug(f"Current date: {date_str}, day: {day_str}, time: {time_str}, minute of day: {minute_of_day}")
 
     # Track if we've matched any trigger
@@ -169,10 +180,12 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                         if schedule_id not in processed_schedule_ids:
                             processed_schedule_ids.add(schedule_id)
                             instructions = extract_instructions(matched_schedule.get("trigger_actions", {}))
-                            debug(f"Extracted {len(instructions)} instructions from date trigger schedule")
+                            if should_log:
+                                debug(f"Extracted {len(instructions)} instructions from date trigger schedule")
                             all_instructions.extend(instructions)
                         else:
-                            debug(f"Skipping duplicate schedule in date trigger")
+                            if should_log:
+                                debug(f"Skipping duplicate schedule in date trigger")
     
     # === Day-of-week triggers (always evaluated, even if a date trigger matched) ===
     for trigger in schedule.get("triggers", []):
@@ -196,10 +209,12 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                         if schedule_id not in processed_schedule_ids:
                             processed_schedule_ids.add(schedule_id)
                             instructions = extract_instructions(matched_schedule.get("trigger_actions", {}))
-                            debug(f"Extracted {len(instructions)} instructions from day_of_week trigger schedule")
+                            if should_log:
+                                debug(f"Extracted {len(instructions)} instructions from day_of_week trigger schedule")
                             all_instructions.extend(instructions)
                         else:
-                            debug("Skipping duplicate schedule in day_of_week trigger")
+                            if should_log:
+                                debug("Skipping duplicate schedule in day_of_week trigger")
     
     # Check event triggers (these can match regardless of other triggers)
     from routes.scheduler_utils import active_events
@@ -218,7 +233,8 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                 log_schedule(message, publish_destination, now)
                 # Add event trigger actions
                 event_instructions = extract_instructions(trigger.get("trigger_actions", {}))
-                debug(f"Extracted {len(event_instructions)} instructions from event trigger")
+                if should_log:
+                    debug(f"Extracted {len(event_instructions)} instructions from event trigger")
                 all_instructions.extend(event_instructions)
                 found_actions_to_execute = True
 
@@ -226,16 +242,17 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
     if not found_actions_to_execute:
         final_instructions = extract_instructions(schedule.get("final_actions", {}))
         if final_instructions:
-            debug("No trigger produced actions, running final actions")
+            if should_log:
+                debug("No trigger produced actions, running final actions")
             log_schedule("No triggers produced actions, running final actions", publish_destination, now)
             all_instructions.extend(final_instructions)
     
     if not all_instructions:
-        # Only log this message every 30 seconds to reduce log spam
-        if now.second % 30 == 0:
+        if should_log:
             debug("No matching triggers or final actions found")
     else:
-        debug(f"Found {len(all_instructions)} instructions to execute")
+        if should_log:
+            debug(f"Found {len(all_instructions)} instructions to execute")
         
     return all_instructions
 
@@ -674,6 +691,8 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
         # We no longer need to wait for start of next minute - this allows for sub-minute scheduling 
         
         last_check_time = None
+        last_debug_log_time = 0  # Track when we last did debug logging
+        
         while True:
             # Check if scheduler is stopped
             if publish_destination not in running_schedulers:
@@ -682,10 +701,12 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                 
             # Check if scheduler is paused
             if scheduler_states.get(publish_destination) == "paused":
-                # Make sure we persist the context when paused
-                current_context_stack = scheduler_contexts_stacks.get(publish_destination, [])
-                if current_context_stack:
-                    debug(f"Preserving context while scheduler is paused: {len(current_context_stack)} context(s)")
+                # Rate-limit debug logging
+                current_time = time.time()
+                if current_time - last_debug_log_time > 30:
+                    debug(f"Preserving context while scheduler is paused: {len(scheduler_contexts_stacks.get(publish_destination, []))} context(s)")
+                    last_debug_log_time = current_time
+                
                 await asyncio.sleep(2.0)  # Sleep during pause state
                 continue
                 
@@ -695,6 +716,13 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
             
             # Get current context to check for stopping flag
             current_context = get_current_context(publish_destination)
+            
+            # Rate-limit debug logging
+            should_log_debug = False
+            current_time = time.time()
+            if current_time - last_debug_log_time > 30:
+                should_log_debug = True
+                last_debug_log_time = current_time
             
             # Check if stopping flag is set (for normal mode stopping)
             if current_context and current_context.get("stopping") == True:
@@ -788,12 +816,14 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
             try:
                 loaded_state = load_scheduler_state(publish_destination)
                 disk_state = loaded_state.get("state", "stopped")
-                debug(f"Checking disk state for {publish_destination}: {disk_state}")
+                if should_log_debug:
+                    debug(f"Checking disk state for {publish_destination}: {disk_state}")
                 
                 # If disk state is paused but memory state is not, use disk state
                 # This handles cases where scheduler was paused but server restarted
                 if disk_state == "paused" and current_state != "paused":
-                    debug(f"Found paused state on disk for {publish_destination}, preserving it")
+                    if should_log_debug:
+                        debug(f"Found paused state on disk for {publish_destination}, preserving it")
                     current_state = "paused"
                     scheduler_states[publish_destination] = "paused"
             except Exception as e:
@@ -804,7 +834,8 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                 # Preserve the context when stopping
                 current_context_stack = scheduler_contexts_stacks.get(publish_destination, [])
                 scheduler_states[publish_destination] = "stopped"
-                debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - in finally block of run_scheduler_loop")
+                if should_log_debug:
+                    debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - in finally block of run_scheduler_loop")
                 update_scheduler_state(
                     publish_destination,
                     schedule_stack=scheduler_schedule_stacks.get(publish_destination, []),
@@ -812,8 +843,9 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                     state="stopped"
                 )
             else:
-                debug(f"@@@@@@@@@@@@@ KEPT PAUSED for {publish_destination} - in finally block of run_scheduler_loop")
-                debug(f"Not changing state because current_state is '{current_state}'")
+                if should_log_debug:
+                    debug(f"@@@@@@@@@@@@@ KEPT PAUSED for {publish_destination} - in finally block of run_scheduler_loop")
+                    debug(f"Not changing state because current_state is '{current_state}'")
                 # Explicitly update with paused state to ensure it's persisted
                 current_context_stack = scheduler_contexts_stacks.get(publish_destination, [])
                 update_scheduler_state(

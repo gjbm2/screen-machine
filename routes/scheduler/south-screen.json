@@ -66,7 +66,7 @@
                 ]
               },
               "repeat_schedule": {
-                "every": "10"
+                "every": "60"
               }
             }
           ]
@@ -81,11 +81,11 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "Ancient Arctic Myths - The Icebound Legends",
-        "_b_theme": "Modern Arctic Industry - The Isolation of Steel",
-        "_style": "James Whistler's Tonalism",
-        "_guidance": "For the theme of Arctic environments, consider the atmospheric qualities of Whistler's works to convey both the mystical and industrial aspects. Avoid previous subjects by using distinctly arctic-themed landmarks and human influences captured in hazy, atmospheric tones.",
-        "prompt": "Distant industrial oil rig enveloped in Arctic fog, colossal icebergs loom silently beside, Whistler's tonalism capturing atmospheric solitude and subtle industrial silhouettes.",
+        "_a_theme": "The Court of the Microscopic",
+        "_b_theme": "The Kingdom of the Galactic",
+        "_style": "Surrealist Expressionism",
+        "_guidance": "Create images where microscopic details of ordinary objects and expansive celestial bodies evoke a sense of scale that transcends the familiar. Using Surrealist Expressionism, aim to avoid repeating past subject-types by selecting newly imaginative contexts that combine reality with the fantastic. Leverage image history to push the boundaries of perception by emphasizing the unexpected and unusual within these realms.",
+        "prompt": "Vast office scene where paperclips metamorphose into infinite star trails, against a backdrop of a twilight cityscape, blending mundane with cosmic grandeur.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:54",
@@ -446,6 +446,126 @@
             },
             "text_input": "Create an image of  in the style of James Whist...",
             "explanation": "I focused on the interaction between an industrial oil rig and natural icebergs under Arctic fog...."
+          },
+          {
+            "timestamp": "2025-05-08 11:21:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Arctic research station nestled among snowy peaks, enveloped in ethereal shades of blue and gray, delicate light filtering through cloudy skies, echoing Whistler's serene tonalism."
+            },
+            "text_input": "Create an image of  in the style of James Whist...",
+            "explanation": "I chose an Arctic research station to connect the mystical and industrial aspects without repeati..."
+          },
+          {
+            "timestamp": "2025-05-08 11:31:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Silent Arctic shipwreck shadowed by an aurora borealis, jagged ice floes surround fragmented hull, Whistler's tonalism imbues a haunting stillness with industrial echoes."
+            },
+            "text_input": "Create an image of  in the style of James Whist...",
+            "explanation": "I focused on an Arctic shipwreck, which adds human influence without repeating previous prompts i..."
+          },
+          {
+            "timestamp": "2025-05-08 12:17:23",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Cellular structures morphing into cosmic nebulae, microscopic nuclei transitioning seamlessly into swirling galaxies, vibrant colors and organic forms, evoking wonder of the macro-micro continuum."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I avoided previous subjects by focusing on the transformation of cellular structures into cosmic ..."
+          },
+          {
+            "timestamp": "2025-05-08 12:21:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Surrealist landscape where a giant urban skyline emerges from a cracked eggshell, inhabited by miniature city life under a glowing, oversized moon, symbolizing rebirth and cosmic balance."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I created a surreal landscape with the metaphor of an eggshell, which symbolizes birth and cosmos..."
+          },
+          {
+            "timestamp": "2025-05-08 12:31:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Gigantic glass crystal encasing a bustling miniature bazaar, fractal reflections echoing surreal realms, illuminated by ethereal starlight and cosmic clouds drifting across a dreamlike sky."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "To ensure originality, I chose a giant crystal with a miniature bazaar encased inside, diverging ..."
+          },
+          {
+            "timestamp": "2025-05-08 12:41:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Microscopic insect wings unfurl into vast celestial rings, intricate natural patterns blending seamlessly with cosmic stardust, evoking majesty beyond familiar perception."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I focused on the metaphorical expansion of insect wings into celestial bodies, diverging from cel..."
+          },
+          {
+            "timestamp": "2025-05-08 12:42:25",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Vast woven fabric as an expanse of open sea, intricately detailed threads transitioning into swirling galaxies, with surrealistically sinking ships embroidered into cosmic tides."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I avoided previous subjects by merging intricate fabrics and cosmic elements; ships woven into fa..."
+          },
+          {
+            "timestamp": "2025-05-08 12:43:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Enchanted forest floor, where fallen leaves morph into swirling galaxies, illuminated by bioluminescent fungi casting ethereal hues, evoking wonder at nature's hidden cosmic connection."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I chose an enchanted forest floor with elements transforming into cosmic wonders to ensure origin..."
+          },
+          {
+            "timestamp": "2025-05-08 12:44:37",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Endless library shelves morphing into stardust, books unfurling into celestial constellations, with luminous ink spilling into the night sky, bridging the gap between knowledge and the cosmos."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I focused on the concept of a library, a site of knowledge, with books transforming into cosmic e..."
+          },
+          {
+            "timestamp": "2025-05-08 12:51:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Small cloud of stardust hovers over a chessboard, with pawns morphing into miniature planets, surrealist terrain merges with cosmic abyss, illuminating existential ponderings."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I emphasized an imaginative transformation of a chessboard into a cosmic scene. Avoiding the prev..."
+          },
+          {
+            "timestamp": "2025-05-08 12:57:51",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A vast desert landscape, where blooming flowers burst forth from giant hourglasses, sand grains sparkling as they morph into luminous stars, capturing time's fleeting nature in surreal wonder."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I chose a desert landscape with hourglasses, focusing on time and transformation without referenc..."
+          },
+          {
+            "timestamp": "2025-05-08 13:01:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Vast office scene where paperclips metamorphose into infinite star trails, against a backdrop of a twilight cityscape, blending mundane with cosmic grandeur."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I selected an office setting with a focus on paperclips transforming into star trails\u2014a new conte..."
           }
         ],
         "prompt_history": [
@@ -736,20 +856,113 @@
             "refiner": "gallerist",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/1fa0a2b3-cd98-4beb-973d-2dd3fba69ff6-e1/39b6763d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T101135Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=3ec9395f0dd8fa7953477cff7d9b362cbfd60154aed21b3fcc37e9da1af8649f"
+          },
+          {
+            "timestamp": "2025-05-08 11:21:01",
+            "type": "generation",
+            "prompt": "Arctic research station nestled among snowy pea...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/2e4d3d79-60d9-4028-af24-d6968fd5dea1-e1/c9e6e20a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T102217Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=445a6d91dba67af68aa08782145b6905a336abb06e501ea341ae1d66281330d3"
+          },
+          {
+            "timestamp": "2025-05-08 11:31:01",
+            "type": "generation",
+            "prompt": "Silent Arctic shipwreck shadowed by an aurora b...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b162b7b5-9bc8-49d2-a79f-91d238ec4176-e1/973f8d95.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T103132Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=948416d422144139b08e7a5848d4df26cc555b3585e3905b5f1933524e5dbe46"
+          },
+          {
+            "timestamp": "2025-05-08 12:17:23",
+            "type": "generation",
+            "prompt": "Cellular structures morphing into cosmic nebula...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7db8121c-de67-4619-8058-81e970cc319f-e1/d5db4f85.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T111752Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=24befd69fa0e7c841ccde7fbc5783361d66b1d4c0e4465b46d58274b52273a4d"
+          },
+          {
+            "timestamp": "2025-05-08 12:21:01",
+            "type": "generation",
+            "prompt": "Surrealist landscape where a giant urban skylin...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/bda07c33-75ba-45c0-bfcd-9d8adb1a82c8-e1/5a672dec.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T112131Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=89525bfe29b4745fcc02d4301cf9b1fbdf69bd011de62d5bdc1d18d79ec139c6"
+          },
+          {
+            "timestamp": "2025-05-08 12:31:00",
+            "type": "generation",
+            "prompt": "Gigantic glass crystal encasing a bustling mini...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4d86cca2-9408-4e3d-b983-831cc7f972f5-e1/3052ce1c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T113134Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=76edaccb253247b776d1a73d6206c38230000890fbdb842f6b08d37f8604edce"
+          },
+          {
+            "timestamp": "2025-05-08 12:41:01",
+            "type": "generation",
+            "prompt": "Microscopic insect wings unfurl into vast celes...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/83d27922-e5bc-4950-9775-ed030828ab3f-e1/be21d419.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T114129Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2a5fc5844428e7b75f20171fe620bc290d2eb1c9ace052c4619497a559b8b639"
+          },
+          {
+            "timestamp": "2025-05-08 12:42:25",
+            "type": "generation",
+            "prompt": "Vast woven fabric as an expanse of open sea, in...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/bfe7dcaa-a886-44c6-935d-1e042b34f12d-e1/f1e0b22d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T114251Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=78711e9030e1a0142801726956ac9f656176f3964da99033e6e15972f800c637"
+          },
+          {
+            "timestamp": "2025-05-08 12:43:00",
+            "type": "generation",
+            "prompt": "Enchanted forest floor, where fallen leaves mor...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ec753d6f-d8e8-4f51-9d7c-71b201067abf-e1/fb79c1da.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T114329Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ee6b82811cbdb4becf46b4d2008a559c762d0e275200f4a6fd4402bf5d783974"
+          },
+          {
+            "timestamp": "2025-05-08 12:44:37",
+            "type": "generation",
+            "prompt": "Endless library shelves morphing into stardust,...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/1077c884-7249-48bb-a903-782e01404340-e1/4c930f6f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T114504Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d239e0f3390b609d25c9c597a9e05d6b96a5ed66115158221c60d1b8b8415f11"
+          },
+          {
+            "timestamp": "2025-05-08 12:51:01",
+            "type": "generation",
+            "prompt": "Small cloud of stardust hovers over a chessboar...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4c348b2a-d5e5-4bb4-b46f-a5ef1f69dc81-e1/29fcddbc.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T115126Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b6ff87b627e0bc123cc535e373d5ce83a405d047abc57265242998d63d25d27b"
+          },
+          {
+            "timestamp": "2025-05-08 12:57:51",
+            "type": "generation",
+            "prompt": "A vast desert landscape, where blooming flowers...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/1b450ca4-d865-400c-93f1-08d37f64ca25-e1/ce8130b7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T115819Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6c2f1949c5cae5eb8184c84c6dc18c48f15c0aed2bea1201423e9eca26224517"
+          },
+          {
+            "timestamp": "2025-05-08 13:01:02",
+            "type": "generation",
+            "prompt": "Vast office scene where paperclips metamorphose...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8b7d2940-da98-4758-9aa7-ec30a4726335-e1/bf4a5871.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T120130Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=12b8d7783dcd1b54e23fa00050572568118a9983d7f26e12c60b436972b4174c"
           }
         ]
       },
       "publish_destination": "south-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/1fa0a2b3-cd98-4beb-973d-2dd3fba69ff6-e1/39b6763d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T101135Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=3ec9395f0dd8fa7953477cff7d9b362cbfd60154aed21b3fcc37e9da1af8649f"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8b7d2940-da98-4758-9aa7-ec30a4726335-e1/bf4a5871.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T120130Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=12b8d7783dcd1b54e23fa00050572568118a9983d7f26e12c60b436972b4174c"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-08T11:11:37.208550",
+  "last_updated": "2025-05-08T13:27:40.553550",
   "last_trigger_executions": {
-    "937f1b9f5b9fa64119aad31c4d5633b4_2025-05-08T10:31:00": "2025-05-08T10:36:56.400634",
-    "937f1b9f5b9fa64119aad31c4d5633b4_2025-05-08T10:41:00": "2025-05-08T10:41:01.837322",
-    "937f1b9f5b9fa64119aad31c4d5633b4_2025-05-08T10:51:00": "2025-05-08T10:51:00.444681",
-    "937f1b9f5b9fa64119aad31c4d5633b4_2025-05-08T11:01:00": "2025-05-08T11:01:00.773623",
-    "937f1b9f5b9fa64119aad31c4d5633b4_2025-05-08T11:11:00": "2025-05-08T11:11:02.285692"
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T12:01:00": "2025-05-08T12:57:51.602303",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T13:01:00": "2025-05-08T13:01:02.244568"
   }
 }
