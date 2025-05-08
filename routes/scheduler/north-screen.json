@@ -85,7 +85,7 @@
         "_b_theme": "The Kingdom of the Galactic",
         "_style": "Surrealist Expressionism",
         "_guidance": "Create images where microscopic details of ordinary objects and expansive celestial bodies evoke a sense of scale that transcends the familiar. Using Surrealist Expressionism, aim to avoid repeating past subject-types by selecting newly imaginative contexts that combine reality with the fantastic. Leverage image history to push the boundaries of perception by emphasizing the unexpected and unusual within these realms.",
-        "prompt": "In a concert hall lost in time, instruments meld with the cosmos, brass horns resonate as celestial orbs, creating ethereal melodies that weave through starry auroras.",
+        "prompt": "Enchanted library where books grow as trees, their roots intertwining like constellations, each page turning to reveal a galaxy, surging with life and vibrant expressionist hues.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:23",
@@ -694,6 +694,26 @@
             },
             "text_input": "Create an image of  in the style of Surrealist ...",
             "explanation": "I selected a concert hall as the new setting, distinct from previous environments like deserts or..."
+          },
+          {
+            "timestamp": "2025-05-08 22:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Rivers of molten clock faces flowing through dramatic mountain ranges, interspersed with floating time pieces creating temporal waterfalls; surreal hues of silver and deep cobalt dominate."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I chose rivers of molten clock faces to avoid replicating past landscapes like deserts or beaches..."
+          },
+          {
+            "timestamp": "2025-05-08 23:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Enchanted library where books grow as trees, their roots intertwining like constellations, each page turning to reveal a galaxy, surging with life and vibrant expressionist hues."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "To diverge from the previously mentioned settings like deserts, forests, and urban locales, I pla..."
           }
         ],
         "prompt_history": [
@@ -1168,6 +1188,22 @@
             "refiner": "gallerist",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/173ac3a3-1947-49a2-9193-25bcf8433b1f-e1/a17eee09.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T200157Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d6d064bb0d431c8ca873be00a4ac5f973a50f206726482b3a4a390fa1f262a2b"
+          },
+          {
+            "timestamp": "2025-05-08 22:01:01",
+            "type": "generation",
+            "prompt": "Rivers of molten clock faces flowing through dr...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0e994e7b-5d99-418a-945f-7d7b0943b1d6-e1/abad7ce2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T210157Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=990872fe2564bb3b4fb7e1644c1110ae738b42c8312684c9003e36fff7032fd4"
+          },
+          {
+            "timestamp": "2025-05-08 23:01:01",
+            "type": "generation",
+            "prompt": "Enchanted library where books grow as trees, th...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/57ef0989-1a57-46f5-8136-014ad3505ec5-e1/53c626a8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T220127Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0c9009eda4379c0954255e02df311ce448ea894faaf52f0d20a4a32c32ac8e55"
           }
         ],
         "animation_history": [
@@ -1278,11 +1314,11 @@
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/173ac3a3-1947-49a2-9193-25bcf8433b1f-e1/a17eee09.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T200157Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d6d064bb0d431c8ca873be00a4ac5f973a50f206726482b3a4a390fa1f262a2b"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/57ef0989-1a57-46f5-8136-014ad3505ec5-e1/53c626a8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T220127Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0c9009eda4379c0954255e02df311ce448ea894faaf52f0d20a4a32c32ac8e55"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-08T21:02:00.779273",
+  "last_updated": "2025-05-08T23:43:00.886350",
   "last_trigger_executions": {
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T13:01:00": "2025-05-08T13:20:30.047121",
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T14:01:00": "2025-05-08T14:01:01.659441",
@@ -1292,6 +1328,8 @@
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T18:01:00": "2025-05-08T18:01:01.105993",
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T19:01:00": "2025-05-08T19:01:01.642437",
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T20:01:00": "2025-05-08T20:01:00.666363",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T21:01:00": "2025-05-08T21:01:01.313962"
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T21:01:00": "2025-05-08T21:01:01.313962",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T22:01:00": "2025-05-08T22:01:01.282651",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T23:01:00": "2025-05-08T23:01:01.604036"
   }
 }

@@ -555,12 +555,19 @@ def get_bucket_complete(bucket_id: str):
             except Exception as e:
                 warning(f"Failed to read sidecar for {file_path.name}: {e}")
         
+        # Get file stats for timestamps
+        file_stats = file_path.stat()
+        
         # Add file info to list
         files.append({
             "filename": file_path.name,
-            "size": file_path.stat().st_size,
-            "modified": file_path.stat().st_mtime,
-            "metadata": file_meta,
+            "size": file_stats.st_size,
+            "modified": file_stats.st_mtime,
+            "created_at": file_stats.st_ctime,  # Add created timestamp
+            "metadata": {
+                **file_meta,
+                "timestamp": file_meta.get("timestamp") or file_stats.st_ctime  # Ensure timestamp exists
+            },
             "favorite": file_path.name in meta.get("favorites", []),
             "sequence_index": meta.get("sequence", []).index(file_path.name),
             "thumbnail_url": f"/output/{bucket_id}/thumbnails/{file_path.stem}{file_path.suffix}.jpg"

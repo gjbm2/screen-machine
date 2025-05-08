@@ -14,15 +14,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { BucketImage } from './BucketImage';
-import { BucketDetails } from './BucketDetails';
-import { UploadModal } from './UploadModal';
-import { MaintenanceModal } from './MaintenanceModal';
 import {
   DndContext,
-  DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   closestCenter,
@@ -30,6 +26,7 @@ import {
   DragEndEvent,
   DragOverEvent,
   useDroppable,
+  DragOverlay,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -39,6 +36,11 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
+// New unified-dnd building blocks
+import { ExpandableContainer } from '@/components/common';
+import SortableImageGrid from '@/components/common/SortableImageGrid';
+import { ImageItem } from '@/types/image-types';
 
 // Define the expected types based on the API response
 interface BucketItem extends ApiBucketItem {}
@@ -52,6 +54,7 @@ interface BucketImage {
   thumbnail_embedded?: string;
   prompt?: string;
   metadata?: Record<string, any>;
+  created_at?: number;
 }
 
 interface BucketDetails {
@@ -112,11 +115,21 @@ export const BucketGridView = ({
   const [activeDraggedImage, setActiveDraggedImage] = useState<BucketImage | null>(null);
   const [activeDropTarget, setActiveDropTarget] = useState<string | null>(null);
   const [dropTargetType, setDropTargetType] = useState<DropTargetType | null>(null);
+  // Track collapsed state of every section id -> collapsed
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    // Desktop: start when mouse moved 8px, no delay
+    useSensor(MouseSensor, {
       activationConstraint: {
-        distance: 5, // Only activate after dragging 5px to avoid conflicts with click
+        distance: 8,
+      },
+    }),
+    // Mobile touch with press delay
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 200,
+        tolerance: 8,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -164,7 +177,7 @@ export const BucketGridView = ({
     setLoading(true);
     setError(null);
     try {
-      const details = await apiService.getBucketDetails(destination);
+      const details: any = await apiService.getBucketDetails(destination);
       if (details.error) {
         throw new Error(details.error);
       }
@@ -178,7 +191,8 @@ export const BucketGridView = ({
         metadata: {
           ...item.metadata,
           favorite: item.favorite
-        }
+        },
+        created_at: item.created_at || item.metadata?.timestamp || item.metadata?.modified
       }));
 
       // Sort images by favorite status and timestamp
@@ -435,6 +449,110 @@ export const BucketGridView = ({
   const sortedImages = getSortedImages();
   const favoritesCount = bucketImages.filter(img => img.metadata?.favorite).length;
   
+  // ----------  Build section groups (Favourites + date buckets) ---------- //
+
+  const favourites = bucketImages.filter(img => img.metadata?.favorite);
+  const others = bucketImages.filter(img => !img.metadata?.favorite);
+
+  // Helper to derive friendly date bucket label
+  const getDateBucketLabel = (timestamp?: number): string => {
+    console.log('Processing timestamp:', timestamp, 'type:', typeof timestamp);
+    if (!timestamp) {
+      console.log('No timestamp provided, returning "Older"');
+      return 'Older';
+    }
+    
+    const date = new Date(timestamp * 1000); // Convert Unix timestamp to milliseconds
+    const now = new Date();
+    
+    console.log('Converted date:', date.toISOString());
+    console.log('Current time:', now.toISOString());
+
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / oneDayMs);
+    console.log('Days difference:', diffDays);
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+
+    // Start of current week (Monday)
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay() + 1);
+    console.log('Start of week:', startOfWeek.toISOString());
+
+    if (date >= startOfWeek) return 'Earlier this week';
+
+    // Previous week window
+    const startOfLastWeek = new Date(startOfWeek);
+    startOfLastWeek.setDate(startOfWeek.getDate() - 7);
+    console.log('Start of last week:', startOfLastWeek.toISOString());
+    
+    if (date >= startOfLastWeek) return 'Last week';
+
+    return 'Older';
+  };
+
+  const dateGroupsMap: Record<string, BucketImage[]> = {};
+  others.forEach((img) => {
+    console.log('Processing image:', img.id, 'created_at:', img.created_at);
+    const label = getDateBucketLabel(img.created_at);
+    console.log('Assigned label:', label);
+    if (!dateGroupsMap[label]) dateGroupsMap[label] = [];
+    dateGroupsMap[label].push(img);
+  });
+
+  // Preserve deterministic order of date group labels
+  const orderedDateLabels = ['Today', 'Yesterday', 'Earlier this week', 'Last week', 'Older'];
+
+  interface Section {
+    id: string;
+    label: string;
+    variant: 'favourites' | 'dated';
+    images: BucketImage[];
+  }
+
+  const sections: Section[] = [];
+  if (favourites.length > 0) {
+    sections.push({ id: 'favourites', label: `Favourites (${favourites.length})`, variant: 'favourites', images: favourites });
+  }
+
+  orderedDateLabels.forEach((lbl) => {
+    if (dateGroupsMap[lbl] && dateGroupsMap[lbl].length > 0) {
+      sections.push({ id: lbl.toLowerCase().replace(/\s+/g, '-'), label: `${lbl} (${dateGroupsMap[lbl].length})`, variant: 'dated', images: dateGroupsMap[lbl] });
+    }
+  });
+
+  // Convert BucketImage -> ImageItem for display components
+  const toImageItem = (img: BucketImage): ImageItem => ({
+    id: img.id,
+    urlThumb: img.thumbnail_url,
+    urlFull: img.url,
+    promptKey: img.prompt || '',
+    seed: 0,
+    createdAt: img.created_at ? new Date(img.created_at * 1000).toISOString() : '',
+    isFavourite: !!img.metadata?.favorite,
+  });
+
+  const handleFavouriteOrderChange = (newOrder: string[]) => {
+    if (newOrder.length !== favourites.length) return;
+
+    // Identify first item whose index changed
+    const prev = favourites.map((f) => f.id);
+    let movedId: string | null = null;
+    let newIndex = -1;
+    prev.forEach((id, idx) => {
+      if (newOrder[idx] !== id && !movedId) {
+        movedId = id; // original item at this position moved somewhere else
+      }
+    });
+    if (!movedId) return;
+
+    newIndex = newOrder.indexOf(movedId);
+
+    const targetFilename = newIndex === 0 ? null : newOrder[newIndex - 1];
+    moveToPosition(movedId, targetFilename);
+  };
+
   // Get scheduler status icon and text
   const getSchedulerStatusDisplay = () => {
     if (schedulerStatus?.is_paused) {
@@ -522,6 +640,9 @@ export const BucketGridView = ({
     if (draggedImage) {
       setActiveDraggedImage(draggedImage);
     }
+    
+    // Prevent scrolling during drag on touch devices
+    document.body.style.touchAction = 'none';
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
@@ -538,6 +659,7 @@ export const BucketGridView = ({
       setActiveDraggedImage(null);
       setActiveDropTarget(null);
       setDropTargetType(null);
+      document.body.style.touchAction = 'auto';
       return;
     }
     
@@ -562,45 +684,110 @@ export const BucketGridView = ({
           toast.error('Failed to publish image');
         }
       }
+    } else if (typeof over.id === 'string' && over.id.startsWith('group-')) {
+      const groupKey = (over.id as string).slice(6);
+      const targetSection = sections.find(s => s.id === groupKey);
+      if (targetSection && activeDraggedImage) {
+        const isFav = !!activeDraggedImage.metadata?.favorite;
+        if (targetSection.variant === 'favourites' && !isFav) {
+          handleToggleFavorite(activeDraggedImage);
+        }
+        if (targetSection.variant !== 'favourites' && isFav) {
+          handleToggleFavorite(activeDraggedImage);
+        }
+      }
     } else if (over.id !== active.id) {
-      // This is the existing reordering logic
-      // Find the actual images
+      // Determine dragged and target images
       const draggedImage = bucketImages.find(img => img.id === active.id);
       const targetImage = bucketImages.find(img => img.id === over.id);
-      
-      if (!draggedImage || !targetImage) return;
-      
-      // Calculate positions in the UI sorted array
+
+      if (!draggedImage) return;
+
+      const draggedIsFav = !!draggedImage.metadata?.favorite;
+      const targetIsFav = !!targetImage?.metadata?.favorite;
+
+      // Toggle favourite status when dropping onto an image of a different favourite state
+      if (draggedIsFav && !targetIsFav) {
+        await handleToggleFavorite(draggedImage);
+        // Reset drag state and exit early
+        setActiveId(null);
+        setActiveDraggedImage(null);
+        setActiveDropTarget(null);
+        setDropTargetType(null);
+        document.body.style.touchAction = 'auto';
+        return; // No re-order required
+      }
+      if (!draggedIsFav && targetIsFav) {
+        // Add to favourites first
+        await handleToggleFavorite(draggedImage);
+
+        // Move the newly favourited image just AFTER the target favourite image
+        try {
+          await apiService.moveToPosition(destination, draggedImage.id, targetImage.id);
+        } catch (error) {
+          console.error('Error positioning newly favourited image:', error);
+          // Swallow; order will at least be refreshed on next fetch
+        }
+
+        // Optimistically update local order so UI reflects new position immediately
+        setBucketImages(items => {
+          const newItems = [...items];
+          const dragIdx = newItems.findIndex(i => i.id === draggedImage.id);
+          const targetIdx = newItems.findIndex(i => i.id === targetImage.id);
+          if (dragIdx === -1 || targetIdx === -1) return items;
+          const [dragItem] = newItems.splice(dragIdx, 1);
+          // Insert after the target image
+          newItems.splice(targetIdx + 1, 0, dragItem);
+          return newItems;
+        });
+
+        // Reset drag state and exit early
+        setActiveId(null);
+        setActiveDraggedImage(null);
+        setActiveDropTarget(null);
+        setDropTargetType(null);
+        document.body.style.touchAction = 'auto';
+        return;
+      }
+
+      // Only allow re-ordering when BOTH dragged and target images are favourites
+      if (!draggedIsFav || !targetIsFav || !targetImage) {
+        // Simply reset drag state – no action required
+        setActiveId(null);
+        setActiveDraggedImage(null);
+        setActiveDropTarget(null);
+        setDropTargetType(null);
+        document.body.style.touchAction = 'auto';
+        return;
+      }
+
+      // Calculate positions in the UI sorted array (favourites only)
       const oldIndex = sortedImages.findIndex(item => item.id === active.id);
       const newIndex = sortedImages.findIndex(item => item.id === over.id);
-      
+
       // Update local state immediately for responsive UI
       setBucketImages(items => {
-        // Create a copy of the array and perform the move
         const newItems = [...items];
         const draggedItemIndex = newItems.findIndex(item => item.id === active.id);
         if (draggedItemIndex === -1) return items;
-        
+
         // Remove the dragged item
         const [draggedItem] = newItems.splice(draggedItemIndex, 1);
-        
+
         // Find the target position
         const targetIndex = newItems.findIndex(item => item.id === over.id);
         if (targetIndex === -1) return items;
-        
+
         // Insert after the target if dragged from before, otherwise insert before
         const insertIndex = oldIndex < newIndex ? targetIndex + 1 : targetIndex;
         newItems.splice(insertIndex, 0, draggedItem);
-        
+
         return newItems;
       });
-      
+
       try {
-        // For the API call, we need to pass the image ID to insert AFTER
-        // If moving before the target, use the previous image's ID
-        // If moving to the first position, pass null
         let insertAfterId: string | null;
-        
+
         if (newIndex > oldIndex) {
           // Moving forward - insert after the target
           insertAfterId = targetImage.id;
@@ -609,19 +796,15 @@ export const BucketGridView = ({
           const targetIndex = sortedImages.findIndex(img => img.id === targetImage.id);
           insertAfterId = targetIndex <= 0 ? null : sortedImages[targetIndex - 1].id;
         }
-        
-        // Call the API with the correct insertAfterId
+
         await apiService.moveToPosition(
-          destination, 
+          destination,
           draggedImage.id,
           insertAfterId
         );
-        
-        // Don't refresh from server - rely on local state
-        // This prevents the distracting refresh
       } catch (error) {
-        console.error('Error reordering image:', error);
-        toast.error('Failed to reorder image');
+        console.error('Error reordering favourite image:', error);
+        toast.error('Failed to reorder favourite');
         fetchBucketDetails(); // Only refresh on error
       }
     }
@@ -631,6 +814,7 @@ export const BucketGridView = ({
     setActiveDraggedImage(null);
     setActiveDropTarget(null);
     setDropTargetType(null);
+    document.body.style.touchAction = 'auto';
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -691,7 +875,7 @@ export const BucketGridView = ({
             ref={setNodeRef}
             style={style}
             className={`group relative overflow-hidden cursor-pointer transition-all 
-              ${isItemDragging ? 'scale-105 shadow-xl z-50' : ''}
+              ${isItemDragging ? 'shadow-xl shadow-black/30 z-50 [transform:translateZ(0)]' : ''}
               ${isDropTarget ? 'ring-2 ring-primary bg-primary/5' : 'hover:border-primary border-transparent'}`}
                   onClick={() => handleImageClick(image)}
             {...attributes}
@@ -730,13 +914,13 @@ export const BucketGridView = ({
                       <img
                         src={`data:image/jpeg;base64,${image.thumbnail_embedded}`}
                         alt={image.prompt || 'Image in bucket'}
-                        className="w-full h-full object-cover transition-all group-hover:scale-105"
+                        className="w-full h-full object-cover transition-all"
                       />
                     ) : (
                       <img
                         src={image.thumbnail_url || 'https://placehold.co/400x400?text=Loading...'}
                         alt={image.prompt || 'Image in bucket'}
-                        className="w-full h-full object-cover transition-all group-hover:scale-105"
+                        className="w-full h-full object-cover transition-all"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           if (image.url) {
@@ -757,7 +941,7 @@ export const BucketGridView = ({
                     
                     <div className="flex justify-between items-center mt-2">
                       <div className="text-white text-xs">
-                        {image.metadata?.timestamp ? new Date(image.metadata.timestamp).toLocaleDateString() : 'No date'}
+                        {image.created_at ? new Date(image.created_at * 1000).toLocaleDateString() : 'No date'}
                       </div>
                       
                       <div className="flex gap-1">
@@ -865,9 +1049,9 @@ export const BucketGridView = ({
                       {image.prompt}
                     </div>
                   )}
-                  {image.metadata?.timestamp && (
+                  {image.created_at && (
                     <div className="text-xs text-muted-foreground">
-                      Created {formatPublishDate(image.metadata.timestamp)}
+                      Created {formatPublishDate(new Date(image.created_at * 1000).toISOString())}
                     </div>
                   )}
                 </div>
@@ -893,7 +1077,7 @@ export const BucketGridView = ({
       <div 
         ref={setNodeRef}
         className={`relative w-24 h-24 rounded-md overflow-hidden bg-black/10 flex-shrink-0 transition-all
-          ${isOver ? 'ring-2 ring-primary ring-offset-2 scale-105 shadow-lg' : ''}
+          ${isOver ? 'ring-2 ring-primary ring-offset-2 shadow-lg' : ''}
           ${activeId ? 'cursor-copy' : ''}
         `}
       >
@@ -920,6 +1104,87 @@ export const BucketGridView = ({
       </div>
     );
   };
+
+  const toggleSection = (id: string) =>
+    setCollapsedSections((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  /** Single section with droppable */
+  const SectionDroppable: React.FC<{ section: Section }> = ({ section }) => {
+    const { setNodeRef, isOver } = useDroppable({ id: `group-${section.id}` });
+    return (
+      <ExpandableContainer
+        id={section.id}
+        label={section.label}
+        variant="section"
+        iconPos="left"
+        collapsed={collapsedSections[section.id] ?? false}
+        onToggle={toggleSection}
+        ref={setNodeRef as any}
+        className={isOver ? 'ring-2 ring-primary/60' : ''}
+      >
+        <SortableImageGrid
+          images={section.images.map(toImageItem)}
+          sortable={section.variant === 'favourites'}
+          onOrderChange={section.variant === 'favourites' ? handleFavouriteOrderChange : undefined}
+        />
+      </ExpandableContainer>
+    );
+  };
+
+  /* ------------------------------------------------------------------
+     Global clean-up so mobile never gets stuck after a cancelled drag  
+  ------------------------------------------------------------------ */
+  useEffect(() => {
+    const handleCancel = () => {
+      setActiveId(null);
+      setActiveDraggedImage(null);
+    };
+
+    window.addEventListener('pointercancel', handleCancel);
+    window.addEventListener('pointerup', handleCancel);
+    window.addEventListener('visibilitychange', () => {
+      if (document.hidden) handleCancel();
+    });
+
+    return () => {
+      window.removeEventListener('pointercancel', handleCancel);
+      window.removeEventListener('pointerup', handleCancel);
+      window.removeEventListener('visibilitychange', handleCancel);
+    };
+  }, []);
+
+  // Set up initial collapsed state when sections change
+  useEffect(() => {
+    if (sections.length > 0) {
+      // Create a map of all sections being collapsed by default
+      const initialCollapsedState: Record<string, boolean> = {};
+      
+      // First, set all sections to collapsed
+      sections.forEach(section => {
+        initialCollapsedState[section.id] = true;
+      });
+      
+      // Then, ensure Favorites is expanded if it exists
+      if (sections.find(s => s.id === 'favourites')) {
+        initialCollapsedState['favourites'] = false;
+      }
+      
+      // Find the first non-favorites section and expand it
+      const firstNonFavSection = sections.find(s => s.id !== 'favourites');
+      if (firstNonFavSection) {
+        initialCollapsedState[firstNonFavSection.id] = false;
+      }
+      
+      // Only set the state if it's the first load or when sections actually change
+      setCollapsedSections(prevState => {
+        // Only update if we haven't set sections before
+        if (Object.keys(prevState).length === 0) {
+          return initialCollapsedState;
+        }
+        return prevState;
+      });
+    }
+  }, [sections.length]);
 
   return (
     <div className="flex flex-col h-full">
@@ -1065,12 +1330,12 @@ export const BucketGridView = ({
           </Alert>
         )}
         
-        {/* Image grid */}
+        {/* ---- Grouped Sections (unified DND) ---- */}
         {loading || externalLoading ? (
           <div className="flex justify-center items-center h-full">
             <RefreshCw className="h-8 w-8 animate-spin opacity-50" />
           </div>
-        ) : bucketImages.length === 0 ? (
+        ) : sections.length === 0 ? (
           <div className="flex flex-col justify-center items-center h-full p-6">
             <ImageIcon className="h-12 w-12 mb-4 opacity-20" />
             <p className="text-lg font-medium mb-2">No images found</p>
@@ -1083,39 +1348,22 @@ export const BucketGridView = ({
             </Button>
           </div>
         ) : (
-          <SortableContext
-            items={sortedImages.map(img => img.id)}
-            strategy={rectSortingStrategy}
-          >
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 overflow-y-auto">
-              {sortedImages.map((image, index) => (
-                <SortableImageCard key={image.id} image={image} index={index} />
-          ))}
-        </div>
-          </SortableContext>
+          <div className="flex flex-col gap-2 overflow-y-auto">
+            {sections.map((section) => (
+              <SectionDroppable key={section.id} section={section} />
+            ))}
+          </div>
         )}
-        
-        {/* Drag overlay */}
-        <DragOverlay>
+
+        {/* Drag overlay with scale and shadow */}
+        <DragOverlay adjustScale={false}>
           {activeDraggedImage ? (
-            <Card className="relative overflow-hidden cursor-grabbing border-primary shadow-lg transform scale-105">
-              {/* Overlay Image Content */}
-                <div className="aspect-square overflow-hidden bg-muted">
-                {activeDraggedImage.thumbnail_embedded ? (
-                  <img
-                    src={`data:image/jpeg;base64,${activeDraggedImage.thumbnail_embedded}`}
-                    alt={activeDraggedImage.prompt || 'Image in bucket'}
-                    className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <img
-                    src={activeDraggedImage.thumbnail_url || activeDraggedImage.url}
-                    alt={activeDraggedImage.prompt || 'Image in bucket'}
-                    className="w-full h-full object-cover"
-                    />
-                  )}
-                </div>
-              </Card>
+            <div className="rounded-md overflow-hidden shadow-xl transform-gpu scale-105">
+              <img
+                src={activeDraggedImage.thumbnail_url || activeDraggedImage.url}
+                alt="drag preview"
+                className="w-full h-full object-cover" />
+            </div>
           ) : null}
         </DragOverlay>
       </DndContext>
@@ -1225,11 +1473,11 @@ export const BucketGridView = ({
                     </>
                   )}
                   
-                  {selectedImage.metadata?.timestamp && (
+                  {selectedImage.created_at && (
                     <>
                       <h3 className="text-sm font-medium mb-1">Created</h3>
                       <p className="text-sm mb-3">
-                        {new Date(selectedImage.metadata.timestamp).toLocaleString()}
+                        {new Date(selectedImage.created_at * 1000).toLocaleString()}
                       </p>
                     </>
                   )}
