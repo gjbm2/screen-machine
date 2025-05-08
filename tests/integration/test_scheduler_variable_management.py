@@ -61,7 +61,7 @@ def multi_context_setup(clean_scheduler_state):
     return destinations
 
 @pytest.fixture
-def mock_flask_request():
+def mock_flask_request(app_request_context):
     """Mock Flask request context for API calls."""
     with patch('routes.scheduler_api.request') as mock_request:
         mock_request.json = {}

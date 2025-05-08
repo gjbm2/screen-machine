@@ -24,22 +24,36 @@
                 "history_var": "history_var",
                 "image_inputs": [],
                 "output_vars": [
-                  "theme",
-                  "style"
+                  "a_theme",
+                  "b_theme",
+                  "style",
+                  "guidance"
                 ],
                 "reasoner": "theme_and_style",
                 "text_input": "The last seven days were: {{ history_var[-7:] }}"
               },
               {
                 "action": "export_var",
-                "var_name": "theme",
-                "friendly_name": "Theme of the day",
+                "friendly_name": "A theme of the day",
+                "scope": "living-room",
+                "var_name": "a_theme"
+              },
+              {
+                "action": "export_var",
+                "var_name": "b_theme",
+                "friendly_name": "B theme of the day",
                 "scope": "living-room"
               },
               {
                 "action": "export_var",
-                "var_name": "style",
                 "friendly_name": "Style of the day",
+                "scope": "living-room",
+                "var_name": "style"
+              },
+              {
+                "action": "export_var",
+                "var_name": "guidance",
+                "friendly_name": "Generator guidance",
                 "scope": "living-room"
               }
             ]

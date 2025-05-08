@@ -297,7 +297,8 @@ def update_imported_variables(var_name: str, new_value: Any) -> Dict[str, List[s
             from routes.scheduler_utils import update_scheduler_state
             update_scheduler_state(
                 dest_id,
-                context_stack=scheduler_contexts_stacks[dest_id]
+                context_stack=scheduler_contexts_stacks[dest_id],
+                force_save=True  # Force save to ensure context changes are persisted
             )
             
             # Track which destinations were updated
@@ -489,7 +490,7 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
     return state
 
 def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None) -> None:
-    """Save scheduler state to disk. Simple, unconditional version that always saves everything."""
+    """Save the scheduler state to disk for a destination."""
     path = get_scheduler_storage_path(publish_destination)
     debug(f"********** SAVE STATE: Starting for {publish_destination} to {path} **********")
     
@@ -505,14 +506,24 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
         in_memory_state = scheduler_states.get(publish_destination, "not-in-memory")
         debug(f"********** SAVE STATE: Current in-memory state is '{in_memory_state}' for {publish_destination} **********")
     
-        # Always use the complete in-memory state
-        state_to_save = {
-            "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
-            "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
-            "state": scheduler_states.get(publish_destination, "stopped"),
-            "last_updated": datetime.now().isoformat(),
-            "last_trigger_executions": {}
-        }
+        # If state is provided, use it (with fallbacks to in-memory state for missing parts)
+        # Otherwise use the complete in-memory state
+        if state is not None:
+            state_to_save = {
+                "schedule_stack": state.get("schedule_stack", scheduler_schedule_stacks.get(publish_destination, [])),
+                "context_stack": state.get("context_stack", scheduler_contexts_stacks.get(publish_destination, [])),
+                "state": state.get("state", scheduler_states.get(publish_destination, "stopped")),
+                "last_updated": datetime.now().isoformat(),
+                "last_trigger_executions": state.get("last_trigger_executions", {})
+            }
+        else:
+            state_to_save = {
+                "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+                "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
+                "state": scheduler_states.get(publish_destination, "stopped"),
+                "last_updated": datetime.now().isoformat(),
+                "last_trigger_executions": {}
+            }
         
         debug(f"********** SAVE STATE: Will save state='{state_to_save['state']}' for {publish_destination} **********")
         
@@ -564,7 +575,8 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
 def update_scheduler_state(publish_destination: str, 
                          schedule_stack: Optional[List[Dict[str, Any]]] = None,
                          context_stack: Optional[List[Dict[str, Any]]] = None,
-                         state: Optional[str] = None) -> None:
+                         state: Optional[str] = None,
+                         force_save: bool = False) -> None:
     """Update parts of the scheduler state and then save everything to disk."""
     # Simple, unconditional updating
     debug(f"********** UPDATE STATE: Starting for {publish_destination} **********")
@@ -596,7 +608,22 @@ def update_scheduler_state(publish_destination: str,
     
     # Always save the full state to disk
     debug(f"********** UPDATE STATE: Calling save_scheduler_state for {publish_destination} **********")
-    save_scheduler_state(publish_destination)
+    
+    if force_save:
+        # Create a complete state object to force saving everything
+        save_state = {
+            "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+            "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
+            "state": scheduler_states.get(publish_destination, "stopped"),
+            "last_trigger_executions": {k: v.isoformat() for k, v in last_trigger_executions.get(publish_destination, {}).items()},
+            "last_updated": datetime.now().isoformat()
+        }
+        save_scheduler_state(publish_destination, save_state)
+        debug(f"********** UPDATE STATE: Force-saved complete state for {publish_destination} **********")
+    else:
+        # Use default save behavior
+        save_scheduler_state(publish_destination)
+    
     debug(f"********** UPDATE STATE: Completed for {publish_destination} **********")
 
 # === Context Stack Management ===
@@ -628,7 +655,8 @@ def push_context(publish_destination: str, context: Dict[str, Any]) -> None:
     update_scheduler_state(
         publish_destination,
         context_stack=stack,
-        schedule_stack=current_schedule_stack
+        schedule_stack=current_schedule_stack,
+        force_save=True  # Force save to ensure context changes are persisted
     )
 
 def pop_context(publish_destination: str) -> Dict[str, Any]:
@@ -637,7 +665,8 @@ def pop_context(publish_destination: str) -> Dict[str, Any]:
     context = stack.pop()
     update_scheduler_state(
         publish_destination,
-        context_stack=stack
+        context_stack=stack,
+        force_save=True  # Force save to ensure context changes are persisted
     )
     return context
 
@@ -1602,7 +1631,7 @@ def set_context_variable(publish_destination: str, var_name: str, var_value: Any
 
     if "vars" not in context:
         context["vars"] = {}
-    
+        
     # If var_value is null, delete the variable instead of setting it to null
     now = datetime.now()
     if var_value is None:
@@ -1618,7 +1647,7 @@ def set_context_variable(publish_destination: str, var_name: str, var_value: Any
     else:
         # Set the variable value - can be any type (string, number, boolean, object, array)
         context["vars"][var_name] = var_value
-        
+    
         # Add log entry
         value_desc = str(var_value)
         if isinstance(var_value, dict) or isinstance(var_value, list):
@@ -1631,11 +1660,48 @@ def set_context_variable(publish_destination: str, var_name: str, var_value: Any
     # Update the context stack in memory
     scheduler_contexts_stacks[publish_destination][-1] = context
     
-    # Persist changes to disk
+    # Persist changes to disk with force_save to ensure changes are saved
     update_scheduler_state(
         publish_destination,
-        context_stack=scheduler_contexts_stacks[publish_destination]
+        context_stack=scheduler_contexts_stacks[publish_destination],
+        force_save=True  # Force save to ensure context changes are persisted
     )
+    
+    # Check if this is an exported variable that needs to be synchronized
+    try:
+        # Get the exported variable registry
+        registry = load_vars_registry()
+        
+        # Check if this variable is an exported variable
+        is_exported = False
+        export_var_name = None
+        
+        # Check global exports
+        for reg_var_name, var_info in registry.get("global", {}).items():
+            if var_info.get("owner") == publish_destination and reg_var_name == var_name:
+                is_exported = True
+                export_var_name = reg_var_name
+                break
+                
+        # Check group exports
+        if not is_exported:
+            for group_name, group_vars in registry.get("groups", {}).items():
+                for reg_var_name, var_info in group_vars.items():
+                    if var_info.get("owner") == publish_destination and reg_var_name == var_name:
+                        is_exported = True
+                        export_var_name = reg_var_name
+                        break
+                if is_exported:
+                    break
+        
+        # If this is an exported variable, synchronize it to all importers
+        if is_exported and export_var_name:
+            debug(f"Variable '{var_name}' is exported as '{export_var_name}', updating importers")
+            updated_destinations = update_imported_variables(export_var_name, var_value)
+            debug(f"Updated imported variables in {len(updated_destinations)} destinations: {updated_destinations}")
+    except Exception as e:
+        import traceback
+        error(f"Error checking for exported variable: {str(e)}\n{traceback.format_exc()}")
     
     return {
         "status": "success", 
@@ -1643,7 +1709,7 @@ def set_context_variable(publish_destination: str, var_name: str, var_value: Any
         "var_value": var_value,
         "vars": context["vars"],
         "deleted": var_value is None
-    } 
+    }
 
 # === Jinja Template Processing ===
 def process_jinja_template(value: Any, context: Dict[str, Any], publish_destination: str = None) -> Any:

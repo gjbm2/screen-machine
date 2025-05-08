@@ -4,6 +4,10 @@ import json
 from datetime import datetime
 from routes.scheduler_utils import scheduler_contexts_stacks, scheduler_schedule_stacks, scheduler_states, scheduler_logs
 from routes.scheduler_utils import VARS_REGISTRY_PATH
+from flask import Flask, g
+from flask.testing import FlaskClient
+import tempfile
+from unittest.mock import patch
 
 @pytest.fixture
 def temp_registry_file(tmp_path, monkeypatch):
@@ -226,4 +230,106 @@ def test_schedule_generate_animate():
                 }
             ]
         }
+    }
+
+@pytest.fixture
+def app():
+    """Create and configure a Flask app for testing."""
+    # Create a minimal Flask app for testing
+    app = Flask(__name__)
+    app.config['TESTING'] = True
+    
+    # Setup temp directory for file storage during tests
+    with tempfile.TemporaryDirectory() as temp_dir:
+        app.config['SCHEDULER_DIR'] = temp_dir
+        
+        # Use patch to make sure get_scheduler_storage_path uses the test directory
+        with patch('routes.scheduler_utils.get_scheduler_storage_path', 
+                  lambda dest: os.path.join(temp_dir, f"{dest}.json")):
+            yield app
+
+@pytest.fixture
+def client(app):
+    """A test client for the app."""
+    return app.test_client()
+
+@pytest.fixture
+def app_context(app):
+    """Provide an application context for tests that need it."""
+    with app.app_context():
+        yield
+
+@pytest.fixture
+def request_context(app):
+    """Provide a request context for tests that need it."""
+    with app.test_request_context():
+        yield
+
+@pytest.fixture
+def app_request_context(app):
+    """Provide both application and request context for tests that need it."""
+    with app.app_context():
+        with app.test_request_context():
+            yield
+
+@pytest.fixture
+def clean_scheduler_state():
+    """Clean up scheduler state before and after tests."""
+    # Store original state
+    original_states = dict(scheduler_states)
+    original_contexts = {k: v[:] for k, v in scheduler_contexts_stacks.items()}
+    original_schedules = {k: v[:] for k, v in scheduler_schedule_stacks.items()}
+    original_logs = {k: v[:] for k, v in scheduler_logs.items()}
+    
+    # Clear state for test
+    scheduler_states.clear()
+    scheduler_contexts_stacks.clear()
+    scheduler_schedule_stacks.clear()
+    scheduler_logs.clear()
+    
+    yield {
+        "states": scheduler_states,
+        "contexts": scheduler_contexts_stacks,
+        "schedules": scheduler_schedule_stacks,
+        "logs": scheduler_logs
+    }
+    
+    # Restore original state
+    scheduler_states.clear()
+    scheduler_states.update(original_states)
+    
+    scheduler_contexts_stacks.clear()
+    scheduler_contexts_stacks.update(original_contexts)
+    
+    scheduler_schedule_stacks.clear()
+    scheduler_schedule_stacks.update(original_schedules)
+    
+    scheduler_logs.clear()
+    scheduler_logs.update(original_logs)
+
+@pytest.fixture
+def test_schedule():
+    """Create a test schedule with the correct schema."""
+    return {
+        "initial_actions": {
+            "instructions_block": [
+                {"action": "set_var", "var": "initialized", "input": {"value": True}}
+            ]
+        },
+        "triggers": [
+            {
+                "type": "day_of_week",
+                "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+                "scheduled_actions": [
+                    {
+                        "time": "12:00",
+                        "trigger_actions": {
+                            "instructions_block": [
+                                {"action": "set_var", "var": "lunch_time", "input": {"value": True}}
+                            ]
+                        }
+                    }
+                ]
+            }
+        ]
     } 

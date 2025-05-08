@@ -29,6 +29,7 @@ opencv-python
 pytest>=7.3.1
 pytest-asyncio>=0.21.0
 pytest-cov>=4.1.0
+pytest-flask>=1.2.0
 
 # FastAPI and dependencies
 fastapi>=0.68.0

@@ -1,12 +1,60 @@
 {
-  "schedule_stack": [],
+  "schedule_stack": [
+    {
+      "triggers": [
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "09:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "set_var",
+                    "var": "day_start",
+                    "input": {
+                      "value": "work day started"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "initial_actions": {
+        "instructions_block": [
+          {
+            "action": "set_var",
+            "var": "schedule_loaded",
+            "input": {
+              "value": "true"
+            }
+          }
+        ]
+      }
+    }
+  ],
   "context_stack": [
     {
       "vars": {},
       "publish_destination": "cloud"
+    },
+    {
+      "vars": {
+        "new_var": "new_value"
+      },
+      "publish_destination": "cloud"
     }
   ],
   "state": "stopped",
-  "last_updated": "2025-05-08T00:09:08.595805",
+  "last_updated": "2025-05-08T01:54:31.170191",
   "last_trigger_executions": {}
 }
