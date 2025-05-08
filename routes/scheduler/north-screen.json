@@ -85,7 +85,7 @@
         "_b_theme": "The Kingdom of the Galactic",
         "_style": "Surrealist Expressionism",
         "_guidance": "Create images where microscopic details of ordinary objects and expansive celestial bodies evoke a sense of scale that transcends the familiar. Using Surrealist Expressionism, aim to avoid repeating past subject-types by selecting newly imaginative contexts that combine reality with the fantastic. Leverage image history to push the boundaries of perception by emphasizing the unexpected and unusual within these realms.",
-        "prompt": "Expand a bustling city into a massive book, where skyscrapers are the spine and pages unfold skyward, pages overlapping to reveal cosmic landscapes teeming with planetary life.",
+        "prompt": "In a concert hall lost in time, instruments meld with the cosmos, brass horns resonate as celestial orbs, creating ethereal melodies that weave through starry auroras.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:23",
@@ -624,6 +624,76 @@
             },
             "text_input": "Create an image of  in the style of Surrealist ...",
             "explanation": "I chose a city transformed into a massive book, diverging from previous scenes by merging urban e..."
+          },
+          {
+            "timestamp": "2025-05-08 15:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Ancient clocktower crumbling into a celestial playground, gears representing orbiting planets, time's face adorned with whimsical symbols, vibrant unreal colors echo around interstellar vistas."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I crafted an image set around an ancient clocktower, diverging from forest or desert scenes. It c..."
+          },
+          {
+            "timestamp": "2025-05-08 16:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Towering mysterious mushroom forest twined with spiral staircases of outlandish design; each cap housing glittering star systems, the scene enveloped in ethereal mist and cosmic wonder."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I used a mushroom forest to avoid previous settings like libraries, deserts, or clock towers. The..."
+          },
+          {
+            "timestamp": "2025-05-08 17:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "In a vast cosmic beach, sand grains are galaxies, tidal waves transform into nebula surges; celestial bodies play with immense seashells, horizon glows in surreal twilight hues."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I selected a cosmic beach, a unique environment not previously used. The sand-to-galaxies concept..."
+          },
+          {
+            "timestamp": "2025-05-08 18:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "In an expansive city park, trees manifest as giant violin scrolls with strings forming celestial pathways, vivid autumn leaves cascading as swirling cosmic constellations in twilight."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I envisioned a surreal transformation where trees become violin scrolls, infusing the setting wit..."
+          },
+          {
+            "timestamp": "2025-05-08 19:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A vast desert where dunes transform into coffee beans, swirls of cream-like clouds casting shadows, and tiny figures navigate with floating ceramic teaspoons as spacecraft."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I avoided previous settings by choosing a desert composed of coffee beans, an unprecedented choic..."
+          },
+          {
+            "timestamp": "2025-05-08 20:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Inverted skyscraper gardens growing upwards into the firmament, roots dangling like stars; patrons ascend via floating pathways in gravity-defying grace amid surrealist hues."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I opted for skyscraper gardens growing upwards, creating a vertical, inverted urban environment. ..."
+          },
+          {
+            "timestamp": "2025-05-08 21:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "In a concert hall lost in time, instruments meld with the cosmos, brass horns resonate as celestial orbs, creating ethereal melodies that weave through starry auroras."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I selected a concert hall as the new setting, distinct from previous environments like deserts or..."
           }
         ],
         "prompt_history": [
@@ -1042,6 +1112,62 @@
             "refiner": "gallerist",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/384b36fb-1bab-47db-bc93-34d797370726-e1/4409e8f4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T130202Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=92f2a31ea9eb06a4c4ad46c61b15f7f8490610191939b1a08924ec1cd7cce91c"
+          },
+          {
+            "timestamp": "2025-05-08 15:01:00",
+            "type": "generation",
+            "prompt": "Ancient clocktower crumbling into a celestial p...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/81ccaa4f-4475-455c-a0f4-349ede60090b-e1/f69d7e9d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T140131Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=196b75a2939d0f9c12e7f321a49a64108254ea888271cef0cc7d676631bdcade"
+          },
+          {
+            "timestamp": "2025-05-08 16:01:01",
+            "type": "generation",
+            "prompt": "Towering mysterious mushroom forest twined with...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7a871d50-30e9-4a73-8820-0f606bbf996a-e1/ffe5af9a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T150131Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9d52e9d7e6918d40955a50ed967dafe7fcf4408c21e77c3f864c88a234b9bd9d"
+          },
+          {
+            "timestamp": "2025-05-08 17:01:00",
+            "type": "generation",
+            "prompt": "In a vast cosmic beach, sand grains are galaxie...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b847aee9-25be-46af-a982-2430a70e2f93-e1/632d2a66.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T160155Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7a620cf4b7ac00f5d7fc9f9ff57260bd4b2d1afd6ebf0dcd232bcab233ffc816"
+          },
+          {
+            "timestamp": "2025-05-08 18:01:01",
+            "type": "generation",
+            "prompt": "In an expansive city park, trees manifest as gi...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/32a0e1f7-2f96-4049-8805-b5d6718db0f7-e1/1c1fa99b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T170128Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=235b5a6474c8784c4482967949ee6fd3fc3b4e1e36a19a04c452703ffdbd1227"
+          },
+          {
+            "timestamp": "2025-05-08 19:01:01",
+            "type": "generation",
+            "prompt": "A vast desert where dunes transform into coffee...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/645e652d-0609-4a56-b49c-9e842fdcc96e-e1/04172039.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T180203Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=56513bb63a0ff39631ba0fe2420370f455be68817d9d870d2591578515af2514"
+          },
+          {
+            "timestamp": "2025-05-08 20:01:00",
+            "type": "generation",
+            "prompt": "Inverted skyscraper gardens growing upwards int...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/cf4f5b1e-069c-4cb8-9749-908db2f67799-e1/34a8c885.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T190216Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d8630024ca3d8cb7182c12a0b6da26a8775781b4ff156a121f1b75d0fb01ccc5"
+          },
+          {
+            "timestamp": "2025-05-08 21:01:01",
+            "type": "generation",
+            "prompt": "In a concert hall lost in time, instruments mel...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/173ac3a3-1947-49a2-9193-25bcf8433b1f-e1/a17eee09.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T200157Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d6d064bb0d431c8ca873be00a4ac5f973a50f206726482b3a4a390fa1f262a2b"
           }
         ],
         "animation_history": [
@@ -1152,13 +1278,20 @@
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/384b36fb-1bab-47db-bc93-34d797370726-e1/4409e8f4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T130202Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=92f2a31ea9eb06a4c4ad46c61b15f7f8490610191939b1a08924ec1cd7cce91c"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/173ac3a3-1947-49a2-9193-25bcf8433b1f-e1/a17eee09.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T200157Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d6d064bb0d431c8ca873be00a4ac5f973a50f206726482b3a4a390fa1f262a2b"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-08T14:55:32.822996",
+  "last_updated": "2025-05-08T21:02:00.779273",
   "last_trigger_executions": {
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T13:01:00": "2025-05-08T13:20:30.047121",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T14:01:00": "2025-05-08T14:01:01.659441"
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T14:01:00": "2025-05-08T14:01:01.659441",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T15:01:00": "2025-05-08T15:01:00.799704",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T16:01:00": "2025-05-08T16:01:01.578078",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T17:01:00": "2025-05-08T17:01:00.929919",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T18:01:00": "2025-05-08T18:01:01.105993",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T19:01:00": "2025-05-08T19:01:01.642437",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T20:01:00": "2025-05-08T20:01:00.666363",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T21:01:00": "2025-05-08T21:01:01.313962"
   }
 }
