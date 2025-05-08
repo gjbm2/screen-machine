@@ -5,37 +5,9 @@
         "instructions_block": [
           {
             "action": "set_var",
-            "var": "initial_executed",
+            "var": "test_var",
             "input": {
-              "value": true
-            }
-          }
-        ]
-      },
-      "triggers": [
-        {
-          "type": "event",
-          "value": "TestEvent",
-          "trigger_actions": {
-            "instructions_block": [
-              {
-                "action": "set_var",
-                "var": "trigger_executed",
-                "input": {
-                  "value": true
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "final_actions": {
-        "instructions_block": [
-          {
-            "action": "set_var",
-            "var": "final_executed",
-            "input": {
-              "value": true
+              "value": "initial_value"
             }
           }
         ]
@@ -45,25 +17,12 @@
   "context_stack": [
     {
       "vars": {
-        "prompt": "test prompt for generation",
-        "generation_history": [
-          {
-            "timestamp": "2025-05-08 00:09:03",
-            "type": "generation",
-            "prompt": "test prompt for generation",
-            "refiner": "test_refiner",
-            "workflow": "text-to-image",
-            "image_url": "mock_image_test_promp.jpg"
-          }
-        ],
-        "initial_executed": true,
-        "final_executed": true
+        "test_var": "initial_value"
       },
-      "publish_destination": "test_dest",
-      "last_generated": "mock_image_test_promp.jpg"
+      "publish_destination": "test_dest"
     }
   ],
   "state": "stopped",
-  "last_updated": "2025-05-08T00:09:05.482924",
+  "last_updated": "2025-05-08T01:54:27.113894",
   "last_trigger_executions": {}
 }

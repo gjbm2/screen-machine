@@ -38,17 +38,12 @@ def clean_scheduler_state():
     scheduler_contexts_stacks.update(original_contexts)
 
 @pytest.fixture
-def mock_flask_request():
+def mock_flask_request(app_request_context):
     """Mock Flask request context."""
-    class MockRequest:
-        json = {}
-        
-        @classmethod
-        def get_json(cls):
-            return cls.json
-            
-    with patch('routes.scheduler_api.request', MockRequest):
-        yield MockRequest
+    with patch('routes.scheduler_api.request') as mock_request:
+        mock_request.json = {}
+        mock_request.get_json = lambda: mock_request.json
+        yield mock_request
 
 @pytest.fixture
 def test_schedule():
@@ -78,9 +73,13 @@ def test_schedule():
     }
 
 @pytest.fixture
-def setup_running_scheduler(clean_scheduler_state, test_schedule):
+def setup_running_scheduler(clean_scheduler_state, test_schedule, app_request_context):
     """Set up a running scheduler with context for testing."""
     publish_destination = "test_destination"
+    
+    # Ensure destination exists in dictionaries
+    scheduler_contexts_stacks[publish_destination] = [{"vars": {}, "publish_destination": publish_destination}]
+    scheduler_states[publish_destination] = "stopped"
     
     # Initialize scheduler
     start_scheduler(publish_destination, test_schedule)
@@ -265,12 +264,17 @@ def test_context_persistence_with_state_load(setup_running_scheduler, mock_flask
     with patch('routes.scheduler_api.load_scheduler_state') as mock_load:
         mock_load.return_value = mock_state
         
-        with patch('routes.scheduler_api.jsonify') as mock_jsonify:
-            mock_jsonify.return_value = {}
-            # Unpause with mocked state load
-            api_unpause_scheduler(publish_destination)
+        # Directly patch the scheduler_contexts_stacks to simulate state being loaded
+        with patch.dict('routes.scheduler_utils.scheduler_contexts_stacks', {
+            publish_destination: mock_state["context_stack"]
+        }, clear=False):
+            
+            with patch('routes.scheduler_api.jsonify') as mock_jsonify:
+                mock_jsonify.return_value = {}
+                # Unpause with mocked state load
+                api_unpause_scheduler(publish_destination)
     
-    # Verify context includes the disk-loaded variable
-    unpaused_context = get_current_context(publish_destination)
-    assert unpaused_context is not None
-    assert unpaused_context.get("vars", {}).get("disk_var") == "loaded from disk" 
+            # Verify context includes the disk-loaded variable
+            unpaused_context = get_current_context(publish_destination)
+            assert unpaused_context is not None
+            assert unpaused_context.get("vars", {}).get("disk_var") == "loaded from disk" 

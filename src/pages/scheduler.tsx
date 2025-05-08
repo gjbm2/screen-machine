@@ -1061,7 +1061,7 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
               <Button
                 size="sm"
                 variant="default"
-                onClick={() => onStart(destination.id)}
+                onClick={() => onToggle(destination.id, true)}
               >
                 <Play className="h-4 w-4 mr-2" />
                 Resume

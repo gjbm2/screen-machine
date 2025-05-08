@@ -398,6 +398,10 @@ def api_set_scheduler_context(publish_destination):
 def api_load_schedule(publish_destination):
     """Load a schedule for a destination. If no scheduler exists, create one."""
     try:
+        # Ensure scheduler_logs dictionary has an entry for this destination
+        if publish_destination not in scheduler_logs:
+            scheduler_logs[publish_destination] = []
+            
         # Add detailed debugging for scheduler state tracking
         debug(f"🔍 api_load_schedule called for {publish_destination}")
         debug(f"Current scheduler states BEFORE loading schedule:")
@@ -431,7 +435,6 @@ def api_load_schedule(publish_destination):
             scheduler_contexts_stacks[publish_destination] = []
             scheduler_states[publish_destination] = "stopped"
             debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - first time init in api_load_schedule")
-            scheduler_logs[publish_destination] = []
             scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Initialized new scheduler")
             
             # For first-time initialization, create a new context
@@ -491,12 +494,21 @@ def api_load_schedule(publish_destination):
         error(error_msg)
         import traceback
         error(f"Error traceback: {traceback.format_exc()}")
+        
+        # Ensure scheduler_logs dictionary has an entry for this destination
+        if publish_destination not in scheduler_logs:
+            scheduler_logs[publish_destination] = []
+            
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
         return jsonify({"error": str(e)}), 500
 
 @scheduler_bp.route("/api/schedulers/<publish_destination>/schedule", methods=["DELETE"])
 def api_unload_schedule(publish_destination):
     try:
+        # Ensure scheduler_logs dictionary has an entry for this destination
+        if publish_destination not in scheduler_logs:
+            scheduler_logs[publish_destination] = []
+            
         if publish_destination in scheduler_schedule_stacks:
             if scheduler_schedule_stacks[publish_destination]:  # If stack is not empty
                 # Check if the current schedule has prevent_unload flag set
@@ -541,6 +553,9 @@ def api_unload_schedule(publish_destination):
         return jsonify({"error": "No schedules found"}), 404
     except Exception as e:
         error_msg = f"Error unloading schedule: {str(e)}"
+        # Ensure scheduler_logs dictionary has an entry for this destination
+        if publish_destination not in scheduler_logs:
+            scheduler_logs[publish_destination] = []
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
         return jsonify({"error": error_msg}), 500
 

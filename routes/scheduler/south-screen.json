@@ -1,6 +1,338 @@
 {
-  "schedule_stack": [],
-  "context_stack": [],
-  "state": "stopped",
-  "last_updated": "2025-04-29T10:48:09.099528"
+  "schedule_stack": [
+    {
+      "initial_actions": {
+        "instructions_block": []
+      },
+      "triggers": [
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "00:01",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "import_var",
+                    "as": "_a_theme",
+                    "scope": "living-room",
+                    "var_name": "a_theme"
+                  },
+                  {
+                    "action": "import_var",
+                    "as": "_b_theme",
+                    "scope": "living-room",
+                    "var_name": "b_theme"
+                  },
+                  {
+                    "action": "import_var",
+                    "as": "_style",
+                    "scope": "living-room",
+                    "var_name": "style"
+                  },
+                  {
+                    "action": "import_var",
+                    "as": "_guidance",
+                    "scope": "living-room",
+                    "var_name": "guidance"
+                  },
+                  {
+                    "action": "reason",
+                    "history_var": "history_var",
+                    "image_inputs": [],
+                    "output_vars": [
+                      "prompt"
+                    ],
+                    "reasoner": "devise_prompt",
+                    "text_input": "Create an image of {{ b_theme }} in the style of {{ _style }}. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. "
+                  },
+                  {
+                    "action": "generate",
+                    "history_var": "prompt_history",
+                    "input": {
+                      "prompt": "{{ prompt }}"
+                    },
+                    "refiner": "gallerist"
+                  }
+                ]
+              },
+              "repeat_schedule": {
+                "every": "30"
+              }
+            }
+          ]
+        }
+      ],
+      "final_actions": {
+        "instructions_block": []
+      },
+      "prevent_unload": true
+    }
+  ],
+  "context_stack": [
+    {
+      "vars": {
+        "_a_theme": "Primitive tools and artifacts",
+        "_b_theme": "Futuristic tools and technologies",
+        "_style": "Mid-century screen printing",
+        "_guidance": "Explore unique objects and tools, ensuring that each is distinct from objects in history, capturing the contrast between the primitive and the futuristic using the mid-century screen printing style's bold colors and shapes.",
+        "prompt": "Futuristic botanical laboratory, large glass test tubes with abstract plant forms, bold mid-century colors and geometric patterns, blending primitive natural elements with sleek technology.",
+        "history_var": [
+          {
+            "timestamp": "2025-05-08 00:38:54",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Balloons over a sunlit village, spiraling into the sky, with houses reflecting vibrant pop art colors, clear blue sky contrasting their bold patterns."
+            },
+            "text_input": "Create an image of {{ b_theme }} in the style o...",
+            "explanation": "I focussed on the movement and energy of balloons ascending, avoiding any direct focus on charact..."
+          },
+          {
+            "timestamp": "2025-05-08 00:41:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Futuristic cityscape with floating skyscrapers, neon-lit streets, drones zipping through hover traffic, chrome exteriors glistening, a vibrant bustling atmosphere, and advanced tech interfaces adorning buildings."
+            },
+            "text_input": "Create an image of  in the style of A futuristi...",
+            "explanation": "The creation avoids depicting a space station or retro elements by focusing on a cityscape with f..."
+          },
+          {
+            "timestamp": "2025-05-08 00:46:28",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Ancient forest canopy viewed from below, sunlight dappled through leaves, mystical creatures peeking from shadows, hues of green and gold enhance the ethereal ambiance."
+            },
+            "text_input": "Create an image of  in the style of None. Bear ...",
+            "explanation": "To differentiate from previous prompts involving balloons or futuristic cityscapes, I chose a nat..."
+          },
+          {
+            "timestamp": "2025-05-08 00:51:30",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Cerberus at the Gates of Hades, intricate floral and vine patterns entwine its form, glowing gold accents against deep sapphire hues, capturing a sense of majesty and otherworldliness."
+            },
+            "text_input": "Create an image of  in the style of Symbolist a...",
+            "explanation": "Choosing Cerberus, a classic mythological figure not recently used, ensures uniqueness. The integ..."
+          },
+          {
+            "timestamp": "2025-05-08 00:56:46",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A serene canal at sunset, with rowboats drifting by golden-hued waters, mist enveloping aged stone bridges, atmospheric light casting soft, diffused reflections."
+            },
+            "text_input": "Create an image of  in the style of Turner\u2019s at...",
+            "explanation": "To avoid repeating subjects like villages or cityscapes, I focused on a canal scene, emphasizing ..."
+          },
+          {
+            "timestamp": "2025-05-08 01:01:34",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Secluded morning meadow, dew-kissed wildflowers, soft light filtering through mist, gentle hills in the distance, impressionist strokes highlighting warmth of dawn and nature's serenity."
+            },
+            "text_input": "Create an image of  in the style of Impressioni...",
+            "explanation": "I chose a secluded meadow at dawn with the subtle play of light and mist to avoid previous themes..."
+          },
+          {
+            "timestamp": "2025-05-08 01:06:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Golden desert landscape at twilight, gentle dunes casting long shadows, fiery sky blending into purple horizons, the nuanced play of light and shadow captured impressionistically."
+            },
+            "text_input": "Create an image of  in the style of Impressioni...",
+            "explanation": "Focusing on a desert scene at twilight offers a distinct setting, contrasting with previous depic..."
+          },
+          {
+            "timestamp": "2025-05-08 01:11:36",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Mountain valley at midday, wispy clouds accentuating peaks, shadows drape glittering streams, wild rye sways in the breeze, impressionistic light brushstrokes capturing nature's dynamic essence."
+            },
+            "text_input": "Create an image of  in the style of Impressioni...",
+            "explanation": "I chose a mountain valley scene at midday, avoiding previous dawn or twilight settings. The focus..."
+          },
+          {
+            "timestamp": "2025-05-08 01:16:32",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Misty castle ruins atop a lush cliff, overgrown with climbing ivy, morning fog rolling in from a gentle ocean below, exuding timeless mystery."
+            },
+            "text_input": "Create an image of  in the style of None. Bear ...",
+            "explanation": "I avoided previous focuses on balloons, cityscapes, and natural sunrise or sunset scenes by choos..."
+          },
+          {
+            "timestamp": "2025-05-08 01:21:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Majestic polar bear against snowy backdrop, ethereal arctic light illuminating the icy terrain, delicate frost patterns on fur, serene and isolated wilderness ambiance."
+            },
+            "text_input": "Create an image of  in the style of None. Bear ...",
+            "explanation": "I selected a polar bear in the serene arctic setting to diverge from previous prompts involving u..."
+          },
+          {
+            "timestamp": "2025-05-08 01:26:33",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Retro-futuristic workshop, abstract tools with bold geometric forms hanging, vibrant primary colors contrasting metallic hues, evoking innovation within mid-century screen printing aesthetics."
+            },
+            "text_input": "Create an image of  in the style of Mid-century...",
+            "explanation": "I focused on the interior of a workshop to create a distinctive scene, highlighting retro-futuris..."
+          },
+          {
+            "timestamp": "2025-05-08 01:28:56",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Vintage observatory with a giant, abstract telescope, bold geometric shapes casting stark shadows, bright mid-century palette enhancing the contrast between classic tools and futuristic vision."
+            },
+            "text_input": "Create an image of  in the style of Mid-century...",
+            "explanation": "I chose an observatory scene, focusing on the contrast of vintage and modern technology with an a..."
+          },
+          {
+            "timestamp": "2025-05-08 01:31:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Futuristic botanical laboratory, large glass test tubes with abstract plant forms, bold mid-century colors and geometric patterns, blending primitive natural elements with sleek technology."
+            },
+            "text_input": "Create an image of  in the style of Mid-century...",
+            "explanation": "I focused on a futuristic botanical laboratory, distinctly different from previous workshops or o..."
+          }
+        ],
+        "prompt_history": [
+          {
+            "timestamp": "2025-05-08 00:38:54",
+            "type": "generation",
+            "prompt": "Balloons over a sunlit village, spiraling into ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0cd2cd5a-79b5-43b0-83ad-a94e31640184-e1/0e9ded30.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250507%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250507T233922Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5326a10e4ebf7a731e8ae896f9bb0e386f4253a503e24d05e9b6741ec1f66590"
+          },
+          {
+            "timestamp": "2025-05-08 00:41:00",
+            "type": "generation",
+            "prompt": "Futuristic cityscape with floating skyscrapers,...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/1fdff25d-c5e5-4d59-a602-00c63b69b1ee-e1/eaf07ee3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250507%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250507T234129Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=706decdd2e34437b3396e30c82f36ac429df6d77de95ba1139e2803560c0f8bc"
+          },
+          {
+            "timestamp": "2025-05-08 00:46:28",
+            "type": "generation",
+            "prompt": "Ancient forest canopy viewed from below, sunlig...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4fb2b780-4a5c-4c32-bb4b-4d739eafc2b3-e1/5378107d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250507%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250507T234655Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b737fb79cf40250b44cb5bc85b2b65c02e3f643dbc6c9f8afbb8e3f09964f573"
+          },
+          {
+            "timestamp": "2025-05-08 00:51:30",
+            "type": "generation",
+            "prompt": "Cerberus at the Gates of Hades, intricate flora...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/52229623-7d1f-47a9-9623-90d613888204-e1/831d6fdb.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250507%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250507T235158Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=10776596cc7604bcec9581282bd4c8db3e86c45d85f8044f832ccf75a9d2d7a3"
+          },
+          {
+            "timestamp": "2025-05-08 00:56:46",
+            "type": "generation",
+            "prompt": "A serene canal at sunset, with rowboats driftin...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e079bffe-da72-4853-8c30-ca2ec78b769d-e1/95173e55.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250507%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250507T235716Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=246fdc79940f79b7c0d3d7a75990b5db83779868acfe671c07d7f8b1506e517e"
+          },
+          {
+            "timestamp": "2025-05-08 01:01:34",
+            "type": "generation",
+            "prompt": "Secluded morning meadow, dew-kissed wildflowers...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/c173312f-8f64-4005-b504-60df0fb708bf-e1/73ed4296.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T000205Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=49944ea468e1ed8b864dcc25cdf038ddc976e8a435f4b83b3e52bc1abfc0c799"
+          },
+          {
+            "timestamp": "2025-05-08 01:06:01",
+            "type": "generation",
+            "prompt": "Golden desert landscape at twilight, gentle dun...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/57f41c3f-2b53-4e45-b07a-9e6c6fd5f8b2-e1/49142511.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T000633Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b3dcbfd4ecb6d9acd76523fb40f4cd21695354dccedc324248c10ce728d5665a"
+          },
+          {
+            "timestamp": "2025-05-08 01:11:36",
+            "type": "generation",
+            "prompt": "Mountain valley at midday, wispy clouds accentu...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": null
+          },
+          {
+            "timestamp": "2025-05-08 01:16:32",
+            "type": "generation",
+            "prompt": "Misty castle ruins atop a lush cliff, overgrown...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0a5487c8-28ae-4567-9d10-b847ed3b3985-e1/59d04098.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T001702Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d4f544be53fb514b6c5eab82ea314b6f85502bfd9652c11ee90471028b5de795"
+          },
+          {
+            "timestamp": "2025-05-08 01:21:01",
+            "type": "generation",
+            "prompt": "Majestic polar bear against snowy backdrop, eth...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/c0902452-a13f-42d6-a292-975a4aee9920-e1/b0afe2d0.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T002130Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f55ab87be27249a871be7335fa2f1d78c4ee6a838999196457802ae887023d7a"
+          },
+          {
+            "timestamp": "2025-05-08 01:26:33",
+            "type": "generation",
+            "prompt": "Retro-futuristic workshop, abstract tools with ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/2ec4d106-57b6-40f5-bdc0-2c90b87f734f-e1/73fd6727.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T002710Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=43674b4fe79550c09606d82f2b066cd0711d93168ad7ce8176562606632ad476"
+          },
+          {
+            "timestamp": "2025-05-08 01:28:56",
+            "type": "generation",
+            "prompt": "Vintage observatory with a giant, abstract tele...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/51eacb5d-a011-4d66-b3ee-c0ede6186ac6-e1/c12ce9da.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T002936Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=3c5c82af8b13353d456efbfe4039f52d05857c597010d6b7da280f18ea8c5a1f"
+          },
+          {
+            "timestamp": "2025-05-08 01:31:00",
+            "type": "generation",
+            "prompt": "Futuristic botanical laboratory, large glass te...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ff82960b-8541-4d8c-a17c-4cc7d19595a2-e1/005676fa.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T003129Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d41d0b0802654e50d611963c756a5fcfbd9a250a36a5f54b2682e36994bc7882"
+          }
+        ]
+      },
+      "publish_destination": "south-screen",
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ff82960b-8541-4d8c-a17c-4cc7d19595a2-e1/005676fa.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T003129Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d41d0b0802654e50d611963c756a5fcfbd9a250a36a5f54b2682e36994bc7882"
+    }
+  ],
+  "state": "running",
+  "last_updated": "2025-05-08T01:31:31.257997",
+  "last_trigger_executions": {
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-05-08T01:01:00": "2025-05-08T01:28:56.155957",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-05-08T01:31:00": "2025-05-08T01:31:00.097246"
+  }
 }

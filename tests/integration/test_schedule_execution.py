@@ -35,7 +35,7 @@ async def test_resolve_and_execute_basic_schedule(clean_scheduler_state, test_sc
     
     # Resolve schedule
     now = datetime.now()
-    instructions = resolve_schedule(test_schedule_basic, now, dest_id)
+    instructions = resolve_schedule(test_schedule_basic, now, dest_id, include_initial_actions=True)
     
     # Verify initial instructions are returned
     assert len(instructions) == 1
