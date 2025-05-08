@@ -148,10 +148,62 @@ def publish_to_destination(
             response = requests.get(source)
             response.raise_for_status()
             
-            # Create a temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
-                temp_file.write(response.content)
-                temp_path = Path(temp_file.name)
+            # --------------------------------------------------
+            # Detect the correct file extension for the downloaded content
+            # --------------------------------------------------
+            from urllib.parse import urlparse, unquote
+            parsed_url = urlparse(source)
+            # Get last segment of the path (ignoring query/fragment) and unquote it
+            path_tail = Path(unquote(parsed_url.path)).name  # e.g. "image.jpg"
+            ext = Path(path_tail).suffix.lower()
+
+            valid_exts = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov'}
+            file_extension = ext if ext in valid_exts else ''
+
+            # Fallback: look at Content-Type header
+            if not file_extension:
+                content_type = response.headers.get('Content-Type', '').lower()
+                if 'video' in content_type:
+                    file_extension = '.mp4'
+                elif 'image/jpeg' in content_type:
+                    file_extension = '.jpg'
+                elif 'image/png' in content_type:
+                    file_extension = '.png'
+                elif 'image/gif' in content_type:
+                    file_extension = '.gif'
+                elif 'image/webp' in content_type:
+                    file_extension = '.webp'
+                else:
+                    # Default safe fallback
+                    file_extension = '.jpg'
+
+            debug(f"Determined file extension: {file_extension} (url='{path_tail}', content-type='{response.headers.get('Content-Type', '')}')")
+            
+            # If the file is an image but not already JPEG, convert to JPEG for consistency
+            image_exts = {'.png', '.gif', '.webp', '.jpeg'}
+            is_video   = file_extension in {'.mp4', '.webm', '.mov'}
+
+            if file_extension in image_exts and not is_video:
+                try:
+                    from PIL import Image
+                    from io import BytesIO
+
+                    img = Image.open(BytesIO(response.content)).convert('RGB')
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+                        img.save(temp_file, format='JPEG', quality=95)
+                        temp_path = Path(temp_file.name)
+                    debug(f"Image converted to JPEG for publishing (original ext {file_extension}) -> {temp_path.name}")
+                    file_extension = '.jpg'  # normalise
+                except Exception as e:
+                    warning(f"JPEG conversion failed ({file_extension}), falling back to original content: {e}")
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
+                        temp_file.write(response.content)
+                        temp_path = Path(temp_file.name)
+            else:
+                # Create a temporary file with determined extension (video or already jpg)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
+                    temp_file.write(response.content)
+                    temp_path = Path(temp_file.name)
             
             # Publish the downloaded file
             result = _publish_to_destination(

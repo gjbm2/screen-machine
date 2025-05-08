@@ -11,8 +11,7 @@ import {
   Monitor, 
   Settings,
   Edit,
-  FileJson,
-  Sparkles
+  FileJson
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -27,7 +26,7 @@ import {
   DropdownMenuPortal
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import apiService from '@/utils/api';
+import api from '@/utils/apiInstance';
 import { PublishDestination } from '@/utils/api';
 
 interface HeaderSectionProps {
@@ -50,7 +49,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
     const fetchDestinations = async () => {
       try {
         setIsLoading(true);
-        const dests = await apiService.getPublishDestinations();
+        const dests = await api.getPublishDestinations();
         // Filter out headless destinations
         const visibleDests = dests.filter(dest => !dest.headless);
         setDestinations(visibleDests);
@@ -67,7 +66,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   const handleCancelAllJobs = async () => {
     toast.loading("Cancelling all jobs...");
     try {
-      const result = await apiService.cancelAllJobs();
+      const result = await api.cancelAllJobs();
       if (result.success) {
         toast.success(`Cancelled ${result.cancelled} jobs`);
       } else {
@@ -115,14 +114,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            {/* 0. Generate */}
-            <DropdownMenuItem asChild>
-              <Link to="/">
-                <Sparkles className="h-4 w-4 mr-2" />
-                <span>Generate</span>
-              </Link>
-            </DropdownMenuItem>
-            
             {/* 1. Scheduler */}
             <DropdownMenuItem asChild>
               <Link to="/scheduler" target="_blank" rel="noopener noreferrer">

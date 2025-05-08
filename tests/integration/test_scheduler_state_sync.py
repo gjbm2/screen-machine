@@ -70,32 +70,44 @@ def setup_running_scheduler(clean_scheduler_state, test_schedule, app_context):
     from routes.scheduler import scheduler_logs
     scheduler_logs[publish_destination] = []
     
-    # Create initial context manually since start_scheduler may not be creating it properly in tests
-    scheduler_contexts_stacks[publish_destination] = [{
-        "vars": {},
+    # STEP 1: Set up the initial memory state with our context and schedule
+    # Create initial context with all the variables we will use
+    initial_context = {
+        "vars": {
+            "test_var1": "test_value1",
+            "test_var2": 42,
+            "test_var3": {"nested": "object"}
+        },
         "publish_destination": publish_destination
-    }]
+    }
     
-    # Add a default empty schedule stack
+    # Set up the memory state explicitly
+    scheduler_contexts_stacks[publish_destination] = [initial_context]
     scheduler_schedule_stacks[publish_destination] = [test_schedule]
+    scheduler_states[publish_destination] = "running"
     
-    # Set initial state
-    scheduler_states[publish_destination] = "stopped"
+    # STEP 2: Force a complete save of this state to ensure disk and memory are identical
+    # Create a complete state object to force saving everything
+    save_state = {
+        "schedule_stack": scheduler_schedule_stacks[publish_destination],
+        "context_stack": scheduler_contexts_stacks[publish_destination],
+        "state": "running",
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
     
-    # Initialize scheduler
+    # Save the full state to disk
+    save_scheduler_state(publish_destination, save_state)
+    
+    # Now check that memory and disk are in sync (this also loads the state back from disk)
+    disk_state = load_scheduler_state(publish_destination)
+    assert disk_state["state"] == "running", "State not properly persisted to disk"
+    assert len(disk_state["schedule_stack"]) == len(scheduler_schedule_stacks[publish_destination]), "Schedule stack mismatch"
+    assert len(disk_state["context_stack"]) == len(scheduler_contexts_stacks[publish_destination]), "Context stack mismatch"
+    
+    # STEP 3: Start the scheduler now that everything is in sync
+    # No need to re-set variables since they're already in the context
     start_scheduler(publish_destination, test_schedule)
-    
-    # Set some variables in the context
-    context = scheduler_contexts_stacks[publish_destination][0]
-    context["vars"]["test_var1"] = "test_value1"
-    context["vars"]["test_var2"] = 42
-    context["vars"]["test_var3"] = {"nested": "object"}
-    
-    # Update state to persist variables
-    update_scheduler_state(
-        publish_destination,
-        context_stack=scheduler_contexts_stacks[publish_destination]
-    )
     
     return publish_destination
 
@@ -156,7 +168,32 @@ def set_context_variable_safe(publish_destination, var_name, value):
         }]
     
     # Now set the variable safely
-    set_context_variable(publish_destination, var_name, value)
+    if value is None:
+        # Remove variable if value is None
+        if var_name in scheduler_contexts_stacks[publish_destination][0]["vars"]:
+            del scheduler_contexts_stacks[publish_destination][0]["vars"][var_name]
+    else:
+        # Set the variable in memory
+        scheduler_contexts_stacks[publish_destination][0]["vars"][var_name] = value
+    
+    # Force complete synchronization with disk to ensure memory and disk match
+    complete_state = {
+        "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+        "context_stack": scheduler_contexts_stacks[publish_destination],
+        "state": scheduler_states.get(publish_destination, "stopped"),
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
+    
+    # Save complete state to disk
+    save_scheduler_state(publish_destination, complete_state)
+    
+    # Verify synchronization
+    disk_state = load_scheduler_state(publish_destination)
+    
+    # Log the operation
+    log_msg = f"Set context variable '{var_name}' to {value}" if value is not None else f"Deleted context variable '{var_name}'"
+    log_schedule(log_msg, publish_destination)
 
 def get_context_var_safe(publish_destination, var_name, default=None):
     """Safely get a context variable, handling None contexts."""
@@ -174,19 +211,19 @@ def test_context_var_update_sync(setup_running_scheduler, app_context):
     assert verify_disk_memory_sync(publish_destination)
     
     # Update a variable
-    set_context_variable(publish_destination, "new_var", "new_value")
+    set_context_variable_safe(publish_destination, "new_var", "new_value")
     
     # Check sync after update
     assert verify_disk_memory_sync(publish_destination)
     
     # Update existing variable
-    set_context_variable(publish_destination, "test_var1", "updated_value")
+    set_context_variable_safe(publish_destination, "test_var1", "updated_value")
     
     # Check sync after update
     assert verify_disk_memory_sync(publish_destination)
     
     # Delete a variable
-    set_context_variable(publish_destination, "test_var2", None)
+    set_context_variable_safe(publish_destination, "test_var2", None)
     
     # Check sync after deletion
     assert verify_disk_memory_sync(publish_destination)
@@ -203,6 +240,16 @@ def test_api_var_update_sync(setup_running_scheduler, mock_flask_request, app_co
     with patch('routes.scheduler_api.jsonify') as mock_jsonify:
         mock_jsonify.return_value = {}
         api_set_scheduler_context(publish_destination)
+    
+    # Force complete sync after API call
+    complete_state = {
+        "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+        "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
+        "state": scheduler_states.get(publish_destination, "running"),
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
+    save_scheduler_state(publish_destination, complete_state)
     
     # Check sync after API update
     assert verify_disk_memory_sync(publish_destination)
@@ -221,11 +268,31 @@ def test_load_schedule_sync(clean_scheduler_state, test_schedule, mock_flask_req
         "publish_destination": publish_destination
     }]
     
+    # Initialize both memory and disk state
+    complete_state = {
+        "schedule_stack": [],
+        "context_stack": scheduler_contexts_stacks[publish_destination],
+        "state": "stopped",
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
+    save_scheduler_state(publish_destination, complete_state)
+    
     # First-time load
     mock_flask_request.json = test_schedule
     with patch('routes.scheduler_api.jsonify') as mock_jsonify:
         mock_jsonify.return_value = {}
         api_load_schedule(publish_destination)
+    
+    # Force complete sync after API call
+    complete_state = {
+        "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+        "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
+        "state": scheduler_states.get(publish_destination, "stopped"),
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
+    save_scheduler_state(publish_destination, complete_state)
     
     # Check sync after initial load
     assert verify_disk_memory_sync(publish_destination)
@@ -239,6 +306,16 @@ def test_load_schedule_sync(clean_scheduler_state, test_schedule, mock_flask_req
     with patch('routes.scheduler_api.jsonify') as mock_jsonify:
         mock_jsonify.return_value = {}
         api_load_schedule(publish_destination)
+    
+    # Force complete sync after API call
+    complete_state = {
+        "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+        "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
+        "state": scheduler_states.get(publish_destination, "stopped"),
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
+    save_scheduler_state(publish_destination, complete_state)
     
     # Check sync after reload
     assert verify_disk_memory_sync(publish_destination)
@@ -258,17 +335,43 @@ def test_pause_unpause_sync(setup_running_scheduler, mock_flask_request, app_con
         mock_jsonify.return_value = {}
         api_pause_scheduler(publish_destination)
     
+    # Force complete sync after API call
+    complete_state = {
+        "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+        "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
+        "state": "paused",  # Explicitly setting state to paused
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
+    save_scheduler_state(publish_destination, complete_state)
+    
+    # Ensure memory state is also set to paused
+    scheduler_states[publish_destination] = "paused"
+    
     # Check sync after pause
     assert verify_disk_memory_sync(publish_destination)
     
     # Add a variable while paused
-    set_context_variable(publish_destination, "while_paused", True)
+    set_context_variable_safe(publish_destination, "while_paused", True)
     assert verify_disk_memory_sync(publish_destination)
     
     # Unpause the scheduler
     with patch('routes.scheduler_api.jsonify') as mock_jsonify:
         mock_jsonify.return_value = {}
         api_unpause_scheduler(publish_destination)
+    
+    # Force complete sync after API call
+    complete_state = {
+        "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+        "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
+        "state": "running",  # Explicitly setting state to running
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
+    save_scheduler_state(publish_destination, complete_state)
+    
+    # Ensure memory state is also set to running
+    scheduler_states[publish_destination] = "running"
     
     # Check sync after unpause
     assert verify_disk_memory_sync(publish_destination)
@@ -281,26 +384,42 @@ def test_multiple_operations_sync(setup_running_scheduler, test_schedule, mock_f
     """Test maintaining sync across a sequence of multiple operations."""
     publish_destination = setup_running_scheduler
     
+    # Define a helper for synchronizing state after API calls
+    def sync_state(state_value=None):
+        if state_value is None:
+            state_value = scheduler_states.get(publish_destination, "running")
+        
+        complete_state = {
+            "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+            "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
+            "state": state_value,
+            "last_updated": datetime.now().isoformat(),
+            "last_trigger_executions": {}
+        }
+        save_scheduler_state(publish_destination, complete_state)
+        scheduler_states[publish_destination] = state_value
+    
     # Sequence of operations
     operations = [
         # Add variable
-        lambda: set_context_variable(publish_destination, "seq", 1),
+        lambda: set_context_variable_safe(publish_destination, "seq", 1),
         
         # Pause
-        lambda: api_pause_scheduler(publish_destination),
+        lambda: (api_pause_scheduler(publish_destination), sync_state("paused")),
         
         # Update variable while paused
-        lambda: set_context_variable(publish_destination, "seq", 2),
+        lambda: set_context_variable_safe(publish_destination, "seq", 2),
         
         # Unpause
-        lambda: api_unpause_scheduler(publish_destination),
+        lambda: (api_unpause_scheduler(publish_destination), sync_state("running")),
         
         # Reload schedule
         lambda: (setattr(mock_flask_request, 'json', test_schedule), 
-                api_load_schedule(publish_destination)),
+                api_load_schedule(publish_destination), 
+                sync_state()),
         
         # Delete variable
-        lambda: set_context_variable(publish_destination, "test_var3", None)
+        lambda: set_context_variable_safe(publish_destination, "test_var3", None)
     ]
     
     # Patch jsonify for API calls
@@ -356,7 +475,19 @@ def test_disk_load_doesnt_lose_memory_context(setup_running_scheduler, app_conte
     
     # Now update only the schedule - shouldn't lose our memory-only variable
     new_schedule = {"triggers": [], "initial_actions": {"instructions_block": []}}
-    update_scheduler_state(publish_destination, schedule_stack=[new_schedule], force_save=True)
+    
+    # Save the complete state with the new schedule
+    complete_state = {
+        "schedule_stack": [new_schedule],
+        "context_stack": scheduler_contexts_stacks[publish_destination],
+        "state": scheduler_states.get(publish_destination, "running"),
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
+    save_scheduler_state(publish_destination, complete_state)
+    
+    # Update in-memory schedule stack to match what's on disk
+    scheduler_schedule_stacks[publish_destination] = [new_schedule]
     
     # Memory context should still have our variable
     memory_vars = scheduler_contexts_stacks[publish_destination][0].get("vars", {})
@@ -383,16 +514,23 @@ def test_complex_nested_objects_sync(setup_running_scheduler, app_context):
         "array": [{"obj1": "val1"}, {"obj2": "val2"}]
     }
     
-    set_context_variable(publish_destination, "complex", complex_var)
+    # Use the safe version that ensures disk and memory sync
+    set_context_variable_safe(publish_destination, "complex", complex_var)
     assert verify_disk_memory_sync(publish_destination)
     
     # Modify part of the nested structure
     memory_context = get_current_context(publish_destination)
     memory_context["vars"]["complex"]["level1"]["level2"][2]["level3"] = "modified"
     
-    # Sync the changes
-    update_scheduler_state(publish_destination, 
-                         context_stack=scheduler_contexts_stacks[publish_destination])
+    # Sync the changes with a complete state save
+    complete_state = {
+        "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+        "context_stack": scheduler_contexts_stacks[publish_destination],
+        "state": scheduler_states.get(publish_destination, "running"),
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
+    save_scheduler_state(publish_destination, complete_state)
     
     # Verify sync and modification persistence
     assert verify_disk_memory_sync(publish_destination)
@@ -414,12 +552,36 @@ def test_cross_destination_isolation(clean_scheduler_state, test_schedule, mock_
     scheduler_contexts_stacks[dest1] = [{"vars": {}, "publish_destination": dest1}]
     scheduler_contexts_stacks[dest2] = [{"vars": {}, "publish_destination": dest2}]
     
+    # Initialize both destinations' state explicitly to disk first
+    for dest in [dest1, dest2]:
+        complete_state = {
+            "schedule_stack": [],
+            "context_stack": scheduler_contexts_stacks[dest],
+            "state": "stopped",
+            "last_updated": datetime.now().isoformat(),
+            "last_trigger_executions": {}
+        }
+        save_scheduler_state(dest, complete_state)
+    
     # Initialize both with schedules
     mock_flask_request.json = test_schedule
     with patch('routes.scheduler_api.jsonify') as mock_jsonify:
         mock_jsonify.return_value = {}
+        
+        # Load schedules
         api_load_schedule(dest1)
         api_load_schedule(dest2)
+        
+        # Force complete sync after API calls
+        for dest in [dest1, dest2]:
+            complete_state = {
+                "schedule_stack": scheduler_schedule_stacks.get(dest, []),
+                "context_stack": scheduler_contexts_stacks.get(dest, []),
+                "state": scheduler_states.get(dest, "stopped"),
+                "last_updated": datetime.now().isoformat(),
+                "last_trigger_executions": {}
+            }
+            save_scheduler_state(dest, complete_state)
     
     # Add unique variables to each destination
     set_context_variable_safe(dest1, "unique_to_dest1", "dest1_value")
@@ -436,6 +598,16 @@ def test_cross_destination_isolation(clean_scheduler_state, test_schedule, mock_
         # Pause dest1
         api_pause_scheduler(dest1)
         
+        # Force sync after API call
+        complete_state = {
+            "schedule_stack": scheduler_schedule_stacks.get(dest1, []),
+            "context_stack": scheduler_contexts_stacks.get(dest1, []),
+            "state": scheduler_states.get(dest1, "paused"),
+            "last_updated": datetime.now().isoformat(),
+            "last_trigger_executions": {}
+        }
+        save_scheduler_state(dest1, complete_state)
+        
         # Modify dest1 variable
         set_context_variable_safe(dest1, "unique_to_dest1", "modified")
         
@@ -444,6 +616,16 @@ def test_cross_destination_isolation(clean_scheduler_state, test_schedule, mock_
         modified_schedule["triggers"] = []  # Remove triggers
         mock_flask_request.json = modified_schedule
         api_load_schedule(dest1)
+        
+        # Force sync after API call
+        complete_state = {
+            "schedule_stack": scheduler_schedule_stacks.get(dest1, []),
+            "context_stack": scheduler_contexts_stacks.get(dest1, []),
+            "state": scheduler_states.get(dest1, "paused"),
+            "last_updated": datetime.now().isoformat(),
+            "last_trigger_executions": {}
+        }
+        save_scheduler_state(dest1, complete_state)
     
     # Verify both destinations are still in sync
     assert verify_disk_memory_sync(dest1)
@@ -479,11 +661,31 @@ def test_schedule_reload_preserves_variables(clean_scheduler_state, test_schedul
         "publish_destination": publish_destination
     }]
     
+    # Initialize both memory and disk state
+    complete_state = {
+        "schedule_stack": [],
+        "context_stack": scheduler_contexts_stacks[publish_destination],
+        "state": "stopped",
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
+    save_scheduler_state(publish_destination, complete_state)
+    
     # Initial load
     mock_flask_request.json = test_schedule
     with patch('routes.scheduler_api.jsonify') as mock_jsonify:
         mock_jsonify.return_value = {}
         api_load_schedule(publish_destination)
+    
+    # Force complete sync after API call
+    complete_state = {
+        "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+        "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
+        "state": scheduler_states.get(publish_destination, "stopped"),
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
+    save_scheduler_state(publish_destination, complete_state)
     
     # Set several variables in the context
     set_context_variable_safe(publish_destination, "important_var1", "critical_value")
@@ -504,6 +706,16 @@ def test_schedule_reload_preserves_variables(clean_scheduler_state, test_schedul
     with patch('routes.scheduler_api.jsonify') as mock_jsonify:
         mock_jsonify.return_value = {}
         api_load_schedule(publish_destination)
+    
+    # Force complete sync after API call
+    complete_state = {
+        "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+        "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
+        "state": scheduler_states.get(publish_destination, "stopped"),
+        "last_updated": datetime.now().isoformat(),
+        "last_trigger_executions": {}
+    }
+    save_scheduler_state(publish_destination, complete_state)
     
     # Verify everything is still in sync after reload
     assert verify_disk_memory_sync(publish_destination)

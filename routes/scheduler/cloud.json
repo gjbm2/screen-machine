@@ -1,12 +1,15 @@
 {
   "schedule_stack": [
     {
+      "final_actions": {
+        "instructions_block": []
+      },
       "initial_actions": {
         "instructions_block": []
       },
+      "prevent_unload": true,
       "triggers": [
         {
-          "type": "day_of_week",
           "days": [
             "Monday",
             "Tuesday",
@@ -59,18 +62,12 @@
                     "var_name": "guidance"
                   }
                 ]
-              },
-              "repeat_schedule": {
-                "every": "60"
               }
             }
-          ]
+          ],
+          "type": "day_of_week"
         }
-      ],
-      "final_actions": {
-        "instructions_block": []
-      },
-      "prevent_unload": true
+      ]
     }
   ],
   "context_stack": [
@@ -80,10 +77,10 @@
     },
     {
       "vars": {
-        "a_theme": "Ancient Arctic Myths - The Icebound Legends",
-        "b_theme": "Modern Arctic Industry - The Isolation of Steel",
-        "style": "James Whistler's Tonalism",
-        "guidance": "For the theme of Arctic environments, consider the atmospheric qualities of Whistler's works to convey both the mystical and industrial aspects. Avoid previous subjects by using distinctly arctic-themed landmarks and human influences captured in hazy, atmospheric tones.",
+        "a_theme": "The Court of the Microscopic",
+        "b_theme": "The Kingdom of the Galactic",
+        "style": "Surrealist Expressionism",
+        "guidance": "Create images where microscopic details of ordinary objects and expansive celestial bodies evoke a sense of scale that transcends the familiar. Using Surrealist Expressionism, aim to avoid repeating past subject-types by selecting newly imaginative contexts that combine reality with the fantastic. Leverage image history to push the boundaries of perception by emphasizing the unexpected and unusual within these realms.",
         "history_var": [
           {
             "timestamp": "2025-05-08 10:29:02",
@@ -136,6 +133,19 @@
             },
             "text_input": "The last seven days were: [{'timestamp': '2025-...",
             "explanation": "This is a theme-led approach. The theme explores the contrast between ancient arctic myths and mo..."
+          },
+          {
+            "timestamp": "2025-05-08 12:01:00",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "The Court of the Microscopic",
+              "b_theme": "The Kingdom of the Galactic",
+              "style": "Surrealist Expressionism",
+              "guidance": "Create images where microscopic details of ordinary objects and expansive celestial bodies evoke a sense of scale that transcends the familiar. Using Surrealist Expressionism, aim to avoid repeating past subject-types by selecting newly imaginative contexts that combine reality with the fantastic. Leverage image history to push the boundaries of perception by emphasizing the unexpected and unusual within these realms."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "This is a theme-led approach, focusing on the expansive contrasts between the infinitesimally sma..."
           }
         ]
       },
@@ -143,8 +153,6 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-08T11:10:06.807613",
-  "last_trigger_executions": {
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T11:01:00": "2025-05-08T11:10:00.483044"
-  }
+  "last_updated": "2025-05-08T13:27:40.663228",
+  "last_trigger_executions": {}
 }

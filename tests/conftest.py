@@ -66,11 +66,28 @@ def clean_scheduler_state(monkeypatch, tmp_path):
     # Path to the test registry file
     test_registry_path = str(test_registry_dir / "_vars.json")
     
-    # Mock global variable references
+    # Mock global variable references in scheduler_utils
     monkeypatch.setattr('routes.scheduler_utils.scheduler_contexts_stacks', mock_contexts)
     monkeypatch.setattr('routes.scheduler_utils.scheduler_schedule_stacks', mock_schedules)
     monkeypatch.setattr('routes.scheduler_utils.scheduler_states', mock_states)
     monkeypatch.setattr('routes.scheduler_utils.scheduler_logs', mock_logs)
+    
+    # CRITICAL: Also patch the same variables in the scheduler module to ensure they point to the same objects
+    import routes.scheduler as _sched
+    monkeypatch.setattr(_sched, 'scheduler_contexts_stacks', mock_contexts, raising=False)
+    monkeypatch.setattr(_sched, 'scheduler_schedule_stacks', mock_schedules, raising=False)
+    monkeypatch.setattr(_sched, 'scheduler_states', mock_states, raising=False)
+    monkeypatch.setattr(_sched, 'scheduler_logs', mock_logs, raising=False)
+    
+    # CRITICAL: Also patch the scheduler_api module that also imports these globals
+    import routes.scheduler_api as _sched_api
+    monkeypatch.setattr(_sched_api, 'scheduler_contexts_stacks', mock_contexts, raising=False)
+    monkeypatch.setattr(_sched_api, 'scheduler_schedule_stacks', mock_schedules, raising=False)
+    monkeypatch.setattr(_sched_api, 'scheduler_states', mock_states, raising=False)
+    monkeypatch.setattr(_sched_api, 'scheduler_logs', mock_logs, raising=False)
+    monkeypatch.setattr(_sched_api, 'running_schedulers', {}, raising=False)
+    monkeypatch.setattr(_sched_api, 'important_triggers', {}, raising=False)
+    monkeypatch.setattr(_sched_api, 'active_events', {}, raising=False)
     
     # CRITICAL: Redirect the registry path to test directory
     monkeypatch.setattr('routes.scheduler_utils.VARS_REGISTRY_PATH', test_registry_path)

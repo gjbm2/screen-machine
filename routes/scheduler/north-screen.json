@@ -66,7 +66,7 @@
                 ]
               },
               "repeat_schedule": {
-                "every": "10"
+                "every": "60"
               }
             }
           ]
@@ -81,11 +81,11 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "Ancient Arctic Myths - The Icebound Legends",
-        "_b_theme": "Modern Arctic Industry - The Isolation of Steel",
-        "_style": "James Whistler's Tonalism",
-        "_guidance": "For the theme of Arctic environments, consider the atmospheric qualities of Whistler's works to convey both the mystical and industrial aspects. Avoid previous subjects by using distinctly arctic-themed landmarks and human influences captured in hazy, atmospheric tones.",
-        "prompt": "Arctic port bustling with 19th-century industry, ethereal mist enveloping icebergs, muted greys and blues creating a serene, mysterious tonalist atmosphere.",
+        "_a_theme": "The Court of the Microscopic",
+        "_b_theme": "The Kingdom of the Galactic",
+        "_style": "Surrealist Expressionism",
+        "_guidance": "Create images where microscopic details of ordinary objects and expansive celestial bodies evoke a sense of scale that transcends the familiar. Using Surrealist Expressionism, aim to avoid repeating past subject-types by selecting newly imaginative contexts that combine reality with the fantastic. Leverage image history to push the boundaries of perception by emphasizing the unexpected and unusual within these realms.",
+        "prompt": "Frozen tundra landscape with icebergs shaped like fragmented musical notes, interwoven with aurora-like harmonies in the sky, evoking a symphony of chill in surreal stillness.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:23",
@@ -444,6 +444,176 @@
             },
             "text_input": "Create an image of  in the style of James Whist...",
             "explanation": "I focused on a historical Arctic port to emphasize human influence and industrial elements, paire..."
+          },
+          {
+            "timestamp": "2025-05-08 11:21:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Twilight Arctic landscape with an abandoned ice drill station, fog-filled horizon, softened by tones of dusky pink and muted aquamarine, ethereal tonalist scene."
+            },
+            "text_input": "Create an image of  in the style of James Whist...",
+            "explanation": "I crafted a scene of an abandoned ice drill station to focus on human influence without overlappi..."
+          },
+          {
+            "timestamp": "2025-05-08 11:31:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Frozen lighthouse on an ice-encrusted cliff, ethereal glow of the aurora, shrouded in mist, capturing the melancholic beauty in delicate tonalism grays and blues."
+            },
+            "text_input": "Create an image of  in the style of James Whist...",
+            "explanation": "I depicted a frozen lighthouse, a new landmark differing from previous Arctic settings. The tonal..."
+          },
+          {
+            "timestamp": "2025-05-08 11:34:24",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Silent Arctic village nestled against frozen fjords, subtle industrial traces and ethereal mists in Whistler's soft greys and deep blues, conveying tranquil desolation."
+            },
+            "text_input": "Create an image of  in the style of James Whist...",
+            "explanation": "To maintain a distinct approach, I chose an Arctic village setting, contrasting with previous por..."
+          },
+          {
+            "timestamp": "2025-05-08 11:41:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Solitary icebreaker ship navigating through fog-enveloped Arctic waters, ethereal hues blending with looming glaciers, Whistler's tonalism evoking silent introspection and industrial determination."
+            },
+            "text_input": "Create an image of  in the style of James Whist...",
+            "explanation": "I selected a solitary icebreaker ship, avoided by previous prompts that featured ports or station..."
+          },
+          {
+            "timestamp": "2025-05-08 11:51:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Winding Arctic railway disappearing into snowy isolation, enveloped in soft glacial mist, golden twilight bathing the tracks, capturing serene solitude in Whistler's tonalism."
+            },
+            "text_input": "Create an image of  in the style of James Whist...",
+            "explanation": "By portraying an Arctic railway, I introduce an industrial element not used in previous prompts, ..."
+          },
+          {
+            "timestamp": "2025-05-08 12:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Ancient Arctic observatory silhouetted against a silk-smooth, twilight sky, auroras weaving past faded constellations, capturing mystical isolation in Whistler's tonalism of blues and violets."
+            },
+            "text_input": "Create an image of  in the style of James Whist...",
+            "explanation": "I focused on an ancient Arctic observatory, emphasizing mystical elements like auroras and conste..."
+          },
+          {
+            "timestamp": "2025-05-08 12:16:13",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A microscopic metropolis thriving within a bustling kitchen table, teeming with surreal skyscrapers crafted from fruit and cutlery, infinite celestial backdrop shimmering beyond a window."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I imagined a kitchen table as a setting, contrasting the microscopic scale of everyday objects an..."
+          },
+          {
+            "timestamp": "2025-05-08 12:21:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A tea cup cityscape, flanked by sugar cube towers, tiny citizens on teaspoon bridges; moonlit cloudpath above, merging everyday scale with celestial surrealism."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I centered around a tea cup tableau, a fresh choice contrasting with the previous kitchen scene. ..."
+          },
+          {
+            "timestamp": "2025-05-08 12:31:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Clockwork forest, gears forming trees and foliage, surreal creatures peeking through mechanical brush, above looms a galaxy-strewn skyline within a golden twilight."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I chose a clockwork forest to create a fresh surreal setting different from previously used kitch..."
+          },
+          {
+            "timestamp": "2025-05-08 12:41:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Galactic beach scene where grains of sand morph into miniature planets, celestial waves crash into divine portals, wild chromatic skies frame the surrealist composition."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I contrasted the typically small scale of sand with cosmic elements by depicting each grain as a ..."
+          },
+          {
+            "timestamp": "2025-05-08 12:45:26",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Enormous library room where books and scrolls morph into celestial star maps, walls lined with rotating planets, softly glowing as silent, surreal knowledge guardians."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I chose a giant library where books and scrolls transition to star maps, creating a blend of micr..."
+          },
+          {
+            "timestamp": "2025-05-08 12:46:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A vast desert where dunes transform into rolling parchment scrolls, ink blot oases harbor mythical creatures, while colossal galaxies swirl in a surrealist sunset sky."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I depicted a desert scene, using dunes and scrolls as a new setting and transformation idea. The ..."
+          },
+          {
+            "timestamp": "2025-05-08 12:51:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A colossal floating greenhouse nestled between towering clouds, with bioluminescent plants imbued with distant nebula hues, forming constellations amidst twisted, vibrant vines."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I envisioned a floating greenhouse to create a fresh surreal setting that bridges elements of the..."
+          },
+          {
+            "timestamp": "2025-05-08 12:56:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A crystal cavern where stalactites morph into intricately carved celestial bodies, iridescent streams intertwining like cosmic rivers, softly glowing caves echoing with ancient mysteries."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I chose a unique underground setting\u2014a crystal cavern, distinct from previous open, fabricated, o..."
+          },
+          {
+            "timestamp": "2025-05-08 12:57:40",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "In a colossal library atrium, Earth's continents form puzzle-piece shelves, each book a tiny dwelling, with comets swirling through geometric skylights in surreal symphonic display."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I crafted an image focusing on a library atrium with continental shelves, avoiding repetition of ..."
+          },
+          {
+            "timestamp": "2025-05-08 13:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Sprawling banyan tree where roots and branches intertwine with nebula tendrils, suspended in an infinite reflective water mirror, evoking a cosmic symbiosis; vibrant dreamscape colors."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I opted for a banyan tree set against a cosmic backdrop to create a fresh surreal image. By fusin..."
+          },
+          {
+            "timestamp": "2025-05-08 13:20:30",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Frozen tundra landscape with icebergs shaped like fragmented musical notes, interwoven with aurora-like harmonies in the sky, evoking a symphony of chill in surreal stillness."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I selected a tundra setting to contrast previous prompts set in libraries, deserts, or forests. T..."
           }
         ],
         "prompt_history": [
@@ -726,20 +896,250 @@
             "refiner": "gallerist",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f0bf0d6e-de1d-436a-8a03-77672389b097-e1/8b4f690d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T101131Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=c021bc2290a0e0c28efe48f648a82d3aae385c11a805bdd834040edfb584fd59"
+          },
+          {
+            "timestamp": "2025-05-08 11:21:00",
+            "type": "generation",
+            "prompt": "Twilight Arctic landscape with an abandoned ice...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/06eff9ba-4178-4333-9965-811bfeb72b6b-e1/ecd232a3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T102152Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2c56d7b73bd70af930e26e66efc686fa71d786d738a0338b2e2413a683388d11"
+          },
+          {
+            "timestamp": "2025-05-08 11:31:01",
+            "type": "generation",
+            "prompt": "Frozen lighthouse on an ice-encrusted cliff, et...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f1a03c3f-b84e-44b1-803d-b4410a944d58-e1/9f1b3b88.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T103125Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e423bad152567c80bd24c819023d5a7fb5abb4d084d05169e22076c6509115ae"
+          },
+          {
+            "timestamp": "2025-05-08 11:34:24",
+            "type": "generation",
+            "prompt": "Silent Arctic village nestled against frozen fj...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9059c204-b277-40f9-af2a-3796c09d4c33-e1/7fd652f5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T103454Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=40b119003464b7ce8ed1107d736033269aa19c0bb8e8f42bade33d0988ce974c"
+          },
+          {
+            "timestamp": "2025-05-08 11:41:01",
+            "type": "generation",
+            "prompt": "Solitary icebreaker ship navigating through fog...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e98b8cba-9653-494e-9419-8e89d15fe796-e1/8960cbc7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T104137Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=34f9477bfadf0b04aae2dd62718b37b02a6bf19bd6a608f40de0d427cde8fa85"
+          },
+          {
+            "timestamp": "2025-05-08 11:51:00",
+            "type": "generation",
+            "prompt": "Winding Arctic railway disappearing into snowy ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/385b5443-031b-4553-8e67-93c413613a3d-e1/77c0b9b5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T105159Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2ad71d4eeeb73cb03760e3fd3d1b22f12e9dc34914bf122cda681ce3a4c36fba"
+          },
+          {
+            "timestamp": "2025-05-08 12:01:00",
+            "type": "generation",
+            "prompt": "Ancient Arctic observatory silhouetted against ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9b7afaa3-8974-4048-80e9-cfbdffe07bc9-e1/933844aa.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T110131Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6bab1cab446c2a3bef78402c18f4525ab6bb7a67001f8905233dede3c0972a86"
+          },
+          {
+            "timestamp": "2025-05-08 12:16:13",
+            "type": "generation",
+            "prompt": "A microscopic metropolis thriving within a bust...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ae246d17-af1d-4a71-9fa8-45431ff1e379-e1/35853157.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T111643Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6bd6f5918a973b59b3a54fba4940231177bd536acec41c813f0a441b3cf6c1a1"
+          },
+          {
+            "timestamp": "2025-05-08 12:21:01",
+            "type": "generation",
+            "prompt": "A tea cup cityscape, flanked by sugar cube towe...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4fbef76f-af2b-4c60-b08d-00c39b25dd2c-e1/20d996f5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T112149Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a5e50431bbbf5ccaecf81b1604b7c56ee055db77d00a009e4b4a40491e05e3a4"
+          },
+          {
+            "timestamp": "2025-05-08 12:31:01",
+            "type": "generation",
+            "prompt": "Clockwork forest, gears forming trees and folia...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/2aee9ed6-5c24-4e3c-8190-cadde9bcef0d-e1/1479ed2f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T113125Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=bbfe348af7c5af106306b25368d350175c1a82b56c2de9b972d12e501e7116e8"
+          },
+          {
+            "timestamp": "2025-05-08 12:45:26",
+            "type": "generation",
+            "prompt": "Enormous library room where books and scrolls m...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/3ed1c096-723d-4abf-8336-87b07256bebc-e1/b4aed592.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T114554Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0e124ee08c542df208371bd4a72167acf0658a70f12cb016eb14394d0c990447"
+          },
+          {
+            "timestamp": "2025-05-08 12:46:01",
+            "type": "generation",
+            "prompt": "A vast desert where dunes transform into rollin...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a2ce87d1-3db3-4b6a-aad7-2678be7e4162-e1/8476521c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T114632Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ad4e32bf36a745c78113ca86748646fd37cb33aa88c1084b02ad96985b3edb21"
+          },
+          {
+            "timestamp": "2025-05-08 12:51:01",
+            "type": "generation",
+            "prompt": "A colossal floating greenhouse nestled between ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/bb98c12c-0526-4888-b656-69e04356a1f4-e1/daaa5140.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T115133Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=776feb49b7e43fdd8011ff074bc3a9004ed250be12aaa6087ab939d823bdf801"
+          },
+          {
+            "timestamp": "2025-05-08 12:56:02",
+            "type": "generation",
+            "prompt": "A crystal cavern where stalactites morph into i...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ad8f7882-4942-4a7d-9fad-e1c7d1a37f64-e1/7d192c3d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T115632Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1900277a2ce3ba21847841d78c97bc16f1e3b7143e767d1d7b7087c11e118105"
+          },
+          {
+            "timestamp": "2025-05-08 12:57:40",
+            "type": "generation",
+            "prompt": "In a colossal library atrium, Earth's continent...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/89e35777-8713-4e7c-9ab8-ade58f415fea-e1/baa463a6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T115808Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b33e25901e4d6c9ae5cc7cc70ce44220421d6cf74f92dd19c4dd5ab618b35c78"
+          },
+          {
+            "timestamp": "2025-05-08 13:01:01",
+            "type": "generation",
+            "prompt": "Sprawling banyan tree where roots and branches ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/197caf3c-11de-476d-8ea1-21ca637fbac8-e1/653a1651.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T120148Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=837070d472eafddcdaf40656c05036cee87af006c34f6b9a231956ed30f1d413"
+          },
+          {
+            "timestamp": "2025-05-08 13:20:30",
+            "type": "generation",
+            "prompt": "Frozen tundra landscape with icebergs shaped li...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9830af32-e229-4bac-8647-0afe99e86166-e1/a660b112.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T122057Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4b48f38689ff8ce3664a11c60eceeae23e68e5ac86f274cba6ceab2e0eef317e"
+          }
+        ],
+        "animation_history": [
+          {
+            "timestamp": "2025-05-08 11:34:24",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9059c204-b277-40f9-af2a-3796c09d4c33-e1/7fd652f5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T103454Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=40b119003464b7ce8ed1107d736033269aa19c0bb8e8f42bade33d0988ce974c",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-08 11:41:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e98b8cba-9653-494e-9419-8e89d15fe796-e1/8960cbc7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T104137Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=34f9477bfadf0b04aae2dd62718b37b02a6bf19bd6a608f40de0d427cde8fa85",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-08 11:51:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/385b5443-031b-4553-8e67-93c413613a3d-e1/77c0b9b5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T105159Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2ad71d4eeeb73cb03760e3fd3d1b22f12e9dc34914bf122cda681ce3a4c36fba",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-08 12:01:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9b7afaa3-8974-4048-80e9-cfbdffe07bc9-e1/933844aa.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T110131Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6bab1cab446c2a3bef78402c18f4525ab6bb7a67001f8905233dede3c0972a86",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-08 12:16:13",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ae246d17-af1d-4a71-9fa8-45431ff1e379-e1/35853157.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T111643Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6bd6f5918a973b59b3a54fba4940231177bd536acec41c813f0a441b3cf6c1a1",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-08 12:21:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4fbef76f-af2b-4c60-b08d-00c39b25dd2c-e1/20d996f5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T112149Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a5e50431bbbf5ccaecf81b1604b7c56ee055db77d00a009e4b4a40491e05e3a4",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-08 12:31:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/2aee9ed6-5c24-4e3c-8190-cadde9bcef0d-e1/1479ed2f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T113125Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=bbfe348af7c5af106306b25368d350175c1a82b56c2de9b972d12e501e7116e8",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-08 12:45:26",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/3ed1c096-723d-4abf-8336-87b07256bebc-e1/b4aed592.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T114554Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0e124ee08c542df208371bd4a72167acf0658a70f12cb016eb14394d0c990447",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-08 12:46:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a2ce87d1-3db3-4b6a-aad7-2678be7e4162-e1/8476521c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T114632Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ad4e32bf36a745c78113ca86748646fd37cb33aa88c1084b02ad96985b3edb21",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-08 12:51:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/bb98c12c-0526-4888-b656-69e04356a1f4-e1/daaa5140.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T115133Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=776feb49b7e43fdd8011ff074bc3a9004ed250be12aaa6087ab939d823bdf801",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-08 12:56:02",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ad8f7882-4942-4a7d-9fad-e1c7d1a37f64-e1/7d192c3d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T115632Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1900277a2ce3ba21847841d78c97bc16f1e3b7143e767d1d7b7087c11e118105",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-08 12:57:40",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/89e35777-8713-4e7c-9ab8-ade58f415fea-e1/baa463a6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T115808Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b33e25901e4d6c9ae5cc7cc70ce44220421d6cf74f92dd19c4dd5ab618b35c78",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-08 13:01:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/197caf3c-11de-476d-8ea1-21ca637fbac8-e1/653a1651.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T120148Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=837070d472eafddcdaf40656c05036cee87af006c34f6b9a231956ed30f1d413",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f0bf0d6e-de1d-436a-8a03-77672389b097-e1/8b4f690d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T101131Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=c021bc2290a0e0c28efe48f648a82d3aae385c11a805bdd834040edfb584fd59"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9830af32-e229-4bac-8647-0afe99e86166-e1/a660b112.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T122057Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4b48f38689ff8ce3664a11c60eceeae23e68e5ac86f274cba6ceab2e0eef317e"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-08T11:11:33.685396",
+  "last_updated": "2025-05-08T13:27:40.496411",
   "last_trigger_executions": {
-    "937f1b9f5b9fa64119aad31c4d5633b4_2025-05-08T10:31:00": "2025-05-08T10:36:47.053394",
-    "937f1b9f5b9fa64119aad31c4d5633b4_2025-05-08T10:41:00": "2025-05-08T10:41:00.549205",
-    "937f1b9f5b9fa64119aad31c4d5633b4_2025-05-08T10:51:00": "2025-05-08T10:51:00.026171",
-    "937f1b9f5b9fa64119aad31c4d5633b4_2025-05-08T11:01:00": "2025-05-08T11:01:00.753877",
-    "937f1b9f5b9fa64119aad31c4d5633b4_2025-05-08T11:11:00": "2025-05-08T11:11:01.530364"
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T13:01:00": "2025-05-08T13:20:30.047121"
   }
 }

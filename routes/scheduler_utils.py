@@ -34,6 +34,9 @@ running_schedulers = {}  # Store running scheduler tasks
 # Format: {publish_destination: {trigger_id: timestamp}}
 last_trigger_executions = {}
 
+# Add a global variable for rate-limiting debug logging
+_last_debug_log_time = {}
+
 # === Additional functions for exported variable registry ===
 
 # Path to the exported variables registry
@@ -660,6 +663,18 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
     if publish_destination not in last_trigger_executions:
         last_trigger_executions[publish_destination] = {}
     
+    # Add rate-limiting for debug logging
+    global _last_debug_log_time
+    if not hasattr(process_time_schedules, '_last_debug_log_time'):
+        process_time_schedules._last_debug_log_time = {}
+    
+    should_log = False
+    current_time = now.timestamp()
+    if publish_destination not in process_time_schedules._last_debug_log_time or \
+       (current_time - process_time_schedules._last_debug_log_time.get(publish_destination, 0)) > 30:
+        should_log = True
+        process_time_schedules._last_debug_log_time[publish_destination] = current_time
+    
     for schedule in time_schedules:
         # Generate a stable ID for this schedule for tracking last execution
         # Use a deterministic hash function to ensure stable IDs across restarts
@@ -754,11 +769,12 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                     # Create a unique identifier for this specific interval
                     interval_id = f"{schedule_id}_{expected_execution_time.isoformat()}"
                     
-                    # Debug logging for execution time calculations
-                    debug(f"Schedule check: ID={interval_id}, current={now}, " +
-                          f"expected_execution={expected_execution_time}, next={next_expected_time}, " +
-                          f"interval={repeat_interval}m, seconds_since_start={seconds_since_start}s, " +
-                          f"interval_seconds={interval_seconds}s, current_interval={current_interval}")
+                    # Rate-limited debug logging
+                    if should_log:
+                        debug(f"Schedule check: ID={interval_id}, current={now}, " +
+                              f"expected_execution={expected_execution_time}, next={next_expected_time}, " +
+                              f"interval={repeat_interval}m, seconds_since_start={seconds_since_start}s, " +
+                              f"interval_seconds={interval_seconds}s, current_interval={current_interval}")
                     
                     # Only execute if:
                     # 1. This specific interval hasn't been executed yet
@@ -779,17 +795,19 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                         if publish_destination:
                             log_schedule(message, publish_destination, now)
                         
-                        debug(f"Executing schedule (ID={interval_id}): current={now}, " +
-                              f"interval={repeat_interval}m, seconds_since_start={seconds_since_start}s, " +
-                              f"expected_time={expected_execution_time}, time_since_expected={time_since_expected}s")
+                        if should_log:
+                            debug(f"Executing schedule (ID={interval_id}): current={now}, " +
+                                  f"interval={repeat_interval}m, seconds_since_start={seconds_since_start}s, " +
+                                  f"expected_time={expected_execution_time}, time_since_expected={time_since_expected}s")
                         
                         matched_schedules.append(schedule)
                     else:
-                        if interval_id in last_trigger_executions[publish_destination]:
-                            debug(f"Skipping execution (ID={interval_id}): already executed this interval")
-                        else:
-                            debug(f"Skipping execution (ID={interval_id}): outside execution window, " +
-                                  f"now={now}, expected={expected_execution_time}, time_since_expected={time_since_expected}s")
+                        if should_log:
+                            if interval_id in last_trigger_executions[publish_destination]:
+                                debug(f"Skipping execution (ID={interval_id}): already executed this interval")
+                            else:
+                                debug(f"Skipping execution (ID={interval_id}): outside execution window, " +
+                                      f"now={now}, expected={expected_execution_time}, time_since_expected={time_since_expected}s")
             except (ValueError, TypeError) as e:
                 error(f"Error processing repeat schedule: {e}")
                 continue
@@ -811,7 +829,8 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                         log_schedule(message, publish_destination, now)
                     matched_schedules.append(schedule)
                 else:
-                    debug(f"Skipping one-time trigger (ID={one_time_id}) that already executed today: {time_str}")
+                    if should_log:
+                        debug(f"Skipping one-time trigger (ID={one_time_id}) that already executed today: {time_str}")
     
     return matched_schedules
 
@@ -844,6 +863,17 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
         current_minute = now.hour * 60 + now.minute
         day_str = now.strftime("%A")
         date_str = now.strftime("%-d-%b")
+        
+        # Add rate-limiting for debug logging
+        if not hasattr(get_next_scheduled_action, '_last_debug_log_time'):
+            get_next_scheduled_action._last_debug_log_time = {}
+        
+        should_log = False
+        current_time = now.timestamp()
+        if publish_destination not in get_next_scheduled_action._last_debug_log_time or \
+           (current_time - get_next_scheduled_action._last_debug_log_time.get(publish_destination, 0)) > 30:
+            should_log = True
+            get_next_scheduled_action._last_debug_log_time[publish_destination] = current_time
         
         result = {
             "has_next_action": False,
@@ -914,7 +944,8 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                         else:
                             current_minute_adjusted = current_minute
                         
-                        debug(f"Adjusted times - current: {current_minute_adjusted}, scheduled: {scheduled_minutes}, until: {until_minutes}")
+                        if should_log:
+                            debug(f"Adjusted times - current: {current_minute_adjusted}, scheduled: {scheduled_minutes}, until: {until_minutes}")
                         
                         # If it's before the start time today
                         if current_day_match and current_minute < scheduled_minutes:
@@ -934,7 +965,8 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                                     else:
                                         interval_str = f"{repeat_interval:.1f}"
                                     next_action_description = f"Repeating '{trigger['type']}' trigger (every {interval_str} min until {until_str})"
-                                debug(f"Found next action before start time: {next_action_time}, {next_action_description}")
+                                if should_log:
+                                    debug(f"Found next action before start time: {next_action_time}, {next_action_description}")
                         # If today is the scheduled day and current time is within the repeat window
                         elif current_day_match and scheduled_minutes <= current_minute_adjusted <= until_minutes:
                             # Find next repeat interval
@@ -949,7 +981,8 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                             # Store as minutes with decimal precision for calculation
                             next_interval = next_interval_decimal
                             
-                            debug(f"Within repeat window - minutes_since_start: {minutes_since_start}, next_interval: {next_interval}")
+                            if should_log:
+                                debug(f"Within repeat window - minutes_since_start: {minutes_since_start}, next_interval: {next_interval}")
                             
                             if next_interval < minutes_until_next:
                                 minutes_until_next = next_interval
@@ -972,7 +1005,8 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
                                     else:
                                         interval_str = f"{repeat_interval:.1f}"
                                     next_action_description = f"Repeating '{trigger['type']}' trigger (every {interval_str} min until {until_str})"
-                                debug(f"Found next action within window: {next_action_time}, {next_action_description}")
+                                if should_log:
+                                    debug(f"Found next action within window: {next_action_time}, {next_action_description}")
                     else:
                         # Single time point
                         # Check if today is the scheduled day and this time is in the future today
@@ -1147,11 +1181,10 @@ def get_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
         return {
             "has_next_action": False,
             "next_time": None,
-            "description": f"Error predicting next action: {str(e)}",
-            "minutes_until_next": 999999999,  # Large numerical value for JSON compatibility
+            "description": None,
+            "minutes_until_next": 999999999,
             "timestamp": datetime.now().isoformat(),
-            "time_until_display": None,
-            "error": True
+            "error": str(e)
         }
 
 def log_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]) -> None:

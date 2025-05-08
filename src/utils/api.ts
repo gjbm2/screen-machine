@@ -1645,6 +1645,28 @@ export class Api {
       throw error;
     }
   }
+
+  async cancelAllJobs(): Promise<{ success: boolean; cancelled?: number; error?: string }> {
+    try {
+      const response = await fetch(`${this.apiUrl}/generate/cancel_all_jobs`, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        return { success: false, error: errorData.error || 'Failed to cancel jobs' };
+      }
+      
+      const result = await response.json();
+      return { 
+        success: true, 
+        cancelled: result.cancelled 
+      };
+    } catch (error) {
+      console.error('Error cancelling jobs:', error);
+      return { success: false, error: 'Network error' };
+    }
+  }
 }
 
 // Create a singleton instance of the API service
