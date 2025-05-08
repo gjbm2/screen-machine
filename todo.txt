@@ -1,17 +1,15 @@
-7-mAY
-
 top:
 
-1. Load schedule (via Alexa) -- show loadable list in display-schedules
-2. Unload schedule via Alexa
-3. Protected flag at root on schedule script (if set, cannot be unloaded)
-4. Get animation working 
-5. Set var bugs
-6. Have state update in scheduler.tsx so we can test properly 
-7. Add comprehensive tests for schedule init, also persistence and set / get vars at diff scopes
-
-1. animate not working properly
-2. simplify import to be just from an Enum list
+-1. tests :((((
+0. triggers on schedule save (even when shoudlnlt)
+1. split scheduler_utils for performance reasons...
+2. get scheduler tests working
+3. Load schedule (via Alexa) -- show loadable list in display-schedules
+4. Unload schedule via Alexa
+5. add next instruction, loadable scripts to alexa get schedule (rename from get variables)
+6. allow generation, animation, with arbitrary list of params (e.g. length=xxx) in instruction
+7. paused scheduels after restart get stopped on resume...
+8. dndkit for drag & drop throughout
 
 Need to have
 
@@ -31,7 +29,6 @@ Nice to have
 2. on first page load, soft link to manage images, then unfurl generator section
 3. generator tab too prominent
 4. Drag & drop to order images
-5. burger menu (and remove scripts)
 6. home icon 
 8. metadata working for bucket images
 9. repair rendering status in index
@@ -48,30 +45,6 @@ Nice to have
 23. async scheduling
 24. scheduler passes images in vars (from generate > animate, etc.)
 25. shared history workarounds...?
+26. scheduler can appraise images and select the best
 
-
-
-
-
-
-
-
-31-Mar-25
-
-1. Sort out openai latency
-        a. splitting out utterance processor (with ssml) from refiner
-	b. force ssml return after x seconds by threading utterance processor
-	c. include refiner inside generator
-
-2. Get publish contexts working for normal generation (and confirm carried through from url, for end-to-end)
-
-3. For normal generation, take width, height, etc. from workflow unless specified (i.e. remove defaults from workflow) 
-
-4. SD 3.5
-
-5. img-2-img flows
-
-6. debug display OR rebuilt
-
-7. debug fullscreen view (ensure non-mock generator assigns unique batch IDs)
 

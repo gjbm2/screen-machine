@@ -85,7 +85,7 @@
         "_b_theme": "The Kingdom of the Galactic",
         "_style": "Surrealist Expressionism",
         "_guidance": "Create images where microscopic details of ordinary objects and expansive celestial bodies evoke a sense of scale that transcends the familiar. Using Surrealist Expressionism, aim to avoid repeating past subject-types by selecting newly imaginative contexts that combine reality with the fantastic. Leverage image history to push the boundaries of perception by emphasizing the unexpected and unusual within these realms.",
-        "prompt": "Frozen tundra landscape with icebergs shaped like fragmented musical notes, interwoven with aurora-like harmonies in the sky, evoking a symphony of chill in surreal stillness.",
+        "prompt": "Expand a bustling city into a massive book, where skyscrapers are the spine and pages unfold skyward, pages overlapping to reveal cosmic landscapes teeming with planetary life.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:23",
@@ -614,6 +614,16 @@
             },
             "text_input": "Create an image of  in the style of Surrealist ...",
             "explanation": "I selected a tundra setting to contrast previous prompts set in libraries, deserts, or forests. T..."
+          },
+          {
+            "timestamp": "2025-05-08 14:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Expand a bustling city into a massive book, where skyscrapers are the spine and pages unfold skyward, pages overlapping to reveal cosmic landscapes teeming with planetary life."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I chose a city transformed into a massive book, diverging from previous scenes by merging urban e..."
           }
         ],
         "prompt_history": [
@@ -1024,6 +1034,14 @@
             "refiner": "gallerist",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9830af32-e229-4bac-8647-0afe99e86166-e1/a660b112.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T122057Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4b48f38689ff8ce3664a11c60eceeae23e68e5ac86f274cba6ceab2e0eef317e"
+          },
+          {
+            "timestamp": "2025-05-08 14:01:01",
+            "type": "generation",
+            "prompt": "Expand a bustling city into a massive book, whe...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/384b36fb-1bab-47db-bc93-34d797370726-e1/4409e8f4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T130202Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=92f2a31ea9eb06a4c4ad46c61b15f7f8490610191939b1a08924ec1cd7cce91c"
           }
         ],
         "animation_history": [
@@ -1134,12 +1152,13 @@
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9830af32-e229-4bac-8647-0afe99e86166-e1/a660b112.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T122057Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4b48f38689ff8ce3664a11c60eceeae23e68e5ac86f274cba6ceab2e0eef317e"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/384b36fb-1bab-47db-bc93-34d797370726-e1/4409e8f4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T130202Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=92f2a31ea9eb06a4c4ad46c61b15f7f8490610191939b1a08924ec1cd7cce91c"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-08T13:27:40.496411",
+  "last_updated": "2025-05-08T14:55:32.822996",
   "last_trigger_executions": {
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T13:01:00": "2025-05-08T13:20:30.047121"
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T13:01:00": "2025-05-08T13:20:30.047121",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T14:01:00": "2025-05-08T14:01:01.659441"
   }
 }

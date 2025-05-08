@@ -340,7 +340,11 @@ def api_set_scheduler_context(publish_destination):
         debug(f"Current context for {publish_destination}: {context}")
         
         if not context:
-            return jsonify({"error": "No scheduler context found"}), 404
+            # Create a new context if one doesn't exist
+            context = default_context()
+            context["publish_destination"] = publish_destination
+            scheduler_contexts_stacks[publish_destination] = [context]
+            debug(f"Created new context for {publish_destination}")
 
         if "vars" not in context:
             context["vars"] = {}
@@ -445,7 +449,7 @@ def api_load_schedule(publish_destination):
             scheduler_schedule_stacks[publish_destination] = []
             scheduler_contexts_stacks[publish_destination] = []
             scheduler_states[publish_destination] = "stopped"
-            debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - first time init in api_load_schedule")
+            debug(f"Initializing scheduler state to 'stopped' for first-time {publish_destination}")
             scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Initialized new scheduler")
             
             # For first-time initialization, create a new context
@@ -613,7 +617,10 @@ def api_get_all_scheduler_statuses():
     """Get the status of all schedulers at once."""
     statuses = {}
     
-    for destination_id in scheduler_states:
+    # Make a copy of the keys to avoid 'dictionary changed size during iteration' errors
+    destination_ids = list(scheduler_states.keys())
+    
+    for destination_id in destination_ids:
         try:
             # Get the current state for this destination
             state = scheduler_states.get(destination_id, 'stopped')
