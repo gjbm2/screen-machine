@@ -395,8 +395,6 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
     """Load scheduler state from disk."""
     global scheduler_schedule_stacks, scheduler_contexts_stacks, scheduler_states, scheduler_logs, last_trigger_executions
     
-    debug(f"********** LOAD STATE BEGIN: {publish_destination} **********")
-    
     # Initialize global variables if they don't exist
     if publish_destination not in scheduler_schedule_stacks:
         scheduler_schedule_stacks[publish_destination] = []
@@ -404,38 +402,26 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
         scheduler_contexts_stacks[publish_destination] = []
     if publish_destination not in scheduler_states:
         scheduler_states[publish_destination] = "stopped"
-        debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - initialization in load_scheduler_state")
-        debug(f"********** LOAD STATE: Initialized default state 'stopped' for {publish_destination} **********")
-    else:
-        debug(f"********** LOAD STATE: Existing memory state is '{scheduler_states[publish_destination]}' for {publish_destination} **********")
     if publish_destination not in scheduler_logs:
         scheduler_logs[publish_destination] = []
     if publish_destination not in last_trigger_executions:
         last_trigger_executions[publish_destination] = {}
     
     path = get_scheduler_storage_path(publish_destination)
-    debug(f"********** LOAD STATE: Loading from path: {path} **********")
     
     if os.path.exists(path):
-        debug(f"********** LOAD STATE: File exists for {publish_destination} **********")
         try:
             with open(path, 'r') as f:
                 file_content = f.read()
-                debug(f"********** LOAD STATE: Raw file content for {publish_destination} (first 100 chars): {file_content[:100]}... **********")
                 state = json.loads(file_content)
                 
             # Validate state structure
             if not isinstance(state, dict):
-                debug(f"********** LOAD STATE ERROR: State is not a dictionary for {publish_destination}: {type(state)} **********")
                 raise ValueError("Invalid state format: not a dictionary")
                 
             # Ensure required fields exist
             if 'state' not in state:
-                debug(f"********** LOAD STATE: No 'state' field in file for {publish_destination}, defaulting to 'stopped' **********")
                 state['state'] = 'stopped'
-                debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - default state in loaded file")
-            else:
-                debug(f"********** LOAD STATE: Found state '{state['state']}' in file for {publish_destination} **********")
             
             if 'context_stack' not in state:
                 state['context_stack'] = []
@@ -460,31 +446,20 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
                 last_trigger_executions[publish_destination] = {}
                 
             # Update in-memory state
-            debug(f"********** LOAD STATE: Setting in-memory state to '{state.get('state', 'stopped')}' for {publish_destination} **********")
             scheduler_schedule_stacks[publish_destination] = state.get("schedule_stack", [])
             scheduler_contexts_stacks[publish_destination] = state.get("context_stack", [])
-            if state.get('state', 'stopped') == 'stopped':
-                debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - read from file")
             scheduler_states[publish_destination] = state.get("state", "stopped")
-            debug(f"********** LOAD STATE: After update, in-memory state is '{scheduler_states[publish_destination]}' for {publish_destination} **********")
-                
-            debug(f"********** LOAD STATE SUCCESS: Returning state with '{state.get('state', 'stopped')}' for {publish_destination} **********")
+            
             return state
             
         except json.JSONDecodeError as e:
-            debug(f"********** LOAD STATE ERROR: JSON decode error for {publish_destination}: {str(e)} **********")
             error(f"Error decoding scheduler state JSON for {publish_destination}: {str(e)}")
         except Exception as e:
-            debug(f"********** LOAD STATE ERROR: Exception for {publish_destination}: {str(e)} **********")
             error(f"Error loading scheduler state for {publish_destination}: {str(e)}")
             import traceback
             error(f"Error traceback: {traceback.format_exc()}")
-    else:
-        debug(f"********** LOAD STATE: File does not exist for {publish_destination} **********")
     
     # Create a new state with empty stacks
-    debug(f"********** LOAD STATE: Creating new default state with 'stopped' for {publish_destination} **********")
-    debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - creating default state in load_scheduler_state")
     state = {
         "schedule_stack": [],
         "context_stack": [],
@@ -495,32 +470,29 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
     
     # Save the initial state to disk
     try:
-        debug(f"********** LOAD STATE: Saving new default state to disk for {publish_destination} **********")
         save_scheduler_state(publish_destination, state)
     except Exception as e:
-        debug(f"********** LOAD STATE ERROR: Failed to save initial state for {publish_destination}: {str(e)} **********")
         error(f"Error saving initial scheduler state for {publish_destination}: {str(e)}")
     
-    debug(f"********** LOAD STATE END: Returning new default state for {publish_destination} **********")
     return state
-
+    
 @thread_safe
 def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None) -> None:
     """Save the scheduler state to disk for a destination."""
     path = get_scheduler_storage_path(publish_destination)
-    debug(f"********** SAVE STATE: Starting for {publish_destination} to {path} **********")
+    debug(f"Starting state save for {publish_destination} to {path}")
     
     try:
         # Check what state was passed in
         if state is not None:
             passed_in_state = state.get("state", "none-passed")
-            debug(f"********** SAVE STATE: State object was passed with state='{passed_in_state}' for {publish_destination} **********")
+            debug(f"State object passed with state='{passed_in_state}' for {publish_destination}")
         else:
-            debug(f"********** SAVE STATE: No state object passed for {publish_destination} **********")
+            debug(f"No state object passed for {publish_destination}")
         
         # Check what's in memory
         in_memory_state = scheduler_states.get(publish_destination, "not-in-memory")
-        debug(f"********** SAVE STATE: Current in-memory state is '{in_memory_state}' for {publish_destination} **********")
+        debug(f"Current in-memory state is '{in_memory_state}' for {publish_destination}")
     
         # If state is provided, use it (with fallbacks to in-memory state for missing parts)
         # Otherwise use the complete in-memory state
@@ -541,7 +513,7 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
                 "last_trigger_executions": {}
             }
         
-        debug(f"********** SAVE STATE: Will save state='{state_to_save['state']}' for {publish_destination} **********")
+        debug(f"Will save state='{state_to_save['state']}' for {publish_destination}")
         
         # Convert datetime objects in last_trigger_executions to ISO format strings
         if publish_destination in last_trigger_executions:
@@ -580,13 +552,68 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
         
         # Rename the temporary file to the actual file (atomic operation)
         os.replace(temp_path, path)
-        debug(f"********** SAVE STATE: Successfully saved state='{state_to_save['state']}' for {publish_destination} **********")
+        debug(f"Successfully saved state='{state_to_save['state']}' for {publish_destination}")
         
     except Exception as e:
-        debug(f"********** SAVE STATE ERROR: Failed to save state for {publish_destination}: {str(e)} **********")
+        debug(f"Failed to save state for {publish_destination}: {str(e)}")
         error(f"CRITICAL ERROR: Failed to save state for {publish_destination}: {str(e)}")
         import traceback
         error(f"Error traceback: {traceback.format_exc()}")
+
+@thread_safe
+def update_scheduler_state(publish_destination: str, 
+                         schedule_stack: Optional[List[Dict[str, Any]]] = None,
+                         context_stack: Optional[List[Dict[str, Any]]] = None,
+                         state: Optional[str] = None,
+                         force_save: bool = False) -> None:
+    """Update parts of the scheduler state and then save everything to disk."""
+    # Simple, unconditional updating
+    debug(f"Starting state update for {publish_destination}")
+    
+    # Check current state before update
+    before_state = scheduler_states.get(publish_destination, "not-in-memory")
+    debug(f"Before update, in-memory state is '{before_state}' for {publish_destination}")
+    
+    # Update in-memory state with any provided values
+    if schedule_stack is not None:
+        scheduler_schedule_stacks[publish_destination] = schedule_stack
+        debug(f"Updated schedule_stack: {len(schedule_stack)} items")
+    
+    if context_stack is not None:
+        scheduler_contexts_stacks[publish_destination] = context_stack
+        debug(f"Updated context_stack: {len(context_stack)} contexts")
+        if context_stack and "vars" in context_stack[-1]:
+            debug(f"Top context vars: {list(context_stack[-1].get('vars', {}).keys())}")
+    
+    if state is not None:
+        debug(f"Updating state from '{before_state}' to '{state}' for {publish_destination}")
+        scheduler_states[publish_destination] = state
+    else:
+        debug(f"No state provided, keeping current state '{before_state}' for {publish_destination}")
+    
+    # Check state after update
+    after_state = scheduler_states.get(publish_destination, "not-in-memory")
+    debug(f"After update, in-memory state is '{after_state}' for {publish_destination}")
+    
+    # Always save the full state to disk
+    debug(f"Calling save_scheduler_state for {publish_destination}")
+    
+    if force_save:
+        # Create a complete state object to force saving everything
+        save_state = {
+            "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
+            "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
+            "state": scheduler_states.get(publish_destination, "stopped"),
+            "last_trigger_executions": {k: v.isoformat() for k, v in last_trigger_executions.get(publish_destination, {}).items()},
+            "last_updated": datetime.now().isoformat()
+        }
+        save_scheduler_state(publish_destination, save_state)
+        debug(f"Force-saved complete state for {publish_destination}")
+    else:
+        # Use default save behavior
+        save_scheduler_state(publish_destination)
+    
+    debug(f"Completed state update for {publish_destination}")
 
 # === Context Stack Management ===
 def get_context_stack(publish_destination: str) -> List[Dict[str, Any]]:
@@ -1994,58 +2021,3 @@ def log_schedule_diff(old_schedule: Dict[str, Any], new_schedule: Dict[str, Any]
         return "; ".join(changes)
     else:
         return "No significant changes detected" 
-
-@thread_safe
-def update_scheduler_state(publish_destination: str, 
-                         schedule_stack: Optional[List[Dict[str, Any]]] = None,
-                         context_stack: Optional[List[Dict[str, Any]]] = None,
-                         state: Optional[str] = None,
-                         force_save: bool = False) -> None:
-    """Update parts of the scheduler state and then save everything to disk."""
-    # Simple, unconditional updating
-    debug(f"********** UPDATE STATE: Starting for {publish_destination} **********")
-    
-    # Check current state before update
-    before_state = scheduler_states.get(publish_destination, "not-in-memory")
-    debug(f"********** UPDATE STATE: Before update, in-memory state is '{before_state}' for {publish_destination} **********")
-    
-    # Update in-memory state with any provided values
-    if schedule_stack is not None:
-        scheduler_schedule_stacks[publish_destination] = schedule_stack
-        debug(f"********** UPDATE STATE: Updated schedule_stack: {len(schedule_stack)} items **********")
-    
-    if context_stack is not None:
-        scheduler_contexts_stacks[publish_destination] = context_stack
-        debug(f"********** UPDATE STATE: Updated context_stack: {len(context_stack)} contexts **********")
-        if context_stack and "vars" in context_stack[-1]:
-            debug(f"********** UPDATE STATE: Top context vars: {list(context_stack[-1].get('vars', {}).keys())} **********")
-    
-    if state is not None:
-        debug(f"********** UPDATE STATE: Updating state from '{before_state}' to '{state}' for {publish_destination} **********")
-        scheduler_states[publish_destination] = state
-    else:
-        debug(f"********** UPDATE STATE: No state provided, keeping current state '{before_state}' for {publish_destination} **********")
-    
-    # Check state after update
-    after_state = scheduler_states.get(publish_destination, "not-in-memory")
-    debug(f"********** UPDATE STATE: After update, in-memory state is '{after_state}' for {publish_destination} **********")
-    
-    # Always save the full state to disk
-    debug(f"********** UPDATE STATE: Calling save_scheduler_state for {publish_destination} **********")
-    
-    if force_save:
-        # Create a complete state object to force saving everything
-        save_state = {
-            "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
-            "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
-            "state": scheduler_states.get(publish_destination, "stopped"),
-            "last_trigger_executions": {k: v.isoformat() for k, v in last_trigger_executions.get(publish_destination, {}).items()},
-            "last_updated": datetime.now().isoformat()
-        }
-        save_scheduler_state(publish_destination, save_state)
-        debug(f"********** UPDATE STATE: Force-saved complete state for {publish_destination} **********")
-    else:
-        # Use default save behavior
-        save_scheduler_state(publish_destination)
-    
-    debug(f"********** UPDATE STATE: Completed for {publish_destination} **********")

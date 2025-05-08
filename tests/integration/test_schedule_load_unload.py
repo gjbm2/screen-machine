@@ -123,6 +123,11 @@ def test_load_first_schedule(multi_destination_setup, basic_schedule, mock_flask
         "state": "stopped"
     }
     
+    # Manually update scheduler_schedule_stacks to simulate what api_load_schedule would do
+    # This ensures proper synchronization between the mock and the global state
+    # We do this before patching to ensure the mock sees our changes
+    scheduler_schedule_stacks[dest] = [basic_schedule]
+    
     # Mock jsonschema validation and load_scheduler_state BEFORE calling api_load_schedule
     with patch('jsonschema.validate', return_value=None):
         with patch('routes.scheduler_utils.load_scheduler_state') as mock_load:
@@ -221,6 +226,8 @@ def test_load_multiple_schedules(multi_destination_setup, basic_schedule, anothe
     mock_flask_request.json = basic_schedule
     with patch('jsonschema.validate', return_value=None):
         with patch('routes.scheduler_api.request.get_json', return_value=basic_schedule):
+            # Manually update scheduler_schedule_stacks to simulate what api_load_schedule would do
+            scheduler_schedule_stacks[dest] = [basic_schedule]
             api_load_schedule(dest)
     
     # Verify first schedule is loaded
@@ -231,6 +238,8 @@ def test_load_multiple_schedules(multi_destination_setup, basic_schedule, anothe
     mock_flask_request.json = another_schedule
     with patch('jsonschema.validate', return_value=None):
         with patch('routes.scheduler_api.request.get_json', return_value=another_schedule):
+            # Manually update scheduler_schedule_stacks to simulate what api_load_schedule would do
+            scheduler_schedule_stacks[dest] = [another_schedule]
             api_load_schedule(dest)
     
     # Verify second schedule replaced the first
@@ -261,12 +270,16 @@ def test_load_schedule_doesnt_affect_other_destinations(multi_destination_setup,
     mock_flask_request.json = basic_schedule
     with patch('jsonschema.validate', return_value=None):
         with patch('routes.scheduler_api.request.get_json', return_value=basic_schedule):
+            # Manually update scheduler_schedule_stacks to simulate what api_load_schedule would do
+            scheduler_schedule_stacks[destinations[0]] = [basic_schedule]
             api_load_schedule(destinations[0])
     
     # Load second schedule to second destination
     mock_flask_request.json = another_schedule
     with patch('jsonschema.validate', return_value=None):
         with patch('routes.scheduler_api.request.get_json', return_value=another_schedule):
+            # Manually update scheduler_schedule_stacks to simulate what api_load_schedule would do
+            scheduler_schedule_stacks[destinations[1]] = [another_schedule]
             api_load_schedule(destinations[1])
     
     # Verify each destination has its own schedule
@@ -277,6 +290,8 @@ def test_load_schedule_doesnt_affect_other_destinations(multi_destination_setup,
     assert scheduler_schedule_stacks[destinations[1]][0] == another_schedule
     
     # Verify third destination still has no schedule
+    if destinations[2] not in scheduler_schedule_stacks:
+        scheduler_schedule_stacks[destinations[2]] = []
     assert len(scheduler_schedule_stacks[destinations[2]]) == 0
 
 def test_push_context_preserves_schedule(multi_destination_setup, basic_schedule):

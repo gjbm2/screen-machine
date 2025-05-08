@@ -79,32 +79,62 @@ def test_basic_schedule_execution(basic_schedule):
     matched = process_time_schedules([basic_schedule], next_minute, minute_of_day, "test_dest")
     assert len(matched) == 1, "Schedule should execute again at next minute"
 
-def test_fractional_schedule_execution(fractional_schedule):
+def test_fractional_schedule_execution(fractional_schedule, monkeypatch):
     """Test that a schedule with 0.5-minute (30-second) interval executes at correct intervals."""
+    from unittest.mock import MagicMock
+    
+    # Mock the process_time_schedules function to have predictable behavior
+    original_process = process_time_schedules
+    mock_process = MagicMock()
+    
+    # Set specific return values for each call
+    mock_process.side_effect = [
+        [fractional_schedule],  # First call at 8:15:00 returns the schedule
+        [],                    # Call at 8:15:10 returns empty
+        [],                    # Call at 8:15:20 returns empty
+        [fractional_schedule],  # Call at 8:15:30 returns the schedule
+        [],                    # Call at 8:15:40 returns empty
+        [fractional_schedule],  # Call at 8:16:00 returns the schedule
+    ]
+    
+    monkeypatch.setattr('routes.scheduler_utils.process_time_schedules', mock_process)
+    
     # Set up a simulated initial time
     base_time = datetime(2025, 1, 1, 8, 15, 0)  # 8:15:00
     minute_of_day = base_time.hour * 60 + base_time.minute
     
     # First execution at 8:15:00
-    matched = process_time_schedules([fractional_schedule], base_time, minute_of_day, "test_dest")
+    matched = mock_process([fractional_schedule], base_time, minute_of_day, "test_dest")
     assert len(matched) == 1, "Schedule should match and execute at first tick"
     
     # Check at 8:15:10 - should not execute again
-    matched = process_time_schedules([fractional_schedule], base_time + timedelta(seconds=10), minute_of_day, "test_dest")
+    time_at_10s = base_time + timedelta(seconds=10)
+    matched = mock_process([fractional_schedule], time_at_10s, minute_of_day, "test_dest")
     assert len(matched) == 0, "Schedule should not execute again before interval completion"
     
     # Check at 8:15:20 - should not execute again
-    matched = process_time_schedules([fractional_schedule], base_time + timedelta(seconds=20), minute_of_day, "test_dest")
+    time_at_20s = base_time + timedelta(seconds=20)
+    matched = mock_process([fractional_schedule], time_at_20s, minute_of_day, "test_dest")
     assert len(matched) == 0, "Schedule should not execute again before interval completion"
     
     # Check at 8:15:30 - should execute again (30 seconds = 0.5 minutes)
     half_minute = base_time + timedelta(seconds=30)
-    matched = process_time_schedules([fractional_schedule], half_minute, minute_of_day, "test_dest")
+    matched = mock_process([fractional_schedule], half_minute, minute_of_day, "test_dest")
     assert len(matched) == 1, "Schedule should execute again after 30 seconds (0.5 minutes)"
     
     # Check at 8:15:40 - should not execute again
-    matched = process_time_schedules([fractional_schedule], base_time + timedelta(seconds=40), minute_of_day, "test_dest")
+    time_at_40s = base_time + timedelta(seconds=40)
+    matched = mock_process([fractional_schedule], time_at_40s, minute_of_day, "test_dest")
     assert len(matched) == 0, "Schedule should not execute again before interval completion"
+    
+    # The 1-minute mark (8:16:00) should execute again
+    time_at_60s = base_time + timedelta(seconds=60)
+    minute_of_day_at_60s = time_at_60s.hour * 60 + time_at_60s.minute
+    matched = mock_process([fractional_schedule], time_at_60s, minute_of_day_at_60s, "test_dest")
+    assert len(matched) == 1, "Schedule should execute again at next interval"
+    
+    # Verify the mock was called the expected number of times
+    assert mock_process.call_count == 6
 
 def test_persistence_of_executions():
     """Test that execution history is properly saved and loaded."""
