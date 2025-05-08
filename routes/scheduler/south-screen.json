@@ -85,7 +85,7 @@
         "_b_theme": "The Kingdom of the Galactic",
         "_style": "Surrealist Expressionism",
         "_guidance": "Create images where microscopic details of ordinary objects and expansive celestial bodies evoke a sense of scale that transcends the familiar. Using Surrealist Expressionism, aim to avoid repeating past subject-types by selecting newly imaginative contexts that combine reality with the fantastic. Leverage image history to push the boundaries of perception by emphasizing the unexpected and unusual within these realms.",
-        "prompt": "Giant pocket watch unraveling into spiral galaxies, glowing gears and springs among the stars, capturing an ethereal dance of time and cosmos in surreal expression.",
+        "prompt": "A violin's strings unravel into shimmering beams of starlight, celestial notes float amidst swirling galaxies, evoking harmony in the cosmic dance of music and universe.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:54",
@@ -576,6 +576,76 @@
             },
             "text_input": "Create an image of  in the style of Surrealist ...",
             "explanation": "To ensure originality, the concept focuses on a pocket watch transforming into cosmic formations,..."
+          },
+          {
+            "timestamp": "2025-05-08 15:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Microscopic spider web transforming into cosmic nebula, threads shimmering with stardust, sunlight refracting into prismatic hues, surreal intersection of nature's intricacy and cosmic wonder."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I avoided repeating past prompts by focusing on a microscopic spider web rather than landscapes, ..."
+          },
+          {
+            "timestamp": "2025-05-08 16:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Giant floating dandelion seed with sail-like appendages, drifting among vibrant star clusters, tiny cities nestled within its intricate filaments, creating a surreal blend of nature and cosmos."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I chose the image of a dandelion seed to create a unique scene, different from previous prompts t..."
+          },
+          {
+            "timestamp": "2025-05-08 17:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Microscopic dew droplets on a leaf morph into miniature ocean waves, each crest crowned with starry night skies, blending the minute and vast in surreal harmony."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I focused on the transformation of dew droplets into ocean waves, a new take on the micro-to-macr..."
+          },
+          {
+            "timestamp": "2025-05-08 18:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A teacup afloat in a cosmic whirlpool, tea transforming into molten nebulae, with minuscule teapots orbiting around, juxtaposing everyday routine with vast stellar phenomena."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I avoided repeating themes by selecting a teacup as the central object, transforming it into a su..."
+          },
+          {
+            "timestamp": "2025-05-08 19:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Ceiling fan morphing into spiral galaxy, whirling blades forming vibrant nebulae, casting celestial shadows across a room, merging mundane and cosmic in surreal expressionism."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I chose a ceiling fan to create a fresh context for transformation into cosmic elements. This avo..."
+          },
+          {
+            "timestamp": "2025-05-08 20:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Vast open book with cascading pages fusing into a cosmic waterfall, swirling galaxies in the waterfalls' flow, bridging earthly knowledge and celestial beauty in surreal marvel."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I opted for an open book transforming into a surreal, cosmic waterfall, distinct from libraries o..."
+          },
+          {
+            "timestamp": "2025-05-08 21:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A violin's strings unravel into shimmering beams of starlight, celestial notes float amidst swirling galaxies, evoking harmony in the cosmic dance of music and universe."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "I focused on a unique object, the violin, transforming its strings into cosmic elements. This ide..."
           }
         ],
         "prompt_history": [
@@ -970,18 +1040,81 @@
             "refiner": "gallerist",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fb252786-e57d-4c4f-99c4-1680d44cc48a-e1/518f1ba9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T130127Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=8f1e902bd9c325d95ea3da0968b1987fcfc779f153f87af58f01cd4bdfd4df3f"
+          },
+          {
+            "timestamp": "2025-05-08 15:01:01",
+            "type": "generation",
+            "prompt": "Microscopic spider web transforming into cosmic...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/645cf92a-3d82-4aae-ae46-15e58135c4de-e1/f7a18efe.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T140211Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=8a206fd1d1c08dfaff852f7bdeb1aacef314437ed5eeffce50fbee94cf36f9cf"
+          },
+          {
+            "timestamp": "2025-05-08 16:01:00",
+            "type": "generation",
+            "prompt": "Giant floating dandelion seed with sail-like ap...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b5386c97-37d9-446e-b6da-eb8b44c1e74c-e1/dbdebaef.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T150210Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=690a0fccbf95c5b91be81360f96104befeddcb1a3edb475c2ef35837828024eb"
+          },
+          {
+            "timestamp": "2025-05-08 17:01:00",
+            "type": "generation",
+            "prompt": "Microscopic dew droplets on a leaf morph into m...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7331bb63-2f73-488d-b47d-be9096864287-e1/f0f4c4d0.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T160201Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=317e311f34b09870daa1bc45a80c33b4bfd4e5482dd4e032ef127d9f7f500611"
+          },
+          {
+            "timestamp": "2025-05-08 18:01:01",
+            "type": "generation",
+            "prompt": "A teacup afloat in a cosmic whirlpool, tea tran...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0759495b-4c12-4e84-96aa-bb04be0f3ce1-e1/a08d6b90.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T170205Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=842bb41cb04697adda9f007fffd5fc0fcbf2f9ff011e94e8edde57064247bd24"
+          },
+          {
+            "timestamp": "2025-05-08 19:01:01",
+            "type": "generation",
+            "prompt": "Ceiling fan morphing into spiral galaxy, whirli...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8d2279ad-90cd-412c-b78f-98634720d582-e1/7a7ad3fe.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T180131Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5782fefac0732b637c8cc42e8a87ced3bcbd2198b81c08b28985aeceb3d684ff"
+          },
+          {
+            "timestamp": "2025-05-08 20:01:00",
+            "type": "generation",
+            "prompt": "Vast open book with cascading pages fusing into...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fda51dd1-8d43-4c23-88ca-f95acf97739e-e1/aa69b4e3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T190158Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a9f1a2e1afdd00d9512cd14f45b7e90f12bdacb885c77ffc08a159c35fdb619b"
+          },
+          {
+            "timestamp": "2025-05-08 21:01:01",
+            "type": "generation",
+            "prompt": "A violin's strings unravel into shimmering beam...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d9d66e65-5b05-4186-a52f-0dbd5b39eb7c-e1/0052600c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T200128Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=74b5d7ef45a65ca7cc02c38e5e1aed0118778b6e54a0708f2851641e0d61967d"
           }
         ]
       },
       "publish_destination": "south-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fb252786-e57d-4c4f-99c4-1680d44cc48a-e1/518f1ba9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T130127Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=8f1e902bd9c325d95ea3da0968b1987fcfc779f153f87af58f01cd4bdfd4df3f"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d9d66e65-5b05-4186-a52f-0dbd5b39eb7c-e1/0052600c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T200128Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=74b5d7ef45a65ca7cc02c38e5e1aed0118778b6e54a0708f2851641e0d61967d"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-08T14:55:32.849217",
+  "last_updated": "2025-05-08T21:01:32.422742",
   "last_trigger_executions": {
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T12:01:00": "2025-05-08T12:57:51.602303",
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T13:01:00": "2025-05-08T13:01:02.244568",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T14:01:00": "2025-05-08T14:01:01.578060"
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T14:01:00": "2025-05-08T14:01:01.578060",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T15:01:00": "2025-05-08T15:01:01.255483",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T16:01:00": "2025-05-08T16:01:00.913151",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T17:01:00": "2025-05-08T17:01:00.709388",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T18:01:00": "2025-05-08T18:01:01.313340",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T19:01:00": "2025-05-08T19:01:01.284967",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T20:01:00": "2025-05-08T20:01:00.959441",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T21:01:00": "2025-05-08T21:01:01.472163"
   }
 }
