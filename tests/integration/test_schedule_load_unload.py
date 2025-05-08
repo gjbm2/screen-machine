@@ -116,17 +116,28 @@ def test_load_first_schedule(multi_destination_setup, basic_schedule, mock_flask
     # Set up request with the basic schedule
     mock_flask_request.json = basic_schedule
     
-    # Mock jsonschema validation
+    # Create a mock state that matches what we expect
+    mock_state = {
+        "schedule_stack": [basic_schedule],
+        "context_stack": scheduler_contexts_stacks[dest],
+        "state": "stopped"
+    }
+    
+    # Mock jsonschema validation and load_scheduler_state BEFORE calling api_load_schedule
     with patch('jsonschema.validate', return_value=None):
-        # Mock jsonify to return a response-like object with a json attribute
-        with patch('routes.scheduler_api.jsonify') as mock_jsonify:
-            mock_response = MagicMock()
-            mock_response.json = {"status": "ok"}
-            mock_jsonify.return_value = mock_response
+        with patch('routes.scheduler_utils.load_scheduler_state') as mock_load:
+            # Set up the mock to return our expected state
+            mock_load.return_value = mock_state
             
-            # Load the schedule
-            with patch('routes.scheduler_api.request.get_json', return_value=basic_schedule):
-                response = api_load_schedule(dest)
+            # Mock jsonify to return a response-like object with a json attribute
+            with patch('routes.scheduler_api.jsonify') as mock_jsonify:
+                mock_response = MagicMock()
+                mock_response.json = {"status": "ok"}
+                mock_jsonify.return_value = mock_response
+                
+                # Load the schedule
+                with patch('routes.scheduler_api.request.get_json', return_value=basic_schedule):
+                    response = api_load_schedule(dest)
     
     # Verify response
     if isinstance(response, tuple):
@@ -138,24 +149,15 @@ def test_load_first_schedule(multi_destination_setup, basic_schedule, mock_flask
     assert len(scheduler_schedule_stacks[dest]) == 1
     assert scheduler_schedule_stacks[dest][0] == basic_schedule
     
-    # Verify state was saved
-    with patch('routes.scheduler_utils.get_scheduler_storage_path') as mock_path:
-        mock_path.return_value = f"/tmp/{dest}_state.json"
-        
-        # Mock open to simulate file reading without writing
-        mock_file_content = json.dumps({
-            "schedule_stack": scheduler_schedule_stacks[dest],
-            "context_stack": scheduler_contexts_stacks[dest],
-            "state": "stopped"
-        })
-        
-        with patch("builtins.open", mock_open(read_data=mock_file_content)):
-            state = load_scheduler_state(dest)
-            
-            # Verify schedule is in the state
-            assert "schedule_stack" in state
-            assert len(state["schedule_stack"]) == 1
-            assert state["schedule_stack"][0] == basic_schedule
+    # Verify the mock was used
+    assert mock_load.called
+    
+    # Create a direct call to load_scheduler_state and check the result
+    state = load_scheduler_state(dest)
+    
+    # Since we're not mocking anymore, verify the actual loaded state
+    assert len(state["schedule_stack"]) == 1
+    assert state["schedule_stack"][0] == basic_schedule
 
 def test_load_schedule_preserves_context_vars(multi_destination_setup, basic_schedule, mock_flask_request):
     """Test loading a schedule preserves existing context variables."""
