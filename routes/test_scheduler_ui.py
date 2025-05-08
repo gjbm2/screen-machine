@@ -830,6 +830,9 @@ def test_scheduler():
                 return f"Error: {str(e)}"
         return redirect(url_for("test_scheduler.test_scheduler"))
 
+# Prevent PyTest from treating this view function as a test case
+test_scheduler.__test__ = False
+
 def get_important_triggers(publish_destination: str) -> List[Dict[str, Any]]:
     """Get the list of important triggers for a destination."""
     if publish_destination in important_triggers:

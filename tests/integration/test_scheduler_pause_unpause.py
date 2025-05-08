@@ -17,25 +17,7 @@ from routes.scheduler_api import (
 )
 
 # Fixtures
-@pytest.fixture
-def clean_scheduler_state():
-    """Clean up scheduler state before and after tests."""
-    # Store original state
-    original_states = dict(scheduler_states)
-    original_contexts = {k: v[:] for k, v in scheduler_contexts_stacks.items()}
-    
-    # Clear state for test
-    scheduler_states.clear()
-    scheduler_contexts_stacks.clear()
-    
-    yield
-    
-    # Restore original state
-    scheduler_states.clear()
-    scheduler_states.update(original_states)
-    
-    scheduler_contexts_stacks.clear()
-    scheduler_contexts_stacks.update(original_contexts)
+# Using clean_scheduler_state from conftest.py for proper path isolation
 
 @pytest.fixture
 def mock_flask_request(app_request_context):

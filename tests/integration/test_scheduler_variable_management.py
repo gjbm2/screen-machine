@@ -68,30 +68,7 @@ def mock_flask_request(app_request_context):
         mock_request.get_json = lambda: mock_request.json
         yield mock_request
 
-@pytest.fixture
-def clean_scheduler_state():
-    """Clean up scheduler state before and after tests."""
-    # Store original state
-    original_states = dict(scheduler_states) if 'scheduler_states' in globals() else {}
-    original_contexts = {k: v[:] for k, v in scheduler_contexts_stacks.items()}
-    original_schedules = {k: v[:] for k, v in scheduler_schedule_stacks.items()}
-    
-    # Clear state for test
-    scheduler_contexts_stacks.clear()
-    scheduler_schedule_stacks.clear()
-    
-    yield
-    
-    # Restore original state
-    scheduler_contexts_stacks.clear()
-    scheduler_contexts_stacks.update(original_contexts)
-    
-    scheduler_schedule_stacks.clear()
-    scheduler_schedule_stacks.update(original_schedules)
-    
-    if 'scheduler_states' in globals():
-        scheduler_states.clear()
-        scheduler_states.update(original_states)
+# Using clean_scheduler_state from conftest.py for proper path isolation
 
 def test_variable_persistence(clean_scheduler_state):
     """Test that variables are properly persisted to disk."""

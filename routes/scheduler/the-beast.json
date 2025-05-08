@@ -60,7 +60,7 @@
   "context_stack": [
     {
       "vars": {
-        "value": "Change begins at home",
+        "value": "Tech to power",
         "history_var": [
           {
             "timestamp": "2025-05-06 09:00:00",
@@ -69,14 +69,43 @@
             "refiner": "nous_values",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/5ca11b83-dc95-4164-b0f9-2dc3369fbfa8-e1/1d60b970.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250506%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250506T080101Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=52a0abd2cae550059f0f15fafcb5a155ce1d7f1d2ab62d3d40d1f60320315c76"
+          },
+          {
+            "timestamp": "2025-05-08 08:00:01",
+            "type": "generation",
+            "prompt": "Action this day",
+            "refiner": "nous_values",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b8d44cdd-303a-4107-a87d-fe9a44e0df7e-e1/3ad3267c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T070026Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=27341cd4129501287348d36634663c701742d4922c69e68814e862aac4ee1319"
+          },
+          {
+            "timestamp": "2025-05-08 09:00:01",
+            "type": "generation",
+            "prompt": "Solve for people",
+            "refiner": "nous_values",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fb49185d-5af3-4849-b827-5c30b6aaede0-e1/302cf820.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T080026Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=c50355765ad35fed2b5f5d85eae68f7a307389fc3a911a0e0a4167559d86d943"
+          },
+          {
+            "timestamp": "2025-05-08 10:00:00",
+            "type": "generation",
+            "prompt": "See through",
+            "refiner": "nous_values",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/62258444-59cf-43ea-accc-f5572cfe5ab6-e1/8e510cb7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T090101Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=87c8ca455374aff21340de39fe44dcf371330236bf6f15401e12986a92e7d7e6"
           }
         ]
       },
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/5ca11b83-dc95-4164-b0f9-2dc3369fbfa8-e1/1d60b970.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250506%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250506T080101Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=52a0abd2cae550059f0f15fafcb5a155ce1d7f1d2ab62d3d40d1f60320315c76",
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/62258444-59cf-43ea-accc-f5572cfe5ab6-e1/8e510cb7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T090101Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=87c8ca455374aff21340de39fe44dcf371330236bf6f15401e12986a92e7d7e6",
       "publish_destination": "the-beast"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-08T01:13:26.050539",
-  "last_trigger_executions": {}
+  "last_updated": "2025-05-08T11:07:40.948236",
+  "last_trigger_executions": {
+    "4ece373dada4d1451a52e6e46e96a115_2025-05-08T08:00:00": "2025-05-08T08:00:01.557356",
+    "4ece373dada4d1451a52e6e46e96a115_2025-05-08T09:00:00": "2025-05-08T09:00:01.999724",
+    "4ece373dada4d1451a52e6e46e96a115_2025-05-08T10:00:00": "2025-05-08T10:00:00.544917",
+    "4ece373dada4d1451a52e6e46e96a115_2025-05-08T11:00:00": "2025-05-08T11:00:00.187462"
+  }
 }

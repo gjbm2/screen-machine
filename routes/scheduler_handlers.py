@@ -472,9 +472,30 @@ def handle_stop(instruction, context, now, output, publish_destination):
         
         # Explicitly remove from running_schedulers without unloading
         if publish_destination in running_schedulers:
-            future = running_schedulers.pop(publish_destination, None)
-            if future:
-                future.cancel()
+            scheduler_info = running_schedulers.pop(publish_destination, None)
+            # Handle both new (dict) and old (future-only) formats for robustness
+            if isinstance(scheduler_info, dict):
+                future = scheduler_info.get("future")
+                loop = scheduler_info.get("loop")
+            else:
+                future = scheduler_info
+                loop = None
+
+            # Cancel the running task if available
+            try:
+                if future and not future.done() and not future.cancelled():
+                    future.cancel()
+            except AttributeError:
+                # In tests, future might be a simple stub without these methods
+                pass
+
+            # Stop the event loop for this destination if we created one
+            if loop is not None:
+                from routes.scheduler import stop_event_loop
+                try:
+                    stop_event_loop(publish_destination)
+                except Exception:
+                    pass
             
             # Update state to stopped, but preserve schedule and context
             scheduler_states[publish_destination] = "stopped"
