@@ -199,3 +199,13 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* DND grid tweaks */
+.drag-grid {
+  overscroll-behavior-y: contain;
+}
+
+.drag-grid img {
+  -webkit-touch-callout: none;
+  user-select: none;
+}

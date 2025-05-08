@@ -85,7 +85,7 @@
         "_b_theme": "The Kingdom of the Galactic",
         "_style": "Surrealist Expressionism",
         "_guidance": "Create images where microscopic details of ordinary objects and expansive celestial bodies evoke a sense of scale that transcends the familiar. Using Surrealist Expressionism, aim to avoid repeating past subject-types by selecting newly imaginative contexts that combine reality with the fantastic. Leverage image history to push the boundaries of perception by emphasizing the unexpected and unusual within these realms.",
-        "prompt": "A violin's strings unravel into shimmering beams of starlight, celestial notes float amidst swirling galaxies, evoking harmony in the cosmic dance of music and universe.",
+        "prompt": "Salt shaker erupting with expansive star streams, swirling cosmos spilling from tiny grains, scattering across a dinner table set with glowing celestial cutlery.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:54",
@@ -646,6 +646,26 @@
             },
             "text_input": "Create an image of  in the style of Surrealist ...",
             "explanation": "I focused on a unique object, the violin, transforming its strings into cosmic elements. This ide..."
+          },
+          {
+            "timestamp": "2025-05-08 22:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Microscopic snowflake under a microscope, each crystal facet revealing vast nebulae, auroras shimmering between ice fragments, blending the delicate and the vast in surreal intricacies."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "To ensure originality, I selected a snowflake as the central element, focusing on its microscopic..."
+          },
+          {
+            "timestamp": "2025-05-08 23:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Salt shaker erupting with expansive star streams, swirling cosmos spilling from tiny grains, scattering across a dinner table set with glowing celestial cutlery."
+            },
+            "text_input": "Create an image of  in the style of Surrealist ...",
+            "explanation": "To craft a unique surrealist expressionism scene, I chose a salt shaker, a common object yet not ..."
           }
         ],
         "prompt_history": [
@@ -1096,15 +1116,31 @@
             "refiner": "gallerist",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d9d66e65-5b05-4186-a52f-0dbd5b39eb7c-e1/0052600c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T200128Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=74b5d7ef45a65ca7cc02c38e5e1aed0118778b6e54a0708f2851641e0d61967d"
+          },
+          {
+            "timestamp": "2025-05-08 22:01:00",
+            "type": "generation",
+            "prompt": "Microscopic snowflake under a microscope, each ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/6f1f8520-09cc-4973-8aea-54d6a7f8db1d-e1/d364aa0c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T210130Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5e96f8d4bbf812e85dcd6cc667f74ea50b8a4038ac1a09e376bea7789b616412"
+          },
+          {
+            "timestamp": "2025-05-08 23:01:00",
+            "type": "generation",
+            "prompt": "Salt shaker erupting with expansive star stream...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f0bfb7f0-cfb3-49db-b3f1-4f369886125c-e1/9e57d17b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T220204Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=03a79ceec226f521f365231af6900d1c9ad3ff51a56ea80d801f819797bf8625"
           }
         ]
       },
       "publish_destination": "south-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d9d66e65-5b05-4186-a52f-0dbd5b39eb7c-e1/0052600c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T200128Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=74b5d7ef45a65ca7cc02c38e5e1aed0118778b6e54a0708f2851641e0d61967d"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f0bfb7f0-cfb3-49db-b3f1-4f369886125c-e1/9e57d17b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T220204Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=03a79ceec226f521f365231af6900d1c9ad3ff51a56ea80d801f819797bf8625"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-08T21:01:32.422742",
+  "last_updated": "2025-05-08T23:43:00.910728",
   "last_trigger_executions": {
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T12:01:00": "2025-05-08T12:57:51.602303",
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T13:01:00": "2025-05-08T13:01:02.244568",
@@ -1115,6 +1151,8 @@
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T18:01:00": "2025-05-08T18:01:01.313340",
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T19:01:00": "2025-05-08T19:01:01.284967",
     "f603b6fe44c86218a92642aa2b525111_2025-05-08T20:01:00": "2025-05-08T20:01:00.959441",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T21:01:00": "2025-05-08T21:01:01.472163"
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T21:01:00": "2025-05-08T21:01:01.472163",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T22:01:00": "2025-05-08T22:01:00.822794",
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T23:01:00": "2025-05-08T23:01:00.620025"
   }
 }

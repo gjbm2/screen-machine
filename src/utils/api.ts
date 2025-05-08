@@ -7,11 +7,12 @@ const DEFAULT_API_URL = import.meta.env.VITE_API_URL || '/api';
 // Types for buckets
 export interface BucketItem {
   filename: string;
-  url: string;
+  url?: string;
   thumbnail_url?: string;
   thumbnail_embedded?: string;
-  favorite?: boolean;
+  favorite: boolean;
   metadata?: Record<string, any>;
+  created_at?: number;
 }
 
 export interface Bucket {
@@ -61,6 +62,7 @@ interface BucketDetails {
     thumbnail_embedded?: string;
     favorite: boolean;
     metadata: Record<string, any>;
+    created_at: number;
   }>;
   published: string | null;
   publishedAt: string | null;
@@ -1047,14 +1049,24 @@ export class Api {
     console.log('Raw bucket details response:', data);
     
     // Map files to items with the correct fields
-    const items = Array.isArray(data.files) ? data.files.map(file => ({
-      filename: file.filename,
-      url: file.url,
-      thumbnail_url: file.thumbnail_url,
-      thumbnail_embedded: file.thumbnail_embedded,
-      favorite: file.favorite || false,
-      metadata: file.metadata || {}
-    })) : [];
+    const items = Array.isArray(data.files) ? data.files.map(file => {
+      const baseMeta = file.metadata || {};
+      // Use created_at from the API response, fall back to metadata timestamp or file stats
+      const createdTs = file.created_at || baseMeta.timestamp || file.modified;
+
+      return {
+        filename: file.filename,
+        url: file.url,
+        thumbnail_url: file.thumbnail_url,
+        thumbnail_embedded: file.thumbnail_embedded,
+        favorite: file.favorite || false,
+        metadata: {
+          ...baseMeta,
+          timestamp: createdTs,
+        },
+        created_at: createdTs, // Add created_at to the item directly
+      };
+    }) : [];
     
     // Get published info from the published object
     const published = data.published || null;
