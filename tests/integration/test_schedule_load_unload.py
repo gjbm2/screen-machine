@@ -71,7 +71,7 @@ def another_schedule():
 @pytest.fixture
 def multi_destination_setup(clean_scheduler_state):
     """Set up multiple publish destinations."""
-    destinations = ["cloud", "devtest", "local"]
+    destinations = ["test_dest1", "test_dest2", "test_dest3"]
     
     # Initialize each destination with empty stacks
     for dest in destinations:

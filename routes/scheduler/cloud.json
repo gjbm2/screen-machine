@@ -1,6 +1,9 @@
 {
   "schedule_stack": [
     {
+      "initial_actions": {
+        "instructions_block": []
+      },
       "triggers": [
         {
           "type": "day_of_week",
@@ -9,37 +12,65 @@
             "Tuesday",
             "Wednesday",
             "Thursday",
-            "Friday"
+            "Friday",
+            "Saturday",
+            "Sunday"
           ],
           "scheduled_actions": [
             {
-              "time": "09:00",
+              "time": "00:01",
               "trigger_actions": {
                 "instructions_block": [
                   {
-                    "action": "set_var",
-                    "var": "day_start",
-                    "input": {
-                      "value": "work day started"
-                    }
+                    "action": "reason",
+                    "history_var": "history_var",
+                    "image_inputs": [],
+                    "output_vars": [
+                      "a_theme",
+                      "b_theme",
+                      "style",
+                      "guidance"
+                    ],
+                    "reasoner": "theme_and_style",
+                    "text_input": "The last seven days were: {{ history_var[-7:] }}"
+                  },
+                  {
+                    "action": "export_var",
+                    "friendly_name": "A theme of the day",
+                    "scope": "living-room",
+                    "var_name": "a_theme"
+                  },
+                  {
+                    "action": "export_var",
+                    "friendly_name": "B theme of the day",
+                    "scope": "living-room",
+                    "var_name": "b_theme"
+                  },
+                  {
+                    "action": "export_var",
+                    "friendly_name": "Style of the day",
+                    "scope": "living-room",
+                    "var_name": "style"
+                  },
+                  {
+                    "action": "export_var",
+                    "friendly_name": "Generator guidance",
+                    "scope": "living-room",
+                    "var_name": "guidance"
                   }
                 ]
+              },
+              "repeat_schedule": {
+                "every": "60"
               }
             }
           ]
         }
       ],
-      "initial_actions": {
-        "instructions_block": [
-          {
-            "action": "set_var",
-            "var": "schedule_loaded",
-            "input": {
-              "value": "true"
-            }
-          }
-        ]
-      }
+      "final_actions": {
+        "instructions_block": []
+      },
+      "prevent_unload": true
     }
   ],
   "context_stack": [
@@ -49,12 +80,71 @@
     },
     {
       "vars": {
-        "new_var": "new_value"
+        "a_theme": "Ancient Arctic Myths - The Icebound Legends",
+        "b_theme": "Modern Arctic Industry - The Isolation of Steel",
+        "style": "James Whistler's Tonalism",
+        "guidance": "For the theme of Arctic environments, consider the atmospheric qualities of Whistler's works to convey both the mystical and industrial aspects. Avoid previous subjects by using distinctly arctic-themed landmarks and human influences captured in hazy, atmospheric tones.",
+        "history_var": [
+          {
+            "timestamp": "2025-05-08 10:29:02",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "Mirrored Landscapes",
+              "b_theme": "Urban Abandonment",
+              "style": "Baroque Engravings",
+              "guidance": "Select varied landscapes and urban scenes ensuring unique focal points from previous history, rendering them with intricate details characteristic of Baroque engraving."
+            },
+            "text_input": "The last seven days were: [history reference]",
+            "explanation": "Style-led approach leveraging the ornate complexity of Baroque engravings, which offers a visuall..."
+          },
+          {
+            "timestamp": "2025-05-08 10:33:35",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "Endangered wildlife portrayed in their habitats",
+              "b_theme": "Extinct animals imagined in modern world settings",
+              "style": "Art Nouveau style inspired by Alphonse Mucha",
+              "guidance": "Focus on differentiating the species highlighted in each image, ensuring clear contrasts and diversity from the recent image history, executed in the fluid lines and ornamental elegance of Mucha's Art Nouveau."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "Theme-led approach emphasizing the intriguing contrasts between endangered and extinct species, e..."
+          },
+          {
+            "timestamp": "2025-05-08 10:34:01",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "Bittersweet Harvests: Lost and Found",
+              "b_theme": "Bittersweet Harvests: Preserved and Forgotten",
+              "style": "Gustav Klimt's Symbolist style",
+              "guidance": "Focus on pairing harvested elements that play off the interplay of loss and preservation. Avoid repeating subjects from recent history by selecting unique combinations evocative of nostalgia, captured in Klimt's opulent Symbolist style."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "This is a theme-led approach, taking the concept of a 'Bittersweet Harvest' and exploring dualiti..."
+          },
+          {
+            "timestamp": "2025-05-08 11:10:00",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "Ancient Arctic Myths - The Icebound Legends",
+              "b_theme": "Modern Arctic Industry - The Isolation of Steel",
+              "style": "James Whistler's Tonalism",
+              "guidance": "For the theme of Arctic environments, consider the atmospheric qualities of Whistler's works to convey both the mystical and industrial aspects. Avoid previous subjects by using distinctly arctic-themed landmarks and human influences captured in hazy, atmospheric tones."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "This is a theme-led approach. The theme explores the contrast between ancient arctic myths and mo..."
+          }
+        ]
       },
       "publish_destination": "cloud"
     }
   ],
-  "state": "stopped",
-  "last_updated": "2025-05-08T02:00:35.655728",
-  "last_trigger_executions": {}
+  "state": "running",
+  "last_updated": "2025-05-08T11:10:06.807613",
+  "last_trigger_executions": {
+    "f603b6fe44c86218a92642aa2b525111_2025-05-08T11:01:00": "2025-05-08T11:10:00.483044"
+  }
 }

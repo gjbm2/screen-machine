@@ -9,13 +9,35 @@ from flask.testing import FlaskClient
 import tempfile
 from unittest.mock import patch
 
+# -----------------------------------------------------------------------------
+# Pytest global configuration: redirect ALL persistence paths to temp dirs
+# -----------------------------------------------------------------------------
+
+def pytest_configure(config):
+    """Early-phase hook that runs once at collection time.
+    It patches *scheduler_utils* so that **no test can touch production files**,
+    even if a particular test module defines its own fixtures or calls the
+    code before local fixtures run."""
+    from routes import scheduler_utils as _sutils
+    
+    temp_root = tempfile.mkdtemp(prefix="scheduler_tests_")
+    vars_path = os.path.join(temp_root, "_vars.json")
+    storage_dir = os.path.join(temp_root, "state")
+    os.makedirs(storage_dir, exist_ok=True)
+
+    # Patch the registry path
+    _sutils.VARS_REGISTRY_PATH = vars_path
+
+    # Patch the storage path function
+    def _mock_get_storage_path(dest_id: str) -> str:
+        return os.path.join(storage_dir, f"{dest_id}.json")
+    _sutils.get_scheduler_storage_path = _mock_get_storage_path
+
 @pytest.fixture
-def temp_registry_file(tmp_path, monkeypatch):
-    """Create a temporary registry file path and patch the global reference."""
-    mock_registry_path = str(tmp_path / "_vars.json")
-    # Make sure the actual registry file isn't modified during tests
-    monkeypatch.setattr('routes.scheduler_utils.VARS_REGISTRY_PATH', mock_registry_path)
-    return mock_registry_path
+def temp_registry_file(clean_scheduler_state):
+    """Get the temporary registry file path from clean_scheduler_state.
+    This ensures all tests use the same isolated registry path."""
+    return clean_scheduler_state["registry_path"]
 
 @pytest.fixture
 def mock_scheduler_context():
@@ -27,23 +49,46 @@ def mock_scheduler_context():
     }
 
 @pytest.fixture
-def clean_scheduler_state(monkeypatch):
-    """Provide clean scheduler state dictionaries."""
+def clean_scheduler_state(monkeypatch, tmp_path):
+    """Provide clean scheduler state dictionaries and redirect all storage to temp paths."""
+    # Create temp dirs for test storage
+    test_storage_dir = tmp_path / "scheduler_storage"
+    test_storage_dir.mkdir(exist_ok=True)
+    test_registry_dir = tmp_path / "vars_registry"
+    test_registry_dir.mkdir(exist_ok=True)
+    
+    # Mock in-memory state
     mock_contexts = {}
     mock_schedules = {}
     mock_states = {}
     mock_logs = {}
     
+    # Path to the test registry file
+    test_registry_path = str(test_registry_dir / "_vars.json")
+    
+    # Mock global variable references
     monkeypatch.setattr('routes.scheduler_utils.scheduler_contexts_stacks', mock_contexts)
     monkeypatch.setattr('routes.scheduler_utils.scheduler_schedule_stacks', mock_schedules)
     monkeypatch.setattr('routes.scheduler_utils.scheduler_states', mock_states)
     monkeypatch.setattr('routes.scheduler_utils.scheduler_logs', mock_logs)
     
+    # CRITICAL: Redirect the registry path to test directory
+    monkeypatch.setattr('routes.scheduler_utils.VARS_REGISTRY_PATH', test_registry_path)
+    
+    # CRITICAL: Redirect the scheduler storage path function to use test directory
+    def mock_get_storage_path(publish_destination: str) -> str:
+        return str(test_storage_dir / f"{publish_destination}.json")
+    
+    monkeypatch.setattr('routes.scheduler_utils.get_scheduler_storage_path', mock_get_storage_path)
+    
+    # Return the clean state objects for test use
     return {
         "contexts": mock_contexts,
         "schedules": mock_schedules,
         "states": mock_states,
-        "logs": mock_logs
+        "logs": mock_logs,
+        "storage_dir": test_storage_dir,
+        "registry_path": test_registry_path
     }
 
 @pytest.fixture
@@ -92,13 +137,10 @@ def output_list():
     return []
 
 @pytest.fixture
-def mock_scheduler_storage_path(tmp_path, monkeypatch):
-    """Mock the scheduler storage path to use a temp directory."""
-    def mock_path(dest_id):
-        return str(tmp_path / f"{dest_id}.json")
-    
-    monkeypatch.setattr('routes.scheduler_utils.get_scheduler_storage_path', mock_path)
-    return tmp_path
+def mock_scheduler_storage_path(clean_scheduler_state):
+    """Get the temporary scheduler storage path from clean_scheduler_state.
+    This ensures all tests use the same isolated storage path."""
+    return clean_scheduler_state["storage_dir"]
 
 @pytest.fixture
 def enable_testing_mode(monkeypatch):
@@ -233,20 +275,16 @@ def test_schedule_generate_animate():
     }
 
 @pytest.fixture
-def app():
+def app(clean_scheduler_state):
     """Create and configure a Flask app for testing."""
     # Create a minimal Flask app for testing
     app = Flask(__name__)
     app.config['TESTING'] = True
     
-    # Setup temp directory for file storage during tests
-    with tempfile.TemporaryDirectory() as temp_dir:
-        app.config['SCHEDULER_DIR'] = temp_dir
-        
-        # Use patch to make sure get_scheduler_storage_path uses the test directory
-        with patch('routes.scheduler_utils.get_scheduler_storage_path', 
-                  lambda dest: os.path.join(temp_dir, f"{dest}.json")):
-            yield app
+    # Set the scheduler directory to our test storage directory
+    app.config['SCHEDULER_DIR'] = str(clean_scheduler_state["storage_dir"])
+    
+    yield app
 
 @pytest.fixture
 def client(app):
@@ -271,41 +309,6 @@ def app_request_context(app):
     with app.app_context():
         with app.test_request_context():
             yield
-
-@pytest.fixture
-def clean_scheduler_state():
-    """Clean up scheduler state before and after tests."""
-    # Store original state
-    original_states = dict(scheduler_states)
-    original_contexts = {k: v[:] for k, v in scheduler_contexts_stacks.items()}
-    original_schedules = {k: v[:] for k, v in scheduler_schedule_stacks.items()}
-    original_logs = {k: v[:] for k, v in scheduler_logs.items()}
-    
-    # Clear state for test
-    scheduler_states.clear()
-    scheduler_contexts_stacks.clear()
-    scheduler_schedule_stacks.clear()
-    scheduler_logs.clear()
-    
-    yield {
-        "states": scheduler_states,
-        "contexts": scheduler_contexts_stacks,
-        "schedules": scheduler_schedule_stacks,
-        "logs": scheduler_logs
-    }
-    
-    # Restore original state
-    scheduler_states.clear()
-    scheduler_states.update(original_states)
-    
-    scheduler_contexts_stacks.clear()
-    scheduler_contexts_stacks.update(original_contexts)
-    
-    scheduler_schedule_stacks.clear()
-    scheduler_schedule_stacks.update(original_schedules)
-    
-    scheduler_logs.clear()
-    scheduler_logs.update(original_logs)
 
 @pytest.fixture
 def test_schedule():

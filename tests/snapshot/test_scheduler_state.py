@@ -120,7 +120,7 @@ def test_state_persistence_through_restart(mock_scheduler_storage_path, clean_sc
     monkeypatch.setattr('asyncio.run_coroutine_threadsafe', mock_run_coroutine_threadsafe)
     
     # Mock get_event_loop to avoid thread issues in tests
-    def mock_get_event_loop():
+    def mock_get_event_loop(dest_id=None):
         return object()  # Any object to represent the loop
     
     monkeypatch.setattr('routes.scheduler.get_event_loop', mock_get_event_loop)
@@ -202,7 +202,7 @@ def test_start_scheduler_resumes_with_existing_context(mock_scheduler_storage_pa
     monkeypatch.setattr('asyncio.run_coroutine_threadsafe', mock_run_coroutine_threadsafe)
 
     # Mock get_event_loop to avoid thread issues in tests
-    def mock_get_event_loop():
+    def mock_get_event_loop(dest_id=None):
         return object()
 
     monkeypatch.setattr('routes.scheduler.get_event_loop', mock_get_event_loop)

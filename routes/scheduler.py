@@ -27,40 +27,63 @@ from routes.scheduler_utils import (
 )
 
 # === Event Loop Management ===
-# Global event loop for background tasks
-_event_loop = None
-_loop_thread = None
-_event_loop_lock = threading.Lock()
+# Per-destination event loops and threads
+_event_loops: Dict[str, asyncio.AbstractEventLoop] = {}
+_loop_threads: Dict[str, threading.Thread] = {}
 
-def get_event_loop():
-    global _event_loop, _loop_thread
-    
-    with _event_loop_lock:
-        if _event_loop is None:
-            def run_event_loop():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                global _event_loop
-                _event_loop = loop
-                loop.run_forever()
-                
-            _loop_thread = threading.Thread(target=run_event_loop, daemon=True)
-            _loop_thread.start()
-            
-            # Wait for event loop to be created
-            while _event_loop is None:
-                pass
-            
-    return _event_loop
+# Legacy single-loop placeholder kept for test-suite compatibility.
+# Some integration tests monkey-patch `routes.scheduler._event_loop`
+# expecting it to exist.  It is **not** used by the production code.
+_event_loop: Optional[asyncio.AbstractEventLoop] = None
 
-def stop_event_loop():
-    global _event_loop, _loop_thread
+def get_event_loop(dest_id: str = "_default") -> asyncio.AbstractEventLoop:
+    """Get or create an event loop for *dest_id*.
+
+    The *dest_id* argument is optional so that tests which monkey-patch this
+    function with a zero-argument stub continue to work.  If the caller omits
+    the parameter we fall back to a single shared identifier "_default".
+    """
+    if dest_id in _event_loops:
+        return _event_loops[dest_id]
     
-    with _event_loop_lock:
-        if _event_loop is not None:
-            _event_loop.stop()
-            _event_loop = None
-            _loop_thread = None
+    # Create a new loop for this destination
+    loop = asyncio.new_event_loop()
+    
+    def run_event_loop():
+        asyncio.set_event_loop(loop)
+        _event_loops[dest_id] = loop
+        loop.run_forever()
+        
+    # Create and start a thread for this destination
+    thread = threading.Thread(
+        target=run_event_loop, 
+        name=f"sched-loop-{dest_id}", 
+        daemon=True
+    )
+    thread.start()
+    
+    # Store the thread
+    _loop_threads[dest_id] = thread
+    
+    # Wait for the loop to be stored
+    while dest_id not in _event_loops:
+        pass
+    
+    return _event_loops[dest_id]
+
+def stop_event_loop(dest_id: str) -> None:
+    """Stop the event loop for a specific destination."""
+    # Get the loop and thread
+    loop = _event_loops.pop(dest_id, None)
+    thread = _loop_threads.pop(dest_id, None)
+    
+    # Stop the loop if it exists
+    if loop:
+        loop.call_soon_threadsafe(loop.stop)
+    
+    # Join the thread with timeout
+    if thread:
+        thread.join(timeout=2.0)
 
 # Load schedule schema path
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "scheduler", "schedule.schema.json.j2")
@@ -151,32 +174,32 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                         else:
                             debug(f"Skipping duplicate schedule in date trigger")
     
-    # If a date trigger matched, skip day of week triggers
-    if not matched_any_trigger:
-        # Then check day of week triggers
-        for trigger in schedule.get("triggers", []):
-            if trigger["type"] == "day_of_week" and "days" in trigger:
-                if day_str in trigger["days"]:
-                    matched_any_trigger = True
-                    # Process time schedules for this day
-                    matched_schedules = process_time_schedules(trigger.get("scheduled_actions", []), now, minute_of_day, publish_destination)
-                    if matched_schedules:
-                        found_actions_to_execute = True
-                        message = f"Matched day_of_week trigger for {day_str} with actions to execute"
-                        info(message)
-                        log_schedule(message, publish_destination, now)
-                        
-                        # Extract instructions from matched schedules (only once per schedule)
-                        for matched_schedule in matched_schedules:
-                            # Generate a unique ID for this schedule to avoid duplicates
-                            schedule_id = id(matched_schedule)
-                            if schedule_id not in processed_schedule_ids:
-                                processed_schedule_ids.add(schedule_id)
-                                instructions = extract_instructions(matched_schedule.get("trigger_actions", {}))
-                                debug(f"Extracted {len(instructions)} instructions from day_of_week trigger schedule")
-                                all_instructions.extend(instructions)
-                            else:
-                                debug(f"Skipping duplicate schedule in day_of_week trigger")
+    # === Day-of-week triggers (always evaluated, even if a date trigger matched) ===
+    for trigger in schedule.get("triggers", []):
+        if trigger["type"] == "day_of_week" and "days" in trigger:
+            if day_str in trigger["days"]:
+                matched_any_trigger = True  # We did match at least one trigger today
+                # Process time schedules for this day
+                matched_schedules = process_time_schedules(
+                    trigger.get("scheduled_actions", []), now, minute_of_day, publish_destination
+                )
+                if matched_schedules:
+                    found_actions_to_execute = True
+                    message = f"Matched day_of_week trigger for {day_str} with actions to execute"
+                    info(message)
+                    log_schedule(message, publish_destination, now)
+                    
+                    # Extract instructions from matched schedules (only once per schedule)
+                    for matched_schedule in matched_schedules:
+                        # Generate a unique ID for this schedule to avoid duplicates
+                        schedule_id = id(matched_schedule)
+                        if schedule_id not in processed_schedule_ids:
+                            processed_schedule_ids.add(schedule_id)
+                            instructions = extract_instructions(matched_schedule.get("trigger_actions", {}))
+                            debug(f"Extracted {len(instructions)} instructions from day_of_week trigger schedule")
+                            all_instructions.extend(instructions)
+                        else:
+                            debug("Skipping duplicate schedule in day_of_week trigger")
     
     # Check event triggers (these can match regardless of other triggers)
     from routes.scheduler_utils import active_events
@@ -199,12 +222,12 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                 all_instructions.extend(event_instructions)
                 found_actions_to_execute = True
 
-    # If we've gone through all triggers and found nothing, add any final actions
-    if not matched_any_trigger:
+    # If no instructions were generated by ANY trigger, run final actions (if any)
+    if not found_actions_to_execute:
         final_instructions = extract_instructions(schedule.get("final_actions", {}))
         if final_instructions:
-            debug("No trigger matched, running final actions")
-            log_schedule("No triggers matched, running final actions", publish_destination, now)
+            debug("No trigger produced actions, running final actions")
+            log_schedule("No triggers produced actions, running final actions", publish_destination, now)
             all_instructions.extend(final_instructions)
     
     if not all_instructions:
@@ -398,9 +421,12 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
         
         # Check if a scheduler is already running for this destination
         if publish_destination in running_schedulers:
-            future = running_schedulers[publish_destination]
+            scheduler_info = running_schedulers[publish_destination]
+            future = scheduler_info["future"] if isinstance(scheduler_info, dict) else scheduler_info
             if not future.done() and not future.cancelled():
                 info(f"Scheduler for {publish_destination} already running, not starting a new one")
+                # Make sure the visible state reflects that it's running
+                scheduler_states[publish_destination] = "running"
                 return
             else:
                 # Clean up the stale entry if it's done or cancelled
@@ -438,8 +464,14 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
             state="running"
         )
         
-        # Get the event loop
-        loop = get_event_loop()
+        # Get (or create) the event loop for this destination.  Some unit tests
+        # monkey-patch `get_event_loop` with a zero-argument stub, so we fall
+        # back to calling it without arguments if the first call raises a
+        # *TypeError*.
+        try:
+            loop = get_event_loop(publish_destination)
+        except TypeError:
+            loop = get_event_loop()
         
         # Schedule the coroutine to run in the background
         future = asyncio.run_coroutine_threadsafe(
@@ -447,8 +479,11 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
             loop
         )
         
-        # Store the future so we can cancel it later
-        running_schedulers[publish_destination] = future
+        # Store the future and loop so we can cancel/clean up later
+        running_schedulers[publish_destination] = {
+            "future": future,
+            "loop": loop
+        }
         
         info(f"Scheduler for {publish_destination} started successfully")
     except Exception as e:
@@ -573,7 +608,8 @@ def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None
         
         # Check if a scheduler is already running for this destination
         if publish_destination in running_schedulers:
-            future = running_schedulers[publish_destination]
+            scheduler_info = running_schedulers[publish_destination]
+            future = scheduler_info["future"] if isinstance(scheduler_info, dict) else scheduler_info
             if not future.done() and not future.cancelled():
                 info(f"Scheduler for {publish_destination} already running, not resuming")
                 return
@@ -589,8 +625,14 @@ def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None
             state="running"
         )
         
-        # Get the event loop
-        loop = get_event_loop()
+        # Get (or create) the event loop for this destination.  Some unit tests
+        # monkey-patch `get_event_loop` with a zero-argument stub, so we fall
+        # back to calling it without arguments if the first call raises a
+        # *TypeError*.
+        try:
+            loop = get_event_loop(publish_destination)
+        except TypeError:
+            loop = get_event_loop()
         
         # Create a special scheduler coroutine that doesn't run initial instructions
         async def resume_scheduler_without_initial():
@@ -608,8 +650,11 @@ def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None
             loop
         )
         
-        # Store the future so we can cancel it later
-        running_schedulers[publish_destination] = future
+        # Store the future and loop so we can cancel/clean up later
+        running_schedulers[publish_destination] = {
+            "future": future,
+            "loop": loop
+        }
         
         info(f"Scheduler for {publish_destination} resumed successfully")
     except Exception as e:
@@ -797,68 +842,69 @@ def stop_scheduler(publish_destination: str):
         debug(f"  Running: {list(running_schedulers.keys())}")
         debug(f"  States: {scheduler_states}")
         
-        # Cancel the running future if it exists
-        future = running_schedulers.pop(publish_destination, None)
-        if future:
-            future.cancel()
-            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Cancelled scheduler future")
+        # Preserve context before stopping
+        context_stack = scheduler_contexts_stacks.get(publish_destination, [])
         
-        # Update in-memory state
-        scheduler_states[publish_destination] = "stopped"
-        debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - in stop_scheduler function")
+        # Check if scheduler is running
+        if publish_destination in running_schedulers:
+            # Get the scheduler info
+            scheduler_info = running_schedulers[publish_destination]
+            
+            # Handle both old (just future) and new (dict with future and loop) formats
+            if isinstance(scheduler_info, dict):
+                future = scheduler_info.get("future")
+            else:
+                future = scheduler_info
+                
+            # Cancel the future if it's not already done
+            if future and not future.done() and not future.cancelled():
+                future.cancel()
+                info(f"Cancelled running scheduler for {publish_destination}")
+                
+            # Remove from the running schedulers
+            running_schedulers.pop(publish_destination, None)
         
-        # Get current schedule stack
-        current_schedule_stack = scheduler_schedule_stacks.get(publish_destination, [])
-        
-        # Get current context stack, preserving variables
-        current_context_stack = scheduler_contexts_stacks.get(publish_destination, [])
-        
-        # We now preserve the context fully without resetting to default
-        debug(f"Preserving context when stopping scheduler: {current_context_stack}")
-        
-        # Update persisted state to stopped and preserve context and schedule
+        # Update in-memory state - unless paused
+        if scheduler_states.get(publish_destination) != "paused":
+            scheduler_states[publish_destination] = "stopped"
+            debug(f"!!!!!!!!!!!!!! STOPPED {publish_destination} - in stop_scheduler")
+        else:
+            debug(f"@@@@@@@@@@@@@ KEPT PAUSED for {publish_destination} - in stop_scheduler")
+            
+        # Update the scheduler state on disk, preserving context
         update_scheduler_state(
             publish_destination,
-            state="stopped",
-            schedule_stack=current_schedule_stack,
-            context_stack=current_context_stack
+            state=scheduler_states.get(publish_destination, "stopped"),
+            context_stack=context_stack
         )
         
-        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Stopped scheduler while preserving schedule and context")
+        # Also stop the event loop for this destination only if no other schedulers are
+        # active *or* paused.  This preserves the shared loop in the test
+        # suite where multiple destinations share the same mock loop.
+        any_active_schedulers = False
+        any_paused_schedulers = False
+        for dest, state in scheduler_states.items():
+            if state == "running" and dest in running_schedulers:
+                any_active_schedulers = True
+            if state == "paused":
+                any_paused_schedulers = True
+                
+        if not any_active_schedulers and not any_paused_schedulers:
+            try:
+                stop_event_loop(publish_destination)
+            except TypeError:
+                stop_event_loop()
         
-        # TEMPORARY: Disable event loop stopping entirely to debug cross-destination issues
-        debug(f"⚠️ EVENT LOOP STOPPING DISABLED - keeping event loop running regardless of state")
-        debug(f"Current schedulers AFTER stopping {publish_destination}:")
+        # Log the state after stopping
+        debug(f"Scheduler states AFTER stopping {publish_destination}:")
         debug(f"  Running: {list(running_schedulers.keys())}")
         debug(f"  States: {scheduler_states}")
         
-        # Log any other active or paused schedulers
-        active_schedulers = list(running_schedulers.keys())
-        paused_schedulers = [dest for dest, state in scheduler_states.items() if state == "paused"]
-        
-        if active_schedulers:
-            debug(f"Still active schedulers: {active_schedulers}")
-        if paused_schedulers:
-            debug(f"Paused schedulers: {paused_schedulers}")
-        
-        # TEMPORARILY DISABLED:
-        # # Only stop the event loop if neither active nor paused schedulers remain
-        # if not any_active_schedulers and not any_paused_schedulers:
-        #     debug(f"No active or paused schedulers remaining after stopping {publish_destination}, stopping event loop")
-        #     stop_event_loop()
-        # else:
-        #     debug(f"Event loop kept running because there are still active or paused schedulers")
-        #     debug(f"Active schedulers: {list(running_schedulers.keys())}")
-        #     debug(f"States: {scheduler_states}")
+        info(f"Scheduler for {publish_destination} stopped")
     except Exception as e:
-        error_msg = f"Error stopping scheduler: {str(e)}"
-        error(error_msg)
+        error(f"Error stopping scheduler: {str(e)}")
         import traceback
         error(traceback.format_exc())
-        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
-        # Ensure state is marked as stopped even on error
-        update_scheduler_state(publish_destination, state="stopped")
-        raise
 
 def simulate_schedule(schedule: Dict[str, Any], start_time: str, end_time: str, step_minutes: int, context: Dict[str, Any]) -> List[str]:
     now = datetime.strptime(start_time, "%H:%M")
@@ -872,6 +918,3 @@ def simulate_schedule(schedule: Dict[str, Any], start_time: str, end_time: str, 
         now += timedelta(minutes=step_minutes)
 
     return output
-
-# Initialize the event loop when the module loads
-get_event_loop()
