@@ -18,7 +18,7 @@
           ],
           "scheduled_actions": [
             {
-              "time": "00:01",
+              "time": "06:00",
               "trigger_actions": {
                 "instructions_block": [
                   {
@@ -53,7 +53,7 @@
                       "prompt"
                     ],
                     "reasoner": "devise_prompt",
-                    "text_input": "Create an image of {{ a_theme }} in the style of {{ _style }}. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. "
+                    "text_input": "'{{ _a_theme }}' in the style of '{{ _style }}'. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. "
                   },
                   {
                     "action": "generate",
@@ -61,12 +61,27 @@
                     "input": {
                       "prompt": "{{ prompt }}"
                     },
-                    "refiner": "gallerist"
+                    "refiner": "curator"
                   }
                 ]
               },
               "repeat_schedule": {
-                "every": "60"
+                "every": "30"
+              }
+            },
+            {
+              "time": "06:05",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "animate",
+                    "refiner": "animator",
+                    "history_var": "animation_history"
+                  }
+                ]
+              },
+              "repeat_schedule": {
+                "every": "120"
               }
             }
           ]
@@ -81,11 +96,11 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "The Court of the Microscopic",
-        "_b_theme": "The Kingdom of the Galactic",
-        "_style": "Surrealist Expressionism",
-        "_guidance": "Create images where microscopic details of ordinary objects and expansive celestial bodies evoke a sense of scale that transcends the familiar. Using Surrealist Expressionism, aim to avoid repeating past subject-types by selecting newly imaginative contexts that combine reality with the fantastic. Leverage image history to push the boundaries of perception by emphasizing the unexpected and unusual within these realms.",
-        "prompt": "Enchanted library where books grow as trees, their roots intertwining like constellations, each page turning to reveal a galaxy, surging with life and vibrant expressionist hues.",
+        "_a_theme": "Moments of Quiet Bravery",
+        "_b_theme": "Public Acts of Heroism",
+        "_style": "Berthe Morisot\u2019s Impressionist brushwork",
+        "_guidance": "Focus on depicting various instances of personal courage in intimate settings, ensuring diversity and freshness by avoiding repetition with recent image history, all while employing Berthe Morisot\u2019s soft and fluid Impressionist brushwork.",
+        "prompt": "A young mother sewing under moonlight in a modest hut with a sleeping infant nearby, Morisot's ethereal brushwork capturing quiet persistence amidst gentle night shadows.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:23",
@@ -714,6 +729,276 @@
             },
             "text_input": "Create an image of  in the style of Surrealist ...",
             "explanation": "To diverge from the previously mentioned settings like deserts, forests, and urban locales, I pla..."
+          },
+          {
+            "timestamp": "2025-05-09 01:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A mother in a soft-lit kitchen shielding her child with a gentle embrace; delicate pastel strokes evoke warmth, sunlight filtering through lace curtains emphasizes safety."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "This prompt focuses on an intimate, domestic scene of personal courage, distinct from surreal lan..."
+          },
+          {
+            "timestamp": "2025-05-09 02:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A young man alone in a small library, candlelit, steadily writing a letter of resignation; soft Impressionist strokes capture quiet courage and contemplative ambiance."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I depicted an act of courage through a young man writing a resignation letter in a library, diffe..."
+          },
+          {
+            "timestamp": "2025-05-09 03:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Elderly woman serenely planting seeds in urban balcony garden, dusk light softening her resolve; Impressionist brushwork capturing courage's quiet, tender glow."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I chose a setting of an elderly woman in an urban balcony garden, focusing on her act of planting..."
+          },
+          {
+            "timestamp": "2025-05-09 04:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Woman bravely playing piano at a small family gathering, warm fireplace glow highlighting delicate, expressive brushwork; cascading notes symbolize her courage to share her passion."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "This prompt presents a unique act of personal courage by focusing on a woman playing the piano at..."
+          },
+          {
+            "timestamp": "2025-05-09 05:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A lone father gently stitching a child's teddy bear by the hearth; Impressionist strokes capture his meticulous care amidst glowing embers, evoking quiet resilience and warmth."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I selected a tender scene of a father repairing a child's toy by the fire, a unique setting compa..."
+          },
+          {
+            "timestamp": "2025-05-09 06:01:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A woman alone at a bustling marketplace, gently guiding an elderly person with a warm demeanor; soft Impressionist hues communicate compassion and mutual independence."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "To create a distinct scenario, I selected a busy marketplace atmosphere reflecting courage throug..."
+          },
+          {
+            "timestamp": "2025-05-09 07:01:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Young woman tucks a self-help book in a park, sun-dappled leaves falling around her, Morisot's gentle colors capturing quiet resolve and serenity."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I've chosen an outdoor scene of personal courage not previously mentioned, with a young woman fin..."
+          },
+          {
+            "timestamp": "2025-05-09 08:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A nurse silently comforting a patient in a warm, sunlit hospital room; Morisot\u2019s brushwork captures the tender solidarity with soft, layered pastels."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I chose a hospital room setting, focusing on a nurse comforting a patient, distinct from previous..."
+          },
+          {
+            "timestamp": "2025-05-09 09:01:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A solitary figure crafting handmade lanterns at a twilight festival stall; Morisot's misty brushwork conveys an artisan's gentle resilience amidst vibrant evening lights."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I crafted a prompt depicting an artisan making lanterns at a festival, leveraging the twilight an..."
+          },
+          {
+            "timestamp": "2025-05-09 09:18:42",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Teen in an art studio glancing out window during rain, brush in hand, vibrant pastels capturing quiet contemplation and fledgling courage for creative expression."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I avoided previous themes by placing the scene in an art studio with a teen preparing to paint, f..."
+          },
+          {
+            "timestamp": "2025-05-09 09:25:35",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A girl practicing violin on a dimly lit balcony, cityscape glowing below; soft Impressionist strokes reflect her quiet determination and the serene night backdrop."
+            },
+            "text_input": "Create an image of Moments of Quiet Bravery in ...",
+            "explanation": "This prompt introduces a new setting on a balcony at night, distinct from previous interior and m..."
+          },
+          {
+            "timestamp": "2025-05-09 09:58:37",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Young boy climbing a tree in a sun-dappled forest clearing, immersed in imagination; Morisot's fluid brushstrokes capture tender bravery amidst vibrant greenery."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "To create a distinctly different scenario, I opted for an outdoor setting featuring a young boy c..."
+          },
+          {
+            "timestamp": "2025-05-09 10:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Older man jogging at dawn through a misty park, breath visible in cold air; Morisot\u2019s delicate brushwork captures steadfast focus amidst serene nature."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "I chose a scene of an older man jogging, distinct from other settings or activities previously de..."
+          },
+          {
+            "timestamp": "2025-05-09 11:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A young woman sitting by a quiet lake, sketchbook resting in her lap; Morisot's fluid brushstrokes softly blur morning mist and her quiet introspection."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "To create a unique prompt, I focused on the tranquil setting of a lakeside morning, where the emp..."
+          },
+          {
+            "timestamp": "2025-05-09 11:11:53",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A young father sewing a patch onto a school backpack by lamplight; Morisot\u2019s delicate strokes highlight patience and gentle resolve in warm hues."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "I focused on a domestic evening scene, distinct from previous prompts that featured outdoor activ..."
+          },
+          {
+            "timestamp": "2025-05-09 11:30:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Mother quietly tending to a rooftop garden at dusk, silhouetted against cityscape; Morisot's delicate touch evokes resilience and serene determination in soft twilight hues."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "I avoided repetition by depicting an urban rooftop garden setting at dusk. Unlike previous prompt..."
+          },
+          {
+            "timestamp": "2025-05-09 12:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Child arranging flowers in a sunlit corner of a vintage greenhouse; Morisot's brushwork captures the tenderness of this small, personal gesture amidst vivid blossoms."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "To maintain freshness, I chose a greenhouse setting, distinct from previous prompts' settings lik..."
+          },
+          {
+            "timestamp": "2025-05-09 12:30:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "An elderly woman leaning over an open book in a cozy, firelit library; Morisot\u2019s airy brushwork illustrates her quiet resolve in the flickering glow."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "I selected an intimate library scene with an elderly woman to create a unique portrayal of quiet ..."
+          },
+          {
+            "timestamp": "2025-05-09 13:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "An anxious child clasping a small tree sapling in a bustling urban square, Morisot's touch captures hope and quiet courage amid the vibrant city motion."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "I portrayed a child in an urban square, distinct from previous indoor and more intimate settings...."
+          },
+          {
+            "timestamp": "2025-05-09 13:30:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Grandparent baking a pie from scratch in a quaint kitchen, flour-dusted hands; Morisot\u2019s gentle brushwork reflects peaceful perseverance and nostalgia in soft, warm tones."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "I depicted a scene in a domestic kitchen setting featuring an elderly person baking, distinct fro..."
+          },
+          {
+            "timestamp": "2025-05-09 14:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A young adult writing a heartfelt letter in a quiet caf\u00e9 corner, steam rising from a mug; Morisot's flowing brushwork embraces vulnerability and warmth."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "I chose a caf\u00e9 setting, focusing on the personal act of writing a letter, distinct from past prom..."
+          },
+          {
+            "timestamp": "2025-05-09 14:30:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Quiet elderly man planting a tree in memory of a loved one in a serene meadow, Morisot's fluid strokes capture tender remembrance and strength."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "I chose an outdoor memorial planting scene, differing from previous depictions of intimate indoor..."
+          },
+          {
+            "timestamp": "2025-05-09 15:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A person sitting alone in the attic at candlelight, engaged in deep meditation; Morisot's soft brushwork evokes inner strength amidst dust and shadows."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "To ensure variety, I depicted a solitary meditation in an attic, contrasting with previous settin..."
+          },
+          {
+            "timestamp": "2025-05-09 15:30:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A young woman carrying a guitar through the bustling city square, her contemplative expression captured by Morisot's light strokes amid vibrant crowd dynamics."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "To ensure uniqueness, I set the scene in a bustling city square with a young woman and her guitar..."
+          },
+          {
+            "timestamp": "2025-05-09 16:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A couple sitting side by side on a worn park bench, quietly holding hands as autumn leaves flutter; Morisot\u2019s graceful brushwork emphasizes silent support and shared strength."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "I depicted a couple outdoors on a park bench, a fresh setting compared to previous prompts focuse..."
+          },
+          {
+            "timestamp": "2025-05-09 16:30:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A solitary figure holding a candle, standing at the entrance of an ancient cave, Morisot's emotive brushwork conveys silent courage in mellow, dusky tones."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "I avoided duplication by selecting a setting at the entrance of an ancient cave, a contrast to pr..."
+          },
+          {
+            "timestamp": "2025-05-09 17:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A young mother sewing under moonlight in a modest hut with a sleeping infant nearby, Morisot's ethereal brushwork capturing quiet persistence amidst gentle night shadows."
+            },
+            "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
+            "explanation": "To avoid duplication, I portrayed a young mother at night in a humble hut, different from daytime..."
           }
         ],
         "prompt_history": [
@@ -1204,6 +1489,222 @@
             "refiner": "gallerist",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/57ef0989-1a57-46f5-8136-014ad3505ec5-e1/53c626a8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T220127Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0c9009eda4379c0954255e02df311ce448ea894faaf52f0d20a4a32c32ac8e55"
+          },
+          {
+            "timestamp": "2025-05-09 01:01:01",
+            "type": "generation",
+            "prompt": "A mother in a soft-lit kitchen shielding her ch...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/cc1084f8-a527-40f3-b5b7-280848956875-e1/d8383c7e.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T000132Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=dc5a1f289e28e01c10f81eada02b2a6c04a1a06163d3b926b70cfc6f10664899"
+          },
+          {
+            "timestamp": "2025-05-09 02:01:01",
+            "type": "generation",
+            "prompt": "A young man alone in a small library, candlelit...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/1179d9ea-4684-4632-bf80-e513c2de9315-e1/c5b82e4c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T010158Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=be30ce47482a3ea8a4f05186bbeadb4c576dbb2fa0044f11249713c25be3d295"
+          },
+          {
+            "timestamp": "2025-05-09 03:01:01",
+            "type": "generation",
+            "prompt": "Elderly woman serenely planting seeds in urban ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fee6b86d-5ac4-449d-999e-dd6f923379fe-e1/8b3bbbd5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T020136Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e59038f07d5079dfe6ed091a3e2e24219964b9e2fce4c1e4912e0a1441d8018a"
+          },
+          {
+            "timestamp": "2025-05-09 04:01:00",
+            "type": "generation",
+            "prompt": "Woman bravely playing piano at a small family g...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/47e9632f-8094-4022-bb30-b4ca8b22f38c-e1/d0f61b53.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T030126Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=646886979f358401652f9ad44a4a607acdf54f8e5437438c046633e40f5aca60"
+          },
+          {
+            "timestamp": "2025-05-09 05:01:01",
+            "type": "generation",
+            "prompt": "A lone father gently stitching a child's teddy ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/071e3376-2263-4aa9-bc0f-579ada54f0dd-e1/b37088a0.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T040127Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=60d1c8874bc7b93f4bab5cd49abdfee63a333261ab549d15db4501b8b211ada4"
+          },
+          {
+            "timestamp": "2025-05-09 06:01:02",
+            "type": "generation",
+            "prompt": "A woman alone at a bustling marketplace, gently...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/6c72950b-c69d-4363-985c-938d0c108571-e1/6995abf6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T050150Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f278853a1bb83278be73b4076df3532a52cf572155e494c1d86070cf05f7ac60"
+          },
+          {
+            "timestamp": "2025-05-09 07:01:02",
+            "type": "generation",
+            "prompt": "Young woman tucks a self-help book in a park, s...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a86f689c-b960-4e63-b435-a8d96134ae27-e1/2c9ec7d2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T060126Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=780763b5dfdf2f099a043fc1352b919382e313ed2440c0597633d95225af5b2e"
+          },
+          {
+            "timestamp": "2025-05-09 08:01:00",
+            "type": "generation",
+            "prompt": "A nurse silently comforting a patient in a warm...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/745715bf-e718-4f0c-b661-702ae1cc4e71-e1/442fd7cb.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T070128Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=c963fc4a40026469a589f97ccfd406efe9c8080bb260299a41735b9936037caf"
+          },
+          {
+            "timestamp": "2025-05-09 09:01:01",
+            "type": "generation",
+            "prompt": "A solitary figure crafting handmade lanterns at...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/55773117-d6e6-4c59-aedc-10843853afe0-e1/b4fa06c8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T080145Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4082ac62e2a66044a764f186b26940aae238680014d06875429e5539e0c2f7be"
+          },
+          {
+            "timestamp": "2025-05-09 09:18:42",
+            "type": "generation",
+            "prompt": "Teen in an art studio glancing out window durin...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/840b7e9f-4e19-4e6d-813a-5216ad475ca2-e1/2d9abaa4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T081903Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=bef1798eafdd4985e3dd03ac9cbe6f31ea846acfaddff95fff79862a7d8e0384"
+          },
+          {
+            "timestamp": "2025-05-09 09:25:35",
+            "type": "generation",
+            "prompt": "A girl practicing violin on a dimly lit balcony...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0f2dfeba-9c57-4c40-aad6-0757ab60d33c-e1/eaa09d58.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T082557Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0cfedbf1496db7e4d6b0ea9b81d4fa1ebcc99a6ed72d50023304d17eafb72910"
+          },
+          {
+            "timestamp": "2025-05-09 09:58:37",
+            "type": "generation",
+            "prompt": "Young boy climbing a tree in a sun-dappled fore...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/821e3298-05aa-47a0-901b-90fb9a72b882-e1/698c0951.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T085908Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5f4d5938054a6500a7fd3d5dcc49006eb7ce5f2b706e9888ec13e27bd86d2b88"
+          },
+          {
+            "timestamp": "2025-05-09 10:00:00",
+            "type": "generation",
+            "prompt": "Older man jogging at dawn through a misty park,...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/6302c069-3bde-4bbf-91d8-9c6b496bd7a4-e1/d43dddfe.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T090030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9064d354c0f8ce22e5b645f110b827850c951e0834a29a52a934dc69e2ef3f4c"
+          },
+          {
+            "timestamp": "2025-05-09 11:00:00",
+            "type": "generation",
+            "prompt": "A young woman sitting by a quiet lake, sketchbo...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ceb0e47e-07c6-4693-b4b4-7249bccac088-e1/4963379d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T100032Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4b306aee4b98119405fe4e605b174055d175b30870cad63d958101dc20dce773"
+          },
+          {
+            "timestamp": "2025-05-09 11:11:53",
+            "type": "generation",
+            "prompt": "A young father sewing a patch onto a school bac...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/664164ed-f62a-48b4-9dc0-d52e27033ef9-e1/afc29963.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T101222Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4a49bed8a58036ae489199167d4234220696c5f34048131401af2a72c35b337f"
+          },
+          {
+            "timestamp": "2025-05-09 11:30:00",
+            "type": "generation",
+            "prompt": "Mother quietly tending to a rooftop garden at d...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/2f769a4b-e024-4ec8-bb0e-35798058aa6b-e1/ad7a942c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T103026Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9aab4d789e2a8e6fe94cebe3b517ddfdd69e0c980eb0d8e8a60a665f39c48cda"
+          },
+          {
+            "timestamp": "2025-05-09 12:00:01",
+            "type": "generation",
+            "prompt": "Child arranging flowers in a sunlit corner of a...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/c75b3347-4cc1-42aa-990d-97cd4b510e81-e1/7c55a361.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T110107Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=481038febdb088bf87bf7995f766fcf796307d2dc853ff672e542a6e0e62db83"
+          },
+          {
+            "timestamp": "2025-05-09 12:30:00",
+            "type": "generation",
+            "prompt": "An elderly woman leaning over an open book in a...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/173145b1-79a2-41db-a08f-d847b4faa260-e1/e31e6b02.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T113050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=81df46d3c5dc161560f10221b6375844d42d63bf8932cdef533e42d41be038e1"
+          },
+          {
+            "timestamp": "2025-05-09 13:00:01",
+            "type": "generation",
+            "prompt": "An anxious child clasping a small tree sapling ...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/02d7e70f-2e2c-43ad-b9c1-1ece1f5b0a17-e1/9bda96b2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T120026Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b75b816797dda085d81e665a45bc6c6dcef9070e1fd8b3b7cd33161d5f7f7692"
+          },
+          {
+            "timestamp": "2025-05-09 13:30:01",
+            "type": "generation",
+            "prompt": "Grandparent baking a pie from scratch in a quai...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/24268440-a4bf-400c-9b13-626abe7bc30b-e1/1f0fcae2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T123103Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=aa6fa39a5bf8df2a7dfa0724a34a37df6d93161466f3ed2bbb8d29ca977fadc3"
+          },
+          {
+            "timestamp": "2025-05-09 14:00:00",
+            "type": "generation",
+            "prompt": "A young adult writing a heartfelt letter in a q...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e2ed1982-6621-41e5-97a2-f08d2cae997a-e1/36b1f734.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T130108Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=96775031ff56078d3301dcbb986add3c43806ca20a10bce0b539b8d5c6771a79"
+          },
+          {
+            "timestamp": "2025-05-09 14:30:01",
+            "type": "generation",
+            "prompt": "Quiet elderly man planting a tree in memory of ...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/75719b1b-7c3d-407a-9b63-1a11bee4a475-e1/f3d9d60f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T133120Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1b4c7e744e82b53ff927d3634ba410e38fb249583c039caef05a8b0104f8baf1"
+          },
+          {
+            "timestamp": "2025-05-09 15:00:00",
+            "type": "generation",
+            "prompt": "A person sitting alone in the attic at candleli...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d805dfd0-f522-4194-9a82-ab9d3420724f-e1/3348b017.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T140027Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=c4b77ddba2e03b3dae094c2c1987ca062eca514270e6839c054e6c782b05a81b"
+          },
+          {
+            "timestamp": "2025-05-09 15:30:01",
+            "type": "generation",
+            "prompt": "A young woman carrying a guitar through the bus...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/5d20ca1d-f149-4dfe-8d05-e24f9d930cb3-e1/1f08116d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T143031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6a03bbb8cc5fd92c0ca8f3ab48b1217efd7d3778e3d70bc9f9a6d6bcdf76f2ee"
+          },
+          {
+            "timestamp": "2025-05-09 16:00:01",
+            "type": "generation",
+            "prompt": "A couple sitting side by side on a worn park be...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/70e7a44e-c901-462e-a42d-096ec7e7e6bf-e1/13b30377.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T150036Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=fb36160059d2ed95253486a129125a710b5f56e701220a49c8a9b06fab4dd568"
+          },
+          {
+            "timestamp": "2025-05-09 16:30:01",
+            "type": "generation",
+            "prompt": "A solitary figure holding a candle, standing at...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d1ee2275-69e7-40d1-b8c6-5a600af73875-e1/afea8071.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T153059Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e04b268b5832f5212cb3b1c4cd2bfbed1584b0747dbc7323fdf91609c26db762"
+          },
+          {
+            "timestamp": "2025-05-09 17:00:00",
+            "type": "generation",
+            "prompt": "A young mother sewing under moonlight in a mode...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f7bbc0e8-ec91-460d-b9a9-2fba89b684cd-e1/40ea3076.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T160029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=638049d3d27491db25a1102da46dd34d94bfa8dedab161637011fa787eb62fb9"
           }
         ],
         "animation_history": [
@@ -1310,26 +1811,64 @@
             "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/197caf3c-11de-476d-8ea1-21ca637fbac8-e1/653a1651.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T120148Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=837070d472eafddcdaf40656c05036cee87af006c34f6b9a231956ed30f1d413",
             "refiner": "animator",
             "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-09 11:11:53",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/664164ed-f62a-48b4-9dc0-d52e27033ef9-e1/afc29963.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T101222Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4a49bed8a58036ae489199167d4234220696c5f34048131401af2a72c35b337f",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-09 12:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/c75b3347-4cc1-42aa-990d-97cd4b510e81-e1/7c55a361.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T110107Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=481038febdb088bf87bf7995f766fcf796307d2dc853ff672e542a6e0e62db83",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-09 14:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e2ed1982-6621-41e5-97a2-f08d2cae997a-e1/36b1f734.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T130108Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=96775031ff56078d3301dcbb986add3c43806ca20a10bce0b539b8d5c6771a79",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-09 16:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/70e7a44e-c901-462e-a42d-096ec7e7e6bf-e1/13b30377.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T150036Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=fb36160059d2ed95253486a129125a710b5f56e701220a49c8a9b06fab4dd568",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/57ef0989-1a57-46f5-8136-014ad3505ec5-e1/53c626a8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T220127Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0c9009eda4379c0954255e02df311ce448ea894faaf52f0d20a4a32c32ac8e55"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f7bbc0e8-ec91-460d-b9a9-2fba89b684cd-e1/40ea3076.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T160029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=638049d3d27491db25a1102da46dd34d94bfa8dedab161637011fa787eb62fb9"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-08T23:43:00.886350",
+  "last_updated": "2025-05-09T17:00:31.299658",
   "last_trigger_executions": {
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T13:01:00": "2025-05-08T13:20:30.047121",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T14:01:00": "2025-05-08T14:01:01.659441",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T15:01:00": "2025-05-08T15:01:00.799704",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T16:01:00": "2025-05-08T16:01:01.578078",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T17:01:00": "2025-05-08T17:01:00.929919",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T18:01:00": "2025-05-08T18:01:01.105993",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T19:01:00": "2025-05-08T19:01:01.642437",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T20:01:00": "2025-05-08T20:01:00.666363",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T21:01:00": "2025-05-08T21:01:01.313962",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T22:01:00": "2025-05-08T22:01:01.282651",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T23:01:00": "2025-05-08T23:01:01.604036"
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T11:00:00": "2025-05-09T11:11:53.910076",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-09T10:05:00": "2025-05-09T11:11:53.910076",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T11:30:00": "2025-05-09T11:30:00.735964",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T12:00:00": "2025-05-09T12:00:01.472523",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-09T12:05:00": "2025-05-09T12:05:01.756805",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T12:30:00": "2025-05-09T12:30:00.615541",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T13:00:00": "2025-05-09T13:00:01.356562",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T13:30:00": "2025-05-09T13:30:01.941702",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T14:00:00": "2025-05-09T14:00:00.672751",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-09T14:05:00": "2025-05-09T14:05:00.735963",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T14:30:00": "2025-05-09T14:30:01.709806",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T15:00:00": "2025-05-09T15:00:00.587476",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T15:30:00": "2025-05-09T15:30:01.225991",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T16:00:00": "2025-05-09T16:00:01.881600",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-09T16:05:00": "2025-05-09T16:05:00.284188",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T16:30:00": "2025-05-09T16:30:01.590718",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T17:00:00": "2025-05-09T17:00:00.043456"
   }
 }

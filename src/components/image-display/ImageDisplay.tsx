@@ -8,8 +8,23 @@ import * as LucideIcons from 'lucide-react';
 import { BucketGridView } from './BucketGridView';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import ViewModeSelector from './ViewModeSelector';
-import { CirclePause, CirclePlay, CircleStop, Settings, Image, ImagePlus, ChevronRight, ChevronLeft } from 'lucide-react';
+import { CirclePause, CirclePlay, CircleStop, Settings, Image, ImagePlus, ChevronRight, ChevronLeft, Copy, Send, Share } from 'lucide-react';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
+import {
+  DndContext,
+  useSensor,
+  useSensors,
+  MouseSensor,
+  TouchSensor,
+  KeyboardSensor,
+  closestCenter,
+  useDroppable,
+  DragEndEvent,
+  DragStartEvent,
+} from '@dnd-kit/core';
+import { toast } from 'sonner';
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { Button } from '@/components/ui/button';
 
 export type ViewMode = 'normal' | 'small' | 'table';
 export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
@@ -76,6 +91,9 @@ export function ImageDisplay(props: ImageDisplayProps) {
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [schedulerStatuses, setSchedulerStatuses] = useState<Record<string, any>>({});
+  const [draggedImageData, setDraggedImageData] = useState<any>(null);
+  const [dropActionDestId, setDropActionDestId] = useState<string | null>(null);
+  const [dropActionImageId, setDropActionImageId] = useState<string | null>(null);
   
   // Function to trigger a refresh for a specific bucket
   const refreshBucket = async (bucket: string) => {
@@ -366,182 +384,398 @@ export function ImageDisplay(props: ImageDisplayProps) {
       }
     }, 10);
   };
-  
-  return (
-    <div className="bg-background overflow-hidden h-full">
-      {/* Tabs for switching between Generated view and Destinations - frameless design */}
-      <div className="border-b w-full">
-        <div className="relative grid grid-cols-1">
-          {/* Scroll indicators */}
-          <div className="absolute inset-y-0 left-0 z-10 flex items-center pointer-events-none">
-            {showLeftScroll && (
-              <button 
-                onClick={() => scrollTabs('left')}
-                className="bg-background/80 h-full px-1 flex items-center justify-center hover:bg-background/90 pointer-events-auto"
-                aria-label="Scroll tabs left"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-          
-          <div className="absolute inset-y-0 right-0 z-10 flex items-center pointer-events-none">
-            {showRightScroll && (
-              <button 
-                onClick={() => scrollTabs('right')}
-                className="bg-background/80 h-full px-1 flex items-center justify-center hover:bg-background/90 pointer-events-auto"
-                aria-label="Scroll tabs right"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-          
-          {/* Scrollable tabs */}
-          <div 
-            ref={tabsRef}
-            onScroll={checkScroll}
-            className="w-full overflow-x-auto scrollbar-hide px-6"
-          >
-            <div className="inline-flex items-center space-x-1 p-1">
-              {destinationTabs.map(tab => (
-                <button
-                  key={tab.id}
-                  data-tab-id={tab.id}
-                  onClick={() => handleTabClick(tab.id)}
-                  className={`px-2 py-1.5 text-xs sm:text-sm sm:px-3 sm:py-2 inline-flex items-center rounded-md transition-colors
-                    ${tab.highlight && selectedTab === tab.id 
-                      ? 'bg-primary text-primary-foreground' 
-                      : selectedTab === tab.id
-                        ? 'text-primary border-b-2 border-primary'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                    }`}
-                >
-                  {tab.icon}
-                  <span className="truncate max-w-[60px] sm:max-w-[100px]">{tab.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Content based on selected tab */}
-      <div className="p-4 h-[calc(100%-48px)] overflow-auto">
-        {selectedTab === 'generated' ? (
-          isLoading ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : isIndexProps && imageContainerOrder && imageContainerOrder.length > 0 ? (
-            <>
-              {/* View Mode Selector */}
-              <div className="flex justify-end mb-4">
-                <ViewModeSelector 
-            viewMode={viewMode}
-                  onViewModeChange={(value) => setViewMode(value as ViewMode)}
-          />
-              </div>
-          
-              {/* Render appropriate content for Index.tsx props */}
-            <ViewModeContent
-              viewMode={viewMode}
-              imageContainerOrder={imageContainerOrder}
-              batches={batches}
-              expandedContainers={expandedContainers}
-              handleToggleExpand={handleToggleExpand}
-                onUseGeneratedAsInput={onUseGeneratedAsInput || (() => {})}
-                onCreateAgain={onCreateAgain || (() => {})}
-                onDeleteImage={onDeleteImage || (() => {})}
-                onDeleteContainer={onDeleteContainer || (() => {})}
-                onFullScreenClick={handleImageClick}
-              imageUrl={imageUrl}
-              getAllImages={getAllImages}
-              handleSmallImageClick={handleSmallImageClick}
-              sortField={sortField}
-              sortDirection={sortDirection}
-              handleSortClick={handleSortClick}
-              getSortedContainers={getSortedContainers}
-              handleTableRowClick={handleTableRowClick}
-              isLoading={isLoading}
-                onReorderContainers={onReorderContainers || (() => {})}
-              />
-            </>
-          ) : imageUrl ? (
-            <div className="relative h-full flex flex-col">
-              <div className="flex-1 relative min-h-0">
-                <img
-                  src={imageUrl}
-                  alt={currentPrompt || 'Generated image'}
-                  className="h-full w-full object-contain mx-auto"
-            />
-          </div>
-              {currentPrompt && (
-                <div className="mt-4 text-sm text-center text-muted-foreground">
-                  <p className="italic">"{currentPrompt}"</p>
-                </div>
-              )}
-              {onFullscreen && (
-                <button
-                  onClick={onFullscreen}
-                  className="absolute top-2 right-2 p-1 bg-background/80 rounded-md hover:bg-background"
+  const handleDragStart = () => {};
+
+  // Context menu state
+  type MenuAction = 'copy' | 'move' | 'publish';
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    destId: string;
+    imageId: string;
+    isHeadless: boolean;
+  } | null>(null);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return;
+    
+    const handleClickOutside = () => setContextMenu(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [contextMenu]);
+
+  // Ref to track mouse position
+  const mousePositionRef = useRef({ x: 0, y: 0 });
+  
+  // Track mouse and touch position
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      mousePositionRef.current = { x: e.clientX, y: e.clientY };
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        const t = e.touches[0];
+        mousePositionRef.current = { x: t.clientX, y: t.clientY };
+      }
+    };
+    
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('touchmove', handleTouchMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, []);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    // Tab drop handling – IDs prefixed with "tab-"
+    if (typeof over.id === 'string' && (over.id as string).startsWith('tab-')) {
+      const destId = (over.id as string).slice(4);
+      if (destId !== selectedTab) {
+        // Find if the destination is headless
+        const destInfo = destinationsWithBuckets.find(d => d.id === destId);
+        const isHeadless = destInfo?.headless || false;
+        
+        // Use the current mouse position that we've been tracking
+        const { x, y } = mousePositionRef.current;
+        
+        // Show context menu (prevent event bubbling that would close it immediately)
+        setTimeout(() => {
+          setContextMenu({
+            x,
+            y,
+            destId,
+            imageId: active.id as string,
+            isHeadless
+          });
+        }, 0);
+      }
+    }
+  };
+
+  // Handle menu action selection
+  const handleMenuAction = (action: MenuAction) => {
+    if (!contextMenu) return;
+    
+    const { destId, imageId, isHeadless } = contextMenu;
+    
+    if (action === 'copy') {
+      console.log(`Copying image ${imageId} from ${selectedTab} to ${destId}`);
+      apiService.copyImageToBucket(selectedTab, destId, imageId, true)
+        .then(() => {
+          toast.success(`Copied to ${destId}`);
+          refreshBucket(destId);
+        })
+        .catch((err) => {
+          console.error('Copy failed:', err);
+          toast.error('Copy failed');
+        });
+    } else if (action === 'move') {
+      console.log(`Moving image ${imageId} from ${selectedTab} to ${destId}`);
+      apiService.copyImageToBucket(selectedTab, destId, imageId, false)
+        .then(() => {
+          toast.success(`Moved to ${destId}`);
+          refreshBucket(destId);
+          // Also refresh the source bucket since the file should be removed
+          refreshBucket(selectedTab);
+        })
+        .catch((err) => {
+          console.error('Move failed:', err);
+          toast.error('Move failed');
+        });
+    } else if (action === 'publish' && !isHeadless) {
+      console.log(`Publishing image ${imageId} from ${selectedTab} to ${destId}`);
+      
+      // Ensure the source URL is properly formatted with the API URL
+      const fullSourceUrl = `${window.location.protocol}//${window.location.host}/api/buckets/${selectedTab}/raw/${imageId}`;
+      console.log(`Source URL: ${fullSourceUrl}`);
+      
+      apiService.publishImage({
+        publish_destination_id: destId,
+        source: fullSourceUrl,
+        skip_bucket: true,
+      })
+      .then(() => {
+        toast.success('Published successfully');
+        refreshBucket(destId);
+      })
+      .catch((err) => {
+        console.error('Publish failed:', err);
+        toast.error('Publish failed');
+      });
+    }
+    
+    setContextMenu(null);
+  };
+
+  // ------------ DnD Sensors (shared across entire display) ------------ //
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 200,
+        tolerance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Helper to get current bucket id when BucketGridView is active
+  const currentBucketId = selectedTab && selectedTab !== 'generated' ? getDestinationFile(selectedTab) : '';
+
+  // ---------- Droppable Tab Button ---------- //
+  const DroppableTabButton: React.FC<{ tab: DestinationTab }> = ({ tab }) => {
+    // Only make non-generated tabs droppable
+    const isDroppable = tab.id !== 'generated';
+    
+    // Use a dummy ref for non-droppable tabs
+    const dummyRef = useRef<HTMLButtonElement>(null);
+    const { setNodeRef, isOver } = isDroppable 
+      ? useDroppable({ id: `tab-${tab.id}` })
+      : { setNodeRef: dummyRef, isOver: false };
+
+    return (
+      <button
+        ref={setNodeRef as React.RefObject<HTMLButtonElement>}
+        key={tab.id}
+        data-tab-id={tab.id}
+        onClick={() => handleTabClick(tab.id)}
+        className={`px-2 py-1.5 text-xs sm:text-sm sm:px-3 sm:py-2 inline-flex items-center rounded-md transition-colors
+          ${isDroppable && isOver ? 'ring-2 ring-primary' : ''}
+          ${tab.highlight && selectedTab === tab.id 
+            ? 'bg-primary text-primary-foreground' 
+            : selectedTab === tab.id
+              ? 'text-primary border-b-2 border-primary'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+          }`}
+      >
+        {tab.icon}
+        <span className="truncate max-w-[60px] sm:max-w-[100px]">{tab.label}</span>
+      </button>
+    );
+  };
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <div className="bg-background overflow-hidden h-full">
+        {/* Tabs for switching between Generated view and Destinations - frameless design */}
+        <div className="border-b w-full">
+          <div className="relative grid grid-cols-1">
+            {/* Scroll indicators */}
+            <div className="absolute inset-y-0 left-0 z-10 flex items-center pointer-events-none">
+              {showLeftScroll && (
+                <button 
+                  onClick={() => scrollTabs('left')}
+                  className="bg-background/80 h-full px-1 flex items-center justify-center hover:bg-background/90 pointer-events-auto"
+                  aria-label="Scroll tabs left"
                 >
-                  {isFullscreen ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="4 14 10 14 10 20"></polyline>
-                      <polyline points="20 10 14 10 14 4"></polyline>
-                      <line x1="14" y1="10" x2="21" y2="3"></line>
-                      <line x1="3" y1="21" x2="10" y2="14"></line>
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="15 3 21 3 21 9"></polyline>
-                      <polyline points="9 21 3 21 3 15"></polyline>
-                      <line x1="21" y1="3" x2="14" y2="10"></line>
-                      <line x1="3" y1="21" x2="10" y2="14"></line>
-                    </svg>
-                  )}
+                  <ChevronLeft className="h-4 w-4" />
                 </button>
               )}
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="48"
-                height="48"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="mb-4"
-              >
-                <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-                <circle cx="9" cy="9" r="2" />
-                <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-              </svg>
-              <p>No image generated yet</p>
+            
+            <div className="absolute inset-y-0 right-0 z-10 flex items-center pointer-events-none">
+              {showRightScroll && (
+                <button 
+                  onClick={() => scrollTabs('right')}
+                  className="bg-background/80 h-full px-1 flex items-center justify-center hover:bg-background/90 pointer-events-auto"
+                  aria-label="Scroll tabs right"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              )}
             </div>
-          )
-        ) : (
-          selectedTab && selectedTab !== 'generated' && (
-            <BucketGridView
-              key={`${selectedTab}-${bucketRefreshFlags[selectedTab] || 0}`}
-              destination={getDestinationFile(selectedTab)}
-              destinationName={destinationTabs.find(tab => tab.id === selectedTab)?.label || selectedTab}
-              onImageClick={handleImageClick}
-              refreshBucket={refreshBucket}
-              isLoading={false}
-              schedulerStatus={getStatusForDestination(selectedTab)}
-              headless={destinationTabs.find(tab => tab.id === selectedTab)?.headless || false}
-              icon={destinationsWithBuckets.find(d => d.id === selectedTab)?.icon || 'image'}
-            />
-          )
-        )}
+            
+            {/* Scrollable tabs */}
+            <div 
+              ref={tabsRef}
+              onScroll={checkScroll}
+              className="w-full overflow-x-auto scrollbar-hide px-6"
+            >
+              <div className="inline-flex items-center space-x-1 p-1">
+                {destinationTabs.map(tab => (
+                  <DroppableTabButton key={tab.id} tab={tab} />
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-    </div>
+
+        {/* Content based on selected tab */}
+        <div className="p-4 h-[calc(100%-48px)] overflow-auto">
+          {selectedTab === 'generated' ? (
+            isLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : isIndexProps && imageContainerOrder && imageContainerOrder.length > 0 ? (
+              <>
+                {/* View Mode Selector */}
+                <div className="flex justify-end mb-4">
+                  <ViewModeSelector 
+                viewMode={viewMode}
+                    onViewModeChange={(value) => setViewMode(value as ViewMode)}
+                  />
+                </div>
+            
+                {/* Render appropriate content for Index.tsx props */}
+              <ViewModeContent
+                viewMode={viewMode}
+                imageContainerOrder={imageContainerOrder}
+                batches={batches}
+                expandedContainers={expandedContainers}
+                handleToggleExpand={handleToggleExpand}
+                  onUseGeneratedAsInput={onUseGeneratedAsInput || (() => {})}
+                  onCreateAgain={onCreateAgain || (() => {})}
+                  onDeleteImage={onDeleteImage || (() => {})}
+                  onDeleteContainer={onDeleteContainer || (() => {})}
+                  onFullScreenClick={handleImageClick}
+                imageUrl={imageUrl}
+                getAllImages={getAllImages}
+                handleSmallImageClick={handleSmallImageClick}
+                sortField={sortField}
+                sortDirection={sortDirection}
+                handleSortClick={handleSortClick}
+                getSortedContainers={getSortedContainers}
+                handleTableRowClick={handleTableRowClick}
+                isLoading={isLoading}
+                  onReorderContainers={onReorderContainers || (() => {})}
+                />
+              </>
+            ) : imageUrl ? (
+              <div className="relative h-full flex flex-col">
+                <div className="flex-1 relative min-h-0">
+                  <img
+                    src={imageUrl}
+                    alt={currentPrompt || 'Generated image'}
+                    className="h-full w-full object-contain mx-auto"
+                />
+            </div>
+                {currentPrompt && (
+                  <div className="mt-4 text-sm text-center text-muted-foreground">
+                    <p className="italic">"{currentPrompt}"</p>
+                  </div>
+                )}
+                {onFullscreen && (
+                  <button
+                    onClick={onFullscreen}
+                    className="absolute top-2 right-2 p-1 bg-background/80 rounded-md hover:bg-background"
+                  >
+                    {isFullscreen ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="4 14 10 14 10 20"></polyline>
+                        <polyline points="20 10 14 10 14 4"></polyline>
+                        <line x1="14" y1="10" x2="21" y2="3"></line>
+                        <line x1="3" y1="21" x2="10" y2="14"></line>
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <polyline points="9 21 3 21 3 15"></polyline>
+                        <line x1="21" y1="3" x2="14" y2="10"></line>
+                        <line x1="3" y1="21" x2="10" y2="14"></line>
+                      </svg>
+                    )}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="48"
+                  height="48"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="mb-4"
+                >
+                  <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                  <circle cx="9" cy="9" r="2" />
+                  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                </svg>
+                <p>No image generated yet</p>
+              </div>
+            )
+          ) : (
+            selectedTab && selectedTab !== 'generated' && (
+              <BucketGridView
+                key={`${selectedTab}-${bucketRefreshFlags[selectedTab] || 0}`}
+                destination={getDestinationFile(selectedTab)}
+                destinationName={destinationTabs.find(tab => tab.id === selectedTab)?.label || selectedTab}
+                onImageClick={handleImageClick}
+                refreshBucket={refreshBucket}
+                isLoading={false}
+                schedulerStatus={getStatusForDestination(selectedTab)}
+                headless={destinationTabs.find(tab => tab.id === selectedTab)?.headless || false}
+                icon={destinationsWithBuckets.find(d => d.id === selectedTab)?.icon || 'image'}
+              />
+            )
+          )}
+          </div>
+      </div>
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[180px] overflow-hidden rounded-md border bg-background p-1 shadow-md animate-in fade-in-80"
+          style={{
+            top: `${contextMenu.y}px`,
+            left: `${contextMenu.x}px`
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Button
+            variant="ghost"
+            className="w-full justify-start px-2 py-1.5 text-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleMenuAction('copy');
+            }}
+          >
+            <Copy className="mr-2 h-4 w-4" />
+            Copy to {contextMenu.destId}
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full justify-start px-2 py-1.5 text-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleMenuAction('move');
+            }}
+          >
+            <Send className="mr-2 h-4 w-4" />
+            Move to {contextMenu.destId}
+          </Button>
+          {!contextMenu.isHeadless && (
+            <Button
+              variant="ghost"
+              className="w-full justify-start px-2 py-1.5 text-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleMenuAction('publish');
+              }}
+            >
+              <Share className="mr-2 h-4 w-4" />
+              Publish to {contextMenu.destId}
+            </Button>
+          )}
+        </div>
+      )}
+    </DndContext>
   );
 }
 

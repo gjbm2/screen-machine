@@ -323,22 +323,53 @@ export class Api {
     generation_info?: any;
     skip_bucket?: boolean;
   }): Promise<{ success: boolean; error?: string }> {
-    const response = await fetch(`${this.apiUrl}/buckets/${data.publish_destination_id}/publish/${data.source.split('/').pop()}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        generation_info: data.generation_info,
-        skip_bucket: data.skip_bucket
-      }),
-    });
+    // Check if source is from a bucket (like /api/buckets/<id>/raw/<filename>)
+    const isSourceFromBucket = data.source.includes('/buckets/') && data.source.includes('/raw/');
+    let response;
+    
+    console.log(`[publishImage] destination=${data.publish_destination_id}, source=${data.source}, skip_bucket=${data.skip_bucket}, isSourceFromBucket=${isSourceFromBucket}`);
+    
+    if (isSourceFromBucket) {
+      // Use the general publish API endpoint for cross-bucket publishing
+      const sourceUrl = data.source.startsWith('/api') 
+        ? `${this.apiUrl}${data.source.substring(4)}`  // Convert relative to absolute URL
+        : data.source;
+      
+      console.log(`[publishImage] Converted source URL: ${sourceUrl}`);
+      
+      response = await fetch(`${this.apiUrl}/publish/publish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          publish_destination_id: data.publish_destination_id,
+          source_url: sourceUrl,
+          generation_info: data.generation_info,
+          skip_bucket: data.skip_bucket
+        }),
+      });
+    } else {
+      // Use bucket-specific publish endpoint for publishing from same bucket
+      response = await fetch(`${this.apiUrl}/buckets/${data.publish_destination_id}/publish/${data.source.split('/').pop()}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          generation_info: data.generation_info,
+          skip_bucket: data.skip_bucket
+        }),
+      });
+    }
 
     if (!response.ok) {
       const error = await response.json();
+      console.error(`[publishImage] Error response:`, error);
       return { success: false, error: error.error };
     }
 
+    console.log(`[publishImage] Success!`);
     return { success: true };
   }
   
@@ -1148,6 +1179,8 @@ export class Api {
   // Copy an image to another bucket
   async copyImageToBucket(sourceBucketId: string, targetBucketId: string, filename: string, copy: boolean = false): Promise<{ status: string; filename: string }> {
     try {
+      console.log(`[copyImageToBucket] source=${sourceBucketId}, target=${targetBucketId}, filename=${filename}, copy=${copy}`);
+      
       const response = await fetch(`${this.apiUrl}/buckets/add_image_to_new_bucket`, {
         method: 'POST',
         headers: {
@@ -1157,7 +1190,7 @@ export class Api {
           source_publish_destination: sourceBucketId,
           target_publish_destination: targetBucketId,
           filename,
-          copy,
+          copy: copy,
         }),
       });
       

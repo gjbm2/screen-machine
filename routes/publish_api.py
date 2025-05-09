@@ -31,29 +31,36 @@ def publish_image(filename):
         source_url = data.get('source_url')  # URL of the image to publish
         skip_bucket = data.get('skip_bucket', False)  # Whether to skip saving to bucket
 
+        info(f"[publish_image] RECEIVED: dest={publish_destination_id}, source={source_url}, skip_bucket={skip_bucket}")
+
         if not publish_destination_id:
+            error("[publish_image] Missing publish_destination_id")
             return jsonify({"error": "publish_destination_id is required"}), 400
 
         if not source_url:
+            error("[publish_image] Missing source_url")
             return jsonify({"error": "source_url is required"}), 400
 
         # Validate destination exists
         if publish_destination_id not in [d['id'] for d in publish_destinations]:
+            error(f"[publish_image] Invalid destination: {publish_destination_id}")
             return jsonify({"error": f"Invalid destination: {publish_destination_id}"}), 400
 
         # Publish to the destination (this will handle bucket append if needed)
+        info(f"[publish_image] Publishing to destination: {publish_destination_id}")
         result = publish_to_destination(
-            url=source_url,
+            source=source_url,
             publish_destination_id=publish_destination_id,
             metadata=generation_info,
             skip_bucket=skip_bucket
         )
 
+        info(f"[publish_image] Result: {result}")
         return jsonify(result)
 
     except Exception as e:
-        logging.error(f"Error publishing image: {str(e)}")
-        return jsonify({"error": "Failed to publish image"}), 500
+        error(f"[publish_image] Error publishing image: {str(e)}")
+        return jsonify({"error": f"Failed to publish image: {str(e)}"}), 500
 
 @publish_api.route('/published/<publish_destination_id>', methods=['GET'])
 def get_published(publish_destination_id: str):

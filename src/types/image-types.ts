@@ -13,6 +13,8 @@ export interface ImageMeta {
   createdAt: string;
   /** Whether user has marked this as a favourite.  Persisted server-side via MOVE_TO / favourite endpoints. */
   isFavourite: boolean;
+  /** Type of media - 'image' or 'video' */
+  mediaType?: 'image' | 'video';
   /** Room for any other metadata the FullscreenViewer or future features might need. */
   [extra: string]: unknown;
 }
