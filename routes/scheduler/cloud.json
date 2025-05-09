@@ -165,7 +165,7 @@
       "publish_destination": "cloud"
     }
   ],
-  "state": "running",
-  "last_updated": "2025-05-09T17:43:57.944353",
+  "state": "paused",
+  "last_updated": "2025-05-09T18:42:47.785491",
   "last_trigger_executions": {}
 }

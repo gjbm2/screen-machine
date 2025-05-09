@@ -5,7 +5,7 @@ import { format, formatDistance } from 'date-fns';
 import apiService from '@/utils/api';
 import { Input } from '@/components/ui/input';
 import { BucketItem as ApiBucketItem, Bucket as ApiBucket } from '@/utils/api';
-import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, Settings, ExternalLink, Send, Trash2, Copy, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop, Maximize2, ArrowUp, ArrowDown } from 'lucide-react';
+import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, Settings, ExternalLink, Send, Trash2, Copy, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop, Maximize2, ArrowUp, ArrowDown, Pause, Square, ChevronUp, ChevronDown, Play, X } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -35,6 +35,9 @@ import { ExpandableContainer } from '@/components/common';
 import SortableImageGrid from '@/components/common/SortableImageGrid';
 import { ImageItem } from '@/types/image-types';
 
+// Import the new SchedulerControl component
+import { SchedulerControl } from './SchedulerPanel';
+
 // Define the expected types based on the API response
 interface BucketItem extends ApiBucketItem {}
 
@@ -60,13 +63,27 @@ interface BucketDetails {
   published_at?: string;
 }
 
+// Add NextAction interface
+interface NextAction {
+  has_next_action: boolean;
+  next_time: string | null;
+  description: string | null;
+  minutes_until_next: number | null;
+  timestamp: string;
+  time_until_display?: string;
+}
+
 interface BucketGridViewProps {
   destination: string;
   destinationName?: string;
   onImageClick?: (image: BucketImage) => void;
   refreshBucket: (bucket: string) => void;
   isLoading: boolean;
-  schedulerStatus?: { is_running: boolean; is_paused: boolean };
+  schedulerStatus?: { 
+    is_running: boolean; 
+    is_paused: boolean; 
+    next_action?: NextAction | null;
+  };
   headless?: boolean;
   icon?: string;
 }
@@ -111,6 +128,8 @@ export const BucketGridView = ({
   const [dropTargetType, setDropTargetType] = useState<DropTargetType | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [sectionSortMap, setSectionSortMap] = useState<Record<string, 'desc' | 'asc'>>({});
+  
+  const hasCamera = 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices;
 
   const debouncedFetchBucketDetails = useCallback(() => {
     if (refreshTimeout) {
@@ -330,50 +349,49 @@ export const BucketGridView = ({
     }
   };
 
-  // Handle scheduler actions
-  const handleSchedulerAction = async (action: 'start' | 'stop' | 'pause' | 'unpause') => {
-    try {
-      let result;
-      switch (action) {
-        case 'start':
-          result = await apiService.startScheduler(destination, {});
-          break;
-        case 'stop':
-          result = await apiService.stopScheduler(destination);
-          break;
-        case 'pause':
-          result = await apiService.pauseScheduler(destination);
-          break;
-        case 'unpause':
-          result = await apiService.unpauseScheduler(destination);
-          break;
+  // Handle maintenance actions
+  const handlePurgeNonFavorites = async () => {
+    if (confirm('Are you sure you want to purge non-favorite images?')) {
+      try {
+        const success = await apiService.performBucketMaintenance(destination, 'purge');
+        if (success) {
+          toast.success('Non-favorite images purged successfully');
+          debouncedFetchBucketDetails();
+        }
+      } catch (error) {
+        console.error('Error purging non-favorites:', error);
+        toast.error('Failed to purge non-favorites');
       }
-      
-      // Update the local state immediately based on the action
-      const updatedStatus = { ...schedulerStatus };
-      if (action === 'start') {
-        updatedStatus.is_running = true;
-        updatedStatus.is_paused = false;
-      } else if (action === 'stop') {
-        updatedStatus.is_running = false;
-        updatedStatus.is_paused = false;
-      } else if (action === 'pause') {
-        updatedStatus.is_paused = true;
-      } else if (action === 'unpause') {
-        updatedStatus.is_paused = false;
-      }
-      
-      // Pass the updated status to the parent via refreshBucket
-      refreshBucket(destination);
-      
-      toast.success(`Scheduler ${action}ed successfully`);
-      debouncedFetchBucketDetails();
-    } catch (error) {
-      console.error(`Error ${action}ing scheduler:`, error);
-      toast.error(`Failed to ${action} scheduler`);
     }
   };
 
+  const handleReindex = async () => {
+    try {
+      const success = await apiService.performBucketMaintenance(destination, 'reindex');
+      if (success) {
+        toast.success('Bucket reindexed successfully');
+        debouncedFetchBucketDetails();
+      }
+    } catch (error) {
+      console.error('Error reindexing bucket:', error);
+      toast.error('Failed to reindex bucket');
+    }
+  };
+
+  const handleExtractJson = async () => {
+    try {
+      const success = await apiService.performBucketMaintenance(destination, 'extract');
+      if (success) {
+        toast.success('JSON extracted successfully');
+        debouncedFetchBucketDetails();
+      }
+    } catch (error) {
+      console.error('Error extracting JSON:', error);
+      toast.error('Failed to extract JSON');
+    }
+  };
+
+  // Keep this function as it's used by the dropdown menu
   const handleOpenSchedulerPage = () => {
     // Navigate to scheduler page for this destination
     window.location.href = `/scheduler?destination=${destination}`;
@@ -466,7 +484,7 @@ export const BucketGridView = ({
   // Helper to derive friendly date bucket label – defined here (before first use)
   const getDateBucketLabel = (timestamp?: number): string => {
     if (!timestamp) return 'Older';
-
+    
     const date = new Date((timestamp ?? 0) * 1000);
     const now = new Date();
 
@@ -475,7 +493,7 @@ export const BucketGridView = ({
     dateAtMidnight.setHours(0, 0, 0, 0);
     const nowAtMidnight = new Date(now);
     nowAtMidnight.setHours(0, 0, 0, 0);
-
+    
     // Calculate difference in days
     const diffMs = nowAtMidnight.getTime() - dateAtMidnight.getTime();
     const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
@@ -512,7 +530,7 @@ export const BucketGridView = ({
     if (!dateGroupsMap[label]) dateGroupsMap[label] = [];
     dateGroupsMap[label].push(imgForGroup);
   });
-
+  
   // Sort each date group by timestamp (newest first)
   Object.keys(dateGroupsMap).forEach(key => {
     dateGroupsMap[key].sort((a, b) => {
@@ -593,77 +611,12 @@ export const BucketGridView = ({
     moveToPosition(movedId, targetFilename);
   };
 
-  // Get scheduler status icon and text
-  const getSchedulerStatusDisplay = () => {
-    if (schedulerStatus?.is_paused) {
-      return {
-        icon: <CirclePause className="h-5 w-5 text-amber-500" />,
-        text: "Paused",
-        colorClass: "text-amber-500"
-      };
-    } else if (schedulerStatus?.is_running) {
-      return {
-        icon: <CirclePlay className="h-5 w-5 text-green-500 animate-pulse" />,
-        text: "Running",
-        colorClass: "text-green-500"
-      };
-    } else {
-      return {
-        icon: <CircleStop className="h-5 w-5 text-gray-400" />,
-        text: "Stopped",
-        colorClass: "text-gray-400"
-      };
-    }
-  };
-
-  const statusDisplay = getSchedulerStatusDisplay();
-  const hasCamera = 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices;
-
-  // Handle maintenance actions
-  const handlePurgeNonFavorites = async () => {
-    if (confirm('Are you sure you want to purge non-favorite images?')) {
-      try {
-        const success = await apiService.performBucketMaintenance(destination, 'purge');
-        if (success) {
-          debouncedFetchBucketDetails();
-        }
-      } catch (error) {
-        console.error('Error purging non-favorites:', error);
-        toast.error('Failed to purge non-favorites');
-      }
-    }
-  };
-
-  const handleReindex = async () => {
-    try {
-      const success = await apiService.performBucketMaintenance(destination, 'reindex');
-      if (success) {
-        debouncedFetchBucketDetails();
-      }
-    } catch (error) {
-      console.error('Error reindexing bucket:', error);
-      toast.error('Failed to reindex bucket');
-    }
-  };
-
-  const handleExtractJson = async () => {
-    try {
-      const success = await apiService.performBucketMaintenance(destination, 'extract');
-      if (success) {
-        debouncedFetchBucketDetails();
-      }
-    } catch (error) {
-      console.error('Error extracting JSON:', error);
-      toast.error('Failed to extract JSON');
-    }
-  };
-
   // Add moveToPosition method for reordering
   const moveToPosition = async (filename: string, targetFilename: string | null) => {
     try {
       await apiService.moveToPosition(destination, filename, targetFilename);
       toast.success('Image position updated');
-        debouncedFetchBucketDetails();
+      debouncedFetchBucketDetails();
     } catch (error) {
       console.error('Error moving image:', error);
       toast.error('Failed to move image');
@@ -956,64 +909,6 @@ export const BucketGridView = ({
     }
   };
 
-  // Create a PublishedImageDroppable component
-  const PublishedImageDroppable = ({ currentImage }: { currentImage: BucketImage | null }) => {
-    // Create a droppable area for publishing
-    const { setNodeRef, isOver } = useDroppable({
-      id: 'publish-dropzone',
-      data: {
-        type: DropTargetType.PUBLISH
-      }
-    });
-
-    // If no current image, don't render a drop target
-    if (!currentImage || headless) return null;
-
-    // Ensure we have a valid source URL
-    const imageUrl = currentImage.thumbnail_url || currentImage.url || '';
-    
-    if (!imageUrl) {
-      console.warn('Published image has no URL:', currentImage);
-    }
-
-    return (
-      <div 
-        ref={setNodeRef}
-        className={`relative w-24 h-24 rounded-md overflow-hidden bg-black/10 flex-shrink-0 transition-all
-          ${isOver ? 'ring-2 ring-primary ring-offset-2 shadow-lg' : ''}
-          ${activeId ? 'cursor-copy' : ''}
-        `}
-      >
-        {imageUrl ? (
-          <img 
-            src={imageUrl} 
-            alt="Published" 
-            className={`w-full h-full object-cover ${isOver ? 'opacity-70' : ''}`}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-muted">
-            <ImageIcon className="h-10 w-10 text-muted-foreground" />
-          </div>
-        )}
-        
-        {/* Overlay that appears when dragging over */}
-        {isOver && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 text-white">
-            <Send className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">Publish</span>
-          </div>
-        )}
-        
-        {/* Helper label that shows when dragging any item */}
-        {activeId && !isOver && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-white text-opacity-70">
-            <span className="text-xs">Drop to publish</span>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const toggleSection = (id: string) =>
     setCollapsedSections((prev) => ({ ...prev, [id]: !prev[id] }));
 
@@ -1208,27 +1103,78 @@ export const BucketGridView = ({
     onDragOver: handleDragOver,
   });
 
+  // Create a PublishedImageDroppable component
+  const PublishedImageDroppable = ({ currentImage }: { currentImage: BucketImage | null }) => {
+    // Create a droppable area for publishing
+    const { setNodeRef, isOver } = useDroppable({
+      id: 'publish-dropzone',
+      data: {
+        type: DropTargetType.PUBLISH
+      }
+    });
+
+    // If no current image, don't render a drop target
+    if (!currentImage || headless) return null;
+
+    // Ensure we have a valid source URL
+    const imageUrl = currentImage.thumbnail_url || currentImage.url || '';
+    
+    if (!imageUrl) {
+      console.warn('Published image has no URL:', currentImage);
+    }
+
+    return (
+      <div 
+        ref={setNodeRef}
+        className={`relative w-24 h-24 rounded-md overflow-hidden bg-black/10 flex-shrink-0 transition-all
+          ${isOver ? 'ring-2 ring-primary ring-offset-2 shadow-lg' : ''}
+          ${activeId ? 'cursor-copy' : ''}
+        `}
+      >
+        {imageUrl ? (
+          <img 
+            src={imageUrl} 
+            alt="Published" 
+            className={`w-full h-full object-cover ${isOver ? 'opacity-70' : ''}`}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-muted">
+            <ImageIcon className="h-10 w-10 text-muted-foreground" />
+          </div>
+        )}
+        
+        {/* Overlay that appears when dragging over */}
+        {isOver && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 text-white">
+            <Send className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Publish</span>
+          </div>
+        )}
+        
+        {/* Helper label that shows when dragging any item */}
+        {activeId && !isOver && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-white text-opacity-70">
+            <span className="text-xs">Drop to publish</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* DnD interactions handled by global context; monitor via hooks */}
       {bucketDetails && (
-      <div className="flex flex-col mb-4 p-2 sm:p-4 bg-muted rounded-md w-full">
+      <div className="flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full">
         <div className="flex items-start gap-3">
           {/* Left side with droppable published image area */}
           <PublishedImageDroppable currentImage={currentPublishedImage} />
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="flex justify-between items-center mt-1">
+          
+          {/* Controls area */}
+          <div className="flex-1 flex flex-col min-w-0 h-full">
+            {/* All publish destinations use same layout */}
+            <div className="flex justify-between items-center">
               <div className="flex flex-wrap gap-1 items-center">
-                {/* Star button with counts */}
-                <Button
-                  variant={showFavoritesFirst ? "secondary" : "outline"}
-                  size="sm"
-                  className="flex items-center h-8"
-                  onClick={() => setShowFavoritesFirst(!showFavoritesFirst)}
-                >
-                  <Star className={`h-4 w-4 ${showFavoritesFirst ? "fill-current" : ""}`} />
-                  <span className="ml-1 text-xs">{bucketDetails.favorites_count} / {bucketDetails.count}</span>
-                </Button>
                 <Button 
                   size="sm" 
                   variant="ghost" 
@@ -1270,67 +1216,26 @@ export const BucketGridView = ({
                       <Copy className="h-4 w-4 mr-2" />
                       Extract JSON
                     </DropdownMenuItem>
-                    {!headless && (
-                      <DropdownMenuItem onClick={handleOpenSchedulerPage}>
-                        <Settings className="h-4 w-4 mr-2" />
-                        Scheduler
-                      </DropdownMenuItem>
-                    )}
+                    <DropdownMenuItem onClick={handleOpenSchedulerPage}>
+                      <Settings className="h-4 w-4 mr-2" />
+                      Scheduler
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-              {/* Scheduler controls on same line (only if not headless) */}
-              {!headless && (
-                <div className="flex items-center gap-1 ml-2">
-                  <div className={`flex items-center ${statusDisplay.colorClass}`}>
-                    {statusDisplay.icon}
-                    <span className="text-sm ml-1">{statusDisplay.text}</span>
-                  </div>
-                  <div className="flex items-center ml-1 space-x-1">
-                    {!schedulerStatus.is_running && (
-                      <Button 
-                        variant="outline" 
-                        size="xs"
-                        onClick={() => handleSchedulerAction('start')}
-                        className="h-6 px-2 text-xs"
-                      >
-                        Start
-                      </Button>
-                    )}
-                    {schedulerStatus.is_running && !schedulerStatus.is_paused && (
-                      <Button 
-                        variant="outline" 
-                        size="xs"
-                        onClick={() => handleSchedulerAction('pause')}
-                        className="h-6 px-2 text-xs"
-                      >
-                        Pause
-                      </Button>
-                    )}
-                    {schedulerStatus.is_running && schedulerStatus.is_paused && (
-                      <Button 
-                        variant="outline" 
-                        size="xs"
-                        onClick={() => handleSchedulerAction('unpause')}
-                        className="h-6 px-2 text-xs"
-                      >
-                        Resume
-                      </Button>
-                    )}
-                    {schedulerStatus.is_running && (
-                      <Button 
-                        variant="outline" 
-                        size="xs"
-                        onClick={() => handleSchedulerAction('stop')}
-                        className="h-6 px-2 text-xs"
-                      >
-                        Stop
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
+            
+            {/* Create a flex spacer that pushes the controls to the bottom */}
+            <div className="flex-grow"></div>
+            
+            {/* Replace the inline scheduler controls with the SchedulerControl component */}
+            <SchedulerControl 
+              destination={destination}
+              isRunning={schedulerStatus?.is_running}
+              isPaused={schedulerStatus?.is_paused}
+              nextAction={schedulerStatus?.next_action}
+              refreshScheduler={refreshBucket}
+            />
           </div>
         </div>
       </div>
@@ -1345,7 +1250,7 @@ export const BucketGridView = ({
         </Alert>
       )}
       
-      {/* ---- Grouped Sections (unified DND) ---- */}
+      {/* Bucket content */}
       {loading || externalLoading ? (
         <div className="flex justify-center items-center h-full">
           <RefreshCw className="h-8 w-8 animate-spin opacity-50" />
@@ -1369,21 +1274,6 @@ export const BucketGridView = ({
           ))}
         </div>
       )}
-
-      {/* Drag overlay with scale and shadow */}
-      <DragOverlay adjustScale={false}>
-        {activeDraggedImage ? (
-          <div
-            className="rounded-md overflow-hidden shadow-xl transform-gpu scale-105"
-            style={{ opacity: dropTargetType === DropTargetType.REORDER ? 1 : 0.6 }}
-          >
-            <img
-              src={activeDraggedImage.thumbnail_url || activeDraggedImage.url}
-              alt="drag preview"
-              className="w-full h-full object-cover" />
-          </div>
-        ) : null}
-      </DragOverlay>
       
       {/* Tabbed upload modal */}
       <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
@@ -1554,6 +1444,21 @@ export const BucketGridView = ({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Drag overlay with scale and shadow */}
+      <DragOverlay adjustScale={false}>
+        {activeDraggedImage ? (
+          <div
+            className="rounded-md overflow-hidden shadow-xl transform-gpu scale-105"
+            style={{ opacity: dropTargetType === DropTargetType.REORDER ? 1 : 0.6 }}
+          >
+            <img
+              src={activeDraggedImage.thumbnail_url || activeDraggedImage.url}
+              alt="drag preview"
+              className="w-full h-full object-cover" />
+          </div>
+        ) : null}
+      </DragOverlay>
     </div>
   );
-} 
+}; 
