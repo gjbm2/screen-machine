@@ -13,6 +13,8 @@ export interface ExpandableContainerProps {
   onToggle: (id: string) => void;
   /** Additional class names for wrapper. */
   className?: string;
+  /** Extra content (e.g., sort toggles) shown in the header next to the label.  Clicks will not collapse. */
+  headerExtras?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -28,6 +30,7 @@ export const ExpandableContainer = React.forwardRef<HTMLDivElement, ExpandableCo
   collapsed,
   onToggle,
   className = '',
+  headerExtras,
   children,
 }, ref) => {
   const handleToggle = React.useCallback(() => onToggle(id), [id, onToggle]);
@@ -54,6 +57,12 @@ export const ExpandableContainer = React.forwardRef<HTMLDivElement, ExpandableCo
           <ArrowIcon className="h-4 w-4 mr-1 shrink-0" />
         )}
         {label && <span className="flex-1 truncate text-sm font-medium">{label}</span>}
+        {/* Extras (e.g., sort toggle).  Stop click propagation so container doesn't collapse. */}
+        {headerExtras && (
+          <span className="ml-2" onClick={(e) => e.stopPropagation()}>
+            {headerExtras}
+          </span>
+        )}
         {iconPos === 'right' && (
           <ArrowIcon className="h-4 w-4 ml-1 shrink-0" />
         )}

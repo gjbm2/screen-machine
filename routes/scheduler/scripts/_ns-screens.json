@@ -1,0 +1,92 @@
+{
+  "initial_actions": {
+    "instructions_block": []
+  },
+  "triggers": [
+    {
+      "type": "day_of_week",
+      "days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday"
+      ],
+      "scheduled_actions": [
+        {
+          "time": "06:00",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "import_var",
+                "as": "_a_theme",
+                "scope": "living-room",
+                "var_name": "a_theme"
+              },
+              {
+                "action": "import_var",
+                "as": "_b_theme",
+                "scope": "living-room",
+                "var_name": "b_theme"
+              },
+              {
+                "action": "import_var",
+                "as": "_style",
+                "scope": "living-room",
+                "var_name": "style"
+              },
+              {
+                "action": "import_var",
+                "as": "_guidance",
+                "scope": "living-room",
+                "var_name": "guidance"
+              },
+              {
+                "action": "reason",
+                "history_var": "history_var",
+                "image_inputs": [],
+                "output_vars": [
+                  "prompt"
+                ],
+                "reasoner": "devise_prompt",
+                "text_input": "'{{ _b_theme }}' in the style of '{{ _style }}'. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. "
+              },
+              {
+                "action": "generate",
+                "history_var": "prompt_history",
+                "input": {
+                  "prompt": "{{ prompt }}"
+                },
+                "refiner": "curator"
+              }
+            ]
+          },
+          "repeat_schedule": {
+            "every": "30"
+          }
+        },
+        {
+          "time": "06:05",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "animate",
+                "refiner": "animator",
+                "history_var": "animation_history"
+              }
+            ]
+          },
+          "repeat_schedule": {
+            "every": "120"
+          }
+        }
+      ]
+    }
+  ],
+  "final_actions": {
+    "instructions_block": []
+  },
+  "prevent_unload": true
+}

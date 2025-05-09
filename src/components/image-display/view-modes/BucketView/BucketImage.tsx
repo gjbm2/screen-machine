@@ -1,4 +1,6 @@
 import React from 'react';
+// DEPRECATED: This component is no longer in use. Use src/components/common/ImageCard.tsx instead.
+// TODO: Remove this file and its dependencies once confirmed unused.
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Heart, Trash2, Move, ChevronUp, ChevronDown, ExternalLink } from 'lucide-react';
@@ -149,6 +151,17 @@ export function BucketImage({
           >
             <Trash2 className="h-4 w-4" />
             <span className="sr-only">Delete</span>
+          </Button>
+          
+          {/* TEST: Raw URL button */}
+          <Button 
+            size="sm" 
+            variant="outline"
+            className="rounded-full h-8 w-8 p-0 bg-green-500 hover:bg-green-600"
+            onClick={() => window.open(`/api/buckets/${bucket}/raw/${item.filename}`, '_blank')}
+          >
+            <ExternalLink className="h-4 w-4" />
+            <span className="sr-only">Raw URL</span>
           </Button>
         </div>
       )}

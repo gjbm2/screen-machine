@@ -21,6 +21,7 @@ import os
 import logging
 import tempfile
 import random
+import re
 
 import requests
 from utils.logger import info, error, warning, debug
@@ -41,7 +42,8 @@ from routes.utils import (
 
 from routes.bucketer import (
     _append_to_bucket,
-    _record_publish
+    _record_publish,
+    bucket_path
 )
 
 
@@ -108,138 +110,181 @@ def publish_to_destination(
     Returns:
         dict with success status and optional error message
     """
-    # Handle blank screen case first
-    if blank:
-        blank_path = Path("output/_blank.jpg")
-        if not blank_path.exists():
-            # Try to create a blank image if it doesn't exist
-            try:
-                from PIL import Image
-                # Ensure output directory exists
-                os.makedirs("output", exist_ok=True)
-                Image.new('RGB', (1, 10), color='black').save(blank_path)
-                info(f"Created blank screen image at {blank_path}")
-            except Exception as e:
-                error(f"Failed to create blank screen image: {e}")
-                return {"success": False, "error": f"Blank screen image not found and could not be created: {e}"}
+    # Log incoming parameters
+    info(f"[publish_to_destination] PARAMS: source={source}, dest={publish_destination_id}, skip_bucket={skip_bucket}")
+    
+    try:
+        # Get destination config
+        dest = get_destination(publish_destination_id)
         
-        # Publish blank screen, always skip bucket and suppress overlay
-        result = _publish_to_destination(
-            source=blank_path,
-            publish_destination_id=publish_destination_id,
-            metadata={},
-            skip_bucket=True,
-            silent=silent
-        )
-        return result
-
-    # Determine if source is a URL or local file
-    is_url = isinstance(source, str) and source.startswith(("http://", "https://"))
-    is_local = not is_url
-
-    # If skip_bucket is None, determine based on source type
-    if skip_bucket is None:
-        skip_bucket = is_local  # Skip bucket for local files by default
-
-    # Handle URL sources
-    if is_url:
-        try:
-            # Download the image
-            response = requests.get(source)
-            response.raise_for_status()
+        # In blank mode, clear display and return early
+        if blank:
+            result = _display_blank(publish_destination_id)
+            if result["success"]:
+                # Update destination_published.json
+                _update_published_info(publish_destination_id, None, None)
+            return result
             
-            # --------------------------------------------------
-            # Detect the correct file extension for the downloaded content
-            # --------------------------------------------------
-            from urllib.parse import urlparse, unquote
-            parsed_url = urlparse(source)
-            # Get last segment of the path (ignoring query/fragment) and unquote it
-            path_tail = Path(unquote(parsed_url.path)).name  # e.g. "image.jpg"
-            ext = Path(path_tail).suffix.lower()
+        # Determine if source is a URL or local path
+        is_url = (isinstance(source, str) and 
+                (source.startswith('http://') or source.startswith('https://') or source.startswith('/api/')))
+        
+        info(f"[publish_to_destination] Source type: {'URL' if is_url else 'Local file'}")
+        
+        # Default skip_bucket behavior if not specified
+        if skip_bucket is None:
+            # For URLs, save to bucket by default
+            # For local files, only save if not already in a bucket
+            skip_bucket = (not is_url) and str(source).find(f"{dest.get('file', publish_destination_id)}") >= 0
+            info(f"[publish_to_destination] Determined skip_bucket={skip_bucket} automatically")
 
-            valid_exts = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov'}
-            file_extension = ext if ext in valid_exts else ''
+        # Handle URL sources
+        if is_url:
+            try:
+                # Handle API-relative URLs and normalize them for local server access
+                if source.startswith('/api/'):
+                    # This is a relative URL - rewrite it to a local file path if possible
+                    info(f"[publish_to_destination] Converting API-relative URL to local path: {source}")
+                    
+                    # Extract bucket and filename from URL like /api/buckets/bucket_id/raw/filename
+                    bucket_pattern = r'/api/buckets/([^/]+)/raw/([^/]+)'
+                    match = re.match(bucket_pattern, source)
+                    
+                    if match:
+                        bucket_id, filename = match.groups()
+                        local_path = bucket_path(bucket_id) / filename
+                        info(f"[publish_to_destination] Converted to local path: {local_path}")
+                        
+                        if local_path.exists():
+                            # Use the local file directly instead of downloading
+                            return publish_to_destination(
+                                source=local_path,
+                                publish_destination_id=publish_destination_id,
+                                metadata=metadata or {},
+                                skip_bucket=skip_bucket,
+                                silent=silent
+                            )
+                
+                # If source comes from a full URL that contains buckets/raw/
+                # it could be an absolute URL to our own API
+                bucket_pattern = r'(https?://.*?)/api/buckets/([^/]+)/raw/([^/]+)'
+                match = re.match(bucket_pattern, source)
+                
+                if match:
+                    _, bucket_id, filename = match.groups()
+                    local_path = bucket_path(bucket_id) / filename
+                    info(f"[publish_to_destination] Found full URL to local bucket: {local_path}")
+                    
+                    if local_path.exists():
+                        # Use the local file directly instead of downloading
+                        return publish_to_destination(
+                            source=local_path,
+                            publish_destination_id=publish_destination_id,
+                            metadata=metadata or {},
+                            skip_bucket=skip_bucket,
+                            silent=silent
+                        )
 
-            # Fallback: look at Content-Type header
-            if not file_extension:
-                content_type = response.headers.get('Content-Type', '').lower()
-                if 'video' in content_type:
-                    file_extension = '.mp4'
-                elif 'image/jpeg' in content_type:
-                    file_extension = '.jpg'
-                elif 'image/png' in content_type:
-                    file_extension = '.png'
-                elif 'image/gif' in content_type:
-                    file_extension = '.gif'
-                elif 'image/webp' in content_type:
-                    file_extension = '.webp'
+                # If we get here, we need to download the remote URL
+                info(f"[publish_to_destination] Downloading remote URL: {source}")
+                response = requests.get(source, stream=True)
+                response.raise_for_status()
+                
+                # --------------------------------------------------
+                # Detect the correct file extension for the downloaded content
+                # --------------------------------------------------
+                from urllib.parse import urlparse, unquote
+                parsed_url = urlparse(source)
+                # Get last segment of the path (ignoring query/fragment) and unquote it
+                path_tail = Path(unquote(parsed_url.path)).name  # e.g. "image.jpg"
+                ext = Path(path_tail).suffix.lower()
+
+                valid_exts = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov'}
+                file_extension = ext if ext in valid_exts else ''
+
+                # Fallback: look at Content-Type header
+                if not file_extension:
+                    content_type = response.headers.get('Content-Type', '').lower()
+                    if 'video' in content_type:
+                        file_extension = '.mp4'
+                    elif 'image/jpeg' in content_type:
+                        file_extension = '.jpg'
+                    elif 'image/png' in content_type:
+                        file_extension = '.png'
+                    elif 'image/gif' in content_type:
+                        file_extension = '.gif'
+                    elif 'image/webp' in content_type:
+                        file_extension = '.webp'
+                    else:
+                        # Default safe fallback
+                        file_extension = '.jpg'
+
+                debug(f"Determined file extension: {file_extension} (url='{path_tail}', content-type='{response.headers.get('Content-Type', '')}')")
+                
+                # If the file is an image but not already JPEG, convert to JPEG for consistency
+                image_exts = {'.png', '.gif', '.webp', '.jpeg'}
+                is_video   = file_extension in {'.mp4', '.webm', '.mov'}
+
+                if file_extension in image_exts and not is_video:
+                    try:
+                        from PIL import Image
+                        from io import BytesIO
+
+                        img = Image.open(BytesIO(response.content)).convert('RGB')
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+                            img.save(temp_file, format='JPEG', quality=95)
+                            temp_path = Path(temp_file.name)
+                        debug(f"Image converted to JPEG for publishing (original ext {file_extension}) -> {temp_path.name}")
+                        file_extension = '.jpg'  # normalise
+                    except Exception as e:
+                        warning(f"JPEG conversion failed ({file_extension}), falling back to original content: {e}")
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
+                            temp_file.write(response.content)
+                            temp_path = Path(temp_file.name)
                 else:
-                    # Default safe fallback
-                    file_extension = '.jpg'
-
-            debug(f"Determined file extension: {file_extension} (url='{path_tail}', content-type='{response.headers.get('Content-Type', '')}')")
-            
-            # If the file is an image but not already JPEG, convert to JPEG for consistency
-            image_exts = {'.png', '.gif', '.webp', '.jpeg'}
-            is_video   = file_extension in {'.mp4', '.webm', '.mov'}
-
-            if file_extension in image_exts and not is_video:
-                try:
-                    from PIL import Image
-                    from io import BytesIO
-
-                    img = Image.open(BytesIO(response.content)).convert('RGB')
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
-                        img.save(temp_file, format='JPEG', quality=95)
-                        temp_path = Path(temp_file.name)
-                    debug(f"Image converted to JPEG for publishing (original ext {file_extension}) -> {temp_path.name}")
-                    file_extension = '.jpg'  # normalise
-                except Exception as e:
-                    warning(f"JPEG conversion failed ({file_extension}), falling back to original content: {e}")
+                    # Create a temporary file with determined extension (video or already jpg)
                     with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
                         temp_file.write(response.content)
                         temp_path = Path(temp_file.name)
-            else:
-                # Create a temporary file with determined extension (video or already jpg)
-                with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
-                    temp_file.write(response.content)
-                    temp_path = Path(temp_file.name)
+                
+                # Publish the downloaded file
+                result = _publish_to_destination(
+                    source=temp_path,
+                    publish_destination_id=publish_destination_id,
+                    metadata=metadata or {},
+                    skip_bucket=skip_bucket,
+                    silent=silent
+                )
+                
+                # Clean up the temporary file
+                temp_path.unlink()
+                
+                return result
+                
+            except Exception as e:
+                return {"success": False, "error": f"Failed to download image: {str(e)}"}
+
+        # Handle local file sources
+        try:
+            # Convert source to Path if it's a string
+            source_path = Path(source) if isinstance(source, str) else source
             
-            # Publish the downloaded file
+            # Publish the local file
             result = _publish_to_destination(
-                source=temp_path,
+                source=source_path,
                 publish_destination_id=publish_destination_id,
                 metadata=metadata or {},
                 skip_bucket=skip_bucket,
                 silent=silent
             )
             
-            # Clean up the temporary file
-            temp_path.unlink()
-            
             return result
             
         except Exception as e:
-            return {"success": False, "error": f"Failed to download image: {str(e)}"}
-
-    # Handle local file sources
-    try:
-        # Convert source to Path if it's a string
-        source_path = Path(source) if isinstance(source, str) else source
-        
-        # Publish the local file
-        result = _publish_to_destination(
-            source=source_path,
-            publish_destination_id=publish_destination_id,
-            metadata=metadata or {},
-            skip_bucket=skip_bucket,
-            silent=silent
-        )
-        
-        return result
-        
+            return {"success": False, "error": f"Failed to publish image: {str(e)}"}
     except Exception as e:
-        return {"success": False, "error": f"Failed to publish image: {str(e)}"}
+        error(f"Publish failed: {e}")
+        return {"success": False, "error": str(e)}
 
 # ─── overlay helper ────────────────────────────────────────────────────────
 def _send_overlay_prompt(screen_id: str, metadata: dict[str, Any]) -> None:

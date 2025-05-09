@@ -18,7 +18,7 @@
           ],
           "scheduled_actions": [
             {
-              "time": "00:01",
+              "time": "06:00",
               "trigger_actions": {
                 "instructions_block": [
                   {
@@ -53,7 +53,7 @@
                       "prompt"
                     ],
                     "reasoner": "devise_prompt",
-                    "text_input": "Create an image of {{ b_theme }} in the style of {{ _style }}. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. "
+                    "text_input": "'{{ _b_theme }}' in the style of '{{ _style }}'. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. "
                   },
                   {
                     "action": "generate",
@@ -61,12 +61,27 @@
                     "input": {
                       "prompt": "{{ prompt }}"
                     },
-                    "refiner": "gallerist"
+                    "refiner": "curator"
                   }
                 ]
               },
               "repeat_schedule": {
-                "every": "60"
+                "every": "30"
+              }
+            },
+            {
+              "repeat_schedule": {
+                "every": "120"
+              },
+              "time": "07:05",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "animate",
+                    "history_var": "animation_history",
+                    "refiner": "animator"
+                  }
+                ]
               }
             }
           ]
@@ -81,11 +96,11 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "The Court of the Microscopic",
-        "_b_theme": "The Kingdom of the Galactic",
-        "_style": "Surrealist Expressionism",
-        "_guidance": "Create images where microscopic details of ordinary objects and expansive celestial bodies evoke a sense of scale that transcends the familiar. Using Surrealist Expressionism, aim to avoid repeating past subject-types by selecting newly imaginative contexts that combine reality with the fantastic. Leverage image history to push the boundaries of perception by emphasizing the unexpected and unusual within these realms.",
-        "prompt": "Salt shaker erupting with expansive star streams, swirling cosmos spilling from tiny grains, scattering across a dinner table set with glowing celestial cutlery.",
+        "_a_theme": "Moments of Quiet Bravery",
+        "_b_theme": "Public Acts of Heroism",
+        "_style": "Berthe Morisot\u2019s Impressionist brushwork",
+        "_guidance": "Focus on depicting various instances of personal courage in intimate settings, ensuring diversity and freshness by avoiding repetition with recent image history, all while employing Berthe Morisot\u2019s soft and fluid Impressionist brushwork.",
+        "prompt": "A veterinarian comforting a nervous pet before surgery, soft morning light through clinic windows, Morisot's airy brushwork conveying tenderness and reassurance.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:54",
@@ -666,6 +681,296 @@
             },
             "text_input": "Create an image of  in the style of Surrealist ...",
             "explanation": "To craft a unique surrealist expressionism scene, I chose a salt shaker, a common object yet not ..."
+          },
+          {
+            "timestamp": "2025-05-09 01:01:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Warm sunlight filtering through lace curtains, illuminating a woman reading to a child in a cozy, floral room; her tender expression captured in Morisot's elegant strokes."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I chose an intimate, serene scene of a woman reading to a child, focusing on personal courage in ..."
+          },
+          {
+            "timestamp": "2025-05-09 02:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A woman reuniting with her partner at dusk in a sunlit garden, soft shadows cast by leaf-framed silhouettes, captured with Morisot's dynamic, light-infused brushstrokes."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I depicted a reunion at dawn in an intimate garden setting which differs from a reading scene or ..."
+          },
+          {
+            "timestamp": "2025-05-09 03:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "An artist quietly painting by a window at twilight, streaks of lavender and rose in the sky, captured with Morisot's delicate brushwork, embodying serene courage."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "To ensure uniqueness, I selected a scene featuring an artist at work during twilight, focusing on..."
+          },
+          {
+            "timestamp": "2025-05-09 04:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A mother tying her child's shoe in dawn's gentle light, surrounded by blooming wildflowers; Morisot's brushwork tenderly capturing this quiet act of strength."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "To create a unique scene, I selected the intimate, everyday act of a mother helping her child, di..."
+          },
+          {
+            "timestamp": "2025-05-09 05:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A caregiver gently guiding an elderly person along a sunlit path, framed by soft canopy shadows, executed with serene brushstrokes conveying tenderness and support."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I chose a different intimate setting\u2014an outdoor scene with a caregiver assisting an elderly perso..."
+          },
+          {
+            "timestamp": "2025-05-09 06:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Teenager practicing music before a supportive family, warm candlelight flickering, Morisot's delicate brushstrokes illustrating youthful courage and familial love."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I depicted a scene of a teenager facing a personal challenge in a family setting, focusing on the..."
+          },
+          {
+            "timestamp": "2025-05-09 07:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Child offering a wilted flower to a busy parent at dusk, captured through Morisot's soft hues and gentle, expressive brushstrokes, illustrating quiet moments of bravery and love."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I chose a new perspective with a child offering a wilted flower to their parent, differing from p..."
+          },
+          {
+            "timestamp": "2025-05-09 08:01:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Quiet dawn kitchen, a father softly humming while preparing breakfast for family, light dapples from a window, Morisot's fluid strokes conveying serene dedication."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I focused on the simple yet courageous act of a father cooking, different from past subjects. The..."
+          },
+          {
+            "timestamp": "2025-05-09 09:01:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A young woman writing a letter by candlelight, warm glow highlighting her focused expression and ink-stained fingers; Morisot's gentle brushwork capturing solitary determination."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I depicted a woman engaged in a reflective, solitary act\u2014writing\u2014which introduces a new angle of ..."
+          },
+          {
+            "timestamp": "2025-05-09 09:17:56",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A woman programming at her desk late at night, illuminated by the soft glow of a laptop screen; Morisot's gentle brushwork capturing her quiet determination."
+            },
+            "text_input": "Create an image of  in the style of Berthe Mori...",
+            "explanation": "I depicted a scene of a woman engaged in a modern act of personal courage\u2014working late at her com..."
+          },
+          {
+            "timestamp": "2025-05-09 09:25:21",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "An elderly craftsman tenderly restoring a wooden chair, sunlight streaming through workshop windows, Morisot\u2019s delicate strokes illustrating the patience and devotion of his labor."
+            },
+            "text_input": "Create an image of Public Acts of Heroism in th...",
+            "explanation": "To create a unique image, I focused on an elderly craftsman in his workshop, highlighting patient..."
+          },
+          {
+            "timestamp": "2025-05-09 09:57:49",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A teacher pausing from grading to comfort a distressed student, warm lamp light painting a soothing scene; Morisot's fluid brushwork capturing the gentle act of compassion."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "I focused on the intimate and compassionate act of a teacher comforting a student, which is a sce..."
+          },
+          {
+            "timestamp": "2025-05-09 09:58:52",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A sibling defending their younger brother from bullies in a sun-dappled park, Morisot\u2019s fluid brushstrokes highlighting the bravery and warmth of familial love."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "To ensure a distinct concept, I chose the dynamic and protective act of an older sibling standing..."
+          },
+          {
+            "timestamp": "2025-05-09 10:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A woman planting fresh saplings in her small garden, morning light casting gentle shadows, Morisot's fluid brushstrokes evoking quiet perseverance and nurture."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "I focused on a unique image of gardening, distinct from previous prompts. The scene emphasizes pe..."
+          },
+          {
+            "timestamp": "2025-05-09 11:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "An artist resolutely sketching a bustling market scene from a balcony, sunlight dancing through leaves, Morisot\u2019s fluid strokes conveying focus and community vibrancy."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "I avoided previous themes by focusing on an artist capturing a market scene from a distance, high..."
+          },
+          {
+            "timestamp": "2025-05-09 11:12:56",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Elderly woman knitting for a charity in a sunlit room, her hands a blur of movement; Morisot\u2019s soft brushstrokes evoking warmth and tender dedication."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "This prompt focuses on an elderly woman knitting for charity, a scenario not previously depicted,..."
+          },
+          {
+            "timestamp": "2025-05-09 11:13:35",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A child's spontaneous piano performance in hospital waiting room, soothing anxious listeners, Morisot\u2019s ethereal strokes capturing innocence and harmonious warmth."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "To ensure originality, I depicted a scene where a child unexpectedly plays piano, offering comfor..."
+          },
+          {
+            "timestamp": "2025-05-09 11:30:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A young environmental activist cleaning a local riverbank, sunlight reflecting off water's surface; Morisot's vibrant brushwork illustrating hopeful resilience and care for nature."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "This image depicts an environmental activist, which is an unexplored scenario among the previous ..."
+          },
+          {
+            "timestamp": "2025-05-09 12:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A parent reading to their child under a cozy living room blanket fort, warm lamp light and Morisot's gentle brushwork evoke a sense of nurturing courage."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "To ensure a fresh concept, I focused on a quieter act of heroism\u2014a parent reading to their child,..."
+          },
+          {
+            "timestamp": "2025-05-09 12:30:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A firefighter rescuing a kitten from a tree, dappled sunlight highlighting gentle resolve, Morisot\u2019s soft brushwork capturing the warmth of everyday heroism."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "I selected a scene where a firefighter saves a kitten, an act not previously covered. The focus i..."
+          },
+          {
+            "timestamp": "2025-05-09 13:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A nurse gently supporting a weary colleague during a hospital night shift, moonlight filtering through blinds, Morisot's brushstrokes capturing serene solidarity and care."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "I chose a scene set during a night shift to emphasize a unique time setting not previously explor..."
+          },
+          {
+            "timestamp": "2025-05-09 13:30:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A community cookout volunteer serving food to a diverse crowd, warm evening light casting long shadows, Morisot's fluid strokes illustrating camaraderie and shared joy."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "I focused on a communal event with a volunteer serving food, a scenario not previously depicted. ..."
+          },
+          {
+            "timestamp": "2025-05-09 14:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A teacher inspiring students with a spontaneous story session at sunrise, golden light filtering through classroom windows, Morisot\u2019s gentle brushwork capturing warmth and enthusiasm."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "To ensure uniqueness, I focused on a classroom setting where a teacher engages with students, con..."
+          },
+          {
+            "timestamp": "2025-05-09 14:30:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baker crafting bread for food bank, dawn light streaming through bakery windows, kneading hands highlighted by Morisot's gentle brushstrokes, evoking nurturing generosity and warmth."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "To create a unique prompt, I chose a baker making bread for a food bank, focusing on the process ..."
+          },
+          {
+            "timestamp": "2025-05-09 15:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A librarian curating a community book swap in a park, afternoon light filtering through trees; Morisot\u2019s soft brushwork capturing gentle engagement and shared discovery."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "I chose a setting and narrative that revolve around literacy and community interaction in nature,..."
+          },
+          {
+            "timestamp": "2025-05-09 15:30:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A gardener planting flowers in an urban alleyway at dusk, the rich colors of blossoms merging with shadows; Morisot's soft brushstrokes illustrating quiet resilience and urban renewal."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "To create a fresh and engaging prompt, I selected a unique scenario involving a gardener transfor..."
+          },
+          {
+            "timestamp": "2025-05-09 16:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A repair technician fixing a neighborhood's power outage at sunset, warm streetlight glow and Morisot-inspired brushwork capturing communal dedication and relief."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "I focused on a repair technician working outdoors, a scenario not previously depicted. This uniqu..."
+          },
+          {
+            "timestamp": "2025-05-09 16:30:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A musician performing for elderly care home residents, casting vibrant melodies over serene gardens, Morisot's delicate brushstrokes capturing compassion and uplifting harmony."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "I portrayed a musician playing in an intimate and emotional setting, which differs from the theme..."
+          },
+          {
+            "timestamp": "2025-05-09 17:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A veterinarian comforting a nervous pet before surgery, soft morning light through clinic windows, Morisot's airy brushwork conveying tenderness and reassurance."
+            },
+            "text_input": "'Public Acts of Heroism' in the style of 'Berth...",
+            "explanation": "I chose a veterinary clinic setting, focusing on the bond between a vet and a pet, a unique insta..."
           }
         ],
         "prompt_history": [
@@ -1132,27 +1437,297 @@
             "refiner": "gallerist",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f0bfb7f0-cfb3-49db-b3f1-4f369886125c-e1/9e57d17b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T220204Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=03a79ceec226f521f365231af6900d1c9ad3ff51a56ea80d801f819797bf8625"
+          },
+          {
+            "timestamp": "2025-05-09 01:01:02",
+            "type": "generation",
+            "prompt": "Warm sunlight filtering through lace curtains, ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/349d1d4a-7cc8-4489-afc9-074533c41210-e1/dbfa68ca.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T000209Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2afe197827adca2ed2506015ffa957b47ff0f512063ba4d2307c3af6a93bc9f3"
+          },
+          {
+            "timestamp": "2025-05-09 02:01:00",
+            "type": "generation",
+            "prompt": "A woman reuniting with her partner at dusk in a...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fbf2adbf-b8d3-439a-a64d-55918cc89717-e1/6e1d2d54.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T010129Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=243b6bb25bebc1c01dbb7953d5667a3f57140df6047e107b8df46b804c08397b"
+          },
+          {
+            "timestamp": "2025-05-09 03:01:00",
+            "type": "generation",
+            "prompt": "An artist quietly painting by a window at twili...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/70922a3f-e6f9-4fbb-86f3-580375e30dc3-e1/15f66759.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T020127Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=fe7ef0dd12082fc598eed57e93e0b563dc313ad6f26d29ae16ee4841d1cf6f2d"
+          },
+          {
+            "timestamp": "2025-05-09 04:01:00",
+            "type": "generation",
+            "prompt": "A mother tying her child's shoe in dawn's gentl...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0a793645-00d4-4e95-b7db-c8bb4baa5922-e1/285f4713.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T030159Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ec22a57b2527d0805e7411ab39be2b0bb9c54b941f8f471131dc20d1ffa73c07"
+          },
+          {
+            "timestamp": "2025-05-09 05:01:00",
+            "type": "generation",
+            "prompt": "A caregiver gently guiding an elderly person al...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/971c033d-fb45-4a65-adf0-9d4c5300268a-e1/36ff6750.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T040146Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4e366a4384f520520db6f973d904b05bfca42af3dae49c6d8913828d3896b6c0"
+          },
+          {
+            "timestamp": "2025-05-09 06:01:00",
+            "type": "generation",
+            "prompt": "Teenager practicing music before a supportive f...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/26bcc227-62f1-4a4b-b8d0-48e8a859f8bb-e1/7c78a013.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T050129Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4da0e0508d2265bbc271c79c710066038ad9700d6d2e06df22bda8156c65775f"
+          },
+          {
+            "timestamp": "2025-05-09 07:01:00",
+            "type": "generation",
+            "prompt": "Child offering a wilted flower to a busy parent...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4376c706-a925-4897-bcec-fa037eb0c416-e1/d9f232c4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T060128Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=c71532a509cbec1a7b89f04d31d8f134c31108c1d733bdd0734d8be7147379d9"
+          },
+          {
+            "timestamp": "2025-05-09 08:01:02",
+            "type": "generation",
+            "prompt": "Quiet dawn kitchen, a father softly humming whi...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/34bc1c06-6f25-4c79-8fbd-ec3d44d1f1d5-e1/9fe6352f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T070204Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9207015fa3793c0f9029362ea0416bcd1922ee41d20a395de2440ef38e88cc6b"
+          },
+          {
+            "timestamp": "2025-05-09 09:01:00",
+            "type": "generation",
+            "prompt": "A young woman writing a letter by candlelight, ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ce7bcc96-b3b4-4cf4-aa60-ef3f9a56074f-e1/bc9d29f7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T080148Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=84715191548b9b3fb618b41e2397759d1991a8310d311cb004e2cc3ea7bbe6c8"
+          },
+          {
+            "timestamp": "2025-05-09 09:17:56",
+            "type": "generation",
+            "prompt": "A woman programming at her desk late at night, ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b42da6e7-cf65-4745-8624-b9e1df3c4f99-e1/06cd3230.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T081840Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ebd58ef54c948a32609bd2aa90d4b479dfb9800a0bc2023d54384b67cc12b198"
+          },
+          {
+            "timestamp": "2025-05-09 09:25:21",
+            "type": "generation",
+            "prompt": "An elderly craftsman tenderly restoring a woode...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0bf38d14-1691-43d3-a115-460061700708-e1/53dbfa67.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T082541Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0968e3ab9c07dc8b0d9068d25e3430902ef4b00a0efc1ed7a0ba96195c673b61"
+          },
+          {
+            "timestamp": "2025-05-09 09:57:49",
+            "type": "generation",
+            "prompt": "A teacher pausing from grading to comfort a dis...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ba4c2837-2e0c-483c-8522-929e4831aa1b-e1/aa6a3e5f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T085848Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7c6a7dbf5bb7926bef492371d3b0db93e7ff9ed7056f125e12ada8ce7255f882"
+          },
+          {
+            "timestamp": "2025-05-09 09:58:52",
+            "type": "generation",
+            "prompt": "A sibling defending their younger brother from ...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b39aad16-5ae6-4f96-a5a7-e934d0ae21d7-e1/398531cc.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T085941Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=de5662f3f7815cb72869d514d6a68e8532ef8733e49c6ebf5a1813f1cf918708"
+          },
+          {
+            "timestamp": "2025-05-09 10:00:01",
+            "type": "generation",
+            "prompt": "A woman planting fresh saplings in her small ga...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/41449a2a-2cc3-4922-84bc-e08ef0158366-e1/4e567580.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T090049Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=15dedfd6d7bed90f7b36e61b001a98fb10b86ca34ad45c8cd026dd6c8ce0ee92"
+          },
+          {
+            "timestamp": "2025-05-09 11:00:00",
+            "type": "generation",
+            "prompt": "An artist resolutely sketching a bustling marke...",
+            "refiner": "gallerist",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/da698cb6-e896-464d-909b-5b65e056d85c-e1/fb2f4afb.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T100027Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=062960b06a169eaf7ed00177d0ee494e6b20f6f0ed93b6b0b25b469e9e9c6777"
+          },
+          {
+            "timestamp": "2025-05-09 11:12:56",
+            "type": "generation",
+            "prompt": "Elderly woman knitting for a charity in a sunli...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/51786b4c-ff9c-45da-a202-1a41c90d03a0-e1/d2e9da89.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T101319Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d5d019b83363bbf977633c1523524007e7205fb04b655e14e2fc0fecf31801dc"
+          },
+          {
+            "timestamp": "2025-05-09 11:13:35",
+            "type": "generation",
+            "prompt": "A child's spontaneous piano performance in hosp...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8937b244-78f3-4264-baef-11976fc2c803-e1/61f253d7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T101400Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e7a6f9bf389b8b1bcd591bc67ff4c8b33bb884e112f8ec7928ede7e2c646ef16"
+          },
+          {
+            "timestamp": "2025-05-09 11:30:01",
+            "type": "generation",
+            "prompt": "A young environmental activist cleaning a local...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/434fb9e0-890f-464c-b744-29803b271aeb-e1/5e720e90.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T103031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2082afc5a79e0b063f60f74dc579fc38def03ec92c809f3070e19bf5ad24f3c2"
+          },
+          {
+            "timestamp": "2025-05-09 12:00:01",
+            "type": "generation",
+            "prompt": "A parent reading to their child under a cozy li...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/504bc5ff-07bc-4283-b065-1befee63277e-e1/e435538f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T110046Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=95d27b07cf006c563afbcf036dc786c6c70c274cb233837b3116bb88ca00e04d"
+          },
+          {
+            "timestamp": "2025-05-09 12:30:01",
+            "type": "generation",
+            "prompt": "A firefighter rescuing a kitten from a tree, da...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/89a0e602-b7f1-47eb-801f-22f7a0e7ab57-e1/a399ebd6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T113030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=623e842f15484b37eade943d57fdee7ac03b4e94b01757c7b0d4dbb5fbdf90ac"
+          },
+          {
+            "timestamp": "2025-05-09 13:00:01",
+            "type": "generation",
+            "prompt": "A nurse gently supporting a weary colleague dur...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d167750d-43d0-40da-8c26-a59f70dfa58e-e1/0aa435cf.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T120035Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=68ec8e0ece15952f4fa18036f27569ac8ea9e4064ec9ec89608b19b71ff7ee92"
+          },
+          {
+            "timestamp": "2025-05-09 13:30:00",
+            "type": "generation",
+            "prompt": "A community cookout volunteer serving food to a...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/87364525-6c47-4fb5-8eb3-ebbae9676163-e1/c741543d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T123031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=54c6eed13a22f1bfb98059508fcac21bb05cf6404e9ebd8c2a69346fd307914a"
+          },
+          {
+            "timestamp": "2025-05-09 14:00:00",
+            "type": "generation",
+            "prompt": "A teacher inspiring students with a spontaneous...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/3a7ce72c-66ae-4aa6-ba4b-2fe1b3cf0841-e1/5bdf1b7c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T130048Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f1d8a1dbc03fa8b7f144f6fd0063ef9adb51fbfc5eeb5b1ea1c9396a2ac55bd7"
+          },
+          {
+            "timestamp": "2025-05-09 14:30:01",
+            "type": "generation",
+            "prompt": "Baker crafting bread for food bank, dawn light ...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/918f3dfa-995d-4690-a5f9-ba64be9eb281-e1/098c6047.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T133058Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4fc7b768f763866391907f73a2d444bdb627d99cb676f8f91e77b553c733321d"
+          },
+          {
+            "timestamp": "2025-05-09 15:00:00",
+            "type": "generation",
+            "prompt": "A librarian curating a community book swap in a...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ae2bbebf-d34b-4d46-ab8a-769128717225-e1/0699d4a8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T140034Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6b1affaa519845a0a58ba2370c7bf0b11b2f199768ba38ff902cd4dc4786655d"
+          },
+          {
+            "timestamp": "2025-05-09 15:30:00",
+            "type": "generation",
+            "prompt": "A gardener planting flowers in an urban alleywa...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/6611fcc4-b968-47ed-b6d4-994ea741e6fe-e1/7f988e8f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T143030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=3f11c462c5fa6f961e1034f9b9d527499a91b895ab433f5d513c306770fe50a6"
+          },
+          {
+            "timestamp": "2025-05-09 16:00:01",
+            "type": "generation",
+            "prompt": "A repair technician fixing a neighborhood's pow...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7b523285-7964-4808-8ba2-8b2b82ecc484-e1/c5b50885.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T150041Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=dc7b795eb1983c618bbf7d3a3930fb32e912e544614c80bf286022e6e17cf5ad"
+          },
+          {
+            "timestamp": "2025-05-09 16:30:00",
+            "type": "generation",
+            "prompt": "A musician performing for elderly care home res...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d63a6e82-301f-460d-8274-8d69c863d0f4-e1/7e44bdbb.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T153105Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9c4ab2dea4d2295b898b5f29bd3213cb49cd275f446a18956874a3e5c908cc05"
+          },
+          {
+            "timestamp": "2025-05-09 17:00:00",
+            "type": "generation",
+            "prompt": "A veterinarian comforting a nervous pet before ...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b1dd1cde-1a0b-4fd3-b45a-2ed76dd2544d-e1/79405a0b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T160124Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=394852f32574a91d9253fb7115d3169507985be87f02f776eb722247e8d0926d"
+          }
+        ],
+        "animation_history": [
+          {
+            "timestamp": "2025-05-09 11:12:56",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/51786b4c-ff9c-45da-a202-1a41c90d03a0-e1/d2e9da89.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T101319Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d5d019b83363bbf977633c1523524007e7205fb04b655e14e2fc0fecf31801dc",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-09 11:13:35",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8937b244-78f3-4264-baef-11976fc2c803-e1/61f253d7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T101400Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e7a6f9bf389b8b1bcd591bc67ff4c8b33bb884e112f8ec7928ede7e2c646ef16",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-09 13:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d167750d-43d0-40da-8c26-a59f70dfa58e-e1/0aa435cf.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T120035Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=68ec8e0ece15952f4fa18036f27569ac8ea9e4064ec9ec89608b19b71ff7ee92",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-09 15:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ae2bbebf-d34b-4d46-ab8a-769128717225-e1/0699d4a8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T140034Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6b1affaa519845a0a58ba2370c7bf0b11b2f199768ba38ff902cd4dc4786655d",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
       "publish_destination": "south-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f0bfb7f0-cfb3-49db-b3f1-4f369886125c-e1/9e57d17b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250508%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250508T220204Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=03a79ceec226f521f365231af6900d1c9ad3ff51a56ea80d801f819797bf8625"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b1dd1cde-1a0b-4fd3-b45a-2ed76dd2544d-e1/79405a0b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T160124Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=394852f32574a91d9253fb7115d3169507985be87f02f776eb722247e8d0926d"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-08T23:43:00.910728",
+  "last_updated": "2025-05-09T17:01:26.411910",
   "last_trigger_executions": {
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T12:01:00": "2025-05-08T12:57:51.602303",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T13:01:00": "2025-05-08T13:01:02.244568",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T14:01:00": "2025-05-08T14:01:01.578060",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T15:01:00": "2025-05-08T15:01:01.255483",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T16:01:00": "2025-05-08T16:01:00.913151",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T17:01:00": "2025-05-08T17:01:00.709388",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T18:01:00": "2025-05-08T18:01:01.313340",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T19:01:00": "2025-05-08T19:01:01.284967",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T20:01:00": "2025-05-08T20:01:00.959441",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T21:01:00": "2025-05-08T21:01:01.472163",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T22:01:00": "2025-05-08T22:01:00.822794",
-    "f603b6fe44c86218a92642aa2b525111_2025-05-08T23:01:00": "2025-05-08T23:01:00.620025"
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T11:00:00": "2025-05-09T11:13:35.270025",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-09T11:05:00": "2025-05-09T11:13:35.270025",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T11:30:00": "2025-05-09T11:30:01.531746",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T12:00:00": "2025-05-09T12:00:01.742028",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T12:30:00": "2025-05-09T12:30:01.566586",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T13:00:00": "2025-05-09T13:00:01.884248",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-09T13:05:00": "2025-05-09T13:05:01.755614",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T13:30:00": "2025-05-09T13:30:00.579973",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T14:00:00": "2025-05-09T14:00:00.966328",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T14:30:00": "2025-05-09T14:30:01.955123",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T15:00:00": "2025-05-09T15:00:00.175611",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-09T15:05:00": "2025-05-09T15:05:01.281209",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T15:30:00": "2025-05-09T15:30:00.554723",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T16:00:00": "2025-05-09T16:00:01.137862",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T16:30:00": "2025-05-09T16:30:00.382514",
+    "5c70657d7537871c3426473d66e10d24_2025-05-09T17:00:00": "2025-05-09T17:00:00.083424"
   }
 }

@@ -16,7 +16,7 @@
       ],
       "scheduled_actions": [
         {
-          "time": "00:01",
+          "time": "06:00",
           "trigger_actions": {
             "instructions_block": [
               {
@@ -27,9 +27,9 @@
               },
               {
                 "action": "import_var",
-                "var_name": "b_theme",
                 "as": "_b_theme",
-                "scope": "living-room"
+                "scope": "living-room",
+                "var_name": "b_theme"
               },
               {
                 "action": "import_var",
@@ -39,9 +39,9 @@
               },
               {
                 "action": "import_var",
-                "var_name": "guidance",
                 "as": "_guidance",
-                "scope": "living-room"
+                "scope": "living-room",
+                "var_name": "guidance"
               },
               {
                 "action": "reason",
@@ -51,7 +51,7 @@
                   "prompt"
                 ],
                 "reasoner": "devise_prompt",
-                "text_input": "Create an image of {{ a_theme }} in the style of {{ _style }}. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. "
+                "text_input": "'{{ _b_theme }}' in the style of '{{ _style }}'. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. "
               },
               {
                 "action": "generate",
@@ -59,12 +59,27 @@
                 "input": {
                   "prompt": "{{ prompt }}"
                 },
-                "refiner": "gallerist"
+                "refiner": "curator"
               }
             ]
           },
           "repeat_schedule": {
-            "every": "5"
+            "every": "30"
+          }
+        },
+        {
+          "time": "06:05",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "animate",
+                "refiner": "animator",
+                "history_var": "animation_history"
+              }
+            ]
+          },
+          "repeat_schedule": {
+            "every": "120"
           }
         }
       ]

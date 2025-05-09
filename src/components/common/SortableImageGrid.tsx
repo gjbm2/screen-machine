@@ -23,6 +23,22 @@ interface SortableImageGridProps {
   sortable?: boolean;
   /** Additional classes for grid container */
   className?: string;
+  /** Called when favorite status should be toggled */
+  onToggleFavorite?: (img: ImageItem) => void;
+  /** Called when an image is clicked */
+  onImageClick?: (img: ImageItem) => void;
+  /** Called when image should be deleted */
+  onDelete?: (img: ImageItem) => void;
+  /** Called to copy image to other bucket */
+  onCopyTo?: (img: ImageItem, destId: string) => void;
+  /** Called to publish image */
+  onPublish?: (img: ImageItem, destId: string) => void;
+  /** List of publishable destinations */
+  publishDestinations?: Array<{id: string, name: string, headless: boolean}>;
+  /** The bucket ID of the current bucket (for raw URL construction) */
+  bucketId?: string;
+  /** The type of section this grid is in ('favourites' or 'dated') */
+  sectionVariant?: 'favourites' | 'dated';
 }
 
 export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
@@ -30,6 +46,14 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
   onOrderChange,
   sortable = true,
   className = '',
+  onToggleFavorite,
+  onImageClick,
+  onDelete,
+  onCopyTo,
+  onPublish,
+  publishDestinations,
+  bucketId = '',
+  sectionVariant,
 }) => {
   const [items, setItems] = React.useState<string[]>(images.map((i) => i.id));
 
@@ -56,9 +80,33 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
     >
       {images.map((img, idx) => (
         sortable ? (
-          <SortableImage key={img.id} image={img} index={idx} />
+          <SortableImage 
+            key={img.id} 
+            image={img} 
+            index={idx} 
+            onToggleFavorite={onToggleFavorite} 
+            onImageClick={onImageClick} 
+            onDelete={onDelete} 
+            onCopyTo={onCopyTo} 
+            onPublish={onPublish}
+            publishDestinations={publishDestinations} 
+            bucketId={bucketId}
+            sectionVariant={sectionVariant}
+          />
         ) : (
-          <DraggableImage key={img.id} image={img} index={idx} />
+          <DraggableImage 
+            key={img.id} 
+            image={img} 
+            index={idx} 
+            onToggleFavorite={onToggleFavorite} 
+            onImageClick={onImageClick} 
+            onDelete={onDelete} 
+            onCopyTo={onCopyTo} 
+            onPublish={onPublish}
+            publishDestinations={publishDestinations} 
+            bucketId={bucketId}
+            sectionVariant={sectionVariant}
+          />
         )
       ))}
     </div>
@@ -76,9 +124,28 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
 interface ImageProps {
   image: ImageItem;
   index: number;
+  onToggleFavorite?: (img: ImageItem) => void;
+  onImageClick?: (img: ImageItem) => void;
+  onDelete?: (img: ImageItem) => void;
+  onCopyTo?: (img: ImageItem, destId: string) => void;
+  onPublish?: (img: ImageItem, destId: string) => void;
+  publishDestinations?: Array<{id: string, name: string, headless: boolean}>;
+  bucketId?: string;
+  sectionVariant?: 'favourites' | 'dated';
 }
 
-const SortableImage: React.FC<ImageProps> = ({ image, index }) => {
+const SortableImage: React.FC<ImageProps> = ({ 
+  image, 
+  index, 
+  onToggleFavorite, 
+  onImageClick, 
+  onDelete, 
+  onCopyTo, 
+  onPublish,
+  publishDestinations,
+  bucketId,
+  sectionVariant
+}) => {
   const {
     attributes,
     listeners,
@@ -109,13 +176,35 @@ const SortableImage: React.FC<ImageProps> = ({ image, index }) => {
         }
       }}
     >
-      <ImageCard image={image} index={index} />
+      <ImageCard 
+        image={image} 
+        index={index} 
+        onToggleFavorite={onToggleFavorite} 
+        onClick={onImageClick} 
+        onDelete={onDelete}
+        onCopyTo={onCopyTo}
+        onPublish={onPublish}
+        publishDestinations={publishDestinations}
+        bucketId={bucketId}
+        sectionVariant={sectionVariant}
+      />
     </div>
   );
 };
 
 // Draggable-only item used when grid is not sortable
-const DraggableImage: React.FC<ImageProps> = ({ image, index }) => {
+const DraggableImage: React.FC<ImageProps> = ({ 
+  image, 
+  index, 
+  onToggleFavorite, 
+  onImageClick, 
+  onDelete, 
+  onCopyTo, 
+  onPublish, 
+  publishDestinations,
+  bucketId,
+  sectionVariant
+}) => {
   const {
     attributes,
     listeners,
@@ -155,7 +244,18 @@ const DraggableImage: React.FC<ImageProps> = ({ image, index }) => {
         }
       }}
     >
-      <ImageCard image={image} index={index} />
+      <ImageCard 
+        image={image} 
+        index={index} 
+        onToggleFavorite={onToggleFavorite} 
+        onClick={onImageClick}
+        onDelete={onDelete}
+        onCopyTo={onCopyTo}
+        onPublish={onPublish}
+        publishDestinations={publishDestinations}
+        bucketId={bucketId}
+        sectionVariant={sectionVariant}
+      />
     </div>
   );
 };

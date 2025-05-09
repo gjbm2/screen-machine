@@ -451,10 +451,14 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
     """
     from routes.utils import _load_json_once
     
+    # Log incoming parameters
+    debug(f"[copy_image_from_bucket_to_bucket] PARAMS: src={source_publish_destination}, target={target_publish_destination}, filename={filename}, copy={copy}")
+    
     # Verify target is a valid destination with has_bucket=true
     dests = _load_json_once("publish_destinations", "publish-destinations.json")
     dest = next((d for d in dests if d["id"] == target_publish_destination and d.get("has_bucket", False)), None)
     if not dest:
+        error(f"[copy_image_from_bucket_to_bucket] Invalid target or no bucket support: {target_publish_destination}")
         raise ValueError("Invalid target_publish_destination or destination does not support buckets")
     
     debug(f"[copy_image_from_bucket_to_bucket] Starting operation: src_id={source_publish_destination}, dst_id={target_publish_destination}, fname={filename}")
@@ -522,15 +526,20 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
         raise
 
     # Handle source deletion if this is a move (not copy)
+    debug(f"[copy_image_from_bucket_to_bucket] Final step: copy={copy}, will delete source={not copy}")
     if not copy:
         try:
+            from routes.bucket_api import delete_file
+            debug(f"[copy_image_from_bucket_to_bucket] Will DELETE source file: bucket={source_publish_destination}, file={filename}")
             delete_file(source_publish_destination, filename)
             debug(f"[copy_image_from_bucket_to_bucket] Deleted source files for {filename}")
         except Exception as e:
             error(f"[copy_image_from_bucket_to_bucket] Failed to delete source files: {str(e)}")
             raise
 
+    operation_type = "copied" if copy else "moved"
+    debug(f"[copy_image_from_bucket_to_bucket] Operation completed: {operation_type} {filename} -> {target_filename}")
     return {
-        "status": "copied" if copy else "moved",
+        "status": operation_type,
         "filename": target_filename
     } 
