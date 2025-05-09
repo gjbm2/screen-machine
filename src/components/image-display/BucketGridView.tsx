@@ -190,10 +190,28 @@ export const BucketGridView = ({
         published_at: details.published_at
       });
 
+      // Find the published image
       if (details.published) {
         const publishedImage = sortedImages.find(img => img.id === details.published);
         if (publishedImage) {
           setCurrentPublishedImage(publishedImage);
+        } else {
+          // If we didn't find it in the regular items, it may be a published image not in the bucket
+          // Look for it at the end of the sortedImages array where we added the virtual item
+          const lastImage = sortedImages[sortedImages.length - 1];
+          if (lastImage && lastImage.id === details.published) {
+            setCurrentPublishedImage(lastImage);
+          } else {
+            // As a fallback, create a minimal published image object
+            const fallbackPublishedImage = {
+              id: details.published,
+              url: `/output/${destination}.jpg`,  // Default assumption
+              thumbnail_url: `/output/${destination}.jpg`,
+              metadata: {},
+              created_at: 0
+            };
+            setCurrentPublishedImage(fallbackPublishedImage);
+          }
         }
       }
     } catch (error) {
@@ -738,15 +756,35 @@ export const BucketGridView = ({
       
       const groupKey = (over.id as string).slice(6);
       const targetSection = sections.find(s => s.id === groupKey);
+      
       if (targetSection && activeDraggedImage) {
         const isFav = !!activeDraggedImage.metadata?.favorite;
-        if (targetSection.variant === 'favourites' && !isFav) {
-          handleToggleFavorite(activeDraggedImage);
-        }
-        if (targetSection.variant !== 'favourites' && isFav) {
-          handleToggleFavorite(activeDraggedImage);
+        const originalId = getOriginalId(activeDraggedImage.id);
+        const originalImage = bucketImages.find(img => img.id === originalId);
+        
+        if (originalImage) {
+          // If we're dropping a non-favorite into the favorites section, mark it as favorite
+          if (targetSection.variant === 'favourites' && !isFav) {
+            console.log('Adding to favorites:', originalImage.id);
+            await handleToggleFavorite(originalImage);
+            toast.success('Added to favorites');
+          } 
+          // If we're dropping a favorite into a non-favorites section, unfavorite it
+          else if (targetSection.variant !== 'favourites' && isFav) {
+            console.log('Removing from favorites:', originalImage.id);
+            await handleToggleFavorite(originalImage);
+            toast.success('Removed from favorites');
+          }
         }
       }
+      
+      // Reset drag state
+      setActiveId(null);
+      setActiveDraggedImage(null);
+      setActiveDropTarget(null);
+      setDropTargetType(null);
+      document.body.style.touchAction = 'auto';
+      return;
     } else if (over.id !== active.id) {
       // Determine dragged and target images
       const draggedImage = bucketImages.find(img => img.id === active.id);
@@ -931,6 +969,13 @@ export const BucketGridView = ({
     // If no current image, don't render a drop target
     if (!currentImage || headless) return null;
 
+    // Ensure we have a valid source URL
+    const imageUrl = currentImage.thumbnail_url || currentImage.url || '';
+    
+    if (!imageUrl) {
+      console.warn('Published image has no URL:', currentImage);
+    }
+
     return (
       <div 
         ref={setNodeRef}
@@ -939,11 +984,17 @@ export const BucketGridView = ({
           ${activeId ? 'cursor-copy' : ''}
         `}
       >
-        <img 
-          src={currentImage.thumbnail_url || currentImage.url} 
-          alt="Published" 
-          className={`w-full h-full object-cover ${isOver ? 'opacity-70' : ''}`}
-        />
+        {imageUrl ? (
+          <img 
+            src={imageUrl} 
+            alt="Published" 
+            className={`w-full h-full object-cover ${isOver ? 'opacity-70' : ''}`}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-muted">
+            <ImageIcon className="h-10 w-10 text-muted-foreground" />
+          </div>
+        )}
         
         {/* Overlay that appears when dragging over */}
         {isOver && (
@@ -1012,6 +1063,9 @@ export const BucketGridView = ({
         )}
       </div>
     ) : null;
+    
+    // Determine if this is an empty favorites section
+    const isEmptyFavorites = section.variant === 'favourites' && section.images.length === 0;
 
     return (
       <ExpandableContainer
@@ -1026,58 +1080,67 @@ export const BucketGridView = ({
       >
         <div 
           ref={setContentNodeRef}
-          className={`${isContentOver ? 'ring-2 ring-primary/60' : ''}`}
+          className={`${isContentOver ? 'ring-2 ring-primary/60' : ''} ${isEmptyFavorites ? 'min-h-[100px]' : ''}`}
         >
-          <SortableImageGrid
-            images={sectionImages}
-            sortable={section.variant === 'favourites'}
-            onToggleFavorite={(img) => {
-              const originalId = getOriginalId(img.id);
-              const originalImage = bucketImages.find(i => i.id === originalId);
-              if (originalImage) {
-                handleToggleFavorite(originalImage);
-              }
-            }}
-            onImageClick={(img) => {
-              const originalId = getOriginalId(img.id);
-              const originalImage = bucketImages.find(i => i.id === originalId);
-              if (originalImage) {
-                handleImageClick(originalImage);
-              }
-            }}
-            onDelete={(img) => {
-              const originalId = getOriginalId(img.id);
-              const originalImage = bucketImages.find(i => i.id === originalId);
-              if (originalImage) {
-                handleDeleteImage(originalImage);
-              }
-            }}
-            onCopyTo={(img, destId) => {
-              const originalId = getOriginalId(img.id);
-              const originalImage = bucketImages.find(i => i.id === originalId);
-              if (originalImage && destId) {
-                handleCopyToDestination(originalImage, destId);
-              }
-            }}
-            onPublish={(img, destId) => {
-              const originalId = getOriginalId(img.id);
-              const originalImage = bucketImages.find(i => i.id === originalId);
-              if (originalImage && destId) {
-                handlePublish(destId, originalImage.id);
-              }
-            }}
-            publishDestinations={destinations.map(d => {
-              // Find in the destinations list to determine if it's headless
-              const dest = destinations.find(dest => dest.id === d.id);
-              return {
-                id: d.id,
-                name: d.name,
-                headless: dest ? dest.id === 'headless' : false, // Just a simple check - update with real logic
-              };
-            })}
-            bucketId={destination}
-            sectionVariant={section.variant}
-          />
+          {isEmptyFavorites ? (
+            <div className="flex items-center justify-center h-[100px] border-2 border-dashed border-muted-foreground/20 rounded-md">
+              <div className="text-center text-muted-foreground">
+                <Star className="h-6 w-6 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Drop images here to favorite them</p>
+              </div>
+            </div>
+          ) : (
+            <SortableImageGrid
+              images={sectionImages}
+              sortable={section.variant === 'favourites'}
+              onToggleFavorite={(img) => {
+                const originalId = getOriginalId(img.id);
+                const originalImage = bucketImages.find(i => i.id === originalId);
+                if (originalImage) {
+                  handleToggleFavorite(originalImage);
+                }
+              }}
+              onImageClick={(img) => {
+                const originalId = getOriginalId(img.id);
+                const originalImage = bucketImages.find(i => i.id === originalId);
+                if (originalImage) {
+                  handleImageClick(originalImage);
+                }
+              }}
+              onDelete={(img) => {
+                const originalId = getOriginalId(img.id);
+                const originalImage = bucketImages.find(i => i.id === originalId);
+                if (originalImage) {
+                  handleDeleteImage(originalImage);
+                }
+              }}
+              onCopyTo={(img, destId) => {
+                const originalId = getOriginalId(img.id);
+                const originalImage = bucketImages.find(i => i.id === originalId);
+                if (originalImage && destId) {
+                  handleCopyToDestination(originalImage, destId);
+                }
+              }}
+              onPublish={(img, destId) => {
+                const originalId = getOriginalId(img.id);
+                const originalImage = bucketImages.find(i => i.id === originalId);
+                if (originalImage && destId) {
+                  handlePublish(destId, originalImage.id);
+                }
+              }}
+              publishDestinations={destinations.map(d => {
+                // Find in the destinations list to determine if it's headless
+                const dest = destinations.find(dest => dest.id === d.id);
+                return {
+                  id: d.id,
+                  name: d.name,
+                  headless: dest ? dest.id === 'headless' : false, // Just a simple check - update with real logic
+                };
+              })}
+              bucketId={destination}
+              sectionVariant={section.variant}
+            />
+          )}
         </div>
       </ExpandableContainer>
     );

@@ -1087,7 +1087,7 @@ export class Api {
 
       return {
         filename: file.filename,
-        url: file.url,
+        url: file.raw_url || file.url || '',
         thumbnail_url: file.thumbnail_url,
         thumbnail_embedded: file.thumbnail_embedded,
         favorite: file.favorite || false,
@@ -1101,6 +1101,24 @@ export class Api {
     
     // Get published info from the published object
     const published = data.published || null;
+    
+    // If we have a published image that's not from the bucket, we need to create a virtual item for it
+    if (published && published.from_bucket === false) {
+      // Create a virtual item for the published image
+      const publishedItem = {
+        filename: published.filename,
+        url: published.raw_url || '',
+        thumbnail_url: published.thumbnail_url || published.raw_url || '',
+        favorite: false,
+        metadata: published.metadata || {},
+        created_at: new Date(published.published_at || Date.now()).getTime() / 1000,
+      };
+      
+      // Add this virtual item to our items list with a special marker
+      items.push(publishedItem);
+      
+      console.log('Added virtual item for published image not in bucket:', publishedItem);
+    }
     
     // Ensure we have a valid BucketDetails object
     const bucketDetails = {
