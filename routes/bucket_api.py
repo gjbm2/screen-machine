@@ -211,7 +211,20 @@ def upload(bucket_id: str):
 
 @buckets_bp.route("/<bucket_id>/publish/<filename>", methods=["POST"])
 def publish(bucket_id: str, filename: str):
-    """Publish a file from a bucket"""
+    """
+    DEPRECATED: This endpoint is deprecated. Use /api/publish instead.
+    
+    This endpoint will trigger an error but will still function to prevent
+    breaking existing functionality. It will be removed in a future version.
+    
+    Use the new unified endpoint with the appropriate parameters:
+    - For bucket-to-bucket: dest_bucket_id, src_bucket_id, filename
+    """
+    # Log a warning about using deprecated endpoint
+    from utils.logger import warning, error
+    warning(f"[DEPRECATED ENDPOINT] /api/buckets/{bucket_id}/publish/{filename} - Use /api/publish instead")
+    error("[DEPRECATED ENDPOINT] Using deprecated bucket-specific publish route. Please update to use /api/publish")
+    
     # Verify this is a valid destination with has_bucket=true
     dests = _load_json_once("publish_destinations", "publish-destinations.json")
     dest = next((d for d in dests if d["id"] == bucket_id and d.get("has_bucket", False)), None)
@@ -222,10 +235,13 @@ def publish(bucket_id: str, filename: str):
     if not src.exists():
         abort(404, "file not in bucket")
 
+    data = request.get_json() or {}
+    
     res = publish_to_destination(
         source=src,
         publish_destination_id=bucket_id,
-        skip_bucket=True  # Skip bucket append since this is already in a bucket
+        metadata=data.get('generation_info'),
+        skip_bucket=data.get('skip_bucket', True)  # Skip bucket append since this is already in a bucket
     )
     if not res["success"]:
         abort(500, res.get("error", "publish failed"))

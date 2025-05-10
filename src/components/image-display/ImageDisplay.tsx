@@ -491,23 +491,42 @@ export function ImageDisplay(props: ImageDisplayProps) {
     } else if (action === 'publish' && !isHeadless) {
       console.log(`Publishing image ${imageId} from ${selectedTab} to ${destId}`);
       
-      // Ensure the source URL is properly formatted with the API URL
-      const fullSourceUrl = `${window.location.protocol}//${window.location.host}/api/buckets/${selectedTab}/raw/${imageId}`;
-      console.log(`Source URL: ${fullSourceUrl}`);
-      
-      apiService.publishImage({
-        publish_destination_id: destId,
-        source: fullSourceUrl,
-        skip_bucket: true,
-      })
-      .then(() => {
-        toast.success('Published successfully');
-        refreshBucket(destId);
-      })
-      .catch((err) => {
-        console.error('Publish failed:', err);
-        toast.error('Publish failed');
-      });
+      // Determine the appropriate publish method based on source tab
+      if (selectedTab !== 'generated') {
+        // For bucket-to-bucket publishing (non-generated images)
+        apiService.publishImageUnified({
+          dest_bucket_id: destId,
+          src_bucket_id: selectedTab,
+          filename: imageId
+        })
+        .then(() => {
+          toast.success('Published successfully');
+          refreshBucket(destId);
+        })
+        .catch((err) => {
+          console.error('Publish failed:', err);
+          toast.error('Publish failed');
+        });
+      } else {
+        // For generated images, use the full URL with the external source method
+        const fullSourceUrl = `${window.location.protocol}//${window.location.host}/api/buckets/${selectedTab}/raw/${imageId}`;
+        console.log(`Source URL: ${fullSourceUrl}`);
+        
+        apiService.publishImageUnified({
+          dest_bucket_id: destId,
+          source_url: fullSourceUrl,
+          metadata: {}, // Add metadata if available
+          skip_bucket: false
+        })
+        .then(() => {
+          toast.success('Published successfully');
+          refreshBucket(destId);
+        })
+        .catch((err) => {
+          console.error('Publish failed:', err);
+          toast.error('Publish failed');
+        });
+      }
     }
     
     setContextMenu(null);

@@ -192,8 +192,14 @@ const ImageCard: React.FC<ImageCardProps> = ({
                     <DropdownMenuItem
                       key={dest.id}
                       onClick={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
-                        onPublish(image, dest.id);
+                        
+                        try {
+                          onPublish(image, dest.id);
+                        } catch (error) {
+                          console.error("Error publishing image:", error);
+                        }
                       }}
                     >
                       {dest.name}

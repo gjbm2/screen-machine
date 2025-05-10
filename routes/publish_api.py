@@ -21,6 +21,85 @@ def get_publish_destinations():
         logging.error(f"Error getting publish destinations: {str(e)}")
         return jsonify({"error": "Failed to get publish destinations"}), 500
 
+@publish_api.route('/publish', methods=['POST'])
+def unified_publish_image():
+    """
+    Unified publish endpoint for all image sources.
+    
+    This endpoint handles two scenarios:
+    1. Bucket-to-bucket publishing:
+       - dest_bucket_id: Destination bucket ID
+       - src_bucket_id: Source bucket ID
+       - filename: The image filename
+       
+    2. External URL publishing:
+       - dest_bucket_id: Destination bucket ID
+       - source_url: Full URL to the image (including auth params)
+       - metadata: Optional metadata about the image
+       - skip_bucket: Whether to skip saving to bucket (default: false)
+    """
+    try:
+        data = request.get_json()
+        dest_bucket_id = data.get('dest_bucket_id')
+        
+        info(f"[unified_publish_image] RECEIVED: {data}")
+        
+        # Validate destination exists
+        if not dest_bucket_id:
+            error("[unified_publish_image] Missing dest_bucket_id")
+            return jsonify({"error": "dest_bucket_id is required"}), 400
+            
+        if dest_bucket_id not in [d['id'] for d in publish_destinations]:
+            error(f"[unified_publish_image] Invalid destination: {dest_bucket_id}")
+            return jsonify({"error": f"Invalid destination: {dest_bucket_id}"}), 400
+            
+        # Route A: Bucket-to-bucket publishing
+        if 'src_bucket_id' in data and 'filename' in data:
+            src_bucket_id = data.get('src_bucket_id')
+            filename = data.get('filename')
+            
+            info(f"[unified_publish_image] Using bucket-to-bucket publishing: {src_bucket_id}/{filename} -> {dest_bucket_id}")
+            
+            # Construct the local path directly
+            from routes.bucket_api import bucket_path
+            src_path = bucket_path(src_bucket_id) / filename
+            
+            if not src_path.exists():
+                error(f"[unified_publish_image] File not found: {filename} in {src_bucket_id}")
+                return jsonify({"error": f"File not found: {filename} in {src_bucket_id}"}), 404
+                
+            result = publish_to_destination(
+                source=src_path,
+                publish_destination_id=dest_bucket_id,
+                # Metadata will be automatically loaded from sidecar by publish_to_destination
+                skip_bucket=True  # Always skip bucket append since image is already in a bucket
+            )
+            
+        # Route B: External URL publishing
+        elif 'source_url' in data:
+            source_url = data.get('source_url')
+            metadata = data.get('metadata', {})
+            
+            info(f"[unified_publish_image] Using external URL publishing: {source_url[:100]}... -> {dest_bucket_id}")
+            
+            result = publish_to_destination(
+                source=source_url,
+                publish_destination_id=dest_bucket_id,
+                metadata=metadata,
+                skip_bucket=data.get('skip_bucket', False)
+            )
+            
+        else:
+            error("[unified_publish_image] Missing required parameters")
+            return jsonify({"error": "Missing required parameters: either (src_bucket_id + filename) or source_url"}), 400
+            
+        info(f"[unified_publish_image] Result: {result}")
+        return jsonify(result)
+        
+    except Exception as e:
+        error(f"[unified_publish_image] Error publishing image: {str(e)}")
+        return jsonify({"error": f"Failed to publish image: {str(e)}"}), 500
+
 @publish_api.route('/publish/<filename>', methods=['POST'])
 def publish_image(filename):
     """Publish an image to a destination"""
@@ -61,6 +140,43 @@ def publish_image(filename):
     except Exception as e:
         error(f"[publish_image] Error publishing image: {str(e)}")
         return jsonify({"error": f"Failed to publish image: {str(e)}"}), 500
+
+@publish_api.route('/publish/publish', methods=['POST'])
+def legacy_publish_route():
+    """
+    Legacy publish route for backward compatibility.
+    
+    This endpoint handles requests using the older API format:
+    - publish_destination_id: Destination ID
+    - source_url: URL to the image
+    - generation_info: Optional metadata
+    - skip_bucket: Whether to skip saving to bucket (default: false)
+    """
+    data = request.get_json()
+    publish_destination_id = data.get('publish_destination_id')
+    source_url = data.get('source_url')
+    generation_info = data.get('generation_info', {})
+    skip_bucket = data.get('skip_bucket', False)
+    
+    info(f"[legacy_publish_route] RECEIVED: dest={publish_destination_id}, source={source_url}, skip_bucket={skip_bucket}")
+    
+    # Automatically set skip_bucket=True if source_url is from a bucket
+    if source_url and ('/api/buckets/' in source_url or '/output/' in source_url):
+        info(f"[legacy_publish_route] Source appears to be from a bucket, setting skip_bucket=True")
+        skip_bucket = True
+    
+    # Call publish_to_destination directly
+    try:
+        result = publish_to_destination(
+            source=source_url,
+            publish_destination_id=publish_destination_id,
+            metadata=generation_info,
+            skip_bucket=skip_bucket
+        )
+        return jsonify(result)
+    except Exception as e:
+        error(f"[legacy_publish_route] Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @publish_api.route('/published/<publish_destination_id>', methods=['GET'])
 def get_published(publish_destination_id: str):

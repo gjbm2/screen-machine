@@ -131,6 +131,45 @@ def publish_to_destination(
         
         info(f"[publish_to_destination] Source type: {'URL' if is_url else 'Local file'}")
         
+        # Check for metadata. If none provided, try to get it from sidecar if source is a local file
+        if metadata is None and not is_url:
+            # Convert string path to Path object if needed
+            source_path = Path(source) if isinstance(source, str) else source
+            
+            # Check for sidecar file and read metadata if it exists
+            from routes.utils import sidecar_path
+            sidecar_file = sidecar_path(source_path)
+            if sidecar_file.exists():
+                try:
+                    import json
+                    metadata = json.loads(sidecar_file.read_text("utf-8"))
+                    info(f"[publish_to_destination] Loaded metadata from sidecar: {sidecar_file}")
+                except Exception as e:
+                    warning(f"[publish_to_destination] Failed to read sidecar for {source_path.name}: {e}")
+            
+            # If still no metadata, try to extract it directly from the file
+            if metadata is None:
+                file_suffix = source_path.suffix.lower()
+                if file_suffix in ['.jpg', '.jpeg', '.png']:
+                    try:
+                        metadata = _extract_exif_json(source_path)
+                        if metadata:
+                            info(f"[publish_to_destination] Extracted EXIF metadata from {source_path.name}")
+                    except Exception as e:
+                        warning(f"[publish_to_destination] Failed to extract EXIF from {source_path.name}: {e}")
+                elif file_suffix in ['.mp4', '.webm', '.mov']:
+                    try:
+                        metadata = _extract_mp4_comment_json(source_path)
+                        if metadata:
+                            info(f"[publish_to_destination] Extracted metadata from video {source_path.name}")
+                    except Exception as e:
+                        warning(f"[publish_to_destination] Failed to extract metadata from video {source_path.name}: {e}")
+            
+            # Initialize metadata as empty dict if all extraction methods failed
+            if metadata is None:
+                metadata = {}
+                info(f"[publish_to_destination] No metadata found for {source_path.name}, using empty metadata")
+        
         # Default skip_bucket behavior if not specified
         if skip_bucket is None:
             # For URLs, save to bucket by default

@@ -14,6 +14,8 @@ import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
 interface PublishMenuProps {
   imageUrl: string;
+  sourceType: 'bucket' | 'external';  // Added: Type of source (bucket or external URL)
+  sourceBucket?: string;  // Added: Source bucket ID (required when sourceType is 'bucket')
   generationInfo?: {
     prompt?: string;
     workflow?: string;
@@ -26,6 +28,8 @@ interface PublishMenuProps {
 
 const PublishMenu: React.FC<PublishMenuProps> = ({ 
   imageUrl, 
+  sourceType,
+  sourceBucket,
   generationInfo,
   isRolledUp = false,
   showLabel = true,
@@ -41,26 +45,44 @@ const PublishMenu: React.FC<PublishMenuProps> = ({
   const handlePublish = async (destinationId: string) => {
     if (!imageUrl) return;
     
-    // Extract bucket and filename from the image URL
-    const urlParts = imageUrl.split('/');
-    const bucket = urlParts[urlParts.length - 2];
-    const filename = urlParts[urlParts.length - 1];
-    
     try {
-        const success = await apiService.publishImage({
-            publish_destination_id: destinationId,
-            source_url: `${apiService.getApiUrl()}/api/buckets/${bucket}/${filename}`,
-            generation_info: generationInfo,
-            skip_bucket: false // Default to saving to bucket
-        });
-        if (success) {
-            toast.success('Image published successfully');
-        } else {
-            toast.error('Failed to publish image');
+      let success;
+      
+      if (sourceType === 'bucket' && sourceBucket) {
+        // Extract just the filename from the URL path
+        const filename = imageUrl.split('/').pop()?.split('?')[0];
+        
+        if (!filename) {
+          console.error('Could not extract filename from URL');
+          toast.error('Failed to publish image: Invalid filename');
+          return;
         }
-    } catch (error) {
-        console.error('Error publishing image:', error);
+        
+        // Use the bucket-to-bucket publishing route
+        success = await apiService.publishImageUnified({
+          dest_bucket_id: destinationId,
+          src_bucket_id: sourceBucket,
+          filename: filename
+        });
+      } else {
+        // External URL case (generated images)
+        // Pass the complete URL (with all auth params intact)
+        success = await apiService.publishImageUnified({
+          dest_bucket_id: destinationId,
+          source_url: imageUrl,
+          metadata: generationInfo,
+          skip_bucket: false
+        });
+      }
+      
+      if (success) {
+        toast.success('Image published successfully');
+      } else {
         toast.error('Failed to publish image');
+      }
+    } catch (error) {
+      console.error('Error publishing image:', error);
+      toast.error('Failed to publish image');
     }
   };
 

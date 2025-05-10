@@ -311,11 +311,13 @@ export const BucketGridView = ({
 
   const handlePublish = async (bucket: string, filename: string) => {
     try {
-      const success = await apiService.publishImage({
-        publish_destination_id: bucket,
-        source: `/api/buckets/${bucket}/raw/${filename}`,
-        skip_bucket: true
+      // Use the new unified publish API for bucket-to-bucket publishing
+      const success = await apiService.publishImageUnified({
+        dest_bucket_id: bucket,
+        src_bucket_id: destination,
+        filename: filename
       });
+      
       if (success) {
         // Update local state immediately
         setBucketDetails(prev => prev ? {
@@ -328,10 +330,24 @@ export const BucketGridView = ({
         await fetchBucketDetails();
         
         toast.success('Image published successfully');
+      } else {
+        // Handle successful response but unsuccessful operation
+        console.warn('Publish operation returned false');
+        toast.error('Failed to publish image');
       }
     } catch (error) {
+      // Log detailed error info for debugging
       console.error('Error publishing image:', error);
-      toast.error('Failed to publish image');
+      
+      // Ensure UI updates despite error
+      toast.error(`Failed to publish image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Make sure bucket details are refreshed even on error
+      try {
+        await fetchBucketDetails();
+      } catch (refreshError) {
+        console.error('Failed to refresh after publish error:', refreshError);
+      }
     }
   };
 
