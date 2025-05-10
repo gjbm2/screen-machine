@@ -708,6 +708,68 @@ export const BucketGridView = ({
       setDropTargetType(null);
       document.body.style.touchAction = 'auto';
       return;
+    } else if (typeof over.id === 'string' && (over.id as string).startsWith('empty-favorites-')) {
+      // Handle drops into the empty favorites container
+      console.log("Dropping into empty favorites container:", active.id);
+      
+      if (activeDraggedImage) {
+        const isFav = !!activeDraggedImage.metadata?.favorite;
+        const originalId = getOriginalId(activeDraggedImage.id);
+        const originalImage = bucketImages.find(img => img.id === originalId);
+        
+        if (originalImage && !isFav) {
+          // Add the image to favorites
+          console.log('Adding to favorites (dropped in empty container):', originalImage.id);
+          try {
+            await handleToggleFavorite(originalImage);
+            toast.success('Added to favorites');
+            // Refresh after making changes
+            debouncedFetchBucketDetails();
+          } catch (error) {
+            console.error('Error adding to favorites:', error);
+            toast.error('Failed to add to favorites');
+          }
+        }
+      }
+      
+      // Reset drag state
+      setActiveId(null);
+      setActiveDraggedImage(null);
+      setActiveDropTarget(null);
+      setDropTargetType(null);
+      document.body.style.touchAction = 'auto';
+      return;
+    } else if (typeof over.id === 'string' && (over.id as string).startsWith('empty-dated-')) {
+      // Handle drops into the empty dated container (unfavorite)
+      console.log("Dropping into empty dated container:", active.id);
+      
+      if (activeDraggedImage) {
+        const isFav = !!activeDraggedImage.metadata?.favorite;
+        const originalId = getOriginalId(activeDraggedImage.id);
+        const originalImage = bucketImages.find(img => img.id === originalId);
+        
+        if (originalImage && isFav) {
+          // Remove the image from favorites
+          console.log('Removing from favorites (dropped in empty dated container):', originalImage.id);
+          try {
+            await handleToggleFavorite(originalImage);
+            toast.success('Removed from favorites');
+            // Refresh after making changes
+            debouncedFetchBucketDetails();
+          } catch (error) {
+            console.error('Error removing from favorites:', error);
+            toast.error('Failed to remove from favorites');
+          }
+        }
+      }
+      
+      // Reset drag state
+      setActiveId(null);
+      setActiveDraggedImage(null);
+      setActiveDropTarget(null);
+      setDropTargetType(null);
+      document.body.style.touchAction = 'auto';
+      return;
     } else if (typeof over.id === 'string' && (over.id as string).startsWith('group-')) {
       // Check if we dropped on a content area - only act on content area drops, ignore header drops
       const overData = over.data?.current as any;
@@ -734,9 +796,25 @@ export const BucketGridView = ({
         if (originalImage) {
           // If we're dropping a non-favorite into the favorites section, mark it as favorite
           if (targetSection.variant === 'favourites' && !isFav) {
-            console.log('Adding to favorites:', originalImage.id);
-            await handleToggleFavorite(originalImage);
-            toast.success('Added to favorites');
+            console.log('Adding to favorites (dropped in section):', originalImage.id);
+            
+            // Check if this is an empty favorites container
+            const isEmptyFavorites = targetSection.images.length === 0;
+            if (isEmptyFavorites) {
+              console.log('Favorites section is empty, special handling');
+            }
+            
+            // Toggle favorite status
+            try {
+              await handleToggleFavorite(originalImage);
+              toast.success('Added to favorites');
+              
+              // Always refresh after modifying favorites
+              debouncedFetchBucketDetails();
+            } catch (error) {
+              console.error('Error adding to favorites:', error);
+              toast.error('Failed to add to favorites');
+            }
           } 
           // If we're dropping a favorite into a non-favorites section, unfavorite it
           else if (targetSection.variant !== 'favourites' && isFav) {
@@ -900,16 +978,65 @@ export const BucketGridView = ({
       return;
     }
     
-    // Check if we're over a section content area (only these should be valid drop targets)
+    // Check if we're over an empty favorites container
+    if (typeof over.id === 'string' && (over.id as string).startsWith('empty-favorites-')) {
+      // We're over an empty favorites container
+      const overData = over.data?.current as any;
+      
+      if (active.id !== over.id) {
+        if (activeDropTarget !== over.id) setActiveDropTarget(over.id as string);
+        if (dropTargetType !== DropTargetType.REORDER) setDropTargetType(DropTargetType.REORDER);
+        console.log('Dragging over empty favorites container');
+      } else {
+        if (activeDropTarget !== null) setActiveDropTarget(null);
+        if (dropTargetType !== null) setDropTargetType(null);
+      }
+      return;
+    }
+    
+    // Check if we're over an empty dated container
+    if (typeof over.id === 'string' && (over.id as string).startsWith('empty-dated-')) {
+      // We're over an empty dated container
+      const overData = over.data?.current as any;
+      
+      if (active.id !== over.id) {
+        if (activeDropTarget !== over.id) setActiveDropTarget(over.id as string);
+        if (dropTargetType !== DropTargetType.REORDER) setDropTargetType(DropTargetType.REORDER);
+        console.log('Dragging over empty dated container');
+      } else {
+        if (activeDropTarget !== null) setActiveDropTarget(null);
+        if (dropTargetType !== null) setDropTargetType(null);
+      }
+      return;
+    }
+    
+    // Check if we're over a section content area
     const overData = over.data?.current as any;
     const isContentArea = overData?.type === 'content-area';
     const isGroupTarget = typeof over.id === 'string' && (over.id as string).startsWith('group-');
     
     if (isGroupTarget && isContentArea) {
       // We're over a section content area
+      // Get the section id from the over.id (remove 'group-' prefix)
+      const sectionId = (over.id as string).slice(6);
+      const sectionVariant = overData?.variant || sections.find(s => s.id === sectionId)?.variant;
+      
+      // Special handling for empty favorites section
+      const isFavoritesSection = sectionVariant === 'favourites';
+      const currentSection = sections.find(s => s.id === sectionId);
+      const isEmptySection = currentSection && currentSection.images.length === 0;
+      
       if (active.id !== over.id) {
+        // Always set the active drop target to the section we're over
         if (activeDropTarget !== over.id) setActiveDropTarget(over.id as string);
+
+        // Always set to REORDER for consistency, we'll handle special cases in handleDragEnd
         if (dropTargetType !== DropTargetType.REORDER) setDropTargetType(DropTargetType.REORDER);
+        
+        // Log more details about the drop target for debugging
+        if (isFavoritesSection && isEmptySection) {
+          console.log('Dragging over empty favorites section');
+        }
       } else {
         if (activeDropTarget !== null) setActiveDropTarget(null);
         if (dropTargetType !== null) setDropTargetType(null);
@@ -934,7 +1061,7 @@ export const BucketGridView = ({
 
   /** Single section with droppable */
   const SectionDroppable: React.FC<{ section: Section }> = ({ section }) => {
-    // We'll create a separate droppable area for the content only
+    // Create a droppable area for the content area
     const { setNodeRef: setContentNodeRef, isOver: isContentOver } = useDroppable({ 
       id: `group-${section.id}`,
       data: {
@@ -942,6 +1069,30 @@ export const BucketGridView = ({
         sectionId: section.id,
         variant: section.variant
       }
+    });
+    
+    // Create a dedicated droppable for the empty favorites container
+    const isEmptyFavorites = section.variant === 'favourites' && section.images.length === 0;
+    const { setNodeRef: setEmptyFavoritesRef, isOver: isEmptyFavoritesOver } = useDroppable({
+      id: `empty-favorites-${section.id}`,
+      data: {
+        type: 'empty-favorites',
+        sectionId: section.id,
+        variant: 'favourites'
+      },
+      disabled: !isEmptyFavorites // Only enable this droppable when the favorites section is empty
+    });
+    
+    // Create a dedicated droppable for empty dated sections
+    const isEmptyDated = section.variant === 'dated' && section.images.length === 0;
+    const { setNodeRef: setEmptyDatedRef, isOver: isEmptyDatedOver } = useDroppable({
+      id: `empty-dated-${section.id}`,
+      data: {
+        type: 'empty-dated',
+        sectionId: section.id,
+        variant: 'dated'
+      },
+      disabled: !isEmptyDated // Only enable this droppable when the dated section is empty
     });
 
     // Determine current images list based on sort direction for dated sections
@@ -974,9 +1125,6 @@ export const BucketGridView = ({
         )}
       </div>
     ) : null;
-    
-    // Determine if this is an empty favorites section
-    const isEmptyFavorites = section.variant === 'favourites' && section.images.length === 0;
 
     return (
       <ExpandableContainer
@@ -989,18 +1137,46 @@ export const BucketGridView = ({
         className=""
         headerExtras={headerExtras}
       >
-        <div 
-          ref={setContentNodeRef}
-          className={`${isContentOver ? 'ring-2 ring-primary/60' : ''} ${isEmptyFavorites ? 'min-h-[100px]' : ''}`}
-        >
-          {isEmptyFavorites ? (
+        {isEmptyFavorites ? (
+          // Special handling for empty favorites container
+          <div
+            ref={setEmptyFavoritesRef}
+            className={`min-h-[100px] ${isEmptyFavoritesOver ? 'ring-2 ring-primary' : ''}`}
+            data-section-id={section.id}
+            data-section-variant="favourites"
+            data-empty-favorites="true"
+          >
             <div className="flex items-center justify-center h-[100px] border-2 border-dashed border-muted-foreground/20 rounded-md">
               <div className="text-center text-muted-foreground">
                 <Star className="h-6 w-6 mx-auto mb-2 opacity-30" />
                 <p className="text-sm">Drop images here to favorite them</p>
               </div>
             </div>
-          ) : (
+          </div>
+        ) : isEmptyDated ? (
+          // Special handling for empty dated sections
+          <div
+            ref={setEmptyDatedRef}
+            className={`min-h-[100px] ${isEmptyDatedOver ? 'ring-2 ring-primary' : ''}`}
+            data-section-id={section.id}
+            data-section-variant="dated"
+            data-empty-dated="true"
+          >
+            <div className="flex items-center justify-center h-[100px] border-2 border-dashed border-muted-foreground/20 rounded-md">
+              <div className="text-center text-muted-foreground">
+                <StarOff className="h-6 w-6 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Drop favorites here to unfavorite them</p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          // Normal content area for non-empty sections
+          <div 
+            ref={setContentNodeRef}
+            className={isContentOver ? 'ring-2 ring-primary/60' : ''}
+            data-section-id={section.id}
+            data-section-variant={section.variant}
+          >
             <SortableImageGrid
               images={sectionImages}
               sortable={section.variant === 'favourites'}
@@ -1051,8 +1227,8 @@ export const BucketGridView = ({
               bucketId={destination}
               sectionVariant={section.variant}
             />
-          )}
-        </div>
+          </div>
+        )}
       </ExpandableContainer>
     );
   };
