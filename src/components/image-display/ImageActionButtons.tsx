@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { 
@@ -25,6 +24,8 @@ interface ImageActionButtonsProps {
   includePublish?: boolean;
   publishInfo?: {
     imageUrl: string;
+    sourceType?: 'bucket' | 'external';
+    sourceBucket?: string;
     generationInfo?: {
       prompt?: string;
       workflow?: string;
@@ -144,6 +145,8 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
         {includePublish && publishInfo && (
           <PublishMenu 
             imageUrl={publishInfo.imageUrl}
+            sourceType={publishInfo.sourceType || 'external'}
+            sourceBucket={publishInfo.sourceBucket}
             generationInfo={publishInfo.generationInfo}
             isRolledUp={isRolledUp}
             showLabel={showLabels}

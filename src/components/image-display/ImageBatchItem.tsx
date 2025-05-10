@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { ViewMode } from './ImageDisplay';
 import ImageActionButtons from './ImageActionButtons';
@@ -164,6 +163,7 @@ const ImageBatchItem: React.FC<ImageBatchItemProps> = ({
           includePublish={true}
           publishInfo={{
             imageUrl: image.url,
+            sourceType: 'external', // Generated images are always external sources
             generationInfo: {
               prompt: image.prompt,
               workflow: image.workflow,

@@ -323,54 +323,125 @@ export class Api {
     generation_info?: any;
     skip_bucket?: boolean;
   }): Promise<{ success: boolean; error?: string }> {
-    // Check if source is from a bucket (like /api/buckets/<id>/raw/<filename>)
-    const isSourceFromBucket = data.source.includes('/buckets/') && data.source.includes('/raw/');
-    let response;
+    console.error('DEPRECATED: Using old publishImage API format. Please update to the new unified format.');
+    console.warn('This deprecated method will be removed in a future version.');
     
-    console.log(`[publishImage] destination=${data.publish_destination_id}, source=${data.source}, skip_bucket=${data.skip_bucket}, isSourceFromBucket=${isSourceFromBucket}`);
+    // Map the old parameters to the new unified format
+    return this.publishImageUnified({
+      dest_bucket_id: data.publish_destination_id,
+      ...(data.source.includes('/buckets/') && data.source.includes('/raw/') 
+        ? this.extractBucketInfo(data.source) // Extract bucket info for bucket URLs
+        : { source_url: data.source }), // For other URLs, pass as-is
+      metadata: data.generation_info,
+      skip_bucket: data.skip_bucket
+    });
+  }
+  
+  // Extract bucket and filename from a bucket URL
+  private extractBucketInfo(url: string): { src_bucket_id: string; filename: string } {
+    // Handle URLs like /api/buckets/<bucket_id>/raw/<filename>
+    const parts = url.split('/');
+    const bucketIndex = parts.indexOf('buckets') + 1;
+    const filenameIndex = parts.indexOf('raw') + 1;
     
-    if (isSourceFromBucket) {
-      // Use the general publish API endpoint for cross-bucket publishing
-      const sourceUrl = data.source.startsWith('/api') 
-        ? `${this.apiUrl}${data.source.substring(4)}`  // Convert relative to absolute URL
-        : data.source;
+    if (bucketIndex > 0 && filenameIndex > 0 && bucketIndex < parts.length && filenameIndex < parts.length) {
+      return {
+        src_bucket_id: parts[bucketIndex],
+        filename: parts[filenameIndex]
+      };
+    }
+    
+    // Fallback: Just try to get the filename
+    return {
+      src_bucket_id: 'unknown',
+      filename: url.split('/').pop() || 'unknown'
+    };
+  }
+  
+  // Unified publish method that uses the new endpoint
+  async publishImageUnified(data: {
+    // Common parameters
+    dest_bucket_id: string;
+    
+    // For bucket-to-bucket (Route A)
+    src_bucket_id?: string;
+    filename?: string;
+    
+    // For external URL (Route B)
+    source_url?: string;
+    metadata?: any;
+    skip_bucket?: boolean;
+  }): Promise<{ success: boolean; error?: string }> {
+    // Validate we have the required params for one of the two routes
+    const isRouteBucket = !!(data.src_bucket_id && data.filename);
+    const isRouteExternal = !!data.source_url;
+    
+    if (!isRouteBucket && !isRouteExternal) {
+      console.error('[publishImageUnified] Missing required parameters');
+      return { success: false, error: 'Missing required parameters: either (src_bucket_id + filename) or source_url' };
+    }
+    
+    console.log(`[publishImageUnified] Publishing with params:`, data);
+    
+    // Use the unified endpoint with timeout handling
+    try {
+      // Create an AbortController for timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30-second timeout
       
-      console.log(`[publishImage] Converted source URL: ${sourceUrl}`);
-      
-      response = await fetch(`${this.apiUrl}/publish/publish`, {
+      const response = await fetch(`${this.apiUrl}/publish`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          publish_destination_id: data.publish_destination_id,
-          source_url: sourceUrl,
-          generation_info: data.generation_info,
+          dest_bucket_id: data.dest_bucket_id,
+          src_bucket_id: data.src_bucket_id,
+          filename: data.filename,
+          source_url: data.source_url,
+          metadata: data.metadata,
           skip_bucket: data.skip_bucket
         }),
+        signal: controller.signal
       });
-    } else {
-      // Use bucket-specific publish endpoint for publishing from same bucket
-      response = await fetch(`${this.apiUrl}/buckets/${data.publish_destination_id}/publish/${data.source.split('/').pop()}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          generation_info: data.generation_info,
-          skip_bucket: data.skip_bucket
-        }),
-      });
+      
+      // Clear the timeout since the request completed
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorObj;
+        
+        try {
+          errorObj = JSON.parse(errorText);
+        } catch (e) {
+          errorObj = { error: errorText || `Server error: ${response.status}` };
+        }
+        
+        console.error(`[publishImageUnified] Error response (${response.status}):`, errorObj);
+        return { 
+          success: false, 
+          error: errorObj.error || `Failed with status ${response.status}`
+        };
+      }
+      
+      console.log(`[publishImageUnified] Success!`);
+      return { success: true };
+    } catch (error) {
+      // Check if this is an abort error (timeout)
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        console.error(`[publishImageUnified] Request timed out after 30 seconds`);
+        return { success: false, error: 'Request timed out' };
+      }
+      
+      console.error(`[publishImageUnified] Request failed:`, error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? 
+          `${error.name}: ${error.message}` : 
+          String(error) 
+      };
     }
-
-    if (!response.ok) {
-      const error = await response.json();
-      console.error(`[publishImage] Error response:`, error);
-      return { success: false, error: error.error };
-    }
-
-    console.log(`[publishImage] Success!`);
-    return { success: true };
   }
   
   // Save a scheduler schedule via backend
@@ -1102,22 +1173,11 @@ export class Api {
     // Get published info from the published object
     const published = data.published || null;
     
-    // If we have a published image that's not from the bucket, we need to create a virtual item for it
+    // Log info about the published image but don't add it to items
     if (published && published.from_bucket === false) {
-      // Create a virtual item for the published image
-      const publishedItem = {
-        filename: published.filename,
-        url: published.raw_url || '',
-        thumbnail_url: published.thumbnail_url || published.raw_url || '',
-        favorite: false,
-        metadata: published.metadata || {},
-        created_at: new Date(published.published_at || Date.now()).getTime() / 1000,
-      };
-      
-      // Add this virtual item to our items list with a special marker
-      items.push(publishedItem);
-      
-      console.log('Added virtual item for published image not in bucket:', publishedItem);
+      console.log('Published image is not from this bucket:', published.filename);
+      console.log('Published at:', published.published_at);
+      console.log('Raw URL:', published.raw_url);
     }
     
     // Ensure we have a valid BucketDetails object
@@ -1225,12 +1285,28 @@ export class Api {
 
   // Perform bucket maintenance
   async performBucketMaintenance(bucketId: string, action: 'purge' | 'reindex' | 'extract'): Promise<boolean> {
-    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/maintenance/${action}`, {
+    // Map the action to the correct endpoint
+    let endpoint;
+    if (action === 'reindex') {
+      endpoint = `${this.apiUrl}/buckets/${bucketId}/reindex`;
+    } else if (action === 'purge') {
+      endpoint = `${this.apiUrl}/buckets/${bucketId}/purge`;
+    } else if (action === 'extract') {
+      endpoint = `${this.apiUrl}/buckets/${bucketId}/extractjson`;
+    } else {
+      throw new Error(`Unknown maintenance action: ${action}`);
+    }
+    
+    console.log(`[performBucketMaintenance] Using endpoint: ${endpoint} for action: ${action}`);
+    
+    const response = await fetch(endpoint, {
       method: 'POST',
     });
+    
     if (!response.ok) {
       throw new Error(`Failed to perform maintenance: ${response.statusText}`);
     }
+    
     return true;
   }
 
