@@ -28,6 +28,8 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { DROP_ZONES } from '@/dnd/dropZones';
 import { getReferenceUrl } from '@/utils/image-utils';
 import { useUploadedImages } from '@/hooks/image-generation/use-uploaded-images';
+import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
+import { useReferenceImagesAdapter } from '@/hooks/context-adapter';
 
 interface OverlayMessage {
   html: string;
@@ -129,6 +131,8 @@ const Index = () => {
     setGeneratedImages,
     removeUrl
   } = useImageGeneration(addConsoleLog);
+  
+  const { addReferenceUrl, referenceUrls } = useReferenceImages();
   
   const handleJobStatusMessage = useCallback((message: JobStatusMessage) => {
     const screens = message.screens || "";
@@ -603,7 +607,7 @@ const Index = () => {
 
       const allImages: (File | string)[] = [
         ...(imageFiles ?? []),
-        ...uploadedImageUrls
+        ...referenceUrls
       ];
 
       await handleSubmitPrompt(
@@ -845,12 +849,8 @@ const Index = () => {
         const referenceUrl = getReferenceUrl(active.data.current);
         if (referenceUrl) {
           console.log('Using reference URL:', referenceUrl);
-          // Add a unique timestamp query parameter to allow the same image to be added multiple times
-          const uniqueUrl = referenceUrl.includes('?') 
-            ? `${referenceUrl}&_t=${Date.now()}` 
-            : `${referenceUrl}?_t=${Date.now()}`;
-          // Append to existing array instead of replacing
-          setUploadedImageUrls(prev => [...prev, uniqueUrl]);
+          // Use the context function
+          addReferenceUrl(referenceUrl, true);
           toast.success('Image added as reference');
           return;
         }
@@ -864,6 +864,7 @@ const Index = () => {
       
       if (generatedImage) {
         console.log('Found in generated images, using URL:', generatedImage.url);
+        // Use the existing function which will trigger the event system
         handleUseGeneratedAsInput(generatedImage.url, true);
         return;
       }
@@ -873,6 +874,9 @@ const Index = () => {
       return;
     }
   };
+
+  // Use our adapter to sync global state with context
+  useReferenceImagesAdapter();
 
   return (
     <>
