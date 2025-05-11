@@ -148,6 +148,7 @@
 	"style_guidance": "Use for painted, drawn, or illustrated works — murals, oil paintings, woodcuts, or dreamlike visual concepts. Less suitable for sculpture or 3D objects unless treatment is abstract.",
 	"style_descriptor": "oil on canvas, gallery brushwork, surreal palette, ink and gouache textures, inspired by [artist]",
     "icon": "ImagePlus",
+    "cost_per_second" : 0.000584,
     "params": [
       { 
         "id": "cfg",
@@ -254,6 +255,7 @@
     "async": true,
 	"alexavisible": true,
 	"icon": "FileVideo2",
+  "cost_per_second" : 0.000584,
 	"processing_stages": [
 		{"name": "Rendering", "weight": 70},
 		{"name": "Interpolating", "weight": 20},

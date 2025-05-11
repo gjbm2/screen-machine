@@ -553,6 +553,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         data-tab-id={tab.id}
         onClick={() => handleTabClick(tab.id)}
         className={`px-2 py-1.5 text-xs sm:text-sm sm:px-3 sm:py-2 inline-flex items-center rounded-md transition-colors
+          relative
           ${isDroppable && isOver ? 'ring-2 ring-primary' : ''}
           ${tab.highlight && selectedTab === tab.id 
             ? 'bg-primary text-primary-foreground' 
@@ -561,6 +562,10 @@ export function ImageDisplay(props: ImageDisplayProps) {
               : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
           }`}
       >
+        {/* Extended drop area that gives more space for drop detection */}
+        {isDroppable && (
+          <div className="absolute inset-0 -right-4 -left-4" style={{ zIndex: -1 }} />
+        )}
         {tab.icon}
         <span className="truncate max-w-[60px] sm:max-w-[100px]">{tab.label}</span>
       </button>

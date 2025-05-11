@@ -15,13 +15,13 @@
   <!-- Grid Section -->
  <div style="
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  column-gap: 80px;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  column-gap: 24px;
   row-gap: 24px;
   align-items: start;
 ">
 
-  <div style="min-width: 0;">
+  <div>
     <div style="font-weight: 600; margin-bottom: 8px;">Workflow</div>
     <div style="overflow-wrap: break-word;">
       {{ WORKFLOW_TEXT or "—" }}
@@ -34,13 +34,21 @@
   </div>
 
   <div>
-    <div style="font-weight: 600; margin-bottom: 8px;">Width</div>
-    {{ WIDTH or "—" }}
+    <div style="font-weight: 600; margin-bottom: 8px;">Took</div>
+    {% if GENERATION_TIME_SECONDS %}
+      {{ GENERATION_TIME_SECONDS | round(1) }}s
+    {% else %}
+      —
+    {% endif %}
   </div>
 
   <div>
-    <div style="font-weight: 600; margin-bottom: 8px;">Height</div>
-    {{ HEIGHT or "—" }}
+    <div style="font-weight: 600; margin-bottom: 8px;">Cost</div>
+    {% if GENERATION_COST_GBP %}
+      {{ (GENERATION_COST_GBP * 100) | round(1) }}p
+    {% else %}
+      —
+    {% endif %}
   </div>
 </div>
 

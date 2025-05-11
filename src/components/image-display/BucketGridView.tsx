@@ -44,6 +44,9 @@ import { DROP_ZONES } from '@/dnd/dropZones';
 // Import the new getReferenceUrl utility
 import { getReferenceUrl } from '@/utils/image-utils';
 
+// Import the global isVideoFile utility
+import { isVideoFile } from '@/utils/image-utils';
+
 // Define the expected types based on the API response
 interface BucketItem extends ApiBucketItem {
   raw_url?: string;
@@ -363,7 +366,9 @@ export const BucketGridView = ({
 
   const handleCopyToDestination = async (image: BucketImage, targetBucket: string) => {
     try {
-      const result = await apiService.copyImageToBucket(destination, targetBucket, image.id);
+      // Extract the original ID if this is a duplicate image
+      const originalId = getOriginalId(image.id);
+      const result = await apiService.copyImageToBucket(destination, targetBucket, originalId);
       if (result && result.status === 'copied') {
         toast.success(`Image copied to ${targetBucket} successfully`);
       } else {
@@ -485,10 +490,10 @@ export const BucketGridView = ({
     }
   };
 
-  // Check if an image is a video (could be based on file extension)
+  // Utility to check video files – shares logic with getReferenceUrl helper
   const isVideo = (filename: string) => {
-    const videoExtensions = ['.mp4', '.avi', '.mov', '.webm', '.mkv'];
-    return videoExtensions.some(ext => filename.toLowerCase().endsWith(ext));
+    // Re-use global helper that also strips the "#dup" suffix
+    return isVideoFile(filename);
   };
 
   const sortedImages = getSortedImages();
@@ -590,6 +595,12 @@ export const BucketGridView = ({
   // Helper to map a duplicate id back to its original image id
   const getOriginalId = (id: string) => id.includes('#dup') ? id.split('#dup')[0] : id;
 
+  // NEW: helper to find the BucketImage regardless of duplicate id
+  const findImageByAnyId = (id: string) => {
+    const originalId = getOriginalId(id);
+    return bucketImages.find(img => img.id === originalId);
+  };
+
   // Convert BucketImage -> ImageItem for display components
   const toImageItem = (img: BucketImage): ImageItem => ({
     id: img.id,
@@ -640,7 +651,10 @@ export const BucketGridView = ({
   // Add moveToPosition method for reordering
   const moveToPosition = async (filename: string, targetFilename: string | null) => {
     try {
-      await apiService.moveToPosition(destination, filename, targetFilename);
+      // Strip any #dup suffix from filenames
+      const originalFilename = getOriginalId(filename);
+      const originalTargetFilename = targetFilename ? getOriginalId(targetFilename) : null;
+      await apiService.moveToPosition(destination, originalFilename, originalTargetFilename);
       toast.success('Image position updated');
       debouncedFetchBucketDetails();
     } catch (error) {
@@ -649,13 +663,13 @@ export const BucketGridView = ({
     }
   };
 
-  // Drag and drop handlers
+  // Update handleDragStart to properly resolve duplicate image ids
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
     setActiveId(active.id as string);
     
-    // Find the image being dragged
-    const draggedImage = bucketImages.find(img => img.id === active.id);
+    // Resolve duplicate ("#dup") ids so activeDraggedImage always points to the real BucketImage
+    const draggedImage = findImageByAnyId(active.id as string);
     if (draggedImage) {
       setActiveDraggedImage(draggedImage);
     }
@@ -696,8 +710,7 @@ export const BucketGridView = ({
     // Check if we're over the publish dropzone
     if (over.id === DROP_ZONES.PUBLISHED) {
       console.log("Publishing image:", active.id);
-      const draggedImageId = active.id as string;
-      const draggedImage = bucketImages.find(img => img.id === draggedImageId);
+      const draggedImage = findImageByAnyId(active.id as string);
       
       if (draggedImage) {
         try {
@@ -846,9 +859,9 @@ export const BucketGridView = ({
       document.body.style.touchAction = 'auto';
       return;
     } else if (over.id !== active.id) {
-      // Determine dragged and target images
-      const draggedImage = bucketImages.find(img => img.id === active.id);
-      const targetImage = bucketImages.find(img => img.id === over.id);
+      // Determine dragged and target images using original ids so #dup clones behave like originals
+      const draggedImage = findImageByAnyId(active.id as string);
+      const targetImage = findImageByAnyId(over.id as string);
 
       if (!draggedImage) return;
 
@@ -872,7 +885,14 @@ export const BucketGridView = ({
 
         // Move the newly favourited image just AFTER the target favourite image
         try {
-          await apiService.moveToPosition(destination, draggedImage.id, targetImage.id);
+          // Strip any #dup suffix from both ids
+          const originalDraggedId = getOriginalId(draggedImage.id);
+          const originalTargetId = getOriginalId(targetImage.id);
+          await apiService.moveToPosition(
+            destination,
+            originalDraggedId,
+            originalTargetId ? getOriginalId(originalTargetId) : null
+          );
         } catch (error) {
           console.error('Error positioning newly favourited image:', error);
           // Swallow; order will at least be refreshed on next fetch
@@ -948,8 +968,8 @@ export const BucketGridView = ({
 
         await apiService.moveToPosition(
           destination,
-          draggedImage.id,
-          insertAfterId
+          getOriginalId(draggedImage.id),
+          insertAfterId ? getOriginalId(insertAfterId) : null
         );
       } catch (error) {
         console.error('Error reordering favourite image:', error);
@@ -977,8 +997,9 @@ export const BucketGridView = ({
     
     // Check if we're over the prompt dropzone (skip further processing)
     if (over.id === DROP_ZONES.PROMPT) {
-      if (activeDropTarget !== null) setActiveDropTarget(null);
-      if (dropTargetType !== null) setDropTargetType(null);
+      // Don't set any drop target state for prompt area - this prevents any styling from being applied
+      setActiveDropTarget(null);
+      setDropTargetType(null);
       return;
     }
     
