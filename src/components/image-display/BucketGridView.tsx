@@ -9,7 +9,7 @@ import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, More
 import * as LucideIcons from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -109,6 +109,48 @@ const enum DropTargetType {
   TAB = 'tab'
 }
 
+// Simple confirmation dialog component for actions
+interface ConfirmDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+}
+
+const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+  open,
+  onOpenChange,
+  onConfirm,
+  title,
+  description,
+  confirmLabel = "Confirm"
+}) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button 
+            variant="destructive" 
+            onClick={() => {
+              onConfirm();
+              onOpenChange(false);
+            }}
+          >
+            {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 export const BucketGridView = ({
   destination,
   destinationName,
@@ -142,6 +184,11 @@ export const BucketGridView = ({
   const [dropTargetType, setDropTargetType] = useState<DropTargetType | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [sectionSortMap, setSectionSortMap] = useState<Record<string, 'desc' | 'asc'>>({});
+  
+  // Add state for the delete confirmation dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [sectionToDelete, setSectionToDelete] = useState<string | null>(null);
+  const [deleteImagesCount, setDeleteImagesCount] = useState(0);
   
   const hasCamera = 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices;
 
@@ -1102,6 +1149,70 @@ export const BucketGridView = ({
     setSectionSortMap(prev => ({ ...prev, [id]: prev[id] === 'asc' ? 'desc' : 'asc' }));
   };
 
+  // New function to handle deleting all images in a section
+  const handleDeleteAllInSection = async (sectionId: string) => {
+    const section = sections.find(s => s.id === sectionId);
+    if (!section) return;
+    
+    // For dated sections, only count non-favorites
+    const imagesToDelete = section.variant === 'dated' 
+      ? section.images.filter(img => !img.metadata?.favorite)
+      : section.images;
+    
+    if (imagesToDelete.length === 0) {
+      toast.info('No images to delete in this section');
+      return;
+    }
+    
+    // Set the state for confirmation dialog
+    setSectionToDelete(sectionId);
+    setDeleteImagesCount(imagesToDelete.length);
+    setDeleteDialogOpen(true);
+  };
+  
+  // Function that will actually perform the delete operation after confirmation
+  const confirmDeleteAllInSection = async () => {
+    if (!sectionToDelete) return;
+    
+    const section = sections.find(s => s.id === sectionToDelete);
+    if (!section) return;
+    
+    // Get images to delete - for dated sections, we skip favorites
+    const imagesToDelete = section.variant === 'dated' 
+      ? section.images.filter(img => !img.metadata?.favorite)
+      : section.images;
+    
+    let deleteCount = 0;
+    let failCount = 0;
+    
+    // Show a loading toast
+    const loadingToast = toast.loading(`Deleting ${imagesToDelete.length} images...`);
+    
+    // Process deletions sequentially to avoid overwhelming the server
+    for (const image of imagesToDelete) {
+      try {
+        await apiService.deleteImage(destination, image.id);
+        deleteCount++;
+      } catch (error) {
+        console.error(`Error deleting image ${image.id}:`, error);
+        failCount++;
+      }
+    }
+    
+    // Dismiss the loading toast
+    toast.dismiss(loadingToast);
+    
+    // Show result toast
+    if (failCount === 0) {
+      toast.success(`Successfully deleted ${deleteCount} images`);
+    } else {
+      toast.error(`Deleted ${deleteCount} images, but failed to delete ${failCount} images`);
+    }
+    
+    // Refresh the bucket to update the UI
+    fetchBucketDetails();
+  };
+
   /** Single section with droppable */
   const SectionDroppable: React.FC<{ section: Section }> = ({ section }) => {
     // Create a droppable area for the content area
@@ -1169,6 +1280,16 @@ export const BucketGridView = ({
       </div>
     ) : null;
 
+    // Create context menu items for the section
+    const contextMenuItems = section.variant === 'dated' ? [
+      {
+        label: `Delete all [except favorites]`,
+        onClick: () => handleDeleteAllInSection(section.id),
+        icon: <Trash className="h-4 w-4" />,
+        variant: 'destructive' as const
+      }
+    ] : [];
+
     return (
       <ExpandableContainer
         id={section.id}
@@ -1179,6 +1300,8 @@ export const BucketGridView = ({
         onToggle={toggleSection}
         className=""
         headerExtras={headerExtras}
+        showContextMenu={section.variant === 'dated' && section.images.length > 0}
+        contextMenuItems={contextMenuItems}
       >
         {isEmptyFavorites ? (
           // Special handling for empty favorites container
@@ -1455,7 +1578,7 @@ export const BucketGridView = ({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="h-full flex flex-col">
       {/* DnD interactions handled by global context; monitor via hooks */}
       {bucketDetails && (
       <div className="flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full">
@@ -1561,7 +1684,7 @@ export const BucketGridView = ({
           </Button>
         </div>
       ) : (
-        <div className="flex flex-col gap-2 overflow-y-auto">
+        <div className="flex flex-col gap-2 overflow-y-auto items-start">
           {sections.map((section) => (
             <SectionDroppable key={section.id} section={section} />
           ))}
@@ -1752,6 +1875,16 @@ export const BucketGridView = ({
           </div>
         ) : null}
       </DragOverlay>
+
+      {/* Confirmation dialogs */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={confirmDeleteAllInSection}
+        title="Delete Images"
+        description={`Are you sure you want to delete ${deleteImagesCount} images? This cannot be undone.`}
+        confirmLabel="Delete"
+      />
     </div>
   );
 }; 
