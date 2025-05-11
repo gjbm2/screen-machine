@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import PromptExamples from './PromptExamples';
 import ReferenceImagesSection from '@/components/image-display/ReferenceImagesSection';
 import { useDroppable } from '@dnd-kit/core';
+import { DROP_ZONES } from '@/dnd/dropZones';
 
 interface PromptInputProps {
   prompt: string;
@@ -39,7 +40,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { setNodeRef, isOver } = useDroppable({
-    id: 'prompt-dropzone',
+    id: DROP_ZONES.PROMPT,
     data: {
       type: 'prompt-area',
       accepts: ['image'],

@@ -38,6 +38,12 @@ import { ImageItem } from '@/types/image-types';
 // Import the new SchedulerControl component
 import { SchedulerControl } from './SchedulerPanel';
 
+// Import the new DROP_ZONES
+import { DROP_ZONES } from '@/dnd/dropZones';
+
+// Import the new getReferenceUrl utility
+import { getReferenceUrl } from '@/utils/image-utils';
+
 // Define the expected types based on the API response
 interface BucketItem extends ApiBucketItem {
   raw_url?: string;
@@ -64,6 +70,8 @@ interface BucketDetails {
   last_modified: string;
   published?: string;
   published_at?: string;
+  raw_url?: string;
+  thumbnail_url?: string;
 }
 
 // Add NextAction interface
@@ -210,7 +218,9 @@ export const BucketGridView = ({
         size_mb: details.size_mb || 0,
         last_modified: details.last_modified || '',
         published: details.published,
-        published_at: details.published_at
+        published_at: details.published_at,
+        raw_url: details.raw_url,
+        thumbnail_url: details.thumbnail_url
       });
 
       // Find the published image
@@ -220,21 +230,17 @@ export const BucketGridView = ({
           setCurrentPublishedImage(publishedImage);
         } else {
           // If we didn't find it in the regular items, it may be a published image not in the bucket
-          // Look for it at the end of the sortedImages array where we added the virtual item
-          const lastImage = sortedImages[sortedImages.length - 1];
-          if (lastImage && lastImage.id === details.published) {
-            setCurrentPublishedImage(lastImage);
-          } else {
-            // As a fallback, create a minimal published image object
-            const fallbackPublishedImage = {
-              id: details.published,
-              url: `/output/${destination}.jpg`,  // Default assumption
-              thumbnail_url: `/output/${destination}.jpg`,
-              metadata: {},
-              created_at: 0
-            };
-            setCurrentPublishedImage(fallbackPublishedImage);
-          }
+          // Simply use the thumbnail_url and raw_url directly from the API response
+          const fallbackPublishedImage = {
+            id: details.published,
+            url: details.raw_url || '',
+            thumbnail_url: details.thumbnail_url || '',
+            metadata: {},
+            created_at: 0
+          };
+          
+          console.log('Using published image from API:', fallbackPublishedImage);
+          setCurrentPublishedImage(fallbackPublishedImage);
         }
       }
     } catch (error) {
@@ -676,8 +682,8 @@ export const BucketGridView = ({
       return;
     }
 
-    // Early return for prompt area drops - let parent context handle this
-    if (over.id === 'prompt-dropzone' || over.id === 'prompt-area-dropzone') {
+    // Check if we're over the prompt dropzone (skip further processing)
+    if (over.id === DROP_ZONES.PROMPT) {
       console.log("Skipping BucketGridView drag end handling for prompt area drops");
       setActiveId(null);
       setActiveDraggedImage(null);
@@ -687,21 +693,8 @@ export const BucketGridView = ({
       return;
     }
     
-    // Early return for tabs - let parent context handle this
-    const overId = String(over.id); // Convert to string to fix TypeScript error
-    if (overId.startsWith('tab-')) {
-      console.log("Skipping BucketGridView drag end handling for tab drops - over id:", over.id);
-      setActiveId(null);
-      setActiveDraggedImage(null);
-      setActiveDropTarget(null);
-      setDropTargetType(null);
-      document.body.style.touchAction = 'auto';
-      // We MUST return here to let the parent handle the tab drop
-      return;
-    }
-    
-    // Check if we're dropping onto the publish area
-    if (over.id === 'publish-dropzone') {
+    // Check if we're over the publish dropzone
+    if (over.id === DROP_ZONES.PUBLISHED) {
       console.log("Publishing image:", active.id);
       const draggedImageId = active.id as string;
       const draggedImage = bucketImages.find(img => img.id === draggedImageId);
@@ -982,15 +975,15 @@ export const BucketGridView = ({
       return;
     }
     
-    // Check if we're over a prompt dropzone (skip further processing)
-    if (over.id === 'prompt-dropzone' || over.id === 'prompt-area-dropzone') {
+    // Check if we're over the prompt dropzone (skip further processing)
+    if (over.id === DROP_ZONES.PROMPT) {
       if (activeDropTarget !== null) setActiveDropTarget(null);
       if (dropTargetType !== null) setDropTargetType(null);
       return;
     }
     
     // Check if we're over the publish dropzone
-    if (over.id === 'publish-dropzone') {
+    if (over.id === DROP_ZONES.PUBLISHED) {
       if (dropTargetType !== DropTargetType.PUBLISH) {
         setDropTargetType(DropTargetType.PUBLISH);
       }
@@ -998,8 +991,8 @@ export const BucketGridView = ({
     }
     
     // Check if we're over a destination tab
-    const overId = String(over.id); // Convert to string to fix TypeScript error
-    if (overId.startsWith('tab-')) {
+    const overId = String(over.id);
+    if (overId.startsWith(DROP_ZONES.TAB_PREFIX)) {
       console.log("BucketGridView handleDragOver: Dragging over tab", over.id);
       if (dropTargetType !== DropTargetType.TAB) {
         setDropTargetType(DropTargetType.TAB);
@@ -1092,7 +1085,7 @@ export const BucketGridView = ({
   const SectionDroppable: React.FC<{ section: Section }> = ({ section }) => {
     // Create a droppable area for the content area
     const { setNodeRef: setContentNodeRef, isOver: isContentOver } = useDroppable({ 
-      id: `group-${section.id}`,
+      id: `${DROP_ZONES.SECTION_PREFIX}${section.id}`,
       data: {
         type: 'content-area',
         sectionId: section.id,
@@ -1248,12 +1241,12 @@ export const BucketGridView = ({
                 const originalId = getOriginalId(img.id);
                 const originalImage = bucketImages.find(i => i.id === originalId);
                 if (originalImage) {
-                  // Construct the raw URL using the bucket ID and image ID
-                  const rawUrl = `/output/${destination}/${originalImage.id}`;
-                  console.log('Dispatching useImageAsPrompt event with URL:', rawUrl);
+                  // Use the shared utility function to get the appropriate URL
+                  const urlToUse = getReferenceUrl(originalImage);
+                  
                   // Dispatch a custom event that the prompt form can listen for
                   const event = new CustomEvent('useImageAsPrompt', { 
-                    detail: { url: rawUrl }
+                    detail: { url: urlToUse }
                   });
                   window.dispatchEvent(event);
                 }
@@ -1356,7 +1349,7 @@ export const BucketGridView = ({
       });
       
       // Early return for prompt area drops - let parent context handle this
-      if (over.id === 'prompt-dropzone' || over.id === 'prompt-area-dropzone') {
+      if (over.id === DROP_ZONES.PROMPT) {
         console.log("Skipping BucketGridView drag end handling for prompt area drops");
         setActiveId(null);
         setActiveDraggedImage(null);
@@ -1367,8 +1360,8 @@ export const BucketGridView = ({
       }
       
       // Early return for tabs - let parent context handle this
-      const overId = String(over.id); // Convert to string to fix TypeScript error
-      if (overId.startsWith('tab-')) {
+      const overId = String(over.id);
+      if (overId.startsWith(DROP_ZONES.TAB_PREFIX)) {
         console.log("Skipping BucketGridView drag end handling for tab drops - over id:", over.id);
         setActiveId(null);
         setActiveDraggedImage(null);
@@ -1389,7 +1382,7 @@ export const BucketGridView = ({
   const PublishedImageDroppable = ({ currentImage }: { currentImage: BucketImage | null }) => {
     // Create a droppable area for publishing
     const { setNodeRef, isOver } = useDroppable({
-      id: 'publish-dropzone',
+      id: DROP_ZONES.PUBLISHED,
       data: {
         type: DropTargetType.PUBLISH
       }
@@ -1398,12 +1391,8 @@ export const BucketGridView = ({
     // If no current image, don't render a drop target
     if (!currentImage || headless) return null;
 
-    // Ensure we have a valid source URL
-    const imageUrl = currentImage.thumbnail_url || currentImage.url || '';
-    
-    if (!imageUrl) {
-      console.warn('Published image has no URL:', currentImage);
-    }
+    // Just use the thumbnail_url directly
+    const imageUrl = currentImage.thumbnail_url || '';
 
     return (
       <div 

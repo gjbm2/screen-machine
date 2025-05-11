@@ -598,43 +598,23 @@ def get_bucket_complete(bucket_id: str):
     published = None
     if "published_meta" in meta:
         pm = meta["published_meta"]
-        published_filename = pm["filename"]
+        published_filename = pm.get("filename")
         
-        # Check if the published file is from this bucket
+        # Check if file was published from this bucket
         published_in_this_bucket = any(f["filename"] == published_filename for f in files)
         
-        if published_in_this_bucket:
-            # Case A: File was published from this bucket, use direct bucket paths
-            published = {
-                "filename": published_filename,
-                "published_at": pm["published_at"],
-                "raw_url": f"/output/{bucket_id}/{published_filename}",
-                "thumbnail_url": f"/output/{bucket_id}/thumbnails/{Path(published_filename).stem}{Path(published_filename).suffix}.jpg",
-                "from_bucket": True,
-                "metadata": pm.get("metadata", {})
-            }
-        else:
-            # Case B: File was published from elsewhere, use the actual published file location
-            file_ext = Path(published_filename).suffix
-            direct_url = f"/output/{bucket_id}{file_ext}"
-            
-            # Get metadata from sidecar file if it exists
-            published_metadata = {}
-            sidecar_file = Path(f"./output/{bucket_id}{file_ext}.json")
-            if sidecar_file.exists():
-                try:
-                    published_metadata = json.loads(sidecar_file.read_text("utf-8"))
-                except Exception as e:
-                    warning(f"Failed to read sidecar for published file: {e}")
-            
-            published = {
-                "filename": published_filename,
-                "published_at": pm["published_at"],
-                "raw_url": direct_url,
-                "thumbnail_url": direct_url,  # Use the same URL - let browser scale
-                "from_bucket": False,
-                "metadata": published_metadata
-            }
+        # Create published object with data directly from published_meta
+        published = {
+            "filename": published_filename,
+            "published_at": pm.get("published_at"),
+            "raw_url": pm.get("raw_url"),
+            "thumbnail_url": pm.get("thumbnail_url"),
+            "from_bucket": published_in_this_bucket,
+            "metadata": pm.get("metadata", {})
+        }
+        
+        # Log what we're returning for debugging
+        info(f"Published info for bucket {bucket_id}: {published}")
 
     return jsonify({
         "bucket_id": bucket_id,

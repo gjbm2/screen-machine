@@ -25,6 +25,8 @@ import {
   closestCenter,
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { DROP_ZONES } from '@/dnd/dropZones';
+import { getReferenceUrl } from '@/utils/image-utils';
 
 interface OverlayMessage {
   html: string;
@@ -823,31 +825,53 @@ const Index = () => {
     const { active, over } = event;
     if (!active || !over) return;
     
-    console.log('Index handleDragEnd:', { 
-      active: active.id, 
-      over: over.id, 
-      activeData: active.data?.current,
-      overData: over.data?.current
+    // Add more detailed debugging
+    console.log('Index handleDragEnd: FULL EVENT:', event);
+    console.log('Index handleDragEnd: ACTIVE DATA:', { 
+      id: active.id,
+      data: active.data?.current,
+      rect: active.rect,
+      transform: active.transform
+    });
+    console.log('Index handleDragEnd: OVER DATA:', {
+      id: over.id,
+      data: over.data?.current,
+      rect: over.rect
     });
     
     // For tab drops, let ImageDisplay handle it and return early
-    if (typeof over.id === 'string' && over.id.startsWith('tab-')) {
+    if (typeof over.id === 'string' && over.id.startsWith(DROP_ZONES.TAB_PREFIX)) {
       console.log('Tab drop detected in Index - letting ImageDisplay handle it');
       return;
     }
     
     // Handle drops on the prompt area
-    if (over.id === 'prompt-dropzone') {
+    if (over.id === DROP_ZONES.PROMPT) {
       const imageId = active.id;
       console.log('Image dropped on prompt area, ID:', imageId);
       
-      // First check if we have raw_url in the active data
-      if (active.data?.current?.raw_url) {
-        const rawUrl = active.data.current.raw_url;
-        console.log('Using raw_url from active data:', rawUrl);
-        setUploadedImageUrls([rawUrl]);
-        toast.success('Image added as reference (preserving favorites)');
-        return;
+      // Add detailed logging about the active.data.current object
+      if (active.data?.current) {
+        console.log('ACTIVE DATA FOR DND:', JSON.stringify(active.data.current, null, 2));
+        
+        // Try to access various possible URL paths
+        const potentialURLs = {
+          "active.data.current.raw_url": active.data.current.raw_url,
+          "active.data.current.thumbnail_url": active.data.current.thumbnail_url,
+          "active.data.current.image?.urlThumb": active.data.current.image?.urlThumb,
+          "active.data.current.image?.urlFull": active.data.current.image?.urlFull,
+          "active.data.current.image?.raw_url": active.data.current.image?.raw_url
+        };
+        console.log('POTENTIAL URLS:', potentialURLs);
+      
+        // Use our shared utility function with active data
+        const referenceUrl = getReferenceUrl(active.data.current);
+        if (referenceUrl) {
+          console.log('Using reference URL:', referenceUrl);
+          setUploadedImageUrls(prev => [...prev, referenceUrl]);
+          toast.success('Image added as reference');
+          return;
+        }
       }
       
       // Try to find image in generated images as fallback
@@ -858,7 +882,7 @@ const Index = () => {
       
       if (generatedImage) {
         console.log('Found in generated images, using URL:', generatedImage.url);
-        handleUseGeneratedAsInput(generatedImage.url);
+        handleUseGeneratedAsInput(generatedImage.url, true);
         return;
       }
       

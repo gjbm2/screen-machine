@@ -11,20 +11,14 @@ import ViewModeSelector from './ViewModeSelector';
 import { CirclePause, CirclePlay, CircleStop, Settings, Image, ImagePlus, ChevronRight, ChevronLeft, Copy, Send, Share } from 'lucide-react';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 import {
-  DndContext,
-  useSensor,
-  useSensors,
-  MouseSensor,
-  TouchSensor,
-  KeyboardSensor,
-  closestCenter,
   useDroppable,
   DragEndEvent,
   DragStartEvent,
+  useDndMonitor,
 } from '@dnd-kit/core';
 import { toast } from 'sonner';
-import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { Button } from '@/components/ui/button';
+import { DROP_ZONES } from '@/dnd/dropZones';
 
 export type ViewMode = 'normal' | 'small' | 'table';
 export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
@@ -433,9 +427,9 @@ export function ImageDisplay(props: ImageDisplayProps) {
     const { active, over } = event;
     if (!over) return;
 
-    // Tab drop handling – IDs prefixed with "tab-"
-    if (typeof over.id === 'string' && (over.id as string).startsWith('tab-')) {
-      const destId = (over.id as string).slice(4);
+    // Tab drop handling – IDs prefixed with DROP_ZONES.TAB_PREFIX
+    if (typeof over.id === 'string' && (over.id as string).startsWith(DROP_ZONES.TAB_PREFIX)) {
+      const destId = (over.id as string).slice(DROP_ZONES.TAB_PREFIX.length);
       if (destId !== selectedTab) {
         // Find if the destination is headless
         const destInfo = destinationsWithBuckets.find(d => d.id === destId);
@@ -532,23 +526,11 @@ export function ImageDisplay(props: ImageDisplayProps) {
     setContextMenu(null);
   };
 
-  // ------------ DnD Sensors (shared across entire display) ------------ //
-  const sensors = useSensors(
-    useSensor(MouseSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 200,
-        tolerance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  // Listen for global DnD events from the root context
+  useDndMonitor({
+    onDragStart: handleDragStart,
+    onDragEnd: handleDragEnd,
+  });
 
   // Helper to get current bucket id when BucketGridView is active
   const currentBucketId = selectedTab && selectedTab !== 'generated' ? getDestinationFile(selectedTab) : '';
@@ -561,7 +543,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
     // Use a dummy ref for non-droppable tabs
     const dummyRef = useRef<HTMLButtonElement>(null);
     const { setNodeRef, isOver } = isDroppable 
-      ? useDroppable({ id: `tab-${tab.id}` })
+      ? useDroppable({ id: `${DROP_ZONES.TAB_PREFIX}${tab.id}` })
       : { setNodeRef: dummyRef, isOver: false };
 
     return (
@@ -586,80 +568,79 @@ export function ImageDisplay(props: ImageDisplayProps) {
   };
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="bg-background overflow-hidden h-full">
-        {/* Tabs for switching between Generated view and Destinations - frameless design */}
-        <div className="border-b w-full">
-          <div className="relative grid grid-cols-1">
-            {/* Scroll indicators */}
-            <div className="absolute inset-y-0 left-0 z-10 flex items-center pointer-events-none">
-              {showLeftScroll && (
-                <button 
-                  onClick={() => scrollTabs('left')}
-                  className="bg-background/80 h-full px-1 flex items-center justify-center hover:bg-background/90 pointer-events-auto"
-                  aria-label="Scroll tabs left"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-            
-            <div className="absolute inset-y-0 right-0 z-10 flex items-center pointer-events-none">
-              {showRightScroll && (
-                <button 
-                  onClick={() => scrollTabs('right')}
-                  className="bg-background/80 h-full px-1 flex items-center justify-center hover:bg-background/90 pointer-events-auto"
-                  aria-label="Scroll tabs right"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-            
-            {/* Scrollable tabs */}
-            <div 
-              ref={tabsRef}
-              onScroll={checkScroll}
-              className="w-full overflow-x-auto scrollbar-hide px-6"
-            >
-              <div className="inline-flex items-center space-x-1 p-1">
-                {destinationTabs.map(tab => (
-                  <DroppableTabButton key={tab.id} tab={tab} />
-                ))}
-              </div>
+    <div className="bg-background overflow-hidden h-full">
+      {/* Tabs for switching between Generated view and Destinations - frameless design */}
+      <div className="border-b w-full">
+        <div className="relative grid grid-cols-1">
+          {/* Scroll indicators */}
+          <div className="absolute inset-y-0 left-0 z-10 flex items-center pointer-events-none">
+            {showLeftScroll && (
+              <button 
+                onClick={() => scrollTabs('left')}
+                className="bg-background/80 h-full px-1 flex items-center justify-center hover:bg-background/90 pointer-events-auto"
+                aria-label="Scroll tabs left"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          
+          <div className="absolute inset-y-0 right-0 z-10 flex items-center pointer-events-none">
+            {showRightScroll && (
+              <button 
+                onClick={() => scrollTabs('right')}
+                className="bg-background/80 h-full px-1 flex items-center justify-center hover:bg-background/90 pointer-events-auto"
+                aria-label="Scroll tabs right"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          
+          {/* Scrollable tabs */}
+          <div 
+            ref={tabsRef}
+            onScroll={checkScroll}
+            className="w-full overflow-x-auto scrollbar-hide px-6"
+          >
+            <div className="inline-flex items-center space-x-1 p-1">
+              {destinationTabs.map(tab => (
+                <DroppableTabButton key={tab.id} tab={tab} />
+              ))}
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Content based on selected tab */}
-        <div className="p-4 h-[calc(100%-48px)] overflow-auto">
-          {selectedTab === 'generated' ? (
-            isLoading ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      {/* Content based on selected tab */}
+      <div className="p-4 h-[calc(100%-48px)] overflow-auto">
+        {selectedTab === 'generated' ? (
+          isLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : isIndexProps && imageContainerOrder && imageContainerOrder.length > 0 ? (
+            <>
+              {/* View Mode Selector */}
+              <div className="flex justify-end mb-4">
+                <ViewModeSelector 
+                  viewMode={viewMode}
+                  onViewModeChange={(value) => setViewMode(value as ViewMode)}
+                />
               </div>
-            ) : isIndexProps && imageContainerOrder && imageContainerOrder.length > 0 ? (
-              <>
-                {/* View Mode Selector */}
-                <div className="flex justify-end mb-4">
-                  <ViewModeSelector 
-                viewMode={viewMode}
-                    onViewModeChange={(value) => setViewMode(value as ViewMode)}
-                  />
-                </div>
             
-                {/* Render appropriate content for Index.tsx props */}
+              {/* Render appropriate content for Index.tsx props */}
               <ViewModeContent
                 viewMode={viewMode}
                 imageContainerOrder={imageContainerOrder}
                 batches={batches}
                 expandedContainers={expandedContainers}
                 handleToggleExpand={handleToggleExpand}
-                  onUseGeneratedAsInput={onUseGeneratedAsInput || (() => {})}
-                  onCreateAgain={onCreateAgain || (() => {})}
-                  onDeleteImage={onDeleteImage || (() => {})}
-                  onDeleteContainer={onDeleteContainer || (() => {})}
-                  onFullScreenClick={handleImageClick}
+                onUseGeneratedAsInput={onUseGeneratedAsInput || (() => {})}
+                onCreateAgain={onCreateAgain || (() => {})}
+                onDeleteImage={onDeleteImage || (() => {})}
+                onDeleteContainer={onDeleteContainer || (() => {})}
+                onFullScreenClick={handleImageClick}
                 imageUrl={imageUrl}
                 getAllImages={getAllImages}
                 handleSmallImageClick={handleSmallImageClick}
@@ -669,83 +650,82 @@ export function ImageDisplay(props: ImageDisplayProps) {
                 getSortedContainers={getSortedContainers}
                 handleTableRowClick={handleTableRowClick}
                 isLoading={isLoading}
-                  onReorderContainers={onReorderContainers || (() => {})}
-                />
-              </>
-            ) : imageUrl ? (
-              <div className="relative h-full flex flex-col">
-                <div className="flex-1 relative min-h-0">
-                  <img
-                    src={imageUrl}
-                    alt={currentPrompt || 'Generated image'}
-                    className="h-full w-full object-contain mx-auto"
-                />
-            </div>
-                {currentPrompt && (
-                  <div className="mt-4 text-sm text-center text-muted-foreground">
-                    <p className="italic">"{currentPrompt}"</p>
-                  </div>
-                )}
-                {onFullscreen && (
-                  <button
-                    onClick={onFullscreen}
-                    className="absolute top-2 right-2 p-1 bg-background/80 rounded-md hover:bg-background"
-                  >
-                    {isFullscreen ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="4 14 10 14 10 20"></polyline>
-                        <polyline points="20 10 14 10 14 4"></polyline>
-                        <line x1="14" y1="10" x2="21" y2="3"></line>
-                        <line x1="3" y1="21" x2="10" y2="14"></line>
-                      </svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="15 3 21 3 21 9"></polyline>
-                        <polyline points="9 21 3 21 3 15"></polyline>
-                        <line x1="21" y1="3" x2="14" y2="10"></line>
-                        <line x1="3" y1="21" x2="10" y2="14"></line>
-                      </svg>
-                    )}
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="48"
-                  height="48"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="mb-4"
-                >
-                  <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-                  <circle cx="9" cy="9" r="2" />
-                  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-                </svg>
-                <p>No image generated yet</p>
-              </div>
-            )
-          ) : (
-            selectedTab && selectedTab !== 'generated' && (
-              <BucketGridView
-                key={`${selectedTab}-${bucketRefreshFlags[selectedTab] || 0}`}
-                destination={getDestinationFile(selectedTab)}
-                destinationName={destinationTabs.find(tab => tab.id === selectedTab)?.label || selectedTab}
-                onImageClick={handleImageClick}
-                refreshBucket={refreshBucket}
-                isLoading={false}
-                schedulerStatus={getStatusForDestination(selectedTab)}
-                headless={destinationTabs.find(tab => tab.id === selectedTab)?.headless || false}
-                icon={destinationsWithBuckets.find(d => d.id === selectedTab)?.icon || 'image'}
+                onReorderContainers={onReorderContainers || (() => {})}
               />
-            )
-          )}
-          </div>
+            </>
+          ) : imageUrl ? (
+            <div className="relative h-full flex flex-col">
+              <div className="flex-1 relative min-h-0">
+                <img
+                  src={imageUrl}
+                  alt={currentPrompt || 'Generated image'}
+                  className="h-full w-full object-contain mx-auto"
+                />
+              </div>
+              {currentPrompt && (
+                <div className="mt-4 text-sm text-center text-muted-foreground">
+                  <p className="italic">"{currentPrompt}"</p>
+                </div>
+              )}
+              {onFullscreen && (
+                <button
+                  onClick={onFullscreen}
+                  className="absolute top-2 right-2 p-1 bg-background/80 rounded-md hover:bg-background"
+                >
+                  {isFullscreen ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="4 14 10 14 10 20"></polyline>
+                      <polyline points="20 10 14 10 14 4"></polyline>
+                      <line x1="14" y1="10" x2="21" y2="3"></line>
+                      <line x1="3" y1="21" x2="10" y2="14"></line>
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 3 21 3 21 9"></polyline>
+                      <polyline points="9 21 3 21 3 15"></polyline>
+                      <line x1="21" y1="3" x2="14" y2="10"></line>
+                      <line x1="3" y1="21" x2="10" y2="14"></line>
+                    </svg>
+                  )}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="mb-4"
+              >
+                <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                <circle cx="9" cy="9" r="2" />
+                <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+              </svg>
+              <p>No image generated yet</p>
+            </div>
+          )
+        ) : (
+          selectedTab && selectedTab !== 'generated' && (
+            <BucketGridView
+              key={`${selectedTab}-${bucketRefreshFlags[selectedTab] || 0}`}
+              destination={getDestinationFile(selectedTab)}
+              destinationName={destinationTabs.find(tab => tab.id === selectedTab)?.label || selectedTab}
+              onImageClick={handleImageClick}
+              refreshBucket={refreshBucket}
+              isLoading={false}
+              schedulerStatus={getStatusForDestination(selectedTab)}
+              headless={destinationTabs.find(tab => tab.id === selectedTab)?.headless || false}
+              icon={destinationsWithBuckets.find(d => d.id === selectedTab)?.icon || 'image'}
+            />
+          )
+        )}
       </div>
       {/* Context menu */}
       {contextMenu && (
@@ -794,7 +774,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
           )}
         </div>
       )}
-    </DndContext>
+    </div>
   );
 }
 
