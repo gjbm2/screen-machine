@@ -1245,8 +1245,9 @@ export const BucketGridView = ({
                   const urlToUse = getReferenceUrl(originalImage);
                   
                   // Dispatch a custom event that the prompt form can listen for
+                  // Add append=true parameter to add to existing images rather than replacing them
                   const event = new CustomEvent('useImageAsPrompt', { 
-                    detail: { url: urlToUse }
+                    detail: { url: urlToUse, append: true }
                   });
                   window.dispatchEvent(event);
                 }

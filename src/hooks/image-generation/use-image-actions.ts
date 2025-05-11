@@ -2,31 +2,46 @@ import { useState } from 'react';
 import { GeneratedImage } from './types';
 import { toast } from 'sonner';
 import { saveAs } from 'file-saver';
+import React from 'react';
+import { useUploadedImages } from './use-uploaded-images';
 
-export const useImageActions = (
-  setGeneratedImages: React.Dispatch<React.SetStateAction<GeneratedImage[]>>,
-  imageContainerOrder: string[],
-  setImageContainerOrder: React.Dispatch<React.SetStateAction<string[]>>,
-  setCurrentPrompt: React.Dispatch<React.SetStateAction<string>>,
-  setCurrentWorkflow: React.Dispatch<React.SetStateAction<string>>,
-  setUploadedImageUrls: React.Dispatch<React.SetStateAction<string[]>>,
+interface UseImageActionsProps {
+  setGeneratedImages: React.Dispatch<React.SetStateAction<GeneratedImage[]>>;
+  imageContainerOrder: string[];
+  setImageContainerOrder: React.Dispatch<React.SetStateAction<string[]>>;
+  setCurrentPrompt: React.Dispatch<React.SetStateAction<string>>;
+  setCurrentWorkflow: React.Dispatch<React.SetStateAction<string>>;
+  uploadedImageUrls: string[];
+  setUploadedImageUrls: React.Dispatch<React.SetStateAction<string[]>>;
   handleSubmitPrompt: (
     prompt: string, 
-    imageFiles?: File[] | string[] | undefined,
+    imageInputs?: (File | string)[] | undefined,
     workflow?: string | undefined,
-    params?: Record<string, any> | undefined,
+    workflowParams?: Record<string, any> | undefined,
     globalParams?: Record<string, any> | undefined,
     refiner?: string | undefined,
     refinerParams?: Record<string, any> | undefined,
     publishDestination?: string | undefined,
     batchId?: string | undefined
-  ) => void,
-  generatedImages: GeneratedImage[]
-) => {
+  ) => void;
+  removeUrl: (url: string) => void;
+}
+
+export const useImageActions = ({
+  setGeneratedImages,
+  imageContainerOrder,
+  setImageContainerOrder,
+  setCurrentPrompt,
+  setCurrentWorkflow,
+  uploadedImageUrls,
+  setUploadedImageUrls,
+  handleSubmitPrompt,
+  removeUrl
+}: UseImageActionsProps) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
-  const handleUseGeneratedAsInput = async (url: string) => {
-    console.log('handleUseGeneratedAsInput called with URL:', url);
+  const handleUseGeneratedAsInput = async (url: string, append: boolean = false) => {
+    console.log('handleUseGeneratedAsInput called with URL:', url, 'append:', append);
     
     // Find the image in our collection
     const image = generatedImages.find(img => img.url === url);
@@ -49,133 +64,126 @@ export const useImageActions = (
       console.log('Image not found in generated images collection, using URL directly');
     }
     
-    // Always use the URL directly, regardless of whether we found the image
-    // This ensures we don't lose favorite status
-    setUploadedImageUrls([url]);
-    console.log('Setting image URL as reference:', url);
+    // Update the uploaded image URLs based on append flag
+    if (append) {
+      // Add a unique timestamp query parameter to allow the same image to be added multiple times
+      const uniqueUrl = url.includes('?') 
+        ? `${url}&_t=${Date.now()}` 
+        : `${url}?_t=${Date.now()}`;
+      setUploadedImageUrls(prev => [...prev, uniqueUrl]);
+      console.log('Appending image URL as reference:', uniqueUrl);
+    } else {
+      // First remove any existing URLs to prevent conflicts
+      uploadedImageUrls.forEach(existingUrl => {
+        removeUrl(existingUrl);
+      });
+      
+      setUploadedImageUrls([url]);
+      console.log('Setting image URL as reference:', url);
+    }
     
     // Set the image URL
     setImageUrl(url);
 
-    toast.success('Image settings applied to prompt');
+    toast.success(append ? 'Image added to reference images' : 'Image settings applied to prompt');
   };
 
-  const handleCreateAgain = (batchId?: string) => {
-    if (batchId) {
-      // Find the first image in the batch
-      const batchImage = generatedImages.find(img => img.batchId === batchId);
-      if (batchImage) {
-        console.log('Creating again from batch:', batchId);
-        console.log('Batch image:', batchImage);
-        console.log('Container ID:', batchImage.containerId);
-        
-        // Prepare reference images if any
-        let referenceImages: string[] | undefined = undefined;
-        if (batchImage.referenceImageUrl) {
-          if (typeof batchImage.referenceImageUrl === 'string') {
-            if (batchImage.referenceImageUrl.includes(',')) {
-              referenceImages = batchImage.referenceImageUrl.split(',')
-                .map(url => url.trim())
-                .filter(url => url !== '');
-            } else {
-              referenceImages = [batchImage.referenceImageUrl];
-            }
-          } else if (Array.isArray(batchImage.referenceImageUrl)) {
-            referenceImages = batchImage.referenceImageUrl;
-          }
-          console.log('Using reference images for regeneration:', referenceImages);
-        }
-        
-        // Extract all parameters from the original image
-        const promptToUse = batchImage.prompt || '';
-        const workflowToUse = batchImage.workflow;
-        
-        // Get workflow params from the original image
-        const paramsToUse = batchImage.params || {};
-        
-        // Extract publish destination if it exists
-        const publishDestination = paramsToUse.publish_destination;
-        console.log('Using publish destination:', publishDestination);
-        
-        // Extract refiner and refiner params
-        const refinerToUse = batchImage.refiner;
-        const refinerParamsToUse = batchImage.refinerParams || {};
-        
-        console.log('Regenerating with full parameters:', {
-          prompt: promptToUse,
-          workflow: workflowToUse,
-          params: paramsToUse,
-          refiner: refinerToUse,
-          refinerParams: refinerParamsToUse,
-          batchId: batchId
-        });
-        
-        // Submit the prompt with ALL original parameters including the batchId
-        handleSubmitPrompt(
-          promptToUse, 
-          referenceImages,
-          workflowToUse,
-          paramsToUse,
-          undefined, // No global params needed as they're not stored per image
-          refinerToUse,
-          refinerParamsToUse,
-          publishDestination,
-          batchId // Explicitly pass the batchId to ensure the new image is generated in the same batch
-        );
-      }
+  const handleCreateAgain = (image: GeneratedImage) => {
+    if (image.prompt) {
+      setCurrentPrompt(image.prompt);
+    }
+    
+    if (image.workflow) {
+      setCurrentWorkflow(image.workflow);
+    }
+    
+    // Trigger generation with the same parameters
+    handleSubmitPrompt(
+      image.prompt || '',
+      undefined,
+      image.workflow,
+      image.workflowParams,
+      image.globalParams,
+      image.refiner,
+      image.refinerParams,
+      image.publishDestination
+    );
+  };
+
+  const handleDownloadImage = async (url: string, filename?: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      saveAs(blob, filename || 'generated-image.png');
+      toast.success('Image downloaded');
+    } catch (error) {
+      toast.error('Failed to download image');
+      console.error('Download error:', error);
     }
   };
 
-  const handleDownloadImage = (url: string, title?: string) => {
-    const filename = title || `image-${Date.now()}.jpg`;
-    saveAs(url, filename);
-    toast.success(`Downloaded image: ${filename}`);
-  };
-
-  const handleDeleteImage = (batchId: string, index: number) => {
-    console.log('Deleting image:', { batchId, index });
-    
+  const handleDeleteImage = (imageId: string, containerId: string) => {
     setGeneratedImages(prevImages => {
-      // Create a deep copy of prevImages to ensure state is properly updated
-      const updatedImages = [...prevImages];
+      // Find the container that contains this image
+      const container = prevImages.find(img => img.id === containerId);
       
-      // Find the index of the image to delete in the array
-      const imageIndex = updatedImages.findIndex(
-        img => img.batchId === batchId && img.batchIndex === index
+      if (!container) {
+        return prevImages;
+      }
+      
+      if (container.id === imageId) {
+        // If this is the main container image, remove the entire container
+        return prevImages.filter(img => img.id !== containerId);
+      } else if (container.variations) {
+        // If it's a variation, remove just that variation
+        const updatedContainer = {
+          ...container,
+          variations: container.variations.filter(v => v.id !== imageId)
+        };
+        
+        return prevImages.map(img => 
+          img.id === containerId ? updatedContainer : img
+        );
+      }
+      
+      return prevImages;
+    });
+    
+    // Also remove from the container order if needed
+    if (imageId === containerId) {
+      setImageContainerOrder(prevOrder => 
+        prevOrder.filter(id => id !== containerId)
       );
-      
-      if (imageIndex === -1) {
-        console.warn(`Image not found for deletion: batchId=${batchId}, index=${index}`);
-        return prevImages; // Return unchanged if image not found
-      }
-      
-      // Remove this specific image
-      updatedImages.splice(imageIndex, 1);
-      
-      console.log(`Removed image at array index ${imageIndex}`);
-      
-      // Check if this batch has any remaining images
-      const batchHasRemainingImages = updatedImages.some(img => img.batchId === batchId);
-      
-      // If we deleted the last image in a batch, remove the batch ID from the order
-      if (!batchHasRemainingImages) {
-        console.log('Deleting the last image in batch. Removing batch container:', batchId);
-        setImageContainerOrder(prev => prev.filter(id => id !== batchId));
-      }
-      
-      console.log(`Updated images array now has ${updatedImages.length} images`);
-      return updatedImages;
+    }
+    
+    toast.success('Image deleted');
+  };
+
+  const handleDeleteContainer = (containerId: string) => {
+    // Remove all images in this container
+    setGeneratedImages(prevImages => 
+      prevImages.filter(img => img.id !== containerId)
+    );
+    
+    // Remove from the container order
+    setImageContainerOrder(prevOrder => 
+      prevOrder.filter(id => id !== containerId)
+    );
+    
+    toast.success('Image group deleted');
+  };
+
+  const handleReorderContainers = (oldIndex: number, newIndex: number) => {
+    setImageContainerOrder(prevOrder => {
+      const result = Array.from(prevOrder);
+      const [removed] = result.splice(oldIndex, 1);
+      result.splice(newIndex, 0, removed);
+      return result;
     });
   };
 
-  const handleReorderContainers = (sourceIndex: number, destinationIndex: number) => {
-    setImageContainerOrder(prev => {
-      const newOrder = [...prev];
-      const [removed] = newOrder.splice(sourceIndex, 1);
-      newOrder.splice(destinationIndex, 0, removed);
-      return newOrder;
-    });
-  };
+  // Keep this empty for now, it will be populated by useImageGeneration
+  const generatedImages: any[] = [];
 
   return {
     imageUrl,
@@ -183,6 +191,8 @@ export const useImageActions = (
     handleCreateAgain,
     handleDownloadImage,
     handleDeleteImage,
+    handleDeleteContainer,
     handleReorderContainers,
+    generatedImages
   };
 };

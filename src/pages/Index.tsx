@@ -27,6 +27,7 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { DROP_ZONES } from '@/dnd/dropZones';
 import { getReferenceUrl } from '@/utils/image-utils';
+import { useUploadedImages } from '@/hooks/image-generation/use-uploaded-images';
 
 interface OverlayMessage {
   html: string;
@@ -125,7 +126,8 @@ const Index = () => {
     handleDeleteImage,
     handleReorderContainers,
     handleDeleteContainer,
-    setGeneratedImages
+    setGeneratedImages,
+    removeUrl
   } = useImageGeneration(addConsoleLog);
   
   const handleJobStatusMessage = useCallback((message: JobStatusMessage) => {
@@ -825,20 +827,6 @@ const Index = () => {
     const { active, over } = event;
     if (!active || !over) return;
     
-    // Add more detailed debugging
-    console.log('Index handleDragEnd: FULL EVENT:', event);
-    console.log('Index handleDragEnd: ACTIVE DATA:', { 
-      id: active.id,
-      data: active.data?.current,
-      rect: active.rect,
-      transform: active.transform
-    });
-    console.log('Index handleDragEnd: OVER DATA:', {
-      id: over.id,
-      data: over.data?.current,
-      rect: over.rect
-    });
-    
     // For tab drops, let ImageDisplay handle it and return early
     if (typeof over.id === 'string' && over.id.startsWith(DROP_ZONES.TAB_PREFIX)) {
       console.log('Tab drop detected in Index - letting ImageDisplay handle it');
@@ -850,25 +838,19 @@ const Index = () => {
       const imageId = active.id;
       console.log('Image dropped on prompt area, ID:', imageId);
       
-      // Add detailed logging about the active.data.current object
       if (active.data?.current) {
         console.log('ACTIVE DATA FOR DND:', JSON.stringify(active.data.current, null, 2));
         
-        // Try to access various possible URL paths
-        const potentialURLs = {
-          "active.data.current.raw_url": active.data.current.raw_url,
-          "active.data.current.thumbnail_url": active.data.current.thumbnail_url,
-          "active.data.current.image?.urlThumb": active.data.current.image?.urlThumb,
-          "active.data.current.image?.urlFull": active.data.current.image?.urlFull,
-          "active.data.current.image?.raw_url": active.data.current.image?.raw_url
-        };
-        console.log('POTENTIAL URLS:', potentialURLs);
-      
         // Use our shared utility function with active data
         const referenceUrl = getReferenceUrl(active.data.current);
         if (referenceUrl) {
           console.log('Using reference URL:', referenceUrl);
-          setUploadedImageUrls(prev => [...prev, referenceUrl]);
+          // Add a unique timestamp query parameter to allow the same image to be added multiple times
+          const uniqueUrl = referenceUrl.includes('?') 
+            ? `${referenceUrl}&_t=${Date.now()}` 
+            : `${referenceUrl}?_t=${Date.now()}`;
+          // Append to existing array instead of replacing
+          setUploadedImageUrls(prev => [...prev, uniqueUrl]);
           toast.success('Image added as reference');
           return;
         }

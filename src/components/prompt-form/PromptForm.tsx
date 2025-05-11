@@ -57,6 +57,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
     setSelectedPublish,
   } = usePromptForm();
 
+  const { syncWithGlobalState, markUrlAsDeleted } = useExternalImageUrls(setPreviewUrls);
+
   useEffect(() => {
     if (currentPrompt && currentPrompt !== lastReceivedPrompt.current) {
       setPrompt(currentPrompt);
@@ -109,8 +111,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
     updateFromAdvancedPanel
   ]);
 
-  useExternalImageUrls(setPreviewUrls);
-
   const handleImageUpload = async (files: Array<File | string>) => {
     console.log('handleImageUpload called with:', files);
     setImageFiles(files);
@@ -137,25 +137,41 @@ const PromptForm: React.FC<PromptFormProps> = ({
       useReferenceUrl?: boolean;
       imageId?: string;
       source?: string;
+      append?: boolean;
     }>) => {
       console.log('====== USE IMAGE AS PROMPT EVENT RECEIVED ======');
       console.log('Event detail:', event.detail);
       console.log('Event source:', event.detail.source);
       console.log('=================================================');
       
-      const { url, preserveFavorites, useReferenceUrl, source } = event.detail;
-      console.log('Using image as prompt:', { url, preserveFavorites, useReferenceUrl, source });
+      const { url, preserveFavorites, useReferenceUrl, source, append } = event.detail;
+      console.log('Using image as prompt:', { url, preserveFavorites, useReferenceUrl, source, append });
       
       // Special handling for drag-and-drop operations
       if (source === 'drag-and-drop') {
         console.log('This is a drag-and-drop operation - handling specially');
         // Always use the handleImageUpload for drag and drop to preserve favorites
-        handleImageUpload([url]);
+        if (append) {
+          // Append the new image to existing ones
+          setImageFiles(prev => [...prev, url]);
+          setPreviewUrls(prev => [...prev, url]);
+        } else {
+          // Replace existing images
+          handleImageUpload([url]);
+        }
         return;
       }
       
       // Standard event handling logic
-      if (useReferenceUrl) {
+      if (append) {
+        console.log('Appending image to existing reference images:', url);
+        // Add a unique timestamp query parameter to allow the same image to be added multiple times
+        const uniqueUrl = url.includes('?') 
+          ? `${url}&_t=${Date.now()}` 
+          : `${url}?_t=${Date.now()}`;
+        setImageFiles(prev => [...prev, uniqueUrl]);
+        setPreviewUrls(prev => [...prev, uniqueUrl]);
+      } else if (useReferenceUrl) {
         console.log('Using reference URL method for image:', url);
         handleImageUpload([url]);
       } else if (preserveFavorites) {
@@ -240,16 +256,49 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
   const handleRemoveImage = (index: number) => {
     const url = previewUrls[index];
-    URL.revokeObjectURL(url);
-
-    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
-    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    
+    // Only revoke blob URLs that were created via URL.createObjectURL
+    // URLs with query parameters like ?_t= are string URLs and don't need revocation
+    if (url.startsWith('blob:') && !url.includes('?_t=')) {
+      URL.revokeObjectURL(url);
+    }
+    
+    console.log('Removing image at index:', index, 'URL:', url);
+    
+    // Mark the URL as deleted to prevent it from reappearing
+    markUrlAsDeleted(url);
+    
+    // Remove the image from both arrays
+    setPreviewUrls(prev => {
+      const updated = [...prev];
+      updated.splice(index, 1);
+      return updated;
+    });
+    
+    setImageFiles(prev => {
+      const updated = [...prev];
+      updated.splice(index, 1);
+      return updated;
+    });
+    
+    // Sync with global state to ensure deleted image doesn't reappear
+    setTimeout(() => syncWithGlobalState(), 0);
   };
 
   const clearAllImages = () => {
-    previewUrls.forEach(url => URL.revokeObjectURL(url));
+    // Mark all URLs as deleted to prevent them from reappearing
+    previewUrls.forEach(url => {
+      markUrlAsDeleted(url);
+      if (url.startsWith('blob:')) {
+        URL.revokeObjectURL(url);
+      }
+    });
+    
     setImageFiles([]);
     setPreviewUrls([]);
+    
+    // Sync with global state to clear all global references too
+    setTimeout(() => syncWithGlobalState(), 0);
   };
 
   const toggleAdvancedOptions = () => {
