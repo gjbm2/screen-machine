@@ -1,6 +1,7 @@
 /**
  * Utility functions for image handling in Screen Machine
  */
+import apiService from './api';
 
 /**
  * Checks if a filename is a video file
@@ -20,7 +21,7 @@ export const isVideoFile = (filename: string): boolean => {
 
 /**
  * Gets the appropriate URL to use for a reference image
- * For videos, returns the thumbnail URL
+ * For videos, returns a high-resolution image from the first frame
  * For images, returns the raw URL
  * 
  * @param item The image item or DnD data with URLs
@@ -43,9 +44,30 @@ export const getReferenceUrl = (item: any): string => {
   const isVideo = isVideoFile(filename);
   console.log(`getReferenceUrl: File "${filename}" isVideo=${isVideo}`);
   
-  // For videos, find a thumbnail URL in any of the possible locations
+  // For videos, use the jpg_from_mp4 API for higher quality first frame
   if (isVideo) {
-    // Try all possible locations for thumbnail_url
+    // Get the raw URL of the video if available
+    const videoRawUrl = 
+      item.raw_url || 
+      item.image?.raw_url || 
+      item.url || 
+      item.image?.url || 
+      item.image?.urlFull ||
+      (item.bucketId && filename ? `/output/${item.bucketId}/${filename}` : '');
+    
+    if (videoRawUrl) {
+      // Use the high-resolution jpg_from_mp4 endpoint with the proper API URL
+      // If videoRawUrl starts with a slash, prepend the window.location.origin
+      const absoluteVideoUrl = videoRawUrl.startsWith('/') 
+        ? `${window.location.origin}${videoRawUrl}`
+        : videoRawUrl;
+        
+      const highResImageUrl = `${apiService.getApiUrl()}/generate/jpg_from_mp4?file=${encodeURIComponent(absoluteVideoUrl)}`;
+      console.log('Using high-resolution first frame for video reference:', highResImageUrl);
+      return highResImageUrl;
+    }
+    
+    // Fallback to thumbnail URLs if raw URL isn't available
     const thumbnailUrl = 
       item.thumbnail_url || 
       item.image?.thumbnail_url || 
@@ -53,14 +75,14 @@ export const getReferenceUrl = (item: any): string => {
       (item.bucketId && filename ? `/api/thumbnails/jpg_from_mp4/${item.bucketId}/${filename}` : null);
     
     if (thumbnailUrl) {
-      console.log('Using thumbnail_url for video reference:', thumbnailUrl);
+      console.log('Falling back to thumbnail_url for video reference:', thumbnailUrl);
       return thumbnailUrl;
     }
     
-    console.warn('Video detected but no thumbnail URL found, will use raw URL as fallback');
+    console.warn('Video detected but no raw or thumbnail URL found');
   }
   
-  // For non-videos or fallback, find a raw URL in any of the possible locations
+  // For non-videos, find a raw URL in any of the possible locations
   const rawUrl = 
     item.raw_url || 
     item.image?.raw_url || 

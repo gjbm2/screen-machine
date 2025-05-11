@@ -67,7 +67,7 @@ def unified_publish_image():
             if not src_path.exists():
                 error(f"[unified_publish_image] File not found: {filename} in {src_bucket_id}")
                 return jsonify({"error": f"File not found: {filename} in {src_bucket_id}"}), 404
-            
+                
             # Determine if this is a cross-bucket publishing or same-bucket publishing
             cross_bucket_mode = src_bucket_id != dest_bucket_id
             if cross_bucket_mode:

@@ -87,8 +87,8 @@ export const useImageGeneration = (
   // Use our custom hooks
   const { generatedImages, setGeneratedImages } = useImageState();
   
-  const {
-    imageContainerOrder,
+  const { 
+    imageContainerOrder, 
     setImageContainerOrder,
     expandedContainers,
     setExpandedContainers,
@@ -118,8 +118,8 @@ export const useImageGeneration = (
     generatedImages,
     setImageContainerOrder
   });
-  
-  const { 
+
+  const {
     lastBatchId,
     generateImages,
   } = useImageGenerationApi(

@@ -237,9 +237,9 @@ def encode_reference_urls(reference_urls, max_file_size_mb=5):
     result = []
     max_size_bytes = max_file_size_mb * 1024 * 1024
 
-    # Normalize and dedupe: remove query params
-    normalized = list({url.split("?")[0]: url for url in reference_urls}.values())
-    info(f"[encode_reference_urls] Called with {len(reference_urls)} raw, {len(normalized)} unique URLs")
+    # Use the original URLs to preserve query params for retrieval
+    # but ensure we create proper filenames for OpenAI
+    info(f"[encode_reference_urls] Called with {len(reference_urls)} raw URLs")
 
     def compress_image(image, max_size_bytes):
         info(f"[compress_image] Converting to JPEG. Original mode: {image.mode}, size: {image.size}")
@@ -263,26 +263,63 @@ def encode_reference_urls(reference_urls, max_file_size_mb=5):
         buffer.seek(0)
         return buffer.read()
 
-    for url in normalized:
+    for url in reference_urls:
         try:
             info(f"[encode_reference_urls] Fetching: {url}")
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-
-            content_type = response.headers.get("Content-Type", "")
-            info(f"[encode_reference_urls] Content-Type: {content_type}")
-
-            image = Image.open(BytesIO(response.content)).convert("RGB")
+            
+            # Handle local file paths (starting with /)
+            if url.startswith('/'):
+                info(f"[encode_reference_urls] Detected local file path")
+                try:
+                    # Remove leading slash if it's a path relative to site root
+                    file_path = url[1:] if url.startswith('/') else url
+                    
+                    # Open the file directly from filesystem
+                    with open(file_path, 'rb') as f:
+                        image_data = f.read()
+                    
+                    image = Image.open(BytesIO(image_data)).convert("RGB")
+                except FileNotFoundError:
+                    # Try with the leading slash if not found
+                    info(f"[encode_reference_urls] File not found, trying with original path")
+                    with open(url, 'rb') as f:
+                        image_data = f.read()
+                    
+                    image = Image.open(BytesIO(image_data)).convert("RGB")
+            else:
+                # For regular URLs, use requests
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                
+                content_type = response.headers.get("Content-Type", "")
+                info(f"[encode_reference_urls] Content-Type: {content_type}")
+                
+                image = Image.open(BytesIO(response.content)).convert("RGB")
+            
             format = image.format or "PNG"
             compressed_bytes = compress_image(image, max_size_bytes)
             image_base64 = base64.b64encode(compressed_bytes).decode('utf-8')
 
+            # Create a proper filename based on the URL
+            # Special handling for jpg_from_mp4 endpoint
+            if 'jpg_from_mp4' in url:
+                # For the jpg_from_mp4 endpoint, create a filename with the correct extension
+                filename = "frame_from_video.jpg"
+            else:
+                # For other URLs, use the basename but ensure it has a .jpg extension
+                basename = os.path.basename(url.split("?")[0])
+                if not basename:
+                    basename = "image.jpg"
+                elif not any(basename.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                    basename = f"{basename}.jpg"
+                filename = basename.replace(".png", ".jpg")
+
             result.append({
-                "name": os.path.basename(url.split("?")[0]).replace(".png", ".jpg"),
+                "name": filename,
                 "image": image_base64
             })
 
-            info(f"[encode_reference_urls] Encoded {os.path.basename(url)} (length={len(image_base64)})")
+            info(f"[encode_reference_urls] Encoded {url} as '{filename}' (length={len(image_base64)})")
 
         except Exception as e:
             error(f"[encode_reference_urls] Failed to process {url}: {str(e)}")

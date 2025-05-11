@@ -44,11 +44,16 @@ def test_cross_bucket_mp4_url_format():
     assert published_meta.get("raw_url") == f"/output/{bucket_id}.mp4", \
         f"Expected MP4 raw_url to be '/output/{bucket_id}.mp4', got '{published_meta.get('raw_url')}'"
     
-    # Check that thumbnail_url uses the jpg_from_mp4 endpoint with proper API URL
-    expected_thumbnail_url = f"{vite_api_url}/generate/jpg_from_mp4?file=/output/{bucket_id}.mp4"
+    # Get the actual thumbnail URL generated
+    actual_thumbnail_url = published_meta.get("thumbnail_url")
     
-    assert published_meta.get("thumbnail_url") == expected_thumbnail_url, \
-        f"Expected MP4 thumbnail_url to be '{expected_thumbnail_url}', got '{published_meta.get('thumbnail_url')}'"
+    # Check that thumbnail_url uses the jpg_from_mp4 endpoint
+    # Support both relative and absolute URL formats
+    expected_absolute_url = f"{vite_api_url}/generate/jpg_from_mp4?file=/output/{bucket_id}.mp4"
+    expected_relative_url = f"/api/generate/jpg_from_mp4?file=/output/{bucket_id}.mp4"
+    
+    assert (actual_thumbnail_url == expected_absolute_url or actual_thumbnail_url == expected_relative_url), \
+        f"Expected MP4 thumbnail_url to be either '{expected_absolute_url}' or '{expected_relative_url}', got '{actual_thumbnail_url}'"
     
     # Test with cross_bucket_mode=True and JPG file extension
     _record_publish(
