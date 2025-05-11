@@ -31,7 +31,7 @@ def jpg_from_mp4_handler(mp4_path):
         # Check if the file exists
         if not mp4_path.exists():
             error(f"MP4 file not found: {mp4_path}")
-            return None, 404, {"Content-Type": "text/plain"}
+            return "File not found", 404, {"Content-Type": "text/plain"}
             
         # Open the video file
         video = cv2.VideoCapture(str(mp4_path))
@@ -39,13 +39,13 @@ def jpg_from_mp4_handler(mp4_path):
         # Check if video opened successfully
         if not video.isOpened():
             error(f"Failed to open MP4 file: {mp4_path}")
-            return None, 500, {"Content-Type": "text/plain"}
+            return "Failed to open video file", 500, {"Content-Type": "text/plain"}
         
         # Read the first frame
         success, frame = video.read()
         if not success:
             error(f"Failed to read frame from MP4: {mp4_path}")
-            return None, 500, {"Content-Type": "text/plain"}
+            return "Failed to read frame from video", 500, {"Content-Type": "text/plain"}
         
         # Release the video file
         video.release()
