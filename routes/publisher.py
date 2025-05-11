@@ -21,7 +21,7 @@ import os
 import logging
 import tempfile
 import random
-import re
+import re 
 import sys
 
 import requests
@@ -355,8 +355,8 @@ def _send_overlay_prompt(screen_id: str, metadata: dict[str, Any]) -> None:
         "PROMPT_TEXT"   : metadata.get("prompt", ""),
         "WORKFLOW_TEXT" : metadata.get("workflow", ""),
         "SEED"          : metadata.get("seed", ""),
-        "WIDTH"         : metadata.get("width", ""),
-        "HEIGHT"        : metadata.get("height", ""),
+        "GENERATION_TIME_SECONDS": metadata.get("generation_time_seconds", ""),
+        "GENERATION_COST_GBP": metadata.get("generation_cost_gbp", ""),
         "DURATION"      : 30,
         "WHEN_GENERATED": metadata.get("when_generated", ""),
         "TIME_TO_GENERATE": metadata.get("time_to_generate", ""),
@@ -436,15 +436,9 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
             thumbnail_url = raw_url
         # For videos, use the jpg_from_mp4 endpoint
         elif extension.lower() in ['.mp4', '.webm', '.mov']:
-            # For test environments, use relative URL paths
-            if 'pytest' in sys.modules or os.environ.get('TESTING', '').lower() in ('true', '1', 'yes'):
-                thumbnail_url = f"/api/generate/jpg_from_mp4?file={raw_url}"
-                info(f"Using relative URL for test environment in get_published_info: {thumbnail_url}")
-            else:
-                # For production, use absolute URLs with VITE_API_URL
-                VITE_API_URL = os.environ.get("VITE_API_URL", "http://185.254.136.253:5000/api").rstrip("/")
-                thumbnail_url = f"{VITE_API_URL}/generate/jpg_from_mp4?file={raw_url}"
-                info(f"Using absolute URL with VITE_API_URL in get_published_info: {thumbnail_url}")
+            # Always use the full API URL for consistency
+            thumbnail_url = f"{VITE_API_URL}/generate/jpg_from_mp4?file={raw_url}"
+            info(f"Using API URL for thumbnail: {thumbnail_url}")
         else:
             # Default fallback
             thumbnail_url = "/static/placeholder.jpg"
@@ -672,6 +666,9 @@ def get_published_info(publish_destination_id: str) -> dict:
     """
     debug(f"get_published_info called for destination: {publish_destination_id}")
     try:
+        # Get API URL from environment
+        VITE_API_URL = os.environ.get("VITE_API_URL", "http://185.254.136.253:5000/api").rstrip("/")
+        
         # Validate the destination exists
         dest = get_destination(publish_destination_id)
         
@@ -800,16 +797,9 @@ def get_published_info(publish_destination_id: str) -> dict:
                 # For images, thumbnail is same as raw URL
                 thumbnail_url = raw_url
             elif file_suffix in ['.mp4', '.webm', '.mov']:
-                # For videos, use the jpg_from_mp4 endpoint
-                VITE_API_URL = os.environ.get("VITE_API_URL", "http://185.254.136.253:5000/api").rstrip("/")
-                # For test environments, use relative URL paths
-                if 'pytest' in sys.modules or os.environ.get('TESTING', '').lower() in ('true', '1', 'yes'):
-                    thumbnail_url = f"/api/generate/jpg_from_mp4?file={raw_url}"
-                    info(f"Using relative URL for test environment in get_published_info: {thumbnail_url}")
-                else:
-                    # For production, use absolute URLs with VITE_API_URL
-                    thumbnail_url = f"{VITE_API_URL}/generate/jpg_from_mp4?file={raw_url}"
-                    info(f"Using absolute URL with VITE_API_URL in get_published_info: {thumbnail_url}")
+                # For videos, use the jpg_from_mp4 endpoint with the full API URL
+                thumbnail_url = f"{VITE_API_URL}/generate/jpg_from_mp4?file={raw_url}"
+                info(f"Using API URL for thumbnail: {thumbnail_url}")
             else:
                 # Default fallback
                 thumbnail_url = "/static/placeholder.jpg"

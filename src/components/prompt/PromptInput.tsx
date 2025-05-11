@@ -106,7 +106,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
       className={`relative rounded-lg transition-all duration-200 ${
         isOver 
           ? 'ring-2 ring-primary ring-offset-2 bg-primary/5' 
-          : 'hover:bg-muted/50'
+          : ''
       }`}
     >
       {(prompt || (uploadedImages && uploadedImages.length > 0)) && (

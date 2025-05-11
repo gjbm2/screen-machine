@@ -159,6 +159,9 @@ def start(
     missing_vars = [var for var in ["OPENAI_API_KEY", "RUNPOD_API_KEY", "RUNPOD_ID"] if not os.getenv(var)]
     if missing_vars:
         raise ValueError(f"X Missing environment variables: {', '.join(missing_vars)}. Fatal.")
+    
+    # Track generation start time
+    generation_start_time = time()
         
     # Get params
     parser = get_parser() 
@@ -534,7 +537,24 @@ def start(
             output["seed"] = args_namespace.seed
             output["prompt"] = args_namespace.prompt
             output["negative_prompt"] = vars(args_namespace).get("negativeprompt", None)
-                       
+            
+            # Calculate generation time and cost
+            generation_end_time = time()
+            generation_time_seconds = round(generation_end_time - generation_start_time, 2)
+            
+            # Import the function from generate_handler
+            from routes.generate_handler import calculate_generation_cost
+            generation_cost = calculate_generation_cost(
+                generation_time_seconds, 
+                workflow_id=args_namespace.workflow,
+                runpod_id=runpod_id
+            )
+            
+            # Add time and cost to output metadata
+            output["generation_time_seconds"] = generation_time_seconds
+            output["generation_cost_gbp"] = generation_cost
+            
+            info(f"Generation completed in {generation_time_seconds} seconds, estimated cost: £{generation_cost}")
             info("\n".join(f"  - {key}: {value}" for key, value in output.items()))
             
             output.update(input_payload)
@@ -549,6 +569,10 @@ def start(
                     {"name": img.get("name")} for img in args_namespace.images
                 ]
     
+            # Add generation time and cost to args_namespace for metadata
+            vars(args_namespace)["generation_time_seconds"] = generation_time_seconds
+            vars(args_namespace)["generation_cost_gbp"] = generation_cost
+        
             if publish_destination:
                 # Actually publish into your screen's bucket
                 pub_res = publish_to_destination(
@@ -572,20 +596,20 @@ def start(
                     output["published_meta"] = {}
                     output["destination"] = {}
            
-                '''routes.display.send_overlay(
+                routes.display.send_overlay(
                     html="overlay_prompt.html.j2",
                     screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
                     substitutions={
                         'PROMPT_TEXT': prompt,
                         'WORKFLOW_TEXT': workflow,
-                        'WIDTH': locals().get("maxwidth", 6400),
-                        'HEIGHT': locals().get("maxheight", 6400),
+                        'GENERATION_TIME_SECONDS': generation_time_seconds,
+                        'GENERATION_COST_GBP': generation_cost,
                         'DURATION': 30,
                         'SEED': args_namespace.seed
                     },
                     duration=30000,
                     clear=True
-                )'''
+                )
 
             display_final_file = f'<a href="{output["message"]}" target="_blank">Done</a>'
             routes.display.send_overlay(

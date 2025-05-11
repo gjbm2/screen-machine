@@ -9,8 +9,13 @@
  */
 export const isVideoFile = (filename: string): boolean => {
   const videoExtensions = ['.mp4', '.avi', '.mov', '.webm', '.mkv'];
-  return typeof filename === 'string' && 
-    videoExtensions.some(ext => filename.toLowerCase().endsWith(ext));
+
+  if (typeof filename !== 'string') return false;
+
+  // Strip any trailing "#dup" marker that we append to favourite clones
+  const baseName = filename.endsWith('#dup') ? filename.slice(0, -4) : filename;
+
+  return videoExtensions.some((ext) => baseName.toLowerCase().endsWith(ext));
 };
 
 /**
