@@ -2552,6 +2552,14 @@
             "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/aef38c4e-b5de-4ce4-b00c-75dc83a3314a-e1/8f2c1327.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T140255Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=8e5d543fa979549cf317ac44bd21a45291d73cbbaebea62ad5a3fb70566812d6",
             "refiner": "animator",
             "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-11 17:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/efbc7bb9-e0bf-4c1b-bcd0-ef2282ce0a4b-e1/77a6a5cb.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T160028Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5b4d2ee4fa41a45a930481e0aed87a0e2c627327ce2c8d02bee31e2f35febfde",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
@@ -2560,7 +2568,7 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-11T17:00:30.424235",
+  "last_updated": "2025-05-11T17:26:05.527739",
   "last_trigger_executions": {
     "1e41f37db26e89ac37d55f3771482626_2025-05-10T11:00:00": "2025-05-10T11:21:12.555262",
     "b812f679a565a0c56311d86bfaf3ca2d_2025-05-10T11:05:00": "2025-05-10T11:21:12.555262",
@@ -2586,6 +2594,7 @@
     "b812f679a565a0c56311d86bfaf3ca2d_2025-05-11T13:05:00": "2025-05-11T15:02:07.365249",
     "b812f679a565a0c56311d86bfaf3ca2d_2025-05-11T15:05:00": "2025-05-11T15:05:01.578303",
     "1e41f37db26e89ac37d55f3771482626_2025-05-11T16:00:00": "2025-05-11T16:00:01.304599",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-11T17:00:00": "2025-05-11T17:00:00.131856"
+    "1e41f37db26e89ac37d55f3771482626_2025-05-11T17:00:00": "2025-05-11T17:00:00.131856",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-11T17:05:00": "2025-05-11T17:05:00.842851"
   }
 }

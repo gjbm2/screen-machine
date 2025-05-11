@@ -1,53 +1,87 @@
 import { useState, useEffect, useRef } from 'react';
+import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
 
+/**
+ * Hook to manage uploaded image URLs
+ * Now uses the ReferenceImagesContext as the single source of truth
+ */
 export const useUploadedImages = () => {
-  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
-  // Track which URLs we've removed to prevent them from re-appearing
-  const removedUrls = useRef(new Set<string>());
+  // Use our context to get the reference URLs
+  const { referenceUrls, addReferenceUrl, removeReferenceUrl, clearReferenceUrls } = useReferenceImages();
+  const isUpdatingFromWindow = useRef(false);
 
-  // When uploadedImageUrls changes, store them in a global variable
-  // for access in other components, but ensure uniqueness
+  // When referenceUrls changes, update the global variable
   useEffect(() => {
-    if (uploadedImageUrls.length > 0) {
-      // Filter out any URLs that were marked as removed
-      const filteredUrls = uploadedImageUrls.filter(url => {
-        // Check the base URL (without query parameters)
-        const baseUrl = url.split('?')[0];
-        // Check if this URL or its base has been marked as removed
-        const isRemoved = [...removedUrls.current].some(
-          removedUrl => removedUrl === url || removedUrl.split('?')[0] === baseUrl
-        );
-        return !isRemoved;
-      });
-      
-      // Convert to Set and back to array to ensure uniqueness
-      const uniqueUrls = [...new Set(filteredUrls)];
-      console.log('Setting global externalImageUrls:', uniqueUrls);
-      window.externalImageUrls = uniqueUrls; 
-    } else {
-      // Clear the global variable if there are no uploaded images
-      window.externalImageUrls = [];
-    }
-  }, [uploadedImageUrls]);
+    // Prevent loops by not updating if we're in the middle of updating from window
+    if (isUpdatingFromWindow.current) return;
 
-  // Add a function to remove a URL (and prevent it from re-appearing)
-  const removeUrl = (urlToRemove: string) => {
-    // Mark this URL as removed
-    removedUrls.current.add(urlToRemove);
+    // Check if the arrays are actually different to avoid infinite loops
+    const currentExternalUrls = window.externalImageUrls || [];
+    const areArraysEqual = 
+      currentExternalUrls.length === referenceUrls.length && 
+      currentExternalUrls.every((url, i) => url === referenceUrls[i]);
     
-    // Update state to filter out the removed URL
-    setUploadedImageUrls(prev => 
-      prev.filter(url => {
-        // Check if URLs match exactly, or if base URLs match
-        const baseUrlToRemove = urlToRemove.split('?')[0];
-        const baseUrl = url.split('?')[0];
-        return url !== urlToRemove && baseUrl !== baseUrlToRemove;
-      })
-    );
+    // Only update if there's an actual difference
+    if (!areArraysEqual) {
+      window.externalImageUrls = [...referenceUrls];
+    }
+  }, [referenceUrls]);
+  
+  // Listen for external changes to window.externalImageUrls
+  useEffect(() => {
+    const handleStorageChange = () => {
+      if (window.externalImageUrls) {
+        const currentExternalUrls = window.externalImageUrls;
+        const areArraysEqual = 
+          currentExternalUrls.length === referenceUrls.length && 
+          currentExternalUrls.every((url, i) => url === referenceUrls[i]);
+        
+        if (!areArraysEqual) {
+          isUpdatingFromWindow.current = true;
+          clearReferenceUrls();
+          currentExternalUrls.forEach(url => addReferenceUrl(url, true));
+          isUpdatingFromWindow.current = false;
+        }
+      }
+    };
+    
+    // Initial sync if window.externalImageUrls exists
+    if (window.externalImageUrls && window.externalImageUrls.length > 0) {
+      handleStorageChange();
+    }
+    
+    // No need for event listeners as direct property access should be sufficient
+    
+    return () => {
+      // No cleanup needed
+    };
+  }, []);
+
+  // Create a compatible setUploadedImageUrls function
+  const setUploadedImageUrls = (newUrls: string[] | ((prev: string[]) => string[])) => {
+    // Clear existing URLs
+    clearReferenceUrls();
+    
+    // Add new URLs
+    if (typeof newUrls === 'function') {
+      const calculatedUrls = newUrls(referenceUrls);
+      calculatedUrls.forEach(url => {
+        addReferenceUrl(url, true);
+      });
+    } else {
+      newUrls.forEach(url => {
+        addReferenceUrl(url, true);
+      });
+    }
+  };
+
+  // Create a removeUrl function
+  const removeUrl = (url: string) => {
+    removeReferenceUrl(url);
   };
 
   return {
-    uploadedImageUrls,
+    uploadedImageUrls: referenceUrls,
     setUploadedImageUrls,
     removeUrl
   };

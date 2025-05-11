@@ -8,16 +8,54 @@ import { useUploadedImages } from './use-uploaded-images';
 import { usePromptSubmission } from './use-prompt-submission';
 import { useContainerOrderEffect } from './use-container-order-effect';
 import typedWorkflows from '@/data/typedWorkflows';
+import { GeneratedImage } from './types';
 
-// Declare global window type to include our custom property
-declare global {
-  interface Window {
-    externalImageUrls?: string[];
-    imageCounter?: number; // Add a global counter for image numbering
-  }
+// Interface for console messages
+export interface ConsoleMessage {
+  type: string;
+  message: string;
+  timestamp: number;
+  details?: any;
 }
 
-export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
+// Define the return type for useImageGeneration
+export interface UseImageGenerationResult {
+  generatedImages: GeneratedImage[];
+  activeGenerations: string[];
+  imageUrl: string | null;
+  currentPrompt: string;
+  uploadedImageUrls: string[];
+  currentWorkflow: string;
+  currentParams: Record<string, any>;
+  currentGlobalParams: Record<string, any>;
+  imageContainerOrder: string[];
+  expandedContainers: Record<string, boolean>;
+  lastBatchId: string | null;
+  isFirstRun: boolean;
+  fullscreenRefreshTrigger: number;
+  setCurrentPrompt: React.Dispatch<React.SetStateAction<string>>;
+  setUploadedImageUrls: (urls: string[] | ((prev: string[]) => string[])) => void;
+  setCurrentWorkflow: React.Dispatch<React.SetStateAction<string>>;
+  setCurrentParams: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  setCurrentGlobalParams: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  setImageContainerOrder: React.Dispatch<React.SetStateAction<string[]>>;
+  setExpandedContainers: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  handleSubmitPrompt: (prompt: string, imageInputs?: (File | string)[] | undefined, workflow?: string, 
+    workflowParams?: Record<string, any>, globalParams?: Record<string, any>, refiner?: string, 
+    refinerParams?: Record<string, any>, publishDestination?: string, batchId?: string) => Promise<string | null>;
+  handleUseGeneratedAsInput: (url: string, append?: boolean) => Promise<void>;
+  handleCreateAgain: (image: GeneratedImage) => void;
+  handleDownloadImage: (url: string, filename?: string) => Promise<void>;
+  handleDeleteImage: (imageId: string, containerId: string) => void;
+  handleReorderContainers: (oldIndex: number, newIndex: number) => void;
+  handleDeleteContainer: (containerId: string) => void;
+  setGeneratedImages: React.Dispatch<React.SetStateAction<GeneratedImage[]>>;
+  removeUrl: (url: string) => void;
+}
+
+export const useImageGeneration = (
+  addConsoleLog: (log: ConsoleMessage) => void
+): UseImageGenerationResult => {
   // Get the default workflow ID
   const getDefaultWorkflowId = (): string => {
     // First try to find a workflow with default=true
@@ -49,8 +87,8 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
   // Use our custom hooks
   const { generatedImages, setGeneratedImages } = useImageState();
   
-  const { 
-    imageContainerOrder, 
+  const {
+    imageContainerOrder,
     setImageContainerOrder,
     expandedContainers,
     setExpandedContainers,
@@ -73,15 +111,15 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     handleGenerationComplete
   } = useImageGenerationLoading();
 
-  const { uploadedImageUrls, setUploadedImageUrls } = useUploadedImages();
+  const { uploadedImageUrls, setUploadedImageUrls, removeUrl } = useUploadedImages();
 
   // Apply the container order effect
   useContainerOrderEffect({
     generatedImages,
     setImageContainerOrder
   });
-
-  const {
+  
+  const { 
     lastBatchId,
     generateImages,
   } = useImageGenerationApi(
@@ -111,16 +149,17 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     handleDownloadImage,
     handleDeleteImage,
     handleReorderContainers,
-  } = useImageActions(
+  } = useImageActions({
     setGeneratedImages,
     imageContainerOrder,
     setImageContainerOrder,
     setCurrentPrompt,
     setCurrentWorkflow,
+    uploadedImageUrls,
     setUploadedImageUrls,
     handleSubmitPrompt,
-    generatedImages
-  );
+    removeUrl
+  });
 
   // Wrapper for handleDeleteContainer to match the expected signature
   const handleDeleteContainer = (batchId: string) => {
@@ -155,6 +194,7 @@ export const useImageGeneration = (addConsoleLog: (log: any) => void) => {
     handleDeleteImage,
     handleReorderContainers,
     handleDeleteContainer,
-    setGeneratedImages
+    setGeneratedImages,
+    removeUrl
   };
 };

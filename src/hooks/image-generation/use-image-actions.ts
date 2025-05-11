@@ -64,12 +64,13 @@ export const useImageActions = ({
       console.log('Image not found in generated images collection, using URL directly');
     }
     
+    // Always make the URL unique with a timestamp to enable duplicates
+    const uniqueUrl = url.includes('?') 
+      ? `${url}&_t=${Date.now()}` 
+      : `${url}?_t=${Date.now()}`;
+    
     // Update the uploaded image URLs based on append flag
     if (append) {
-      // Add a unique timestamp query parameter to allow the same image to be added multiple times
-      const uniqueUrl = url.includes('?') 
-        ? `${url}&_t=${Date.now()}` 
-        : `${url}?_t=${Date.now()}`;
       setUploadedImageUrls(prev => [...prev, uniqueUrl]);
       console.log('Appending image URL as reference:', uniqueUrl);
     } else {
@@ -78,8 +79,8 @@ export const useImageActions = ({
         removeUrl(existingUrl);
       });
       
-      setUploadedImageUrls([url]);
-      console.log('Setting image URL as reference:', url);
+      setUploadedImageUrls([uniqueUrl]);
+      console.log('Setting image URL as reference:', uniqueUrl);
     }
     
     // Set the image URL

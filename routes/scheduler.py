@@ -711,8 +711,8 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                 continue
                 
             now = datetime.now()
-            # Track time at second resolution for fractional minute support
-            current_second = now.hour * 3600 + now.minute * 60 + now.second
+            # Use epoch seconds to avoid negative deltas when the day rolls over
+            current_epoch_second = time.time()
             
             # Get current context to check for stopping flag
             current_context = get_current_context(publish_destination)
@@ -762,9 +762,11 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                     )
                 break  # Exit the scheduler loop
             
-            # Check if it's time to run (now checking once every 2 seconds, not 5 times per second)
-            # Also, don't run initial actions after the first check
-            if last_check_time is None or (current_second - last_check_time) >= 2.0:
+            # If this is our first loop or at least two seconds have elapsed since the
+            # previous schedule evaluation, run the scheduler logic.  Using epoch
+            # time guarantees the delta is always positive even when midnight
+            # passes.
+            if last_check_time is None or (current_epoch_second - last_check_time) >= 2.0:
                 # Get current schedule and context from top of stacks
                 current_schedule = scheduler_schedule_stacks[publish_destination][-1]
                 current_context = get_current_context(publish_destination)
@@ -794,7 +796,9 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                             error_msg = f"Error running instruction: {str(e)}"
                             scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
                 
-                last_check_time = current_second
+                # Store the epoch second so that the next iteration can calculate a
+                # positive time difference regardless of day rollover.
+                last_check_time = current_epoch_second
             
             # Check once per 2 seconds - reduces CPU usage while maintaining reasonable responsiveness
             await asyncio.sleep(2.0)
