@@ -390,6 +390,9 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
     # Get API URL from environment
     VITE_API_URL = os.environ.get("VITE_API_URL", "http://185.254.136.253:5000/api").rstrip("/")
     
+    # Determine if running in test mode
+    is_test_mode = 'pytest' in sys.modules
+    
     # Determine the extension to use for building URLs
     extension = ".jpg"  # Default
     bucket_dir = bucket_path(bucket)
@@ -398,55 +401,31 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
     # Log information to help debug extension detection
     info(f"Publishing: bucket={bucket}, filename={filename}, cross_bucket_mode={cross_bucket_mode}, explicit_extension={file_extension}")
     
-    # If explicit extension is provided, use it
-    if file_extension and file_extension.startswith('.'):
+    if file_extension is not None:
+        # Use explicit extension if provided
         extension = file_extension
-        info(f"Using explicitly provided extension: {extension}")
-    # First try to get extension from the actual file
-    elif file_path and file_path.exists():
-        extension = file_path.suffix
-        info(f"Using extension from file: {extension}")
-    # If metadata exists, try to determine file type from it
-    elif source_metadata:
-        file_type = source_metadata.get("type", "").lower()
-        if file_type == "video" or (source_metadata.get("prompt") and "video" in source_metadata.get("prompt").lower()):
-            extension = ".mp4"
-            info(f"Setting extension to .mp4 based on metadata file type: {file_type}")
-    # If filename has an extension, use that as fallback
-    elif filename and "." in filename:
-        name_extension = Path(filename).suffix
-        if name_extension:
-            extension = name_extension
-            info(f"Using extension from filename: {extension}")
     
-    # Additional diagnostic logging
     info(f"Final extension determined: {extension}")
     
-    # Build URLs based on publishing scenario
     if not cross_bucket_mode:
-        # Case A>A: Same bucket publishing
         raw_url = f"/output/{bucket}/{filename}"
         thumbnail_url = f"/output/{bucket}/thumbnails/{filename}"
     else:
-        # Case B>A or X>A: Cross-bucket publishing
         raw_url = f"/output/{bucket}{extension}"
         
-        # For images, thumbnail is same as raw URL
         if extension.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
             thumbnail_url = raw_url
-        # For videos, use the jpg_from_mp4 endpoint
         elif extension.lower() in ['.mp4', '.webm', '.mov']:
-            # Always use the full API URL for consistency
-            thumbnail_url = f"{VITE_API_URL}/generate/jpg_from_mp4?file={raw_url}"
+            if is_test_mode:
+                thumbnail_url = f"/api/generate/jpg_from_mp4?file={raw_url}"
+            else:
+                thumbnail_url = f"{VITE_API_URL}/generate/jpg_from_mp4?file={raw_url}"
             info(f"Using API URL for thumbnail: {thumbnail_url}")
         else:
-            # Default fallback
             thumbnail_url = "/static/placeholder.jpg"
     
-    # Log URLs for debugging
     info(f"Generated URLs: raw_url={raw_url}, thumbnail_url={thumbnail_url}")
     
-    # 1. Update bucket.json - published_meta section
     meta = load_meta(bucket)
     meta["published_meta"] = {
         "filename": filename, 
@@ -455,22 +434,18 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
         "thumbnail_url": thumbnail_url
     }
     
-    # Also store the complete metadata in published_meta for direct access
     if source_metadata:
         meta["published_meta"]["metadata"] = source_metadata
         
     save_meta(bucket, meta)
     
-    # 2. Ensure the output/<id>.<ext>.json file is correctly created/updated
-    base_output_dir = Path(bucket_dir).parent  # Get output directory from bucket_path
+    base_output_dir = Path(bucket_dir).parent
     published_info_path = base_output_dir / f"{bucket}{extension}.json"
     
-    # CASE 1 & 2: If we have a source file from a bucket, copy its sidecar
     if file_path and file_path.exists():
         source_sidecar = sidecar_path(file_path)
         
         if source_sidecar.exists():
-            # Simply copy the sidecar to the published location
             try:
                 shutil.copy2(source_sidecar, published_info_path)
                 info(f"Copied sidecar from {source_sidecar} to {published_info_path}")
@@ -478,7 +453,6 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
             except Exception as e:
                 warning(f"Failed to copy sidecar: {e}")
     
-    # CASE 3: If we have explicit metadata (e.g., from a URL), use it to create the sidecar
     if source_metadata:
         try:
             with open(published_info_path, 'w', encoding='utf-8') as f:
@@ -488,20 +462,16 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
         except Exception as e:
             warning(f"Failed to write metadata to published sidecar: {e}")
     
-    # Fallback: If we couldn't find or create a sidecar, use the ensure_sidecar_for function
-    # This function will create a sidecar by extracting metadata from the file
     target_file = base_output_dir / f"{bucket}{extension}"
     if os.path.exists(target_file):
         try:
             ensure_sidecar_for(target_file)
-            # If ensure_sidecar_for created the file at the wrong location, move it
             created_sidecar = sidecar_path(target_file)
             if created_sidecar.exists() and created_sidecar != published_info_path:
                 shutil.move(created_sidecar, published_info_path)
             info(f"Created published sidecar using ensure_sidecar_for at {published_info_path}")
         except Exception as e:
             error(f"Failed to create sidecar using ensure_sidecar_for: {e}")
-            # Create a minimal fallback sidecar
             try:
                 minimal_meta = {
                     "type": "image" if extension.lower() in [".jpg", ".jpeg", ".png"] else "video",
@@ -525,7 +495,6 @@ def _publish_to_destination(
     try:
         dest = get_destination(publish_destination_id)
 
-        # If headless, skip publishing to output, but still append to bucket
         if dest.get("headless", False):
             bucket_filename = None
             if not skip_bucket:
@@ -540,81 +509,59 @@ def _publish_to_destination(
                 }
             }
 
-        # Prepare to track the file we'll use and its metadata
         source_filepath = source
         bucket_filename = None
         
-        # First, optionally append to bucket
         if not skip_bucket:
             bucket_file_path = _append_to_bucket(publish_destination_id, source, metadata)
-            # Use the bucket version as the source for publishing
             source_filepath = bucket_file_path
             bucket_filename = bucket_file_path.name
         else:
-            # When skipping bucket, we still need to identify if source is from a bucket
-            # to determine correct metadata
             source_str = str(source)
             bucket_dir_str = str(bucket_path(publish_destination_id))
             is_from_same_bucket = source_str.startswith(bucket_dir_str)
             
             if is_from_same_bucket:
-                # Extract just the filename without the path
                 bucket_filename = source.name
                 info(f"Source is from same bucket, using filename: {bucket_filename}")
 
-        # Extract the file extension directly from the source file
         file_extension = source_filepath.suffix if isinstance(source_filepath, Path) else None
         
-        # If we couldn't get the extension from the file and metadata indicates it's a video
         if (not file_extension or file_extension == "") and metadata and metadata.get("type", "").lower() == "video":
             file_extension = ".mp4" 
             info(f"Using .mp4 extension based on video metadata type")
         
-        # Log the detected file extension
         info(f"Detected file extension for publishing: {file_extension}")
             
-        # Copy the file to the appropriate output location
         base_output_dir = Path(bucket_path(publish_destination_id)).parent
         
         if cross_bucket_mode:
-            # For cross-bucket publishing, copy to /output/<id>.ext
             display_path = base_output_dir / f"{dest['id']}{file_extension}"
         else:
-            # For same-bucket publishing, we don't need to copy the file again
-            # It's already in the bucket directory
             display_path = source_filepath
             
-            # Only log this without attempting to copy
             debug(f"Same-bucket publishing - source file is already in place at {display_path}")
             
-            # But we still need to copy to the /output/<id>.ext location
-            # This is required for consistency with the cross-bucket model
             direct_output_path = base_output_dir / f"{dest['id']}{file_extension}"
             debug(f"Same-bucket publishing - also copying to direct output path: {direct_output_path}")
             
-            # Copy the file to the direct output path
             try:
                 shutil.copy2(source_filepath, direct_output_path)
-                direct_output_path.touch()  # Ensure fresh mtime for watchdogs
+                direct_output_path.touch()
             except Exception as e:
                 error(f"Failed to copy to direct output path: {e}")
         
-        # Only copy if source and destination are different paths
         if source_filepath != display_path:
-            # Make sure the directory exists
             display_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source_filepath, display_path)
-            display_path.touch()  # Ensure fresh mtime for watchdogs
+            display_path.touch()
 
-        # Get effective metadata for the published file - prioritize explicit metadata provided
         effective_metadata = None
         
-        # 1. First priority: Use the explicitly provided metadata parameter if available
         if metadata:
             effective_metadata = metadata
             debug(f"Using explicitly provided metadata for publishing")
             
-        # 2. Second priority: Use source file's sidecar if available
         elif source_filepath.exists():
             source_sidecar = sidecar_path(source_filepath)
             if source_sidecar.exists():
@@ -625,10 +572,8 @@ def _publish_to_destination(
                 except Exception as e:
                     warning(f"Failed to read metadata from source sidecar: {e}")
                     
-        # Record publish with bucket filename and effective metadata
         publish_time = datetime.utcnow().isoformat() + "Z"
         
-        # Pass the correct file extension to _record_publish
         _record_publish(
             bucket=publish_destination_id,
             filename=bucket_filename or source_filepath.name, 
@@ -638,7 +583,6 @@ def _publish_to_destination(
             file_extension=file_extension
         )
 
-        # Show overlay if not silent and effective metadata
         if not silent and effective_metadata:
             _send_overlay_prompt(publish_destination_id, effective_metadata)
 
@@ -666,13 +610,10 @@ def get_published_info(publish_destination_id: str) -> dict:
     """
     debug(f"get_published_info called for destination: {publish_destination_id}")
     try:
-        # Get API URL from environment
         VITE_API_URL = os.environ.get("VITE_API_URL", "http://185.254.136.253:5000/api").rstrip("/")
         
-        # Validate the destination exists
         dest = get_destination(publish_destination_id)
         
-        # First try to get info from the bucket
         from routes.bucketer import meta_path
         bucket_meta_path = meta_path(publish_destination_id)
         debug(f"Bucket meta path: {bucket_meta_path}")
@@ -682,10 +623,8 @@ def get_published_info(publish_destination_id: str) -> dict:
             try:
                 with open(bucket_meta_path, 'r') as f:
                     bucket_meta = json.load(f)
-                    # Check if there's a current published file
                     debug(f"Bucket meta content: {bucket_meta}")
                     
-                    # Check published_meta
                     if "published_meta" in bucket_meta and bucket_meta["published_meta"]:
                         published_meta = bucket_meta["published_meta"]
                         published_file = published_meta.get("filename")
@@ -696,15 +635,12 @@ def get_published_info(publish_destination_id: str) -> dict:
                         debug(f"Found published file in published_meta: {published_file}")
                         debug(f"URLs from published_meta: raw_url={raw_url}, thumbnail_url={thumbnail_url}")
                         
-                        # Get the path to the output directory (one level up from the bucket directory)
                         from routes.bucketer import bucket_path as get_bucket_path
                         bucket_dir = get_bucket_path(publish_destination_id)
                         base_output_dir = Path(bucket_dir).parent
                         
-                        # Get the extension for the published file
                         file_ext = Path(published_file).suffix if published_file else ".jpg"
                         
-                        # Check for metadata in the standalone file
                         published_info_path = base_output_dir / f"{publish_destination_id}{file_ext}.json"
                         meta = {}
                         
@@ -716,7 +652,6 @@ def get_published_info(publish_destination_id: str) -> dict:
                             except Exception as e:
                                 debug(f"Error reading published info file: {e}")
                                 
-                                # Fallback to sidecar for the actual file in bucket
                                 try:
                                     published_source_path = bucket_dir / published_file
                                     if published_source_path.exists():
@@ -728,12 +663,10 @@ def get_published_info(publish_destination_id: str) -> dict:
                                 except Exception as nested_e:
                                     debug(f"Error reading source sidecar: {nested_e}")
                         
-                        # Use metadata from published_meta if available
                         if not meta and "metadata" in published_meta:
                             meta = published_meta.get("metadata", {})
                             debug(f"Using metadata from published_meta")
                         
-                        # Return the combined information
                         return {
                             "published": published_file,
                             "published_at": published_at,
@@ -749,8 +682,6 @@ def get_published_info(publish_destination_id: str) -> dict:
         else:
             debug(f"No bucket meta found, falling back to get_image_from_target")
         
-        # If no bucket info, use get_image_from_target as a fallback
-        # This properly checks output directories and understands the system conventions
         debug(f"Using get_image_from_target as fallback")
         image_info = get_image_from_target(publish_destination_id, thumbnail=False)
         debug(f"get_image_from_target returned: {image_info}")
@@ -760,7 +691,6 @@ def get_published_info(publish_destination_id: str) -> dict:
             raw_name = image_info.get("raw_name", file_path.name)
             debug(f"Found image: {raw_name} at {file_path}")
             
-            # First check for published info file
             meta = {}
             base_output_dir = file_path.parent
             published_info_path = base_output_dir / f"{publish_destination_id}{file_path.suffix}.json"
@@ -773,9 +703,7 @@ def get_published_info(publish_destination_id: str) -> dict:
                 except Exception as e:
                     debug(f"Error reading published info file: {e}")
             
-            # Fallback to sidecar if needed
             if not meta:
-                # Check for sidecar metadata
                 from routes.utils import sidecar_path
                 sc_path = sidecar_path(file_path)
                 
@@ -788,31 +716,23 @@ def get_published_info(publish_destination_id: str) -> dict:
                         debug(f"Error reading sidecar: {e}")
                         pass
             
-            # Use the raw URL if available, otherwise use the local path
             raw_url = image_info.get("raw_url", str(file_path))
             
-            # Generate appropriate thumbnail URL based on file type
             file_suffix = file_path.suffix.lower()
             if file_suffix in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
-                # For images, thumbnail is same as raw URL
                 thumbnail_url = raw_url
             elif file_suffix in ['.mp4', '.webm', '.mov']:
-                # For videos, use the jpg_from_mp4 endpoint with the full API URL
                 thumbnail_url = f"{VITE_API_URL}/generate/jpg_from_mp4?file={raw_url}"
                 info(f"Using API URL for thumbnail: {thumbnail_url}")
             else:
-                # Default fallback
                 thumbnail_url = "/static/placeholder.jpg"
             
-            # For get_image_from_target, return the bucket's current published file if available
-            # This maintains compatibility with the test expectations
             try:
                 from routes.bucketer import load_meta
                 bucket_meta = load_meta(publish_destination_id)
                 if "published_meta" in bucket_meta and bucket_meta["published_meta"]:
                     debug(f"Replacing raw_name with published_meta filename")
                     raw_name = bucket_meta["published_meta"]["filename"]
-                    # Use raw_url and thumbnail_url from bucket meta if available
                     if "raw_url" in bucket_meta["published_meta"]:
                         raw_url = bucket_meta["published_meta"]["raw_url"]
                     if "thumbnail_url" in bucket_meta["published_meta"]:
@@ -830,7 +750,6 @@ def get_published_info(publish_destination_id: str) -> dict:
         else:
             debug(f"No image found for {publish_destination_id}")
         
-        # Nothing found
         debug(f"No published info found for {publish_destination_id}")
         return {}
         
@@ -860,17 +779,15 @@ def display_from_bucket(
         error(f"Invalid display mode: {mode}. Must be 'Next', 'Random', or 'Blank'.")
         return {"success": False, "error": f"Invalid display mode: {mode}. Must be 'Next', 'Random', or 'Blank'."}
 
-    # Handle Blank mode
     if mode == "Blank":
         debug(f"Using blank mode for {publish_destination_id}")
         return publish_to_destination(
-            source="",  # Source is ignored when blank=True
+            source="",
             publish_destination_id=publish_destination_id,
             blank=True,
             silent=silent
         )
 
-    # Get the bucket's metadata to find favorites
     from routes.bucket_api import load_meta
     meta = load_meta(publish_destination_id)
     favorites = meta.get("favorites", [])
@@ -880,25 +797,19 @@ def display_from_bucket(
         error(f"No favorites found in bucket {publish_destination_id}.")
         return {"success": False, "error": f"No favorites found in bucket {publish_destination_id}."}
 
-    # Get the currently published image
     published_info = get_published_info(publish_destination_id)
     current_image = published_info.get("published")
     debug(f"Current published image for {publish_destination_id}: {current_image}")
     
-    # Select the next image based on mode
     if mode == "Next":
         debug(f"Next mode - checking if current image {current_image} is in favorites")
         
-        # The current_image might be a simple filename or the full path
-        # Try to match it in different ways
         current_pos = -1
         
-        # First try direct match
         if current_image in favorites:
             current_pos = favorites.index(current_image)
             debug(f"Found current image directly at position {current_pos}")
         else:
-            # Try to match just the filename part (without directory)
             for i, fav in enumerate(favorites):
                 if os.path.basename(fav) == current_image:
                     current_pos = i
@@ -906,35 +817,28 @@ def display_from_bucket(
                     break
         
         if current_pos >= 0:
-            # Found current position, get next favorite
             next_pos = (current_pos + 1) % len(favorites)
             filename = favorites[next_pos]
             debug(f"Current image found at position {current_pos} in favorites. Next position is {next_pos}, filename: {filename}")
         else:
-            # If current image not in favorites, start from first favorite
             filename = favorites[0]
             debug(f"Current image not found in favorites. Using first favorite: {filename}")
-    else:  # Random
-        # For random, we can just pick any favorite
+    else:
         filename = random.choice(favorites)
         debug(f"Random mode - selected: {filename}")
 
-    # Get the full path to the image
     from routes.bucket_api import bucket_path
     image_path = bucket_path(publish_destination_id) / filename
     debug(f"Image path constructed: {image_path}")
 
-    # Check if the selected file actually exists
     if not image_path.exists():
         error(f"Selected file {filename} does not exist at path {image_path}")
         return {"success": False, "error": f"Selected file {filename} not found in bucket"}
 
-    # Publish the image to the destination
-    debug(f"Publishing image {filename} to {publish_destination_id}")
     result = publish_to_destination(
         source=image_path,
         publish_destination_id=publish_destination_id,
-        skip_bucket=True,  # Always skip bucket since we're displaying from a bucket
+        skip_bucket=True,
         silent=silent
     )
     

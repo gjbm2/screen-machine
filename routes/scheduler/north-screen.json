@@ -100,7 +100,7 @@
         "_b_theme": "Mastery in the Moment",
         "_style": "Alex Colville\u2019s precise realism",
         "_guidance": "Select scenes or subjects capturing everyday distractions versus moments of intense presence, ensuring each piece stands out by avoiding historical repetition; render them with the calm, clear composition and meticulous attention to detail reminiscent of Colville\u2019s works.",
-        "prompt": "A commuter on a morning train, mesmerized by reflections in raindrop-streaked windows, each droplet and urban landscape beyond meticulously rendered in Colville\u2019s exacting detail.",
+        "prompt": "A gardener in a greenhouse, entranced by dew on orchid petals, soft morning light revealing vivid petal textures, each detail carefully captured with Colville's meticulous realism.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:23",
@@ -1409,6 +1409,36 @@
             },
             "text_input": "'The Subtle Art of Distraction' in the style of...",
             "explanation": "To create a unique image prompt, I selected the context of public transportation, which hadn't be..."
+          },
+          {
+            "timestamp": "2025-05-11 19:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A lone figure at a pottery wheel, completely absorbed in shaping wet clay, studio sunlight highlighting moist earth textures with Colville-inspired realism."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I selected a pottery studio setting to avoid repetition, focusing on the tactile process of shapi..."
+          },
+          {
+            "timestamp": "2025-05-11 20:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "An engraver absorbed in etching delicate patterns on a metal plate, natural light softly illuminating the workspace, with each line rendered in Colville's detailed realism."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I chose a scene of an engraver, distinct from previous prompts. The focus is on the precision and..."
+          },
+          {
+            "timestamp": "2025-05-11 21:00:33",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A gardener in a greenhouse, entranced by dew on orchid petals, soft morning light revealing vivid petal textures, each detail carefully captured with Colville's meticulous realism."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I focused on a greenhouse setting with a gardener, an environment not explored in previous prompt..."
           }
         ],
         "prompt_history": [
@@ -2443,6 +2473,30 @@
             "refiner": "curator",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ada58d76-10f6-4d34-b3a5-2f1b523adfff-e1/51816774.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T170046Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1637e24ef08395ef76d31c31ae248a897a6af0f16fe079d586ecdf79722bb14e"
+          },
+          {
+            "timestamp": "2025-05-11 19:00:01",
+            "type": "generation",
+            "prompt": "A lone figure at a pottery wheel, completely ab...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0abf85db-4a6c-4aa1-a7c4-c392e59d077a-e1/664d62bc.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T180029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5a4c1a70eefb4aca3e83ffaee31173d206e1a35a61c1f689873dd1b5f6494d1c"
+          },
+          {
+            "timestamp": "2025-05-11 20:00:01",
+            "type": "generation",
+            "prompt": "An engraver absorbed in etching delicate patter...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/008bf1fa-b799-4abd-b0b7-9c131abdda7c-e1/69d02930.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T190050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e74db8a9dcaee59531c78f8f02de001ad5a430e39294d104ce80554b7e6e5805"
+          },
+          {
+            "timestamp": "2025-05-11 21:00:33",
+            "type": "generation",
+            "prompt": "A gardener in a greenhouse, entranced by dew on...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b391c6e4-a611-4a7a-8270-5aa2f6f4ed42-e1/b86befd2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T200100Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=eb113d3ea117e18d2ebd07e19a62616a276e9c7c49be7a39464cc3a44788e1b1"
           }
         ],
         "animation_history": [
@@ -2709,15 +2763,23 @@
             "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ada58d76-10f6-4d34-b3a5-2f1b523adfff-e1/51816774.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T170046Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1637e24ef08395ef76d31c31ae248a897a6af0f16fe079d586ecdf79722bb14e",
             "refiner": "animator",
             "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-11 20:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/008bf1fa-b799-4abd-b0b7-9c131abdda7c-e1/69d02930.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T190050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e74db8a9dcaee59531c78f8f02de001ad5a430e39294d104ce80554b7e6e5805",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ada58d76-10f6-4d34-b3a5-2f1b523adfff-e1/51816774.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T170046Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1637e24ef08395ef76d31c31ae248a897a6af0f16fe079d586ecdf79722bb14e"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b391c6e4-a611-4a7a-8270-5aa2f6f4ed42-e1/b86befd2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T200100Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=eb113d3ea117e18d2ebd07e19a62616a276e9c7c49be7a39464cc3a44788e1b1"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-11T18:11:44.669809",
+  "last_updated": "2025-05-11T21:28:37.816777",
   "last_trigger_executions": {
     "1e41f37db26e89ac37d55f3771482626_2025-05-10T11:00:00": "2025-05-10T11:20:50.497918",
     "8b0160f252dc1affd80c933c62e85005_2025-05-10T10:05:00": "2025-05-10T11:20:50.497918",
@@ -2745,6 +2807,10 @@
     "8b0160f252dc1affd80c933c62e85005_2025-05-11T16:05:00": "2025-05-11T16:05:02.000887",
     "1e41f37db26e89ac37d55f3771482626_2025-05-11T17:00:00": "2025-05-11T17:00:01.051020",
     "1e41f37db26e89ac37d55f3771482626_2025-05-11T18:00:00": "2025-05-11T18:00:01.300771",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-11T18:05:00": "2025-05-11T18:05:02.297515"
+    "8b0160f252dc1affd80c933c62e85005_2025-05-11T18:05:00": "2025-05-11T18:05:02.297515",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-11T19:00:00": "2025-05-11T19:00:01.713885",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-11T20:00:00": "2025-05-11T20:00:01.164622",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-11T20:05:00": "2025-05-11T20:05:00.324086",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-11T21:00:00": "2025-05-11T21:00:33.875293"
   }
 }

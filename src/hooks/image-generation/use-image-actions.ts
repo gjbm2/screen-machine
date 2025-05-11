@@ -45,21 +45,21 @@ export const useImageActions = ({
     
     // Find the image in our collection
     const image = generatedImages.find(img => img.url === url);
-    
+
     // If found, use its prompt and workflow
     if (image) {
       console.log('Found image in generated images:', image);
-      
-      // Set the prompt and workflow to match the generated image
-      if (image.prompt) {
-        setCurrentPrompt(image.prompt);
-        console.log('Setting prompt to:', image.prompt);
-      }
-      
-      if (image.workflow) {
-        setCurrentWorkflow(image.workflow);
-        console.log('Setting workflow to:', image.workflow);
-      }
+
+    // Set the prompt and workflow to match the generated image
+    if (image.prompt) {
+      setCurrentPrompt(image.prompt);
+      console.log('Setting prompt to:', image.prompt);
+    }
+    
+    if (image.workflow) {
+      setCurrentWorkflow(image.workflow);
+      console.log('Setting workflow to:', image.workflow);
+    }
     } else {
       console.log('Image not found in generated images collection, using URL directly');
     }
@@ -92,14 +92,14 @@ export const useImageActions = ({
   const handleCreateAgain = (image: GeneratedImage) => {
     if (image.prompt) {
       setCurrentPrompt(image.prompt);
-    }
+            }
     
     if (image.workflow) {
       setCurrentWorkflow(image.workflow);
     }
     
     // Trigger generation with the same parameters
-    handleSubmitPrompt(
+        handleSubmitPrompt(
       image.prompt || '',
       undefined,
       image.workflow,
@@ -149,7 +149,7 @@ export const useImageActions = ({
       
       return prevImages;
     });
-    
+      
     // Also remove from the container order if needed
     if (imageId === containerId) {
       setImageContainerOrder(prevOrder => 

@@ -100,7 +100,7 @@
         "_b_theme": "Mastery in the Moment",
         "_style": "Alex Colville\u2019s precise realism",
         "_guidance": "Select scenes or subjects capturing everyday distractions versus moments of intense presence, ensuring each piece stands out by avoiding historical repetition; render them with the calm, clear composition and meticulous attention to detail reminiscent of Colville\u2019s works.",
-        "prompt": "A chess player methodically pondering moves in a sunlit park, the intense focus amidst vibrant surroundings captured with Colville's serene, realistic clarity.",
+        "prompt": "A calligrapher expertly composing on elegant parchment, sunlight gently illuminating the script, Colville's realism highlighting the serene focus within a tranquil study setting.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:54",
@@ -1382,6 +1382,36 @@
             },
             "text_input": "'Mastery in the Moment' in the style of 'Alex C...",
             "explanation": "To create a distinct visual, I focused on a chess player in a public park, an unexploited subject..."
+          },
+          {
+            "timestamp": "2025-05-11 19:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A rock climber scaling a sunlit cliff face, fingers delicately finding holds, Colville's realism envelops the intense concentration amidst expansive, tranquil natural scenery."
+            },
+            "text_input": "'Mastery in the Moment' in the style of 'Alex C...",
+            "explanation": "I chose a rock climber navigating a cliff, a unique subject not previously used. This setting emp..."
+          },
+          {
+            "timestamp": "2025-05-11 20:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A watchmaker at a sunlit workshop, delicately assembling tiny gears, Colville's realism capturing serene precision against a background of organized clock faces."
+            },
+            "text_input": "'Mastery in the Moment' in the style of 'Alex C...",
+            "explanation": "I chose a watchmaker in a workshop environment, focusing on the intricate process of assembling a..."
+          },
+          {
+            "timestamp": "2025-05-11 21:00:33",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A calligrapher expertly composing on elegant parchment, sunlight gently illuminating the script, Colville's realism highlighting the serene focus within a tranquil study setting."
+            },
+            "text_input": "'Mastery in the Moment' in the style of 'Alex C...",
+            "explanation": "To avoid repetition, I selected a calligrapher working on parchment\u2014a subject not previously expl..."
           }
         ],
         "prompt_history": [
@@ -2408,6 +2438,30 @@
             "refiner": "curator",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7956e3ca-f7d6-470a-a36a-43c335fbf177-e1/9c450bf7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T170045Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e22e495faaee5348739c6d392d2dfcb1720c8424fd603dca243d051c203c6f8e"
+          },
+          {
+            "timestamp": "2025-05-11 19:00:01",
+            "type": "generation",
+            "prompt": "A rock climber scaling a sunlit cliff face, fin...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8c78f112-cb2e-4895-84cf-c92f27076dac-e1/9382ada3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T180031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b88f6f65d290679938916ab32e4dee2e83ae1bb657e18fb9fe4fcde58669794a"
+          },
+          {
+            "timestamp": "2025-05-11 20:00:00",
+            "type": "generation",
+            "prompt": "A watchmaker at a sunlit workshop, delicately a...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/3486cf3c-195e-4d4d-9ed5-a464c03e30ec-e1/78e6c04e.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T190022Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7f2b86239a804d0def77c6ff84e1c6213bd0b55545ba2b08dba53d74dcab86b2"
+          },
+          {
+            "timestamp": "2025-05-11 21:00:33",
+            "type": "generation",
+            "prompt": "A calligrapher expertly composing on elegant pa...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a8284644-e3a7-4ac3-988e-bdacc113f10e-e1/ca35abe8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T200117Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=da64c8e52025b15f136e9e831b96b7964b99f60d3d6045ade87882348afd0f97"
           }
         ],
         "animation_history": [
@@ -2578,15 +2632,31 @@
             "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/efbc7bb9-e0bf-4c1b-bcd0-ef2282ce0a4b-e1/77a6a5cb.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T160028Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5b4d2ee4fa41a45a930481e0aed87a0e2c627327ce2c8d02bee31e2f35febfde",
             "refiner": "animator",
             "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-11 19:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8c78f112-cb2e-4895-84cf-c92f27076dac-e1/9382ada3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T180031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b88f6f65d290679938916ab32e4dee2e83ae1bb657e18fb9fe4fcde58669794a",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-11 21:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a8284644-e3a7-4ac3-988e-bdacc113f10e-e1/ca35abe8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T200117Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=da64c8e52025b15f136e9e831b96b7964b99f60d3d6045ade87882348afd0f97",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
       "publish_destination": "south-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7956e3ca-f7d6-470a-a36a-43c335fbf177-e1/9c450bf7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T170045Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e22e495faaee5348739c6d392d2dfcb1720c8424fd603dca243d051c203c6f8e"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a8284644-e3a7-4ac3-988e-bdacc113f10e-e1/ca35abe8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250511%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250511T200117Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=da64c8e52025b15f136e9e831b96b7964b99f60d3d6045ade87882348afd0f97"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-11T18:11:44.706479",
+  "last_updated": "2025-05-11T21:28:37.862784",
   "last_trigger_executions": {
     "1e41f37db26e89ac37d55f3771482626_2025-05-10T11:00:00": "2025-05-10T11:21:12.555262",
     "b812f679a565a0c56311d86bfaf3ca2d_2025-05-10T11:05:00": "2025-05-10T11:21:12.555262",
@@ -2614,6 +2684,11 @@
     "1e41f37db26e89ac37d55f3771482626_2025-05-11T16:00:00": "2025-05-11T16:00:01.304599",
     "1e41f37db26e89ac37d55f3771482626_2025-05-11T17:00:00": "2025-05-11T17:00:00.131856",
     "b812f679a565a0c56311d86bfaf3ca2d_2025-05-11T17:05:00": "2025-05-11T17:05:00.842851",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-11T18:00:00": "2025-05-11T18:00:01.008522"
+    "1e41f37db26e89ac37d55f3771482626_2025-05-11T18:00:00": "2025-05-11T18:00:01.008522",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-11T19:00:00": "2025-05-11T19:00:01.589816",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-11T19:05:00": "2025-05-11T19:05:00.651818",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-11T20:00:00": "2025-05-11T20:00:00.230211",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-11T21:00:00": "2025-05-11T21:00:33.948596",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-11T21:05:00": "2025-05-11T21:05:01.848062"
   }
 }

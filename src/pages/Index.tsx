@@ -605,14 +605,10 @@ const Index = () => {
         setRefinerParams(refinerParams);
       }
 
-      const allImages: (File | string)[] = [
-        ...(imageFiles ?? []),
-        ...referenceUrls
-      ];
-
+      // Use the imageFiles parameter as-is without combining with referenceUrls
       await handleSubmitPrompt(
         prompt,
-        allImages.length > 0 ? allImages : undefined,
+        imageFiles,
         workflow,
         effectiveParams,
         globalParams,
@@ -895,42 +891,42 @@ const Index = () => {
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
         >
-          <PromptForm 
-            onSubmit={handlePromptSubmit}
-            isLoading={activeGenerations.length > 0}
-            currentPrompt={currentPrompt}
-            isFirstRun={isFirstRun}
-            onOpenAdvancedOptions={handleOpenAdvancedOptions}
-            selectedWorkflow={currentWorkflow}
-            selectedRefiner={selectedRefiner}
-            selectedPublish={selectedPublish}
-            workflowParams={currentParams}
-            refinerParams={refinerParams}
-            globalParams={currentGlobalParams}
-            onWorkflowChange={setCurrentWorkflow}
-            onRefinerChange={handleRefinerChange}
-            onPublishChange={handlePublishChange}
-          />
-          
-          <ImageDisplay 
-            imageUrl={imageUrl}
-            prompt={currentPrompt}
-            isLoading={activeGenerations.length > 0}
-            uploadedImages={uploadedImageUrls}
-            generatedImages={generatedImages}
-            imageContainerOrder={imageContainerOrder}
-            expandedContainers={expandedContainers}
-            setExpandedContainers={setExpandedContainers}
-            workflow={currentWorkflow}
-            generationParams={currentParams}
-            onUseGeneratedAsInput={handleUseGeneratedAsInput}
-            onCreateAgain={handleCreateAgain}
-            onReorderContainers={handleReorderContainers}
-            onDeleteImage={handleDeleteImage}
-            onDeleteContainer={handleDeleteContainer}
-            fullscreenRefreshTrigger={fullscreenRefreshTrigger}
-            publishDestinations={publishDestinations.map(dest => dest.id)}
-          />
+        <PromptForm 
+          onSubmit={handlePromptSubmit}
+          isLoading={activeGenerations.length > 0}
+          currentPrompt={currentPrompt}
+          isFirstRun={isFirstRun}
+          onOpenAdvancedOptions={handleOpenAdvancedOptions}
+          selectedWorkflow={currentWorkflow}
+          selectedRefiner={selectedRefiner}
+          selectedPublish={selectedPublish}
+          workflowParams={currentParams}
+          refinerParams={refinerParams}
+          globalParams={currentGlobalParams}
+          onWorkflowChange={setCurrentWorkflow}
+          onRefinerChange={handleRefinerChange}
+          onPublishChange={handlePublishChange}
+        />
+        
+        <ImageDisplay 
+          imageUrl={imageUrl}
+          prompt={currentPrompt}
+          isLoading={activeGenerations.length > 0}
+          uploadedImages={uploadedImageUrls}
+          generatedImages={generatedImages}
+          imageContainerOrder={imageContainerOrder}
+          expandedContainers={expandedContainers}
+          setExpandedContainers={setExpandedContainers}
+          workflow={currentWorkflow}
+          generationParams={currentParams}
+          onUseGeneratedAsInput={handleUseGeneratedAsInput}
+          onCreateAgain={handleCreateAgain}
+          onReorderContainers={handleReorderContainers}
+          onDeleteImage={handleDeleteImage}
+          onDeleteContainer={handleDeleteContainer}
+          fullscreenRefreshTrigger={fullscreenRefreshTrigger}
+          publishDestinations={publishDestinations.map(dest => dest.id)}
+        />
         </DndContext>
       </MainLayout>
       

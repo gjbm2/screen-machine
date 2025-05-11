@@ -129,8 +129,24 @@ export class Api {
 		  has_reference_image: (imageFiles && imageFiles.length > 0) || false,
 		};
 
+		// Process and normalize reference URLs
 		if (referenceUrls && referenceUrls.length > 0) {
-		  jsonData.referenceUrls = referenceUrls;
+		  console.log(`[api] Processing ${referenceUrls.length} reference URLs:`, referenceUrls);
+		  
+		  // Ensure all URLs have proper formatting
+		  const normalizedUrls = referenceUrls.map(url => {
+			// If it's a relative path starting with /output, make it an absolute URL
+			if (url.startsWith('/output/') || url.startsWith('/api/')) {
+			  // Get the current origin (protocol + hostname + port)
+			  const origin = window.location.origin;
+			  const absoluteUrl = `${origin}${url}`;
+			  console.log(`[api] Converting relative URL to absolute: ${url} → ${absoluteUrl}`);
+			  return absoluteUrl;
+			}
+			return url;
+		  });
+		  
+		  jsonData.referenceUrls = normalizedUrls;
 		}
 
 		if (placeholders && placeholders.length > 0) {

@@ -146,7 +146,7 @@ When adding new tests:
 | `mock_now` | Returns the current datetime (alternative to current_time) |
 | `base_context` | Provides a basic context with pre-populated variables |
 | `output_list` | Provides an empty output list for logging |
-| `enable_testing_mode` | Enables mock services by setting the TESTING environment variable |
+| `enable_testing_mode` | Enables mock services by setting the TESTING environment variable | 
 
 # Publisher Tests
 

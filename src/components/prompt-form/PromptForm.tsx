@@ -187,44 +187,41 @@ const PromptForm: React.FC<PromptFormProps> = ({
     if (externalPublishChange) externalPublishChange(publishId);
   };
 
-  const handleSubmit = () => {
+	  const handleSubmit = () => {
     if (prompt.trim() === '' && referenceUrls.length === 0) {
-      toast.error('Please enter a prompt or upload an image');
-      return;
-    }
+		toast.error('Please enter a prompt or upload an image');
+		return;
+	  }
 
-    if (!selectedWorkflow) {
-      toast.error('Please select a workflow');
-      return;
-    }
+	  if (!selectedWorkflow) {
+		toast.error('Please select a workflow');
+		return;
+	  }
 
-    setLocalLoading(true);
+	  setLocalLoading(true);
 
-    // Use the referenceUrls from context
-    const allImages: (File | string)[] = [
-      ...imageFiles,
-      ...referenceUrls.filter(url => typeof url === 'string')
-    ];
+    // Use only the referenceUrls from context as the source of truth
+	  const allImages: (File | string)[] = referenceUrls;
 
-    const refinerToUse = selectedRefiner === 'none' ? undefined : selectedRefiner;
-    const publishToUse = selectedPublish === 'none' ? undefined : selectedPublish;
-    const currentGlobalParams = { ...globalParams };
+	  const refinerToUse = selectedRefiner === 'none' ? undefined : selectedRefiner;
+	  const publishToUse = selectedPublish === 'none' ? undefined : selectedPublish;
+	  const currentGlobalParams = { ...globalParams };
 
-    onSubmit(
-      prompt,
-      allImages.length > 0 ? allImages : undefined,
-      selectedWorkflow,
-      workflowParams,
-      currentGlobalParams,
-      refinerToUse,
-      refinerParams,
-      publishToUse
-    );
+	  onSubmit(
+		prompt,
+		allImages.length > 0 ? allImages : undefined,
+		selectedWorkflow,
+		workflowParams,
+		currentGlobalParams,
+		refinerToUse,
+		refinerParams,
+		publishToUse
+	  );
 
-    setTimeout(() => {
-      setLocalLoading(false);
-    }, 1000);
-  };
+	  setTimeout(() => {
+		setLocalLoading(false);
+	  }, 1000);
+	};
 
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setPrompt(e.target.value);
@@ -241,7 +238,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
     
     // Only revoke blob URLs that were created via URL.createObjectURL
     if (url.startsWith('blob:')) {
-      URL.revokeObjectURL(url);
+    URL.revokeObjectURL(url);
     }
     
     console.log('Removing image at index:', index, 'URL:', url);
