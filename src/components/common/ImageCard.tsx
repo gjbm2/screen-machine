@@ -1,5 +1,5 @@
 import React from 'react';
-import { Maximize2, Star, Film, MoreVertical, Copy, Share, Trash, ExternalLink } from 'lucide-react';
+import { Maximize2, Star, Film, MoreVertical, Copy, Share, Trash, ExternalLink, Sparkles } from 'lucide-react';
 import { ImageItem } from '@/types/image-types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +28,8 @@ export interface ImageCardProps {
   onCopyTo?: (img: ImageItem, destId: string) => void;
   /** Called to publish image */
   onPublish?: (img: ImageItem, destId: string) => void;
+  /** Called when image should be used as a prompt reference */
+  onUseAsPrompt?: (img: ImageItem) => void;
   /** List of publishable destinations */
   publishDestinations?: Array<{id: string, name: string, headless: boolean}>;
   /** Additional class names */
@@ -47,6 +49,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
   onDelete,
   onCopyTo,
   onPublish,
+  onUseAsPrompt,
   publishDestinations,
   className = '',
   index = 0,
@@ -145,6 +148,21 @@ const ImageCard: React.FC<ImageCardProps> = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="right">
+          {/* Use as prompt */}
+          {onUseAsPrompt && (
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onUseAsPrompt(image);
+              }}
+              className="flex items-center"
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              Use as prompt
+            </DropdownMenuItem>
+          )}
+          
           {/* Copy to submenu */}
           {onCopyTo && publishDestinations && publishDestinations.length > 0 && (
             <DropdownMenu>

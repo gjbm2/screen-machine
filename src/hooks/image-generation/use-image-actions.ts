@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { GeneratedImage } from './types';
 import { toast } from 'sonner';
@@ -27,30 +26,33 @@ export const useImageActions = (
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   const handleUseGeneratedAsInput = async (url: string) => {
+    console.log('handleUseGeneratedAsInput called with URL:', url);
+    
     // Find the image in our collection
     const image = generatedImages.find(img => img.url === url);
-    if (!image) {
-      console.error('Image not found:', url);
-      return;
-    }
-
-    console.log('Using image as input:', image);
-
-    // Set the prompt and workflow to match the generated image
-    if (image.prompt) {
-      setCurrentPrompt(image.prompt);
-      console.log('Setting prompt to:', image.prompt);
+    
+    // If found, use its prompt and workflow
+    if (image) {
+      console.log('Found image in generated images:', image);
+      
+      // Set the prompt and workflow to match the generated image
+      if (image.prompt) {
+        setCurrentPrompt(image.prompt);
+        console.log('Setting prompt to:', image.prompt);
+      }
+      
+      if (image.workflow) {
+        setCurrentWorkflow(image.workflow);
+        console.log('Setting workflow to:', image.workflow);
+      }
+    } else {
+      console.log('Image not found in generated images collection, using URL directly');
     }
     
-    if (image.workflow) {
-      setCurrentWorkflow(image.workflow);
-      console.log('Setting workflow to:', image.workflow);
-    }
-    
-    // FIXED: Always use the generated image as input
-    // Regardless of whether it was created from a reference image
+    // Always use the URL directly, regardless of whether we found the image
+    // This ensures we don't lose favorite status
     setUploadedImageUrls([url]);
-    console.log('Setting current image as reference:', url);
+    console.log('Setting image URL as reference:', url);
     
     // Set the image URL
     setImageUrl(url);

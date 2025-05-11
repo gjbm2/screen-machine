@@ -66,22 +66,22 @@
                 ]
               },
               "repeat_schedule": {
-                "every": "30"
+                "every": "60"
               }
             },
             {
+              "repeat_schedule": {
+                "every": "120"
+              },
               "time": "06:05",
               "trigger_actions": {
                 "instructions_block": [
                   {
                     "action": "animate",
-                    "refiner": "animator",
-                    "history_var": "animation_history"
+                    "history_var": "animation_history",
+                    "refiner": "animator"
                   }
                 ]
-              },
-              "repeat_schedule": {
-                "every": "120"
               }
             }
           ]
@@ -96,11 +96,11 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "Moments of Quiet Bravery",
-        "_b_theme": "Public Acts of Heroism",
-        "_style": "Berthe Morisot\u2019s Impressionist brushwork",
-        "_guidance": "Focus on depicting various instances of personal courage in intimate settings, ensuring diversity and freshness by avoiding repetition with recent image history, all while employing Berthe Morisot\u2019s soft and fluid Impressionist brushwork.",
-        "prompt": "A candle-lit library where a solitary scholar bravely faces the unknown future, dressed in soft colors, illuminated by Morisot\u2019s tender, impressionistic brushwork.",
+        "_a_theme": "The Subtle Art of Distraction",
+        "_b_theme": "Mastery in the Moment",
+        "_style": "Alex Colville\u2019s precise realism",
+        "_guidance": "Select scenes or subjects capturing everyday distractions versus moments of intense presence, ensuring each piece stands out by avoiding historical repetition; render them with the calm, clear composition and meticulous attention to detail reminiscent of Colville\u2019s works.",
+        "prompt": "A bookbinder in a dimly lit workshop, lost in fabricating a leather tome, wooden tools and variegated leathers vividly detailed with Colville's precise artistry.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:23",
@@ -1129,6 +1129,246 @@
             },
             "text_input": "'Moments of Quiet Bravery' in the style of 'Ber...",
             "explanation": "I depicted a scene in a library, focusing on the theme of personal courage before the unknown, wh..."
+          },
+          {
+            "timestamp": "2025-05-10 06:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "An office worker gazing out a rain-splattered window, lost in thoughts, each raindrop crafted with Colville's precise realism capturing an intimate escape from routine."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I chose an office setting with a focus on the act of gazing out the window, a common everyday dis..."
+          },
+          {
+            "timestamp": "2025-05-10 06:30:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A student sitting amidst a clutter of open books in a library, fingers tracing page edges, momentarily absorbed in dawn's quietude, rendered with Colville's precise realism."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I chose a library scene with focus on a student's momentary absorption amidst cluttered books, av..."
+          },
+          {
+            "timestamp": "2025-05-10 07:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A lone figure sitting at a caf\u00e9, staring intently at a bustling street through a foggy window, precise details on reflections capture fleeting introspection."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I depicted a scene in a caf\u00e9, focusing on the view outside rather than indoor distractions like o..."
+          },
+          {
+            "timestamp": "2025-05-10 07:30:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A woman arranging freshly picked flowers by a sun-drenched window, delicate shadows cast on the wall, captured with Colville's meticulous attention to everyday serenity."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I avoided scenes like the caf\u00e9 or office by choosing a domestic activity of arranging flowers, hi..."
+          },
+          {
+            "timestamp": "2025-05-10 08:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A young couple playing chess in a cozy living room, paused mid-game, observing a bird outside with Colville's signature clarity, capturing shared distraction and intimacy."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I chose an intimate indoor setting focusing on a shared moment during a paused chess game, distin..."
+          },
+          {
+            "timestamp": "2025-05-10 08:30:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A cyclist pausing under a bridge, mid-ride, studying intricate graffiti with intense thought, Colville\u2019s signature clarity highlighting the intersection of urban flow and contemplation."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I depicted a cyclist pausing during a ride in an urban environment, a scenario not previously cov..."
+          },
+          {
+            "timestamp": "2025-05-10 09:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A teenager staring at a retro jukebox in a dim diner alley, meticulous detail capturing the nostalgic allure and complex patterns of colored lights."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "Instead of focusing on indoor scenes or natural settings, I chose a diner alley with a jukebox, a..."
+          },
+          {
+            "timestamp": "2025-05-10 09:30:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A painter on a rooftop at sunset, deeply engrossed in capturing sprawling cityscapes, sky\u2019s colors meticulously depicted with Colville\u2019s serene exactitude."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I selected a rooftop setting as it has not been previously covered. The focus is on artistic imme..."
+          },
+          {
+            "timestamp": "2025-05-10 10:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A gardener knee-deep in summer blooms, absorbed in the vibrant chaos of a bee\u2019s flight, every petal and movement rendered with Colville\u2019s signature precision."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "To avoid similarity with previous prompts, I chose an outdoor setting focused on gardening, captu..."
+          },
+          {
+            "timestamp": "2025-05-10 10:30:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A fisherman on a small boat at dawn, momentarily distracted by a distant bird's call, gentle ripples and twilight hues rendered with Colville's precise clarity."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I selected a unique setting: a fisherman on a boat at dawn, which hasn't been covered before. The..."
+          },
+          {
+            "timestamp": "2025-05-10 11:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A commuter on a train platform, mesmerized by interwoven rail tracks at dusk, vivid details capturing transit rhythms and moments of quiet anticipation with Colville's precision realism."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "To avoid duplicating previous prompts, I chose a train platform scene, distinct from offices, caf..."
+          },
+          {
+            "timestamp": "2025-05-10 11:20:50",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A solitary beachcomber at sunrise, captivated by a seashell's patterns, each grain of sand and morning glow depicted with Colville's precise realism."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I selected a beachcombing scene at sunrise, a concept not previously explored. This setting combi..."
+          },
+          {
+            "timestamp": "2025-05-10 12:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A librarian lost in thought as sunlight streams through tall library windows, highlighting dust motes mingling in air, capturing serene introspection with Colville's meticulous detail."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I focused on a library setting, an environment not previously covered. The image captures the sub..."
+          },
+          {
+            "timestamp": "2025-05-10 13:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Late-night stargazer on an apartment balcony, city lights below, stars above; each flicker meticulously captured with Colville\u2019s striking precision."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I chose a stargazing scene on a balcony, a distinct setting not previously explored. This setup c..."
+          },
+          {
+            "timestamp": "2025-05-10 14:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A hiker on a forest path, pausing to observe sunlit dew on cobwebs among trees, each luminous thread detailed with Colville's striking realism."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "To create a fresh prompt, I focused on a forest hike, a setting not previously utilized. By empha..."
+          },
+          {
+            "timestamp": "2025-05-10 15:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A city dweller watering rooftop plants, entranced by raindrops on fresh leaves, urban landscape subtly reflected, captured with Colville\u2019s meticulous precision realism."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I chose a unique rooftop garden scene to avoid duplicating previous prompts. This blends the them..."
+          },
+          {
+            "timestamp": "2025-05-10 16:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A motorcyclist on a winding road, momentarily entranced by wildflowers along the verge, curves and blossoms detailed with Colville\u2019s exacting precision and serene atmosphere."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I selected a motorcyclist on a road to ensure a fresh perspective, avoiding fixed locations like ..."
+          },
+          {
+            "timestamp": "2025-05-10 17:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A solitary cafe patron gazing at the subtle patterns in a steaming cup of tea, every detail captured in Colville\u2019s serene and realistic manner."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I selected a quiet cafe setting with an individual focused on the intricate designs formed by tea..."
+          },
+          {
+            "timestamp": "2025-05-10 18:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A sound engineer in a recording studio, lost in the flicker of VU meters, every dial and wire bathed in soft studio lights, crafted with Colville's meticulous precision realism."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "To ensure a unique prompt, I chose a recording studio setting, focusing on the intricate details ..."
+          },
+          {
+            "timestamp": "2025-05-10 19:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A gardener in a greenhouse, absorbed by morning light filtering through humid glass and vibrant foliage, each plant detailed with Colville's precise realism, evoking calm introspection."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I chose a greenhouse setting, unique from previous prompts. By focusing on the interplay of light..."
+          },
+          {
+            "timestamp": "2025-05-10 20:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A bookstore owner tidying shelves, captivated by book spines reflecting golden afternoon light through windows, each title and cover rendered with Colville\u2019s realistic detail."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "To avoid repetition, I depicted a bookstore interior, focusing on a private moment of distraction..."
+          },
+          {
+            "timestamp": "2025-05-10 21:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A cyclist fixing a puncture beside a quiet country lane, captivated by the intricate veining of fallen autumn leaves, each nuance captured with Colville\u2019s precision realism."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I focused on a solitary roadway scene with a cyclist, an untouched perspective. The interplay of ..."
+          },
+          {
+            "timestamp": "2025-05-10 22:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A lone fisher sitting by a quiet riverbank, mesmerized by ripples caused by a passing breeze, every detail rendered with Colville\u2019s precise realism."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I opted for a serene riverside setting, with a focus on the natural play of water and light, whic..."
+          },
+          {
+            "timestamp": "2025-05-10 23:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A bookbinder in a dimly lit workshop, lost in fabricating a leather tome, wooden tools and variegated leathers vividly detailed with Colville's precise artistry."
+            },
+            "text_input": "'The Subtle Art of Distraction' in the style of...",
+            "explanation": "I focused on a bookbinder in a workshop, a unique setting among previous suggestions. The intrica..."
           }
         ],
         "prompt_history": [
@@ -1939,6 +2179,198 @@
             "refiner": "curator",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/3b92ffaf-d946-461a-90e7-28c3e97f1375-e1/a57fc2f9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T223033Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ddc0c1ac3435d97b91b799163dfe280834f1896e62f9cddca62540f2b90d2e82"
+          },
+          {
+            "timestamp": "2025-05-10 06:00:01",
+            "type": "generation",
+            "prompt": "An office worker gazing out a rain-splattered w...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/43a1b50f-6db8-470c-99a9-526b40550081-e1/6ae66dc5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T050027Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=10d94cf40edda231f6fab7b2833237fd6f01551eae0926fcd41e1df4ae2dff03"
+          },
+          {
+            "timestamp": "2025-05-10 06:30:00",
+            "type": "generation",
+            "prompt": "A student sitting amidst a clutter of open book...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/564be61e-5ec0-430c-8fca-f80190866eb3-e1/17b4f11f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T053026Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6957328ee82cc4f7cf5aeaa642d1e882045a2984468624b58c702370716a471c"
+          },
+          {
+            "timestamp": "2025-05-10 07:00:01",
+            "type": "generation",
+            "prompt": "A lone figure sitting at a caf\u00e9, staring intent...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/64e1f64e-a7f7-4842-b53f-10063eebcee8-e1/305b2975.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T060019Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=041e9456c7bd2426f2cb7d8b93f864c05c50df533ba3fb062a59d11d5d8007d1"
+          },
+          {
+            "timestamp": "2025-05-10 07:30:01",
+            "type": "generation",
+            "prompt": "A woman arranging freshly picked flowers by a s...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9959790f-2587-4fe7-8cdd-20bf7eb55979-e1/5ee1816b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T063031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2f1cd3d88095327d0b49e79c52395b0c463a3bbdf1681ce16696a49c63e83a3d"
+          },
+          {
+            "timestamp": "2025-05-10 08:00:00",
+            "type": "generation",
+            "prompt": "A young couple playing chess in a cozy living r...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/780e8117-31f7-4812-9783-5c5453da7058-e1/12621724.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T070044Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a87d57602a39c709c51c468b8206808ea802ee6e4d5e0ae228f41a6e3f64a60c"
+          },
+          {
+            "timestamp": "2025-05-10 08:30:00",
+            "type": "generation",
+            "prompt": "A cyclist pausing under a bridge, mid-ride, stu...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/86d75f8e-dffa-46bd-a625-c8a882c2e800-e1/876c5c7b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T073021Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e23a1f6bacaf5645e87d50decfa0b0fb67b40f714217b4610a2131c2b2ec9d86"
+          },
+          {
+            "timestamp": "2025-05-10 09:00:00",
+            "type": "generation",
+            "prompt": "A teenager staring at a retro jukebox in a dim ...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/97a209e5-5838-4ed6-a26b-4e1a7cd45aeb-e1/5a953584.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T080022Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a50b57625230c5b58a2bae7b4998a86b91ea2dc6d49f7add4767b5caaf0e7621"
+          },
+          {
+            "timestamp": "2025-05-10 09:30:00",
+            "type": "generation",
+            "prompt": "A painter on a rooftop at sunset, deeply engros...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/2f693f7a-02b7-4ef9-8d42-f5b5ee6d3f5b-e1/32ac6da2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T083023Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=69dc322e64e3b7b671718a0c335644973d18c62c52ccea46776299ce060c3d24"
+          },
+          {
+            "timestamp": "2025-05-10 10:00:00",
+            "type": "generation",
+            "prompt": "A gardener knee-deep in summer blooms, absorbed...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/1d163bae-92ac-4ac8-8aa2-b5075d0cbf1c-e1/3115c9f0.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T090030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e62c1ff84b36e7bd270833bb4a188477971ba73cb07eb00c6bb801a58e347e10"
+          },
+          {
+            "timestamp": "2025-05-10 10:30:01",
+            "type": "generation",
+            "prompt": "A fisherman on a small boat at dawn, momentaril...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/5e3a5efc-f3f9-449a-ab78-f120c036fd1a-e1/67c06567.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T093026Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=931bec7a5a31d3d8cf1873899e4737c267da92dcdaf42ecc8f5bbc3005e673ad"
+          },
+          {
+            "timestamp": "2025-05-10 11:00:00",
+            "type": "generation",
+            "prompt": "A commuter on a train platform, mesmerized by i...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/33ea2c32-eebf-4f7c-b048-b8e72e925a92-e1/a81c1c4e.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T100029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b8a233779adb91bdcfed503891d9d9e8e529ec2254c3fbae8dd183464747cdae"
+          },
+          {
+            "timestamp": "2025-05-10 11:20:50",
+            "type": "generation",
+            "prompt": "A solitary beachcomber at sunrise, captivated b...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fcdc9276-c173-4474-81b1-9a460c50b1b8-e1/7c5384fc.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T102117Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=12a09a5f8462181fd8b29df9686e74c1ccb0fa674e77514f9b3aeb5dde1b5f93"
+          },
+          {
+            "timestamp": "2025-05-10 12:00:01",
+            "type": "generation",
+            "prompt": "A librarian lost in thought as sunlight streams...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fd03d2c4-5d6a-497c-a000-807acc8f4819-e1/bfe21ca9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T110031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=cfd593620f9681c7954ff5a7ca817c5f206d359c7740921897099b6ceef35fa8"
+          },
+          {
+            "timestamp": "2025-05-10 13:00:00",
+            "type": "generation",
+            "prompt": "Late-night stargazer on an apartment balcony, c...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/31190fca-a058-4553-b3c1-3360b4337943-e1/b092adec.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T120029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7b2df4ed0af55ee529a16a79e1898f0cb640f0c1c418dd937f45d5b58c9a1820"
+          },
+          {
+            "timestamp": "2025-05-10 14:00:00",
+            "type": "generation",
+            "prompt": "A hiker on a forest path, pausing to observe su...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/dc45af15-d34d-41f2-8dbf-b1d0f699fea2-e1/eda8e37a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T130030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=cf4364f1bf03c405e5f72703c399134e8fb530122af9e01e959d734e21f23f79"
+          },
+          {
+            "timestamp": "2025-05-10 15:00:01",
+            "type": "generation",
+            "prompt": "A city dweller watering rooftop plants, entranc...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9af63205-abdd-4571-a363-4a23c7cbd314-e1/83bda555.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T140028Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9f5e5fcc2c32f84e79bd9f14d5a9e4c5a7b909ec0e6a8d3a18b2bd598aefeb4a"
+          },
+          {
+            "timestamp": "2025-05-10 16:00:01",
+            "type": "generation",
+            "prompt": "A motorcyclist on a winding road, momentarily e...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/6074b3b3-4211-49e9-a36f-6860a36ee870-e1/acefa23a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T150023Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=27acef6b209fa3661052809fede925cce07947aab4adbd236091c67173bb365e"
+          },
+          {
+            "timestamp": "2025-05-10 17:00:00",
+            "type": "generation",
+            "prompt": "A solitary cafe patron gazing at the subtle pat...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b883ded9-3a0d-43f6-bf50-ba7b6b74801a-e1/b7fbe19a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T160032Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1bd1b21cc02a5882ec0cfbc0e75d02662b34a34df979cf4da139a8791c67a31b"
+          },
+          {
+            "timestamp": "2025-05-10 18:00:00",
+            "type": "generation",
+            "prompt": "A sound engineer in a recording studio, lost in...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a49905fc-95b7-4a24-b426-88fb3634cb35-e1/d3710d71.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T170024Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7c83f944366dc7bb108aa165efad423c77fe71a397601ad6e9d0c9dd1f79788a"
+          },
+          {
+            "timestamp": "2025-05-10 19:00:01",
+            "type": "generation",
+            "prompt": "A gardener in a greenhouse, absorbed by morning...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/59be7f80-41f1-416f-a66e-666c2a8295c1-e1/e3017629.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T180043Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=25efedf413d8fa21a11dc281d7e0f5e7e2cf3162daa1e89bb913253a3485c98e"
+          },
+          {
+            "timestamp": "2025-05-10 20:00:01",
+            "type": "generation",
+            "prompt": "A bookstore owner tidying shelves, captivated b...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/5a34e304-ebd4-493e-b3ec-25a1667965e2-e1/7516c1c4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T190028Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4dce3315ffaccfa902de7e33d3e12fa834a41df374f00d9d7367d6e4df6bd9a6"
+          },
+          {
+            "timestamp": "2025-05-10 21:00:00",
+            "type": "generation",
+            "prompt": "A cyclist fixing a puncture beside a quiet coun...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b8dda3b9-3f58-4ea5-9b06-22e739ca2a5f-e1/96a08ef6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T200031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=707b2a7b9995a61b5dafa9bd02370603045a8322531ccf5ef31a55062d914299"
+          },
+          {
+            "timestamp": "2025-05-10 22:00:00",
+            "type": "generation",
+            "prompt": "A lone fisher sitting by a quiet riverbank, mes...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7d826c5a-1d4f-4fa1-a239-7720d8004f62-e1/9432285a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T210043Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4ed9dfa00011b32867fbadf9f2011b5e8de933218e691e13711e3643e235c788"
+          },
+          {
+            "timestamp": "2025-05-10 23:00:01",
+            "type": "generation",
+            "prompt": "A bookbinder in a dimly lit workshop, lost in f...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0722a444-4a66-462d-9c01-5f2d64dc19ea-e1/39881f80.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T220028Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=8ce4d3d2e3c3e2e721d30907d532eee2239c1b219cf1fc58fe163efd60d50034"
           }
         ],
         "animation_history": [
@@ -2101,48 +2533,115 @@
             "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/32cac18a-b90f-4156-bed5-774e9e671283-e1/ca697266.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T210055Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ae174a06c247db4a40281e087bbd893e2c5f4c0fb938279b204bfdad23126418",
             "refiner": "animator",
             "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-10 06:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/43a1b50f-6db8-470c-99a9-526b40550081-e1/6ae66dc5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T050027Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=10d94cf40edda231f6fab7b2833237fd6f01551eae0926fcd41e1df4ae2dff03",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-10 08:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/780e8117-31f7-4812-9783-5c5453da7058-e1/12621724.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T070044Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a87d57602a39c709c51c468b8206808ea802ee6e4d5e0ae228f41a6e3f64a60c",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-10 10:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/1d163bae-92ac-4ac8-8aa2-b5075d0cbf1c-e1/3115c9f0.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T090030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e62c1ff84b36e7bd270833bb4a188477971ba73cb07eb00c6bb801a58e347e10",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-10 11:20:50",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fcdc9276-c173-4474-81b1-9a460c50b1b8-e1/7c5384fc.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T102117Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=12a09a5f8462181fd8b29df9686e74c1ccb0fa674e77514f9b3aeb5dde1b5f93",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-10 12:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fd03d2c4-5d6a-497c-a000-807acc8f4819-e1/bfe21ca9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T110031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=cfd593620f9681c7954ff5a7ca817c5f206d359c7740921897099b6ceef35fa8",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-10 14:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/dc45af15-d34d-41f2-8dbf-b1d0f699fea2-e1/eda8e37a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T130030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=cf4364f1bf03c405e5f72703c399134e8fb530122af9e01e959d734e21f23f79",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-10 16:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/6074b3b3-4211-49e9-a36f-6860a36ee870-e1/acefa23a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T150023Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=27acef6b209fa3661052809fede925cce07947aab4adbd236091c67173bb365e",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-10 18:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a49905fc-95b7-4a24-b426-88fb3634cb35-e1/d3710d71.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T170024Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7c83f944366dc7bb108aa165efad423c77fe71a397601ad6e9d0c9dd1f79788a",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-10 20:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/5a34e304-ebd4-493e-b3ec-25a1667965e2-e1/7516c1c4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T190028Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4dce3315ffaccfa902de7e33d3e12fa834a41df374f00d9d7367d6e4df6bd9a6",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-10 22:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7d826c5a-1d4f-4fa1-a239-7720d8004f62-e1/9432285a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T210043Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4ed9dfa00011b32867fbadf9f2011b5e8de933218e691e13711e3643e235c788",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/3b92ffaf-d946-461a-90e7-28c3e97f1375-e1/a57fc2f9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250509%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250509T223033Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ddc0c1ac3435d97b91b799163dfe280834f1896e62f9cddca62540f2b90d2e82"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0722a444-4a66-462d-9c01-5f2d64dc19ea-e1/39881f80.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250510%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250510T220028Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=8ce4d3d2e3c3e2e721d30907d532eee2239c1b219cf1fc58fe163efd60d50034"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-10T01:37:23.247593",
+  "last_updated": "2025-05-10T23:00:31.418699",
   "last_trigger_executions": {
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T11:00:00": "2025-05-09T11:11:53.910076",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-09T10:05:00": "2025-05-09T11:11:53.910076",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T11:30:00": "2025-05-09T11:30:00.735964",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T12:00:00": "2025-05-09T12:00:01.472523",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-09T12:05:00": "2025-05-09T12:05:01.756805",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T12:30:00": "2025-05-09T12:30:00.615541",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T13:00:00": "2025-05-09T13:00:01.356562",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T13:30:00": "2025-05-09T13:30:01.941702",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T14:00:00": "2025-05-09T14:00:00.672751",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-09T14:05:00": "2025-05-09T14:05:00.735963",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T14:30:00": "2025-05-09T14:30:01.709806",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T15:00:00": "2025-05-09T15:00:00.587476",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T15:30:00": "2025-05-09T15:30:01.225991",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T16:00:00": "2025-05-09T16:00:01.881600",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-09T16:05:00": "2025-05-09T16:05:00.284188",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T16:30:00": "2025-05-09T16:30:01.590718",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T17:00:00": "2025-05-09T17:00:00.043456",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T17:30:00": "2025-05-09T17:30:00.890291",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T18:00:00": "2025-05-09T18:00:01.972378",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-09T18:05:00": "2025-05-09T18:05:01.823076",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T18:30:00": "2025-05-09T18:30:00.404881",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T19:00:00": "2025-05-09T19:00:00.863442",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T19:30:00": "2025-05-09T19:30:01.654956",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T20:00:00": "2025-05-09T20:00:00.441181",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-09T20:05:00": "2025-05-09T20:05:00.120680",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T20:30:00": "2025-05-09T20:30:00.756026",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T21:00:00": "2025-05-09T21:00:00.448486",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T21:30:00": "2025-05-09T21:30:01.224423",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T22:00:00": "2025-05-09T22:00:01.720516",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-09T22:05:00": "2025-05-09T22:05:01.236142",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T22:30:00": "2025-05-09T22:30:00.864071",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T23:00:00": "2025-05-09T23:00:00.959091",
-    "5c70657d7537871c3426473d66e10d24_2025-05-09T23:30:00": "2025-05-09T23:30:01.998565"
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T11:00:00": "2025-05-10T11:20:50.497918",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-10T10:05:00": "2025-05-10T11:20:50.497918",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T12:00:00": "2025-05-10T12:00:01.710781",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-10T12:05:00": "2025-05-10T12:05:01.772813",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T13:00:00": "2025-05-10T13:00:00.156025",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T14:00:00": "2025-05-10T14:00:00.792211",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-10T14:05:00": "2025-05-10T14:05:01.098802",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T15:00:00": "2025-05-10T15:00:01.035065",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T16:00:00": "2025-05-10T16:00:01.537020",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-10T16:05:00": "2025-05-10T16:05:00.558027",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T17:00:00": "2025-05-10T17:00:00.994097",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T18:00:00": "2025-05-10T18:00:00.381550",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-10T18:05:00": "2025-05-10T18:05:01.479880",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T19:00:00": "2025-05-10T19:00:01.679564",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T20:00:00": "2025-05-10T20:00:01.357375",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-10T20:05:00": "2025-05-10T20:05:00.113804",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T21:00:00": "2025-05-10T21:00:00.323373",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T22:00:00": "2025-05-10T22:00:00.064038",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-10T22:05:00": "2025-05-10T22:05:00.026725",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-10T23:00:00": "2025-05-10T23:00:01.978859"
   }
 }

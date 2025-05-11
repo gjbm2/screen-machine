@@ -22,6 +22,8 @@ export interface ImageMeta {
 export interface ImageItem extends ImageMeta {
   /** Stable unique identifier.  For generated images this might be a UUID; for bucket items the filename usually suffices. */
   id: string;
+  /** Raw URL for the image, used for direct access */
+  raw_url?: string;
 }
 
 export interface ImageGroup {
@@ -35,4 +37,16 @@ export interface ImageGroup {
   imageIds: string[];
   /** UI flag – true when the user collapsed the container during current session.  Not persisted. */
   collapsed: boolean;
+}
+
+export interface BucketImage {
+  id: string;
+  urlFull: string;
+  urlThumb: string;
+  raw_url?: string;
+  promptKey: string;
+  seed: number;
+  isFavourite: boolean;
+  createdAt: string;
+  metadata?: ImageMeta;
 } 

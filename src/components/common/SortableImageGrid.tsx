@@ -33,6 +33,8 @@ interface SortableImageGridProps {
   onCopyTo?: (img: ImageItem, destId: string) => void;
   /** Called to publish image */
   onPublish?: (img: ImageItem, destId: string) => void;
+  /** Called when image should be used as a prompt reference */
+  onUseAsPrompt?: (img: ImageItem) => void;
   /** List of publishable destinations */
   publishDestinations?: Array<{id: string, name: string, headless: boolean}>;
   /** The bucket ID of the current bucket (for raw URL construction) */
@@ -51,6 +53,7 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
   onDelete,
   onCopyTo,
   onPublish,
+  onUseAsPrompt,
   publishDestinations,
   bucketId = '',
   sectionVariant,
@@ -89,6 +92,7 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
             onDelete={onDelete} 
             onCopyTo={onCopyTo} 
             onPublish={onPublish}
+            onUseAsPrompt={onUseAsPrompt}
             publishDestinations={publishDestinations} 
             bucketId={bucketId}
             sectionVariant={sectionVariant}
@@ -103,6 +107,7 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
             onDelete={onDelete} 
             onCopyTo={onCopyTo} 
             onPublish={onPublish}
+            onUseAsPrompt={onUseAsPrompt}
             publishDestinations={publishDestinations} 
             bucketId={bucketId}
             sectionVariant={sectionVariant}
@@ -129,6 +134,7 @@ interface ImageProps {
   onDelete?: (img: ImageItem) => void;
   onCopyTo?: (img: ImageItem, destId: string) => void;
   onPublish?: (img: ImageItem, destId: string) => void;
+  onUseAsPrompt?: (img: ImageItem) => void;
   publishDestinations?: Array<{id: string, name: string, headless: boolean}>;
   bucketId?: string;
   sectionVariant?: 'favourites' | 'dated';
@@ -142,6 +148,7 @@ const SortableImage: React.FC<ImageProps> = ({
   onDelete, 
   onCopyTo, 
   onPublish,
+  onUseAsPrompt,
   publishDestinations,
   bucketId,
   sectionVariant
@@ -153,7 +160,14 @@ const SortableImage: React.FC<ImageProps> = ({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: image.id });
+  } = useSortable({ 
+    id: image.id,
+    data: {
+      raw_url: image.raw_url || image.urlFull,
+      image,
+      bucketId
+    }
+  });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -184,6 +198,7 @@ const SortableImage: React.FC<ImageProps> = ({
         onDelete={onDelete}
         onCopyTo={onCopyTo}
         onPublish={onPublish}
+        onUseAsPrompt={onUseAsPrompt}
         publishDestinations={publishDestinations}
         bucketId={bucketId}
         sectionVariant={sectionVariant}
@@ -201,6 +216,7 @@ const DraggableImage: React.FC<ImageProps> = ({
   onDelete, 
   onCopyTo, 
   onPublish, 
+  onUseAsPrompt,
   publishDestinations,
   bucketId,
   sectionVariant
@@ -211,7 +227,14 @@ const DraggableImage: React.FC<ImageProps> = ({
     setNodeRef,
     transform,
     isDragging,
-  } = useDraggable({ id: image.id });
+  } = useDraggable({ 
+    id: image.id,
+    data: {
+      raw_url: image.raw_url || image.urlFull,
+      image,
+      bucketId
+    }
+  });
 
   const {
     setNodeRef: setDropNodeRef,
@@ -252,6 +275,7 @@ const DraggableImage: React.FC<ImageProps> = ({
         onDelete={onDelete}
         onCopyTo={onCopyTo}
         onPublish={onPublish}
+        onUseAsPrompt={onUseAsPrompt}
         publishDestinations={publishDestinations}
         bucketId={bucketId}
         sectionVariant={sectionVariant}
