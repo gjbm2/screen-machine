@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import PromptExamples from './PromptExamples';
 import ReferenceImagesSection from '@/components/image-display/ReferenceImagesSection';
+import { useDroppable } from '@dnd-kit/core';
 
 interface PromptInputProps {
   prompt: string;
@@ -37,6 +38,14 @@ const PromptInput: React.FC<PromptInputProps> = ({
   isFirstRun
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { setNodeRef, isOver } = useDroppable({
+    id: 'prompt-dropzone',
+    data: {
+      type: 'prompt-area',
+      accepts: ['image'],
+      isPrompt: true
+    }
+  });
 
   const handleClearPrompt = () => {
     if (onClearPrompt) onClearPrompt();
@@ -91,7 +100,14 @@ const PromptInput: React.FC<PromptInputProps> = ({
   }, [prompt]);
 
   return (
-    <div className="relative">
+    <div 
+      ref={setNodeRef}
+      className={`relative rounded-lg transition-all duration-200 ${
+        isOver 
+          ? 'ring-2 ring-primary ring-offset-2 bg-primary/5' 
+          : 'hover:bg-muted/50'
+      }`}
+    >
       {(prompt || (uploadedImages && uploadedImages.length > 0)) && (
         <button
           type="button"

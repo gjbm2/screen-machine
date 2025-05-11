@@ -39,7 +39,9 @@ import { ImageItem } from '@/types/image-types';
 import { SchedulerControl } from './SchedulerPanel';
 
 // Define the expected types based on the API response
-interface BucketItem extends ApiBucketItem {}
+interface BucketItem extends ApiBucketItem {
+  raw_url?: string;
+}
 
 interface Bucket extends ApiBucket {}
 
@@ -51,6 +53,7 @@ interface BucketImage {
   prompt?: string;
   metadata?: Record<string, any>;
   created_at?: number;
+  raw_url?: string;
 }
 
 interface BucketDetails {
@@ -186,7 +189,8 @@ export const BucketGridView = ({
           ...item.metadata,
           favorite: item.favorite
         },
-        created_at: item.created_at || item.metadata?.timestamp || item.metadata?.modified
+        created_at: item.created_at || item.metadata?.timestamp || item.metadata?.modified,
+        raw_url: item.raw_url
       }));
 
       // Sort images by favorite status and timestamp
@@ -671,6 +675,30 @@ export const BucketGridView = ({
       document.body.style.touchAction = 'auto';
       return;
     }
+
+    // Early return for prompt area drops - let parent context handle this
+    if (over.id === 'prompt-dropzone' || over.id === 'prompt-area-dropzone') {
+      console.log("Skipping BucketGridView drag end handling for prompt area drops");
+      setActiveId(null);
+      setActiveDraggedImage(null);
+      setActiveDropTarget(null);
+      setDropTargetType(null);
+      document.body.style.touchAction = 'auto';
+      return;
+    }
+    
+    // Early return for tabs - let parent context handle this
+    const overId = String(over.id); // Convert to string to fix TypeScript error
+    if (overId.startsWith('tab-')) {
+      console.log("Skipping BucketGridView drag end handling for tab drops - over id:", over.id);
+      setActiveId(null);
+      setActiveDraggedImage(null);
+      setActiveDropTarget(null);
+      setDropTargetType(null);
+      document.body.style.touchAction = 'auto';
+      // We MUST return here to let the parent handle the tab drop
+      return;
+    }
     
     // Check if we're dropping onto the publish area
     if (over.id === 'publish-dropzone') {
@@ -694,14 +722,6 @@ export const BucketGridView = ({
         }
       }
       // Reset drag state
-      setActiveId(null);
-      setActiveDraggedImage(null);
-      setActiveDropTarget(null);
-      setDropTargetType(null);
-      document.body.style.touchAction = 'auto';
-      return;
-    } else if (typeof over.id === 'string' && (over.id as string).startsWith('tab-')) {
-      // Dropped on a destination tab -> let parent context handle (menu etc.)
       setActiveId(null);
       setActiveDraggedImage(null);
       setActiveDropTarget(null);
@@ -962,6 +982,13 @@ export const BucketGridView = ({
       return;
     }
     
+    // Check if we're over a prompt dropzone (skip further processing)
+    if (over.id === 'prompt-dropzone' || over.id === 'prompt-area-dropzone') {
+      if (activeDropTarget !== null) setActiveDropTarget(null);
+      if (dropTargetType !== null) setDropTargetType(null);
+      return;
+    }
+    
     // Check if we're over the publish dropzone
     if (over.id === 'publish-dropzone') {
       if (dropTargetType !== DropTargetType.PUBLISH) {
@@ -971,7 +998,9 @@ export const BucketGridView = ({
     }
     
     // Check if we're over a destination tab
-    if (typeof over.id === 'string' && (over.id as string).startsWith('tab-')) {
+    const overId = String(over.id); // Convert to string to fix TypeScript error
+    if (overId.startsWith('tab-')) {
+      console.log("BucketGridView handleDragOver: Dragging over tab", over.id);
       if (dropTargetType !== DropTargetType.TAB) {
         setDropTargetType(DropTargetType.TAB);
       }
@@ -1215,6 +1244,20 @@ export const BucketGridView = ({
                   handlePublish(destId, originalImage.id);
                 }
               }}
+              onUseAsPrompt={(img) => {
+                const originalId = getOriginalId(img.id);
+                const originalImage = bucketImages.find(i => i.id === originalId);
+                if (originalImage) {
+                  // Construct the raw URL using the bucket ID and image ID
+                  const rawUrl = `/output/${destination}/${originalImage.id}`;
+                  console.log('Dispatching useImageAsPrompt event with URL:', rawUrl);
+                  // Dispatch a custom event that the prompt form can listen for
+                  const event = new CustomEvent('useImageAsPrompt', { 
+                    detail: { url: rawUrl }
+                  });
+                  window.dispatchEvent(event);
+                }
+              }}
               publishDestinations={destinations.map(d => {
                 // Find in the destinations list to determine if it's headless
                 const dest = destinations.find(dest => dest.id === d.id);
@@ -1291,7 +1334,54 @@ export const BucketGridView = ({
   // Register global DnD callbacks within the outer DndContext
   useDndMonitor({
     onDragStart: handleDragStart,
-    onDragEnd: handleDragEnd,
+    onDragEnd: (event) => {
+      const { active, over } = event;
+      
+      // Check if we have a valid active and over
+      if (!active || !over) {
+        console.log("BucketGridView useDndMonitor.onDragEnd: No valid over target");
+        setActiveId(null);
+        setActiveDraggedImage(null);
+        setActiveDropTarget(null);
+        setDropTargetType(null);
+        document.body.style.touchAction = 'auto';
+        return;
+      }
+      
+      console.log("BucketGridView useDndMonitor.onDragEnd:", { 
+        activeId: active.id, 
+        overId: over.id, 
+        activeData: active.data?.current,
+        overData: over.data?.current
+      });
+      
+      // Early return for prompt area drops - let parent context handle this
+      if (over.id === 'prompt-dropzone' || over.id === 'prompt-area-dropzone') {
+        console.log("Skipping BucketGridView drag end handling for prompt area drops");
+        setActiveId(null);
+        setActiveDraggedImage(null);
+        setActiveDropTarget(null);
+        setDropTargetType(null);
+        document.body.style.touchAction = 'auto';
+        return;
+      }
+      
+      // Early return for tabs - let parent context handle this
+      const overId = String(over.id); // Convert to string to fix TypeScript error
+      if (overId.startsWith('tab-')) {
+        console.log("Skipping BucketGridView drag end handling for tab drops - over id:", over.id);
+        setActiveId(null);
+        setActiveDraggedImage(null);
+        setActiveDropTarget(null);
+        setDropTargetType(null);
+        document.body.style.touchAction = 'auto';
+        // We MUST return here to let the parent handle the tab drop
+        return;
+      }
+      
+      // Handle all other drops
+      handleDragEnd(event);
+    },
     onDragOver: handleDragOver,
   });
 

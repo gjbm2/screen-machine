@@ -24,7 +24,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
   onRefinerChange: externalRefinerChange,
   onPublishChange: externalPublishChange,
 }) => {
-  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imageFiles, setImageFiles] = useState<Array<File | string>>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [prompt, setPrompt] = useState(currentPrompt || '');
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
@@ -111,6 +111,70 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
   useExternalImageUrls(setPreviewUrls);
 
+  const handleImageUpload = async (files: Array<File | string>) => {
+    console.log('handleImageUpload called with:', files);
+    setImageFiles(files);
+    const urls = await Promise.all(
+      files.map(async (file) => {
+        if (typeof file === 'string') {
+          console.log('Processing string URL:', file);
+          return file;
+        }
+        console.log('Processing File object:', file);
+        return URL.createObjectURL(file);
+      })
+    );
+    console.log('Setting preview URLs:', urls);
+    setPreviewUrls(urls);
+  };
+
+  useEffect(() => {
+    console.log('Setting up useImageAsPrompt event listener');
+    
+    const handleUseImageAsPrompt = (event: CustomEvent<{ 
+      url: string; 
+      preserveFavorites?: boolean;
+      useReferenceUrl?: boolean;
+      imageId?: string;
+      source?: string;
+    }>) => {
+      console.log('====== USE IMAGE AS PROMPT EVENT RECEIVED ======');
+      console.log('Event detail:', event.detail);
+      console.log('Event source:', event.detail.source);
+      console.log('=================================================');
+      
+      const { url, preserveFavorites, useReferenceUrl, source } = event.detail;
+      console.log('Using image as prompt:', { url, preserveFavorites, useReferenceUrl, source });
+      
+      // Special handling for drag-and-drop operations
+      if (source === 'drag-and-drop') {
+        console.log('This is a drag-and-drop operation - handling specially');
+        // Always use the handleImageUpload for drag and drop to preserve favorites
+        handleImageUpload([url]);
+        return;
+      }
+      
+      // Standard event handling logic
+      if (useReferenceUrl) {
+        console.log('Using reference URL method for image:', url);
+        handleImageUpload([url]);
+      } else if (preserveFavorites) {
+        console.log('Using preserveFavorites method for image:', url);
+        setPreviewUrls([url]);
+        setImageFiles([url]);
+      } else {
+        console.log('Using default method for image:', url);
+        handleImageUpload([url]);
+      }
+    };
+
+    window.addEventListener('useImageAsPrompt', handleUseImageAsPrompt as EventListener);
+    return () => {
+      console.log('Removing useImageAsPrompt event listener');
+      window.removeEventListener('useImageAsPrompt', handleUseImageAsPrompt as EventListener);
+    };
+  }, [handleImageUpload]);
+
   const handleLocalWorkflowChange = (workflowId: string) => {
     handleWorkflowChange(workflowId);
     if (externalWorkflowChange) externalWorkflowChange(workflowId);
@@ -172,14 +236,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
   const handleClearPrompt = () => {
     setPrompt('');
     lastReceivedPrompt.current = '';
-  };
-
-  const handleImageUpload = (files: File[]) => {
-    if (files.length === 0) return;
-
-    const newUrls = files.map(file => URL.createObjectURL(file));
-    setImageFiles(prev => [...prev, ...files]);
-    setPreviewUrls(prev => [...prev, ...newUrls]);
   };
 
   const handleRemoveImage = (index: number) => {

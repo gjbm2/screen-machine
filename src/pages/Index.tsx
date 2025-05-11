@@ -15,6 +15,16 @@ import { X } from 'lucide-react';
 import apiService from '@/utils/api';
 import { PublishDestination } from '@/utils/api';
 import { processGenerationResults, markBatchAsError } from '@/hooks/image-generation/api/result-handler';
+import {
+  DndContext,
+  useSensor,
+  useSensors,
+  MouseSensor,
+  TouchSensor,
+  KeyboardSensor,
+  closestCenter,
+} from '@dnd-kit/core';
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 
 interface OverlayMessage {
   html: string;
@@ -790,6 +800,74 @@ const Index = () => {
     fetchDestinations();
   }, []);
 
+  // Add DnD sensors
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 200,
+        tolerance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Handle drag end events
+  const handleDragEnd = (event: any) => {
+    const { active, over } = event;
+    if (!active || !over) return;
+    
+    console.log('Index handleDragEnd:', { 
+      active: active.id, 
+      over: over.id, 
+      activeData: active.data?.current,
+      overData: over.data?.current
+    });
+    
+    // For tab drops, let ImageDisplay handle it and return early
+    if (typeof over.id === 'string' && over.id.startsWith('tab-')) {
+      console.log('Tab drop detected in Index - letting ImageDisplay handle it');
+      return;
+    }
+    
+    // Handle drops on the prompt area
+    if (over.id === 'prompt-dropzone') {
+      const imageId = active.id;
+      console.log('Image dropped on prompt area, ID:', imageId);
+      
+      // First check if we have raw_url in the active data
+      if (active.data?.current?.raw_url) {
+        const rawUrl = active.data.current.raw_url;
+        console.log('Using raw_url from active data:', rawUrl);
+        setUploadedImageUrls([rawUrl]);
+        toast.success('Image added as reference (preserving favorites)');
+        return;
+      }
+      
+      // Try to find image in generated images as fallback
+      const generatedImage = generatedImages.find(img => 
+        img.id === imageId || 
+        img.url.includes(imageId)
+      );
+      
+      if (generatedImage) {
+        console.log('Found in generated images, using URL:', generatedImage.url);
+        handleUseGeneratedAsInput(generatedImage.url);
+        return;
+      }
+      
+      console.error('Could not find image URL, fallback to ID:', imageId);
+      toast.error('Failed to add image as reference');
+      return;
+    }
+  };
+
   return (
     <>
       <MainLayout
@@ -802,42 +880,48 @@ const Index = () => {
       >
         {isFirstRun && <IntroText />}
         
-        <PromptForm 
-          onSubmit={handlePromptSubmit}
-          isLoading={activeGenerations.length > 0}
-          currentPrompt={currentPrompt}
-          isFirstRun={isFirstRun}
-          onOpenAdvancedOptions={handleOpenAdvancedOptions}
-          selectedWorkflow={currentWorkflow}
-          selectedRefiner={selectedRefiner}
-          selectedPublish={selectedPublish}
-          workflowParams={currentParams}
-          refinerParams={refinerParams}
-          globalParams={currentGlobalParams}
-          onWorkflowChange={setCurrentWorkflow}
-          onRefinerChange={handleRefinerChange}
-          onPublishChange={handlePublishChange}
-        />
-        
-        <ImageDisplay 
-          imageUrl={imageUrl}
-          prompt={currentPrompt}
-          isLoading={activeGenerations.length > 0}
-          uploadedImages={uploadedImageUrls}
-          generatedImages={generatedImages}
-          imageContainerOrder={imageContainerOrder}
-          expandedContainers={expandedContainers}
-          setExpandedContainers={setExpandedContainers}
-          workflow={currentWorkflow}
-          generationParams={currentParams}
-          onUseGeneratedAsInput={handleUseGeneratedAsInput}
-          onCreateAgain={handleCreateAgain}
-          onReorderContainers={handleReorderContainers}
-          onDeleteImage={handleDeleteImage}
-          onDeleteContainer={handleDeleteContainer}
-          fullscreenRefreshTrigger={fullscreenRefreshTrigger}
-          publishDestinations={publishDestinations.map(dest => dest.id)}
-        />
+        <DndContext 
+          sensors={sensors} 
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <PromptForm 
+            onSubmit={handlePromptSubmit}
+            isLoading={activeGenerations.length > 0}
+            currentPrompt={currentPrompt}
+            isFirstRun={isFirstRun}
+            onOpenAdvancedOptions={handleOpenAdvancedOptions}
+            selectedWorkflow={currentWorkflow}
+            selectedRefiner={selectedRefiner}
+            selectedPublish={selectedPublish}
+            workflowParams={currentParams}
+            refinerParams={refinerParams}
+            globalParams={currentGlobalParams}
+            onWorkflowChange={setCurrentWorkflow}
+            onRefinerChange={handleRefinerChange}
+            onPublishChange={handlePublishChange}
+          />
+          
+          <ImageDisplay 
+            imageUrl={imageUrl}
+            prompt={currentPrompt}
+            isLoading={activeGenerations.length > 0}
+            uploadedImages={uploadedImageUrls}
+            generatedImages={generatedImages}
+            imageContainerOrder={imageContainerOrder}
+            expandedContainers={expandedContainers}
+            setExpandedContainers={setExpandedContainers}
+            workflow={currentWorkflow}
+            generationParams={currentParams}
+            onUseGeneratedAsInput={handleUseGeneratedAsInput}
+            onCreateAgain={handleCreateAgain}
+            onReorderContainers={handleReorderContainers}
+            onDeleteImage={handleDeleteImage}
+            onDeleteContainer={handleDeleteContainer}
+            fullscreenRefreshTrigger={fullscreenRefreshTrigger}
+            publishDestinations={publishDestinations.map(dest => dest.id)}
+          />
+        </DndContext>
       </MainLayout>
       
       <AdvancedOptionsContainer
