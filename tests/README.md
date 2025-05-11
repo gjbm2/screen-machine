@@ -146,4 +146,68 @@ When adding new tests:
 | `mock_now` | Returns the current datetime (alternative to current_time) |
 | `base_context` | Provides a basic context with pre-populated variables |
 | `output_list` | Provides an empty output list for logging |
-| `enable_testing_mode` | Enables mock services by setting the TESTING environment variable | 
+| `enable_testing_mode` | Enables mock services by setting the TESTING environment variable |
+
+# Publisher Tests
+
+This directory contains tests for the Screen Machine application.
+
+## Publishing Tests
+
+The `test_publisher.py` file contains comprehensive tests for the publishing functionality, which handles moving media between buckets and updating the published records.
+
+### Test Scenarios
+
+1. **Same Bucket Publishing**
+   - Publishing JPG from bucket_a to bucket_a
+   - Publishing MP4 from bucket_a to bucket_a
+
+2. **Cross-Bucket Publishing**
+   - Publishing JPG from bucket_b to bucket_a
+   - Publishing MP4 from bucket_b to bucket_a
+
+3. **Sequential Publishing**
+   - Publishing JPG then MP4 to the same bucket
+   - Publishing MP4 then JPG to the same bucket
+
+4. **Direct Publishing**
+   - Publishing directly without saving to bucket
+
+5. **Edge Cases**
+   - Publishing nonexistent files
+   - Publishing with changing metadata
+
+### Running the Tests
+
+```bash
+# Run all publisher tests
+pytest tests/integration/test_publisher.py -v
+
+# Run a specific test
+pytest tests/integration/test_publisher.py::test_publish_jpg_to_same_bucket -v
+
+# Run with coverage information
+pytest tests/integration/test_publisher.py --cov=routes.publisher
+```
+
+### How the Tests Work
+
+The tests use pytest fixtures to create a temporary directory structure that mimics the production environment, but isolated from it. This includes:
+
+1. A temporary output directory
+2. Mock bucket directories with bucket.json files
+3. Test image and video files with metadata
+
+The tests patch key functions to use this temporary structure instead of the real file system, ensuring that tests don't affect production data.
+
+Each test verifies that after publishing:
+1. The bucket.json file is correctly updated with published_meta
+2. The published file is correctly copied to the output directory
+3. The published file's sidecar JSON is correctly updated
+4. All metadata is consistently synchronized
+
+### Common Issues and Debugging
+
+- **File Not Found Errors**: Check that the test fixtures are correctly creating the temporary directory structure
+- **Metadata Consistency Issues**: Verify that both bucket.json and the published file's sidecar are being updated
+- **Extension Mismatch**: Ensure that file extensions are being preserved during publishing 

@@ -67,12 +67,20 @@ def unified_publish_image():
             if not src_path.exists():
                 error(f"[unified_publish_image] File not found: {filename} in {src_bucket_id}")
                 return jsonify({"error": f"File not found: {filename} in {src_bucket_id}"}), 404
+            
+            # Determine if this is a cross-bucket publishing or same-bucket publishing
+            cross_bucket_mode = src_bucket_id != dest_bucket_id
+            if cross_bucket_mode:
+                info(f"[unified_publish_image] Cross-bucket publishing detected: {src_bucket_id} -> {dest_bucket_id}")
+            else:
+                info(f"[unified_publish_image] Same-bucket publishing detected: {src_bucket_id} -> {dest_bucket_id}")
                 
             result = publish_to_destination(
                 source=src_path,
                 publish_destination_id=dest_bucket_id,
                 # Metadata will be automatically loaded from sidecar by publish_to_destination
-                skip_bucket=True  # Always skip bucket append since image is already in a bucket
+                skip_bucket=True,  # Always skip bucket append since image is already in a bucket
+                cross_bucket_mode=cross_bucket_mode  # Set cross_bucket_mode flag based on buckets
             )
             
         # Route B: External URL publishing
@@ -82,11 +90,13 @@ def unified_publish_image():
             
             info(f"[unified_publish_image] Using external URL publishing: {source_url[:100]}... -> {dest_bucket_id}")
             
+            # External URLs should be treated as cross-bucket mode
             result = publish_to_destination(
                 source=source_url,
                 publish_destination_id=dest_bucket_id,
                 metadata=metadata,
-                skip_bucket=data.get('skip_bucket', False)
+                skip_bucket=data.get('skip_bucket', False),
+                cross_bucket_mode=True  # External URLs should use cross-bucket URL format
             )
             
         else:
@@ -131,7 +141,8 @@ def publish_image(filename):
             source=source_url,
             publish_destination_id=publish_destination_id,
             metadata=generation_info,
-            skip_bucket=skip_bucket
+            skip_bucket=skip_bucket,
+            cross_bucket_mode=True  # URLs should use cross-bucket format
         )
 
         info(f"[publish_image] Result: {result}")
@@ -171,7 +182,8 @@ def legacy_publish_route():
             source=source_url,
             publish_destination_id=publish_destination_id,
             metadata=generation_info,
-            skip_bucket=skip_bucket
+            skip_bucket=skip_bucket,
+            cross_bucket_mode=True  # External URLs should use cross-bucket URL format
         )
         return jsonify(result)
     except Exception as e:
@@ -188,6 +200,7 @@ def get_published(publish_destination_id: str):
         "published_at": "<ISO ts> or null",
         "raw_url":      "<URL> or null",
         "thumbnail":    "<base64 JPEG> or null",
+        "thumbnail_url": "<URL> or null",
         "meta":         {…} or {}
       }
     Always 200.
@@ -203,6 +216,7 @@ def get_published(publish_destination_id: str):
             "published_at":  None,
             "raw_url":       None,
             "thumbnail":     None,
+            "thumbnail_url": None,
             "meta":          {},
         })
         
@@ -216,9 +230,13 @@ def get_published(publish_destination_id: str):
         "published":     published_info.get("published"),
         "published_at":  published_info.get("published_at"),
         "raw_url":       published_info.get("raw_url"),
+        "thumbnail_url": published_info.get("thumbnail_url"),
         "thumbnail":     image_result.get("image") if image_result else None,
         "meta":          published_info.get("meta", {})
     }
+    
+    # Debug logging to help diagnose issues
+    info(f"Published info for {publish_destination_id}: raw_url={result.get('raw_url')}, thumbnail_url={result.get('thumbnail_url')}")
         
     return jsonify(result)
 

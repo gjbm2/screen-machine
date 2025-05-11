@@ -79,6 +79,10 @@ from routes.simulate_scheduler_ui import simulate_scheduler_handler
 def simulate_scheduler():
     return simulate_scheduler_handler()
 
+# Generate API
+from routes.generate_api import generate_api
+app.register_blueprint(generate_api)
+
 # Initialize schedulers from saved states
 # We import and run this after all blueprints are registered
 with app.app_context():

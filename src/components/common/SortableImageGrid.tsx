@@ -164,6 +164,7 @@ const SortableImage: React.FC<ImageProps> = ({
     id: image.id,
     data: {
       raw_url: image.raw_url || image.urlFull,
+      thumbnail_url: image.urlThumb,
       image,
       bucketId
     }
@@ -231,6 +232,7 @@ const DraggableImage: React.FC<ImageProps> = ({
     id: image.id,
     data: {
       raw_url: image.raw_url || image.urlFull,
+      thumbnail_url: image.urlThumb,
       image,
       bucketId
     }

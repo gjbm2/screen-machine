@@ -21,6 +21,8 @@ export interface Bucket {
   metadata?: Record<string, any>;
   published?: string;
   publishedAt?: string;
+  raw_url?: string;
+  thumbnail_url?: string;
   favorites?: string[];
   sequence?: string[];
 }
@@ -1178,6 +1180,7 @@ export class Api {
       console.log('Published image is not from this bucket:', published.filename);
       console.log('Published at:', published.published_at);
       console.log('Raw URL:', published.raw_url);
+      console.log('Thumbnail URL:', published.thumbnail_url);
     }
     
     // Ensure we have a valid BucketDetails object
@@ -1186,6 +1189,8 @@ export class Api {
       items: items,
       published: published?.filename || null,
       publishedAt: published?.published_at || null,
+      raw_url: published?.raw_url || null,
+      thumbnail_url: published?.thumbnail_url || null,
       favorites: Array.isArray(data.favorites) ? data.favorites : [],
       sequence: Array.isArray(data.sequence) ? data.sequence : []
     };

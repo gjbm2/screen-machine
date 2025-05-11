@@ -337,6 +337,7 @@ def _append_to_bucket(screen: str, published_path: Path, metadata: dict = None) 
     Copy *published_path* plus side-car into <bucket>/ preserving history:
     • If that exact filename already exists in the bucket, create a
       timestamp-uuid filename instead and store that.
+    • Always create a unique filename for cross-bucket operations
     • Copy the sidecar if it exists
     • Update bucket metadata sequence
     • Generate thumbnail for the bucket copy
@@ -344,10 +345,18 @@ def _append_to_bucket(screen: str, published_path: Path, metadata: dict = None) 
     bucket_dir = bucket_path(screen)
     bucket_dir.mkdir(parents=True, exist_ok=True)
 
-    # choose filename (avoid collisions)
-    target_path = bucket_dir / published_path.name
-    if target_path.exists():
+    # Check if this is a cross-bucket operation
+    is_cross_bucket = not str(published_path).startswith(str(bucket_dir))
+    
+    # choose filename (avoid collisions or always unique for cross-bucket)
+    if is_cross_bucket:
+        # Always use a unique name for cross-bucket operations
         target_path = bucket_dir / unique_name(published_path.name)
+    else:
+        # For same-bucket operations, only create unique name if file exists
+        target_path = bucket_dir / published_path.name
+        if target_path.exists():
+            target_path = bucket_dir / unique_name(published_path.name)
 
     # copy media + side-car
     shutil.copy2(published_path, target_path)
@@ -390,12 +399,6 @@ def _append_to_bucket(screen: str, published_path: Path, metadata: dict = None) 
     except Exception as e:
         warning(f"Bucket thumbnail failed for {target_path.name}: {e}")
     return target_path
-
-def _record_publish(bucket: str, filename: str, when: str) -> None:
-    """Persist 'published_meta' to the bucket JSON."""
-    meta = load_meta(bucket)
-    meta["published_meta"] = {"filename": filename, "published_at": when}
-    save_meta(bucket, meta) 
 
 def _extract_exif_json(img_path: Path) -> dict[str, Any] | None:
     """Extract EXIF metadata from an image file."""
