@@ -19,6 +19,7 @@ import {
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { DROP_ZONES } from '@/dnd/dropZones';
+import useFullscreen from './hooks/useFullscreen';
 
 export type ViewMode = 'normal' | 'small' | 'table';
 export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
@@ -89,6 +90,41 @@ export function ImageDisplay(props: ImageDisplayProps) {
   const [dropActionDestId, setDropActionDestId] = useState<string | null>(null);
   const [dropActionImageId, setDropActionImageId] = useState<string | null>(null);
   
+  // ---------------------------------------------------------------------------
+  // Fullscreen state management ----------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Build a flat list of all generated images (completed/failed/error/generating)
+  const allImagesFlat = useMemo(() => {
+    if (!('generatedImages' in props) || !props.generatedImages) return [] as any[];
+    return (props.generatedImages as any[])
+      .filter(img => ['completed', 'failed', 'error', 'generating'].includes(img.status))
+      .map(img => ({
+        url: img.url,
+        prompt: img.prompt,
+        batchId: img.batchId,
+        batchIndex: img.batchIndex,
+        workflow: img.workflow,
+        timestamp: img.timestamp,
+        referenceImageUrl: img.referenceImageUrl,
+        params: img.params,
+        refiner: img.refiner,
+        title: img.title
+      }));
+  }, [props]);
+
+  // Use the common fullscreen hook
+  const {
+    showFullScreenView,
+    setShowFullScreenView,
+    fullScreenBatchId,
+    fullScreenImageIndex,
+    setFullScreenImageIndex,
+    currentGlobalIndex,
+    openFullScreenView,
+    handleNavigateGlobal,
+    handleNavigateWithBatchAwareness
+  } = useFullscreen(allImagesFlat);
+
   // Function to trigger a refresh for a specific bucket
   const refreshBucket = async (bucket: string) => {
     // Increment the refresh flag to trigger a re-render of the BucketGridView
@@ -111,8 +147,10 @@ export function ImageDisplay(props: ImageDisplayProps) {
   };
 
   const handleImageClick = (image: any) => {
-    // Handle image click, could open a detail view or set it as the main image
     console.log('Image clicked:', image);
+    if (image && image.batchId !== undefined && image.batchIndex !== undefined) {
+      openFullScreenView(image.batchId, image.batchIndex);
+    }
   };
 
   // Determine if we're receiving props from Index.tsx or our original props
@@ -344,7 +382,6 @@ export function ImageDisplay(props: ImageDisplayProps) {
   // Organize batches by batch ID
   const batches: Record<string, any[]> = {};
   if (isIndexProps && generatedImages) {
-    // Group images by batch ID
     generatedImages.forEach(image => {
       if (image.batchId) {
         if (!batches[image.batchId]) {
@@ -779,6 +816,24 @@ export function ImageDisplay(props: ImageDisplayProps) {
           )}
         </div>
       )}
+
+      {/* Fullscreen dialog */}
+      <FullscreenDialog
+        showFullScreenView={showFullScreenView}
+        setShowFullScreenView={setShowFullScreenView}
+        fullScreenBatchId={fullScreenBatchId}
+        batches={batches}
+        fullScreenImageIndex={fullScreenImageIndex}
+        setFullScreenImageIndex={setFullScreenImageIndex}
+        onDeleteImage={onDeleteImage || (() => {})}
+        onCreateAgain={onCreateAgain || (() => {})}
+        onUseGeneratedAsInput={onUseGeneratedAsInput || (() => {})}
+        allImagesFlat={allImagesFlat}
+        currentGlobalIndex={currentGlobalIndex}
+        handleNavigateGlobal={handleNavigateGlobal}
+        handleNavigateWithBatchAwareness={handleNavigateWithBatchAwareness}
+        fullscreenRefreshTrigger={isIndexProps ? (props as any).fullscreenRefreshTrigger || 0 : 0}
+      />
     </div>
   );
 }

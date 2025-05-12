@@ -2,14 +2,14 @@
   "global": {},
   "groups": {},
   "imports": {
-    "style": {
-      "south-screen": {
-        "imported_as": "_style",
+    "a_theme": {
+      "north-screen": {
+        "imported_as": "_a_theme",
         "source_type": "scope",
         "source": "living-room",
-        "timestamp": "2025-05-10T06:30:00.162457"
+        "timestamp": "2025-05-12T20:00:01.658585"
       }
     }
   },
-  "last_updated": "2025-05-10T06:30:00.416724"
+  "last_updated": "2025-05-12T20:00:01.692068"
 }
