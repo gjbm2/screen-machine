@@ -355,7 +355,9 @@ def log_schedule(message: str, publish_destination: Optional[str] = None, now: O
     
     # Also log to console with INFO level for visibility
     info(message)
-    if output:
+    
+    # Avoid duplicating the entry if `output` is exactly the same list object as scheduler_logs[publish_destination]
+    if output is not None and output is not scheduler_logs.get(publish_destination, None):
         output.append(formatted_msg)
 
 # === Context Functions ===
@@ -677,8 +679,19 @@ def extract_instructions(instruction_container: Dict[str, Any]) -> List[Dict[str
     # Fallback for old format or direct instruction arrays
     return instruction_container.get("instructions", [])
 
-def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, minute_of_day: int, publish_destination: str = None) -> List[Dict[str, Any]]:
-    """Process a list of time schedules and return matched schedules without extracting instructions yet."""
+def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, minute_of_day: int, publish_destination: str = None, apply_grace_period: bool = False) -> List[Dict[str, Any]]:
+    """Process a list of time schedules and return matched schedules without extracting instructions yet.
+    
+    Args:
+        time_schedules: List of time schedule objects to process
+        now: Current datetime
+        minute_of_day: Current minute of day
+        publish_destination: Optional destination ID for logging
+        apply_grace_period: Whether to apply grace period for missed events (True for init, False for load)
+    
+    Returns:
+        List of matched schedule objects
+    """
     if not time_schedules:
         return []
         
@@ -793,8 +806,9 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                     # Calculate the next expected execution time too
                     next_expected_time = start_time + timedelta(seconds=(current_interval + 1) * interval_seconds)
                     
-                    # Create a unique identifier for this specific interval
-                    interval_id = f"{schedule_id}_{expected_execution_time.isoformat()}"
+                    # Create a unique identifier for this specific interval - use current_interval for stability
+                    # This ensures all times within the same interval share the same ID
+                    interval_id = f"{schedule_id}_{current_interval}"
                     
                     # Rate-limited debug logging
                     if should_log:
@@ -806,10 +820,11 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                     # Only execute if:
                     # 1. This specific interval hasn't been executed yet
                     # 2. We're within 10 seconds of the expected execution time or
-                    #    this is the most recent interval and we missed it by less than one interval
+                    #    this is the most recent interval and we missed it by less than the grace period
                     time_since_expected = (now - expected_execution_time).total_seconds()
                     is_close_to_expected = abs(time_since_expected) < 10  # Within 10 seconds of expected time
-                    is_latest_missed = (0 < time_since_expected < interval_seconds)  # We missed it but it's the latest interval
+                    # Only allow catch-up execution if grace period is enabled and we are within the grace window
+                    is_latest_missed = apply_grace_period and (0 < time_since_expected <= LATE_EXECUTION_GRACE_PERIOD_SECONDS)
                     
                     if (interval_id not in last_trigger_executions[publish_destination] and
                         (is_close_to_expected or is_latest_missed)):
@@ -1858,13 +1873,15 @@ def process_instruction_jinja(instruction: Dict[str, Any], context: Dict[str, An
     
     return processed_instruction 
 
-def reset_trigger_execution_timestamps(publish_destination: str) -> None:
+def reset_trigger_execution_timestamps(publish_destination: str, allow_grace_period: bool = True) -> None:
     """
     Reset execution timestamps for the specified destination's triggers.
     Used when a schedule is updated while running to ensure triggers are properly evaluated.
     
     Args:
         publish_destination: The ID of the destination
+        allow_grace_period: Whether to allow catching up on recent events through grace period.
+                           Set to False when loading to avoid unexpected executions.
     """
     global last_trigger_executions
     
@@ -2021,3 +2038,7 @@ def log_schedule_diff(old_schedule: Dict[str, Any], new_schedule: Dict[str, Any]
         return "; ".join(changes)
     else:
         return "No significant changes detected" 
+
+# Grace period (in seconds) during which a missed repeating trigger will still execute.
+# Set to 5 minutes to avoid surprises after scheduler reloads while allowing quick catch-up
+LATE_EXECUTION_GRACE_PERIOD_SECONDS = 5 * 60

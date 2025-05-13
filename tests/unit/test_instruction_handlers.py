@@ -2,13 +2,14 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 import os
-from routes.scheduler_utils import process_instruction_jinja
+from routes.scheduler_utils import process_instruction_jinja, scheduler_logs, log_schedule, reset_trigger_execution_timestamps, last_trigger_executions
 from routes.scheduler_handlers import (
     handle_random_choice, handle_generate, 
     handle_animate, handle_display, handle_wait, handle_unload,
     handle_device_media_sync, handle_device_wake, handle_device_sleep,
     handle_set_var, handle_reason
 )
+from routes.scheduler import resolve_schedule
 
 @pytest.fixture(autouse=True)
 def enable_testing_mode():
@@ -616,4 +617,154 @@ def test_handle_reason(mock_openai_prompt, base_context, mock_now, output_list):
     assert len(output_list) >= 3  # Should have at least start, variable set, and completion logs
     assert any("Reasoning with 'test_reasoner'" in msg for msg in output_list)
     assert any("Set test_var to result" in msg for msg in output_list)
-    assert any("Completed reasoning" in msg for msg in output_list) 
+    assert any("Completed reasoning" in msg for msg in output_list)
+
+def test_handle_set_var_with_top_level_default(base_context, mock_now, output_list):
+    """Test the set_var instruction handler with a top-level default value (without using input.var_ref)."""
+    # Create a test instruction with a top-level default field
+    instruction = {
+        "var": "new_var",
+        "default": "default_from_top_level"
+    }
+    
+    # Run the handler
+    should_unload = handle_set_var(instruction, base_context, mock_now, output_list, "test_dest")
+    
+    # Check that the handler used the top-level default value
+    assert should_unload is False
+    assert "new_var" in base_context["vars"]
+    assert base_context["vars"]["new_var"] == "default_from_top_level"
+    assert len(output_list) == 1
+    assert "Set new_var to default_from_top_level" in output_list[0]
+    
+    # Test with no value at all (should fail gracefully)
+    output_list.clear()
+    instruction = {
+        "var": "another_var"
+        # No value or default specified
+    }
+    
+    # Run the handler
+    should_unload = handle_set_var(instruction, base_context, mock_now, output_list, "test_dest")
+    
+    # Check that it handles the error correctly
+    assert should_unload is False
+    assert len(output_list) == 1
+    assert "Error in set_var: could not determine value" in output_list[0]
+
+def test_log_schedule_no_duplicates():
+    """Ensure log_schedule does not duplicate entries when output is the same list as scheduler_logs."""
+    dest_id = "dup_test_dest"
+    # Ensure clean state
+    scheduler_logs[dest_id] = []
+    # Use the same list as output
+    output_ref = scheduler_logs[dest_id]
+    now = datetime.now()
+    # Call log_schedule
+    log_schedule("Test duplication message", dest_id, now, output_ref)
+    # After first call there should be exactly 1 entry
+    assert len(scheduler_logs[dest_id]) == 1
+    # Call again with a different message
+    log_schedule("Another message", dest_id, now, output_ref)
+    # Now there should be 2 entries, not 4
+    assert len(scheduler_logs[dest_id]) == 2
+    # Clean up
+    del scheduler_logs[dest_id]
+
+def test_reset_trigger_exec_timestamps_no_immediate_execution():
+    """After resetting execution timestamps the repeating schedule should NOT fire again until the next interval (regression for issue #5)."""
+    from routes.scheduler_utils import reset_trigger_execution_timestamps, last_trigger_executions
+    from routes.scheduler import resolve_schedule
+    import datetime as _dt
+
+    dest_id = "reset_test_dest"
+
+    # Minimal repeating schedule: every 45 minutes starting 01:00
+    test_schedule = {
+        "triggers": [
+            {
+                "type": "day_of_week",
+                "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+                "scheduled_actions": [
+                    {
+                        "time": "01:00",
+                        "repeat_schedule": {"every": "45"},
+                        "trigger_actions": {
+                            "instructions_block": [
+                                {"action": "set_var", "var": "dummy", "input": {"value": "1"}}
+                            ]
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+
+    # Clear any existing data for this test
+    if dest_id in last_trigger_executions:
+        last_trigger_executions[dest_id] = {}
+
+    # First run: 08:32 Tuesday 7 Jan 2025 (just 2 minutes after the 08:30 boundary, within grace period)
+    now1 = _dt.datetime(2025, 1, 7, 8, 32)
+    instructions_1 = resolve_schedule(test_schedule, now1, dest_id, True)
+    assert instructions_1, "Initial run should match schedule"
+
+    # Instead of relying on _scheduler_metadata, manually track the executed triggers
+    # Get first trigger ID using the same logic as scheduler_utils.py
+    schedule_id = "e49b71602bbc1c22cf98f59dce38d879"
+    expected_execution_time = _dt.datetime(2025, 1, 7, 8, 30)
+    trigger_id = f"{schedule_id}_{expected_execution_time.isoformat()}"
+    
+    # Mark it as executed
+    last_trigger_executions[dest_id][trigger_id] = now1
+
+    # After a few minutes, should not match again
+    now2 = _dt.datetime(2025, 1, 7, 8, 35)
+    instructions_2 = resolve_schedule(test_schedule, now2, dest_id, False)
+    assert not instructions_2, "Should not match again so soon"
+
+    # Reset execution timestamps
+    reset_trigger_execution_timestamps(dest_id)
+
+    # After reset, a time within 5 minutes of a boundary (08:34 is 4 minutes after 08:30)
+    # should still execute
+    now3 = _dt.datetime(2025, 1, 7, 8, 34)
+    instructions_3 = resolve_schedule(test_schedule, now3, dest_id, True)
+    assert instructions_3, "Should execute within grace period after timestamp reset"
+
+    # But a time outside the grace period should not execute, even after reset
+    now4 = _dt.datetime(2025, 1, 7, 8, 47)  # 17 minutes after 08:30
+    instructions_4 = resolve_schedule(test_schedule, now4, dest_id, False)
+    assert not instructions_4, "Should not execute outside grace period even after reset"
+
+    # Next scheduled time should work
+    now5 = _dt.datetime(2025, 1, 7, 9, 16)  # 1 minute after 09:15
+    instructions_5 = resolve_schedule(test_schedule, now5, dest_id, True)
+    assert instructions_5, "Next scheduled interval should match"
+
+    # Clean up global state
+    if dest_id in last_trigger_executions:
+        del last_trigger_executions[dest_id]
+
+def test_handle_set_var_no_duplicate_logging(base_context):
+    """Ensure handle_set_var does not create duplicate log entries when output list is scheduler_logs[dest]."""
+    from routes.scheduler_utils import scheduler_logs
+    dest_id = "dup_test_dest_handler"
+    # Prepare output list that is exactly the scheduler log list
+    scheduler_logs[dest_id] = []
+    output_ref = scheduler_logs[dest_id]
+    now = datetime.now()
+    instruction = {
+        "action": "set_var",
+        "var": "testvar",
+        "input": {"value": "abc"}
+    }
+    # First call should add exactly one entry
+    handle_set_var(instruction, base_context, now, output_ref, dest_id)
+    assert len(scheduler_logs[dest_id]) == 1, "Expected one log entry after first set_var"
+    # Second call with different value should add one more entry (no duplicates)
+    instruction["input"]["value"] = "def"
+    handle_set_var(instruction, base_context, now, output_ref, dest_id)
+    assert len(scheduler_logs[dest_id]) == 2, "Expected exactly two distinct log entries after second set_var"
+    # Clean up
+    del scheduler_logs[dest_id] 

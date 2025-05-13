@@ -15,8 +15,7 @@ def handle_random_choice(instruction, context, now, output, publish_destination)
     choice = random.choice(instruction["choices"])
     context["vars"][var] = choice
     msg = f"Randomly chose '{choice}' for var '{var}'."
-    output.append(f"[{now.strftime('%H:%M')}] {msg}")
-    log_schedule(msg, publish_destination, now)
+    log_schedule(msg, publish_destination, now, output)
     return False
 
 def handle_generate(instruction, context, now, output, publish_destination):
@@ -32,8 +31,7 @@ def handle_generate(instruction, context, now, output, publish_destination):
     # If no prompt found, log an error
     if not prompt:
         error_msg = "No prompt provided for generate instruction."
-        output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
-        log_schedule(error_msg, publish_destination, now)
+        log_schedule(error_msg, publish_destination, now, output)
         return
 
     # Get fields - no need to process Jinja again since it was done at instruction level
@@ -47,14 +45,12 @@ def handle_generate(instruction, context, now, output, publish_destination):
     if workflow:
         log_msg += f" (using workflow: {workflow})"
     
-    output.append(f"[{now.strftime('%H:%M:%S')}] {log_msg}")
-    log_schedule(log_msg, publish_destination, now)
+    log_schedule(log_msg, publish_destination, now, output)
     
     try:
         if not prompt or prompt.strip() == "":
             error_msg = "No prompt supplied for generation."
-            output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
-            log_schedule(error_msg, publish_destination, now)
+            log_schedule(error_msg, publish_destination, now, output)
             return 
         
         debug(f"Preparing generation with prompt: '{prompt}', refiner: {refiner}")
@@ -72,8 +68,7 @@ def handle_generate(instruction, context, now, output, publish_destination):
 
         # Now let's generate with prompt 
         start_msg = f"Starting image generation with prompt: '{prompt}', refiner: {refiner}"
-        output.append(f"[{now.strftime('%H:%M:%S')}] {start_msg}")
-        log_schedule(start_msg, publish_destination, now)
+        log_schedule(start_msg, publish_destination, now, output)
             
         # Get the generation service from our factory
         generation_service = get_generation_service()
@@ -98,8 +93,7 @@ def handle_generate(instruction, context, now, output, publish_destination):
         
         if not response:
             error_msg = "Image generation returned no results."
-            output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
-            log_schedule(error_msg, publish_destination, now)
+            log_schedule(error_msg, publish_destination, now, output)
             return    
 
         # Extract the image URL from the response
@@ -150,13 +144,11 @@ def handle_generate(instruction, context, now, output, publish_destination):
                 result_details = first_result.get("file", image_url or "unknown")
                 success_msg = f"Generated image from: '{prompt}' -> {result_details}"
                 
-        output.append(f"[{now.strftime('%H:%M:%S')}] {success_msg}")
-        log_schedule(f"GENERATE SUCCESS: {success_msg}", publish_destination, now)
+        log_schedule(f"GENERATE SUCCESS: {success_msg}", publish_destination, now, output)
         
     except Exception as e:
         error_msg = f"Error in handle_generate: {str(e)}"
-        output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
-        log_schedule(error_msg, publish_destination, now)
+        log_schedule(error_msg, publish_destination, now, output)
         import traceback
         error(traceback.format_exc())
 
@@ -227,13 +219,11 @@ def handle_animate(instruction, context, now, output, publish_destination):
                 "animation_id": animation_id
             })
         
-        output.append(f"[{now.strftime('%H:%M:%S')}] {success_msg}")
-        log_schedule(f"ANIMATE SUCCESS: {success_msg}", publish_destination, now)
+        log_schedule(f"ANIMATE SUCCESS: {success_msg}", publish_destination, now, output)
         return result
     except Exception as e:
         error_msg = f"Error in handle_animate: {str(e)}"
-        output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
-        log_schedule(error_msg, publish_destination, now)
+        log_schedule(error_msg, publish_destination, now, output)
         import traceback
         error(traceback.format_exc())
         return None
@@ -242,8 +232,7 @@ def handle_display(instruction, context, now, output, publish_destination):
     show = instruction["show"]
     if show not in ["Next", "Random", "Blank"]:
         error_msg = f"Invalid display mode: {show}. Must be 'Next', 'Random', or 'Blank'."
-        log_schedule(error_msg, publish_destination, now)
-        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        log_schedule(error_msg, publish_destination, now, output)
         return False
 
     # Use the display service from the factory
@@ -257,21 +246,18 @@ def handle_display(instruction, context, now, output, publish_destination):
 
     if not result.get("success"):
         error_msg = f"Failed to display {show.lower()} image: {result.get('error')}"
-        log_schedule(error_msg, publish_destination, now)
-        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
+        log_schedule(error_msg, publish_destination, now, output)
         return False
 
     show_type = show.lower()
     message = f"Displayed {show_type} favorite"
-    log_schedule(message, publish_destination, now)
-    output.append(f"[{now.strftime('%H:%M')}] {message}")
+    log_schedule(message, publish_destination, now, output)
     return False
 
 def handle_sleep(instruction, context, now, output, publish_destination):
     duration = instruction["duration"]
     msg = f"Sleeping display for {duration} minutes."
-    output.append(f"[{now.strftime('%H:%M')}] {msg}")
-    log_schedule(msg, publish_destination, now)
+    log_schedule(msg, publish_destination, now, output)
     return False
 
 def handle_wait(instruction, context, now, output, publish_destination):
@@ -288,18 +274,15 @@ def handle_wait(instruction, context, now, output, publish_destination):
                 duration = int(duration)
         except (ValueError, TypeError):
             error_msg = f"Invalid wait duration string: '{duration}' - must be convertible to a number"
-            output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
-            log_schedule(error_msg, publish_destination, now)
+            log_schedule(error_msg, publish_destination, now, output)
             # Use a default duration to allow execution to continue
             duration = 1
             error_msg = f"Using default duration of {duration} minute"
-            output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
-            log_schedule(error_msg, publish_destination, now)
+            log_schedule(error_msg, publish_destination, now, output)
     
     if duration is None or not isinstance(duration, (int, float)):
         error_msg = f"Invalid or missing wait duration: {duration} (type: {type(duration).__name__})"
-        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
-        log_schedule(error_msg, publish_destination, now)
+        log_schedule(error_msg, publish_destination, now, output)
         return False
         
     # If we're not already waiting, start the wait
@@ -320,15 +303,13 @@ def handle_wait(instruction, context, now, output, publish_destination):
             duration_str = f"{minutes} minute{'s' if minutes != 1 else ''} and {seconds} seconds"
             
         msg = f"Started waiting for {duration_str} (until {wait_until.strftime('%H:%M:%S')})"
-        output.append(f"[{now.strftime('%H:%M')}] {msg}")
-        log_schedule(msg, publish_destination, now)
+        log_schedule(msg, publish_destination, now, output)
         return False  # Don't unload yet - we're just starting the wait
     
     # If we are waiting, check if it's complete
     if now >= context["wait_until"]:
         msg = "Wait period complete"
-        output.append(f"[{now.strftime('%H:%M')}] {msg}")
-        log_schedule(msg, publish_destination, now)
+        log_schedule(msg, publish_destination, now, output)
         del context["wait_until"]  # Clear the wait state
         return True  # Signal that we can unload now
     
@@ -346,8 +327,7 @@ def handle_wait(instruction, context, now, output, publish_destination):
         remaining_str = f"{minutes} minute{'s' if minutes != 1 else ''} and {seconds} seconds"
     
     msg = f"Still waiting, {remaining_str} remaining"
-    output.append(f"[{now.strftime('%H:%M')}] {msg}")
-    log_schedule(msg, publish_destination, now)
+    log_schedule(msg, publish_destination, now, output)
     return False  # Don't unload while still waiting
 
 def handle_unload(instruction, context, now, output, publish_destination):
@@ -359,37 +339,32 @@ def handle_unload(instruction, context, now, output, publish_destination):
         current_schedule = scheduler_schedule_stacks[publish_destination][-1]
         if current_schedule.get("prevent_unload", False):
             msg = "Unload instruction ignored: schedule has 'prevent_unload' flag set to true"
-            output.append(f"[{now.strftime('%H:%M')}] {msg}")
-            log_schedule(msg, publish_destination, now)
+            log_schedule(msg, publish_destination, now, output)
             return False  # Don't unload
     
     msg = "Unloading temporary schedule."
-    output.append(f"[{now.strftime('%H:%M')}] {msg}")
-    log_schedule(msg, publish_destination, now)
+    log_schedule(msg, publish_destination, now, output)
     return True  # Signal that we should unload the temporary schedule
 
 def handle_device_media_sync(instruction, context, now, output, publish_destination):
     # This is where we would call the device media sync endpoint
     # ...
     msg = "Syncing media with device"
-    output.append(f"[{now.strftime('%H:%M')}] {msg}")
-    log_schedule(msg, publish_destination, now)
+    log_schedule(msg, publish_destination, now, output)
     return False
 
 def handle_device_wake(instruction, context, now, output, publish_destination):
     # This is where we would call the device wake endpoint
     # ...
     msg = "Waking device"
-    output.append(f"[{now.strftime('%H:%M')}] {msg}")
-    log_schedule(msg, publish_destination, now)
+    log_schedule(msg, publish_destination, now, output)
     return False
 
 def handle_device_sleep(instruction, context, now, output, publish_destination):
     # This is where we would call the device sleep endpoint
     # ...
     msg = "Putting device to sleep"
-    output.append(f"[{now.strftime('%H:%M')}] {msg}")
-    log_schedule(msg, publish_destination, now)
+    log_schedule(msg, publish_destination, now, output)
     return False
 
 def handle_set_var(instruction, context, now, output, publish_destination):
@@ -409,8 +384,7 @@ def handle_set_var(instruction, context, now, output, publish_destination):
         context["vars"].clear()
         
         msg = f"Reset context: cleared {old_var_count} variables."
-        output.append(f"[{now.strftime('%H:%M')}] {msg}")
-        log_schedule(msg, publish_destination, now)
+        log_schedule(msg, publish_destination, now, output)
         return False
     
     # Regular set_var behavior for named variables
@@ -427,17 +401,28 @@ def handle_set_var(instruction, context, now, output, publish_destination):
                 value = context["vars"][ref_var]
             elif "default" in instruction:
                 value = instruction["default"]
+        elif len(instruction["input"]) == 0:
+            # If input is an empty object {}, interpret as explicitly setting to null
+            value = None
     
-    if value is None:
+    # Fix: Check for top-level default if no value was found through other methods
+    if value is None and "default" in instruction:
+        value = instruction["default"]
+    
+    if value is None and not ("input" in instruction and isinstance(instruction["input"], dict) and len(instruction["input"]) == 0):
         error_msg = f"Error in set_var: could not determine value"
-        output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
-        log_schedule(error_msg, publish_destination, now)
+        log_schedule(error_msg, publish_destination, now, output)
         return False
     
-    context["vars"][var_name] = value
-    msg = f"Set {var_name} to {value}."
-    output.append(f"[{now.strftime('%H:%M')}] {msg}")
-    log_schedule(msg, publish_destination, now)
+    # If value is explicitly null, remove the variable from context if it exists
+    if value is None and var_name in context["vars"]:
+        del context["vars"][var_name]
+        msg = f"Removed variable {var_name}."
+        log_schedule(msg, publish_destination, now, output)
+    else:
+        context["vars"][var_name] = value
+        msg = f"Set {var_name} to {value}."
+        log_schedule(msg, publish_destination, now, output)
     
     # If this variable was set to null and was exported, remove its export registry entries
     if value is None:
@@ -445,8 +430,7 @@ def handle_set_var(instruction, context, now, output, publish_destination):
         removed = remove_exported_var(var_name, publish_destination)
         if removed:
             remove_msg = f"Removed export registry entries for {var_name} as it was set to null"
-            output.append(f"[{now.strftime('%H:%M')}] {remove_msg}")
-            log_schedule(remove_msg, publish_destination, now)
+            log_schedule(remove_msg, publish_destination, now, output)
     
     return False
 
@@ -462,13 +446,11 @@ def handle_stop(instruction, context, now, output, publish_destination):
     if stop_mode == "normal":
         context["stopping"] = True
         msg = "Stop instruction received (normal mode) - will run final_instructions before stopping."
-        output.append(f"[{now.strftime('%H:%M')}] {msg}")
-        log_schedule(msg, publish_destination, now)
+        log_schedule(msg, publish_destination, now, output)
         return False  # Don't unload yet, let final_instructions run
     else:  # immediate mode
         msg = "Stop instruction received (immediate mode) - stopping scheduler immediately without running final_instructions."
-        output.append(f"[{now.strftime('%H:%M')}] {msg}")
-        log_schedule(msg, publish_destination, now)
+        log_schedule(msg, publish_destination, now, output)
         
         # Explicitly remove from running_schedulers without unloading
         if publish_destination in running_schedulers:
@@ -536,12 +518,10 @@ def handle_import_var(instruction, context, now, output, publish_destination):
         removed = remove_imported_var(var_name, publish_destination)
         if removed:
             msg = f"Removed import for variable '{var_name}'"
-            output.append(f"[{now.strftime('%H:%M')}] {msg}")
-            log_schedule(msg, publish_destination, now)
+            log_schedule(msg, publish_destination, now, output)
         else:
             msg = f"No import entry found for variable '{var_name}' to remove"
-            output.append(f"[{now.strftime('%H:%M')}] {msg}")
-            log_schedule(msg, publish_destination, now)
+            log_schedule(msg, publish_destination, now, output)
         return False
     
     # Determine the source: can be a specific destination, a group, or global
@@ -616,8 +596,7 @@ def handle_import_var(instruction, context, now, output, publish_destination):
     else:
         # No valid source specified
         msg = f"Failed to import variable '{var_name}': No valid source (dest_id, group, or scope) specified"
-        output.append(f"[{now.strftime('%H:%M')}] {msg}")
-        log_schedule(msg, publish_destination, now)
+        log_schedule(msg, publish_destination, now, output)
         return False
     
     # Check if the variable exists in the available variables
@@ -665,13 +644,11 @@ def handle_import_var(instruction, context, now, output, publish_destination):
             
             msg = f"Imported variable '{var_name}' ('{friendly_name}') from {source_type} '{source_id}' as '{imported_as}' with value: {value_desc}"
         
-        output.append(f"[{now.strftime('%H:%M')}] {msg}")
-        log_schedule(msg, publish_destination, now)
+        log_schedule(msg, publish_destination, now, output)
     else:
         # Log failure
         msg = f"Failed to import variable '{var_name}' from {source_type} '{source_id}': Variable not found"
-        output.append(f"[{now.strftime('%H:%M')}] {msg}")
-        log_schedule(msg, publish_destination, now)
+        log_schedule(msg, publish_destination, now, output)
     
     return False  # Don't unload the schedule
 
@@ -704,12 +681,10 @@ def handle_export_var(instruction, context, now, output, publish_destination):
             removed = remove_exported_var(var_name, publish_destination)
             if removed:
                 msg = f"Removed export for variable '{var_name}' as it has null value"
-                output.append(f"[{now.strftime('%H:%M')}] {msg}")
-                log_schedule(msg, publish_destination, now)
+                log_schedule(msg, publish_destination, now, output)
             else:
                 msg = f"No export entry found for variable '{var_name}' to remove"
-                output.append(f"[{now.strftime('%H:%M')}] {msg}")
-                log_schedule(msg, publish_destination, now)
+                log_schedule(msg, publish_destination, now, output)
         else:
             # Register the exported variable in the central registry
             register_exported_var(
@@ -726,15 +701,13 @@ def handle_export_var(instruction, context, now, output, publish_destination):
                 value_desc = f"{type(value).__name__} with {len(value)} items"
                 
             msg = f"Exported variable '{var_name}' as '{friendly_name}' to {scope} scope with value: {value_desc}"
-            output.append(f"[{now.strftime('%H:%M')}] {msg}")
-            log_schedule(msg, publish_destination, now)
+            log_schedule(msg, publish_destination, now, output)
     else:
         # Log failure
         msg = f"Failed to export variable '{var_name}': Variable not found in current context"
-        output.append(f"[{now.strftime('%H:%M')}] {msg}")
-        log_schedule(msg, publish_destination, now)
+        log_schedule(msg, publish_destination, now, output)
     
-    return False  # Don't unload the schedule 
+    return False  # Don't unload the schedule
 
 def handle_reason(instruction, context, now, output, publish_destination):
     """
@@ -750,8 +723,7 @@ def handle_reason(instruction, context, now, output, publish_destination):
     # Validate that we have at least one output variable
     if not output_vars:
         error_msg = "No output variables specified in reason instruction."
-        output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
-        log_schedule(error_msg, publish_destination, now)
+        log_schedule(error_msg, publish_destination, now, output)
         return False
     
     # Log the reasoning request
@@ -764,8 +736,7 @@ def handle_reason(instruction, context, now, output, publish_destination):
             log_msg += f", text input: '{text_input}'"
     if image_inputs:
         log_msg += f", with {len(image_inputs)} image inputs"
-    output.append(f"[{now.strftime('%H:%M:%S')}] {log_msg}")
-    log_schedule(log_msg, publish_destination, now)
+    log_schedule(log_msg, publish_destination, now, output)
     
     try:
         # Get the system prompt from the reasoner template file
@@ -811,8 +782,7 @@ def handle_reason(instruction, context, now, output, publish_destination):
         
         if not result or "outputs" not in result or not isinstance(result["outputs"], list):
             error_msg = f"Reasoning with '{reasoner_id}' failed to return valid outputs array."
-            output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
-            log_schedule(error_msg, publish_destination, now)
+            log_schedule(error_msg, publish_destination, now, output)
             return False
         
         # Log the explanation if present
@@ -823,8 +793,7 @@ def handle_reason(instruction, context, now, output, publish_destination):
             if len(explanation) > 300:
                 log_explanation = explanation[:297] + "..."
             explanation_msg = f"Reasoner explanation: {log_explanation}"
-            output.append(f"[{now.strftime('%H:%M:%S')}] {explanation_msg}")
-            log_schedule(explanation_msg, publish_destination, now)
+            log_schedule(explanation_msg, publish_destination, now, output)
             
         # Store each output variable in the context, mapping by position
         # Store only as many variables as we have outputs, up to the number requested
@@ -832,12 +801,10 @@ def handle_reason(instruction, context, now, output, publish_destination):
             if i < len(result["outputs"]):
                 context["vars"][var_name] = result["outputs"][i]
                 var_log = f"Set {var_name} to result from '{reasoner_id}' reasoning (position {i+1})."
-                output.append(f"[{now.strftime('%H:%M:%S')}] {var_log}")
-                log_schedule(var_log, publish_destination, now)
+                log_schedule(var_log, publish_destination, now, output)
             else:
                 var_error = f"Reasoner didn't return enough values for output variable '{var_name}' (position {i+1})."
-                output.append(f"[{now.strftime('%H:%M:%S')}] {var_error}")
-                log_schedule(var_error, publish_destination, now)
+                log_schedule(var_error, publish_destination, now, output)
         
         # Handle history if specified
         history_var = instruction.get("history_var")
@@ -895,17 +862,42 @@ def handle_reason(instruction, context, now, output, publish_destination):
             context["vars"][history_var].append(history_entry)
         
         success_msg = f"Completed reasoning with '{reasoner_id}'"
-        output.append(f"[{now.strftime('%H:%M:%S')}] {success_msg}")
-        log_schedule(success_msg, publish_destination, now)
+        log_schedule(success_msg, publish_destination, now, output)
         
         return False
         
     except Exception as e:
         error_msg = f"Error in handle_reason: {str(e)}"
-        output.append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
-        log_schedule(error_msg, publish_destination, now)
+        log_schedule(error_msg, publish_destination, now, output)
         import traceback
         error(traceback.format_exc())
         return False 
+
+def handle_log(instruction, context, now, output, publish_destination):
+    """
+    Simple handler to output a log message.
+    Makes script debugging easier.
+    
+    Args:
+        instruction: The log instruction containing the message
+        context: The current context
+        now: Current datetime
+        output: List to append log messages to
+        publish_destination: The current scheduler's publish destination ID
+        
+    Returns:
+        bool: False (don't unload the schedule)
+    """
+    # Get the message - support both "message" key and "text" key
+    message = instruction.get("message", instruction.get("text", ""))
+    
+    # If no message, use a default
+    if not message:
+        message = "[Empty log message]"
+        
+    # Output the message to the logs
+    log_schedule(message, publish_destination, now, output)
+    
+    return False
 
 # Delete the duplicate process_time_schedules function that was copied here 
