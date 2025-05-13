@@ -60,7 +60,27 @@ const ImageCard: React.FC<ImageCardProps> = ({
     cursor: 'grab',
   };
 
-  const handleClick = () => onClick?.(image);
+  // Add mobile detection
+  const [isMobile, setIsMobile] = React.useState(false);
+  
+  // Detect mobile devices
+  React.useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Direct click on mobile opens Loope immediately
+  const handleClick = () => {
+    if (onClick) {
+      // On mobile, always go straight to Loope view
+      onClick(image);
+    }
+  };
   
   // Check if image is a video by file extension or mediaType
   const isVideo = (image: ImageItem) => {
@@ -102,7 +122,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
       />
       
       {/* Favorite star - top left - hidden in favourites container */}
-      {onToggleFavorite && sectionVariant !== 'favourites' && (
+      {onToggleFavorite && sectionVariant !== 'favourites' && (!isMobile) && (
         <Button
           variant="ghost" 
           size="icon"
@@ -117,7 +137,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
       )}
       
       {/* Fullscreen button - top right */}
-      {onClick && (
+      {onClick && (!isMobile) && (
         <Button
           variant="ghost"
           size="icon"
@@ -136,7 +156,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
       )}
 
       {/* Three-dot menu - bottom right */}
-      <DropdownMenu>
+      {!isMobile && <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost" 
@@ -274,17 +294,17 @@ const ImageCard: React.FC<ImageCardProps> = ({
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
-      </DropdownMenu>
+      </DropdownMenu>}
 
       {/* Hover overlay */}
-      <div className="absolute inset-0 z-10 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3">
+      {!isMobile && <div className="absolute inset-0 z-10 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3">
         <div className="text-white text-xs break-words whitespace-pre-wrap line-clamp-3">
           {image.promptKey || 'No prompt available'}
         </div>
         
         {/* Action bar */}
         {HoverActionBar ? <HoverActionBar image={image} /> : null}
-      </div>
+      </div>}
     </div>
   );
 };

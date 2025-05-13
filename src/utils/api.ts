@@ -68,6 +68,8 @@ interface BucketDetails {
   }>;
   published: string | null;
   publishedAt: string | null;
+  raw_url: string | null;
+  thumbnail_url: string | null;
   favorites: string[];
   sequence: string[];
 }
@@ -1161,58 +1163,91 @@ export class Api {
   }
 
   async getBucketDetails(bucketId: string): Promise<BucketDetails> {
-    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/complete`);
-    if (!response.ok) {
-      throw new Error(`Failed to get bucket details: ${response.statusText}`);
-    }
-    const data = await response.json();
-    console.log('Raw bucket details response:', data);
-    
-    // Map files to items with the correct fields
-    const items = Array.isArray(data.files) ? data.files.map(file => {
-      const baseMeta = file.metadata || {};
-      // Use created_at from the API response, fall back to metadata timestamp or file stats
-      const createdTs = file.created_at || baseMeta.timestamp || file.modified;
+    try {
+      const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/complete`);
+      
+      // If the response is a 404 (not found), the bucket doesn't exist or isn't accessible
+      // Return a valid empty bucket details instead of throwing an error
+      if (response.status === 404) {
+        console.log(`Bucket ${bucketId} not found, returning empty bucket details`);
+        return {
+          name: bucketId,
+          items: [],
+          published: null,
+          publishedAt: null,
+          raw_url: null,
+          thumbnail_url: null,
+          favorites: [],
+          sequence: []
+        };
+      }
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get bucket details: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('Raw bucket details response:', data);
+      
+      // Map files to items with the correct fields
+      const items = Array.isArray(data.files) ? data.files.map(file => {
+        const baseMeta = file.metadata || {};
+        // Use created_at from the API response, fall back to metadata timestamp or file stats
+        const createdTs = file.created_at || baseMeta.timestamp || file.modified;
 
-      return {
-        filename: file.filename,
-        url: file.raw_url || file.url || '',
-        thumbnail_url: file.thumbnail_url,
-        thumbnail_embedded: file.thumbnail_embedded,
-        favorite: file.favorite || false,
-        metadata: {
-          ...baseMeta,
-          timestamp: createdTs,
-        },
-        created_at: createdTs, // Add created_at to the item directly
+        return {
+          filename: file.filename,
+          url: file.raw_url || file.url || '',
+          thumbnail_url: file.thumbnail_url,
+          thumbnail_embedded: file.thumbnail_embedded,
+          favorite: file.favorite || false,
+          metadata: {
+            ...baseMeta,
+            timestamp: createdTs,
+          },
+          created_at: createdTs, // Add created_at to the item directly
+        };
+      }) : [];
+      
+      // Get published info from the published object
+      const published = data.published || null;
+      
+      // Log info about the published image but don't add it to items
+      if (published && published.from_bucket === false) {
+        console.log('Published image is not from this bucket:', published.filename);
+        console.log('Published at:', published.published_at);
+        console.log('Raw URL:', published.raw_url);
+        console.log('Thumbnail URL:', published.thumbnail_url);
+      }
+      
+      // Ensure we have a valid BucketDetails object
+      const bucketDetails = {
+        name: data.bucket_id || bucketId,
+        items: items,
+        published: published?.filename || null,
+        publishedAt: published?.published_at || null,
+        raw_url: published?.raw_url || null,
+        thumbnail_url: published?.thumbnail_url || null,
+        favorites: Array.isArray(data.favorites) ? data.favorites : [],
+        sequence: Array.isArray(data.sequence) ? data.sequence : []
       };
-    }) : [];
-    
-    // Get published info from the published object
-    const published = data.published || null;
-    
-    // Log info about the published image but don't add it to items
-    if (published && published.from_bucket === false) {
-      console.log('Published image is not from this bucket:', published.filename);
-      console.log('Published at:', published.published_at);
-      console.log('Raw URL:', published.raw_url);
-      console.log('Thumbnail URL:', published.thumbnail_url);
+      
+      console.log('Processed bucket details:', bucketDetails);
+      return bucketDetails;
+    } catch (error) {
+      console.error(`Error fetching bucket details for ${bucketId}:`, error);
+      // Return an empty bucket details instead of throwing
+      return {
+        name: bucketId,
+        items: [],
+        published: null,
+        publishedAt: null,
+        raw_url: null,
+        thumbnail_url: null,
+        favorites: [],
+        sequence: []
+      };
     }
-    
-    // Ensure we have a valid BucketDetails object
-    const bucketDetails = {
-      name: data.bucket_id || bucketId,
-      items: items,
-      published: published?.filename || null,
-      publishedAt: published?.published_at || null,
-      raw_url: published?.raw_url || null,
-      thumbnail_url: published?.thumbnail_url || null,
-      favorites: Array.isArray(data.favorites) ? data.favorites : [],
-      sequence: Array.isArray(data.sequence) ? data.sequence : []
-    };
-    
-    console.log('Processed bucket details:', bucketDetails);
-    return bucketDetails;
   }
 
   // Get all buckets
@@ -1825,6 +1860,50 @@ export class Api {
     } catch (error) {
       console.error('Error cancelling jobs:', error);
       return { success: false, error: 'Network error' };
+    }
+  }
+
+  // Get currently published content for a destination (works for both bucket and non-bucket destinations)
+  async getPublishedContent(destinationId: string): Promise<{
+    published: string | null;
+    publishedAt: string | null;
+    raw_url: string | null;
+    thumbnail_url: string | null;
+  }> {
+    try {
+      const response = await fetch(`${this.apiUrl}/published/${destinationId}`);
+      
+      // If no published content, return empty result
+      if (response.status === 404) {
+        return {
+          published: null,
+          publishedAt: null,
+          raw_url: null,
+          thumbnail_url: null
+        };
+      }
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get published content: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('Published content response:', data);
+      
+      return {
+        published: data.filename || null,
+        publishedAt: data.published_at || null,
+        raw_url: data.raw_url || null,
+        thumbnail_url: data.thumbnail_url || null
+      };
+    } catch (error) {
+      console.error(`Error fetching published content for ${destinationId}:`, error);
+      return {
+        published: null,
+        publishedAt: null,
+        raw_url: null,
+        thumbnail_url: null
+      };
     }
   }
 }

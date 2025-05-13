@@ -537,31 +537,52 @@ def get_image_from_target(file_prefix: str, thumbnail: bool = False) -> dict | N
 
     If thumbnail=True, the image will be downscaled to 256×256 before encoding.
     """
-
-    jpg_path = f"./output/{file_prefix}.jpg"
-    mp4_path = f"./output/{file_prefix}.mp4"
-
-    jpg_mtime = os.path.getmtime(jpg_path) if os.path.exists(jpg_path) else 0
-    mp4_mtime = os.path.getmtime(mp4_path) if os.path.exists(mp4_path) else 0
-
-    if jpg_mtime == 0 and mp4_mtime == 0:
-        return None  # Neither file exists
-
+    # Expanded search paths for more reliable content location
+    possible_paths = [
+        f"./output/{file_prefix}.jpg",
+        f"./output/{file_prefix}.mp4",
+        f"./output/{file_prefix}.png",
+        # Additional direct-publish paths where files might be stored
+        f"/output/{file_prefix}.jpg",
+        f"/output/{file_prefix}.mp4",
+        f"/output/{file_prefix}.png"
+    ]
+    
+    # Track best candidate and its timestamp
+    best_path = None
+    best_mtime = 0
+    
+    # Find the newest file across all possible paths
+    for path in possible_paths:
+        if os.path.exists(path):
+            current_mtime = os.path.getmtime(path)
+            if current_mtime > best_mtime:
+                best_mtime = current_mtime
+                best_path = path
+    
+    if not best_path:
+        debug(f"[get_image_from_target] No files found for prefix '{file_prefix}' in any expected location")
+        return None  # No files found
+    
+    image_path = best_path
+    raw_name = os.path.basename(best_path)
+    
     try:
-        if jpg_mtime >= mp4_mtime:
-            raw_name = f"{file_prefix}.jpg"
-            image_path  = jpg_path
-            image = Image.open(jpg_path)
-        else:
-            raw_name = f"{file_prefix}.mp4"
-            image_path = mp4_path
+        # Process based on file type
+        if image_path.lower().endswith(('.jpg', '.jpeg', '.png')):
+            image = Image.open(image_path)
+        elif image_path.lower().endswith('.mp4'):
             import cv2
-            cap = cv2.VideoCapture(mp4_path)
+            cap = cv2.VideoCapture(image_path)
             success, frame = cap.read()
             cap.release()
             if not success:
+                error(f"[get_image_from_target] Failed to read video frame from {image_path}")
                 return None
             image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        else:
+            error(f"[get_image_from_target] Unsupported file format: {image_path}")
+            return None
 
         if thumbnail:
             image.thumbnail((256, 256))
@@ -572,8 +593,10 @@ def get_image_from_target(file_prefix: str, thumbnail: bool = False) -> dict | N
         
         VITE_URL = os.environ.get("VITE_URL", "").rstrip("/")
         
+        # Construct URLs using the correct path structure
         raw_url = f"{VITE_URL}/output/{raw_name}" if VITE_URL else f"/output/{raw_name}"
 
+        debug(f"[get_image_from_target] Successfully processed '{file_prefix}' from {image_path}")
         return {
             "name": f"{file_prefix}.jpg",
             "image": base64_str,

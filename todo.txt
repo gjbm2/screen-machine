@@ -1,36 +1,35 @@
-top:
 
--1. tests :((((
+
+1. complete image card work on Generated tab
+
+---
+
 0. triggers on schedule save (even when shoudlnlt)
+1. Load & unload via Alexa 
+2. truncate history vars for practical reasons
+3. Generally front end is a mess...
+
+
 1. split scheduler_utils for performance reasons...
-2. get scheduler tests working
-3. Load schedule (via Alexa) -- show loadable list in display-schedules
-4. Unload schedule via Alexa
 5. add next instruction, loadable scripts to alexa get schedule (rename from get variables)
 6. allow generation, animation, with arbitrary list of params (e.g. length=xxx) in instruction
 7. paused scheduels after restart get stopped on resume...
-8. dndkit for drag & drop throughout
+8. dndkit for drag & drop on generator tab
 
 Need to have
 
-1. publishing isn't loading prompts...
-7. fullscreenview copes with mp4 and jpg (and works across buckets and generated images)
+
 15. Control schedule from bucket
-17. 'load' instruction in scheduler
 18. device control calls (in due course)
 19. add 'blank'  to front end
 20. add 'display next' and 'display random' to front end
 21. event triggers to delay schedule
 
 
-
 Nice to have 
 
 2. on first page load, soft link to manage images, then unfurl generator section
 3. generator tab too prominent
-4. Drag & drop to order images
-6. home icon 
-8. metadata working for bucket images
 9. repair rendering status in index
 10. "Computer, use AI to schedule" 
 12. Slack triggers
@@ -46,5 +45,7 @@ Nice to have
 24. scheduler passes images in vars (from generate > animate, etc.)
 25. shared history workarounds...?
 26. scheduler can appraise images and select the best
+27. Lora management component
+28. Ursula & Ida lora!
 
 
