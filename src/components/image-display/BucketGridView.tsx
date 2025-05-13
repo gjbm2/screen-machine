@@ -47,6 +47,9 @@ import { getReferenceUrl } from '@/utils/image-utils';
 // Import the global isVideoFile utility
 import { isVideoFile } from '@/utils/image-utils';
 
+// Import the new useLoopeView context
+import { useLoopeView } from '@/contexts/LoopeViewContext';
+
 // Define the expected types based on the API response
 interface BucketItem extends ApiBucketItem {
   raw_url?: string;
@@ -307,10 +310,33 @@ export const BucketGridView = ({
     refreshBucket(destination);
   };
 
+  // Access Loope view opener once
+  const { open: openLoope } = useLoopeView();
+
   const handleImageClick = (image: BucketImage) => {
+    // Build list of ImageItems for viewer
+    const imageItems: ImageItem[] = bucketImages.map(img => ({
+      id: img.id,
+      urlFull: img.url,
+      urlThumb: img.thumbnail_url || img.thumbnail_embedded || img.url,
+      promptKey: img.prompt || '',
+      seed: 0,
+      createdAt: new Date(img.created_at || Date.now()).toISOString(),
+      isFavourite: !!img.metadata?.favorite,
+      mediaType: img.url.toLowerCase().match(/\.mp4|\.webm/) ? 'video' : 'image',
+      raw_url: img.raw_url || img.url,
+    }));
+
+    const clickedIdx = bucketImages.findIndex(i => i.id === image.id);
+    if (clickedIdx !== -1) {
+      const contextTitle = `${destinationName || destination}`;
+      openLoope(imageItems, clickedIdx, contextTitle);
+    }
+
     if (onImageClick) {
       onImageClick(image);
     } else {
+      // fallback to original detail view until fully replaced
       setSelectedImage(image);
       setShowImageDetail(true);
     }
@@ -1215,6 +1241,7 @@ export const BucketGridView = ({
 
   /** Single section with droppable */
   const SectionDroppable: React.FC<{ section: Section }> = ({ section }) => {
+    const { open: openLoope } = useLoopeView();
     // Create a droppable area for the content area
     const { setNodeRef: setContentNodeRef, isOver: isContentOver } = useDroppable({ 
       id: `${DROP_ZONES.SECTION_PREFIX}${section.id}`,
@@ -1357,7 +1384,10 @@ export const BucketGridView = ({
                 const originalId = getOriginalId(img.id);
                 const originalImage = bucketImages.find(i => i.id === originalId);
                 if (originalImage) {
-                  handleImageClick(originalImage);
+                  const items = section.images.map(toImageItem);
+                  const idx = items.findIndex(it => it.id === img.id || getOriginalId(it.id)===originalId);
+                  const sectionTitle = `${destinationName || destination} – ${section.label}`;
+                  openLoope(items, idx === -1 ? 0 : idx, sectionTitle);
                 }
               }}
               onDelete={(img) => {

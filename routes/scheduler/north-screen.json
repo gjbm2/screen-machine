@@ -100,7 +100,7 @@
         "_b_theme": "Futuristic Societal Constructs",
         "_style": "Katsushika Hokusai\u2019s ukiyo-e woodblock print style",
         "_guidance": "Choose specific depictions of ancient civilizations and futuristic cities, rendered in Hokusai\u2019s detailed and delicate woodblock print style. Ensure each scenario is unique by avoiding repetition from recent images, highlighting the contrast between preserved past and anticipated future.",
-        "prompt": "Ancient Mesopotamian ziggurats under floating solar arrays, adorned with Hokusai\u2019s intricate patterns and bold azure blue strokes, merging ancient temple elegance with futuristic energy solutions.",
+        "prompt": "Templar castle ruins veiled by luminescent vertical cityscapes, detailed in Hokusai\u2019s graceful ukiyo-e patterns, exploring a dramatic overlap of medieval mystery with ultramodern architecture.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:23",
@@ -1619,6 +1619,26 @@
             },
             "text_input": "'Preserved Ancient Civilizations' in the style ...",
             "explanation": "I chose ancient Mesopotamian ziggurats, a theme not previously used. The prompt includes futurist..."
+          },
+          {
+            "timestamp": "2025-05-12 22:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Ancient Greek amphitheater under a starry sky, juxtaposed with holographic performers, rendered in Hokusai\u2019s ukiyo-e style, merging theatrical histories with futuristic entertainment technologies."
+            },
+            "text_input": "'Preserved Ancient Civilizations' in the style ...",
+            "explanation": "I focused on an ancient Greek amphitheater, a setting not previously mentioned, paired with holog..."
+          },
+          {
+            "timestamp": "2025-05-12 23:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Templar castle ruins veiled by luminescent vertical cityscapes, detailed in Hokusai\u2019s graceful ukiyo-e patterns, exploring a dramatic overlap of medieval mystery with ultramodern architecture."
+            },
+            "text_input": "'Preserved Ancient Civilizations' in the style ...",
+            "explanation": "I selected Templar castle ruins, a setting unique from previously listed ancient civilizations. T..."
           }
         ],
         "prompt_history": [
@@ -2821,6 +2841,22 @@
             "refiner": "curator",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b3aaafc5-50b8-4847-a1df-df8e12380069-e1/636dfe1f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250512%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250512T200029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5b6926b15a455be3b3391c47bbcff4f42bc7fb70c3c6e4fb1fd3cc7feafb358f"
+          },
+          {
+            "timestamp": "2025-05-12 22:00:01",
+            "type": "generation",
+            "prompt": "Ancient Greek amphitheater under a starry sky, ...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d47d9ce1-7642-4436-aa73-567ec61d7001-e1/7d6cb485.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250512%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250512T210047Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=540a125e3f0a86f9df2c9f1c50caf7555123205bf35547c2ce68dd1b8bbe3821"
+          },
+          {
+            "timestamp": "2025-05-12 23:00:00",
+            "type": "generation",
+            "prompt": "Templar castle ruins veiled by luminescent vert...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e3e1cec2-6c46-407d-8952-b0f49c005c8d-e1/c4c145c9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250512%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250512T220116Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1ddb3d0e7beb96712237fc9b076aae0a2cc466b3cd545e370ac27f89e0de7d74"
           }
         ],
         "animation_history": [
@@ -3167,15 +3203,23 @@
             "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0e80aa97-9e21-410c-87aa-f4d58f5c7626-e1/637ef41e.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250512%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250512T190132Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=c7555576da424a189d9e0cd768ba3f22a2e5df654e060eec60544ab8ff1ed8f1",
             "refiner": "animator",
             "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-12 22:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d47d9ce1-7642-4436-aa73-567ec61d7001-e1/7d6cb485.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250512%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250512T210047Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=540a125e3f0a86f9df2c9f1c50caf7555123205bf35547c2ce68dd1b8bbe3821",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b3aaafc5-50b8-4847-a1df-df8e12380069-e1/636dfe1f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250512%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250512T200029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5b6926b15a455be3b3391c47bbcff4f42bc7fb70c3c6e4fb1fd3cc7feafb358f"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e3e1cec2-6c46-407d-8952-b0f49c005c8d-e1/c4c145c9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250512%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250512T220116Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1ddb3d0e7beb96712237fc9b076aae0a2cc466b3cd545e370ac27f89e0de7d74"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-12T21:00:33.595859",
+  "last_updated": "2025-05-12T23:01:18.368574",
   "last_trigger_executions": {
     "1e41f37db26e89ac37d55f3771482626_2025-05-10T11:00:00": "2025-05-10T11:20:50.497918",
     "8b0160f252dc1affd80c933c62e85005_2025-05-10T10:05:00": "2025-05-10T11:20:50.497918",
@@ -3234,6 +3278,9 @@
     "1e41f37db26e89ac37d55f3771482626_2025-05-12T19:00:00": "2025-05-12T19:00:01.607149",
     "1e41f37db26e89ac37d55f3771482626_2025-05-12T20:00:00": "2025-05-12T20:00:01.658585",
     "8b0160f252dc1affd80c933c62e85005_2025-05-12T20:05:00": "2025-05-12T20:05:01.569250",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T21:00:00": "2025-05-12T21:00:01.646053"
+    "1e41f37db26e89ac37d55f3771482626_2025-05-12T21:00:00": "2025-05-12T21:00:01.646053",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-12T22:00:00": "2025-05-12T22:00:01.021533",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-12T22:05:00": "2025-05-12T22:05:01.924522",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-12T23:00:00": "2025-05-12T23:00:00.647415"
   }
 }
