@@ -2,12 +2,19 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 import { ImageItem } from '@/types/image-types';
 import LoopeModal from '@/components/loope/LoopeModal';
 
+// Add interface for carousel options
+interface CarouselOptions {
+  loop?: boolean;
+  [key: string]: any;
+}
+
 interface LoopeViewContextValue {
   isOpen: boolean;
   images: ImageItem[];
   currentIndex: number;
   title: string;
-  open: (images: ImageItem[], startIndex?: number, title?: string) => void;
+  carouselOptions: CarouselOptions;
+  open: (images: ImageItem[], startIndex?: number, title?: string, options?: CarouselOptions) => void;
   close: () => void;
   goto: (index: number) => void;
   next: () => void;
@@ -21,11 +28,13 @@ export const LoopeViewProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [images, setImages] = useState<ImageItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [title, setTitle] = useState<string>('');
+  const [carouselOptions, setCarouselOptions] = useState<CarouselOptions>({ loop: true });
 
-  const open = useCallback((imgs: ImageItem[], startIdx = 0, ttl = '') => {
+  const open = useCallback((imgs: ImageItem[], startIdx = 0, ttl = '', options: CarouselOptions = { loop: true }) => {
     setImages(imgs);
     setCurrentIndex(startIdx);
     setTitle(ttl);
+    setCarouselOptions(options);
     setIsOpen(true);
   }, []);
 
@@ -51,6 +60,7 @@ export const LoopeViewProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     images,
     currentIndex,
     title,
+    carouselOptions,
     open,
     close,
     goto,

@@ -12,6 +12,7 @@ export function usePublishDestinations() {
     async function fetchDestinations() {
       try {
         const data = await api.getPublishDestinations();
+        console.log('Raw publish destinations from API:', data);
         setDestinations(data);
         setError(null);
       } catch (err) {
@@ -24,13 +25,20 @@ export function usePublishDestinations() {
     fetchDestinations();
   }, []);
 
+  // Only filter out headless destinations as a convenience
+  const nonHeadlessDestinations = useMemo(() => {
+    return destinations.filter(dest => dest.headless !== true);
+  }, [destinations]);
+
+  // Create a backward-compatible list of destinations with buckets
   const destinationsWithBuckets = useMemo(() => {
-    return destinations.filter(dest => dest.has_bucket);
+    return destinations;
   }, [destinations]);
 
   return {
-    destinations,
-    destinationsWithBuckets,
+    destinations,             // All destinations without filtering
+    destinationsWithBuckets,  // All destinations (for backward compatibility)
+    nonHeadlessDestinations,  // Only destinations that aren't marked as headless
     loading,
     error
   };

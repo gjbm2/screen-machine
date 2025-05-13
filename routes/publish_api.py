@@ -203,14 +203,58 @@ def get_published(publish_destination_id: str):
         "thumbnail_url": "<URL> or null",
         "meta":         {…} or {}
       }
-    Always 200.
+    Always returns 200 status code even when no published content exists.
     """
     from routes.utils import get_image_from_target
     
-    # First get the published info
-    published_info = get_published_info(publish_destination_id)
+    # Log that we're trying to get published info
+    info(f"[get_published] Getting published info for destination: {publish_destination_id}")
     
-    if not published_info:
+    try:
+        # First get the published info
+        published_info = get_published_info(publish_destination_id)
+        
+        if not published_info:
+            # No info found, but we return a valid JSON result with nulls
+            info(f"[get_published] No published info found for {publish_destination_id}, returning null values")
+            return jsonify({
+                "published":     None,
+                "published_at":  None,
+                "raw_url":       None,
+                "thumbnail":     None,
+                "thumbnail_url": None,
+                "meta":          {},
+                "filename":      None
+            })
+            
+        # Get the thumbnail for the published image
+        # get_image_from_target is the correct utility to use as it knows how to
+        # find images in the output directory and bucket system
+        image_result = get_image_from_target(publish_destination_id, thumbnail=True)
+        
+        if not image_result:
+            # If we have publish info but no image could be found, log a warning but still return the info
+            warning(f"[get_published] Published info exists for {publish_destination_id}, but no image was found")
+        
+        # Add thumbnail to the response
+        result = {
+            "published":     published_info.get("published"),
+            "published_at":  published_info.get("published_at"),
+            "raw_url":       published_info.get("raw_url"),
+            "thumbnail_url": published_info.get("thumbnail_url"),
+            "thumbnail":     image_result.get("image") if image_result else None,
+            "meta":          published_info.get("meta", {}),
+            "filename":      published_info.get("published") # Add filename for convenience
+        }
+        
+        # Debug logging to help diagnose issues
+        info(f"Published info for {publish_destination_id}: raw_url={result.get('raw_url')}, thumbnail_url={result.get('thumbnail_url')}")
+            
+        return jsonify(result)
+        
+    except Exception as e:
+        # Log the error but still return a valid JSON response with nulls
+        error(f"[get_published] Error getting published info for {publish_destination_id}: {e}")
         return jsonify({
             "published":     None,
             "published_at":  None,
@@ -218,27 +262,9 @@ def get_published(publish_destination_id: str):
             "thumbnail":     None,
             "thumbnail_url": None,
             "meta":          {},
+            "filename":      None,
+            "error":         str(e)
         })
-        
-    # Get the thumbnail for the published image
-    # get_image_from_target is the correct utility to use as it knows how to
-    # find images in the output directory and bucket system
-    image_result = get_image_from_target(publish_destination_id, thumbnail=True)
-    
-    # Add thumbnail to the response
-    result = {
-        "published":     published_info.get("published"),
-        "published_at":  published_info.get("published_at"),
-        "raw_url":       published_info.get("raw_url"),
-        "thumbnail_url": published_info.get("thumbnail_url"),
-        "thumbnail":     image_result.get("image") if image_result else None,
-        "meta":          published_info.get("meta", {})
-    }
-    
-    # Debug logging to help diagnose issues
-    info(f"Published info for {publish_destination_id}: raw_url={result.get('raw_url')}, thumbnail_url={result.get('thumbnail_url')}")
-        
-    return jsonify(result)
 
 @publish_api.route("/publish/<publish_destination_id>/display", methods=["POST"])
 def display_from_bucket_api(publish_destination_id: str):

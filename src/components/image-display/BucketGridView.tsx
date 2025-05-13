@@ -68,16 +68,17 @@ interface BucketImage {
   raw_url?: string;
 }
 
-interface BucketDetails {
+// Define BucketDetails interface for this component (extended from the API type)
+interface LocalBucketDetails {
   name: string;
   count: number;
   favorites_count: number;
   size_mb: number;
   last_modified: string;
-  published?: string;
-  published_at?: string;
-  raw_url?: string;
-  thumbnail_url?: string;
+  published: string | null;
+  published_at: string | null;
+  raw_url: string | null;
+  thumbnail_url: string | null;
 }
 
 // Add NextAction interface
@@ -154,6 +155,61 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   );
 };
 
+// Add simple modal components
+const UploadModal = ({ isOpen, onClose, destination, onUploadComplete }: { 
+  isOpen: boolean;
+  onClose: () => void;
+  destination: string;
+  onUploadComplete: () => void;
+}) => {
+  // Simplified upload modal
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Upload to {destination}</DialogTitle>
+        </DialogHeader>
+        <p>Upload functionality</p>
+        <DialogFooter className="mt-4">
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" onClick={onUploadComplete}>
+            Upload
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const MaintenanceModal = ({ isOpen, onClose, destination, onActionComplete }: { 
+  isOpen: boolean;
+  onClose: () => void;
+  destination: string;
+  onActionComplete: () => void;
+}) => {
+  // Simplified maintenance modal
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Maintenance for {destination}</DialogTitle>
+        </DialogHeader>
+        <p>Maintenance options</p>
+        <DialogFooter className="mt-4">
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={onActionComplete}>
+            Apply
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 export const BucketGridView = ({
   destination,
   destinationName,
@@ -165,13 +221,13 @@ export const BucketGridView = ({
   icon
 }: BucketGridViewProps) => {
   const [bucketImages, setBucketImages] = useState<BucketImage[]>([]);
-  const [bucketDetails, setBucketDetails] = useState<BucketDetails | null>(null);
+  const [bucketDetails, setBucketDetails] = useState<LocalBucketDetails | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadUrl, setUploadUrl] = useState('');
   const [currentPublishedImage, setCurrentPublishedImage] = useState<BucketImage | null>(null);
-  const [destinations, setDestinations] = useState<{id: string, name: string}[]>([]);
+  const [destinations, setDestinations] = useState<{id: string, name: string, headless?: boolean, has_bucket: boolean}[]>([]);
   const [showFavoritesFirst, setShowFavoritesFirst] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -187,6 +243,7 @@ export const BucketGridView = ({
   const [dropTargetType, setDropTargetType] = useState<DropTargetType | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [sectionSortMap, setSectionSortMap] = useState<Record<string, 'desc' | 'asc'>>({});
+  const [hasBucket, setHasBucket] = useState<boolean>(true);
   
   // Add state for the delete confirmation dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -221,10 +278,18 @@ export const BucketGridView = ({
   const fetchDestinations = async () => {
     try {
       const buckets = await apiService.getPublishDestinations();
+      
+      // Set destinations list
       setDestinations(buckets.map(bucket => ({
         id: bucket.id,
-        name: bucket.name || bucket.id
+        name: bucket.name || bucket.id,
+        headless: bucket.headless || false,
+        has_bucket: bucket.has_bucket || false
       })));
+      
+      // Set hasBucket state for current destination
+      const currentDest = buckets.find(d => d.id === destination);
+      setHasBucket(currentDest?.has_bucket !== false);
     } catch (error) {
       console.error('Error fetching destinations:', error);
       toast.error('Failed to fetch destinations');
@@ -235,6 +300,58 @@ export const BucketGridView = ({
     setLoading(true);
     setError(null);
     try {
+      // Check if the current destination has a bucket
+      const currentDest = await apiService.getPublishDestinations();
+      const destInfo = currentDest.find(d => d.id === destination);
+      const hasDestBucket = destInfo?.has_bucket !== false;
+      
+      // Update hasBucket state
+      setHasBucket(hasDestBucket);
+      
+      // If this destination has no bucket, ONLY use getPublishedContent API
+      if (!hasDestBucket) {
+        console.log(`Destination ${destination} does not have a bucket, using getPublishedContent API`);
+        
+        // NEVER call getBucketDetails for bucketless destinations - use dedicated published content API
+        const publishedContent = await apiService.getPublishedContent(destination);
+        
+        // Set empty bucket data with only published content
+        setBucketDetails({
+          name: destInfo?.name || destination,
+          count: 0,
+          favorites_count: 0,
+          size_mb: 0,
+          last_modified: '',
+          published: publishedContent.published,
+          published_at: publishedContent.publishedAt,
+          raw_url: publishedContent.raw_url,
+          thumbnail_url: publishedContent.thumbnail_url
+        });
+        
+        setBucketImages([]);
+        
+        // Find the published image if it exists
+        if (publishedContent.published && (publishedContent.raw_url || publishedContent.thumbnail_url)) {
+          // Create a placeholder published image
+          const publishedImage = {
+            id: publishedContent.published,
+            url: publishedContent.raw_url || '',
+            thumbnail_url: publishedContent.thumbnail_url || '',
+            metadata: {},
+            created_at: 0
+          };
+          
+          console.log('Using published image from API:', publishedImage);
+          setCurrentPublishedImage(publishedImage);
+        } else {
+          setCurrentPublishedImage(null);
+        }
+        
+        setLoading(false);
+        return;
+      }
+      
+      // Only for destinations WITH buckets, proceed with normal getBucketDetails logic
       const details: any = await apiService.getBucketDetails(destination);
       if (details.error) {
         throw new Error(details.error);
@@ -271,7 +388,7 @@ export const BucketGridView = ({
         size_mb: details.size_mb || 0,
         last_modified: details.last_modified || '',
         published: details.published,
-        published_at: details.published_at,
+        published_at: details.publishedAt,
         raw_url: details.raw_url,
         thumbnail_url: details.thumbnail_url
       });
@@ -325,6 +442,8 @@ export const BucketGridView = ({
       isFavourite: !!img.metadata?.favorite,
       mediaType: img.url.toLowerCase().match(/\.mp4|\.webm/) ? 'video' : 'image',
       raw_url: img.raw_url || img.url,
+      metadata: img.metadata,
+      bucketId: destination,
     }));
 
     const clickedIdx = bucketImages.findIndex(i => i.id === image.id);
@@ -684,6 +803,9 @@ export const BucketGridView = ({
     createdAt: img.created_at ? new Date(img.created_at * 1000).toISOString() : '',
     isFavourite: !!img.metadata?.favorite,
     mediaType: isVideo(img.id) ? 'video' : 'image',
+    raw_url: img.raw_url,
+    metadata: img.metadata,
+    bucketId: destination,
   });
 
   const handleFavouriteOrderChange = (newOrder: string[]) => {
@@ -1426,15 +1548,13 @@ export const BucketGridView = ({
                   window.dispatchEvent(event);
                 }
               }}
-              publishDestinations={destinations.map(d => {
-                // Find in the destinations list to determine if it's headless
-                const dest = destinations.find(dest => dest.id === d.id);
-                return {
+              publishDestinations={destinations
+                .filter(d => !d.headless) // Filter out headless destinations
+                .map(d => ({
                   id: d.id,
                   name: d.name,
-                  headless: dest ? dest.id === 'headless' : false, // Just a simple check - update with real logic
-                };
-              })}
+                  headless: false // Already filtered out headless ones
+                }))}
               bucketId={destination}
               sectionVariant={section.variant}
             />
@@ -1555,6 +1675,9 @@ export const BucketGridView = ({
 
   // Create a PublishedImageDroppable component
   const PublishedImageDroppable = ({ currentImage }: { currentImage: BucketImage | null }) => {
+    const { open: openLoope } = useLoopeView();
+    const [isLoadingPublished, setIsLoadingPublished] = useState(false);
+    
     // Create a droppable area for publishing
     const { setNodeRef, isOver } = useDroppable({
       id: DROP_ZONES.PUBLISHED,
@@ -1562,6 +1685,84 @@ export const BucketGridView = ({
         type: DropTargetType.PUBLISH
       }
     });
+
+    // Handle click to directly open Loope view with all published images
+    const handleOpenLoopeView = useCallback(async () => {
+      if (isLoadingPublished) return; // Prevent multiple clicks
+      
+      setIsLoadingPublished(true);
+      try {
+        // Get all destinations first
+        const allDestinations = await apiService.getPublishDestinations();
+        
+        // Filter out headless destinations - they should not be part of published view
+        const visibleDestinations = allDestinations.filter(dest => !dest.headless);
+        
+        const publishedImages: ImageItem[] = [];
+        
+        // Fetch published content for each destination sequentially
+        for (const dest of visibleDestinations) {
+          try {
+            // Use direct API call to get full metadata
+            const response = await fetch(`${apiService.getApiUrl()}/published/${dest.id}`);
+            if (!response.ok) continue;
+            
+            const data = await response.json();
+            if (!data.published) continue;
+            
+            publishedImages.push({
+              id: `${dest.id}:${data.published}`,
+              urlFull: data.raw_url || '',
+              urlThumb: data.thumbnail_url || data.raw_url || '',
+              promptKey: data.meta?.prompt || '',
+              seed: data.meta?.seed || 0,
+              createdAt: data.published_at || new Date().toISOString(),
+              isFavourite: false,
+              mediaType: (data.raw_url || '').toLowerCase().match(/\.mp4|\.webm/) ? 'video' : 'image',
+              bucketId: dest.id,
+              destinationName: dest.name || dest.id,
+              metadata: data.meta || {},
+              isPublished: true,
+              disableFavorite: true
+            });
+          } catch (error) {
+            console.error(`Error fetching published content for ${dest.id}:`, error);
+          }
+        }
+        
+        // If we found any published images, open the Loope view
+        if (publishedImages.length > 0) {
+          // Find the index of the current destination
+          const currentIndex = publishedImages.findIndex(img => img.bucketId === destination);
+          const validIndex = currentIndex >= 0 ? currentIndex : 0;
+          
+          // Create title generator function for dynamic titles when swiping
+          const getTitleForPublishedImage = (img: ImageItem, idx: number, total: number) => {
+            return `Currently published - ${img.destinationName} (${idx + 1}/${total})`;
+          };
+          
+          // Open Loope view with the initial title
+          const initialTitle = getTitleForPublishedImage(
+            publishedImages[validIndex], 
+            validIndex, 
+            publishedImages.length
+          );
+          
+          // Now we can keep looping since we fixed the core issue
+          const options = { loop: true };
+          
+          // Open the Loope view with the published images
+          openLoope(publishedImages, validIndex, initialTitle, options);
+        } else {
+          toast.error('No published images found');
+        }
+      } catch (error) {
+        console.error('Error fetching published images:', error);
+        toast.error('Failed to load published images');
+      } finally {
+        setIsLoadingPublished(false);
+      }
+    }, [destination, openLoope, isLoadingPublished]);
 
     // If no current image, don't render a drop target
     if (!currentImage || headless) return null;
@@ -1574,9 +1775,17 @@ export const BucketGridView = ({
         ref={setNodeRef}
         className={`relative w-24 h-24 rounded-md overflow-hidden bg-black/10 flex-shrink-0 transition-all
           ${isOver ? 'ring-2 ring-primary ring-offset-2 shadow-lg' : ''}
-          ${activeId ? 'cursor-copy' : ''}
+          ${activeId ? 'cursor-copy' : 'cursor-pointer'}
         `}
+        onClick={handleOpenLoopeView}
+        title="Click to view all published images"
       >
+        {isLoadingPublished && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-10">
+            <RefreshCw className="h-5 w-5 text-white animate-spin" />
+          </div>
+        )}
+        
         {imageUrl ? (
           <img 
             src={imageUrl} 
@@ -1603,6 +1812,56 @@ export const BucketGridView = ({
             <span className="text-xs">Drop to publish</span>
           </div>
         )}
+        
+        {/* Small indicator to show it's clickable when not dragging */}
+        {!activeId && (
+          <div className="absolute bottom-1 right-1 bg-black/50 rounded-full p-0.5">
+            <Maximize2 className="h-3 w-3 text-white" />
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Properly handle different view states in the main content area based on bucket properties
+  const renderContent = () => {
+    // Show loading spinner if loading
+    if (loading || externalLoading) {
+      return (
+        <div className="flex justify-center items-center h-full">
+          <RefreshCw className="h-8 w-8 animate-spin opacity-50" />
+        </div>
+      );
+    }
+    
+    // For destinations without buckets, return empty content since the published image is already shown in the top panel
+    if (!hasBucket) {
+      return null;
+    }
+    
+    // For destinations with buckets but no images
+    if (sections.length === 0) {
+      return (
+        <div className="flex flex-col justify-center items-center h-full p-6">
+          <ImageIcon className="h-12 w-12 mb-4 opacity-20" />
+          <p className="text-lg font-medium mb-2">No images found</p>
+          <p className="text-sm text-muted-foreground mb-4">
+            Upload some images to get started.
+          </p>
+          <Button variant="secondary" onClick={() => setShowUploadModal(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Upload Images
+          </Button>
+        </div>
+      );
+    }
+    
+    // For destinations with buckets and images
+    return (
+      <div className="flex flex-col gap-2 overflow-y-auto items-start">
+        {sections.map((section) => (
+          <SectionDroppable key={section.id} section={section} />
+        ))}
       </div>
     );
   };
@@ -1633,41 +1892,46 @@ export const BucketGridView = ({
                   />
                   <span className="ml-1 hidden sm:inline">Refresh</span>
                 </Button>
-                <Button 
-                  size="sm" 
-                  variant="secondary"
-                  onClick={() => setShowUploadModal(true)}
-                  className="flex-nowrap h-8"
-                >
-                  <Upload className="h-4 w-4" />
-                  <span className="ml-1 hidden sm:inline">Upload</span>
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline" className="flex-nowrap h-8">
-                      <Settings className="h-4 w-4" />
-                      <span className="ml-1 hidden sm:inline">Maintenance</span>
+                {/* Only show upload/maintenance for destinations with buckets */}
+                {hasBucket && (
+                  <>
+                    <Button 
+                      size="sm" 
+                      variant="secondary"
+                      onClick={() => setShowUploadModal(true)}
+                      className="flex-nowrap h-8"
+                    >
+                      <Upload className="h-4 w-4" />
+                      <span className="ml-1 hidden sm:inline">Upload</span>
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuItem onClick={handlePurgeNonFavorites}>
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Purge Non-Favorites
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleReindex}>
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Re-Index
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleExtractJson}>
-                      <Copy className="h-4 w-4 mr-2" />
-                      Extract JSON
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleOpenSchedulerPage}>
-                      <Settings className="h-4 w-4 mr-2" />
-                      Scheduler
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="outline" className="flex-nowrap h-8">
+                          <Settings className="h-4 w-4" />
+                          <span className="ml-1 hidden sm:inline">Maintenance</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem onClick={handlePurgeNonFavorites}>
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Purge Non-Favorites
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleReindex}>
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Re-Index
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleExtractJson}>
+                          <Copy className="h-4 w-4 mr-2" />
+                          Extract JSON
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleOpenSchedulerPage}>
+                          <Settings className="h-4 w-4 mr-2" />
+                          Scheduler
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </>
+                )}
               </div>
             </div>
             
@@ -1696,30 +1960,8 @@ export const BucketGridView = ({
         </Alert>
       )}
       
-      {/* Bucket content */}
-      {loading || externalLoading ? (
-        <div className="flex justify-center items-center h-full">
-          <RefreshCw className="h-8 w-8 animate-spin opacity-50" />
-        </div>
-      ) : sections.length === 0 ? (
-        <div className="flex flex-col justify-center items-center h-full p-6">
-          <ImageIcon className="h-12 w-12 mb-4 opacity-20" />
-          <p className="text-lg font-medium mb-2">No images found</p>
-          <p className="text-sm text-muted-foreground mb-4">
-            Upload some images to get started.
-          </p>
-          <Button variant="secondary" onClick={() => setShowUploadModal(true)}>
-            <Upload className="h-4 w-4 mr-2" />
-            Upload Images
-          </Button>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2 overflow-y-auto items-start">
-          {sections.map((section) => (
-            <SectionDroppable key={section.id} section={section} />
-          ))}
-        </div>
-      )}
+      {/* Content area with proper separation of concerns */}
+      {renderContent()}
       
       {/* Tabbed upload modal */}
       <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
