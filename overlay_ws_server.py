@@ -1,7 +1,7 @@
 import asyncio
 import json
 import websockets
-from utils.logger import info, error, warning, debug
+from utils.logger import debug, warning, error, info
 
 DEBUGGING = False
 
