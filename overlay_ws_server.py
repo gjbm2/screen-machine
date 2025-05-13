@@ -61,14 +61,14 @@ async def handler(ws):
 
     finally:
         connected_clients.discard(ws)
-        error(f"❌ Disconnected: {ws.remote_address}")
+        print(f"❌ Disconnected: {ws.remote_address}")
 
 # Send overlay message to all connected clients
 async def send_overlay_to_clients(data: dict):
     if DEBUGGING: print("📤 Preparing to broadcast overlay:", data)
 
     if not connected_clients:
-        warning("⚠️ No connected clients to send to.")
+        print("⚠️ No connected clients to send to.")
         return
 
     msg = json.dumps(data)
@@ -78,12 +78,12 @@ async def send_overlay_to_clients(data: dict):
         await asyncio.gather(*(ws.send(msg) for ws in connected_clients))
         if DEBUGGING: print(f"✅ Sent overlay to {len(connected_clients)} client(s).")
     except Exception as e:
-        error(f"❌ Error sending message to clients: {e}")
+        print(f"❌ Error sending message to clients: {e}")
 
 # WebSocket server entry point
 async def ws_main():
     async with websockets.serve(handler, "0.0.0.0", 8765, compression=None):
-        error("🌐 WebSocket server running on ws://0.0.0.0:8765")
+        print("🌐 WebSocket server running on ws://0.0.0.0:8765")
         await asyncio.Future()  # run forever
 
 # Launch WebSocket server

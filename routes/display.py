@@ -58,7 +58,7 @@ def send_overlay(
     log_message = {**data}
     if "html" in log_message and isinstance(log_message["html"], str) and len(log_message["html"]) > 500:
         log_message["html"] = f"{log_message['html'][:500]}... [truncated, {len(data['html'])} chars]"
-    #debug(f"Sending overlay message: {log_message}")
+    debug(f"Sending overlay message: {log_message}")
 
     # Get the running event loop or create one if needed
     try:

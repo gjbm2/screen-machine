@@ -13,7 +13,7 @@ from routes.scheduler_handlers import (
     handle_sleep, handle_wait, handle_unload, handle_device_media_sync,
     handle_device_wake, handle_device_sleep, handle_set_var, handle_stop,
     handle_random_choice, handle_generate, handle_animate, handle_display,
-    handle_import_var, handle_export_var, handle_reason
+    handle_import_var, handle_export_var, handle_reason, handle_log
 )
 from routes.scheduler_utils import (
     log_schedule, default_context, copy_context, 
@@ -166,7 +166,13 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
             if trigger["date"] == date_str:
                 matched_any_trigger = True
                 # Process time schedules for this date
-                matched_schedules = process_time_schedules(trigger.get("scheduled_actions", []), now, minute_of_day, publish_destination)
+                matched_schedules = process_time_schedules(
+                    trigger.get("scheduled_actions", []), 
+                    now, 
+                    minute_of_day, 
+                    publish_destination,
+                    apply_grace_period=include_initial_actions  # Only apply grace period for initial run
+                )
                 if matched_schedules:
                     found_actions_to_execute = True
                     message = f"Matched date trigger for {date_str} with actions to execute"
@@ -194,7 +200,8 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                 matched_any_trigger = True  # We did match at least one trigger today
                 # Process time schedules for this day
                 matched_schedules = process_time_schedules(
-                    trigger.get("scheduled_actions", []), now, minute_of_day, publish_destination
+                    trigger.get("scheduled_actions", []), now, minute_of_day, publish_destination,
+                    apply_grace_period=include_initial_actions  # Only apply grace period for initial run
                 )
                 if matched_schedules:
                     found_actions_to_execute = True
@@ -300,6 +307,8 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
             result = handle_export_var(processed_instruction, context, now, output, publish_destination) or False  # Ensure boolean
         elif action == "reason":
             result = handle_reason(processed_instruction, context, now, output, publish_destination)
+        elif action == "log":
+            result = handle_log(processed_instruction, context, now, output, publish_destination)
         else:
             error_msg = f"Unknown action: {action}"
             output.append(f"[{now.strftime('%H:%M')}] {error_msg}")

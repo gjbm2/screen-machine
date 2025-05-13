@@ -624,6 +624,32 @@
             "action"
           ],
           "additionalProperties": false
+        },
+        {
+          "title": "Log Message",
+          "description": "Output a message to the logs for debugging purposes.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "log",
+              "default": "log",
+              "description": "Fixed to 'log' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "message": {
+              "type": "string",
+              "title": "Message",
+              "description": "The message to output to logs. Supports Jinja expressions like {{ variable_name }}."
+            }
+          },
+          "required": [
+            "action",
+            "message"
+          ],
+          "additionalProperties": false
         }
       ]
     },

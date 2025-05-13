@@ -428,7 +428,17 @@ export const BucketGridView = ({
   };
 
   // Access Loope view opener once
-  const { open: openLoope } = useLoopeView();
+  let openLoope;
+  try {
+    const loopeContext = useLoopeView();
+    openLoope = loopeContext.open;
+  } catch (error) {
+    console.warn("LoopeView context not available:", error);
+    // Provide a fallback function that won't crash
+    openLoope = () => {
+      console.warn("Loope view can't be opened - context not available");
+    };
+  }
 
   const handleImageClick = (image: BucketImage) => {
     // Build list of ImageItems for viewer
@@ -447,7 +457,7 @@ export const BucketGridView = ({
     }));
 
     const clickedIdx = bucketImages.findIndex(i => i.id === image.id);
-    if (clickedIdx !== -1) {
+    if (clickedIdx !== -1 && openLoope) {
       const contextTitle = `${destinationName || destination}`;
       openLoope(imageItems, clickedIdx, contextTitle);
     }

@@ -1,15 +1,12 @@
 {
   "schedule_stack": [
     {
-      "final_actions": {
-        "instructions_block": []
-      },
       "initial_actions": {
         "instructions_block": []
       },
-      "prevent_unload": true,
       "triggers": [
         {
+          "type": "day_of_week",
           "days": [
             "Monday",
             "Tuesday",
@@ -24,6 +21,10 @@
               "time": "00:01",
               "trigger_actions": {
                 "instructions_block": [
+                  {
+                    "action": "log",
+                    "message": "** Set the theme of the day **"
+                  },
                   {
                     "action": "reason",
                     "history_var": "history_var",
@@ -64,10 +65,67 @@
                 ]
               }
             }
+          ]
+        },
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
           ],
-          "type": "day_of_week"
+          "scheduled_actions": [
+            {
+              "time": "01:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "log",
+                    "message": "** Swap A and B themes ** "
+                  },
+                  {
+                    "action": "set_var",
+                    "input": {
+                      "value": "{{ b_theme }}"
+                    },
+                    "var": "_temp"
+                  },
+                  {
+                    "action": "set_var",
+                    "input": {
+                      "value": "{{ a_theme }}"
+                    },
+                    "var": "b_theme"
+                  },
+                  {
+                    "action": "set_var",
+                    "input": {
+                      "value": "{{ _temp }}"
+                    },
+                    "var": "a_theme"
+                  },
+                  {
+                    "action": "set_var",
+                    "input": {},
+                    "var": "_temp"
+                  }
+                ]
+              },
+              "repeat_schedule": {
+                "every": "2"
+              }
+            }
+          ]
         }
-      ]
+      ],
+      "final_actions": {
+        "instructions_block": []
+      },
+      "prevent_unload": true
     }
   ],
   "context_stack": [
@@ -199,15 +257,13 @@
             "text_input": "The last seven days were: [{'timestamp': '2025-...",
             "explanation": "Theme-led approach focusing on contrasting dynamic conversations between natural environments and..."
           }
-        ]
+        ],
+        "_temp": "Conversations with the Ocean"
       },
       "publish_destination": "cloud"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-13T02:18:25.305358",
-  "last_trigger_executions": {
-    "92f765f04c5aeea59798bdd045e76ebe_2025-05-12": "2025-05-12T00:01:00.062130",
-    "92f765f04c5aeea59798bdd045e76ebe_2025-05-13": "2025-05-13T00:01:01.384103"
-  }
+  "last_updated": "2025-05-13T10:23:35.718566",
+  "last_trigger_executions": {}
 }
