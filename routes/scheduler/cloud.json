@@ -116,7 +116,7 @@
                 ]
               },
               "repeat_schedule": {
-                "every": "2"
+                "every": "45"
               }
             }
           ]
@@ -135,8 +135,8 @@
     },
     {
       "vars": {
-        "a_theme": "Conversations with the Ocean",
-        "b_theme": "Dialogues in the Desert",
+        "a_theme": "Dialogues in the Desert",
+        "b_theme": "Conversations with the Ocean",
         "style": "Zhang Daqian\u2019s splash ink style",
         "guidance": "Focus on pairing subjects that interact dynamically with their environments\u2014choose distinct oceanscapes and desert scenes, leveraging Daqian\u2019s expressive, fluid ink techniques to capture mood and movement, while ensuring variety and originality from recent image histories.",
         "history_var": [
@@ -257,13 +257,12 @@
             "text_input": "The last seven days were: [{'timestamp': '2025-...",
             "explanation": "Theme-led approach focusing on contrasting dynamic conversations between natural environments and..."
           }
-        ],
-        "_temp": "Conversations with the Ocean"
+        ]
       },
       "publish_destination": "cloud"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-13T10:23:35.718566",
+  "last_updated": "2025-05-13T10:28:51.374712",
   "last_trigger_executions": {}
 }
