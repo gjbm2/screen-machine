@@ -82,7 +82,9 @@
     "@rjsf/core": "^5.13.1",
     "@rjsf/mui": "^5.13.1",
     "@rjsf/validator-ajv8": "^5.13.1",
-    "@dnd-kit/modifiers": "^9.0.0"
+    "@dnd-kit/modifiers": "^9.0.0",
+    "react-zoom-pan-pinch": "^3.0.4",
+    "react-swipeable": "^7.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

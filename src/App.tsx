@@ -11,6 +11,7 @@ import SchemaEdit from './pages/SchemaEdit';
 import SchemaDynamicForm from './pages/SchemaDynamicForm';
 import Scheduler from './pages/scheduler.tsx';
 import { ReferenceImagesProvider } from "./contexts/ReferenceImagesContext";
+import { LoopeViewProvider } from "@/contexts/LoopeViewContext";
 
 const queryClient = new QueryClient();
 
@@ -18,18 +19,20 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <ReferenceImagesProvider>
-      <Toaster />
-      <Sonner />
-      <Routes>
-        <Route path="/" element={<Index />} />
-        <Route path="/display/:screenId" element={<DisplayPage />} />
-        <Route path="/display" element={<Display />} />
-        <Route path="/schema-edit" element={<SchemaEdit />} />
-        <Route path="/schema-dynamic-form" element={<SchemaDynamicForm />} />
-        <Route path="/scheduler" element={<Scheduler />} />
-        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+        <LoopeViewProvider>
+          <Toaster />
+          <Sonner />
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/display/:screenId" element={<DisplayPage />} />
+            <Route path="/display" element={<Display />} />
+            <Route path="/schema-edit" element={<SchemaEdit />} />
+            <Route path="/schema-dynamic-form" element={<SchemaDynamicForm />} />
+            <Route path="/scheduler" element={<Scheduler />} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </LoopeViewProvider>
       </ReferenceImagesProvider>
     </TooltipProvider>
   </QueryClientProvider>
