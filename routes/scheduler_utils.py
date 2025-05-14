@@ -524,7 +524,7 @@ def throw_event(scope: str, key: str, ttl: Union[str, int] = "60s",
     Returns:
         Dict with status and details
     """
-    global active_events, event_history
+    global active_events, group_events, event_history
     
     now = datetime.utcnow()
     
@@ -554,7 +554,7 @@ def throw_event(scope: str, key: str, ttl: Union[str, int] = "60s",
         created_at=now
     )
     
-    results = {
+    result = {
         "status": "queued",
         "key": key,
         "active_from": active_from.isoformat(),
@@ -562,73 +562,61 @@ def throw_event(scope: str, key: str, ttl: Union[str, int] = "60s",
         "destinations": []
     }
     
-    def _store_to_dest(d_id):
-        """Store event to a specific destination"""
-        # Initialize destination's events if needed
-        if d_id not in active_events:
-            active_events[d_id] = {}
-            
-        if key not in active_events[d_id]:
-            active_events[d_id][key] = deque()
-            
-        # Add to queue
-        active_events[d_id][key].append(entry)
-        
-        # Add to history
-        if d_id not in event_history:
-            event_history[d_id] = []
-            
-        # Keep history at manageable size
-        if len(event_history[d_id]) >= MAX_EVENT_HISTORY:
-            event_history[d_id].pop(0)
-            
-        event_history[d_id].append(entry)
-        
-        # Add to results
-        results["destinations"].append(d_id)
-        
-        # Wake up scheduler (if destination is running)
-        if d_id in running_schedulers:
-            try:
-                # This is a threadpool executor future, not an asyncio future
-                # so there's no loop.call_soon_threadsafe
-                info(f"Notifying scheduler for {d_id} about new event {key}")
-            except Exception as e:
-                error(f"Error waking scheduler for {d_id}: {str(e)}")
-        
     if scope == "dest":
         if not dest_id:
-            return {"status": "error", "message": "Missing destination ID for dest scope"}
-        
-        _store_to_dest(dest_id)
+            return {"status": "error", "message": "dest_id required for scope='dest'"}
             
+        # Store in destination events
+        if dest_id not in active_events:
+            active_events[dest_id] = {}
+        if key not in active_events[dest_id]:
+            active_events[dest_id][key] = []
+        active_events[dest_id][key].append(entry)
+        
+        # Add to history
+        if dest_id not in event_history:
+            event_history[dest_id] = []
+        event_history[dest_id].append(entry)
+        
+        result["destinations"].append(dest_id)
+        
     elif scope == "group":
         if not group_id:
-            return {"status": "error", "message": "Missing group ID for group scope"}
+            return {"status": "error", "message": "group_id required for scope='group'"}
             
-        destinations = get_destinations_for_group(group_id)
+        # Store in group events
+        if group_id not in group_events:
+            group_events[group_id] = {}
+        if key not in group_events[group_id]:
+            group_events[group_id][key] = []
+        group_events[group_id][key].append(entry)
         
-        if not destinations:
-            return {"status": "error", "message": f"No destinations found in group {group_id}"}
-            
-        # Always fan out to all destinations in the group
-        for d_id in destinations:
-            _store_to_dest(d_id)
-                
-        # Add group info to results for reference
-        results["group"] = group_id  # This is the key fix - ensure group ID is set in results
-            
+        result["group"] = group_id
+        result["cascade"] = False  # Group events don't cascade by default
+        
     elif scope == "global":
+        # Get all destinations
         destinations = all_destinations()
         
-        # Always fan out to all destinations
-        for d_id in destinations:
-            _store_to_dest(d_id)
+        # Store in each destination's events
+        for dest in destinations:
+            if dest not in active_events:
+                active_events[dest] = {}
+            if key not in active_events[dest]:
+                active_events[dest][key] = []
+            active_events[dest][key].append(entry)
+            
+            # Add to history
+            if dest not in event_history:
+                event_history[dest] = []
+            event_history[dest].append(entry)
+            
+            result["destinations"].append(dest)
             
     else:
         return {"status": "error", "message": f"Invalid scope: {scope}"}
         
-    return results
+    return result
 
 @thread_safe
 def pop_next_event(dest_id: str, event_key: str, now: datetime = None) -> Optional[EventEntry]:
@@ -733,12 +721,12 @@ def get_events_for_destination(dest_id: str, include_group_events: bool = True) 
     
     Args:
         dest_id: Destination ID
-        include_group_events: Parameter retained for backward compatibility but no longer used
+        include_group_events: Whether to include events from groups this destination belongs to
         
     Returns:
         Dict with queue and history
     """
-    global active_events, event_history
+    global active_events, group_events, event_history
     
     now = datetime.utcnow()
     result = {
@@ -767,6 +755,30 @@ def get_events_for_destination(dest_id: str, include_group_events: bool = True) 
     
     # Add destination events to queue
     result["queue"].extend(dest_events)
+    
+    # Get group events for this destination
+    if include_group_events:
+        from routes.scheduler_utils import get_groups_for_destination
+        dest_groups = get_groups_for_destination(dest_id)
+        
+        for group_id in dest_groups:
+            if group_id in group_events:
+                for key, event_queue in group_events[group_id].items():
+                    # Filter out expired events
+                    active_entries = [entry for entry in event_queue if entry.expires > now]
+                    if active_entries:
+                        for entry in active_entries:
+                            result["queue"].append({
+                                "key": entry.key,
+                                "display_name": entry.display_name,
+                                "scope": "group",
+                                "group": group_id,
+                                "active_from": entry.active_from.isoformat(),
+                                "expires": entry.expires.isoformat(),
+                                "has_payload": entry.payload is not None,
+                                "single_consumer": entry.single_consumer,
+                                "created_at": entry.created_at.isoformat()
+                            })
     
     # Add history
     if dest_id in event_history:
@@ -975,9 +987,26 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
         except Exception as e:
             error(f"Error loading scheduler state for {publish_destination}: {str(e)}")
             import traceback
-            error(traceback.format_exc())
+            error(f"Error traceback: {traceback.format_exc()}")
             
-    return {}
+    # Create a new state with empty stacks if loading failed or file doesn't exist
+    state = {
+        "schedule_stack": [],
+        "context_stack": [],
+        "state": "stopped",
+        "last_trigger_executions": {},
+        "active_events": {},
+        "event_history": [],
+        "last_updated": datetime.now().isoformat()
+    }
+    
+    # Save the initial state to disk
+    try:
+        save_scheduler_state(publish_destination, state)
+    except Exception as e:
+        error(f"Error saving initial scheduler state for {publish_destination}: {str(e)}")
+    
+    return state
     
 @thread_safe
 def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None) -> None:
