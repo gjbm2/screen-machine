@@ -1,7 +1,8 @@
 import pytest
 from datetime import datetime
 from routes.scheduler import resolve_schedule
-from routes.scheduler_utils import active_events
+from routes.scheduler_utils import active_events, EventEntry
+from collections import deque
 
 def test_event_trigger_activation(clean_scheduler_state):
     """Test that event triggers activate when events are present."""
@@ -26,10 +27,19 @@ def test_event_trigger_activation(clean_scheduler_state):
     if dest_id not in active_events:
         active_events[dest_id] = {}
     
-    active_events[dest_id]["UserInteractedWithScreen"] = datetime.now()
+    # Create an event using the new EventEntry format
+    now = datetime.now()
+    event_entry = EventEntry(
+        key="UserInteractedWithScreen",
+        active_from=now,
+        expires=now,
+        display_name="User Interaction"
+    )
+    
+    # Initialize event queue for this event key
+    active_events[dest_id]["UserInteractedWithScreen"] = deque([event_entry])
     
     # Resolve the schedule
-    now = datetime.now()
     instructions = resolve_schedule(test_schedule, now, dest_id)
     
     # Verify instructions were generated
@@ -38,7 +48,8 @@ def test_event_trigger_activation(clean_scheduler_state):
     assert instructions[0]["var"] == "triggered"
     
     # Verify the event was consumed (removed)
-    assert "UserInteractedWithScreen" not in active_events[dest_id]
+    assert "UserInteractedWithScreen" in active_events[dest_id]
+    assert len(active_events[dest_id]["UserInteractedWithScreen"]) == 0
 
 def test_multiple_event_triggers(clean_scheduler_state):
     """Test that multiple event triggers can be defined and used."""
@@ -72,12 +83,29 @@ def test_multiple_event_triggers(clean_scheduler_state):
     if dest_id not in active_events:
         active_events[dest_id] = {}
     
-    # Add both events
-    active_events[dest_id]["UserInteractedWithScreen"] = datetime.now()
-    active_events[dest_id]["NewSlackMessageDetected"] = datetime.now()
+    # Add both events using the new EventEntry format
+    now = datetime.now()
+    
+    # Initialize event queues
+    active_events[dest_id]["UserInteractedWithScreen"] = deque([
+        EventEntry(
+            key="UserInteractedWithScreen",
+            active_from=now,
+            expires=now,
+            display_name="User Interaction"
+        )
+    ])
+    
+    active_events[dest_id]["NewSlackMessageDetected"] = deque([
+        EventEntry(
+            key="NewSlackMessageDetected",
+            active_from=now,
+            expires=now,
+            display_name="Slack Message"
+        )
+    ])
     
     # Resolve the schedule
-    now = datetime.now()
     instructions = resolve_schedule(test_schedule, now, dest_id)
     
     # Verify both sets of instructions were generated
@@ -89,8 +117,10 @@ def test_multiple_event_triggers(clean_scheduler_state):
     assert "slack_message" in vars_to_set
     
     # Verify events were consumed
-    assert "UserInteractedWithScreen" not in active_events[dest_id]
-    assert "NewSlackMessageDetected" not in active_events[dest_id]
+    assert "UserInteractedWithScreen" in active_events[dest_id]
+    assert "NewSlackMessageDetected" in active_events[dest_id]
+    assert len(active_events[dest_id]["UserInteractedWithScreen"]) == 0
+    assert len(active_events[dest_id]["NewSlackMessageDetected"]) == 0
 
 def test_event_trigger_priority_over_date_time(clean_scheduler_state):
     """Test that event triggers take priority regardless of other triggers."""
@@ -149,7 +179,15 @@ def test_event_trigger_priority_over_date_time(clean_scheduler_state):
     if dest_id not in active_events:
         active_events[dest_id] = {}
     
-    active_events[dest_id]["Poke"] = now
+    # Add event using the new EventEntry format
+    active_events[dest_id]["Poke"] = deque([
+        EventEntry(
+            key="Poke",
+            active_from=now,
+            expires=now,
+            display_name="Poke Event"
+        )
+    ])
     
     # Resolve the schedule
     instructions = resolve_schedule(test_schedule, now, dest_id)
@@ -164,7 +202,8 @@ def test_event_trigger_priority_over_date_time(clean_scheduler_state):
     assert event_triggered, "The event trigger should have generated instructions"
     
     # Verify the event was consumed
-    assert "Poke" not in active_events[dest_id]
+    assert "Poke" in active_events[dest_id]
+    assert len(active_events[dest_id]["Poke"]) == 0
 
 def test_no_matching_events(clean_scheduler_state):
     """Test behavior when there are event triggers but no matching events."""

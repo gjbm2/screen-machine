@@ -1,9 +1,10 @@
 import pytest
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from routes.scheduler import resolve_schedule, run_scheduler, start_scheduler, stop_scheduler, run_instruction
-from routes.scheduler_utils import active_events, get_current_context, scheduler_contexts_stacks, scheduler_schedule_stacks
+from routes.scheduler_utils import active_events, event_history, get_current_context, scheduler_contexts_stacks, scheduler_schedule_stacks, EventEntry
 import routes.scheduler_utils  # Add direct import for monkeypatching
+from collections import deque
 
 @pytest.fixture
 def setup_event():
@@ -11,16 +12,33 @@ def setup_event():
     dest_id = "test_dest"
     
     # Clear any existing events for this destination
-    active_events[dest_id] = {}
+    if dest_id in active_events:
+        active_events[dest_id] = {}
+    else:
+        active_events[dest_id] = {}
     
-    # Set a test event
-    active_events[dest_id]["TestEvent"] = datetime.now()
+    # Set a test event using the new EventEntry format
+    now = datetime.now()
+    event_entry = EventEntry(
+        key="TestEvent",
+        active_from=now,
+        expires=now + timedelta(seconds=60),
+        display_name="Test Event",
+        single_consumer=True,  # Make it single consumer to ensure it works properly in tests
+        created_at=now
+    )
+    
+    # Initialize the event queue
+    active_events[dest_id]["TestEvent"] = deque([event_entry])
+    
+    # Print debug info
+    print(f"Setup event TestEvent for {dest_id}: {active_events[dest_id]}")
     
     yield dest_id
     
-    # Clean up
-    if dest_id in active_events:
-        active_events[dest_id] = {}
+    # Clean up - clear ALL event state to avoid test interference
+    active_events.clear()
+    event_history.clear()
 
 @pytest.mark.asyncio
 async def test_resolve_and_execute_basic_schedule(clean_scheduler_state, test_schedule_basic):
@@ -69,8 +87,10 @@ async def test_schedule_with_event_trigger(clean_scheduler_state, test_schedule_
             
     assert found_event_instruction, "Event trigger instructions should be included"
     
-    # Event should be consumed (removed)
-    assert "TestEvent" not in active_events[dest_id]
+    # Event should be consumed (queue should be empty)
+    assert dest_id in active_events
+    assert "TestEvent" in active_events[dest_id]
+    assert len(active_events[dest_id]["TestEvent"]) == 0
 
 @pytest.mark.asyncio
 async def test_scheduler_run_with_final_actions(clean_scheduler_state, test_schedule_with_final):

@@ -8,12 +8,12 @@ import os
 import random
 import asyncio
 import threading
-from routes.utils import dict_substitute, build_schema_subs
+from routes.utils import dict_substitute, build_schema_subs, _load_json_once
 from routes.scheduler_handlers import (
     handle_sleep, handle_wait, handle_unload, handle_device_media_sync,
     handle_device_wake, handle_device_sleep, handle_set_var, handle_stop,
     handle_random_choice, handle_generate, handle_animate, handle_display,
-    handle_import_var, handle_export_var, handle_reason, handle_log
+    handle_import_var, handle_export_var, handle_reason, handle_log, handle_throw_event
 )
 from routes.scheduler_utils import (
     log_schedule, default_context, copy_context, 
@@ -122,14 +122,14 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
     
     if should_log:
         debug(f"Resolving schedule at {now}")
-    
+        
     # First check for important triggers
     important_trigger = get_next_important_trigger(publish_destination)
     if important_trigger:
         info(f"Running important trigger from {important_trigger['triggered_at']}")
         log_schedule(f"Executing important trigger that was scheduled at {important_trigger['triggered_at'].strftime('%H:%M')}", publish_destination, now)
         return extract_instructions(important_trigger.get("trigger_actions", {}))
-    
+        
     # Accumulate all instructions to execute
     all_instructions = []
     
@@ -139,27 +139,27 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
         info("Executing initial actions")
         log_schedule("Executing initial actions", publish_destination, now)
         all_instructions.extend(initial_instructions)
-    
+        
     # If there are no triggers, return just the initial actions
     if "triggers" not in schedule or not schedule["triggers"]:
         return all_instructions
-    
+        
     # Format date and time strings
     date_str = now.strftime("%-d-%b")  # e.g., 25-Dec
     day_str = now.strftime("%A")       # e.g., Friday
     time_str = now.strftime("%H:%M")   # e.g., 08:00
     minute_of_day = now.hour * 60 + now.minute
-
+    
     if should_log:
         debug(f"Current date: {date_str}, day: {day_str}, time: {time_str}, minute of day: {minute_of_day}")
-
+        
     # Track if we've matched any trigger
     matched_any_trigger = False
     found_actions_to_execute = False
     
     # Keep track of matched schedules to avoid duplicate processing
     processed_schedule_ids = set()
-    
+
     # First check all date triggers (these take precedence)
     for trigger in schedule.get("triggers", []):
         if trigger["type"] == "date" and "date" in trigger:
@@ -167,9 +167,9 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                 matched_any_trigger = True
                 # Process time schedules for this date
                 matched_schedules = process_time_schedules(
-                    trigger.get("scheduled_actions", []), 
-                    now, 
-                    minute_of_day, 
+                    trigger.get("scheduled_actions", []),
+                    now,
+                    minute_of_day,
                     publish_destination,
                     apply_grace_period=include_initial_actions  # Only apply grace period for initial run
                 )
@@ -178,7 +178,7 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                     message = f"Matched date trigger for {date_str} with actions to execute"
                     info(message)
                     log_schedule(message, publish_destination, now)
-                    
+
                     # Extract instructions from matched schedules
                     for matched_schedule in matched_schedules:
                         # Generate a unique ID for this schedule to avoid duplicates
@@ -200,7 +200,10 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                 matched_any_trigger = True  # We did match at least one trigger today
                 # Process time schedules for this day
                 matched_schedules = process_time_schedules(
-                    trigger.get("scheduled_actions", []), now, minute_of_day, publish_destination,
+                    trigger.get("scheduled_actions", []),
+                    now,
+                    minute_of_day,
+                    publish_destination,
                     apply_grace_period=include_initial_actions  # Only apply grace period for initial run
                 )
                 if matched_schedules:
@@ -209,7 +212,7 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                     info(message)
                     log_schedule(message, publish_destination, now)
                     
-                    # Extract instructions from matched schedules (only once per schedule)
+                    # Extract instructions from matched schedules
                     for matched_schedule in matched_schedules:
                         # Generate a unique ID for this schedule to avoid duplicates
                         schedule_id = id(matched_schedule)
@@ -221,29 +224,67 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                             all_instructions.extend(instructions)
                         else:
                             if should_log:
-                                debug("Skipping duplicate schedule in day_of_week trigger")
+                                debug(f"Skipping duplicate schedule in day_of_week trigger")
     
     # Check event triggers (these can match regardless of other triggers)
-    from routes.scheduler_utils import active_events
+    from routes.scheduler_utils import pop_next_event, active_events
+    
+    # Debug: Print all available events for this destination 
+    if publish_destination in active_events:
+        for evt_key, evt_queue in active_events[publish_destination].items():
+            debug(f"Available event key in {publish_destination}: {evt_key} with {len(evt_queue)} events")
+    
     for trigger in schedule.get("triggers", []):
+        debug(f"Processing trigger: {trigger.get('type')} - {trigger.get('value', 'no value')}")
         if trigger["type"] == "event" and "value" in trigger:
-            event_value = trigger["value"]
+            event_key = trigger["value"]
+            debug(f"Looking for event trigger '{event_key}' in {publish_destination}")
+            
             # Check if this event is active for this destination
-            if (publish_destination in active_events and 
-                event_value in active_events[publish_destination]):
-                matched_any_trigger = True
-                event_time = active_events[publish_destination][event_value]
-                # Clear the event after it's been handled
-                del active_events[publish_destination][event_value]
-                message = f"Matched event trigger: {event_value}"
-                info(message)
-                log_schedule(message, publish_destination, now)
-                # Add event trigger actions
-                event_instructions = extract_instructions(trigger.get("trigger_actions", {}))
-                if should_log:
+            try:
+                # Print what we have in active_events directly
+                if publish_destination in active_events and event_key in active_events[publish_destination]:
+                    debug(f"Found event queue for '{event_key}' with {len(active_events[publish_destination][event_key])} entries")
+                    for i, evt in enumerate(active_events[publish_destination][event_key]):
+                        debug(f"  Event {i}: active_from={evt.active_from}, expires={evt.expires}, now={now}")
+                
+                # Try getting an event
+                event_entry = pop_next_event(publish_destination, event_key, now)
+                
+                if event_entry:
+                    matched_any_trigger = True
+                    message = f"Matched event trigger: {event_key}"
+                    if event_entry.payload:
+                        message += f" with payload {event_entry.payload}"
+                    info(message)
+                    log_schedule(message, publish_destination, now)
+                    
+                    # Get the trigger actions
+                    trigger_actions = trigger.get("trigger_actions", {})
+                    debug(f"Trigger actions: {trigger_actions}")
+                    
+                    # Extract instructions from trigger_actions
+                    event_instructions = extract_instructions(trigger_actions)
                     debug(f"Extracted {len(event_instructions)} instructions from event trigger")
-                all_instructions.extend(event_instructions)
-                found_actions_to_execute = True
+                    if not event_instructions:
+                        debug(f"WARNING: No instructions found in event trigger actions: {trigger_actions}")
+                    
+                    # Add to accumulated instructions
+                    all_instructions.extend(event_instructions)
+                    found_actions_to_execute = True
+                    
+                    # If the queue is empty now, clean it up completely
+                    if publish_destination in active_events and event_key in active_events[publish_destination]:
+                        if len(active_events[publish_destination][event_key]) == 0:
+                            # Event triggered, deliberately leave empty queue
+                            pass
+                else:
+                    debug(f"No active events found for '{event_key}'")
+            except Exception as e:
+                error_msg = f"Error processing event trigger {event_key}: {str(e)}"
+                error(error_msg)
+                import traceback
+                error(f"Traceback: {traceback.format_exc()}")
 
     # If no instructions were generated by ANY trigger, run final actions (if any)
     if not found_actions_to_execute:
@@ -309,6 +350,8 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
             result = handle_reason(processed_instruction, context, now, output, publish_destination)
         elif action == "log":
             result = handle_log(processed_instruction, context, now, output, publish_destination)
+        elif action == "throw_event" or action == "throw":
+            result = handle_throw_event(processed_instruction, context, now, output, publish_destination)
         else:
             error_msg = f"Unknown action: {action}"
             output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
@@ -518,10 +561,12 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
         error(traceback.format_exc())
 
 def initialize_schedulers_from_disk():
-    """Initialize scheduler states from disk on startup."""
-    from routes.utils import _load_json_once
+    """Initialize scheduler state from disk.
     
-    debug("Starting scheduler initialization from disk")
+    This includes loading all saved scheduler states and restoring any running schedulers.
+    """
+    info("Initializing schedulers from disk")
+    schedulers_dir = os.path.join(os.getcwd(), "data", "schedulers")
     
     try:
         # Get the list of publish destinations

@@ -650,6 +650,88 @@
             "message"
           ],
           "additionalProperties": false
+        },
+        {
+          "title": "Throw Event",
+          "description": "Throw an event for the scheduler to process.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "throw_event",
+              "default": "throw_event",
+              "uniforms": {
+                "hidden": true
+              },
+              "description": "Identifies this instruction as an event-throwing operation."
+            },
+            "event": {
+              "type": "string",
+              "title": "Event Key",
+              "description": "The event identifier. Must be a string matching A-Za-z0-9_.",
+              "pattern": "^[A-Za-z0-9_]+$"
+            },
+            "display_name": {
+              "type": "string",
+              "title": "Display Name",
+              "description": "Optional friendly name for the event for display in UI and logs."
+            },
+            "scope": {
+              "type": "string",
+              "title": "Event Scope",
+              "enum": [
+                "global"
+                {% if DEST_GROUPS %}
+                {% for group in DEST_GROUPS %}
+                ,"{{ group }}"
+                {% endfor %}
+                {% endif %}
+                {% for dest in ALL_DESTINATIONS | default([]) %}
+                ,"{{ dest }}"
+                {% endfor %}
+              ],
+              "default": "global",
+              "description": "The scope of the event: a destination ID, group name, or 'global'."
+            },
+            "ttl": {
+              "type": "string",
+              "title": "Time to Live",
+              "description": "How long this event remains active after being thrown, in the format '60s', '5m', '1h', etc.",
+              "pattern": "^[0-9]+[smhd]$",
+              "default": "60s"
+            },
+            "delay": {
+              "type": "string",
+              "title": "Delay",
+              "description": "Optional delay before the event becomes active, in the format '10s', '1m', etc.",
+              "pattern": "^[0-9]+[smhd]$"
+            },
+            "future_time": {
+              "type": "string",
+              "title": "Future Time",
+              "description": "Optional specific time when the event should become active, in ISO-8601 format.",
+              "format": "date-time"
+            },
+            "single_consumer": {
+              "type": "boolean",
+              "title": "Single Consumer",
+              "description": "When true, the event is removed after the first trigger processes it. When false, it remains until TTL expires or is explicitly cleared.",
+              "default": false
+            },
+            "payload": {
+              "type": "object",
+              "title": "Payload",
+              "description": "Optional data to be carried with the event."
+            }
+          },
+          "required": [
+            "action",
+            "event"
+          ],
+          "not": {
+            "required": ["delay", "future_time"]
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -790,11 +872,6 @@
         "value": {
           "type": "string",
           "title": "Event Type",
-          "enum": [
-            "UserInteractedWithScreen",
-            "NewSlackMessageDetected",
-            "Poke"
-          ],
           "description": "Select which external event will fire this trigger."
         },
         "trigger_actions": {

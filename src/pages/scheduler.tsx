@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { SchemaEditModal } from '../components/scheduler/SchemaEditModal';
 import { SetVarsButton } from '../components/scheduler/SetVarsButton';
 import { VarsRegistryCard } from '../components/scheduler/VarsRegistryCard';
+import { SchedulerEventsPanel } from '../components/scheduler/SchedulerEventsPanel';
 
 // Extend Window interface to include fetchDestinations
 declare global {
@@ -707,16 +708,31 @@ const Scheduler = () => {
   // Sort destinations: running schedulers first, then paused, then stopped
   const sortedDestinations = [...destinations].sort((a, b) => {
     // First running schedulers (not paused)
-    if (a.isRunning === true && a.isPaused !== true && (b.isRunning !== true || b.isPaused === true)) return -1;
-    if (b.isRunning === true && b.isPaused !== true && (a.isRunning !== true || a.isPaused === true)) return 1;
+    if (a.isRunning === true && a.isPaused !== true && (b.isRunning !== true || b.isPaused === true)) {
+      return -1;
+    }
+    if (b.isRunning === true && b.isPaused !== true && (a.isRunning !== true || a.isPaused === true)) {
+      return 1;
+    }
     
     // Then paused schedulers
-    if (a.isPaused === true && b.isPaused !== true) return -1; 
-    if (b.isPaused === true && a.isPaused !== true) return 1;
+    if (a.isPaused === true && b.isPaused !== true) {
+      return -1;
+    }
+    if (b.isPaused === true && a.isPaused !== true) {
+      return 1;
+    }
     
     // Alphabetically within the same category
     return a.name.localeCompare(b.name);
   });
+
+  // Group destinations by status
+  const groupedDestinations = {
+    running: sortedDestinations.filter((d) => d.isRunning && !d.isPaused),
+    paused: sortedDestinations.filter((d) => d.isPaused),
+    stopped: sortedDestinations.filter((d) => !d.isRunning && !d.isPaused)
+  };
 
   return (
     <MainLayout
@@ -726,102 +742,132 @@ const Scheduler = () => {
       consoleLogs={consoleLogs}
       onClearConsole={clearConsole}
     >
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Scheduler Control Panel</h1>
-          <Button onClick={fetchDestinations} variant="outline" size="sm">
-            <RefreshCcw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
+      <div className="container mx-auto p-4">
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-3xl font-bold">Schedulers</h1>
+          <div className="space-x-2">
+            <Button 
+              variant="outline" 
+              onClick={fetchDestinations} 
+              disabled={loading}
+            >
+              <RefreshCcw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
         
-        <div className="grid grid-cols-1 gap-6">
-          {/* Variables Registry */}
+        <div className="space-y-6">
+          {/* Alert */}
+          {showAlert && (
+            <div
+              className={alertSeverity === 'success' ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700'}
+              role="alert"
+              style={{ padding: '10px', borderWidth: '1px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <AlertCircle className="mr-2 h-4 w-4" />
+                <span>{alertMessage}</span>
+              </div>
+              <button
+                className="text-gray-500 hover:text-gray-700"
+                onClick={() => setShowAlert(false)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+          
+          {/* Variables Registry Card */}
           <VarsRegistryCard />
+
+          {/* Scheduler Events Panel */}
+          <SchedulerEventsPanel />
           
-          {/* Running Schedulers */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Running Schedulers</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {sortedDestinations.filter(d => d.isRunning === true && d.isPaused !== true).length === 0 ? (
-                <p className="text-muted-foreground">No running schedulers</p>
-              ) : (
-                <div className="space-y-6">
-                  {sortedDestinations.filter(d => d.isRunning === true && d.isPaused !== true).map((destination) => (
-                    <SchedulerCard 
-                      key={destination.name} 
-                      destination={destination} 
-                      onToggle={handleToggleSchedule}
-                      onCreate={handleCreateSchedule}
-                      onStart={handleStartScheduler}
-                      onStop={handleStopScheduler}
-                      onUnload={handleUnloadSchedule}
-                      onEdit={handleEditSchedule}
-                      schedulerStatus={schedulerStatus}
-                    />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          
-          {/* Paused Schedulers */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Paused Schedulers</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {sortedDestinations.filter(d => d.isPaused === true).length === 0 ? (
-                <p className="text-muted-foreground">No paused schedulers</p>
-              ) : (
-                <div className="space-y-6">
-                  {sortedDestinations.filter(d => d.isPaused === true).map((destination) => (
-                    <SchedulerCard 
-                      key={destination.name} 
-                      destination={destination} 
-                      onToggle={handleToggleSchedule}
-                      onCreate={handleCreateSchedule}
-                      onStart={handleStartScheduler}
-                      onStop={handleStopScheduler}
-                      onUnload={handleUnloadSchedule}
-                      onEdit={handleEditSchedule}
-                      schedulerStatus={schedulerStatus}
-                    />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          
-          {/* Stopped Schedulers */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Stopped Schedulers</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {sortedDestinations.filter(d => d.isRunning !== true && d.isPaused !== true).length === 0 ? (
-                <p className="text-muted-foreground">No stopped schedulers</p>
-              ) : (
-                <div className="space-y-6">
-                  {sortedDestinations.filter(d => d.isRunning !== true && d.isPaused !== true).map((destination) => (
-                    <SchedulerCard 
-                      key={destination.name} 
-                      destination={destination} 
-                      onToggle={handleToggleSchedule}
-                      onCreate={handleCreateSchedule}
-                      onStart={handleStartScheduler}
-                      onStop={handleStopScheduler}
-                      onUnload={handleUnloadSchedule}
-                      onEdit={handleEditSchedule}
-                      schedulerStatus={schedulerStatus}
-                    />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {/* Schedulers List */}
+          <div className="grid gap-6">
+            {loading ? (
+              <Card>
+                <CardContent className="py-4">
+                  <div className="text-center">Loading schedulers...</div>
+                </CardContent>
+              </Card>
+            ) : destinations.length === 0 ? (
+              <Card>
+                <CardContent className="py-4">
+                  <div className="text-center">No schedulers found.</div>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Running Schedulers */}
+                {groupedDestinations.running.length > 0 && (
+                  <div>
+                    <h2 className="text-xl font-semibold mb-3">Running</h2>
+                    <div className="space-y-4">
+                      {groupedDestinations.running.map((destination) => (
+                        <SchedulerCard 
+                          key={destination.name} 
+                          destination={destination} 
+                          onToggle={handleToggleSchedule}
+                          onCreate={handleCreateSchedule}
+                          onStart={handleStartScheduler}
+                          onStop={handleStopScheduler}
+                          onUnload={handleUnloadSchedule}
+                          onEdit={handleEditSchedule}
+                          schedulerStatus={schedulerStatus}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Paused Schedulers */}
+                {groupedDestinations.paused.length > 0 && (
+                  <div>
+                    <h2 className="text-xl font-semibold mb-3">Paused</h2>
+                    <div className="space-y-4">
+                      {groupedDestinations.paused.map((destination) => (
+                        <SchedulerCard 
+                          key={destination.name} 
+                          destination={destination} 
+                          onToggle={handleToggleSchedule}
+                          onCreate={handleCreateSchedule}
+                          onStart={handleStartScheduler}
+                          onStop={handleStopScheduler}
+                          onUnload={handleUnloadSchedule}
+                          onEdit={handleEditSchedule}
+                          schedulerStatus={schedulerStatus}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Stopped Schedulers */}
+                {groupedDestinations.stopped.length > 0 && (
+                  <div>
+                    <h2 className="text-xl font-semibold mb-3">Stopped</h2>
+                    <div className="space-y-4">
+                      {groupedDestinations.stopped.map((destination) => (
+                        <SchedulerCard 
+                          key={destination.name} 
+                          destination={destination} 
+                          onToggle={handleToggleSchedule}
+                          onCreate={handleCreateSchedule}
+                          onStart={handleStartScheduler}
+                          onStop={handleStopScheduler}
+                          onUnload={handleUnloadSchedule}
+                          onEdit={handleEditSchedule}
+                          schedulerStatus={schedulerStatus}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
       
