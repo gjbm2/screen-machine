@@ -8,7 +8,7 @@ import * as LucideIcons from 'lucide-react';
 import { BucketGridView } from './BucketGridView';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import ViewModeSelector from './ViewModeSelector';
-import { CirclePause, CirclePlay, CircleStop, Settings, Image, ImagePlus, ChevronRight, ChevronLeft, Copy, Send, Share } from 'lucide-react';
+import { CirclePause, CirclePlay, CircleStop, Settings, Image, ImagePlus, ChevronRight, ChevronLeft, Copy, Send, Share, ClockIcon } from 'lucide-react';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 import {
   useDroppable,
@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { DROP_ZONES } from '@/dnd/dropZones';
 import useFullscreen from './hooks/useFullscreen';
+import RecentView from '@/components/recent/RecentView';
 
 export type ViewMode = 'normal' | 'small' | 'table';
 export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
@@ -195,6 +196,15 @@ export function ImageDisplay(props: ImageDisplayProps) {
         icon: <ImagePlus className="h-4 w-4 mr-2" />,
         highlight: true,
         file: null
+      } as DestinationTab,
+      // Always add the Recent tab
+      {
+        id: 'recent', 
+        label: 'Recent',
+        icon: <ClockIcon className="h-4 w-4 mr-2" />,
+        highlight: false,
+        file: '_recent',
+        headless: true
       } as DestinationTab,
       ...destinationsWithBuckets.map(dest => ({
         id: dest.id,
@@ -464,6 +474,12 @@ export function ImageDisplay(props: ImageDisplayProps) {
     const { active, over } = event;
     if (!over) return;
 
+    // Strip prefix if dragging selected image
+    let activeId = active.id as string;
+    if (typeof activeId === 'string' && activeId.startsWith('selected:')) {
+      activeId = activeId.slice('selected:'.length);
+    }
+
     // Tab drop handling – IDs prefixed with DROP_ZONES.TAB_PREFIX
     if (typeof over.id === 'string' && (over.id as string).startsWith(DROP_ZONES.TAB_PREFIX)) {
       const destId = (over.id as string).slice(DROP_ZONES.TAB_PREFIX.length);
@@ -481,7 +497,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
             x,
             y,
             destId,
-            imageId: active.id as string,
+            imageId: activeId,
             isHeadless
           });
         }, 0);
@@ -497,7 +513,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
     
     if (action === 'copy') {
       console.log(`Copying image ${imageId} from ${selectedTab} to ${destId}`);
-      apiService.copyImageToBucket(selectedTab, destId, imageId, true)
+      apiService.copyImageToBucket(getDestinationFile(selectedTab), destId, imageId, true)
         .then(() => {
           toast.success(`Copied to ${destId}`);
           refreshBucket(destId);
@@ -508,12 +524,12 @@ export function ImageDisplay(props: ImageDisplayProps) {
         });
     } else if (action === 'move') {
       console.log(`Moving image ${imageId} from ${selectedTab} to ${destId}`);
-      apiService.copyImageToBucket(selectedTab, destId, imageId, false)
+      apiService.copyImageToBucket(getDestinationFile(selectedTab), destId, imageId, false)
         .then(() => {
           toast.success(`Moved to ${destId}`);
           refreshBucket(destId);
           // Also refresh the source bucket since the file should be removed
-          refreshBucket(selectedTab);
+          refreshBucket(getDestinationFile(selectedTab));
         })
         .catch((err) => {
           console.error('Move failed:', err);
@@ -527,7 +543,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         // For bucket-to-bucket publishing (non-generated images)
         apiService.publishImageUnified({
           dest_bucket_id: destId,
-          src_bucket_id: selectedTab,
+          src_bucket_id: getDestinationFile(selectedTab),
           filename: imageId
         })
         .then(() => {
@@ -540,7 +556,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         });
       } else {
         // For generated images, use the full URL with the external source method
-        const fullSourceUrl = `${window.location.protocol}//${window.location.host}/api/buckets/${selectedTab}/raw/${imageId}`;
+        const fullSourceUrl = `${window.location.protocol}//${window.location.host}/api/buckets/${getDestinationFile(selectedTab)}/raw/${imageId}`;
         console.log(`Source URL: ${fullSourceUrl}`);
         
         apiService.publishImageUnified({
@@ -574,8 +590,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
 
   // ---------- Droppable Tab Button ---------- //
   const DroppableTabButton: React.FC<{ tab: DestinationTab }> = ({ tab }) => {
-    // Only make non-generated tabs droppable
-    const isDroppable = tab.id !== 'generated';
+    // Only make non-generated and non-recent tabs droppable
+    const isDroppable = tab.id !== 'generated' && tab.id !== 'recent';
     
     // Use a dummy ref for non-droppable tabs
     const dummyRef = useRef<HTMLButtonElement>(null);
@@ -695,73 +711,24 @@ export function ImageDisplay(props: ImageDisplayProps) {
                 onReorderContainers={onReorderContainers || (() => {})}
               />
             </>
-          ) : imageUrl ? (
-            <div className="relative h-full flex flex-col">
-              <div className="flex-1 relative min-h-0">
-                <img
-                  src={imageUrl}
-                  alt={currentPrompt || 'Generated image'}
-                  className="h-full w-full object-contain mx-auto"
-                />
-              </div>
-              {currentPrompt && (
-                <div className="mt-4 text-sm text-center text-muted-foreground">
-                  <p className="italic">"{currentPrompt}"</p>
-                </div>
-              )}
-              {onFullscreen && (
-                <button
-                  onClick={onFullscreen}
-                  className="absolute top-2 right-2 p-1 bg-background/80 rounded-md hover:bg-background"
-                >
-                  {isFullscreen ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="4 14 10 14 10 20"></polyline>
-                      <polyline points="20 10 14 10 14 4"></polyline>
-                      <line x1="14" y1="10" x2="21" y2="3"></line>
-                      <line x1="3" y1="21" x2="10" y2="14"></line>
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="15 3 21 3 21 9"></polyline>
-                      <polyline points="9 21 3 21 3 15"></polyline>
-                      <line x1="21" y1="3" x2="14" y2="10"></line>
-                      <line x1="3" y1="21" x2="10" y2="14"></line>
-                    </svg>
-                  )}
-                </button>
-              )}
-            </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="48"
-                height="48"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="mb-4"
-              >
-                <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-                <circle cx="9" cy="9" r="2" />
-                <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-              </svg>
-              <p>No image generated yet</p>
+            <div className="text-center text-muted-foreground py-10">
+              <p>No generated images found. Try generating some!</p>
             </div>
           )
+        ) : selectedTab === 'recent' ? (
+          /* Render the Recent tab view */
+          <RecentView 
+            refreshRecent={() => refreshBucket('_recent')}
+          />
         ) : (
           selectedTab && selectedTab !== 'generated' && (
             <BucketGridView
-              key={`${selectedTab}-${bucketRefreshFlags[selectedTab] || 0}`}
-              destination={getDestinationFile(selectedTab)}
+              destination={selectedTab}
               destinationName={destinationTabs.find(tab => tab.id === selectedTab)?.label || selectedTab}
               onImageClick={handleImageClick}
               refreshBucket={refreshBucket}
-              isLoading={false}
+              isLoading={isLoading}
               schedulerStatus={getStatusForDestination(selectedTab)}
               headless={destinationTabs.find(tab => tab.id === selectedTab)?.headless || false}
               icon={destinationsWithBuckets.find(d => d.id === selectedTab)?.icon || 'image'}

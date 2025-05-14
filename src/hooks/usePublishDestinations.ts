@@ -25,20 +25,25 @@ export function usePublishDestinations() {
     fetchDestinations();
   }, []);
 
-  // Only filter out headless destinations as a convenience
+  // Filter out headless destinations and hidden destinations (except _recent)
   const nonHeadlessDestinations = useMemo(() => {
-    return destinations.filter(dest => dest.headless !== true);
+    return destinations.filter(dest => 
+      dest.headless !== true && 
+      (dest.hidden !== true || dest.id === '_recent')
+    );
   }, [destinations]);
 
   // Create a backward-compatible list of destinations with buckets
   const destinationsWithBuckets = useMemo(() => {
-    return destinations;
+    return destinations.filter(dest => 
+      dest.hidden !== true || dest.id === '_recent'
+    );
   }, [destinations]);
 
   return {
     destinations,             // All destinations without filtering
-    destinationsWithBuckets,  // All destinations (for backward compatibility)
-    nonHeadlessDestinations,  // Only destinations that aren't marked as headless
+    destinationsWithBuckets,  // All non-hidden destinations (except _recent)
+    nonHeadlessDestinations,  // Only destinations that aren't marked as headless (except _recent)
     loading,
     error
   };

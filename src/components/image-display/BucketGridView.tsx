@@ -1567,6 +1567,16 @@ export const BucketGridView = ({
                 }))}
               bucketId={destination}
               sectionVariant={section.variant}
+              onFullscreenClick={(img) => {
+                const originalId = getOriginalId(img.id);
+                const originalImage = bucketImages.find(i => i.id === originalId);
+                if (originalImage) {
+                  const items = section.images.map(toImageItem);
+                  const idx = items.findIndex(it => it.id === img.id || getOriginalId(it.id)===originalId);
+                  const sectionTitle = `${destinationName || destination} – ${section.label}`;
+                  openLoope(items, idx === -1 ? 0 : idx, sectionTitle);
+                }
+              }}
             />
           </div>
         )}

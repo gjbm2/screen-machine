@@ -150,6 +150,7 @@ def start(
         lora_strength: float | None = None,
         cli_args=None,
         publish_destination: str | None = None,
+        batch_id: str | None = None,
         **kwargs
         ):
 
@@ -573,12 +574,17 @@ def start(
             vars(args_namespace)["generation_time_seconds"] = generation_time_seconds
             vars(args_namespace)["generation_cost_gbp"] = generation_cost
         
+            # Include batch_id in metadata if provided
+            if batch_id is not None:
+                vars(args_namespace)["batch_id"] = batch_id
+        
             if publish_destination:
                 # Actually publish into your screen's bucket
                 pub_res = publish_to_destination(
                     source = output["message"],
                     publish_destination_id = publish_destination,
                     metadata = vars(args_namespace),
+                    batch_id = batch_id,
                 )
                 if not pub_res["success"]:
                     raise RuntimeError(f"Publish failed: {pub_res.get('error')}")

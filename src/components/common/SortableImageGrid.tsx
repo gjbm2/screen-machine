@@ -41,6 +41,9 @@ interface SortableImageGridProps {
   bucketId?: string;
   /** The type of section this grid is in ('favourites' or 'dated') */
   sectionVariant?: 'favourites' | 'dated';
+  disableDefaultGridCols?: boolean;
+  /** Called when image should be used as a prompt reference */
+  onFullscreenClick?: (img: ImageItem) => void;
 }
 
 export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
@@ -57,6 +60,8 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
   publishDestinations,
   bucketId = '',
   sectionVariant,
+  disableDefaultGridCols,
+  onFullscreenClick,
 }) => {
   const [items, setItems] = React.useState<string[]>(images.map((i) => i.id));
 
@@ -76,13 +81,19 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
 
   const { active } = useDndContext();
 
+  const itemExtraClass = className.includes('recent-thumbnail-grid') ? 'recent-thumbnail-grid' : '';
+
   const gridContent = (
     <div
-      className={`drag-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1 overflow-x-hidden ${className}`}
+      className={`drag-grid${disableDefaultGridCols ? ' recent-tab-grid' : ''} grid${!disableDefaultGridCols ? ' grid-cols-2 sm:grid-cols-3 md:grid-cols-4' : ''} gap-1 overflow-x-hidden ${className} ${itemExtraClass}`}
       style={{ touchAction: active ? 'none' : 'pan-y' }}
     >
       {images.map((img, idx) => (
-        sortable ? (
+        img.customComponent ? (
+          <div key={img.id}>
+            {img.customComponent}
+          </div>
+        ) : sortable ? (
           <SortableImage 
             key={img.id} 
             image={img} 
@@ -96,6 +107,8 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
             publishDestinations={publishDestinations} 
             bucketId={bucketId}
             sectionVariant={sectionVariant}
+            className={itemExtraClass}
+            onFullscreenClick={onFullscreenClick}
           />
         ) : (
           <DraggableImage 
@@ -111,6 +124,8 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
             publishDestinations={publishDestinations} 
             bucketId={bucketId}
             sectionVariant={sectionVariant}
+            className={itemExtraClass}
+            onFullscreenClick={onFullscreenClick}
           />
         )
       ))}
@@ -138,6 +153,8 @@ interface ImageProps {
   publishDestinations?: Array<{id: string, name: string, headless: boolean}>;
   bucketId?: string;
   sectionVariant?: 'favourites' | 'dated';
+  className?: string;
+  onFullscreenClick?: (img: ImageItem) => void;
 }
 
 const SortableImage: React.FC<ImageProps> = ({ 
@@ -151,7 +168,9 @@ const SortableImage: React.FC<ImageProps> = ({
   onUseAsPrompt,
   publishDestinations,
   bucketId,
-  sectionVariant
+  sectionVariant,
+  className = '',
+  onFullscreenClick,
 }) => {
   const {
     attributes,
@@ -185,12 +204,26 @@ const SortableImage: React.FC<ImageProps> = ({
       style={style}
       {...attributes}
       {...listeners}
+      data-selected={image.isSelected}
+      className="relative"
+      onClick={(e) => {
+        if (isDragging) return;
+        e.stopPropagation();
+        if (onFullscreenClick) {
+          onFullscreenClick(image);
+        } else if (onImageClick) {
+          onImageClick(image);
+        }
+      }}
       onContextMenu={(e) => {
         if (window.matchMedia('(pointer: coarse)').matches) {
           e.preventDefault();
         }
       }}
     >
+      {image.isSelected && (
+        <div className="absolute inset-0 border-4 border-sky-500 rounded-md pointer-events-none z-50"></div>
+      )}
       <ImageCard 
         image={image} 
         index={index} 
@@ -203,6 +236,8 @@ const SortableImage: React.FC<ImageProps> = ({
         publishDestinations={publishDestinations}
         bucketId={bucketId}
         sectionVariant={sectionVariant}
+        className={className}
+        onFullscreenClick={onFullscreenClick}
       />
     </div>
   );
@@ -220,7 +255,9 @@ const DraggableImage: React.FC<ImageProps> = ({
   onUseAsPrompt,
   publishDestinations,
   bucketId,
-  sectionVariant
+  sectionVariant,
+  className = '',
+  onFullscreenClick,
 }) => {
   const {
     attributes,
@@ -263,12 +300,25 @@ const DraggableImage: React.FC<ImageProps> = ({
       style={style}
       {...attributes}
       {...listeners}
+      data-selected={image.isSelected}
+      className="relative"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (onFullscreenClick) {
+          onFullscreenClick(image);
+        } else if (onImageClick) {
+          onImageClick(image);
+        }
+      }}
       onContextMenu={(e) => {
         if (window.matchMedia('(pointer: coarse)').matches) {
           e.preventDefault();
         }
       }}
     >
+      {image.isSelected && (
+        <div className="absolute inset-0 border-4 border-sky-500 rounded-md pointer-events-none z-50"></div>
+      )}
       <ImageCard 
         image={image} 
         index={index} 
@@ -281,6 +331,8 @@ const DraggableImage: React.FC<ImageProps> = ({
         publishDestinations={publishDestinations}
         bucketId={bucketId}
         sectionVariant={sectionVariant}
+        className={className}
+        onFullscreenClick={onFullscreenClick}
       />
     </div>
   );

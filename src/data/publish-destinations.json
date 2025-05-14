@@ -1,5 +1,15 @@
 [
   {
+    "id": "_recent",
+    "name": "Recent",
+    "icon": "SquareArrowUp",
+    "type": "output_file",
+    "has_bucket": true,
+    "headless": true,
+    "hidden": true,
+    "description": "Recently generated images"
+  },
+  {
     "id": "north-screen",
     "name": "North screen",
     "icon": "SquareArrowUp",

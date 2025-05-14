@@ -9,9 +9,12 @@ import logging
 import json
 import requests
 import time
+from PIL import Image
+from io import BytesIO
 
 from flask import send_file
 from utils.logger import info, error, warning, debug
+from routes.bucketer import _append_to_bucket
 
 # Cache for GPU pricing to avoid repeated API calls
 _gpu_price_cache = {}
@@ -280,3 +283,35 @@ def jpg_from_mp4_handler(mp4_path):
         return f"Error extracting frame: {e}", 500, {"Content-Type": "text/plain"}
     
     # The temp file cleanup is handled by the endpoint function 
+
+def save_to_recent(img_url, batch_id, metadata=None):
+    """
+    Downloads the image from img_url, converts it to JPEG, and appends it to the _recent bucket.
+    If *metadata* is provided, it is written to the side-car so that generation params are preserved.
+    Returns the target path if successful, None otherwise.
+    """
+    try:
+        response = requests.get(img_url)
+        if response.status_code != 200:
+            error(f"[save_to_recent] Failed to download image from {img_url}: {response.status_code}")
+            return None
+        info(f"[save_to_recent] Downloaded image from {img_url}, converting to JPEG")
+        img = Image.open(BytesIO(response.content)).convert("RGB")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+            img.save(temp_file, format="JPEG", quality=90)
+            temp_file.flush()
+            temp_path = Path(temp_file.name)
+        info(f"[save_to_recent] Calling _append_to_bucket with batch_id={batch_id}")
+        target_path = _append_to_bucket("_recent", temp_path, batch_id=batch_id, metadata=metadata)
+        temp_path.unlink()
+        if target_path:
+            info(f"[save_to_recent] Successfully saved to _recent: {target_path}")
+            return target_path
+        else:
+            error(f"[save_to_recent] _append_to_bucket returned None for {img_url}")
+            return None
+    except Exception as e:
+        error(f"[save_to_recent] Failed to save image to _recent: {e}")
+        import traceback
+        error(f"[save_to_recent] Traceback: {traceback.format_exc()}")
+        return None 

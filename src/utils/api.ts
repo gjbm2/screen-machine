@@ -35,6 +35,7 @@ export interface PublishDestination {
   has_bucket: boolean;
   file?: string;
   headless?: boolean;
+  hidden?: boolean;
 }
 
 // Type for image generation params
@@ -72,6 +73,7 @@ interface BucketDetails {
   thumbnail_url: string | null;
   favorites: string[];
   sequence: string[];
+  error?: string;
 }
 
 export class Api {
@@ -195,7 +197,40 @@ export class Api {
 		  throw new Error(errorData.error || 'Failed to generate image');
 		}
 
-		return await response.json();
+		const result = await response.json();
+
+		// Dispatch event for the frontend to handle new images and placeholder removal
+		if (result.recent_files && result.recent_files.length > 0) {
+		  // Get the metadata from the result.images array to include in the event
+		  const imagesWithMetadata = result.images.map((img: any, index: number) => ({
+			fileName: result.recent_files[index],
+			metadata: {
+			  prompt: img.prompt,
+			  original_prompt: img.original_prompt,
+			  seed: img.seed,
+			  negative_prompt: img.negative_prompt,
+			  workflow: img.workflow,
+			  params: img.params,
+			  timestamp: img.timestamp,
+			  batch_id: img.batch_id,
+			  batch_index: img.batch_index,
+			  refiner: img.refiner,
+			  refiner_params: img.refiner_params
+			}
+		  }));
+
+		  // Dispatch an event to inform the Recent tab about new images with metadata
+		  const eventDetail = {
+			batchId: result.batch_id,
+			files: result.recent_files,
+			imagesWithMetadata: imagesWithMetadata
+		  };
+		  
+		  console.log('[api] Dispatching recent:add event with metadata:', eventDetail);
+		  window.dispatchEvent(new CustomEvent('recent:add', { detail: eventDetail }));
+		}
+
+		return result;
 	  } catch (error) {
 		console.error('Error generating image:', error);
 		throw error;
@@ -281,8 +316,12 @@ export class Api {
       }
     }
     
-    // Simulate network delay - changed from 2 seconds to 10 seconds
+    // Simulate network delay
     return new Promise((resolve) => {
+      // Show we're working
+      console.info('[MOCK LOG] [mock-backend]', `Working on generating images...`);
+      
+      // For realistically simulating the behavior, after 5 seconds, dispatch a real event, then resolve
       setTimeout(() => {
         // Randomly select one of these placeholder images
         const placeholderImages = [
@@ -296,17 +335,14 @@ export class Api {
           return placeholderImages[Math.floor(Math.random() * placeholderImages.length)];
         };
         
-        // Create mock images based on the requested batch size and include placeholder IDs if provided
-        const mockImages = Array(batchSize).fill(0).map((_, index) => {
-          // Get placeholder ID if available
-          const placeholderId = params.placeholders && params.placeholders[index] 
-            ? params.placeholders[index].placeholder_id 
-            : undefined;
-          
-          const batchIndex = params.placeholders && params.placeholders[index]
-            ? params.placeholders[index].batch_index
-            : index;
-            
+        // Generate mock image filenames (what would be saved to disk)
+        const mockFilenames = Array(batchSize).fill(0).map((_, index) => {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          return `${timestamp}_batch-${params.batch_id}_${index}.jpg`;
+        });
+        
+        // Create mock images based on the requested batch size
+        const mockImages = Array(batchSize).fill(0).map((_, index) => {            
           return {
             id: `mock-${Date.now()}-${index}`,
             url: getRandomImage(),
@@ -314,14 +350,23 @@ export class Api {
             workflow: params.workflow,
             timestamp: Date.now(),
             batch_id: params.batch_id || `batch-${Date.now()}`,
-            batch_index: batchIndex,
-            placeholder_id: placeholderId, // Include the placeholder ID if available
+            batch_index: index,
             params: params.params,
             refiner: params.refiner,
             refiner_params: params.refiner_params,
             status: 'completed'
           };
         });
+        
+        // Dispatch a real event for the Recent tab to handle
+        if (mockFilenames.length > 0) {
+          const eventDetail = {
+            batchId: params.batch_id,
+            files: mockFilenames
+          };
+          
+          window.dispatchEvent(new CustomEvent('recent:add', { detail: eventDetail }));
+        }
         
         console.info('[MOCK LOG] [mock-backend]', `Generated ${mockImages.length} mock image(s) successfully!`);
         
@@ -330,9 +375,10 @@ export class Api {
           images: mockImages,
           batch_id: params.batch_id || `batch-${Date.now()}`,
           prompt: params.prompt,
-          workflow: params.workflow
+          workflow: params.workflow,
+          recent_files: mockFilenames
         });
-      }, 10000); // Changed from 2000 to 10000 (10 seconds)
+      }, 5000); // 5 seconds
     });
   }
   
@@ -1148,13 +1194,16 @@ export class Api {
         throw new Error('Failed to fetch publish destinations');
       }
       const destinations = await response.json();
-      return destinations.map((dest: any) => ({
+      return destinations
+        .filter((dest: any) => !dest.hidden) // Filter out hidden destinations
+        .map((dest: any) => ({
         id: dest.id,
         name: dest.name || dest.id,
         description: dest.description,
         icon: dest.icon,
         has_bucket: dest.has_bucket || false,
-        headless: dest.headless || false
+          headless: dest.headless || false,
+          hidden: dest.hidden || false
       }));
     } catch (error) {
       console.error('Error fetching publish destinations:', error);
@@ -1178,7 +1227,8 @@ export class Api {
           raw_url: null,
           thumbnail_url: null,
           favorites: [],
-          sequence: []
+          sequence: [],
+          error: null
         };
       }
       
@@ -1229,7 +1279,8 @@ export class Api {
         raw_url: published?.raw_url || null,
         thumbnail_url: published?.thumbnail_url || null,
         favorites: Array.isArray(data.favorites) ? data.favorites : [],
-        sequence: Array.isArray(data.sequence) ? data.sequence : []
+        sequence: Array.isArray(data.sequence) ? data.sequence : [],
+        error: null
       };
       
       console.log('Processed bucket details:', bucketDetails);
@@ -1245,7 +1296,8 @@ export class Api {
         raw_url: null,
         thumbnail_url: null,
         favorites: [],
-        sequence: []
+        sequence: [],
+        error: null
       };
     }
   }
@@ -1271,17 +1323,32 @@ export class Api {
     // If isFavorite is false, we want to unfavorite it (DELETE)
     const method = isFavorite ? 'POST' : 'DELETE';
     
-    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/favorite/${filename}`, {
+    // URL encode the filename to handle special characters
+    const encodedFilename = encodeURIComponent(filename);
+    
+    try {
+      // Direct API call - no bucket checking
+      console.log(`Toggling favorite for ${bucketId}/${filename} (${method})`);
+      
+      const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/favorite/${encodedFilename}`, {
       method,
       headers: {
         'Content-Type': 'application/json',
       }
     });
+      
     if (!response.ok) {
+        console.error(`Failed to toggle favorite for ${bucketId}/${filename} (${response.status} ${response.statusText})`);
       throw new Error(`Failed to toggle favorite: ${response.statusText}`);
     }
+      
     const data = await response.json();
+      console.log(`Success toggling favorite: ${data.status}`);
     return data.status === 'favorited' || data.status === 'unfavorited';
+    } catch (error) {
+      console.error(`Error toggling favorite for ${bucketId}/${filename}:`, error);
+      throw error;
+    }
   }
 
   // Delete an image from a bucket

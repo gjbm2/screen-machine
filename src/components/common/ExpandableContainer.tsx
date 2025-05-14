@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, ChevronRight, MoreVertical } from 'lucide-react';
+import { ChevronDown, ChevronRight, MoreVertical, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
@@ -15,6 +15,8 @@ export interface ExpandableContainerProps {
   onToggle: (id: string) => void;
   /** Additional class names for wrapper. */
   className?: string;
+  /** Content to display at the start of the header, before the label and toggle icon if iconPos is 'right'. */
+  headerStart?: React.ReactNode;
   /** Extra content (e.g., sort toggles) shown in the header next to the label.  Clicks will not collapse. */
   headerExtras?: React.ReactNode;
   /** Whether to show a context menu with the "..." button */
@@ -41,6 +43,7 @@ export const ExpandableContainer = React.forwardRef<HTMLDivElement, ExpandableCo
   collapsed,
   onToggle,
   className = '',
+  headerStart,
   headerExtras,
   showContextMenu = false,
   contextMenuItems = [],
@@ -62,48 +65,45 @@ export const ExpandableContainer = React.forwardRef<HTMLDivElement, ExpandableCo
     <div ref={ref} className={`${base} ${className}`.trim()}>
       {/* Header */}
       <div className="flex items-center w-full text-left select-none">
+        {/* Header Start Content */}
+        {headerStart}
+
+        {/* Center section with label */}
         <button
           type="button"
           onClick={handleToggle}
-          className={`flex items-center text-left ${headerPadding}`}
+          className={`expand-toggle flex items-center text-left ${headerPadding} min-w-0 flex-1 overflow-hidden`}
         >
           {iconPos === 'left' && (
             <ArrowIcon className="h-4 w-4 mr-1 shrink-0" />
           )}
-          {label && <span className="truncate text-sm font-medium">{label}</span>}
-          {iconPos === 'right' && (
-            <ArrowIcon className="h-4 w-4 ml-1 shrink-0" />
-          )}
+          {label && <span className="truncate text-sm font-medium max-w-full" style={{ minWidth: 0 }}>{label}</span>}
         </button>
-        
-        <div className="flex-1"></div>
-        
-        {/* Extras (e.g., sort toggle) */}
-        {headerExtras && (
-          <span className="ml-2" onClick={(e) => e.stopPropagation()}>
-            {headerExtras}
-          </span>
-        )}
-        
-        {/* Context menu */}
-        {showContextMenu && contextMenuItems && contextMenuItems.length > 0 && (
-          <div onClick={(e) => e.stopPropagation()}>
+
+        {/* Right side extras */}
+        <div className="flex items-center shrink-0">
+          {headerExtras}
+          
+          {/* Context menu */}
+          {showContextMenu && contextMenuItems && contextMenuItems.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 p-0 ml-2 text-muted-foreground hover:text-foreground"
+                <button
+                  className="ml-1 rounded-md p-1 hover:bg-accent text-muted-foreground"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {contextMenuItems.map((item, index) => (
+                {contextMenuItems.map((item, i) => (
                   <DropdownMenuItem
-                    key={index}
-                    onClick={item.onClick}
-                    className={`flex items-center ${item.variant === 'destructive' ? 'text-destructive' : ''}`}
+                    key={i}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      item.onClick();
+                    }}
+                    className={item.variant === 'destructive' ? 'text-destructive' : ''}
                   >
                     {item.icon && <span className="mr-2">{item.icon}</span>}
                     {item.label}
@@ -111,8 +111,19 @@ export const ExpandableContainer = React.forwardRef<HTMLDivElement, ExpandableCo
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
-        )}
+          )}
+
+          {/* Right arrow placed after context menu when iconPos is right */}
+          {iconPos === 'right' && (
+            <button
+              type="button"
+              onClick={handleToggle}
+              className="ml-1 p-1 hover:bg-accent rounded-md text-muted-foreground"
+            >
+              <ArrowIcon className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content area – mount/unmount for performance */}

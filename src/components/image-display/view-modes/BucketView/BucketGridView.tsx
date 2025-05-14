@@ -139,6 +139,7 @@ export function BucketGridView({ bucketId, onImageClick }: BucketGridViewProps) 
           onMoveDown={() => handleMoveDown(image.filename)}
           onOpen={() => handleOpen(image)}
           onPublish={(destinationId) => handlePublish(image.filename, destinationId)}
+          onFullscreenClick={onImageClick}
         />
       ))}
     </div>

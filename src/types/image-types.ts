@@ -24,6 +24,8 @@ export interface ImageItem extends ImageMeta {
   id: string;
   /** Raw URL for the image, used for direct access */
   raw_url?: string;
+  /** Optional custom component to render instead of the image */
+  customComponent?: React.ReactNode;
 }
 
 export interface ImageGroup {

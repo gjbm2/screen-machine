@@ -1,4 +1,3 @@
-
 import { GeneratedImage } from '../types';
 import { getExistingBatchIndexes } from './batch-utils';
 import { nanoid } from '@/lib/utils';
@@ -65,6 +64,19 @@ export const createPlaceholderBatch = (
     
     console.log(`[placeholder-utils] Created placeholder with batchIndex ${nextIndex} and placeholderId ${placeholderId}`);
     placeholders.push(placeholder);
+
+    // Emit event so Recent tab can show placeholder immediately
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('recent:placeholder', {
+          detail: {
+            batchId,
+            placeholderId,
+            prompt,
+          },
+        })
+      );
+    }
   }
   
   console.log('[placeholder-utils] Created', placeholders.length, 'placeholders');
