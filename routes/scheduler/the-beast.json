@@ -63,7 +63,7 @@
   "context_stack": [
     {
       "vars": {
-        "value": "See through",
+        "value": "Be good company",
         "history_var": [
           {
             "timestamp": "2025-05-06 09:00:00",
@@ -304,6 +304,14 @@
             "refiner": "nous_values",
             "workflow": null,
             "image_url": null
+          },
+          {
+            "timestamp": "2025-05-14 08:00:01",
+            "type": "generation",
+            "prompt": "Be good company",
+            "refiner": "nous_values",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/87e18da9-f882-4502-a988-d7ce01dc934f-e1/df6de6fc.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T070102Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b6b76c0c6d5a428dc3a94a6c538b6fa0854e0e444a78bc689f66bc5e50a284ce"
           }
         ],
         "animate_history": [
@@ -498,15 +506,23 @@
             "image_path": "[image_path]",
             "refiner": "animator",
             "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-14 08:00:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/87e18da9-f882-4502-a988-d7ce01dc934f-e1/df6de6fc.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T070102Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b6b76c0c6d5a428dc3a94a6c538b6fa0854e0e444a78bc689f66bc5e50a284ce",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
-      "last_generated": "[image_path]",
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/87e18da9-f882-4502-a988-d7ce01dc934f-e1/df6de6fc.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T070102Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b6b76c0c6d5a428dc3a94a6c538b6fa0854e0e444a78bc689f66bc5e50a284ce",
       "publish_destination": "the-beast"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-14T01:45:31.905737",
+  "last_updated": "2025-05-14T08:01:05.632987",
   "last_trigger_executions": {
     "079570ca92555f499bd5738772bc4a1b_2025-05-12T08:00:00": "2025-05-12T08:00:01.309513",
     "079570ca92555f499bd5738772bc4a1b_2025-05-12T10:00:00": "2025-05-12T10:00:01.396289",
@@ -519,6 +535,7 @@
     "079570ca92555f499bd5738772bc4a1b_2": "2025-05-13T12:00:00.709781",
     "079570ca92555f499bd5738772bc4a1b_3": "2025-05-13T14:00:01.868655",
     "079570ca92555f499bd5738772bc4a1b_4": "2025-05-13T16:00:00.448414",
-    "079570ca92555f499bd5738772bc4a1b_5": "2025-05-13T18:00:00.103027"
+    "079570ca92555f499bd5738772bc4a1b_5": "2025-05-13T18:00:00.103027",
+    "079570ca92555f499bd5738772bc4a1b_0": "2025-05-14T08:00:01.062079"
   }
 }

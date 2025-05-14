@@ -22,6 +22,8 @@ export interface ImageMeta {
 export interface ImageItem extends ImageMeta {
   /** Stable unique identifier.  For generated images this might be a UUID; for bucket items the filename usually suffices. */
   id: string;
+  /** Optional unique key used for React key props - combines id with batchId to ensure no collisions */
+  uniqueKey?: string;
   /** Raw URL for the image, used for direct access */
   raw_url?: string;
   /** Optional custom component to render instead of the image */
@@ -51,4 +53,5 @@ export interface BucketImage {
   isFavourite: boolean;
   createdAt: string;
   metadata?: ImageMeta;
+  batchId?: string;
 } 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { ExpandableContainer } from '@/components/common';
 import SortableImageGrid from '@/components/common/SortableImageGrid';
 import { ImageItem } from '@/types/image-types';
@@ -60,10 +60,22 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
   onSelectImage,
   onCollapseChange
 }) => {
-  // Create a stable key for this component instance based on batchId
-  const instanceKey = React.useRef(`batch-${batchId}-${Date.now()}`).current;
+  // COMPLETE ISOLATION: Each panel manages its own state, ignores parent after init
   
-  // Track selected index and ID to persist across polling
+  // Refs to maintain component state
+  const initializedRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const isUserSelecting = useRef(false);
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { 
+      isMountedRef.current = false; 
+    };
+  }, []);
+  
+  // Local selection state - completely independent
   const [selectedIndex, setSelectedIndex] = useState<number>(
     initialSelectedIndex < images.length ? initialSelectedIndex : 0
   );
@@ -71,13 +83,180 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
     images[initialSelectedIndex]?.id || images[0]?.id || ''
   );
   
+  // Collapsed state
   const [isCollapsed, setIsCollapsed] = useState<boolean>(initialCollapsed);
   
-  // The currently selected image to display on top
-  const selectedImage = React.useMemo(() => {
+  // First-time initialization only (happens once)
+  useEffect(() => {
+    if (initializedRef.current) return;
+    
+    // Try initial ID from props first
+    if (forceSelectId && images.some(img => img.id === forceSelectId)) {
+      const idx = images.findIndex(img => img.id === forceSelectId);
+      if (idx !== -1) {
+        setSelectedIndex(idx);
+        setSelectedId(forceSelectId);
+      }
+    } else {
+      // Try localStorage if no valid forceSelectId
+      try {
+        const cacheKey = `recent_selected_${batchId}`;
+        const storedId = localStorage.getItem(cacheKey);
+        
+        if (storedId && images.some(img => img.id === storedId)) {
+          const idx = images.findIndex(img => img.id === storedId);
+          setSelectedIndex(idx);
+          setSelectedId(storedId);
+        } else if (images.length > 0) {
+          // Default to first image
+          localStorage.setItem(cacheKey, images[0].id);
+        }
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+    }
+    
+    // Mark as initialized - never accept external updates again
+    initializedRef.current = true;
+  }, [forceSelectId, images, batchId]);
+  
+  // Handle thumbnail selection - PURE LOCAL STATE MANAGEMENT
+  const handleThumbnailClick = (img: ImageItem) => {
+    if (img.id === selectedId || !isMountedRef.current) return;
+    
+    isUserSelecting.current = true;
+    
+    const idx = images.findIndex(i => i.id === img.id);
+    if (idx !== -1) {
+      // Update local state
+      setSelectedIndex(idx);
+      setSelectedId(img.id);
+      
+      // Save to localStorage
+      try {
+        localStorage.setItem(`recent_selected_${batchId}`, img.id);
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+      
+      // Notify parent for coordination only
+      if (onSelectImage) {
+        onSelectImage(batchId, img.id);
+      }
+      
+      // Expand if needed
+      if (isCollapsed) {
+        setIsCollapsed(false);
+        onCollapseChange?.(batchId, false);
+      }
+    }
+    
+    // Reset after a timeout
+    setTimeout(() => {
+      if (isMountedRef.current) {
+        isUserSelecting.current = false;
+      }
+    }, 300);
+  };
+  
+  // Navigation handlers with the same pattern
+  const handlePrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (selectedIndex > 0 && isMountedRef.current) {
+      const newIndex = selectedIndex - 1;
+      const newId = images[newIndex].id;
+      
+      // Use same pattern as click handler
+      isUserSelecting.current = true;
+      setSelectedIndex(newIndex);
+      setSelectedId(newId);
+      
+      if (onSelectImage) {
+        onSelectImage(batchId, newId);
+      }
+      
+      try {
+        localStorage.setItem(`recent_selected_${batchId}`, newId);
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+      
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          isUserSelecting.current = false;
+        }
+      }, 300);
+    }
+  };
+  
+  const handleNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (selectedIndex < images.length - 1 && isMountedRef.current) {
+      const newIndex = selectedIndex + 1;
+      const newId = images[newIndex].id;
+      
+      // Use same pattern as click handler
+      isUserSelecting.current = true;
+      setSelectedIndex(newIndex);
+      setSelectedId(newId);
+      
+      if (onSelectImage) {
+        onSelectImage(batchId, newId);
+      }
+      
+      try {
+        localStorage.setItem(`recent_selected_${batchId}`, newId);
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+      
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          isUserSelecting.current = false;
+        }
+      }, 300);
+    }
+  };
+  
+  // Selected image
+  const selectedImage = useMemo(() => {
     const byId = images.find(img => img.id === selectedId);
     return byId || images[selectedIndex] || images[0];
   }, [images, selectedId, selectedIndex]);
+  
+  // Handle touch events for mobile swipes
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+  
+  // Handle swipe gestures
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > 50;
+    const isRightSwipe = distance < -50;
+    
+    if (isLeftSwipe && selectedIndex < images.length - 1) {
+      handleNext({ stopPropagation: () => {} } as React.MouseEvent);
+    } else if (isRightSwipe && selectedIndex > 0) {
+      handlePrev({ stopPropagation: () => {} } as React.MouseEvent);
+    }
+    
+    setTouchStart(null);
+    setTouchEnd(null);
+  };
   
   // Draggable for selected image
   const {
@@ -131,54 +310,8 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
     }
   };
   
-  // Handle thumbnail clicks - guaranteed to work
-  const handleThumbnailClick = (img: ImageItem) => {
-    console.log('Thumbnail click handler called with:', img.id);
-    
-    // Find the image's index
-    const imgIndex = images.findIndex(image => image.id === img.id);
-    if (imgIndex !== -1) {
-      console.log(`Setting selected index to ${imgIndex} for image:`, img.id);
-      
-      // Force a state update using the functional form
-      setSelectedIndex(imgIndex);
-      setSelectedId(img.id);
-
-      if(onSelectImage) onSelectImage(batchId, img.id);
-
-      // Ensure panel expanded if it was collapsed
-      if(isCollapsed){
-        setIsCollapsed(false);
-        onCollapseChange?.(batchId, false);
-      }
-    }
-  };
-  
-  // When images prop updates, make sure the selected ID is still present
-  React.useEffect(() => {
-    if (!selectedId) return;
-    const idx = images.findIndex(img => img.id === selectedId);
-    if (idx !== -1) {
-      setSelectedIndex(idx);
-    } else {
-      setSelectedIndex(0);
-      setSelectedId(images[0]?.id || '');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [images]);
-
-  // When selectedId changes (e.g., after restoring from storage), update selectedIndex
-  React.useEffect(() => {
-    if (!selectedId) return;
-    const idx = images.findIndex(img => img.id === selectedId);
-    if (idx !== -1 && idx !== selectedIndex) {
-      setSelectedIndex(idx);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
-  
   // Format batch title with the prompt + counter
-  const batchTitle = React.useMemo(() => {
+  const batchTitle = useMemo(() => {
     const prompt = images[0]?.promptKey || 'No prompt';
     const idx = images.findIndex(img => img.id === selectedId);
     return `${prompt} (${idx + 1}/${images.length})`;
@@ -195,7 +328,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
   );
   
   // Context menu items for the panel header
-  const contextMenuItems = React.useMemo(() => [
+  const contextMenuItems = useMemo(() => [
     {
       label: 'Delete Batch',
       onClick: () => {
@@ -208,73 +341,6 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
     },
   ], [onDeleteBatch, batchId]);
   
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [touchEnd, setTouchEnd] = useState<number | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // Detect mobile devices
-  React.useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth <= 768);
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
-  // Handle navigation
-  const handlePrev = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (selectedIndex > 0) {
-      setSelectedIndex(selectedIndex - 1);
-    }
-  };
-
-  const handleNext = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (selectedIndex < images.length - 1) {
-      setSelectedIndex(selectedIndex + 1);
-    }
-  };
-
-  // Persist selectedId across unmounts/polls using localStorage
-  React.useEffect(() => {
-    const stored = localStorage.getItem(`recent_selected_${batchId}`);
-    if (stored) {
-      setSelectedId(stored);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  React.useEffect(() => {
-    if (selectedId) {
-      localStorage.setItem(`recent_selected_${batchId}`, selectedId);
-    }
-  }, [selectedId, batchId]);
-
-  // Keep selectedId in sync when index changes via arrows or other means
-  React.useEffect(() => {
-    if (images[selectedIndex] && images[selectedIndex].id !== selectedId) {
-      setSelectedId(images[selectedIndex].id);
-
-      if(onSelectImage) onSelectImage(batchId, images[selectedIndex].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIndex, images]);
-
-  // If parent forces a selection (e.g., new image), apply it
-  React.useEffect(() => {
-    if (forceSelectId && forceSelectId !== selectedId) {
-      const idx = images.findIndex(i => i.id === forceSelectId);
-      if (idx !== -1) {
-        setSelectedIndex(idx);
-        setSelectedId(forceSelectId);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forceSelectId, images]);
-
   // Collapsed view – show only thumbnails
   if (isCollapsed) {
     return (
@@ -359,22 +425,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                   const touch = e.touches[0];
                   setTouchEnd(touch.clientX);
                 }}
-                onTouchEnd={() => {
-                  if (!touchStart || !touchEnd) return;
-                  
-                  const distance = touchStart - touchEnd;
-                  const isLeftSwipe = distance > 50;
-                  const isRightSwipe = distance < -50;
-                  
-                  if (isLeftSwipe && selectedIndex < images.length - 1) {
-                    setSelectedIndex(selectedIndex + 1);
-                  } else if (isRightSwipe && selectedIndex > 0) {
-                    setSelectedIndex(selectedIndex - 1);
-                  }
-                  
-                  setTouchStart(null);
-                  setTouchEnd(null);
-                }}
+                onTouchEnd={handleTouchEnd}
               />
             )}
 
@@ -562,9 +613,9 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
             if (imgEl && imgEl.alt) {
               // Use the alt text which contains the prompt key to find the image
               const imgIndex = images.findIndex(img => img.promptKey === imgEl.alt);
-              if (imgIndex !== -1) {
+              if (imgIndex !== -1 && images[imgIndex]) {
                 console.log('Direct click handler activated for:', imgEl.alt);
-                setSelectedIndex(imgIndex);
+                handleThumbnailClick(images[imgIndex]);
               }
             }
           }}
@@ -625,4 +676,33 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
   );
 };
 
-export default RecentBatchPanel; 
+// Update the memo comparison function to be even stricter
+const MemoizedRecentBatchPanel = React.memo(RecentBatchPanel, (prevProps, nextProps) => {
+  // ONLY re-render for these specific changes:
+  
+  // 1. If a complete different batch (batch ID changed)
+  if (prevProps.batchId !== nextProps.batchId) return false;
+  
+  // 2. If the image collection has fundamentally changed
+  if (prevProps.images.length !== nextProps.images.length) return false;
+  
+  // 3. If collapsed state changed
+  if (prevProps.initialCollapsed !== nextProps.initialCollapsed) return false;
+  
+  // STABILIZE: Don't re-render for these changes:
+  
+  // Ignore changes to forceSelectId - panel manages its own selection
+  // Ignore changes to various handler functions - they don't affect rendering
+  // Ignore publishDestinations changes unless they're actually used
+  
+  // Check if the actual image data has changed (comparing by id)
+  const imagesChanged = !prevProps.images.every((prevImg, idx) => 
+    prevImg.id === nextProps.images[idx]?.id
+  );
+  
+  // Now the key part - only allow re-renders when images actually change
+  return !imagesChanged;
+});
+
+// Export the memoized version as default
+export default MemoizedRecentBatchPanel; 
