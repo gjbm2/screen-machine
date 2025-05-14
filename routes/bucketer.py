@@ -8,7 +8,6 @@ import shutil
 from PIL import Image, ExifTags
 import subprocess
 import cv2
-import os
 
 from utils.logger import info, error, warning, debug
 from routes.utils import (
@@ -333,7 +332,7 @@ def extract_metadata(file_path: Path, force_rebuild: bool = False) -> bool:
         warning(f"Metadata inference failed for {file_path.name}: {e}")
     return False
 
-def _append_to_bucket(screen: str, published_path: Path, batch_id: str = None, metadata: dict = None) -> Path:
+def _append_to_bucket(screen: str, published_path: Path, metadata: dict = None) -> Path:
     """
     Copy *published_path* plus side-car into <bucket>/ preserving history:
     • If that exact filename already exists in the bucket, create a
@@ -352,58 +351,12 @@ def _append_to_bucket(screen: str, published_path: Path, batch_id: str = None, m
     # choose filename (avoid collisions or always unique for cross-bucket)
     if is_cross_bucket:
         # Always use a unique name for cross-bucket operations
-        target_name = unique_name(published_path.name)
-        
-        # If a batchId is provided, insert it into the filename
-        if batch_id:
-            # Strip any file extensions from batch_id to prevent concatenation
-            clean_batch_id = batch_id
-            if '.' in clean_batch_id:
-                clean_batch_id = clean_batch_id.split('.')[0]
-                
-            # Extract timestamp part and suffix
-            parts = target_name.split('-', 2)
-            if len(parts) >= 2:
-                date_part = parts[0]
-                time_part = parts[1]
-                remaining = parts[2] if len(parts) > 2 else ''
-                
-                # Format with clean batch ID
-                target_name = f"{date_part}-{time_part}-{remaining}_batch-{clean_batch_id}{published_path.suffix}"
-            else:
-                # If name doesn't have expected format, just append batch-id to it
-                base, ext = os.path.splitext(target_name)
-                target_name = f"{base}_batch-{clean_batch_id}{ext}"
-        
-        target_path = bucket_dir / target_name
+        target_path = bucket_dir / unique_name(published_path.name)
     else:
         # For same-bucket operations, only create unique name if file exists
         target_path = bucket_dir / published_path.name
         if target_path.exists():
-            target_name = unique_name(published_path.name)
-            
-            # If a batchId is provided, insert it into the filename
-            if batch_id:
-                # Strip any file extensions from batch_id to prevent concatenation
-                clean_batch_id = batch_id
-                if '.' in clean_batch_id:
-                    clean_batch_id = clean_batch_id.split('.')[0]
-                
-                # Extract timestamp part and suffix
-                parts = target_name.split('-', 2)
-                if len(parts) >= 2:
-                    date_part = parts[0]
-                    time_part = parts[1]
-                    remaining = parts[2] if len(parts) > 2 else ''
-                    
-                    # Format with clean batch ID
-                    target_name = f"{date_part}-{time_part}-{remaining}_batch-{clean_batch_id}{published_path.suffix}"
-                else:
-                    # If name doesn't have expected format, just append batch-id to it
-                    base, ext = os.path.splitext(target_name)
-                    target_name = f"{base}_batch-{clean_batch_id}{ext}"
-            
-            target_path = bucket_dir / target_name
+            target_path = bucket_dir / unique_name(published_path.name)
 
     # copy media + side-car
     shutil.copy2(published_path, target_path)
@@ -418,14 +371,7 @@ def _append_to_bucket(screen: str, published_path: Path, batch_id: str = None, m
         # If we have metadata but no source sidecar, create a new one
         try:
             with open(sc_dst, 'w', encoding='utf-8') as f:
-                # Ensure metadata is JSON serializable. Fall back to string conversion for unsupported types.
-                try:
-                    json.dump(metadata, f, indent=2, ensure_ascii=False, default=str)
-                except TypeError as te:
-                    # As a fallback, convert everything to string representation
-                    from routes.utils import truncate_element
-                    safe_meta = truncate_element(metadata)
-                    json.dump(safe_meta, f, indent=2, ensure_ascii=False, default=str)
+                json.dump(metadata, f, indent=2)
             debug(f"Created new sidecar with provided metadata: {sc_dst}")
         except Exception as e:
             warning(f"Failed to create sidecar with provided metadata: {e}")
@@ -439,57 +385,8 @@ def _append_to_bucket(screen: str, published_path: Path, batch_id: str = None, m
 
     # update bucket metadata
     meta = load_meta(screen)
-    
-    # Create the entry for sequence.json
-    sequence_entry = {
-        "file": target_path.name
-    }
-    
-    # Add batchId to the entry if provided
-    if batch_id:
-        sequence_entry["batchId"] = batch_id
-        
-    # Update the sequence
-    seq = meta.setdefault("sequence", [])
-    # Ensure we're storing the filename and batch ID separately in the metadata
-    if isinstance(seq, list):
-        if batch_id:
-            # Clean batch_id to remove any file extensions
-            clean_batch_id = batch_id
-            if '.' in clean_batch_id:
-                clean_batch_id = clean_batch_id.split('.')[0]
-                
-            if all(isinstance(item, dict) for item in seq):
-                # Dictionary format - add a new entry
-                sequence_entry = {
-                    "file": target_path.name,
-                    "batchId": clean_batch_id
-                }
-                seq.append(sequence_entry)
-            else:
-                # Simple string format - convert to dictionary format
-                # First convert existing entries if needed
-                new_seq = []
-                for item in seq:
-                    if isinstance(item, str):
-                        new_seq.append({"file": item})
-                    else:
-                        new_seq.append(item)
-                new_seq.append({
-                    "file": target_path.name,
-                    "batchId": clean_batch_id
-                })
-                meta["sequence"] = new_seq
-        else:
-            # No batch_id, simpler handling
-            if all(isinstance(item, dict) for item in seq):
-                seq.append({"file": target_path.name})
-            else:
+    seq  = meta.setdefault("sequence", [])
     seq.append(target_path.name)
-    else:
-        # Fallback if sequence is not a list
-        meta["sequence"] = [{"file": target_path.name, "batchId": batch_id}] if batch_id else [target_path.name]
-        
     save_meta(screen, meta)
     
     # now generate the thumbnail for *that* bucket copy

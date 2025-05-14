@@ -839,9 +839,9 @@ export const RecentView: React.FC<RecentViewProps> = ({
         
         // For each real image that arrived, find one placeholder to remove
         setBucketImages(prev => {
-          // Find placeholders with matching batch ID
+          // Find placeholders with matching batch ID (detect via metadata.placeholder flag)
           const matchingPlaceholders = prev.filter(img => 
-            img.id.startsWith('placeholder-') && img.batchId === batchId
+            img.batchId === batchId && img.metadata?.placeholder === true
           );
           
           // If there are placeholders, remove exactly one for each new image

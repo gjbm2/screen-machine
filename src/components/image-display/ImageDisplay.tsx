@@ -3,6 +3,7 @@ import FullscreenDialog from './FullscreenDialog';
 import ViewModeContent from './ViewModeContent';
 import useImageDisplayState from './hooks/useImageDisplayState';
 import apiService from '@/utils/api';
+import { getReferenceUrl } from '@/utils/image-utils';
 import { PublishDestination } from '@/utils/api';
 import * as LucideIcons from 'lucide-react';
 import { BucketGridView } from './BucketGridView';
@@ -79,9 +80,12 @@ interface DestinationTab {
   headless?: boolean;
 }
 
+// Height (in px) of the tab bar – used for spacer when it becomes fixed
+const TAB_BAR_HEIGHT = 48;
+
 export function ImageDisplay(props: ImageDisplayProps) {
   const { destinationsWithBuckets, loading: destinationsLoading } = usePublishDestinations();
-  const [selectedTab, setSelectedTab] = useState<string>('generated');
+  const [selectedTab, setSelectedTab] = useState<string>('recent');
   const [bucketRefreshFlags, setBucketRefreshFlags] = useState<Record<string, number>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [sortField, setSortField] = useState<SortField>('timestamp');
@@ -194,30 +198,27 @@ export function ImageDisplay(props: ImageDisplayProps) {
   // Convert array of destinations to tabs format
   const destinationTabs = useMemo(() => {
     return [
-      { 
-        id: 'generated', 
-        label: 'Generated',
-        icon: <ImagePlus className="h-4 w-4 mr-2" />,
-        highlight: true,
-        file: null
-      } as DestinationTab,
-      // Always add the Recent tab
+      // Re-label the Recent tab as "Generated"
       {
-        id: 'recent', 
-        label: 'Recent',
-        icon: <ClockIcon className="h-4 w-4 mr-2" />,
-        highlight: false,
+        id: 'recent',
+        label: 'Generated',
+        icon: <ClockIcon className="h-4 w-4 mr-2" />, // keep clock icon for now
+        highlight: true,
         file: '_recent',
         headless: true
       } as DestinationTab,
-      ...destinationsWithBuckets.map(dest => ({
-        id: dest.id,
-        label: dest.name,
-        icon: <Image className="h-4 w-4 mr-2" />,
-        highlight: false,
-        file: dest.file || dest.id,
-        headless: dest.headless || false
-      }))
+      ...destinationsWithBuckets.map(dest => {
+        // Get the icon component from Lucide icons if specified
+        const IconComponent = dest.icon ? (LucideIcons as any)[dest.icon] : Image;
+        return {
+          id: dest.id,
+          label: dest.name,
+          icon: <IconComponent className="h-4 w-4 mr-2" />,
+          highlight: false,
+          file: dest.file || dest.id,
+          headless: dest.headless || false
+        };
+      })
     ];
   }, [destinationsWithBuckets]);
 
@@ -273,6 +274,30 @@ export function ImageDisplay(props: ImageDisplayProps) {
   const tabsRef = useRef<HTMLDivElement>(null);
   const [showLeftScroll, setShowLeftScroll] = useState(false);
   const [showRightScroll, setShowRightScroll] = useState(false);
+
+  // ----- Pin tab bar when scrolling past it ----- //
+  const [isTabBarFixed, setIsTabBarFixed] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    // Observe when the sentinel (placed just above the tab bar) leaves the viewport
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // When the sentinel is NOT intersecting, we have scrolled past the tab bar
+        setIsTabBarFixed(!entry.isIntersecting);
+      },
+      { root: null, threshold: 0 }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.unobserve(sentinel);
+    };
+  }, []);
 
   // Check if we need scroll indicators
   const checkScroll = () => {
@@ -475,9 +500,59 @@ export function ImageDisplay(props: ImageDisplayProps) {
     };
   }, []);
 
+  // Add new state for tracking generation completion
+  const [lastGenerationTime, setLastGenerationTime] = useState<number>(Date.now());
+
+  // Update useEffect to handle generation completion
+  useEffect(() => {
+    if (isIndexProps && generatedImages) {
+      // Check if any new images were generated
+      const hasNewGenerations = generatedImages.some(img => 
+        img.timestamp && new Date(img.timestamp).getTime() > lastGenerationTime
+      );
+      
+      if (hasNewGenerations) {
+        // Update the last generation time
+        setLastGenerationTime(Date.now());
+        
+        // Find the most recent batch
+        const latestBatch = generatedImages.reduce((latest, current) => {
+          if (!latest || !current.timestamp) return current;
+          return new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest;
+        });
+        
+        // Expand the latest batch
+        if (latestBatch?.batchId && setExpandedContainers) {
+          setExpandedContainers({
+            ...expandedContainers,
+            [latestBatch.batchId]: true
+          });
+        }
+      }
+    }
+  }, [generatedImages, isIndexProps, lastGenerationTime, setExpandedContainers]);
+
+  // Add this near the top of the component, after other state declarations
+  const [forceUpdate, setForceUpdate] = useState(0);
+
+  // Initialize expanded containers as all collapsed
+  useEffect(() => {
+    if (isIndexProps && imageContainerOrder && setExpandedContainers) {
+      const allCollapsed = Object.fromEntries(
+        imageContainerOrder.map(id => [id, false])
+      );
+      setExpandedContainers(allCollapsed);
+    }
+  }, [isIndexProps, imageContainerOrder, setExpandedContainers]);
+
   const handleDragEnd = (event: DragEndEvent) => {
+    // Always clear overlay state first
+    setDraggedImageData(null);
+
     const { active, over } = event;
     if (!over) return;
+
+    const activeData: any = active?.data?.current;
 
     // Strip prefix if dragging selected image
     let activeId = active.id as string;
@@ -488,6 +563,82 @@ export function ImageDisplay(props: ImageDisplayProps) {
     // Tab drop handling – IDs prefixed with DROP_ZONES.TAB_PREFIX
     if (typeof over.id === 'string' && (over.id as string).startsWith(DROP_ZONES.TAB_PREFIX)) {
       const destId = (over.id as string).slice(DROP_ZONES.TAB_PREFIX.length);
+      // If dropping onto the Generated tab (recent), treat as prompt drop
+      if (destId === 'recent') {
+        try {
+          const referenceUrl = getReferenceUrl(activeData);
+          if (referenceUrl) {
+            window.dispatchEvent(
+              new CustomEvent('useImageAsPrompt', { detail: { url: referenceUrl, append: true } })
+            );
+            toast.success('Image added as reference');
+          }
+        } catch (err) {
+          console.error('Error adding image reference:', err);
+          toast.error('Failed to add image as reference');
+        }
+        return;
+      }
+
+      // If dropping onto the same bucket, publish to that bucket
+      if (destId === selectedTab) {
+        const sourceBucket = getDestinationFile(selectedTab);
+        const destInfo = destinationsWithBuckets.find(d => d.id === destId);
+        const isHeadless = destInfo?.headless || false;
+
+        if (!isHeadless) {
+          console.log(`Publishing image ${activeId} to ${destId}`);
+          apiService.publishImageUnified({
+            dest_bucket_id: destId,
+            src_bucket_id: sourceBucket,
+            filename: activeId
+          })
+          .then(async () => {
+            // Force immediate state updates
+            setForceUpdate(prev => prev + 1);
+            
+            // Update scheduler status
+            try {
+              const status = await apiService.getSchedulerStatus(destId);
+              setSchedulerStatuses(prev => ({
+                ...prev,
+                [destId]: status
+              }));
+            } catch (error) {
+              console.error('Error fetching scheduler status:', error);
+            }
+
+            // Refresh both buckets
+            await Promise.all([
+              stableRefreshBucket(sourceBucket),
+              stableRefreshBucket(destId)
+            ]);
+
+            // Force another state update after refresh
+            setForceUpdate(prev => prev + 1);
+            
+            // Update bucket refresh flags
+            setBucketRefreshFlags(prev => ({
+              ...prev,
+              [destId]: (prev[destId] || 0) + 1,
+              [sourceBucket]: (prev[sourceBucket] || 0) + 1
+            }));
+
+            // Refresh recent view if it exists
+            if (destinationsWithBuckets.some(d => d.id === '_recent')) {
+              stableRefreshBucket('_recent');
+            }
+
+            toast.success('Published successfully');
+          })
+          .catch((err) => {
+            console.error('Publish failed:', err);
+            toast.error('Publish failed');
+          });
+          return;
+        }
+      }
+
       if (destId !== selectedTab) {
         // Find if the destination is headless
         const destInfo = destinationsWithBuckets.find(d => d.id === destId);
@@ -509,6 +660,14 @@ export function ImageDisplay(props: ImageDisplayProps) {
       }
     }
   };
+
+  // Add forceUpdate to the dependencies of the main render
+  useEffect(() => {
+    // This effect will run whenever forceUpdate changes
+    if (selectedTab) {
+      stableRefreshBucket(getDestinationFile(selectedTab));
+    }
+  }, [forceUpdate, selectedTab, stableRefreshBucket]);
 
   // Handle menu action selection
   const handleMenuAction = (action: MenuAction) => {
@@ -595,8 +754,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
 
   // ---------- Droppable Tab Button ---------- //
   const DroppableTabButton: React.FC<{ tab: DestinationTab }> = ({ tab }) => {
-    // Only make non-generated and non-recent tabs droppable
-    const isDroppable = tab.id !== 'generated' && tab.id !== 'recent';
+    // Allow droppable on 'recent'
+    const isDroppable = tab.id !== 'generated';
     
     // Use a dummy ref for non-droppable tabs
     const dummyRef = useRef<HTMLButtonElement>(null);
@@ -639,8 +798,16 @@ export function ImageDisplay(props: ImageDisplayProps) {
 
   return (
     <div className="bg-background h-full overflow-y-auto">
+      {/* Sentinel element: its presence tells us when we've scrolled past the tab bar */}
+      <div ref={sentinelRef} style={{ height: TAB_BAR_HEIGHT }} />
+
       {/* Tabs for switching between Generated view and Destinations - frameless design */}
-      <div className="border-b w-full sticky top-0 z-50 bg-background">
+      <div
+        className={`border-b w-full bg-background ${
+          isTabBarFixed ? 'fixed top-0 left-0 right-0 z-[100]' : ''
+        }`}
+        style={{ height: TAB_BAR_HEIGHT }}
+      >
         <div className="relative grid grid-cols-1">
           {/* Scroll indicators */}
           <div className="absolute inset-y-0 left-0 z-10 flex items-center pointer-events-none">
@@ -742,6 +909,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
               schedulerStatus={getStatusForDestination(selectedTab)}
               headless={destinationTabs.find(tab => tab.id === selectedTab)?.headless || false}
               icon={destinationsWithBuckets.find(d => d.id === selectedTab)?.icon || 'image'}
+              headerPinned={isTabBarFixed}
             />
           )
         )}
