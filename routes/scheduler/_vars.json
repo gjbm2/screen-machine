@@ -26,12 +26,6 @@
   },
   "imports": {
     "a_theme": {
-      "north-screen": {
-        "imported_as": "_a_theme",
-        "source_type": "scope",
-        "source": "living-room",
-        "timestamp": "2025-05-14T11:00:01.320450"
-      },
       "south-screen": {
         "imported_as": "_a_theme",
         "source_type": "scope",
@@ -40,12 +34,6 @@
       }
     },
     "b_theme": {
-      "north-screen": {
-        "imported_as": "_b_theme",
-        "source_type": "scope",
-        "source": "living-room",
-        "timestamp": "2025-05-14T11:00:01.320450"
-      },
       "south-screen": {
         "imported_as": "_b_theme",
         "source_type": "scope",
@@ -54,12 +42,6 @@
       }
     },
     "style": {
-      "north-screen": {
-        "imported_as": "_style",
-        "source_type": "scope",
-        "source": "living-room",
-        "timestamp": "2025-05-14T11:00:01.320450"
-      },
       "south-screen": {
         "imported_as": "_style",
         "source_type": "scope",
@@ -68,12 +50,6 @@
       }
     },
     "guidance": {
-      "north-screen": {
-        "imported_as": "_guidance",
-        "source_type": "scope",
-        "source": "living-room",
-        "timestamp": "2025-05-14T11:00:01.320450"
-      },
       "south-screen": {
         "imported_as": "_guidance",
         "source_type": "scope",
@@ -82,5 +58,5 @@
       }
     }
   },
-  "last_updated": "2025-05-14T11:00:01.406880"
+  "last_updated": "2025-05-14T20:20:08.938555"
 }
