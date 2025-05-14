@@ -589,26 +589,123 @@ def api_get_schedule_stack(publish_destination):
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>/events", methods=["POST"])
-def api_trigger_event(publish_destination):
+@scheduler_bp.route("/api/schedulers/events", methods=["GET"])
+def api_get_events():
+    """
+    Get events for a destination.
+    
+    Route:
+    - /api/schedulers/events?destination=<id> - Destination is provided as query param
+    """
     try:
-        data = request.json
-        if not isinstance(data, dict) or "event" not in data:
-            return jsonify({"error": "Request must include event type"}), 400
-
-        event_type = data["event"]
-        if event_type not in ["user-started-generation"]:
-            return jsonify({"error": f"Unknown event type: {event_type}"}), 400
-
-        # Store the event with timestamp
-        if publish_destination not in active_events:
-            active_events[publish_destination] = {}
-        active_events[publish_destination][event_type] = datetime.now()
-
-        info(f"Triggered event {event_type} for {publish_destination}")
-        return jsonify({"status": "event_triggered", "event": event_type})
+        # Get destination from query parameters
+        publish_destination = request.args.get("destination")
+            
+        # Destination is required
+        if not publish_destination:
+            return jsonify({"error": "Destination ID is required"}), 400
+            
+        from routes.scheduler_utils import get_events_for_destination
+        
+        # Get events
+        events = get_events_for_destination(publish_destination)
+        
+        return jsonify(events)
     except Exception as e:
-        error_msg = f"Error triggering event: {str(e)}"
+        error_msg = f"Error getting events: {str(e)}"
+        error(error_msg)
+        return jsonify({"error": error_msg}), 500
+
+@scheduler_bp.route("/api/schedulers/events/<event_key>", methods=["DELETE"])
+def api_clear_event(event_key):
+    """
+    Clear a specific event for a destination.
+    
+    Route:
+    - /api/schedulers/events/<event_key>?destination=<id> - Destination is provided as query param
+    """
+    try:
+        # Get destination from query parameters
+        publish_destination = request.args.get("destination")
+            
+        # Destination is required
+        if not publish_destination:
+            return jsonify({"error": "Destination ID is required"}), 400
+            
+        from routes.scheduler_utils import clear_events_for_destination
+        
+        # Clear the event
+        result = clear_events_for_destination(publish_destination, event_key)
+        
+        return jsonify(result)
+    except Exception as e:
+        error_msg = f"Error clearing event: {str(e)}"
+        error(error_msg)
+        return jsonify({"error": error_msg}), 500
+
+# === Event API endpoints ===
+
+@scheduler_bp.route("/api/schedulers/events/throw", methods=["POST"])
+def api_throw_event():
+    """
+    Throw an event to a destination, group, or globally.
+    
+    Route:
+    - /api/schedulers/events/throw - With destination/group/scope in request body
+    """
+    try:
+        data = request.json or {}
+        if not isinstance(data, dict):
+            return jsonify({"error": "Request must include event details"}), 400
+
+        if "event" not in data:
+            return jsonify({"error": "Request must include 'event' field"}), 400
+            
+        # Extract the scope from the request, default to "global"
+        scope = data.get("scope", "global")
+        
+        # Check if destination parameter is provided in the request
+        if "destination" in data:
+            scope = data["destination"]
+        
+        # Determine scope type (dest, group, or global)
+        from routes.scheduler_utils import determine_scope_type, throw_event
+        
+        try:
+            scope_type, dest_id, group_id = determine_scope_type(scope)
+        except Exception as e:
+            error_msg = f"Error determining scope type: {str(e)}"
+            error(error_msg)
+            return jsonify({"error": error_msg}), 400
+        
+        # Extract parameters from request
+        event_key = data["event"]
+        ttl = data.get("ttl", "60s")
+        delay = data.get("delay")
+        future_time = data.get("future_time")
+        display_name = data.get("display_name")
+        payload = data.get("payload")
+        single_consumer = data.get("single_consumer", False)
+        
+        # Throw the event
+        result = throw_event(
+            scope=scope_type,
+            key=event_key,
+            ttl=ttl,
+            delay=delay,
+            future_time=future_time,
+            dest_id=dest_id,
+            group_id=group_id,
+            display_name=display_name,
+            payload=payload,
+            single_consumer=single_consumer
+        )
+        
+        scope_msg = f"globally" if scope_type == "global" else f"to {scope}"
+        info(f"Threw event '{event_key}' {scope_msg}")
+        return jsonify(result)
+    except Exception as e:
+        error_msg = f"Error throwing event: {str(e)}"
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 

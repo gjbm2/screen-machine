@@ -197,15 +197,20 @@ def test_trigger_event(test_client, basic_schedule):
     test_client.post("/api/schedulers/test_dest", json=basic_schedule)
     
     # Trigger an event
-    event_data = {"event": "user-started-generation"}
+    event_data = {
+        "event": "user-started-generation",
+        "scope": "dest", 
+        "destination": "test_dest"
+    }
     response = test_client.post(
-        "/api/schedulers/test_dest/events",
+        "/api/schedulers/events/throw",
         json=event_data
     )
     assert response.status_code == 200
     data = json.loads(response.data)
-    assert data["status"] == "event_triggered"
-    assert data["event"] == "user-started-generation"
+    assert data["status"] == "queued"
+    assert data["key"] == "user-started-generation"
+    assert "test_dest" in data["destinations"]
 
 def test_get_all_scheduler_statuses(test_client, basic_schedule):
     """Test getting statuses of all schedulers."""
