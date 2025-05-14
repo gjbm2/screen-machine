@@ -7,7 +7,8 @@ export type ExpandableVariant = 'panel' | 'section';
 
 export interface ExpandableContainerProps {
   id: string;
-  label?: string;
+  /** The main header, may be a plain string or composed JSX (e.g. truncated prompt + counter). */
+  label?: React.ReactNode;
   /** Where to place the expand / collapse arrow.  'left' for section lists (bucket); 'right' for generated panels. */
   iconPos?: 'left' | 'right';
   variant?: ExpandableVariant;
@@ -77,7 +78,16 @@ export const ExpandableContainer = React.forwardRef<HTMLDivElement, ExpandableCo
           {iconPos === 'left' && (
             <ArrowIcon className="h-4 w-4 mr-1 shrink-0" />
           )}
-          {label && <span className="truncate text-sm font-medium max-w-full" style={{ minWidth: 0 }}>{label}</span>}
+          {label && (
+            <span className="flex items-center min-w-0 max-w-full text-sm font-medium">
+              {/* If label is a string, wrap it in a truncating span so ellipsis only affects the prompt text. */}
+              {typeof label === 'string' ? (
+                <span className="truncate max-w-full" style={{ minWidth: 0 }}>{label}</span>
+              ) : (
+                label
+              )}
+            </span>
+          )}
         </button>
 
         {/* Right side extras */}
