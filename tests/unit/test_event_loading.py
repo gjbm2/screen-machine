@@ -86,5 +86,3 @@ def test_save_and_load_events(temp_state_path):
     # Verify other state
     assert scheduler_states[dest_id] == "running"
     assert len(scheduler_contexts_stacks[dest_id]) == 1
-
-def test_legacy_event_migration(temp_state_path):

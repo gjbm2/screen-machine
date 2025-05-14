@@ -22,12 +22,13 @@ def test_throw_and_get_event(test_client, clean_events_state):
     """Test throwing an event and retrieving it."""
     dest_id = "test_dest"
     
-    # Throw an event using the destination-specific endpoint (legacy path)
+    # Throw an event using the unified endpoint
     response = test_client.post(
-        f"/api/schedulers/{dest_id}/events/throw",
+        "/api/schedulers/events/throw",
         json={
             "event": "test_event",
             "display_name": "Test Event",
+            "scope": dest_id,
             "ttl": "300s",
             "payload": {"test": "data"}
         }
@@ -41,7 +42,7 @@ def test_throw_and_get_event(test_client, clean_events_state):
     assert dest_id in data["destinations"]
     
     # Get events
-    response = test_client.get(f"/api/schedulers/{dest_id}/events")
+    response = test_client.get(f"/api/schedulers/events?destination={dest_id}")
     
     # Check events response
     assert response.status_code == 200
@@ -92,12 +93,12 @@ def test_throw_and_clear_event(test_client, clean_events_state):
     )
     
     # Verify it was stored
-    response = test_client.get(f"/api/schedulers/{dest_id}/events")
+    response = test_client.get(f"/api/schedulers/events?destination={dest_id}")
     data = json.loads(response.data)
     assert len(data["queue"]) == 1
     
     # Clear the event
-    response = test_client.delete(f"/api/schedulers/{dest_id}/events/test_event")
+    response = test_client.delete(f"/api/schedulers/events/test_event?destination={dest_id}")
     
     # Check clear response
     assert response.status_code == 200
@@ -105,7 +106,7 @@ def test_throw_and_clear_event(test_client, clean_events_state):
     assert data["cleared"] == 1
     
     # Verify it was cleared
-    response = test_client.get(f"/api/schedulers/{dest_id}/events")
+    response = test_client.get(f"/api/schedulers/events?destination={dest_id}")
     data = json.loads(response.data)
     assert len(data["queue"]) == 0
 
