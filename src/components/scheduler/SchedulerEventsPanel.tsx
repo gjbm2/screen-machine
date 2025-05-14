@@ -41,7 +41,7 @@ import {
 } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { RefreshCcw, Clock, Calendar, Maximize, Package, ChevronDown, ChevronUp } from 'lucide-react';
+import { RefreshCcw, Clock, Calendar, Maximize, Package, ChevronDown, ChevronRight } from 'lucide-react';
 import apiService from '@/utils/api';
 import { toast } from 'sonner';
 import { PublishDestination } from '@/utils/api';
@@ -409,217 +409,191 @@ export const SchedulerEventsPanel: React.FC = () => {
   };
   
   return (
-    <Card className="w-full">
-      <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-        <div>
-          <CardTitle>Scheduler Events</CardTitle>
-          <CardDescription>
-            Create and manage events for schedulers
-          </CardDescription>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchEvents}
-            disabled={loading}
-          >
-            <RefreshCcw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="px-2"
-          >
+    <Card>
+      <CardHeader 
+        className="cursor-pointer hover:bg-muted/50 transition-colors" 
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-xl font-bold flex items-center">
             {isExpanded ? (
-              <ChevronUp className="h-4 w-4 transition-transform" />
+              <ChevronDown className="h-5 w-5 mr-2 text-muted-foreground" />
             ) : (
-              <ChevronDown className="h-4 w-4 transition-transform" />
+              <ChevronRight className="h-5 w-5 mr-2 text-muted-foreground" />
             )}
-          </Button>
+            Scheduler Events
+            {eventsData && (
+              <Badge variant="secondary" className="ml-2">
+                {eventsData.queue.length + eventsData.history.length}
+              </Badge>
+            )}
+          </CardTitle>
         </div>
       </CardHeader>
-      <div
-        className={`transition-all duration-300 ease-in-out ${
-          isExpanded ? 'opacity-100 max-h-[2000px]' : 'opacity-0 max-h-0 overflow-hidden'
-        }`}
-      >
+      {isExpanded && (
         <CardContent>
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* Event Form */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium">Create Event</h3>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="eventKey">Event Key *</Label>
-                    <Input
-                      id="eventKey"
-                      value={eventKey}
-                      onChange={(e) => setEventKey(e.target.value)}
-                      placeholder="user_login"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="displayName">Display Name</Label>
-                    <Input
-                      id="displayName"
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="User Login Event"
-                    />
-                  </div>
-                </div>
-                
+          <div className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="scope">Scope *</Label>
-                  <Select value={scope} onValueChange={setScope}>
+                  <Label htmlFor="eventKey">Event Key *</Label>
+                  <Input
+                    id="eventKey"
+                    value={eventKey}
+                    onChange={(e) => setEventKey(e.target.value)}
+                    placeholder="user_login"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="displayName">Display Name</Label>
+                  <Input
+                    id="displayName"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="User Login Event"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="scope">Scope *</Label>
+                <Select value={scope} onValueChange={setScope}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select scope" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dest">Destination</SelectItem>
+                    <SelectItem value="group">Group</SelectItem>
+                    <SelectItem value="global">Global</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {/* Conditional fields based on scope */}
+              {scope === 'dest' && (
+                <div className="space-y-2">
+                  <Label htmlFor="destId">Destination *</Label>
+                  <Select value={destId} onValueChange={setDestId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select scope" />
+                      <SelectValue placeholder="Select destination" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="dest">Destination</SelectItem>
-                      <SelectItem value="group">Group</SelectItem>
-                      <SelectItem value="global">Global</SelectItem>
+                      {destinations.map((dest) => (
+                        <SelectItem key={dest.id} value={dest.id}>
+                          {dest.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
-                
-                {/* Conditional fields based on scope */}
-                {scope === 'dest' && (
-                  <div className="space-y-2">
-                    <Label htmlFor="destId">Destination *</Label>
-                    <Select value={destId} onValueChange={setDestId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select destination" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {destinations.map((dest) => (
-                          <SelectItem key={dest.id} value={dest.id}>
-                            {dest.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                
-                {scope === 'group' && (
-                  <div className="space-y-2">
-                    <Label htmlFor="groupId">Group *</Label>
-                    <Select value={groupId} onValueChange={setGroupId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select group" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {groups.map((group) => (
-                          <SelectItem key={group} value={group}>
-                            {group}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="ttl">TTL</Label>
-                    <Input
-                      id="ttl"
-                      value={ttl}
-                      onChange={(e) => setTtl(e.target.value)}
-                      placeholder="60s"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Examples: 30s, 5m, 2h, 1d
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="delay">Delay</Label>
-                    <Input
-                      id="delay"
-                      value={delay}
-                      onChange={(e) => setDelay(e.target.value)}
-                      placeholder="30s"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="futureTime">Future Time</Label>
-                    <Input
-                      id="futureTime"
-                      type="datetime-local"
-                      value={futureTime}
-                      onChange={(e) => setFutureTime(e.target.value)}
-                    />
-                  </div>
-                </div>
-                
+              )}
+              
+              {scope === 'group' && (
                 <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="singleConsumer"
-                      checked={singleConsumer}
-                      onCheckedChange={(checked) => setSingleConsumer(checked as boolean)}
-                    />
-                    <Label htmlFor="singleConsumer">Single Consumer</Label>
-                  </div>
+                  <Label htmlFor="groupId">Group *</Label>
+                  <Select value={groupId} onValueChange={setGroupId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select group" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groups.map((group) => (
+                        <SelectItem key={group} value={group}>
+                          {group}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="ttl">TTL</Label>
+                  <Input
+                    id="ttl"
+                    value={ttl}
+                    onChange={(e) => setTtl(e.target.value)}
+                    placeholder="60s"
+                  />
                   <p className="text-xs text-muted-foreground">
-                    If checked, event is removed after first consumption
+                    Examples: 30s, 5m, 2h, 1d
                   </p>
                 </div>
-                
                 <div className="space-y-2">
-                  <Label htmlFor="payload">Payload (JSON)</Label>
-                  <Textarea
-                    id="payload"
-                    value={payload}
-                    onChange={(e) => {
-                      setPayload(e.target.value);
-                      validatePayload(e.target.value);
-                    }}
-                    placeholder='{"user": "test_user", "action": "login"}'
-                    className={payloadIsValid ? '' : 'border-red-500'}
+                  <Label htmlFor="delay">Delay</Label>
+                  <Input
+                    id="delay"
+                    value={delay}
+                    onChange={(e) => setDelay(e.target.value)}
+                    placeholder="30s"
                   />
-                  {!payloadIsValid && (
-                    <p className="text-xs text-red-500">{payloadError}</p>
-                  )}
                 </div>
-                
-                <div className="flex justify-end space-x-2">
-                  <Button type="button" variant="outline" onClick={resetForm}>
-                    Reset
-                  </Button>
-                  <Button type="submit">Throw Event</Button>
+                <div className="space-y-2">
+                  <Label htmlFor="futureTime">Future Time</Label>
+                  <Input
+                    id="futureTime"
+                    type="datetime-local"
+                    value={futureTime}
+                    onChange={(e) => setFutureTime(e.target.value)}
+                  />
                 </div>
-              </form>
-            </div>
-            
-            {/* Events Tables */}
-            <div className="space-y-4">
-              <Tabs defaultValue="queue">
-                <TabsList className="mb-4">
-                  <TabsTrigger value="queue">Queue</TabsTrigger>
-                  <TabsTrigger value="history">History</TabsTrigger>
-                </TabsList>
-                <TabsContent value="queue">
-                  <div className="max-h-[500px] overflow-auto">
-                    {renderQueueTable()}
-                  </div>
-                </TabsContent>
-                <TabsContent value="history">
-                  <div className="max-h-[500px] overflow-auto">
-                    {renderHistoryTable()}
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </div>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="singleConsumer"
+                    checked={singleConsumer}
+                    onCheckedChange={(checked) => setSingleConsumer(checked as boolean)}
+                  />
+                  <Label htmlFor="singleConsumer">Single Consumer</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  If checked, event is removed after first consumption
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="payload">Payload (JSON)</Label>
+                <Textarea
+                  id="payload"
+                  value={payload}
+                  onChange={(e) => {
+                    setPayload(e.target.value);
+                    validatePayload(e.target.value);
+                  }}
+                  placeholder='{"user": "test_user", "action": "login"}'
+                  className={payloadIsValid ? '' : 'border-red-500'}
+                />
+                {!payloadIsValid && (
+                  <p className="text-xs text-red-500">{payloadError}</p>
+                )}
+              </div>
+              
+              <div className="flex justify-end space-x-2">
+                <Button type="button" variant="outline" onClick={resetForm}>
+                  Reset
+                </Button>
+                <Button type="submit">Throw Event</Button>
+              </div>
+            </form>
+
+            <Tabs defaultValue="queue" className="w-full">
+              <TabsList>
+                <TabsTrigger value="queue">Queue</TabsTrigger>
+                <TabsTrigger value="history">History</TabsTrigger>
+              </TabsList>
+              <TabsContent value="queue">
+                {renderQueueTable()}
+              </TabsContent>
+              <TabsContent value="history">
+                {renderHistoryTable()}
+              </TabsContent>
+            </Tabs>
           </div>
         </CardContent>
-      </div>
+      )}
       
       {/* Payload Dialog */}
       <Dialog open={payloadDialogOpen} onOpenChange={setPayloadDialogOpen}>

@@ -3,7 +3,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
-import { Play, Pause, Plus, AlertCircle, RefreshCcw, ArrowDownToLine, X, Settings } from 'lucide-react';
+import { 
+  Play, 
+  Pause, 
+  Plus, 
+  AlertCircle, 
+  RefreshCcw, 
+  ArrowDownToLine, 
+  X, 
+  Settings,
+  ChevronDown,
+  ChevronRight
+} from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { useConsoleManagement } from '@/hooks/use-console-management';
 import apiService from '@/utils/api';
@@ -66,6 +77,40 @@ interface SchedulerStatus {
   next_action: NextAction | null;
 }
 
+interface CollapsibleCardHeaderProps {
+  title: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  count?: number;
+}
+
+const CollapsibleCardHeader: React.FC<CollapsibleCardHeaderProps> = ({ 
+  title, 
+  isOpen, 
+  onToggle,
+  count
+}) => {
+  return (
+    <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={onToggle}>
+      <div className="flex items-center justify-between">
+        <CardTitle className="text-xl font-bold flex items-center">
+          {isOpen ? (
+            <ChevronDown className="h-5 w-5 mr-2 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-5 w-5 mr-2 text-muted-foreground" />
+          )}
+          {title}
+          {count !== undefined && (
+            <Badge variant="secondary" className="ml-2">
+              {count}
+            </Badge>
+          )}
+        </CardTitle>
+      </div>
+    </CardHeader>
+  );
+};
+
 const Scheduler = () => {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,6 +141,11 @@ const Scheduler = () => {
   const [showLogs, setShowLogs] = useState<{[key: string]: boolean}>({});
   const [showSchedule, setShowSchedule] = useState<{[key: string]: boolean}>({});
   const [schedulerStatus, setSchedulerStatus] = useState<{[key: string]: SchedulerStatus}>({});
+
+  const [varsRegistryVisible, setVarsRegistryVisible] = useState(false);
+  const [runningSectionVisible, setRunningSectionVisible] = useState(true);
+  const [pausedSectionVisible, setPausedSectionVisible] = useState(false);
+  const [stoppedSectionVisible, setStoppedSectionVisible] = useState(false);
 
   const fetchDestinations = useCallback(async () => {
     setLoading(true);
@@ -742,149 +792,145 @@ const Scheduler = () => {
       consoleLogs={consoleLogs}
       onClearConsole={clearConsole}
     >
-      <div className="container mx-auto p-4">
+      <div className="container mx-auto p-4 space-y-4">
+        {/* Page Header with Refresh Button */}
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-3xl font-bold">Schedulers</h1>
-          <div className="space-x-2">
-            <Button 
-              variant="outline" 
-              onClick={fetchDestinations} 
-              disabled={loading}
-            >
-              <RefreshCcw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          </div>
+          <Button 
+            variant="outline" 
+            onClick={fetchDestinations} 
+            disabled={loading}
+          >
+            <RefreshCcw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
         </div>
-        
-        <div className="space-y-6">
-          {/* Alert */}
-          {showAlert && (
-            <div
-              className={alertSeverity === 'success' ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700'}
-              role="alert"
-              style={{ padding: '10px', borderWidth: '1px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <AlertCircle className="mr-2 h-4 w-4" />
-                <span>{alertMessage}</span>
-              </div>
-              <button
-                className="text-gray-500 hover:text-gray-700"
-                onClick={() => setShowAlert(false)}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+
+        {/* Vars Registry Section */}
+        <Card>
+          <CollapsibleCardHeader
+            title="Variables Registry"
+            isOpen={varsRegistryVisible}
+            onToggle={() => setVarsRegistryVisible(!varsRegistryVisible)}
+          />
+          {varsRegistryVisible && (
+            <CardContent>
+              <VarsRegistryCard />
+            </CardContent>
           )}
-          
-          {/* Variables Registry Card */}
-          <VarsRegistryCard />
+        </Card>
 
-          {/* Scheduler Events Panel */}
-          <SchedulerEventsPanel />
-          
-          {/* Schedulers List */}
-          <div className="grid gap-6">
-            {loading ? (
-              <Card>
-                <CardContent className="py-4">
-                  <div className="text-center">Loading schedulers...</div>
-                </CardContent>
-              </Card>
-            ) : destinations.length === 0 ? (
-              <Card>
-                <CardContent className="py-4">
-                  <div className="text-center">No schedulers found.</div>
-                </CardContent>
-              </Card>
-            ) : (
-              <>
-                {/* Running Schedulers */}
-                {groupedDestinations.running.length > 0 && (
-                  <div>
-                    <h2 className="text-xl font-semibold mb-3">Running</h2>
-                    <div className="space-y-4">
-                      {groupedDestinations.running.map((destination) => (
-                        <SchedulerCard 
-                          key={destination.name} 
-                          destination={destination} 
-                          onToggle={handleToggleSchedule}
-                          onCreate={handleCreateSchedule}
-                          onStart={handleStartScheduler}
-                          onStop={handleStopScheduler}
-                          onUnload={handleUnloadSchedule}
-                          onEdit={handleEditSchedule}
-                          schedulerStatus={schedulerStatus}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
+        {/* Events Section */}
+        <SchedulerEventsPanel />
 
-                {/* Paused Schedulers */}
-                {groupedDestinations.paused.length > 0 && (
-                  <div>
-                    <h2 className="text-xl font-semibold mb-3">Paused</h2>
-                    <div className="space-y-4">
-                      {groupedDestinations.paused.map((destination) => (
-                        <SchedulerCard 
-                          key={destination.name} 
-                          destination={destination} 
-                          onToggle={handleToggleSchedule}
-                          onCreate={handleCreateSchedule}
-                          onStart={handleStartScheduler}
-                          onStop={handleStopScheduler}
-                          onUnload={handleUnloadSchedule}
-                          onEdit={handleEditSchedule}
-                          schedulerStatus={schedulerStatus}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
+        {/* Running Schedulers Section */}
+        <Card>
+          <CollapsibleCardHeader
+            title="Running Schedulers"
+            isOpen={runningSectionVisible}
+            onToggle={() => setRunningSectionVisible(!runningSectionVisible)}
+            count={destinations.filter(d => d.isRunning && !d.isPaused).length}
+          />
+          {runningSectionVisible && (
+            <CardContent>
+              <div className="grid gap-4">
+                {destinations
+                  .filter(d => d.isRunning && !d.isPaused)
+                  .map(destination => (
+                    <SchedulerCard
+                      key={destination.id}
+                      destination={destination}
+                      onToggle={handleToggleSchedule}
+                      onCreate={handleCreateSchedule}
+                      onStart={handleStartScheduler}
+                      onStop={handleStopScheduler}
+                      onUnload={handleUnloadSchedule}
+                      onEdit={handleEditSchedule}
+                      schedulerStatus={schedulerStatus}
+                    />
+                  ))}
+              </div>
+            </CardContent>
+          )}
+        </Card>
 
-                {/* Stopped Schedulers */}
-                {groupedDestinations.stopped.length > 0 && (
-                  <div>
-                    <h2 className="text-xl font-semibold mb-3">Stopped</h2>
-                    <div className="space-y-4">
-                      {groupedDestinations.stopped.map((destination) => (
-                        <SchedulerCard 
-                          key={destination.name} 
-                          destination={destination} 
-                          onToggle={handleToggleSchedule}
-                          onCreate={handleCreateSchedule}
-                          onStart={handleStartScheduler}
-                          onStop={handleStopScheduler}
-                          onUnload={handleUnloadSchedule}
-                          onEdit={handleEditSchedule}
-                          schedulerStatus={schedulerStatus}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+        {/* Paused Schedulers Section */}
+        <Card>
+          <CollapsibleCardHeader
+            title="Paused Schedulers"
+            isOpen={pausedSectionVisible}
+            onToggle={() => setPausedSectionVisible(!pausedSectionVisible)}
+            count={destinations.filter(d => d.isPaused).length}
+          />
+          {pausedSectionVisible && (
+            <CardContent>
+              <div className="grid gap-4">
+                {destinations
+                  .filter(d => d.isPaused)
+                  .map(destination => (
+                    <SchedulerCard
+                      key={destination.id}
+                      destination={destination}
+                      onToggle={handleToggleSchedule}
+                      onCreate={handleCreateSchedule}
+                      onStart={handleStartScheduler}
+                      onStop={handleStopScheduler}
+                      onUnload={handleUnloadSchedule}
+                      onEdit={handleEditSchedule}
+                      schedulerStatus={schedulerStatus}
+                    />
+                  ))}
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
+        {/* Stopped Schedulers Section */}
+        <Card>
+          <CollapsibleCardHeader
+            title="Stopped Schedulers"
+            isOpen={stoppedSectionVisible}
+            onToggle={() => setStoppedSectionVisible(!stoppedSectionVisible)}
+            count={destinations.filter(d => !d.isRunning && !d.isPaused).length}
+          />
+          {stoppedSectionVisible && (
+            <CardContent>
+              <div className="grid gap-4">
+                {destinations
+                  .filter(d => !d.isRunning && !d.isPaused)
+                  .map(destination => (
+                    <SchedulerCard
+                      key={destination.id}
+                      destination={destination}
+                      onToggle={handleToggleSchedule}
+                      onCreate={handleCreateSchedule}
+                      onStart={handleStartScheduler}
+                      onStop={handleStopScheduler}
+                      onUnload={handleUnloadSchedule}
+                      onEdit={handleEditSchedule}
+                      schedulerStatus={schedulerStatus}
+                    />
+                  ))}
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
+        {/* Schema Edit Modal */}
+        {schemaEditModalOpen && schemaEditData && (
+          <SchemaEditModal
+            open={schemaEditModalOpen}
+            onOpenChange={setSchemaEditModalOpen}
+            onSave={handleSchemaEditSave}
+            destination={schemaEditData.destination}
+            schema={schemaEditData.schema}
+            initialData={schemaEditData.initialData}
+            saveEndpoint={schemaEditData.saveEndpoint}
+            saveMethod={schemaEditData.saveMethod}
+            scriptsDirectory="routes/scheduler/scripts"
+          />
+        )}
       </div>
-      
-      {/* Schema edit modal */}
-      {schemaEditData && (
-        <SchemaEditModal
-          open={schemaEditModalOpen}
-          onOpenChange={setSchemaEditModalOpen}
-          destination={schemaEditData.destination}
-          schema={schemaEditData.schema}
-          initialData={schemaEditData.initialData}
-          saveEndpoint={schemaEditData.saveEndpoint}
-          saveMethod={schemaEditData.saveMethod}
-          onSave={handleSchemaEditSave}
-          scriptsDirectory="routes/scheduler/scripts"
-        />
-      )}
     </MainLayout>
   );
 };
