@@ -1,4 +1,3 @@
-
 export interface ImageGenerationConfig {
   prompt: string;
   imageFiles?: File[];
@@ -28,6 +27,7 @@ export interface GeneratedImage {
   refinerParams?: Record<string, any>;
   containerId?: number;
   title?: string;
+  uniqueKey?: string;
 }
 
 export interface AsyncGenerationUpdate {

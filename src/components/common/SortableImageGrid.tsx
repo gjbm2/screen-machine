@@ -88,14 +88,17 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
       className={`drag-grid${disableDefaultGridCols ? ' recent-tab-grid' : ''} grid${!disableDefaultGridCols ? ' grid-cols-2 sm:grid-cols-3 md:grid-cols-4' : ''} gap-1 overflow-x-hidden ${className} ${itemExtraClass}`}
       style={{ touchAction: active ? 'none' : 'pan-y' }}
     >
-      {images.map((img, idx) => (
-        img.customComponent ? (
-          <div key={img.id}>
+      {images.map((img, idx) => {
+        // Create a stable, unique key for React
+        const itemKey = (img.uniqueKey || img.id) as React.Key;
+        
+        return img.customComponent ? (
+          <div key={itemKey}>
             {img.customComponent}
           </div>
         ) : sortable ? (
           <SortableImage 
-            key={img.id} 
+            key={itemKey} 
             image={img} 
             index={idx} 
             onToggleFavorite={onToggleFavorite} 
@@ -112,7 +115,7 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
           />
         ) : (
           <DraggableImage 
-            key={img.id} 
+            key={itemKey} 
             image={img} 
             index={idx} 
             onToggleFavorite={onToggleFavorite} 
@@ -127,8 +130,8 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
             className={itemExtraClass}
             onFullscreenClick={onFullscreenClick}
           />
-        )
-      ))}
+        );
+      })}
     </div>
   );
 

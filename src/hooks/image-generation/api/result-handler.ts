@@ -200,7 +200,9 @@ export const processGenerationResults = (
         refiner: refinerValue,
         // Preserve refinerParams from placeholder or use response refiner_params
         refinerParams: responseImage.refiner_params || existingRefinerParams,
-        containerId: containerId
+        containerId: containerId,
+        // Add uniqueKey for React rendering
+        uniqueKey: `${existingImage.id}_${batchId}`
       };
       
       // Log what we're preserving for debugging
@@ -239,7 +241,9 @@ export const processGenerationResults = (
         params: responseImage.params || {},
         refiner: refinerValue,
         refinerParams: responseImage.refiner_params || {},
-        containerId: containerId
+        containerId: containerId,
+        // Add uniqueKey for React rendering
+        uniqueKey: `${nanoid()}_${batchId}`
       };
       
       console.log(`Adding new image with batchIndex ${batchIndex}`);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
 import { RecentBatchPanel } from './RecentBatchPanel';
@@ -8,6 +8,7 @@ import { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 import { ImageItem } from '@/types/image-types';
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import styles from './recent.module.css';
+import React from 'react';
 
 // Add type declarations for window functions
 declare global {
@@ -43,17 +44,6 @@ interface RecentViewProps {
 interface PlaceholderInfo {
   id: string;
   timestamp: number;
-}
-
-// Helper to dispatch placeholder event
-function emitRecentPlaceholder({ batchId, prompt }: { batchId: string; prompt: string }) {
-  const placeholderId = `placeholder-${batchId}-${Date.now()}`;
-  console.log('[recent] dispatch placeholder', placeholderId, batchId);
-  window.dispatchEvent(
-    new CustomEvent('recent:placeholder', {
-      detail: { batchId, placeholderId, prompt },
-    })
-  );
 }
 
 export const RecentView: React.FC<RecentViewProps> = ({
@@ -94,27 +84,89 @@ export const RecentView: React.FC<RecentViewProps> = ({
   // Placeholders state
   const [placeholders, setPlaceholders] = useState<PlaceholderInfo[]>([]);
   
-  // Map of batchId -> force selected image ID
+  // Selection Architecture:
+  // 1. Each batch panel manages its own selection state independently
+  // 2. Parent component only receives notifications, not controls selections
+  // 3. No two-way binding between parent and child components
+
+  // Map of batchId -> selected image ID (for persistence only)
   const [selectedImageByBatch, setSelectedImageByBatch] = useState<Record<string,string>>({});
+  
+  // Set to track the last few placeholder batch events to detect duplicates
+  const recentPlaceholderEvents = useRef<{batchId: string, timestamp: number}[]>([]).current;
+  
+  // At the beginning of the component, add a debounce function and ref
+  const selectionUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Create a minimal selection handler that just stores the value without affecting other components
+  const handleSelectImage = useCallback((batchId: string, imageId: string) => {
+    // Just store the selection without triggering UI updates across batches
+    setSelectedImageByBatch(prev => {
+      // Skip if no change 
+      if (prev[batchId] === imageId) return prev;
+      
+      // Create minimal update with just this batch's selection
+      const updated = {...prev};
+      updated[batchId] = imageId;
+      
+      // Save for persistence only
+      try {
+        localStorage.setItem('recentTabSelections', JSON.stringify(updated));
+      } catch (error) {
+        console.error('Error saving selection:', error);
+      }
+      
+      return updated;
+    });
+  }, []);
+  
+  // Add a useRef to track initialization
+  const initializedRef = useRef(false);
+
+  // Add this effect near the top to ensure clean one-time initialization
+  useEffect(() => {
+    // Only run initialization code once
+    if (initializedRef.current) return;
+    
+    // Load saved state
+    try {
+      // Load selection state
+      const savedSelections = localStorage.getItem('recentTabSelections');
+      if (savedSelections) {
+        try {
+          setSelectedImageByBatch(JSON.parse(savedSelections));
+        } catch (e) {
+          console.error('Error parsing saved selections', e);
+        }
+      }
+      
+      // Load panel state
+      const savedState = localStorage.getItem('recentTabState');
+      if (savedState) {
+        try {
+          const state = JSON.parse(savedState);
+          if (state.batchOrder) setBatchOrder(state.batchOrder);
+          if (state.collapsedPanels) setCollapsedPanels(state.collapsedPanels);
+        } catch (e) {
+          console.error('Error parsing saved state', e);
+        }
+      }
+    } catch (e) {
+      // Ignore any localStorage errors
+    }
+    
+    // Mark as initialized
+    initializedRef.current = true;
+  }, []);
   
   // Load images initially and start polling for updates
   useEffect(() => {
+    // Initial load
     fetchRecentImages();
     fetchDestinations();
     
-    // Poll every 30 seconds for new images
-    timerRef.current = setInterval(() => {
-      fetchRecentImages(false); // Silent refresh
-    }, 30000);
-    
-    // Load saved state from localStorage
-    loadStateFromStorage();
-    
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
+    // Polling has been disabled as it was causing issues
+    // Clean up function is no longer needed since we're not setting up an interval
   }, []);
   
   // Save state to localStorage on any state change
@@ -147,12 +199,51 @@ export const RecentView: React.FC<RecentViewProps> = ({
     }
   };
   
-  // Fetch all images from the _recent bucket
+  // Add this function to load active placeholders from localStorage at the top of the component
+  const loadActivePlaceholdersFromStorage = (): PlaceholderInfo[] => {
+    try {
+      const storedPlaceholders = localStorage.getItem('activePlaceholders');
+      if (storedPlaceholders) {
+        const parsed = JSON.parse(storedPlaceholders);
+        console.log('[recent] Loaded placeholders from localStorage:', parsed);
+        return parsed;
+      }
+    } catch (error) {
+      console.error('[recent] Error loading active placeholders from localStorage:', error);
+    }
+    return [];
+  };
+
+  // Add this function to clean up expired placeholders in localStorage
+  const cleanupExpiredPlaceholders = () => {
+    try {
+      const storedPlaceholders = localStorage.getItem('activePlaceholders');
+      if (storedPlaceholders) {
+        const parsed = JSON.parse(storedPlaceholders);
+        const now = Date.now();
+        const expireTime = 10 * 60 * 1000; // 10 minutes
+        
+        const activePlaceholders = parsed.filter((p: any) => (now - p.timestamp) < expireTime);
+        
+        if (activePlaceholders.length !== parsed.length) {
+          localStorage.setItem('activePlaceholders', JSON.stringify(activePlaceholders));
+          console.log('[recent] Cleaned up expired placeholders, remaining:', activePlaceholders.length);
+        }
+      }
+    } catch (error) {
+      console.error('[recent] Error cleaning up expired placeholders:', error);
+    }
+  };
+
+  // Update the fetchRecentImages function to preserve selection state
   const fetchRecentImages = async (showLoading = true) => {
     if (showLoading) {
       setLoading(true);
     }
     setError(null);
+    
+    // Get current selection state to preserve it
+    const currentSelections = {...selectedImageByBatch};
     
     try {
       const details = await apiService.getBucketDetails('_recent');
@@ -177,16 +268,51 @@ export const RecentView: React.FC<RecentViewProps> = ({
         batchId: extractBatchId(item.filename)
       }));
       
-      // Preserve any existing placeholders in the state
+      // Get active placeholders from localStorage to ensure they survive polling
+      const activePlaceholders = loadActivePlaceholdersFromStorage();
+      
       setBucketImages(prev => {
-        // Get all current placeholders
+        // Get all current placeholders that should be preserved
         const currentPlaceholders = prev.filter(img => 
           img.id.startsWith('placeholder-') && img.metadata?.placeholder
         );
         
-        // Add current placeholders to the new images
-        return [...currentPlaceholders, ...images];
+        // Filter to keep only placeholders that are still active or not in the localStorage list
+        const relevantPlaceholders = currentPlaceholders.filter(placeholder => {
+          // Check if this placeholder is in our active list from localStorage
+          return activePlaceholders.some((active: any) => active.id === placeholder.id);
+        });
+        
+        console.log(`[recent] Preserving ${relevantPlaceholders.length} placeholders through polling`);
+        
+        // Create a Map to deduplicate images by ID
+        const uniqueImages = new Map<string, BucketImage>();
+        
+        // First add placeholders to ensure they take precedence
+        relevantPlaceholders.forEach(img => uniqueImages.set(img.id, img));
+        
+        // Then add API images, which will override placeholders with the same ID
+        images.forEach(img => uniqueImages.set(img.id, img));
+        
+        return Array.from(uniqueImages.values());
       });
+      
+      // Handle selection state preservation
+      // We want to keep selections for batches that still exist
+      const newBatchIds = new Set(images.map(img => img.batchId));
+      const updatedSelections: Record<string, string> = {};
+      
+      // Keep only selections for batches that still exist
+      Object.entries(currentSelections).forEach(([batchId, imageId]) => {
+        if (newBatchIds.has(batchId)) {
+          updatedSelections[batchId] = imageId;
+        }
+      });
+      
+      // Only update if there are changes
+      if (Object.keys(updatedSelections).length !== Object.keys(selectedImageByBatch).length) {
+        setSelectedImageByBatch(updatedSelections);
+      }
     } catch (error) {
       console.error('Error fetching recent images:', error);
       if (showLoading) {
@@ -306,6 +432,8 @@ export const RecentView: React.FC<RecentViewProps> = ({
   // Convert BucketImage to ImageItem for components
   const toImageItem = (img: BucketImage): ImageItem => ({
     id: img.id,
+    // Ensure the key for this item is truly unique by using both id and batchId
+    uniqueKey: `${img.id}_${img.batchId || 'unknown'}`,
     urlThumb: img.thumbnail_url || img.thumbnail_embedded || '',
     urlFull: img.url || '',
     promptKey: img.prompt || '',
@@ -334,20 +462,6 @@ export const RecentView: React.FC<RecentViewProps> = ({
       localStorage.setItem('recentTabState', JSON.stringify(state));
     } catch (error) {
       console.error('Error saving recent tab state:', error);
-    }
-  };
-  
-  // Load state from localStorage
-  const loadStateFromStorage = () => {
-    try {
-      const savedState = localStorage.getItem('recentTabState');
-      if (savedState) {
-        const state = JSON.parse(savedState);
-        if (state.batchOrder) setBatchOrder(state.batchOrder);
-        if (state.collapsedPanels) setCollapsedPanels(state.collapsedPanels);
-      }
-    } catch (error) {
-      console.error('Error loading recent tab state:', error);
     }
   };
   
@@ -546,32 +660,159 @@ export const RecentView: React.FC<RecentViewProps> = ({
       });
   };
   
-  // Add a useEffect to expire placeholders after 60 seconds
+  // Listen for batch placeholder events from image-generator.ts
   useEffect(() => {
-    // Don't set up the timer if there are no placeholders
-    if (placeholders.length === 0) return;
-    
-    const timer = setInterval(() => {
-      const now = Date.now();
-      const expireTime = 60 * 1000; // 60 seconds
-      
-      // Find placeholders that should be expired
-      const expiredIds = placeholders
-        .filter(p => (now - p.timestamp) > expireTime)
-        .map(p => p.id);
-      
-      // If any placeholders need to be expired, update state
-      if (expiredIds.length > 0) {
-        // Remove expired placeholders from the images list
-        setBucketImages(prev => prev.filter(img => !expiredIds.includes(img.id)));
+    const handleBatchPlaceholders = (e: any) => {
+      try {
+        const { batchId, placeholders, prompt, workflow, params, globalParams, collapsed } = e.detail || {};
+        if (!batchId || !placeholders || placeholders.length === 0) return;
         
-        // Remove expired placeholders from our tracking list
-        setPlaceholders(prev => prev.filter(p => !expiredIds.includes(p.id)));
+        // Check for duplicate events (same batch ID within a short time window)
+        const now = Date.now();
+        const duplicateEvent = recentPlaceholderEvents.find(
+          event => event.batchId === batchId && (now - event.timestamp) < 1000
+        );
+        
+        if (duplicateEvent) {
+          console.warn(`[recent] DUPLICATE placeholder event detected for batch ${batchId} - ignoring`);
+          return;
+        }
+        
+        // Add this event to our tracking
+        recentPlaceholderEvents.push({ batchId, timestamp: now });
+        // Keep only the last 10 events
+        if (recentPlaceholderEvents.length > 10) {
+          recentPlaceholderEvents.shift();
+        }
+        
+        console.log('[recent] Received batch placeholders for batch', batchId, 'count:', placeholders.length);
+
+        // Create placeholder images for the batch
+        const newPlaceholders: BucketImage[] = placeholders.map(({ placeholderId, batchIndex }: { placeholderId: string, batchIndex: number }) => {
+          const placeholderThumb = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+          return {
+            id: placeholderId,
+            url: placeholderThumb,
+            thumbnail_url: placeholderThumb,
+            batchId,
+            created_at: Date.now()/1000,
+            metadata: { 
+              placeholder: true, 
+              aspectRatio: 16/9,
+              prompt,
+              workflow,
+              params,
+              global_params: globalParams,
+              batchIndex
+            },
+            prompt,
+          };
+        });
+        
+        // Add placeholders to bucket images with careful deduplication
+        setBucketImages(prev => {
+          // Filter out any existing placeholders with the same IDs to avoid duplicates
+          const filteredPrev = prev.filter(img => 
+            !placeholders.some((p: { placeholderId: string }) => p.placeholderId === img.id)
+          );
+          console.log(`[recent] Adding ${newPlaceholders.length} placeholders, filtered out ${prev.length - filteredPrev.length} duplicates`);
+          return [...newPlaceholders, ...filteredPrev];
+        });
+        
+        // Move batch to top of order
+        setBatchOrder(prev => {
+          const without = prev.filter(id => id !== batchId);
+          return [batchId, ...without];
+        });
+        
+        // Set the container collapse state based on the event parameter
+        setCollapsedPanels(prev => ({
+          ...prev,
+          [batchId]: collapsed === true, // explicitly check for true to be safe
+        }));
+        
+        // Track placeholders for auto-expiry
+        setPlaceholders(prev => {
+          const newPlaceholderTrackers = placeholders.map(
+            (p: { placeholderId: string }) => ({ id: p.placeholderId, timestamp: Date.now() })
+          );
+          
+          // Filter out any that already exist to avoid duplicates
+          const filteredNew = newPlaceholderTrackers.filter(
+            tracker => !prev.some(p => p.id === tracker.id)
+          );
+          
+          return [...prev, ...filteredNew];
+        });
+      } catch (err) {
+        console.warn('recent:batch-placeholders handler error', err);
       }
-    }, 5000); // Check every 5 seconds
+    };
     
-    return () => clearInterval(timer);
-  }, [placeholders]);
+    window.addEventListener('recent:batch-placeholders', handleBatchPlaceholders as EventListener);
+    console.log('[recent] listener added for batch-placeholders');
+    return () => window.removeEventListener('recent:batch-placeholders', handleBatchPlaceholders as EventListener);
+  }, []);
+
+  // Add a new useEffect to handle the generation-complete event:
+  useEffect(() => {
+    const handleGenerationComplete = (e: any) => {
+      try {
+        const { batchId, count, autoExpand } = e.detail || {};
+        if (!batchId) return;
+        
+        console.log(`[recent] Generation complete for batch ${batchId} with ${count} images`);
+        
+        if (autoExpand) {
+          // Expand this container and collapse others
+          setCollapsedPanels(prev => {
+            const updated = { ...prev };
+            
+            // Set all containers as collapsed
+            Object.keys(updated).forEach(id => {
+              updated[id] = id !== batchId; // true = collapsed for all except this batch
+            });
+            
+            // Make sure this batch is expanded
+            updated[batchId] = false;
+            
+            return updated;
+          });
+          
+          // Also ensure this batch is at the top of the order
+          setBatchOrder(prev => {
+            if (prev[0] === batchId) return prev; // Already at the top
+            const without = prev.filter(id => id !== batchId);
+            return [batchId, ...without];
+          });
+        }
+        
+        // Clean up any placeholders from localStorage that might be associated with this batch
+        try {
+          const storedPlaceholders = localStorage.getItem('activePlaceholders');
+          if (storedPlaceholders) {
+            const parsed = JSON.parse(storedPlaceholders);
+            const remaining = parsed.filter((p: any) => p.batchId !== batchId);
+            localStorage.setItem('activePlaceholders', JSON.stringify(remaining));
+            console.log(`[recent] Removed completed placeholders for batch ${batchId} from localStorage`);
+          }
+        } catch (error) {
+          console.error('[recent] Error cleaning up localStorage placeholders:', error);
+        }
+      } catch (err) {
+        console.warn('recent:generation-complete handler error', err);
+      }
+    };
+    
+    window.addEventListener('recent:generation-complete', handleGenerationComplete as EventListener);
+    console.log('[recent] listener added for generation-complete');
+    return () => window.removeEventListener('recent:generation-complete', handleGenerationComplete as EventListener);
+  }, []);
+
+  // Add cleanup for expired placeholders in localStorage on component mount
+  useEffect(() => {
+    cleanupExpiredPlaceholders();
+  }, []);
   
   // Listen for new images event - update to track placeholders
   useEffect(() => {
@@ -624,17 +865,40 @@ export const RecentView: React.FC<RecentViewProps> = ({
             const remainingImages = prev.filter(img => !placeholderIds.includes(img.id));
             
             // Add the new images ensuring no duplicates by id
-            const merged = [...newImgs, ...remainingImages];
+            // Create a Map using a combination of id and batchId to ensure true uniqueness
             const uniqueMap = new Map<string, BucketImage>();
-            merged.forEach(img => { if(!uniqueMap.has(img.id)) uniqueMap.set(img.id, img); });
+            
+            // First add all remaining images to the map
+            remainingImages.forEach(img => {
+              const uniqueKey = `${img.id}_${img.batchId || 'unknown'}`;
+              uniqueMap.set(uniqueKey, img);
+            });
+            
+            // Then add new images, potentially overwriting older ones with same id
+            newImgs.forEach(img => {
+              const uniqueKey = `${img.id}_${img.batchId || 'unknown'}`;
+              uniqueMap.set(uniqueKey, img);
+            });
+            
             return Array.from(uniqueMap.values());
           }
           
-          // If no placeholders found, just add the new images
-          const merged = [...newImgs, ...prev];
-          const unique = new Map<string, BucketImage>();
-          merged.forEach(img => { if(!unique.has(img.id)) unique.set(img.id,img); });
-          return Array.from(unique.values());
+          // If no placeholders found, just add the new images with deduplication
+          const uniqueMap = new Map<string, BucketImage>();
+          
+          // First add all existing images
+          prev.forEach(img => {
+            const uniqueKey = `${img.id}_${img.batchId || 'unknown'}`;
+            uniqueMap.set(uniqueKey, img);
+          });
+          
+          // Then add new images, overwriting any with the same id+batchId combination
+          newImgs.forEach(img => {
+            const uniqueKey = `${img.id}_${img.batchId || 'unknown'}`;
+            uniqueMap.set(uniqueKey, img);
+          });
+          
+          return Array.from(uniqueMap.values());
         });
         
         // Move batch to top and update UI states
@@ -665,27 +929,96 @@ export const RecentView: React.FC<RecentViewProps> = ({
   
   // DnD handlers for batch reordering
   const handleDragStart = (event: DragStartEvent) => {
+    console.log('[DnD Debug] Container drag start:', {
+      activeId: event.active.id,
+      activeRect: event.active.rect
+    });
     setActiveId(event.active.id as string);
+    
+    // Log the current state of batchOrder
+    console.log('[DnD Debug] Current batch order at drag start:', [...batchOrder]);
   };
   
   const handleDragEnd = (event: DragEndEvent) => {
+    console.log('[DnD Debug] Container drag end:', {
+      activeId: event.active.id,
+      overId: event.over?.id,
+      overRect: event.over?.rect,
+      delta: event.delta
+    });
+    
     const { active, over } = event;
     
     if (over && active.id !== over.id) {
+      console.log('[DnD Debug] Valid drop detected between containers:', {
+        fromId: active.id,
+        toId: over.id,
+        currentOrder: [...batchOrder]
+      });
+      
+      // Check if IDs exist in batch order
+      const activeExists = batchOrder.includes(active.id as string);
+      const overExists = batchOrder.includes(over.id as string);
+      
+      console.log('[DnD Debug] ID verification:', {
+        activeIdExists: activeExists,
+        overIdExists: overExists,
+        activeIdType: typeof active.id,
+        overIdType: typeof over.id
+      });
+      
+      if (!activeExists || !overExists) {
+        console.warn('[DnD Debug] ⚠️ One or both IDs not found in batch order');
+        setActiveId(null);
+        return;
+      }
+      
       // Reorder batches
       setBatchOrder(items => {
         const oldIndex = items.indexOf(active.id as string);
         const newIndex = items.indexOf(over.id as string);
-        return arrayMove(items, oldIndex, newIndex);
+        
+        console.log('[DnD Debug] Reordering indexes:', { 
+          oldIndex, 
+          newIndex,
+          batchOrderCopy: [...items]
+        });
+        
+        if (oldIndex === -1 || newIndex === -1) {
+          console.warn('[DnD Debug] Invalid indexes for batchOrder update');
+          return items;
+        }
+        
+        const newOrder = arrayMove(items, oldIndex, newIndex);
+        console.log('[DnD Debug] New batch order:', newOrder);
+        return newOrder;
       });
       
       // Reorder batchGroups array as well for immediate UI update
       setBatchGroups(groups => {
         const oldIndex = groups.findIndex(g => g.batchId === active.id);
         const newIndex = groups.findIndex(g => g.batchId === over.id);
-        if (oldIndex === -1 || newIndex === -1) return groups;
+        
+        console.log('[DnD Debug] Reordering batch groups:', { 
+          oldIndex, 
+          newIndex,
+          batchIdActive: active.id,
+          batchIdOver: over.id
+        });
+        
+        if (oldIndex === -1 || newIndex === -1) {
+          console.warn('[DnD Debug] Invalid indexes for batch groups update');
+          return groups;
+        }
+        
         return arrayMove(groups, oldIndex, newIndex);
       });
+    } else {
+      if (!over) {
+        console.log('[DnD Debug] No valid drop target found');
+      } else if (active.id === over.id) {
+        console.log('[DnD Debug] Dropped on same container, no reordering needed');
+      }
     }
     
     setActiveId(null);
@@ -712,20 +1045,36 @@ export const RecentView: React.FC<RecentViewProps> = ({
     []
   );
 
-  // Wrapper to make entire batch panel draggable within SortableContext
-  const SortableBatchPanel: React.FC<{ batch: { batchId: string, images: ImageItem[] } }> = ({ batch }) => {
+  // Wrapper to make entire batch panel draggable with memoized props
+  const SortableBatchPanel = React.memo(({ batch }: { batch: { batchId: string, images: ImageItem[] } }) => {
     const {
       attributes,
       listeners,
       setNodeRef,
       transform,
       transition,
+      isDragging
     } = useSortable({ id: batch.batchId });
 
-    const style: React.CSSProperties = {
+    // Only log when actually being dragged to avoid excessive logging
+    React.useEffect(() => {
+      if (isDragging) {
+        console.log(`[DnD Debug] Batch panel ${batch.batchId} is being dragged`);
+      }
+    }, [isDragging, batch.batchId]);
+
+    // When transform changes during drag, log it (but only when dragging to avoid noise)
+    React.useEffect(() => {
+      if (isDragging && transform) {
+        console.log(`[DnD Debug] Batch ${batch.batchId} transform:`, transform);
+      }
+    }, [transform, batch.batchId, isDragging]);
+
+    const style = {
       transform: CSS.Transform.toString(transform),
       transition,
       cursor: 'grab',
+      opacity: isDragging ? 0.5 : 1, // Add visual feedback when dragging
     };
 
     return (
@@ -743,13 +1092,103 @@ export const RecentView: React.FC<RecentViewProps> = ({
           onUseAsPrompt={handleUseAsPrompt}
           onGenerateAgain={handleGenerateAgain}
           publishDestinations={destinations}
-          forceSelectId={selectedImageByBatch[batch.batchId]}
-          onSelectImage={(batchId,id)=> setSelectedImageByBatch(prev=>({...prev,[batchId]:id}))}
+          
+          // Only pass forceSelectId for initial render
+          forceSelectId={selectedImageByBatch[batch.batchId] || null}
+          
+          // Use the selection handler
+          onSelectImage={handleSelectImage}
           onCollapseChange={(id,collapsed)=> setCollapsedPanels(prev=>({...prev,[id]:collapsed}))}
         />
       </div>
     );
-  };
+  });
+
+  // Add targeted logging to key useEffect hooks
+  useEffect(() => {
+    console.log('[DnD Debug] batchOrder changed:', batchOrder);
+    saveStateToStorage();
+  }, [batchOrder, collapsedPanels]);
+
+  // Add a useEffect to expire placeholders after 5 minutes
+  useEffect(() => {
+    // Don't run the check if there are no placeholders
+    if (placeholders.length === 0) return;
+    
+    // Run the expiration check once without setting up an interval
+    const now = Date.now();
+    const expireTime = 5 * 60 * 1000; // 5 minutes
+    
+    // Find placeholders that should be expired
+    const expiredIds = placeholders
+      .filter(p => (now - p.timestamp) > expireTime)
+      .map(p => p.id);
+    
+    // If any placeholders need to be expired, update state
+    if (expiredIds.length > 0) {
+      console.log(`[recent] Auto-expiring ${expiredIds.length} placeholders after timeout`);
+      
+      // Remove expired placeholders from the images list
+      setBucketImages(prev => prev.filter(img => !expiredIds.includes(img.id)));
+      
+      // Remove expired placeholders from our tracking list
+      setPlaceholders(prev => prev.filter(p => !expiredIds.includes(p.id)));
+      
+      // Also remove from localStorage
+      try {
+        const storedPlaceholders = localStorage.getItem('activePlaceholders');
+        if (storedPlaceholders) {
+          const parsed = JSON.parse(storedPlaceholders);
+          const remaining = parsed.filter((p: any) => !expiredIds.includes(p.id));
+          localStorage.setItem('activePlaceholders', JSON.stringify(remaining));
+        }
+      } catch (error) {
+        console.error('[recent] Error removing expired placeholders from localStorage:', error);
+      }
+    }
+    
+    // No need to clear interval since we're not setting one
+  }, [placeholders]);
+
+  // Memoize batch groups to prevent unnecessary re-renders
+  const memoizedBatchGroups = useMemo(() => {
+    return batchGroups;
+  }, [batchGroups]);
+
+  // Component-level DnD debugging
+  // Track when activeId changes to understand if container or image drag is happening
+  useEffect(() => {
+    if (activeId) {
+      console.log(`[DnD Debug] Container drag active: ${activeId}`);
+      
+      // Log batch information for the active batch
+      const activeBatch = batchGroups.find(group => group.batchId === activeId);
+      if (activeBatch) {
+        console.log(`[DnD Debug] Active batch has ${activeBatch.images.length} images`);
+      } else {
+        console.log(`[DnD Debug] ⚠️ Active ID ${activeId} not found in batch groups`);
+      }
+    }
+  }, [activeId, batchGroups]);
+
+  // Debug logging for DnD context
+  console.log('[DnD Debug] Rendering with batchOrder:', batchOrder);
+
+  // Add diagnostic logging for component mounting
+  useEffect(() => {
+    console.log('[DnD Debug] RecentView component mounted');
+    console.log('[DnD Debug] Available props:', { refreshRecent });
+    
+    // Log any parent DndContext info we can access
+    try {
+      // Check if there's any window-level or DOM-level indication of DndContext
+      console.log('[DnD Debug] DndContext detected:', 
+        !!document.querySelector('[data-dnd-context]') || 
+        !!(window as any).__DND_CONTEXT_ID);
+    } catch (err) {
+      console.log('[DnD Debug] Error checking for parent DndContext:', err);
+    }
+  }, [refreshRecent]);
 
   // If loading, show loading state
   if (loading) {
@@ -771,12 +1210,15 @@ export const RecentView: React.FC<RecentViewProps> = ({
     );
   }
   
-  // Render the batch groups
+  // Render the batch groups with diagnostic info
   return (
     <div className={styles.recentViewContainer}>
       <SortableContext items={batchOrder} strategy={rectSortingStrategy}>
-        {batchGroups.map(batch => (
-          <SortableBatchPanel key={`batch-panel-${batch.batchId}`} batch={batch} />
+        {memoizedBatchGroups.map(batch => (
+          <SortableBatchPanel 
+            key={`batch-panel-${batch.batchId}`} 
+            batch={batch} 
+          />
         ))}
       </SortableContext>
     </div>

@@ -59,24 +59,15 @@ export const createPlaceholderBatch = (
       refinerParams,
       referenceImageUrl,
       containerId,
-      title: `Generating image ${nextIndex + 1} of ${batchSize}...` // Add a title for display
+      title: `Generating image ${nextIndex + 1} of ${batchSize}...`, // Add a title for display
+      uniqueKey: `placeholder-${placeholderId}_${batchId}` // Add uniqueKey for React rendering
     };
     
     console.log(`[placeholder-utils] Created placeholder with batchIndex ${nextIndex} and placeholderId ${placeholderId}`);
     placeholders.push(placeholder);
 
-    // Emit event so Recent tab can show placeholder immediately
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new CustomEvent('recent:placeholder', {
-          detail: {
-            batchId,
-            placeholderId,
-            prompt,
-          },
-        })
-      );
-    }
+    // We've moved event dispatching to the image-generator.ts file as a batch
+    // to avoid multiple events per batch
   }
   
   console.log('[placeholder-utils] Created', placeholders.length, 'placeholders');

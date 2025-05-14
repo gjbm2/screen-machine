@@ -193,15 +193,50 @@ export const generateImage = async (
         );
         
         // Dispatch placeholder event so Recent tab can show container immediately
+        // We'll dispatch a single event with all placeholders rather than one per placeholder
         if (placeholders.length > 0) {
+          // Add a console log to track batch placeholder events
+          console.log('[image-generator] Dispatching batch-placeholders event:', {
+            batchId: currentBatchId,
+            count: placeholders.length,
+            placeholders: placeholders.map(p => p.placeholderId)
+          });
+          
+          // We only need to dispatch once for the batch, not per placeholder
           window.dispatchEvent(
-            new CustomEvent('recent:placeholder', {
+            new CustomEvent('recent:batch-placeholders', {
               detail: {
                 batchId: currentBatchId,
                 count: placeholders.length,
+                prompt: prompt,
+                placeholders: placeholders.map(p => ({
+                  placeholderId: p.placeholderId,
+                  batchIndex: p.batchIndex
+                })),
+                workflow,
+                params,
+                globalParams,
+                collapsed: true // Indicate that this container should start collapsed
               }
             })
           );
+          
+          // Store placeholder IDs in localStorage to survive polling cycles
+          try {
+            const existingPlaceholders = JSON.parse(localStorage.getItem('activePlaceholders') || '[]');
+            const updatedPlaceholders = [
+              ...existingPlaceholders,
+              ...placeholders.map(p => ({ 
+                id: p.placeholderId, 
+                batchId: currentBatchId, 
+                timestamp: Date.now() 
+              }))
+            ];
+            localStorage.setItem('activePlaceholders', JSON.stringify(updatedPlaceholders));
+            console.log('[image-generator] Saved placeholders to localStorage:', updatedPlaceholders);
+          } catch (err) {
+            console.error('[image-generator] Failed to save placeholders to localStorage:', err);
+          }
         }
         
         return [...prevImages, ...placeholders];
@@ -261,6 +296,25 @@ export const generateImage = async (
             const updatedImages = processGenerationResults(response, currentBatchId, prevImages);
             return updatedImages;
           });
+          
+          // Dispatch a browser event for generated images completion
+          // This will signal the Recent tab to expand this container and collapse others
+          if (response.images && Array.isArray(response.images) && response.images.length > 0) {
+            console.log('[image-generator] Dispatching generation-complete event:', {
+              batchId: currentBatchId,
+              count: response.images.length
+            });
+            
+            window.dispatchEvent(
+              new CustomEvent('recent:generation-complete', {
+                detail: {
+                  batchId: currentBatchId,
+                  count: response.images.length,
+                  autoExpand: true // Signal to expand this container
+                }
+              })
+            );
+          }
         } else {
           // For async workflows, we'll handle the results through WebSocket messages
           addConsoleLog({
@@ -272,7 +326,7 @@ export const generateImage = async (
         // Remove from active generations
         setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
         
-        // Dispatch a browser event so Recent tab can update immediately
+        // Dispatch a browser event for Recent tab can update immediately
         if (response.recent_files && Array.isArray(response.recent_files) && response.recent_files.length > 0) {
           window.dispatchEvent(
             new CustomEvent('recent:add', {
@@ -282,6 +336,19 @@ export const generateImage = async (
               }
             })
           );
+        }
+        
+        // Also remove active placeholders for this batch from localStorage since generation is complete
+        try {
+          const existingPlaceholders = JSON.parse(localStorage.getItem('activePlaceholders') || '[]');
+          const updatedPlaceholders = existingPlaceholders.filter((p: any) => p.batchId !== currentBatchId);
+          
+          if (updatedPlaceholders.length !== existingPlaceholders.length) {
+            localStorage.setItem('activePlaceholders', JSON.stringify(updatedPlaceholders));
+            console.log(`[image-generator] Removed completed placeholders for batch ${currentBatchId} from localStorage`);
+          }
+        } catch (err) {
+          console.error('[image-generator] Failed to remove completed placeholders from localStorage:', err);
         }
         
         return currentBatchId;
