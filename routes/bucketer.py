@@ -485,7 +485,7 @@ def _append_to_bucket(screen: str, published_path: Path, batch_id: str = None, m
             if all(isinstance(item, dict) for item in seq):
                 seq.append({"file": target_path.name})
             else:
-    seq.append(target_path.name)
+                seq.append(target_path.name)
     else:
         # Fallback if sequence is not a list
         meta["sequence"] = [{"file": target_path.name, "batchId": batch_id}] if batch_id else [target_path.name]

@@ -204,18 +204,9 @@ export class Api {
 		  // Get the metadata from the result.images array to include in the event
 		  const imagesWithMetadata = result.images.map((img: any, index: number) => ({
 			fileName: result.recent_files[index],
+			// Preserve the entire image object from backend so the frontend has full metadata access
 			metadata: {
-			  prompt: img.prompt,
-			  original_prompt: img.original_prompt,
-			  seed: img.seed,
-			  negative_prompt: img.negative_prompt,
-			  workflow: img.workflow,
-			  params: img.params,
-			  timestamp: img.timestamp,
-			  batch_id: img.batch_id,
-			  batch_index: img.batch_index,
-			  refiner: img.refiner,
-			  refiner_params: img.refiner_params
+			  ...img
 			}
 		  }));
 
@@ -360,9 +351,15 @@ export class Api {
         
         // Dispatch a real event for the Recent tab to handle
         if (mockFilenames.length > 0) {
+          const imagesWithMetadata = mockImages.map((img: any, index: number) => ({
+            fileName: mockFilenames[index],
+            metadata: { ...img }
+          }));
+
           const eventDetail = {
             batchId: params.batch_id,
-            files: mockFilenames
+            files: mockFilenames,
+            imagesWithMetadata
           };
           
           window.dispatchEvent(new CustomEvent('recent:add', { detail: eventDetail }));
