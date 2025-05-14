@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import FullscreenDialog from './FullscreenDialog';
 import ViewModeContent from './ViewModeContent';
 import useImageDisplayState from './hooks/useImageDisplayState';
@@ -142,10 +142,14 @@ export function ImageDisplay(props: ImageDisplayProps) {
         ...prev,
         [bucket]: status
       }));
+      console.log('[poll] scheduler status updated at', new Date().toLocaleTimeString());
     } catch (error) {
       console.error(`Error fetching scheduler status for ${bucket}:`, error);
     }
   };
+
+  // after definition of refreshBucket function wrap in useCallback for stability
+  const stableRefreshBucket = useCallback(refreshBucket, []);
 
   const handleImageClick = (image: any) => {
     console.log('Image clicked:', image);
@@ -229,6 +233,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
     let isMounted = true;
     const fetchSchedulerStatuses = async () => {
       if (!isMounted) return;
+      console.log('[poll] fetchSchedulerStatuses triggered at', new Date().toLocaleTimeString());
       try {
         const statuses = await Promise.all(
           destinationsWithBuckets.map(async (dest) => {
@@ -516,7 +521,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
       apiService.copyImageToBucket(getDestinationFile(selectedTab), destId, imageId, true)
         .then(() => {
           toast.success(`Copied to ${destId}`);
-          refreshBucket(destId);
+          stableRefreshBucket(destId);
         })
         .catch((err) => {
           console.error('Copy failed:', err);
@@ -527,9 +532,9 @@ export function ImageDisplay(props: ImageDisplayProps) {
       apiService.copyImageToBucket(getDestinationFile(selectedTab), destId, imageId, false)
         .then(() => {
           toast.success(`Moved to ${destId}`);
-          refreshBucket(destId);
+          stableRefreshBucket(destId);
           // Also refresh the source bucket since the file should be removed
-          refreshBucket(getDestinationFile(selectedTab));
+          stableRefreshBucket(getDestinationFile(selectedTab));
         })
         .catch((err) => {
           console.error('Move failed:', err);
@@ -548,7 +553,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         })
         .then(() => {
           toast.success('Published successfully');
-          refreshBucket(destId);
+          stableRefreshBucket(destId);
         })
         .catch((err) => {
           console.error('Publish failed:', err);
@@ -567,7 +572,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         })
         .then(() => {
           toast.success('Published successfully');
-          refreshBucket(destId);
+          stableRefreshBucket(destId);
         })
         .catch((err) => {
           console.error('Publish failed:', err);
@@ -625,10 +630,17 @@ export function ImageDisplay(props: ImageDisplayProps) {
     );
   };
 
+  const refreshRecent = useCallback(() => {
+    stableRefreshBucket('_recent');
+  }, [stableRefreshBucket]);
+
+  // Define memoized component after refreshRecent definition but before return:
+  const MemoRecentView = useMemo(() => memo(RecentView), []);
+
   return (
-    <div className="bg-background overflow-hidden h-full">
+    <div className="bg-background h-full overflow-y-auto">
       {/* Tabs for switching between Generated view and Destinations - frameless design */}
-      <div className="border-b w-full">
+      <div className="border-b w-full sticky top-0 z-50 bg-background">
         <div className="relative grid grid-cols-1">
           {/* Scroll indicators */}
           <div className="absolute inset-y-0 left-0 z-10 flex items-center pointer-events-none">
@@ -670,8 +682,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
         </div>
       </div>
 
-      {/* Content based on selected tab */}
-      <div className="p-4 h-[calc(100%-48px)] overflow-auto">
+      {/* Content area */}
+      <div className="p-4">
         {selectedTab === 'generated' ? (
           isLoading ? (
             <div className="flex items-center justify-center h-full">
@@ -718,16 +730,14 @@ export function ImageDisplay(props: ImageDisplayProps) {
           )
         ) : selectedTab === 'recent' ? (
           /* Render the Recent tab view */
-          <RecentView 
-            refreshRecent={() => refreshBucket('_recent')}
-          />
+          <MemoRecentView refreshRecent={refreshRecent}/>
         ) : (
           selectedTab && selectedTab !== 'generated' && (
             <BucketGridView
               destination={selectedTab}
               destinationName={destinationTabs.find(tab => tab.id === selectedTab)?.label || selectedTab}
               onImageClick={handleImageClick}
-              refreshBucket={refreshBucket}
+              refreshBucket={stableRefreshBucket}
               isLoading={isLoading}
               schedulerStatus={getStatusForDestination(selectedTab)}
               headless={destinationTabs.find(tab => tab.id === selectedTab)?.headless || false}

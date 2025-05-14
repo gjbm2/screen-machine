@@ -10,6 +10,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Sparkles } from 'lucide-react';
+import { createPortal } from 'react-dom';
 
 // Add type declaration for window.generateImage
 declare global {
@@ -282,15 +283,6 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
     dropRefInternal(node);
   };
 
-  const dragStyle: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition: isDragging ? undefined : 'transform 0.2s ease',
-    opacity: isDragging ? 0.6 : 1,
-    cursor: isDragging ? 'grabbing' : 'grab',
-    boxShadow: isDragging ? '0 4px 14px rgba(0,0,0,0.3)' : undefined,
-    zIndex: isDragging ? 50 : undefined,
-  };
-  
   const handleToggle = (id: string) => {
     const newState = !isCollapsed;
     setIsCollapsed(newState);
@@ -310,14 +302,23 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
     }
   };
   
-  // Format batch title with the prompt + counter
-  const batchTitle = useMemo(() => {
-    const prompt = images[0]?.promptKey || 'No prompt';
-    const idx = images.findIndex(img => img.id === selectedId);
-    return `${prompt} (${idx + 1}/${images.length})`;
-  }, [images, selectedId]);
-  
-  // No headerExtras – count now inside label, refresh hidden for cleaner header
+  // Header prompt (truncated if long) and separate counter element
+  const headerPrompt = useMemo(() => {
+    return images[0]?.promptKey || 'No prompt';
+  }, [images]);
+
+  const headerCounter = useMemo(() => {
+    return `(${selectedIndex + 1}/${images.length})`;
+  }, [selectedIndex, images.length]);
+
+  // Build label as prompt (truncated) plus counter – counter should never truncate.
+  const headerLabel = (
+    <span className="flex items-center min-w-0 max-w-full">
+      <span className="truncate min-w-0" style={{ minWidth: 0 }}>{headerPrompt}</span>
+      <span className="ml-1 flex-none text-xs text-muted-foreground">{headerCounter}</span>
+    </span>
+  );
+
   const headerExtras = null;
   
   // Custom header start (left side)
@@ -341,6 +342,16 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
     },
   ], [onDeleteBatch, batchId]);
   
+  // Log selection changes for debugging
+  useEffect(() => {
+    console.log(`[RecentBatch] ${batchId} selection changed: index=${selectedIndex}, id=${selectedId}`);
+  }, [selectedIndex, selectedId, batchId]);
+
+  // Log collapse state changes
+  useEffect(() => {
+    console.log(`[RecentBatch] ${batchId} collapse state:`, isCollapsed);
+  }, [isCollapsed, batchId]);
+  
   // Collapsed view – show only thumbnails
   if (isCollapsed) {
     return (
@@ -348,9 +359,9 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
         id={`batch-${batchId}`}
         iconPos="right"
         variant="panel"
-        collapsed={false} /* keep content mounted */
+        collapsed={false}
         onToggle={handleToggle}
-        label={batchTitle}
+        label={headerLabel}
         headerStart={headerStart}
         headerExtras={headerExtras}
         showContextMenu={true}
@@ -386,7 +397,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
       variant="panel"
       collapsed={isCollapsed}
       onToggle={handleToggle}
-      label={batchTitle}
+      label={headerLabel}
       headerStart={headerStart}
       headerExtras={headerExtras}
       showContextMenu={true}
@@ -396,211 +407,213 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
       <div className={styles.batchContent}>
         {/* Main selected image display */}
         {selectedImage && (
-          <div 
-            ref={mergedRef}
-            {...dragListeners}
-            {...dragAttributes}
-            className={`${styles.selectedImageContainer} ${isDragging ? styles.dragging : ''} group`}
-            style={dragStyle}
-          >
-            <img 
-              src={selectedImage.urlFull || selectedImage.urlThumb} 
-              alt={selectedImage.promptKey || 'Selected image'} 
-              className={styles.selectedImage}
-              onClick={() => onImageClick && onImageClick(selectedImage)}
-            />
-            <div className={styles.imageCounter}>
-              {selectedIndex + 1}/{images.length}
-            </div>
-
-            {/* Mobile swipe navigation overlay */}
-            {isMobile && (
-              <div 
-                className="absolute inset-0 z-20"
-                onTouchStart={(e) => {
-                  const touch = e.touches[0];
-                  setTouchStart(touch.clientX);
-                }}
-                onTouchMove={(e) => {
-                  const touch = e.touches[0];
-                  setTouchEnd(touch.clientX);
-                }}
-                onTouchEnd={handleTouchEnd}
+          <>
+            <div 
+              ref={mergedRef}
+              {...dragListeners}
+              {...dragAttributes}
+              className={`${styles.selectedImageContainer} ${isDragging ? styles.dragging : ''} group`}
+              style={{ opacity: isDragging ? 0.4 : 1, cursor: isDragging ? 'grabbing' : 'grab' }}
+            >
+              <img 
+                src={selectedImage.urlFull || selectedImage.urlThumb} 
+                alt={selectedImage.promptKey || 'Selected image'} 
+                className={styles.selectedImage}
+                onClick={() => onImageClick && onImageClick(selectedImage)}
               />
-            )}
+              <div className={styles.imageCounter}>
+                {selectedIndex + 1}/{images.length}
+              </div>
 
-            {/* Navigation arrows - visible on hover for desktop */}
-            {!isMobile && (
-              <>
-                {selectedIndex > 0 && (
+              {/* Mobile swipe navigation overlay */}
+              {isMobile && (
+                <div 
+                  className="absolute inset-0 z-20"
+                  onTouchStart={(e) => {
+                    const touch = e.touches[0];
+                    setTouchStart(touch.clientX);
+                  }}
+                  onTouchMove={(e) => {
+                    const touch = e.touches[0];
+                    setTouchEnd(touch.clientX);
+                  }}
+                  onTouchEnd={handleTouchEnd}
+                />
+              )}
+
+              {/* Navigation arrows - visible on hover for desktop */}
+              {!isMobile && (
+                <>
+                  {selectedIndex > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={`${styles.navArrow} ${styles.navArrowLeft} h-8 w-8 bg-black/40 hover:bg-black/60 text-white`}
+                      onClick={handlePrev}
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </Button>
+                  )}
+                  {selectedIndex < images.length - 1 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={`${styles.navArrow} ${styles.navArrowRight} h-8 w-8 bg-black/40 hover:bg-black/60 text-white`}
+                      onClick={handleNext}
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </Button>
+                  )}
+                </>
+              )}
+              
+              {/* Add three-dot menu to selected image - identical to the one in ImageCard */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className={`${styles.navArrow} ${styles.navArrowLeft} h-8 w-8 bg-black/40 hover:bg-black/60 text-white`}
-                    onClick={handlePrev}
+                    variant="ghost" 
+                    size="icon" 
+                    className="absolute bottom-2 right-2 z-40 h-8 w-8 bg-black/30 hover:bg-black/60 text-white"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <ChevronLeft className="h-5 w-5" />
+                    <MoreVertical className="h-5 w-5" />
                   </Button>
-                )}
-                {selectedIndex < images.length - 1 && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={`${styles.navArrow} ${styles.navArrowRight} h-8 w-8 bg-black/40 hover:bg-black/60 text-white`}
-                    onClick={handleNext}
-                  >
-                    <ChevronRight className="h-5 w-5" />
-                  </Button>
-                )}
-              </>
-            )}
-            
-            {/* Add three-dot menu to selected image - identical to the one in ImageCard */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost" 
-                  size="icon" 
-                  className="absolute bottom-2 right-2 z-40 h-8 w-8 bg-black/30 hover:bg-black/60 text-white"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MoreVertical className="h-5 w-5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="right">
-                {/* Use as prompt */}
-                {onUseAsPrompt && (
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onUseAsPrompt(selectedImage);
-                    }}
-                    className="flex items-center"
-                  >
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Use as prompt
-                  </DropdownMenuItem>
-                )}
-                
-                {/* Copy to submenu */}
-                {onCopyTo && publishDestinations && publishDestinations.length > 0 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <DropdownMenuItem
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex items-center"
-                      >
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copy to...
-                      </DropdownMenuItem>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent side="right">
-                      {publishDestinations.map(dest => (
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right">
+                  {/* Use as prompt */}
+                  {onUseAsPrompt && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onUseAsPrompt(selectedImage);
+                      }}
+                      className="flex items-center"
+                    >
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Use as prompt
+                    </DropdownMenuItem>
+                  )}
+                  
+                  {/* Copy to submenu */}
+                  {onCopyTo && publishDestinations && publishDestinations.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <DropdownMenuItem
-                          key={dest.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onCopyTo) onCopyTo(selectedImage, dest.id);
-                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center"
                         >
-                          {dest.name}
+                          <Copy className="h-4 w-4 mr-2" />
+                          Copy to...
                         </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                
-                {/* Publish to submenu */}
-                {onPublish && publishDestinations && publishDestinations.length > 0 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <DropdownMenuItem
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex items-center"
-                      >
-                        <Share className="h-4 w-4 mr-2" />
-                        Publish to...
-                      </DropdownMenuItem>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent side="right">
-                      {publishDestinations
-                        .filter(dest => !dest.headless)
-                        .map(dest => (
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="right">
+                        {publishDestinations.map(dest => (
                           <DropdownMenuItem
                             key={dest.id}
                             onClick={(e) => {
-                              e.preventDefault();
                               e.stopPropagation();
-                              
-                              try {
-                                onPublish(selectedImage, dest.id);
-                              } catch (error) {
-                                console.error("Error publishing image:", error);
-                              }
+                              if (onCopyTo) onCopyTo(selectedImage, dest.id);
                             }}
                           >
                             {dest.name}
                           </DropdownMenuItem>
                         ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                
-                {/* Full Screen option */}
-                {selectedImage.urlFull && (
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                  
+                  {/* Publish to submenu */}
+                  {onPublish && publishDestinations && publishDestinations.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <DropdownMenuItem
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center"
+                        >
+                          <Share className="h-4 w-4 mr-2" />
+                          Publish to...
+                        </DropdownMenuItem>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="right">
+                        {publishDestinations
+                          .filter(dest => !dest.headless)
+                          .map(dest => (
+                            <DropdownMenuItem
+                              key={dest.id}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                
+                                try {
+                                  onPublish(selectedImage, dest.id);
+                                } catch (error) {
+                                  console.error("Error publishing image:", error);
+                                }
+                              }}
+                            >
+                              {dest.name}
+                            </DropdownMenuItem>
+                          ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                  
+                  {/* Full Screen option */}
+                  {selectedImage.urlFull && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(selectedImage.urlFull, '_blank');
+                      }}
+                    >
+                      <Maximize2 className="h-4 w-4 mr-2" />
+                      Full Screen
+                    </DropdownMenuItem>
+                  )}
+                  
+                  {/* Raw URL */}
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation();
-                      window.open(selectedImage.urlFull, '_blank');
+                      window.open(`/output/_recent/${selectedImage.id}`, '_blank');
                     }}
                   >
-                    <Maximize2 className="h-4 w-4 mr-2" />
-                    Full Screen
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Raw URL
                   </DropdownMenuItem>
-                )}
-                
-                {/* Raw URL */}
-                <DropdownMenuItem
+                  
+                  {/* Delete option */}
+                  {onDeleteImage && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteImage(selectedImage);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Fullscreen button */}
+              {onImageClick && (
+                <Button
+                  variant="ghost" 
+                  size="icon" 
+                  className="absolute bottom-2 right-12 z-30 h-8 w-8 bg-black/30 hover:bg-black/60 text-white"
                   onClick={(e) => {
                     e.stopPropagation();
-                    window.open(`/output/_recent/${selectedImage.id}`, '_blank');
+                    onImageClick(selectedImage);
                   }}
                 >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Raw URL
-                </DropdownMenuItem>
-                
-                {/* Delete option */}
-                {onDeleteImage && (
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteImage(selectedImage);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            
-            {/* Fullscreen button */}
-            {onImageClick && (
-              <Button
-                variant="ghost" 
-                size="icon" 
-                className="absolute bottom-2 right-12 z-30 h-8 w-8 bg-black/30 hover:bg-black/60 text-white"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onImageClick(selectedImage);
-                }}
-              >
-                <Maximize2 className="h-5 w-5" />
-              </Button>
-            )}
-          </div>
+                  <Maximize2 className="h-5 w-5" />
+                </Button>
+              )}
+            </div>
+          </>
         )}
         
         {/* Thumbnail strip */}

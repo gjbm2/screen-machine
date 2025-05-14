@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
-import { RecentBatchPanel } from './RecentBatchPanel';
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
+import { DragStartEvent, DragEndEvent, useDndMonitor, DragOverlay } from '@dnd-kit/core';
 import { ImageItem } from '@/types/image-types';
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import styles from './recent.module.css';
 import React from 'react';
+import RecentBatchPanel from './RecentBatchPanel';
 
 // Add type declarations for window functions
 declare global {
@@ -60,9 +60,6 @@ export const RecentView: React.FC<RecentViewProps> = ({
   // Panel collapse state
   const [collapsedPanels, setCollapsedPanels] = useState<Record<string, boolean>>({});
   
-  // DnD state
-  const [activeId, setActiveId] = useState<string | null>(null);
-  
   // For Loope integration
   let openLoope;
   try {
@@ -100,24 +97,21 @@ export const RecentView: React.FC<RecentViewProps> = ({
   
   // Create a minimal selection handler that just stores the value without affecting other components
   const handleSelectImage = useCallback((batchId: string, imageId: string) => {
-    // Just store the selection without triggering UI updates across batches
-    setSelectedImageByBatch(prev => {
-      // Skip if no change 
-      if (prev[batchId] === imageId) return prev;
+    // Persist selection to localStorage only – avoid triggering parent re-renders
+    try {
+      // Read existing selections from localStorage (fallback to empty object)
+      const stored = localStorage.getItem('recentTabSelections');
+      const current: Record<string, string> = stored ? JSON.parse(stored) : {};
       
-      // Create minimal update with just this batch's selection
-      const updated = {...prev};
-      updated[batchId] = imageId;
+      // Short-circuit if nothing changed
+      if (current[batchId] === imageId) return;
       
-      // Save for persistence only
-      try {
-        localStorage.setItem('recentTabSelections', JSON.stringify(updated));
-      } catch (error) {
-        console.error('Error saving selection:', error);
-      }
-      
-      return updated;
-    });
+      // Update & save
+      current[batchId] = imageId;
+      localStorage.setItem('recentTabSelections', JSON.stringify(current));
+    } catch (error) {
+      console.error('Error saving selection:', error);
+    }
   }, []);
   
   // Add a useRef to track initialization
@@ -927,154 +921,96 @@ export const RecentView: React.FC<RecentViewProps> = ({
     return () => window.removeEventListener('recent:add', handleRecentAdd as EventListener);
   }, []);
   
-  // DnD handlers for batch reordering
+  // -----------------------------
+  // Drag and Drop handlers (batch-level)
+  // -----------------------------
+
+  // Track the image currently being dragged to render a consistent overlay (thumbnails + selected)
+  const [activeDraggedImage, setActiveDraggedImage] = useState<ImageItem | null>(null);
+
   const handleDragStart = (event: DragStartEvent) => {
-    console.log('[DnD Debug] Container drag start:', {
-      activeId: event.active.id,
-      activeRect: event.active.rect
-    });
-    setActiveId(event.active.id as string);
-    
-    // Log the current state of batchOrder
-    console.log('[DnD Debug] Current batch order at drag start:', [...batchOrder]);
-  };
-  
-  const handleDragEnd = (event: DragEndEvent) => {
-    console.log('[DnD Debug] Container drag end:', {
-      activeId: event.active.id,
-      overId: event.over?.id,
-      overRect: event.over?.rect,
-      delta: event.delta
-    });
-    
-    const { active, over } = event;
-    
-    if (over && active.id !== over.id) {
-      console.log('[DnD Debug] Valid drop detected between containers:', {
-        fromId: active.id,
-        toId: over.id,
-        currentOrder: [...batchOrder]
-      });
-      
-      // Check if IDs exist in batch order
-      const activeExists = batchOrder.includes(active.id as string);
-      const overExists = batchOrder.includes(over.id as string);
-      
-      console.log('[DnD Debug] ID verification:', {
-        activeIdExists: activeExists,
-        overIdExists: overExists,
-        activeIdType: typeof active.id,
-        overIdType: typeof over.id
-      });
-      
-      if (!activeExists || !overExists) {
-        console.warn('[DnD Debug] ⚠️ One or both IDs not found in batch order');
-        setActiveId(null);
-        return;
-      }
-      
-      // Reorder batches
-      setBatchOrder(items => {
-        const oldIndex = items.indexOf(active.id as string);
-        const newIndex = items.indexOf(over.id as string);
-        
-        console.log('[DnD Debug] Reordering indexes:', { 
-          oldIndex, 
-          newIndex,
-          batchOrderCopy: [...items]
-        });
-        
-        if (oldIndex === -1 || newIndex === -1) {
-          console.warn('[DnD Debug] Invalid indexes for batchOrder update');
-          return items;
-        }
-        
-        const newOrder = arrayMove(items, oldIndex, newIndex);
-        console.log('[DnD Debug] New batch order:', newOrder);
-        return newOrder;
-      });
-      
-      // Reorder batchGroups array as well for immediate UI update
-      setBatchGroups(groups => {
-        const oldIndex = groups.findIndex(g => g.batchId === active.id);
-        const newIndex = groups.findIndex(g => g.batchId === over.id);
-        
-        console.log('[DnD Debug] Reordering batch groups:', { 
-          oldIndex, 
-          newIndex,
-          batchIdActive: active.id,
-          batchIdOver: over.id
-        });
-        
-        if (oldIndex === -1 || newIndex === -1) {
-          console.warn('[DnD Debug] Invalid indexes for batch groups update');
-          return groups;
-        }
-        
-        return arrayMove(groups, oldIndex, newIndex);
-      });
-    } else {
-      if (!over) {
-        console.log('[DnD Debug] No valid drop target found');
-      } else if (active.id === over.id) {
-        console.log('[DnD Debug] Dropped on same container, no reordering needed');
-      }
+    const { active } = event;
+
+    // If this is an image drag (detected via the data payload), capture it for overlay
+    const activeData: any = active.data?.current;
+    if (activeData?.image) {
+      setActiveDraggedImage(activeData.image as ImageItem);
     }
-    
-    setActiveId(null);
+
+    // Handle batch container drags as before
+    if (!batchOrder.includes(active.id as string)) {
+      return;
+    }
+
+    console.log('[DnD Debug] Batch drag start:', {
+      activeId: active.id,
+      activeRect: active.rect,
+      currentBatchOrder: [...batchOrder],
+    });
   };
-  
-  // Handle image metadata load
-  const handleImageLoad = useCallback(
-    async (imageId: string, imageUrl: string) => {
-      const metadataUrl = imageUrl.replace(/\.(\w+)$/, '.json');
-      try {
-        const response = await fetch(metadataUrl);
-        if (response.ok) {
-          const metadata = await response.json();
-          setBucketImages((prev) =>
-            prev.map((img) =>
-              img.id === imageId ? { ...img, metadata } : img
-            )
-          );
-        }
-      } catch (error) {
-        console.error('Error loading image metadata:', error);
-      }
-    },
-    []
-  );
 
-  // Wrapper to make entire batch panel draggable with memoized props
-  const SortableBatchPanel = React.memo(({ batch }: { batch: { batchId: string, images: ImageItem[] } }) => {
-    const {
-      attributes,
-      listeners,
-      setNodeRef,
-      transform,
-      transition,
-      isDragging
-    } = useSortable({ id: batch.batchId });
+  const handleDragEnd = (event: DragEndEvent) => {
+    // Always clear overlay state first
+    setActiveDraggedImage(null);
 
-    // Only log when actually being dragged to avoid excessive logging
-    React.useEffect(() => {
-      if (isDragging) {
-        console.log(`[DnD Debug] Batch panel ${batch.batchId} is being dragged`);
-      }
-    }, [isDragging, batch.batchId]);
+    const { active, over } = event;
 
-    // When transform changes during drag, log it (but only when dragging to avoid noise)
-    React.useEffect(() => {
-      if (isDragging && transform) {
-        console.log(`[DnD Debug] Batch ${batch.batchId} transform:`, transform);
-      }
-    }, [transform, batch.batchId, isDragging]);
+    if (!over || active.id === over.id) return;
 
-    const style = {
+    // Proceed only if both IDs belong to known batches
+    if (!batchOrder.includes(active.id as string) || !batchOrder.includes(over.id as string)) {
+      console.warn('[DnD Debug] Drag end ignored – active/over not in batchOrder');
+      return;
+    }
+
+    const oldIndex = batchOrder.indexOf(active.id as string);
+    const newIndex = batchOrder.indexOf(over.id as string);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    console.log('[DnD Debug] Reordering batches', {
+      activeId: active.id,
+      overId: over.id,
+      oldIndex,
+      newIndex,
+    });
+
+    // Update batch order
+    setBatchOrder((items) => arrayMove(items, oldIndex, newIndex));
+
+    // Mirror the change for batchGroups so the UI updates immediately
+    setBatchGroups((groups) => {
+      const oldIdx = groups.findIndex((g) => g.batchId === active.id);
+      const newIdx = groups.findIndex((g) => g.batchId === over.id);
+      if (oldIdx === -1 || newIdx === -1) return groups;
+      return arrayMove(groups, oldIdx, newIdx);
+    });
+  };
+
+  // Draggable wrapper for a batch panel – defined outside component so its identity is stable
+  const DraggableBatchPanel = React.memo(({ batch, isCollapsed, collapsedPanels, onCollapseChange, handleDeleteImage, handleDeleteBatch, handleImageClick, handleCopyTo, handlePublish, handleUseAsPrompt, handleGenerateAgain, destinations, selectedImageByBatch, handleSelectImage }: {
+    batch: { batchId: string; images: ImageItem[] };
+    isCollapsed: boolean;
+    collapsedPanels: Record<string, boolean>;
+    onCollapseChange: (id: string, collapsed: boolean) => void;
+    handleDeleteImage: (img: ImageItem) => void;
+    handleDeleteBatch: (batchId: string) => void;
+    handleImageClick: (img: ImageItem) => void;
+    handleCopyTo: (img: ImageItem, destId: string) => void;
+    handlePublish: (img: ImageItem, destId: string) => void;
+    handleUseAsPrompt: (img: ImageItem) => void;
+    handleGenerateAgain: (batchId: string) => void;
+    destinations: { id: string; name: string; headless: boolean }[];
+    selectedImageByBatch: Record<string,string>;
+    handleSelectImage: (batchId:string, imgId:string)=>void;
+  }) => {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: batch.batchId });
+
+    const style: React.CSSProperties = {
       transform: CSS.Transform.toString(transform),
       transition,
       cursor: 'grab',
-      opacity: isDragging ? 0.5 : 1, // Add visual feedback when dragging
+      opacity: isDragging ? 0.5 : 1,
     };
 
     return (
@@ -1082,7 +1018,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
         <RecentBatchPanel
           batchId={batch.batchId}
           images={batch.images}
-          initialCollapsed={collapsedPanels[batch.batchId] || false}
+          initialCollapsed={isCollapsed}
           onToggleFavorite={() => {}}
           onDeleteImage={handleDeleteImage}
           onDeleteBatch={handleDeleteBatch}
@@ -1092,13 +1028,9 @@ export const RecentView: React.FC<RecentViewProps> = ({
           onUseAsPrompt={handleUseAsPrompt}
           onGenerateAgain={handleGenerateAgain}
           publishDestinations={destinations}
-          
-          // Only pass forceSelectId for initial render
           forceSelectId={selectedImageByBatch[batch.batchId] || null}
-          
-          // Use the selection handler
           onSelectImage={handleSelectImage}
-          onCollapseChange={(id,collapsed)=> setCollapsedPanels(prev=>({...prev,[id]:collapsed}))}
+          onCollapseChange={onCollapseChange}
         />
       </div>
     );
@@ -1155,40 +1087,28 @@ export const RecentView: React.FC<RecentViewProps> = ({
     return batchGroups;
   }, [batchGroups]);
 
-  // Component-level DnD debugging
-  // Track when activeId changes to understand if container or image drag is happening
-  useEffect(() => {
-    if (activeId) {
-      console.log(`[DnD Debug] Container drag active: ${activeId}`);
-      
-      // Log batch information for the active batch
-      const activeBatch = batchGroups.find(group => group.batchId === activeId);
-      if (activeBatch) {
-        console.log(`[DnD Debug] Active batch has ${activeBatch.images.length} images`);
-      } else {
-        console.log(`[DnD Debug] ⚠️ Active ID ${activeId} not found in batch groups`);
-      }
-    }
-  }, [activeId, batchGroups]);
-
-  // Debug logging for DnD context
-  console.log('[DnD Debug] Rendering with batchOrder:', batchOrder);
-
   // Add diagnostic logging for component mounting
   useEffect(() => {
     console.log('[DnD Debug] RecentView component mounted');
     console.log('[DnD Debug] Available props:', { refreshRecent });
-    
-    // Log any parent DndContext info we can access
     try {
-      // Check if there's any window-level or DOM-level indication of DndContext
-      console.log('[DnD Debug] DndContext detected:', 
-        !!document.querySelector('[data-dnd-context]') || 
-        !!(window as any).__DND_CONTEXT_ID);
+      console.log('[DnD Debug] DndContext detected:', !!document.querySelector('[data-dnd-context]') || !!(window as any).__DND_CONTEXT_ID);
     } catch (err) {
       console.log('[DnD Debug] Error checking for parent DndContext:', err);
     }
+    return () => {
+      console.log('[DnD Debug] RecentView component unmounted');
+    };
   }, [refreshRecent]);
+
+  // Hook into the parent DndContext to listen for drag events without creating a new context
+  useDndMonitor({
+    onDragStart: handleDragStart,
+    onDragEnd: handleDragEnd
+  });
+
+  // Debug: render cycle with current order
+  console.log('[DnD Debug] Rendering with batchOrder:', batchOrder);
 
   // If loading, show loading state
   if (loading) {
@@ -1212,16 +1132,42 @@ export const RecentView: React.FC<RecentViewProps> = ({
   
   // Render the batch groups with diagnostic info
   return (
-    <div className={styles.recentViewContainer}>
-      <SortableContext items={batchOrder} strategy={rectSortingStrategy}>
-        {memoizedBatchGroups.map(batch => (
-          <SortableBatchPanel 
-            key={`batch-panel-${batch.batchId}`} 
-            batch={batch} 
-          />
-        ))}
-      </SortableContext>
-    </div>
+    <>
+      <div className={styles.recentViewContainer}>
+        <SortableContext items={batchOrder} strategy={rectSortingStrategy}>
+          {memoizedBatchGroups.map(batch => (
+            <DraggableBatchPanel
+              key={`batch-panel-${batch.batchId}`}
+              batch={batch}
+              isCollapsed={collapsedPanels[batch.batchId] || false}
+              collapsedPanels={collapsedPanels}
+              onCollapseChange={(id, collapsed) => setCollapsedPanels(prev => ({ ...prev, [id]: collapsed }))}
+              handleDeleteImage={handleDeleteImage}
+              handleDeleteBatch={handleDeleteBatch}
+              handleImageClick={handleImageClick}
+              handleCopyTo={handleCopyTo}
+              handlePublish={handlePublish}
+              handleUseAsPrompt={handleUseAsPrompt}
+              handleGenerateAgain={handleGenerateAgain}
+              destinations={destinations}
+              selectedImageByBatch={selectedImageByBatch}
+              handleSelectImage={handleSelectImage}
+            />
+          ))}
+        </SortableContext>
+      </div>
+      <DragOverlay adjustScale={false}>
+        {activeDraggedImage ? (
+          <div className="rounded-md overflow-hidden shadow-xl transform-gpu scale-105 opacity-70">
+            <img
+              src={activeDraggedImage.urlThumb || activeDraggedImage.urlFull}
+              alt="drag preview"
+              className="w-full h-full object-cover"
+            />
+          </div>
+        ) : null}
+      </DragOverlay>
+    </>
   );
 };
 

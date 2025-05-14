@@ -5,6 +5,8 @@
   overflow: hidden;
   max-width: 100%;
   width: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 /* Force the panel title to truncate properly */
@@ -32,6 +34,11 @@
   max-width: 100%;
 }
 
+/* Override title weight to normal for Recent batch panels */
+.batchPanel :global(.expand-toggle span) {
+  font-weight: 400 !important;
+}
+
 /* Batch content container */
 .batchContent {
   display: flex;
@@ -43,6 +50,15 @@
 .selectedImageContainer {
   position: relative;
   width: 100%;
+  z-index: 1;
+}
+
+/* When dragging, ensure the dragged item is above everything */
+.selectedImageContainer[data-dragging="true"] {
+  z-index: 9999;
+  position: relative;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 /* Selected image styling */
@@ -52,6 +68,8 @@
   object-fit: contain;
   border-radius: 0.25rem;
   cursor: pointer;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 /* Image counter badge */
