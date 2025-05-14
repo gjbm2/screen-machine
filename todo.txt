@@ -1,20 +1,21 @@
 
 
 1. complete image card work on Generated tab
+2. show 'cloud' in 'copy to...' context menu
 
 ---
 
-0. triggers on schedule save (even when shoudlnlt)
 1. Load & unload via Alexa 
 2. truncate history vars for practical reasons
 3. Generally front end is a mess...
+4. event triggers definable by a var set to timestamp (for expiry period), then reset upon execution; allows imp exp of triggers
+	- related need 'throw' for events across various interfaces
 
 
 1. split scheduler_utils for performance reasons...
 5. add next instruction, loadable scripts to alexa get schedule (rename from get variables)
 6. allow generation, animation, with arbitrary list of params (e.g. length=xxx) in instruction
 7. paused scheduels after restart get stopped on resume...
-8. dndkit for drag & drop on generator tab
 
 Need to have
 
@@ -40,6 +41,8 @@ Nice to have
 19. general production readiness 
 20. move host to friendly url
 21. better ws handling
+	- currently running jobs details
+	- alerts for new bucket additions
 22. important & urgent scheduling
 23. async scheduling
 24. scheduler passes images in vars (from generate > animate, etc.)

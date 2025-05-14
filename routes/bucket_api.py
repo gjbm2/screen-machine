@@ -350,9 +350,25 @@ def delete_file(bucket_id: str, filename: str):
     thumb_fp.unlink(missing_ok=True)
 
     meta = load_meta(bucket_id)
-    for key in ("sequence", "favorites"):
-        if filename in meta.get(key, []):
-            meta[key].remove(filename)
+    # --- clean up sequence entries that can be strings or dicts ---
+    seq = meta.get("sequence", [])
+    new_seq = []
+    for entry in seq:
+        if isinstance(entry, dict):
+            if entry.get("file") != filename:
+                new_seq.append(entry)
+        else:
+            if entry != filename:
+                new_seq.append(entry)
+    if len(new_seq) != len(seq):
+        meta["sequence"] = new_seq
+
+    # Clean up favorites (array of filenames only)
+    favs = meta.get("favorites", [])
+    if filename in favs:
+        favs.remove(filename)
+        meta["favorites"] = favs
+
     save_meta(bucket_id, meta)
 
     return jsonify({"status": "deleted"})
@@ -556,8 +572,25 @@ def get_bucket_complete(bucket_id: str):
     bucket_dir = bucket_path(bucket_id)
     files = []
     
+    # Prepare a flat list of filenames from the sequence metadata (string or dict)
+    raw_sequence = meta.get("sequence", [])
+    filenames_only = []
+    sequence_entries = {}  # Map filenames to their full entry data
+    
+    for entry in raw_sequence:
+        if isinstance(entry, dict):
+            fname = entry.get("file")
+            if fname:
+                filenames_only.append(fname)
+                sequence_entries[fname] = entry
+        else:
+            fname = entry
+            if fname:
+                filenames_only.append(fname)
+                sequence_entries[fname] = {"file": fname}
+    
     # Only show files that are in the sequence list
-    for filename in meta.get("sequence", []):
+    for filename in filenames_only:
         file_path = bucket_dir / filename
         if not file_path.exists():
             continue
@@ -574,6 +607,9 @@ def get_bucket_complete(bucket_id: str):
         # Get file stats for timestamps
         file_stats = file_path.stat()
         
+        # Get sequence entry data
+        seq_entry = sequence_entries.get(filename, {})
+        
         # Add file info to list
         files.append({
             "filename": file_path.name,
@@ -582,16 +618,17 @@ def get_bucket_complete(bucket_id: str):
             "created_at": file_stats.st_ctime,  # Add created timestamp
             "metadata": {
                 **file_meta,
-                "timestamp": file_meta.get("timestamp") or file_stats.st_ctime  # Ensure timestamp exists
+                "timestamp": file_meta.get("timestamp") or file_stats.st_ctime,  # Ensure timestamp exists
+                "batchId": seq_entry.get("batchId")  # Include batchId from sequence entry
             },
             "favorite": file_path.name in meta.get("favorites", []),
-            "sequence_index": meta.get("sequence", []).index(file_path.name),
+            "sequence_index": filenames_only.index(file_path.name),
             "thumbnail_url": f"/output/{bucket_id}/thumbnails/{file_path.stem}{file_path.suffix}.jpg",
             "raw_url": f"/output/{bucket_id}/{file_path.name}"
         })
     
-    # Sort files by sequence
-    sequence_map = {f: i for i, f in enumerate(meta.get("sequence", []))}
+    # Sort files by sequence (using our normalised list)
+    sequence_map = {f: i for i, f in enumerate(filenames_only)}
     files.sort(key=lambda f: sequence_map.get(f["filename"], float("inf")))
 
     # Get published info if available

@@ -1,0 +1,339 @@
+/* Batch panel styling */
+.batchPanel {
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  max-width: 100%;
+  width: 100%;
+}
+
+/* Force the panel title to truncate properly */
+.batchPanel :global(button) > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  display: inline-block;
+  width: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Better header layout for batch panels */
+.batchPanel :global(.expand-toggle) {
+  flex: 1;
+  min-width: 0 !important;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.batchPanel :global(.flex-1) {
+  min-width: 0 !important;
+  max-width: 100%;
+}
+
+/* Batch content container */
+.batchContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Selected image container with relative positioning for badge */
+.selectedImageContainer {
+  position: relative;
+  width: 100%;
+}
+
+/* Selected image styling */
+.selectedImage {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+/* Image counter badge */
+.imageCounter {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  z-index: 10;
+}
+
+/* Thumbnail grid */
+.thumbnailGrid {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Thumbnail strip wrapper – let SortableImageGrid manage its own layout */
+.thumbnailStripWrapper {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.5rem 0;
+}
+
+/* Recent tab specific thumbnail styling */
+:global(.recent-thumbnail-grid) :global(.drag-grid) {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+  gap: 0.25rem;
+}
+
+:global(.recent-thumbnail-grid) :global(.drag-grid > div) {
+  aspect-ratio: 16/9 !important;
+  cursor: pointer !important;
+  position: relative;
+  z-index: 5;
+}
+
+/* Selected thumbnail styling */
+:global(.recent-thumbnail-grid) :global(.drag-grid > div[data-selected="true"]) {
+  position: relative;
+}
+
+:global(.recent-thumbnail-grid) :global(.drag-grid > div[data-selected="true"])::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 12px;
+  height: 12px;
+  background: #38bdf8; /* sky-400 */
+  border: 2px solid white;
+  border-radius: 9999px;
+  z-index: 300;
+}
+
+:global(.recent-thumbnail-grid) :global(.drag-grid > div[data-selected="true"]) img {
+  transform: scale(0.98);
+  transition: transform 0.2s ease;
+}
+
+/* Hide the duplicate fullscreen icon in thumbnails */
+:global(.recent-thumbnail-grid) :global(.drag-grid > div .absolute.bottom-1.right-1) {
+  display: none !important;
+}
+
+:global(.recent-thumbnail-grid) :global(.drag-grid > div:hover img) {
+  transform: scale(1.05);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Remove hover states for the thumbnails */
+:global(.recent-thumbnail-grid) :global(.drag-grid > div:hover .absolute) {
+  display: none !important;
+}
+
+/* Selected thumbnail border overlay */
+:global(.recent-thumbnail-grid) :global(.drag-grid > div[data-selected="true"])::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 3px solid #000;
+  border-radius: 0.25rem;
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* Generate Again card styling */
+.generateAgainCard {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.05);
+  transition: background-color 0.2s ease;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.generateAgainCard:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.generateAgainInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  color: #4b5563;
+}
+
+.generateAgainIcon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.generateAgainText {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.generateAgainTextMobile {
+  display: none;
+}
+
+/* Generating state styles */
+.generatingText {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.generatingIcon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .generateAgainText {
+    display: none;
+  }
+  
+  .generateAgainTextMobile {
+    display: block;
+    font-size: 0.75rem;
+  }
+  
+  .generateAgainIcon {
+    width: 1rem;
+    height: 1rem;
+  }
+  
+  .generateAgainInner {
+    gap: 0.125rem;
+  }
+
+  .generatingText {
+    font-size: 0.75rem;
+  }
+
+  .generatingIcon {
+    width: 1rem;
+    height: 1rem;
+  }
+}
+
+/* Selected thumbnail indicator */
+.selectedThumbnail {
+  position: relative;
+}
+
+.selectedThumbnail::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid #3b82f6;
+  border-radius: 0.25rem;
+  pointer-events: none;
+}
+
+/* Navigation arrows */
+.navArrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 40;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.navArrowLeft {
+  left: 0.5rem;
+}
+
+.navArrowRight {
+  right: 0.5rem;
+}
+
+.selectedImageContainer:hover .navArrow {
+  opacity: 1;
+}
+
+:global(.recent-tab-grid) {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.25rem;
+}
+
+@media (min-width: 640px) {
+  :global(.recent-tab-grid) {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  :global(.recent-tab-grid) {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+
+:global(.recent-tab-grid > div) {
+  aspect-ratio: 16/9 !important;
+}
+
+:global(.recent-tab-grid img) {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+/* Corner badge indicator for selected thumbnail */
+:global(.recent-thumbnail-grid) :global(.drag-grid > div[data-selected="true"]) {
+  position: relative;
+}
+
+:global(.recent-thumbnail-grid) :global(.drag-grid > div[data-selected="true"])::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 12px;
+  height: 12px;
+  background: #38bdf8; /* sky-400 */
+  border: 2px solid white;
+  border-radius: 9999px;
+  z-index: 300;
+}
+
+:global(.recent-thumbnail-grid) :global(.drag-grid > div[data-selected="true"]) img {
+  transform: scale(0.98);
+  transition: transform 0.2s ease;
+}
+
+/* Hide the duplicate fullscreen icon in thumbnails */
+:global(.recent-thumbnail-grid) :global(.drag-grid > div .absolute.bottom-1.right-1) {
+  display: none !important;
+}
+
+:global(.recent-thumbnail-grid) :global(.drag-grid > div:hover img) {
+  transform: scale(1.05);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Remove hover states for the thumbnails */
+:global(.recent-thumbnail-grid) :global(.drag-grid > div:hover .absolute) {
+  display: none !important;
+}
+
+/* Selected thumbnail border overlay */
+:global(.recent-thumbnail-grid) :global(.drag-grid > div[data-selected="true"])::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 3px solid #000;
+  border-radius: 0.25rem;
+  pointer-events: none;
+  z-index: 100;
+} 

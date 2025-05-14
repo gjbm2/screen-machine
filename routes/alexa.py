@@ -25,6 +25,7 @@ from flask import current_app
 import utils.logger 
 from routes.manage_jobs import cancel_all_jobs
 from typing import Dict, Any
+import uuid
 
 def Brianize(text: str) -> str:
     # Already contains Brian *and* prosody — leave untouched
@@ -64,6 +65,7 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     refiner = data.get("refiner", "none")  
     workflow = data.get("workflow", None)
     images = data.get("images", [])
+    batch_id = data.get("batch_id") or str(uuid.uuid4())  # Generate a batch_id if not provided
 
     # If no workflow specified, get default workflow from workflows.json
     if not workflow:
@@ -85,10 +87,8 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     # Ensure it's a list at this point
     targets = targets if isinstance(targets, list) else [targets]
 
-
     # Final fallback if empty
     publish_targets = targets if targets else [None]
-
 
     if not prompt and not images:
         return None
@@ -176,6 +176,8 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     safe_kwargs = kwargs.copy()
     safe_kwargs.pop("publish_destination", None)  # remove if exists, else no-op
     safe_kwargs["images"] = images
+    # Remove batch_id from safe_kwargs since it's already in the data dict
+    safe_kwargs.pop("batch_id", None)
     
     for idx, publish_destination in enumerate(publish_targets):
         if no_targets:

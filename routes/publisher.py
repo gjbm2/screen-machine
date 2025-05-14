@@ -97,7 +97,8 @@ def publish_to_destination(
     skip_bucket: bool | None = None,
     silent: bool = False,
     blank: bool = False,
-    cross_bucket_mode: bool = False
+    cross_bucket_mode: bool = False,
+    batch_id: str | None = None,
 ) -> dict:
     """
     Publish an image to a destination, optionally saving to a bucket.
@@ -110,6 +111,7 @@ def publish_to_destination(
         silent: If True, suppress overlay display
         blank: If True, display blank screen instead of source image
         cross_bucket_mode: If True, use cross-bucket URL format with /output/<id>.<ext>
+        batch_id: Optional batch ID for the publish operation
 
     Returns:
         dict with success status and optional error message
@@ -215,7 +217,8 @@ def publish_to_destination(
                                 metadata=metadata or {},
                                 skip_bucket=skip_bucket,
                                 silent=silent,
-                                cross_bucket_mode=cross_bucket_mode or True  # URL sources are like cross-bucket
+                                cross_bucket_mode=cross_bucket_mode or True,  # URL sources are like cross-bucket
+                                batch_id=batch_id
                             )
                 
                 # If source comes from a full URL that contains buckets/raw/
@@ -236,7 +239,8 @@ def publish_to_destination(
                             metadata=metadata or {},
                             skip_bucket=skip_bucket,
                             silent=silent,
-                            cross_bucket_mode=cross_bucket_mode or True  # URL sources are like cross-bucket
+                            cross_bucket_mode=cross_bucket_mode or True,  # URL sources are like cross-bucket
+                            batch_id=batch_id
                         )
 
                 # If we get here, we need to download the remote URL
@@ -308,7 +312,8 @@ def publish_to_destination(
                     metadata=metadata or {},
                     skip_bucket=skip_bucket,
                     silent=silent,
-                    cross_bucket_mode=cross_bucket_mode or True  # URL sources are like cross-bucket
+                    cross_bucket_mode=cross_bucket_mode or True,  # URL sources are like cross-bucket
+                    batch_id=batch_id
                 )
                 
                 # Clean up the temporary file
@@ -331,7 +336,8 @@ def publish_to_destination(
                 metadata=metadata or {},
                 skip_bucket=skip_bucket,
                 silent=silent,
-                cross_bucket_mode=cross_bucket_mode
+                cross_bucket_mode=cross_bucket_mode,
+                batch_id=batch_id
             )
             
             return result
@@ -489,7 +495,8 @@ def _publish_to_destination(
     metadata: dict,
     skip_bucket: bool,
     silent: bool,
-    cross_bucket_mode: bool = False
+    cross_bucket_mode: bool = False,
+    batch_id: str | None = None,
 ) -> dict:
     """Internal helper for publish_to_destination."""
     try:
@@ -498,7 +505,12 @@ def _publish_to_destination(
         if dest.get("headless", False):
             bucket_filename = None
             if not skip_bucket:
-                bucket_file_path = _append_to_bucket(publish_destination_id, source, metadata)
+                bucket_file_path = _append_to_bucket(
+                    publish_destination_id,
+                    source,
+                    batch_id=batch_id,
+                    metadata=metadata,
+                )
                 bucket_filename = bucket_file_path.name
             return {
                 "success": True,
@@ -513,7 +525,12 @@ def _publish_to_destination(
         bucket_filename = None
         
         if not skip_bucket:
-            bucket_file_path = _append_to_bucket(publish_destination_id, source, metadata)
+            bucket_file_path = _append_to_bucket(
+                publish_destination_id,
+                source,
+                batch_id=batch_id,
+                metadata=metadata,
+            )
             source_filepath = bucket_file_path
             bucket_filename = bucket_file_path.name
         else:

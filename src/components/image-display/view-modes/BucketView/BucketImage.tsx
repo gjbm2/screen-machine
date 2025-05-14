@@ -24,6 +24,8 @@ interface BucketImageProps {
   onMoveDown: () => Promise<void>;
   onOpen: () => void;
   onPublish: (destinationId: string) => Promise<void>;
+  /** Optional callback to open this image in fullscreen / Loope view */
+  onFullscreenClick?: () => void;
 }
 
 export function BucketImage({
@@ -36,7 +38,8 @@ export function BucketImage({
   onMoveUp,
   onMoveDown,
   onOpen,
-  onPublish
+  onPublish,
+  onFullscreenClick
 }: BucketImageProps) {
   const [isHovered, setIsHovered] = React.useState(false);
   const [isTouched, setIsTouched] = React.useState(false);
@@ -62,6 +65,7 @@ export function BucketImage({
         alt={item.filename}
         className="w-full h-full object-cover cursor-pointer"
         onClick={onOpen}
+        onDoubleClick={onFullscreenClick}
       />
       
       {/* Favorite indicator */}

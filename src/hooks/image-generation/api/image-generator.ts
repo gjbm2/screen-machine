@@ -192,6 +192,18 @@ export const generateImage = async (
           containerIdToUse
         );
         
+        // Dispatch placeholder event so Recent tab can show container immediately
+        if (placeholders.length > 0) {
+          window.dispatchEvent(
+            new CustomEvent('recent:placeholder', {
+              detail: {
+                batchId: currentBatchId,
+                count: placeholders.length,
+              }
+            })
+          );
+        }
+        
         return [...prevImages, ...placeholders];
       });
     } else {
@@ -259,6 +271,18 @@ export const generateImage = async (
         
         // Remove from active generations
         setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
+        
+        // Dispatch a browser event so Recent tab can update immediately
+        if (response.recent_files && Array.isArray(response.recent_files) && response.recent_files.length > 0) {
+          window.dispatchEvent(
+            new CustomEvent('recent:add', {
+              detail: {
+                batchId: response.batch_id,
+                files: response.recent_files
+              }
+            })
+          );
+        }
         
         return currentBatchId;
       } catch (error) {

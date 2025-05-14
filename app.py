@@ -26,6 +26,10 @@ from threading import Thread
 from overlay_ws_server import start_ws_server, send_overlay_to_clients
 from routes.utils import encode_image_uploads, encode_reference_urls
 from routes.publish_api import publish_api
+from urllib.parse import urlparse
+from pathlib import Path
+from PIL import Image
+from io import BytesIO
 
 app = Flask(__name__, static_folder='build')
 CORS(app)  # Enable CORS for all routes
@@ -247,6 +251,7 @@ def generate_image():
 
     # Generate a unique ID for this batch
     batch_id = data.get('batch_id') or str(uuid.uuid4())
+    is_frontend_initiated = 'batch_id' in data  # Check if batch_id was provided in request
     
     prompt = data.get('prompt', '')
     workflow = data.get('workflow', 'text-to-image')
@@ -306,7 +311,8 @@ def generate_image():
             "images": images,
             "workflow": workflow,
             "refiner": refiner,
-            "targets": publish_destination
+            "targets": publish_destination,
+            "batch_id": batch_id  # Add batch_id to the send object
         }
     }   
     #info(f"send_obj: {send_obj}")
@@ -327,9 +333,9 @@ def generate_image():
     
     # Generate the requested number of images (based on batch_size)
     result_images = []
+    recent_files = []
     
     for i, r in enumerate(response):            
-        
         # Generate a unique ID for this image
         image_id = str(uuid.uuid4())
         
@@ -338,7 +344,6 @@ def generate_image():
         
         for q in generated_images.values():
             info(f"Batch ID: {q['batch_id']}, Batch Index: {q['batch_index']}")
-
         
         batch_index = max(
             (img["batch_index"] for img in generated_images.values() if img["batch_id"] == batch_id), default=0
@@ -363,7 +368,19 @@ def generate_image():
             "batch_index": batch_index
         }
         
-        #print(f"Delivering {image_data}")
+        # ------------------------------------------------------------------
+        # Copy this image to _recent if this was a frontend batch
+        # ------------------------------------------------------------------
+        if is_frontend_initiated:
+            try:
+                from routes.generate_handler import save_to_recent
+                target_path = save_to_recent(r.get("message"), batch_id, metadata=image_data)
+                if target_path:
+                    recent_files.append(target_path.name)
+            except Exception as e:
+                error(f"[generate_image] Failed to copy into _recent: {e}")
+                import traceback
+                error(f"[generate_image] Traceback: {traceback.format_exc()}")
         
         generated_images[image_id] = image_data
         result_images.append(image_data)
@@ -374,7 +391,8 @@ def generate_image():
         "images": result_images,
         "batch_id": batch_id,
         "prompt": prompt,
-        "workflow": workflow
+        "workflow": workflow,
+        "recent_files": recent_files
     })
 
 @app.route('/api/images', methods=['GET'])
