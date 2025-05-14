@@ -811,6 +811,7 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                     # different days (e.g. yesterday's `_14` vs today's `_14`).
                     # Format: <schedule_hash>_<YYYY-MM-DD>_<interval_number>
                     interval_id = f"{schedule_id}_{now.date().isoformat()}_{current_interval}"
+                    #interval_id = f"{schedule_id}_{current_interval}"
                     
                     # Rate-limited debug logging
                     if should_log:
