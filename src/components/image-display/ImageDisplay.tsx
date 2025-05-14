@@ -500,51 +500,6 @@ export function ImageDisplay(props: ImageDisplayProps) {
     };
   }, []);
 
-  // Add new state for tracking generation completion
-  const [lastGenerationTime, setLastGenerationTime] = useState<number>(Date.now());
-
-  // Update useEffect to handle generation completion
-  useEffect(() => {
-    if (isIndexProps && generatedImages) {
-      // Check if any new images were generated
-      const hasNewGenerations = generatedImages.some(img => 
-        img.timestamp && new Date(img.timestamp).getTime() > lastGenerationTime
-      );
-      
-      if (hasNewGenerations) {
-        // Update the last generation time
-        setLastGenerationTime(Date.now());
-        
-        // Find the most recent batch
-        const latestBatch = generatedImages.reduce((latest, current) => {
-          if (!latest || !current.timestamp) return current;
-          return new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest;
-        });
-        
-        // Expand the latest batch
-        if (latestBatch?.batchId && setExpandedContainers) {
-          setExpandedContainers({
-            ...expandedContainers,
-            [latestBatch.batchId]: true
-          });
-        }
-      }
-    }
-  }, [generatedImages, isIndexProps, lastGenerationTime, setExpandedContainers]);
-
-  // Add this near the top of the component, after other state declarations
-  const [forceUpdate, setForceUpdate] = useState(0);
-
-  // Initialize expanded containers as all collapsed
-  useEffect(() => {
-    if (isIndexProps && imageContainerOrder && setExpandedContainers) {
-      const allCollapsed = Object.fromEntries(
-        imageContainerOrder.map(id => [id, false])
-      );
-      setExpandedContainers(allCollapsed);
-    }
-  }, [isIndexProps, imageContainerOrder, setExpandedContainers]);
-
   const handleDragEnd = (event: DragEndEvent) => {
     // Always clear overlay state first
     setDraggedImageData(null);
@@ -594,41 +549,17 @@ export function ImageDisplay(props: ImageDisplayProps) {
             filename: activeId
           })
           .then(async () => {
-            // Force immediate state updates
-            setForceUpdate(prev => prev + 1);
-            
-            // Update scheduler status
-            try {
-              const status = await apiService.getSchedulerStatus(destId);
-              setSchedulerStatuses(prev => ({
-                ...prev,
-                [destId]: status
-              }));
-            } catch (error) {
-              console.error('Error fetching scheduler status:', error);
-            }
-
-            // Refresh both buckets
+            // Refresh both source and destination buckets to ensure UI is up to date
             await Promise.all([
               stableRefreshBucket(sourceBucket),
               stableRefreshBucket(destId)
             ]);
-
-            // Force another state update after refresh
-            setForceUpdate(prev => prev + 1);
             
-            // Update bucket refresh flags
-            setBucketRefreshFlags(prev => ({
-              ...prev,
-              [destId]: (prev[destId] || 0) + 1,
-              [sourceBucket]: (prev[sourceBucket] || 0) + 1
-            }));
-
-            // Refresh recent view if it exists
+            // Also refresh the recent view if it exists
             if (destinationsWithBuckets.some(d => d.id === '_recent')) {
               stableRefreshBucket('_recent');
             }
-
+            
             toast.success('Published successfully');
           })
           .catch((err) => {
@@ -660,14 +591,6 @@ export function ImageDisplay(props: ImageDisplayProps) {
       }
     }
   };
-
-  // Add forceUpdate to the dependencies of the main render
-  useEffect(() => {
-    // This effect will run whenever forceUpdate changes
-    if (selectedTab) {
-      stableRefreshBucket(getDestinationFile(selectedTab));
-    }
-  }, [forceUpdate, selectedTab, stableRefreshBucket]);
 
   // Handle menu action selection
   const handleMenuAction = (action: MenuAction) => {
@@ -796,6 +719,34 @@ export function ImageDisplay(props: ImageDisplayProps) {
   // Define memoized component after refreshRecent definition but before return:
   const MemoRecentView = useMemo(() => memo(RecentView), []);
 
+  // ----------------------------------------------
+  // Ensure generated tab starts collapsed by default
+  // ----------------------------------------------
+  const initialCollapseDoneRef = useRef(false);
+  useEffect(() => {
+    const isGeneratedTab = selectedTab === 'generated' || selectedTab === 'recent';
+    if (
+      !isIndexProps || // only applies when we have index props
+      !isGeneratedTab || // only on Generated tab
+      initialCollapseDoneRef.current || // only once
+      imageContainerOrder.length === 0 ||
+      !setExpandedContainers
+    ) {
+      return;
+    }
+
+    // If ANY container is currently expanded (true) OR expandedContainers is empty (nothing set yet), collapse all
+    const anyExpanded = Object.values(expandedContainers).some(Boolean);
+    if (anyExpanded || Object.keys(expandedContainers).length === 0) {
+      const collapsedState: Record<string, boolean> = {};
+      imageContainerOrder.forEach(id => {
+        collapsedState[id] = false;
+      });
+      setExpandedContainers(collapsedState);
+      initialCollapseDoneRef.current = true;
+    }
+  }, [isIndexProps, selectedTab, imageContainerOrder, expandedContainers, setExpandedContainers]);
+
   return (
     <div className="bg-background h-full overflow-y-auto">
       {/* Sentinel element: its presence tells us when we've scrolled past the tab bar */}
@@ -901,6 +852,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         ) : (
           selectedTab && selectedTab !== 'generated' && (
             <BucketGridView
+              key={`${selectedTab}-${bucketRefreshFlags[selectedTab] || 0}`}
               destination={selectedTab}
               destinationName={destinationTabs.find(tab => tab.id === selectedTab)?.label || selectedTab}
               onImageClick={handleImageClick}

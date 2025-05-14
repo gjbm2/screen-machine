@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 
 export const useImageContainer = () => {
@@ -19,11 +18,8 @@ export const useImageContainer = () => {
     // Add the new container to the beginning of the order
     setImageContainerOrder(prev => [batchId, ...prev]);
     
-    // Set this new container to be expanded by default
-    setExpandedContainers(prev => ({
-      ...prev,
-      [batchId]: true
-    }));
+    // Do NOT auto-expand the new container here.  Expansion will be handled later
+    // (e.g. by collapseAllExcept when the generation finishes).
   }, []);
 
   const handleDeleteContainer = useCallback((batchId: string, setGeneratedImages: Function) => {
