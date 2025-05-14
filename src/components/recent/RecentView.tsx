@@ -404,7 +404,8 @@ export const RecentView: React.FC<RecentViewProps> = ({
     if (batchOrder.length === 0 && groups.length > 0) {
       const firstId = groups[0].batchId;
       const initialCollapse: Record<string, boolean> = {};
-      groups.forEach(g => { initialCollapse[g.batchId] = g.batchId !== firstId; });
+      // Force ALL panels to start collapsed
+      groups.forEach(g => { initialCollapse[g.batchId] = true; });
       setCollapsedPanels(initialCollapse);
     }
   };
@@ -814,6 +815,11 @@ export const RecentView: React.FC<RecentViewProps> = ({
       try {
         const { batchId, files, imagesWithMetadata } = e.detail || {};
         if (!files || files.length === 0) return;
+        // If no metadata provided, ignore this event to prevent overwriting existing metadata
+        if (!imagesWithMetadata) {
+          console.warn('[recent:add] Event without metadata ignored to preserve existing data');
+          return;
+        }
         
         // Create new image objects using the metadata directly from the API
         const newImgs: BucketImage[] = files.map((fname: string, index: number) => {
