@@ -104,6 +104,7 @@ interface BucketGridViewProps {
   };
   headless?: boolean;
   icon?: string;
+  headerPinned?: boolean; // indicates if tab bar is pinned so we should offset header
 }
 
 // Add a new type to distinguish drop targets
@@ -218,7 +219,8 @@ export const BucketGridView = ({
   isLoading: externalLoading,
   schedulerStatus,
   headless = false,
-  icon
+  icon,
+  headerPinned = false,
 }: BucketGridViewProps) => {
   const [bucketImages, setBucketImages] = useState<BucketImage[]>([]);
   const [bucketDetails, setBucketDetails] = useState<LocalBucketDetails | null>(null);
@@ -1890,7 +1892,7 @@ export const BucketGridView = ({
     <div className="h-full flex flex-col">
       {/* DnD interactions handled by global context; monitor via hooks */}
       {bucketDetails && (
-      <div className="flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full">
+      <div className={`flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full ${headerPinned ? 'sticky top-12 z-40' : ''}`}>
         <div className="flex items-start gap-3">
           {/* Left side with droppable published image area */}
           <PublishedImageDroppable currentImage={currentPublishedImage} />
