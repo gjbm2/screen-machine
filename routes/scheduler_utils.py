@@ -806,9 +806,11 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                     # Calculate the next expected execution time too
                     next_expected_time = start_time + timedelta(seconds=(current_interval + 1) * interval_seconds)
                     
-                    # Create a unique identifier for this specific interval - use current_interval for stability
-                    # This ensures all times within the same interval share the same ID
-                    interval_id = f"{schedule_id}_{current_interval}"
+                    # Create a unique identifier for this specific interval that is stable for the *current day*.
+                    # We include the ISO-formatted date to avoid clashes between identical interval numbers on
+                    # different days (e.g. yesterday's `_14` vs today's `_14`).
+                    # Format: <schedule_hash>_<YYYY-MM-DD>_<interval_number>
+                    interval_id = f"{schedule_id}_{now.date().isoformat()}_{current_interval}"
                     
                     # Rate-limited debug logging
                     if should_log:
