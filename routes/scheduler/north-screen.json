@@ -100,7 +100,7 @@
         "_b_theme": "Melancholic Modern Ruins",
         "_style": "Edward Burtynsky's aerial photography",
         "_guidance": "Choose unique urban environments or structures captured from above\u2014convey loss and decay contrasted with renewal and vibrancy, ensuring variety and uniqueness using recent imagery only as a reference to diverge from.",
-        "prompt": "Aerial shot of defunct shipping containers transformed into vibrant community hubs, colorful walls blending with nature, embodying regeneration within industrial decay, in Burtynsky's detailed approach.",
+        "prompt": "Elevated railway bridges overtaken by lush urban farms, intertwining verdant growth and weathered steel beneath clear blue skies, emulating nature\u2019s triumph over industrial past in Burtynsky's aerial grandeur.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:23",
@@ -1879,6 +1879,16 @@
             },
             "text_input": "'Joyful Urban Resurgence' in the style of 'Edwa...",
             "explanation": "I depicted an aerial view of repurposed shipping containers, focusing on their transformation int..."
+          },
+          {
+            "timestamp": "2025-05-14 21:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Elevated railway bridges overtaken by lush urban farms, intertwining verdant growth and weathered steel beneath clear blue skies, emulating nature\u2019s triumph over industrial past in Burtynsky's aerial grandeur."
+            },
+            "text_input": "'Joyful Urban Resurgence' in the style of 'Edwa...",
+            "explanation": "I focused on the transformation of elevated railway bridges into urban farms, a subject distinct ..."
           }
         ],
         "prompt_history": [
@@ -3289,6 +3299,14 @@
             "refiner": "curator",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f095fb05-1117-48e0-be09-2b0d374d4a09-e1/402e7cfe.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T100123Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b8e9abb8957a479e761d13fd285af5d9b8ea410107da8009af16be33ae43deef"
+          },
+          {
+            "timestamp": "2025-05-14 21:00:01",
+            "type": "generation",
+            "prompt": "Elevated railway bridges overtaken by lush urba...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/52c1e553-f24f-4170-a3c8-0ce85c74d670-e1/307b24c4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T200118Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=fa41acf06f0b78e8992606205000f38336aa8cc56ddb87c049d23f551f9610e7"
           }
         ],
         "animation_history": [
@@ -3743,11 +3761,11 @@
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f095fb05-1117-48e0-be09-2b0d374d4a09-e1/402e7cfe.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T100123Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b8e9abb8957a479e761d13fd285af5d9b8ea410107da8009af16be33ae43deef"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/52c1e553-f24f-4170-a3c8-0ce85c74d670-e1/307b24c4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T200118Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=fa41acf06f0b78e8992606205000f38336aa8cc56ddb87c049d23f551f9610e7"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-14T20:24:53.516109",
+  "last_updated": "2025-05-14T21:01:22.286444",
   "last_trigger_executions": {
     "1e41f37db26e89ac37d55f3771482626_6": "2025-05-13T12:00:00.763369",
     "8b0160f252dc1affd80c933c62e85005_3": "2025-05-13T12:05:01.791220",
@@ -3775,6 +3793,7 @@
     "1e41f37db26e89ac37d55f3771482626_3": "2025-05-14T09:00:03.431461",
     "1e41f37db26e89ac37d55f3771482626_4": "2025-05-14T10:00:01.735120",
     "8b0160f252dc1affd80c933c62e85005_2": "2025-05-14T10:05:01.884925",
-    "1e41f37db26e89ac37d55f3771482626_5": "2025-05-14T11:00:01.320450"
+    "1e41f37db26e89ac37d55f3771482626_5": "2025-05-14T11:00:01.320450",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-14_15": "2025-05-14T21:00:01.282577"
   }
 }

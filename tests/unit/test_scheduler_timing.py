@@ -289,4 +289,46 @@ def test_grace_period_behavior():
     minute_of_day = late_time.hour * 60 + late_time.minute
     
     matched = process_time_schedules([schedule], late_time, minute_of_day, "test_dest", apply_grace_period=True)
-    assert len(matched) == 0, "Should not execute when time is outside grace period (even with apply_grace_period=True)" 
+    assert len(matched) == 0, "Should not execute when time is outside grace period (even with apply_grace_period=True)"
+
+def test_interval_execution_across_days():
+    """Test that intervals are correctly executed across different days."""
+    # Create a test schedule with a repeating interval
+    schedule = {
+        "time": "08:00",
+        "repeat_schedule": {
+            "every": "1",
+            "until": "23:00"
+        },
+        "trigger_actions": {
+            "instructions_block": [
+                {"action": "set_var", "var": "test", "input": {"value": "test"}}
+            ]
+        }
+    }
+    
+    # Set up test times for different days
+    day1_time = datetime(2024, 1, 1, 8, 15, 0)  # First day at 8:15
+    day2_time = datetime(2024, 1, 2, 8, 15, 0)  # Second day at 8:15
+    
+    # Calculate minute of day for both times
+    minute_of_day1 = day1_time.hour * 60 + day1_time.minute
+    minute_of_day2 = day2_time.hour * 60 + day2_time.minute
+    
+    # Execute the schedule on day 1
+    matched1 = process_time_schedules([schedule], day1_time, minute_of_day1, "test_dest", apply_grace_period=True)
+    
+    # Execute the schedule on day 2
+    matched2 = process_time_schedules([schedule], day2_time, minute_of_day2, "test_dest", apply_grace_period=True)
+    
+    # Both executions should succeed because they're on different days
+    assert len(matched1) > 0, "Schedule should execute on first day"
+    assert len(matched2) > 0, "Schedule should execute on second day"
+    
+    # Get the schedule IDs from the debug output
+    schedule_id1 = f"36d59a356151929c00c32302e24c3be7_{day1_time.strftime('%Y-%m-%d')}_15"
+    schedule_id2 = f"36d59a356151929c00c32302e24c3be7_{day2_time.strftime('%Y-%m-%d')}_15"
+    
+    # Verify that the last execution times are different
+    assert last_trigger_executions["test_dest"][schedule_id1] != last_trigger_executions["test_dest"][schedule_id2], \
+        "Last execution times should be different for different days" 
