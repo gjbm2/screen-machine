@@ -96,11 +96,11 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "Joyful Urban Resurgence",
-        "_b_theme": "Melancholic Modern Ruins",
-        "_style": "Edward Burtynsky's aerial photography",
-        "_guidance": "Choose unique urban environments or structures captured from above\u2014convey loss and decay contrasted with renewal and vibrancy, ensuring variety and uniqueness using recent imagery only as a reference to diverge from.",
-        "prompt": "Elevated railway bridges overtaken by lush urban farms, intertwining verdant growth and weathered steel beneath clear blue skies, emulating nature\u2019s triumph over industrial past in Burtynsky's aerial grandeur.",
+        "_a_theme": "Architectural Ruin and Rebirth - Abandoned Structures",
+        "_b_theme": "Architectural Ruin and Rebirth - Abandoned Structures",
+        "_style": "Futuristic Dystopian Imagery - Blade Runner Inspired Visuals",
+        "_guidance": "Focus on depicting various abandoned and revitalized urban spaces with specific architectural details, capturing the nuances of both decay and renewal in a dystopian futuristic style. Avoid repeating recent subjects for fresh visual narratives.",
+        "prompt": "Floating megastructure hovering over decayed urban ruins, interconnected domes support self-sustaining ecosystems, phosphorescent ambiance merging dystopian desolation with vibrant renewal.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:23",
@@ -1889,6 +1889,126 @@
             },
             "text_input": "'Joyful Urban Resurgence' in the style of 'Edwa...",
             "explanation": "I focused on the transformation of elevated railway bridges into urban farms, a subject distinct ..."
+          },
+          {
+            "timestamp": "2025-05-15 06:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Shadowy alleyways bustling with neon-lit market stalls, vendors in AI-driven pop-up kiosks, blending cyberpunk vibrancy and derelict charm in a Blade Runner-esque city-vignette."
+            },
+            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
+            "explanation": "I chose to focus on an urban marketplace with neon lights reflecting a futuristic vibe, as oppose..."
+          },
+          {
+            "timestamp": "2025-05-15 07:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Glistening rain-soaked streets with revitalized modular buildings shimmering with augmented reality signage, combining urban renewal's sleekness and Blade Runner's dimly lit futuristic ambiance."
+            },
+            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
+            "explanation": "I depicted rain-soaked streets and revitalized modular buildings with augmented reality, focusing..."
+          },
+          {
+            "timestamp": "2025-05-15 08:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Futuristic revitalized art district in a dystopian city, blending holographic projections with decaying concrete, vibrant street murals guiding visitors through narrow, neon-lit alleyways."
+            },
+            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
+            "explanation": "This prompt focuses on an art district within a dystopian city, emphasizing the merging of futuri..."
+          },
+          {
+            "timestamp": "2025-05-15 09:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Futuristic urban plaza with vertical gardens climbing shattered skyscrapers, digital screens flickering amidst greenery, duality of technology and nature's resilience in a Blade Runner-esque atmosphere."
+            },
+            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
+            "explanation": "I focused on a futuristic urban plaza blending digital and natural elements, avoiding previous se..."
+          },
+          {
+            "timestamp": "2025-05-15 10:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A labyrinthine network of suspended walkways woven through derelict skyscrapers, kinetic sculptures and green pods clinging, evoking a regenerated vertical cityscape in Blade Runner style."
+            },
+            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
+            "explanation": "I focused on creating a vertically interconnected cityscape with walkways and sculptures, distinc..."
+          },
+          {
+            "timestamp": "2025-05-15 11:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Monolithic structures with transparent biomes emerging from dust coated ruins, faint crimson glow illuminating new life within traditional dystopian skyline, evoking enigmatic renewal."
+            },
+            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
+            "explanation": "I chose monolithic structures with biomes, accentuating renewal within a dystopian context. Avoid..."
+          },
+          {
+            "timestamp": "2025-05-15 12:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Futuristic train station cloaked in morning fog, skeletal structures blending with sleek monorails, soft neon highlighting a juxtaposition of decay and modern renewal."
+            },
+            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
+            "explanation": "By focusing on a futuristic train station enveloped in morning fog, this prompt highlights the th..."
+          },
+          {
+            "timestamp": "2025-05-15 13:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Renovated urban amphitheater with crumbling facades, holographic performers on stage, digital rain cascading overhead, blending historic decay and futuristic revival in a Blade Runner-style atmosphere."
+            },
+            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
+            "explanation": "I chose a unique perspective by focusing on an urban amphitheater with holographic elements rathe..."
+          },
+          {
+            "timestamp": "2025-05-15 14:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Grand domed greenhouse amid a dystopian concrete sprawl; verdant flora encased under shattered glass, neon ethereal mist seeping through cracks, rebirth amidst urban decay."
+            },
+            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
+            "explanation": "I avoided repeating subjects by envisioning a greenhouse encapsulated in a decaying concrete land..."
+          },
+          {
+            "timestamp": "2025-05-15 15:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Futuristic solarium built atop a skeletal factory framework, vibrant biospheres glowing beneath transparent solar panels, a symbiotic dance of decay and innovation under a crimson-hued sky."
+            },
+            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
+            "explanation": "I imagined a solarium constructed on a derelict factory structure, focusing on the interplay betw..."
+          },
+          {
+            "timestamp": "2025-05-15 16:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Abandoned cathedral reimagined with luminescent graphene walls and drone-tended vertical farms, light casts cybernetic shadows across gothic arches, reflecting dystopian transformation and renewal."
+            },
+            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
+            "explanation": "I focused on the iconic structural form of a cathedral, specifically its gothic architectural det..."
+          },
+          {
+            "timestamp": "2025-05-15 17:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Floating megastructure hovering over decayed urban ruins, interconnected domes support self-sustaining ecosystems, phosphorescent ambiance merging dystopian desolation with vibrant renewal."
+            },
+            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
+            "explanation": "I chose a floating megastructure concept distinct from past prompts to avoid repetition. This ima..."
           }
         ],
         "prompt_history": [
@@ -3307,6 +3427,102 @@
             "refiner": "curator",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/52c1e553-f24f-4170-a3c8-0ce85c74d670-e1/307b24c4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T200118Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=fa41acf06f0b78e8992606205000f38336aa8cc56ddb87c049d23f551f9610e7"
+          },
+          {
+            "timestamp": "2025-05-15 06:00:00",
+            "type": "generation",
+            "prompt": "Shadowy alleyways bustling with neon-lit market...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/35308467-19c1-47be-8f2a-27ac36b2b81b-e1/366effad.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T050057Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2a4626b9438fb33f7127e1d0ba39b3f095e86853db77a8da639c02254695a335"
+          },
+          {
+            "timestamp": "2025-05-15 07:00:01",
+            "type": "generation",
+            "prompt": "Glistening rain-soaked streets with revitalized...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fcd4b8fd-9a4f-4870-bfac-28622e39ee0f-e1/03ec8063.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T060050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=8a8c532df3d3a87ef23f577e03146582bd9e2ea51f569bbca85d280212db0d98"
+          },
+          {
+            "timestamp": "2025-05-15 08:00:00",
+            "type": "generation",
+            "prompt": "Futuristic revitalized art district in a dystop...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f51f5bdb-a754-4940-bedf-ea2337704460-e1/edda71e6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T070047Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4e388c7b39779ec6a56b9a7a4c7795881d4270f2dab74de65d69bcfa48602ff4"
+          },
+          {
+            "timestamp": "2025-05-15 09:00:00",
+            "type": "generation",
+            "prompt": "Futuristic urban plaza with vertical gardens cl...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8a8844b8-9eeb-49d4-8b71-476fa986577d-e1/fad86dfe.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T080028Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=13139271b05565f2365dae0ec9070ad8b6f74c8f20776dbeff255111bc3f9faf"
+          },
+          {
+            "timestamp": "2025-05-15 10:00:01",
+            "type": "generation",
+            "prompt": "A labyrinthine network of suspended walkways wo...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e688b5bc-1f02-4873-ac9b-87ce7571e166-e1/0b0f5ca1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T090106Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9582d0a148ad64698e4860a9d2948082177f320294c7346bba1ca48f4f2edf23"
+          },
+          {
+            "timestamp": "2025-05-15 11:00:01",
+            "type": "generation",
+            "prompt": "Monolithic structures with transparent biomes e...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/87a50453-82fa-40ac-be8e-1c07e9317a30-e1/4a767a6a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T100034Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=cf0fe25059caa98bb8a6ee511b176487301ae44f9f796369613d978958b9ddce"
+          },
+          {
+            "timestamp": "2025-05-15 12:00:01",
+            "type": "generation",
+            "prompt": "Futuristic train station cloaked in morning fog...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/14933ef8-adf4-493d-af91-b97d7e27fb9e-e1/e9552133.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T110050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b41a5d0daed5c30128cb4118608cab48a4bf31f16cab91f4cb28fa7e159bebb8"
+          },
+          {
+            "timestamp": "2025-05-15 13:00:00",
+            "type": "generation",
+            "prompt": "Renovated urban amphitheater with crumbling fac...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d3ce46f6-e7a3-488a-940d-4728cb65753d-e1/f9b514a2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T120131Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=30429cf40db214c1c43cc856dca6bd03575da3696846369f823f7e97eb8a1d20"
+          },
+          {
+            "timestamp": "2025-05-15 14:00:00",
+            "type": "generation",
+            "prompt": "Grand domed greenhouse amid a dystopian concret...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b00a1d2f-4af0-4a44-a212-33fd8d3f562d-e1/36ede7b8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T130052Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=959d339a0eef83b1d358789306509822ca1492d5fe6fa838983045a375cd34a6"
+          },
+          {
+            "timestamp": "2025-05-15 15:00:01",
+            "type": "generation",
+            "prompt": "Futuristic solarium built atop a skeletal facto...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/6252b98a-10d1-4be4-baba-1e8ef6b205c2-e1/4d2d427e.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T140037Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0d4de445622ef75bfb0ed17ae764fb49ef74cf1ec76099e668e337dcacb32bd2"
+          },
+          {
+            "timestamp": "2025-05-15 16:00:02",
+            "type": "generation",
+            "prompt": "Abandoned cathedral reimagined with luminescent...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/31846cd4-31d1-45b7-b05d-70d05c9ed458-e1/bcb4267b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T150114Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=589f3a9e84956113f6c5eef267d420a0e824f7cfbc6a9db3f54154001e110b66"
+          },
+          {
+            "timestamp": "2025-05-15 17:00:01",
+            "type": "generation",
+            "prompt": "Floating megastructure hovering over decayed ur...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ef8d6f1a-433d-4ae5-8197-7a4051289046-e1/c6a92dd7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T160225Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9aa5e7ba8b05a97e5b77cc90b495b974fb47f332e70984c01272addb8733c200"
           }
         ],
         "animation_history": [
@@ -3757,15 +3973,63 @@
             "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/2be96dad-e48e-43db-986e-dedb76ba37bd-e1/23553971.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T090033Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9c1f6e1805bc0c7d247a76309d5e55436ec82d470f14fdc44725dbdbc9871929",
             "refiner": "animator",
             "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-15 06:05:02",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/35308467-19c1-47be-8f2a-27ac36b2b81b-e1/366effad.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T050057Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2a4626b9438fb33f7127e1d0ba39b3f095e86853db77a8da639c02254695a335",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-15 08:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f51f5bdb-a754-4940-bedf-ea2337704460-e1/edda71e6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T070047Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4e388c7b39779ec6a56b9a7a4c7795881d4270f2dab74de65d69bcfa48602ff4",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-15 10:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e688b5bc-1f02-4873-ac9b-87ce7571e166-e1/0b0f5ca1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T090106Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9582d0a148ad64698e4860a9d2948082177f320294c7346bba1ca48f4f2edf23",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-15 12:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/14933ef8-adf4-493d-af91-b97d7e27fb9e-e1/e9552133.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T110050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b41a5d0daed5c30128cb4118608cab48a4bf31f16cab91f4cb28fa7e159bebb8",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-15 14:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b00a1d2f-4af0-4a44-a212-33fd8d3f562d-e1/36ede7b8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T130052Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=959d339a0eef83b1d358789306509822ca1492d5fe6fa838983045a375cd34a6",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-15 16:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/31846cd4-31d1-45b7-b05d-70d05c9ed458-e1/bcb4267b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T150114Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=589f3a9e84956113f6c5eef267d420a0e824f7cfbc6a9db3f54154001e110b66",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/52c1e553-f24f-4170-a3c8-0ce85c74d670-e1/307b24c4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T200118Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=fa41acf06f0b78e8992606205000f38336aa8cc56ddb87c049d23f551f9610e7"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ef8d6f1a-433d-4ae5-8197-7a4051289046-e1/c6a92dd7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T160225Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9aa5e7ba8b05a97e5b77cc90b495b974fb47f332e70984c01272addb8733c200"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-15T00:27:15.444388",
+  "last_updated": "2025-05-15T17:55:46.813535",
   "last_trigger_executions": {
     "1e41f37db26e89ac37d55f3771482626_6": "2025-05-13T12:00:00.763369",
     "8b0160f252dc1affd80c933c62e85005_3": "2025-05-13T12:05:01.791220",
@@ -3794,8 +4058,209 @@
     "1e41f37db26e89ac37d55f3771482626_4": "2025-05-14T10:00:01.735120",
     "8b0160f252dc1affd80c933c62e85005_2": "2025-05-14T10:05:01.884925",
     "1e41f37db26e89ac37d55f3771482626_5": "2025-05-14T11:00:01.320450",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-14_15": "2025-05-14T21:00:01.282577"
+    "1e41f37db26e89ac37d55f3771482626_2025-05-14_15": "2025-05-14T21:00:01.282577",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_0": "2025-05-15T06:00:00.071748",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-15_0": "2025-05-15T06:05:02.361618",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_1": "2025-05-15T07:00:01.269835",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_2": "2025-05-15T08:00:00.246225",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-15_1": "2025-05-15T08:05:00.091429",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_3": "2025-05-15T09:00:00.460882",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_4": "2025-05-15T10:00:01.477590",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-15_2": "2025-05-15T10:05:01.670160",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_5": "2025-05-15T11:00:01.249360",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_6": "2025-05-15T12:00:01.295689",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-15_3": "2025-05-15T12:05:00.117543",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_7": "2025-05-15T13:00:00.631247",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_8": "2025-05-15T14:00:00.887693",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-15_4": "2025-05-15T14:05:00.093645",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_9": "2025-05-15T15:00:01.892350",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_10": "2025-05-15T16:00:02.769346",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-15_5": "2025-05-15T16:05:00.652852",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_11": "2025-05-15T17:00:01.828692"
   },
   "active_events": {},
-  "event_history": []
+  "event_history": [
+    {
+      "key": "test6",
+      "active_from": "2025-05-15T12:49:52.321181",
+      "expires": "2025-05-15T12:50:52.321181",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T12:49:52.321181",
+      "unique_id": null,
+      "status": "ACTIVE",
+      "consumed_by": null,
+      "consumed_at": null
+    },
+    {
+      "key": "test10",
+      "active_from": "2025-05-15T14:22:24.939782",
+      "expires": "2025-05-15T14:23:24.939782",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T14:22:24.939782",
+      "unique_id": "cf8d4fb3-bbba-428f-b4a9-aacd22ad96ad",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T14:23:31.063610"
+    },
+    {
+      "key": "test11",
+      "active_from": "2025-05-15T14:34:32.214146",
+      "expires": "2025-05-15T14:35:32.214146",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T14:34:32.214146",
+      "unique_id": "0d24a504-05e8-4372-8c7d-f0d4bd74157f",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T14:35:54.172640"
+    },
+    {
+      "key": "test12",
+      "active_from": "2025-05-15T14:43:17.989306",
+      "expires": "2025-05-15T14:44:17.989306",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T14:43:17.989306",
+      "unique_id": "1559fc0d-0b0e-47e2-bfdd-6f61ca6acfdc",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T14:44:23.418033"
+    },
+    {
+      "key": "test13",
+      "active_from": "2025-05-15T15:03:08.971891",
+      "expires": "2025-05-15T15:04:08.971891",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T15:03:08.971891",
+      "unique_id": "92fbadc4-954a-4a45-9769-905674f01a88",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T15:04:19.062514"
+    },
+    {
+      "key": "test14",
+      "active_from": "2025-05-15T15:04:30.477838",
+      "expires": "2025-05-15T15:05:30.477838",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T15:04:30.477838",
+      "unique_id": "baf4a52f-a4fe-4644-827b-2d189380c4e5",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T15:05:39.265145"
+    },
+    {
+      "key": "test15",
+      "active_from": "2025-05-15T15:20:31.872787",
+      "expires": "2025-05-15T15:21:31.872787",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T15:20:31.872787",
+      "unique_id": "f95a6e8f-7b93-4a52-83f0-499a2670cbca",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T15:21:51.419399"
+    },
+    {
+      "key": "test",
+      "active_from": "2025-05-15T16:53:30.381656",
+      "expires": "2025-05-15T16:54:30.381656",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T16:53:30.381656",
+      "unique_id": "e107bf59-4b60-4e4d-876a-2abaafe5bca6",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T16:54:56.745340"
+    },
+    {
+      "key": "test",
+      "active_from": "2025-05-15T16:55:17.199771",
+      "expires": "2025-05-15T16:56:17.199771",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T16:55:17.199771",
+      "unique_id": "caae4f34-9613-4e5c-aa1d-0c820ce67df6",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T16:56:30.361322"
+    },
+    {
+      "key": "test",
+      "active_from": "2025-05-15T16:57:03.844244",
+      "expires": "2025-05-15T16:58:03.844244",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T16:57:03.844244",
+      "unique_id": "a39f44a8-7057-4d4a-8d5f-824ee2540029",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T16:58:03.916559"
+    },
+    {
+      "key": "test",
+      "active_from": "2025-05-15T16:57:10.890405",
+      "expires": "2025-05-15T16:58:10.890405",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T16:57:10.890405",
+      "unique_id": "4e44582a-97ff-4607-b9a0-f316cf438ccc",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T16:58:38.163164"
+    },
+    {
+      "key": "test",
+      "active_from": "2025-05-15T17:01:57.661674",
+      "expires": "2025-05-15T17:02:57.661674",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T17:01:57.661674",
+      "unique_id": "d07a65d1-b049-4083-ac7d-f99a03ca5ea5",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T17:03:05.889694"
+    },
+    {
+      "key": "test",
+      "active_from": "2025-05-15T17:10:26.253827",
+      "expires": "2025-05-15T17:11:26.253827",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T17:10:26.253827",
+      "unique_id": "a7814bb3-0afb-4125-a0b1-0ef07e65cabf",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T17:11:37.273062"
+    },
+    {
+      "key": "Next",
+      "active_from": "2025-05-15T17:47:37.465645",
+      "expires": "2025-05-15T17:48:37.465645",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T17:47:37.465645",
+      "unique_id": "40979873-9d1e-417e-97a1-084975585e84",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-15T17:48:39.109545"
+    }
+  ]
 }

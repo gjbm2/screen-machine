@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 from routes.scheduler_utils import (
     EventEntry, throw_event, pop_next_event, 
-    active_events, group_events, event_history,
+    active_events, event_history,
     get_events_for_destination, clear_events_for_destination,
     parse_ttl, parse_time
 )

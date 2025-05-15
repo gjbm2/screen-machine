@@ -36,6 +36,7 @@ export interface PublishDestination {
   file?: string;
   headless?: boolean;
   hidden?: boolean;
+  groups?: string[];
 }
 
 // Type for image generation params
@@ -971,502 +972,90 @@ export class Api {
     }
   }
 
-  // Trigger an event
-  async triggerEvent(destinationId: string, eventData: any) {
+  // Throw an event (unified endpoint)
+  async throwEvent(eventData: any) {
     if (this.mockMode) {
-      console.info('[MOCK BACKEND] Triggering event for ID:', destinationId);
+      console.info('[MOCK BACKEND] Throwing event:', eventData);
       return {
-        success: true,
-        event: eventData.event
+        status: 'queued',
+        key: eventData.event,
+        destinations: [eventData.scope || 'global']
       };
     }
-
     try {
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/events`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(eventData),
-      });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to trigger event');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error triggering event:', error);
-      toast.error('Failed to trigger event');
-      throw error;
-    }
-  }
-
-  // Get schedule at position
-  async getScheduleAtPosition(destinationId: string, position: number) {
-    if (this.mockMode) {
-      console.info('[MOCK BACKEND] Getting schedule at position:', position, 'for ID:', destinationId);
-      return {
-        success: true,
-        schedule: {
-          name: `Mock Schedule at position ${position}`,
-          cron: '* * * * *'
-        },
-        position
-      };
-    }
-
-    try {
-      // Get the entire schedule stack
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/stack`);
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to get schedule stack');
-      }
-
-      const data = await response.json();
+      // Clone the event data to avoid modifying the original
+      const payload = { ...eventData };
       
-      // Check if we have a stack and if the position is valid
-      if (!data.stack || !Array.isArray(data.stack) || position >= data.stack.length) {
-        throw new Error(`No schedule found at position ${position}`);
-      }
-      
-      // Return the schedule at the specified position
-      return {
-        success: true,
-        schedule: data.stack[position],
-        position: position
-      };
-    } catch (error) {
-      console.error('Error getting schedule at position:', error);
-      toast.error('Failed to get schedule at position');
-      throw error;
-    }
-  }
-
-  // Set schedule at position
-  async setScheduleAtPosition(destinationId: string, position: number, schedule: any) {
-    if (this.mockMode) {
-      console.info('[MOCK BACKEND] Setting schedule at position:', position, 'for ID:', destinationId);
-      return {
-        success: true,
-        schedule,
-        position
-      };
-    }
-
-    try {
-      // First get the current stack
-      const stackResponse = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/stack`);
-      if (!stackResponse.ok) {
-        const err = await stackResponse.json();
-        throw new Error(err.error || 'Failed to get schedule stack');
-      }
-      
-      const stackData = await stackResponse.json();
-      
-      // Check if the position is valid for updating
-      if (!stackData.stack || !Array.isArray(stackData.stack)) {
-        throw new Error('Invalid schedule stack data');
-      }
-      
-      // This is a workaround since the API doesn't support direct updates at positions
-      // We need to unload schedules until the one we want to edit, then update it
-      
-      // First, stop the scheduler if it's running
-      const statusResponse = await fetch(`${this.apiUrl}/schedulers/${destinationId}/status`);
-      if (!statusResponse.ok) {
-        throw new Error('Failed to get scheduler status');
-      }
-      
-      const statusData = await statusResponse.json();
-      const wasRunning = statusData.is_running;
-      
-      if (wasRunning) {
-        // Stop the scheduler temporarily
-        await fetch(`${this.apiUrl}/schedulers/${destinationId}`, {
-          method: 'DELETE',
-        });
-      }
-      
-      // Now reload the current schedule with the updated version
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(schedule),
-      });
-      
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to update schedule');
-      }
-      
-      // Restart the scheduler if it was running before
-      if (wasRunning) {
-        await fetch(`${this.apiUrl}/schedulers/${destinationId}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(schedule),
-        });
-      }
-      
-      return {
-        success: true,
-        schedule,
-        position
-      };
-    } catch (error) {
-      console.error('Error setting schedule at position:', error);
-      toast.error('Failed to set schedule at position');
-      throw error;
-    }
-  }
-
-  // Remove schedule at position
-  async removeScheduleAtPosition(destinationId: string, position: number) {
-    if (this.mockMode) {
-      console.info('[MOCK BACKEND] Removing schedule at position:', position, 'for ID:', destinationId);
-      return {
-        success: true,
-        position
-      };
-    }
-
-    try {
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/${position}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to remove schedule at position');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error removing schedule at position:', error);
-      toast.error('Failed to remove schedule at position');
-      throw error;
-    }
-  }
-
-  // Clear scheduler context
-  async clearSchedulerContext(destinationId: string) {
-    if (this.mockMode) {
-      console.info('[MOCK BACKEND] Clearing context for scheduler ID:', destinationId);
-      return {
-        success: true
-      };
-    }
-
-    try {
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/context/clear`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to clear scheduler context');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error clearing scheduler context:', error);
-      toast.error('Failed to clear scheduler context');
-      throw error;
-    }
-  }
-
-  // Get publish destinations
-  async getPublishDestinations(): Promise<PublishDestination[]> {
-    try {
-      const response = await fetch(`${this.apiUrl}/publish-destinations`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch publish destinations');
-      }
-      const destinations = await response.json();
-      return destinations
-        .filter((dest: any) => !dest.hidden) // Filter out hidden destinations
-        .map((dest: any) => ({
-        id: dest.id,
-        name: dest.name || dest.id,
-        description: dest.description,
-        icon: dest.icon,
-        has_bucket: dest.has_bucket || false,
-          headless: dest.headless || false,
-          hidden: dest.hidden || false
-      }));
-    } catch (error) {
-      console.error('Error fetching publish destinations:', error);
-      throw error;
-    }
-  }
-
-  async getBucketDetails(bucketId: string): Promise<BucketDetails> {
-    try {
-      const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/complete`);
-      
-      // If the response is a 404 (not found), the bucket doesn't exist or isn't accessible
-      // Return a valid empty bucket details instead of throwing an error
-      if (response.status === 404) {
-        console.log(`Bucket ${bucketId} not found, returning empty bucket details`);
-        return {
-          name: bucketId,
-          items: [],
-          published: null,
-          publishedAt: null,
-          raw_url: null,
-          thumbnail_url: null,
-          favorites: [],
-          sequence: [],
-          error: null
-        };
-      }
-      
-      if (!response.ok) {
-        throw new Error(`Failed to get bucket details: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log('Raw bucket details response:', data);
-      
-      // Map files to items with the correct fields
-      const items = Array.isArray(data.files) ? data.files.map(file => {
-        const baseMeta = file.metadata || {};
-        // Use created_at from the API response, fall back to metadata timestamp or file stats
-        const createdTs = file.created_at || baseMeta.timestamp || file.modified;
-
-        return {
-          filename: file.filename,
-          url: file.raw_url || file.url || '',
-          thumbnail_url: file.thumbnail_url,
-          thumbnail_embedded: file.thumbnail_embedded,
-          favorite: file.favorite || false,
-          metadata: {
-            ...baseMeta,
-            timestamp: createdTs,
-          },
-          created_at: createdTs, // Add created_at to the item directly
-        };
-      }) : [];
-      
-      // Get published info from the published object
-      const published = data.published || null;
-      
-      // Log info about the published image but don't add it to items
-      if (published && published.from_bucket === false) {
-        console.log('Published image is not from this bucket:', published.filename);
-        console.log('Published at:', published.published_at);
-        console.log('Raw URL:', published.raw_url);
-        console.log('Thumbnail URL:', published.thumbnail_url);
-      }
-      
-      // Ensure we have a valid BucketDetails object
-      const bucketDetails = {
-        name: data.bucket_id || bucketId,
-        items: items,
-        published: published?.filename || null,
-        publishedAt: published?.published_at || null,
-        raw_url: published?.raw_url || null,
-        thumbnail_url: published?.thumbnail_url || null,
-        favorites: Array.isArray(data.favorites) ? data.favorites : [],
-        sequence: Array.isArray(data.sequence) ? data.sequence : [],
-        error: null
-      };
-      
-      console.log('Processed bucket details:', bucketDetails);
-      return bucketDetails;
-    } catch (error) {
-      console.error(`Error fetching bucket details for ${bucketId}:`, error);
-      // Return an empty bucket details instead of throwing
-      return {
-        name: bucketId,
-        items: [],
-        published: null,
-        publishedAt: null,
-        raw_url: null,
-        thumbnail_url: null,
-        favorites: [],
-        sequence: [],
-        error: null
-      };
-    }
-  }
-
-  // Get all buckets
-  async fetchAllBuckets(): Promise<string[]> {
-    if (this.mockMode) {
-      return ['mock-bucket-1', 'mock-bucket-2'];
-    }
-
-    try {
-      const destinations = await this.getPublishDestinations();
-      return destinations.map(d => d.id);
-    } catch (error) {
-      console.error('Error fetching all buckets:', error);
-      throw error;
-    }
-  }
-
-  // Toggle favorite status for an image
-  async toggleFavorite(bucketId: string, filename: string, isFavorite: boolean): Promise<boolean> {
-    // If isFavorite is true, we want to favorite it (POST)
-    // If isFavorite is false, we want to unfavorite it (DELETE)
-    const method = isFavorite ? 'POST' : 'DELETE';
-    
-    // URL encode the filename to handle special characters
-    const encodedFilename = encodeURIComponent(filename);
-    
-    try {
-      // Direct API call - no bucket checking
-      console.log(`Toggling favorite for ${bucketId}/${filename} (${method})`);
-      
-      const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/favorite/${encodedFilename}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
-      
-    if (!response.ok) {
-        console.error(`Failed to toggle favorite for ${bucketId}/${filename} (${response.status} ${response.statusText})`);
-      throw new Error(`Failed to toggle favorite: ${response.statusText}`);
-    }
-      
-    const data = await response.json();
-      console.log(`Success toggling favorite: ${data.status}`);
-    return data.status === 'favorited' || data.status === 'unfavorited';
-    } catch (error) {
-      console.error(`Error toggling favorite for ${bucketId}/${filename}:`, error);
-      throw error;
-    }
-  }
-
-  // Delete an image from a bucket
-  async deleteImage(bucketId: string, filename: string): Promise<boolean> {
-    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/${filename}`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to delete image: ${response.statusText}`);
-    }
-    return true;
-  }
-
-  // Move an image up or down in a bucket
-  async moveImage(bucketId: string, filename: string, direction: 'up' | 'down'): Promise<boolean> {
-    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/move/${filename}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ direction }),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to move image: ${response.statusText}`);
-    }
-    return true;
-  }
-
-  // Copy an image to another bucket
-  async copyImageToBucket(sourceBucketId: string, targetBucketId: string, filename: string, copy: boolean = false): Promise<{ status: string; filename: string }> {
-    try {
-      console.log(`[copyImageToBucket] source=${sourceBucketId}, target=${targetBucketId}, filename=${filename}, copy=${copy}`);
-      
-      const response = await fetch(`${this.apiUrl}/buckets/add_image_to_new_bucket`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          source_publish_destination: sourceBucketId,
-          target_publish_destination: targetBucketId,
-          filename,
-          copy: copy,
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to copy image: ${response.statusText}`);
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('Error copying image:', error);
-      throw error;
-    }
-  }
-
-  // Perform bucket maintenance
-  async performBucketMaintenance(bucketId: string, action: 'purge' | 'reindex' | 'extract'): Promise<boolean> {
-    // Map the action to the correct endpoint
-    let endpoint;
-    if (action === 'reindex') {
-      endpoint = `${this.apiUrl}/buckets/${bucketId}/reindex`;
-    } else if (action === 'purge') {
-      endpoint = `${this.apiUrl}/buckets/${bucketId}/purge`;
-    } else if (action === 'extract') {
-      endpoint = `${this.apiUrl}/buckets/${bucketId}/extractjson`;
-    } else {
-      throw new Error(`Unknown maintenance action: ${action}`);
-    }
-    
-    console.log(`[performBucketMaintenance] Using endpoint: ${endpoint} for action: ${action}`);
-    
-    const response = await fetch(endpoint, {
-      method: 'POST',
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to perform maintenance: ${response.statusText}`);
-    }
-    
-    return true;
-  }
-
-  // Get all scheduler statuses
-  async getAllSchedulerStatuses() {
-    if (this.mockMode) {
-      return {
-        statuses: {
-          'destination1': { is_running: true, is_paused: false },
-          'destination2': { is_running: false, is_paused: false }
+      // Ensure we have a scope field, using backwards compatibility
+      if (!payload.scope) {
+        // Convert old format destination/group params to new unified scope parameter
+        if (payload.destination) {
+          payload.scope = payload.destination;
+          delete payload.destination;
+        } else if (payload.group) {
+          payload.scope = payload.group;
+          delete payload.group;
+        } else {
+          // Default to global if no scope was provided
+          payload.scope = 'global';
         }
-      };
-    }
-
-    try {
-      const response = await fetch(`${this.apiUrl}/schedulers/all/status`);
+      }
+      
+      const response = await fetch(`${this.apiUrl}/schedulers/events/throw`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
       if (!response.ok) {
-        throw new Error('Failed to fetch scheduler statuses');
+        const err = await response.json();
+        throw new Error(err.error || err.message || 'Failed to throw event');
       }
       return await response.json();
     } catch (error) {
-      console.error('Error fetching scheduler statuses:', error);
+      console.error('Error throwing event:', error);
+      toast.error('Failed to throw event');
       throw error;
     }
   }
 
-  // Get next scheduled action
-  async getNextScheduledAction(destinationId: string) {
+  // Get events for a destination
+  async getEventsForDestination(destinationId: string) {
+    console.log(`[API] getEventsForDestination called for: ${destinationId}`);
+    
     if (this.mockMode) {
-      return { next_action: { type: 'generate', scheduled_time: new Date().toISOString() } };
+      console.log(`[API] Mock mode active, returning empty events`);
+      // Return mock events
+      return {
+        queue: [],
+        history: []
+      };
     }
-
     try {
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/next_action`);
+      const requestUrl = `${this.apiUrl}/schedulers/events?destination=${encodeURIComponent(destinationId)}`;
+      console.log(`[API] Fetching events from URL: ${requestUrl}`);
+      
+      const response = await fetch(requestUrl);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch next scheduled action');
+        console.error(`[API] Error fetching events: ${response.status} ${response.statusText}`);
+        throw new Error('Failed to fetch events for destination');
       }
-      return await response.json();
+      
+      const data = await response.json();
+      console.log(`[API] Successfully received events:`, data);
+      
+      // Check if we got expected data structure
+      if (!data.queue || !data.history) {
+        console.warn(`[API] Unexpected response structure:`, data);
+      } else {
+        console.log(`[API] Received ${data.queue.length} queue items and ${data.history.length} history items`);
+      }
+      
+      return data;
     } catch (error) {
-      console.error('Error fetching next scheduled action:', error);
+      console.error('[API] Error fetching events for destination:', error);
       throw error;
     }
   }
@@ -1968,6 +1557,622 @@ export class Api {
         raw_url: null,
         thumbnail_url: null
       };
+    }
+  }
+
+  // Get all scheduler statuses
+  async getAllSchedulerStatuses() {
+    if (this.mockMode) {
+      return {
+        statuses: {
+          'destination1': { is_running: true, is_paused: false },
+          'destination2': { is_running: false, is_paused: false }
+        }
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/all/status`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch scheduler statuses');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching scheduler statuses:', error);
+      throw error;
+    }
+  }
+
+  // Get next scheduled action
+  async getNextScheduledAction(destinationId: string) {
+    if (this.mockMode) {
+      return { next_action: { type: 'generate', scheduled_time: new Date().toISOString() } };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/next_action`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch next scheduled action');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching next scheduled action:', error);
+      throw error;
+    }
+  }
+
+  // Get publish destinations
+  async getPublishDestinations(): Promise<PublishDestination[]> {
+    try {
+      const response = await fetch(`${this.apiUrl}/publish-destinations`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch publish destinations');
+      }
+      const destinations = await response.json();
+      return destinations
+        .filter((dest: any) => !dest.hidden) // Filter out hidden destinations
+        .map((dest: any) => ({
+        id: dest.id,
+        name: dest.name || dest.id,
+        description: dest.description,
+        icon: dest.icon,
+        has_bucket: dest.has_bucket || false,
+        headless: dest.headless || false,
+        hidden: dest.hidden || false,
+        groups: dest.groups || []
+      }));
+    } catch (error) {
+      console.error('Error fetching publish destinations:', error);
+      throw error;
+    }
+  }
+
+  // Get schedule at position
+  async getScheduleAtPosition(destinationId: string, position: number) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Getting schedule at position:', position, 'for ID:', destinationId);
+      return {
+        success: true,
+        schedule: {
+          name: `Mock Schedule at position ${position}`,
+          cron: '* * * * *'
+        },
+        position
+      };
+    }
+
+    try {
+      // Get the entire schedule stack
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/stack`);
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to get schedule stack');
+      }
+
+      const data = await response.json();
+      
+      // Check if we have a stack and if the position is valid
+      if (!data.stack || !Array.isArray(data.stack) || position >= data.stack.length) {
+        throw new Error(`No schedule found at position ${position}`);
+      }
+      
+      // Return the schedule at the specified position
+      return {
+        success: true,
+        schedule: data.stack[position],
+        position: position
+      };
+    } catch (error) {
+      console.error('Error getting schedule at position:', error);
+      toast.error('Failed to get schedule at position');
+      throw error;
+    }
+  }
+
+  // Set schedule at position
+  async setScheduleAtPosition(destinationId: string, position: number, schedule: any) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Setting schedule at position:', position, 'for ID:', destinationId);
+      return {
+        success: true,
+        schedule,
+        position
+      };
+    }
+
+    try {
+      // First get the current stack
+      const stackResponse = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/stack`);
+      if (!stackResponse.ok) {
+        const err = await stackResponse.json();
+        throw new Error(err.error || 'Failed to get schedule stack');
+      }
+      
+      const stackData = await stackResponse.json();
+      
+      // Check if the position is valid for updating
+      if (!stackData.stack || !Array.isArray(stackData.stack)) {
+        throw new Error('Invalid schedule stack data');
+      }
+      
+      // This is a workaround since the API doesn't support direct updates at positions
+      // We need to unload schedules until the one we want to edit, then update it
+      
+      // First, stop the scheduler if it's running
+      const statusResponse = await fetch(`${this.apiUrl}/schedulers/${destinationId}/status`);
+      if (!statusResponse.ok) {
+        throw new Error('Failed to get scheduler status');
+      }
+      
+      const statusData = await statusResponse.json();
+      const wasRunning = statusData.is_running;
+      
+      if (wasRunning) {
+        // Stop the scheduler temporarily
+        await fetch(`${this.apiUrl}/schedulers/${destinationId}`, {
+          method: 'DELETE',
+        });
+      }
+      
+      // Now reload the current schedule with the updated version
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(schedule),
+      });
+      
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to update schedule');
+      }
+      
+      // Restart the scheduler if it was running before
+      if (wasRunning) {
+        await fetch(`${this.apiUrl}/schedulers/${destinationId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(schedule),
+        });
+      }
+      
+      return {
+        success: true,
+        schedule,
+        position
+      };
+    } catch (error) {
+      console.error('Error setting schedule at position:', error);
+      toast.error('Failed to set schedule at position');
+      throw error;
+    }
+  }
+
+  // Remove schedule at position
+  async removeScheduleAtPosition(destinationId: string, position: number) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Removing schedule at position:', position, 'for ID:', destinationId);
+      return {
+        success: true,
+        position
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/schedule/${position}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to remove schedule at position');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error removing schedule at position:', error);
+      toast.error('Failed to remove schedule at position');
+      throw error;
+    }
+  }
+
+  // Clear scheduler context
+  async clearSchedulerContext(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Clearing context for scheduler ID:', destinationId);
+      return {
+        success: true
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/context/clear`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to clear scheduler context');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error clearing scheduler context:', error);
+      toast.error('Failed to clear scheduler context');
+      throw error;
+    }
+  }
+
+  async getBucketDetails(bucketId: string): Promise<BucketDetails> {
+    try {
+      const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/complete`);
+      
+      // If the response is a 404 (not found), the bucket doesn't exist or isn't accessible
+      // Return a valid empty bucket details instead of throwing an error
+      if (response.status === 404) {
+        console.log(`Bucket ${bucketId} not found, returning empty bucket details`);
+        return {
+          name: bucketId,
+          items: [],
+          published: null,
+          publishedAt: null,
+          raw_url: null,
+          thumbnail_url: null,
+          favorites: [],
+          sequence: [],
+          error: null
+        };
+      }
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get bucket details: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('Raw bucket details response:', data);
+      
+      // Map files to items with the correct fields
+      const items = Array.isArray(data.files) ? data.files.map(file => {
+        const baseMeta = file.metadata || {};
+        // Use created_at from the API response, fall back to metadata timestamp or file stats
+        const createdTs = file.created_at || baseMeta.timestamp || file.modified;
+
+        return {
+          filename: file.filename,
+          url: file.raw_url || file.url || '',
+          thumbnail_url: file.thumbnail_url,
+          thumbnail_embedded: file.thumbnail_embedded,
+          favorite: file.favorite || false,
+          metadata: {
+            ...baseMeta,
+            timestamp: createdTs,
+          },
+          created_at: createdTs, // Add created_at to the item directly
+        };
+      }) : [];
+      
+      // Get published info from the published object
+      const published = data.published || null;
+      
+      // Log info about the published image but don't add it to items
+      if (published && published.from_bucket === false) {
+        console.log('Published image is not from this bucket:', published.filename);
+        console.log('Published at:', published.published_at);
+        console.log('Raw URL:', published.raw_url);
+        console.log('Thumbnail URL:', published.thumbnail_url);
+      }
+      
+      // Ensure we have a valid BucketDetails object
+      const bucketDetails = {
+        name: data.bucket_id || bucketId,
+        items: items,
+        published: published?.filename || null,
+        publishedAt: published?.published_at || null,
+        raw_url: published?.raw_url || null,
+        thumbnail_url: published?.thumbnail_url || null,
+        favorites: Array.isArray(data.favorites) ? data.favorites : [],
+        sequence: Array.isArray(data.sequence) ? data.sequence : [],
+        error: null
+      };
+      
+      console.log('Processed bucket details:', bucketDetails);
+      return bucketDetails;
+    } catch (error) {
+      console.error(`Error fetching bucket details for ${bucketId}:`, error);
+      // Return an empty bucket details instead of throwing
+      return {
+        name: bucketId,
+        items: [],
+        published: null,
+        publishedAt: null,
+        raw_url: null,
+        thumbnail_url: null,
+        favorites: [],
+        sequence: [],
+        error: null
+      };
+    }
+  }
+
+  // Get all buckets
+  async fetchAllBuckets(): Promise<string[]> {
+    if (this.mockMode) {
+      return ['mock-bucket-1', 'mock-bucket-2'];
+    }
+
+    try {
+      const destinations = await this.getPublishDestinations();
+      return destinations.map(d => d.id);
+    } catch (error) {
+      console.error('Error fetching all buckets:', error);
+      throw error;
+    }
+  }
+
+  // Toggle favorite status for an image
+  async toggleFavorite(bucketId: string, filename: string, isFavorite: boolean): Promise<boolean> {
+    // If isFavorite is true, we want to favorite it (POST)
+    // If isFavorite is false, we want to unfavorite it (DELETE)
+    const method = isFavorite ? 'POST' : 'DELETE';
+    
+    // URL encode the filename to handle special characters
+    const encodedFilename = encodeURIComponent(filename);
+    
+    try {
+      // Direct API call - no bucket checking
+      console.log(`Toggling favorite for ${bucketId}/${filename} (${method})`);
+      
+      const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/favorite/${encodedFilename}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+      
+    if (!response.ok) {
+        console.error(`Failed to toggle favorite for ${bucketId}/${filename} (${response.status} ${response.statusText})`);
+      throw new Error(`Failed to toggle favorite: ${response.statusText}`);
+    }
+      
+    const data = await response.json();
+      console.log(`Success toggling favorite: ${data.status}`);
+    return data.status === 'favorited' || data.status === 'unfavorited';
+    } catch (error) {
+      console.error(`Error toggling favorite for ${bucketId}/${filename}:`, error);
+      throw error;
+    }
+  }
+
+  // Delete an image from a bucket
+  async deleteImage(bucketId: string, filename: string): Promise<boolean> {
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/${filename}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete image: ${response.statusText}`);
+    }
+    return true;
+  }
+
+  // Move an image up or down in a bucket
+  async moveImage(bucketId: string, filename: string, direction: 'up' | 'down'): Promise<boolean> {
+    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/move/${filename}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ direction }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to move image: ${response.statusText}`);
+    }
+    return true;
+  }
+
+  // Copy an image to another bucket
+  async copyImageToBucket(sourceBucketId: string, targetBucketId: string, filename: string, copy: boolean = false): Promise<{ status: string; filename: string }> {
+    try {
+      console.log(`[copyImageToBucket] source=${sourceBucketId}, target=${targetBucketId}, filename=${filename}, copy=${copy}`);
+      
+      const response = await fetch(`${this.apiUrl}/buckets/add_image_to_new_bucket`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source_publish_destination: sourceBucketId,
+          target_publish_destination: targetBucketId,
+          filename,
+          copy: copy,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to copy image: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error copying image:', error);
+      throw error;
+    }
+  }
+
+  // Perform bucket maintenance
+  async performBucketMaintenance(bucketId: string, action: 'purge' | 'reindex' | 'extract'): Promise<boolean> {
+    // Map the action to the correct endpoint
+    let endpoint;
+    if (action === 'reindex') {
+      endpoint = `${this.apiUrl}/buckets/${bucketId}/reindex`;
+    } else if (action === 'purge') {
+      endpoint = `${this.apiUrl}/buckets/${bucketId}/purge`;
+    } else if (action === 'extract') {
+      endpoint = `${this.apiUrl}/buckets/${bucketId}/extractjson`;
+    } else {
+      throw new Error(`Unknown maintenance action: ${action}`);
+    }
+    
+    console.log(`[performBucketMaintenance] Using endpoint: ${endpoint} for action: ${action}`);
+    
+    const response = await fetch(endpoint, {
+      method: 'POST',
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to perform maintenance: ${response.statusText}`);
+    }
+    
+    return true;
+  }
+
+  // Get events for ALL destinations
+  async getAllEvents() {
+    if (this.mockMode) {
+      return {
+        queue: [],
+        history: []
+      };
+    }
+    
+    try {
+      // First get all destinations
+      const destinations = await this.getPublishDestinations();
+      const allEvents = {
+        queue: [],
+        history: []
+      };
+      
+      // Fetch events for each destination
+      for (const dest of destinations) {
+        try {
+          const destEvents = await this.getEventsForDestination(dest.id);
+          
+          // Add destination ID to each event for reference
+          const queueWithDest = destEvents.queue.map(event => ({
+            ...event,
+            destination_id: dest.id,
+            destination_name: dest.name || dest.id
+          }));
+          
+          const historyWithDest = destEvents.history.map(event => ({
+            ...event,
+            destination_id: dest.id,
+            destination_name: dest.name || dest.id
+          }));
+          
+          allEvents.queue.push(...queueWithDest);
+          allEvents.history.push(...historyWithDest);
+        } catch (err) {
+          console.error(`Error fetching events for ${dest.id}:`, err);
+        }
+      }
+      
+      return allEvents;
+    } catch (error) {
+      console.error('Error fetching all events:', error);
+      throw new Error('Failed to fetch all events');
+    }
+  }
+
+  // Clear an event by key
+  async clearEventByKey(destinationId: string, eventKey: string, clearHistory: boolean = false) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Clearing event by key:', eventKey, 'from destination:', destinationId);
+      return {
+        cleared_active: 1,
+        cleared_history: clearHistory ? 1 : 0,
+        total_cleared: clearHistory ? 2 : 1
+      };
+    }
+    
+    try {
+      const params = new URLSearchParams({
+        destination: destinationId,
+        clear_history: clearHistory.toString()
+      });
+      
+      const response = await fetch(`${this.apiUrl}/schedulers/events/${encodeURIComponent(eventKey)}?${params}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to clear event: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error clearing event by key:', error);
+      throw error;
+    }
+  }
+  
+  // Clear an event by unique ID
+  async clearEventById(destinationId: string, eventId: string, clearHistory: boolean = false) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Clearing event by ID:', eventId, 'from destination:', destinationId);
+      return {
+        cleared_active: 1,
+        cleared_history: clearHistory ? 1 : 0,
+        total_cleared: clearHistory ? 2 : 1
+      };
+    }
+    
+    try {
+      const params = new URLSearchParams({
+        destination: destinationId,
+        event_id: eventId,
+        clear_history: clearHistory.toString()
+      });
+      
+      // We use a dummy key in the URL since the event_id is passed as a parameter
+      const response = await fetch(`${this.apiUrl}/schedulers/events/by-id?${params}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to clear event: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error clearing event by ID:', error);
+      throw error;
+    }
+  }
+  
+  // Clear all events for a destination
+  async clearAllEvents(destinationId: string, clearHistory: boolean = false) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Clearing all events from destination:', destinationId);
+      return {
+        cleared_active: 5,
+        cleared_history: clearHistory ? 10 : 0,
+        total_cleared: clearHistory ? 15 : 5
+      };
+    }
+    
+    try {
+      const params = new URLSearchParams({
+        destination: destinationId,
+        clear_history: clearHistory.toString()
+      });
+      
+      const response = await fetch(`${this.apiUrl}/schedulers/events?${params}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to clear events: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error clearing all events:', error);
+      throw error;
     }
   }
 }

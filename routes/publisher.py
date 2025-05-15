@@ -123,11 +123,27 @@ def publish_to_destination(
         # Get destination config
         dest = get_destination(publish_destination_id)
         
-        # In blank mode, clear display and return early
+        # In blank mode, publish /output/_blank.jpg to the destination (no bucket save)
         if blank:
-            result = _display_blank(publish_destination_id)
+            from routes.utils import findfile
+            from PIL import Image
+            blank_path = Path("output/_blank.jpg")
+            if not blank_path.exists():
+                # Create a simple black JPEG
+                blank_path.parent.mkdir(parents=True, exist_ok=True)
+                img = Image.new("RGB", (100, 100), color="black")
+                img.save(blank_path, "JPEG", quality=95)
+            # Publish the blank image to the destination, skip bucket
+            result = _publish_to_destination(
+                source=blank_path,
+                publish_destination_id=publish_destination_id,
+                metadata={},
+                skip_bucket=True,
+                silent=True,
+                cross_bucket_mode=False,
+                batch_id=batch_id
+            )
             if result["success"]:
-                # Update destination_published.json
                 _update_published_info(publish_destination_id, None, None)
             return result
             

@@ -623,6 +623,8 @@ def api_clear_event(event_key):
     
     Route:
     - /api/schedulers/events/<event_key>?destination=<id> - Destination is provided as query param
+    - Add ?event_id=<id> to clear by unique ID instead of key
+    - Add ?clear_history=true to also clear events from history
     """
     try:
         # Get destination from query parameters
@@ -632,14 +634,57 @@ def api_clear_event(event_key):
         if not publish_destination:
             return jsonify({"error": "Destination ID is required"}), 400
             
+        # Get additional parameters
+        event_id = request.args.get("event_id")
+        clear_history = request.args.get("clear_history", "false").lower() in ["true", "1", "yes"]
+        
         from routes.scheduler_utils import clear_events_for_destination
         
         # Clear the event
-        result = clear_events_for_destination(publish_destination, event_key)
+        if event_id:
+            # Use event_id if provided, ignore event_key in this case
+            info(f"Clearing event with ID {event_id} from {publish_destination} (clear_history={clear_history})")
+            result = clear_events_for_destination(publish_destination, None, event_id, clear_history)
+        else:
+            # Use event_key
+            info(f"Clearing events with key {event_key} from {publish_destination} (clear_history={clear_history})")
+            result = clear_events_for_destination(publish_destination, event_key, None, clear_history)
         
         return jsonify(result)
     except Exception as e:
         error_msg = f"Error clearing event: {str(e)}"
+        error(error_msg)
+        return jsonify({"error": error_msg}), 500
+
+@scheduler_bp.route("/api/schedulers/events", methods=["DELETE"])
+def api_clear_all_events():
+    """
+    Clear all events for a destination.
+    
+    Route:
+    - /api/schedulers/events?destination=<id> - Destination is provided as query param
+    - Add ?clear_history=true to also clear events from history
+    """
+    try:
+        # Get destination from query parameters
+        publish_destination = request.args.get("destination")
+            
+        # Destination is required
+        if not publish_destination:
+            return jsonify({"error": "Destination ID is required"}), 400
+            
+        # Get additional parameters
+        clear_history = request.args.get("clear_history", "false").lower() in ["true", "1", "yes"]
+        
+        from routes.scheduler_utils import clear_events_for_destination
+        
+        # Clear all events
+        info(f"Clearing all events from {publish_destination} (clear_history={clear_history})")
+        result = clear_events_for_destination(publish_destination, None, None, clear_history)
+        
+        return jsonify(result)
+    except Exception as e:
+        error_msg = f"Error clearing events: {str(e)}"
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 
@@ -651,7 +696,7 @@ def api_throw_event():
     Throw an event to a destination, group, or globally.
     
     Route:
-    - /api/schedulers/events/throw - With destination/group/scope in request body
+    - /api/schedulers/events/throw - With scope in request body
     """
     try:
         data = request.json or {}
@@ -661,12 +706,8 @@ def api_throw_event():
         if "event" not in data:
             return jsonify({"error": "Request must include 'event' field"}), 400
             
-        # Extract the scope from the request, default to "global"
+        # Get the scope from the request, default to "global"
         scope = data.get("scope", "global")
-        
-        # Check if destination parameter is provided in the request
-        if "destination" in data:
-            scope = data["destination"]
         
         # Determine scope type (dest, group, or global)
         from routes.scheduler_utils import determine_scope_type, throw_event
@@ -1086,4 +1127,39 @@ def api_update_schedule_by_index(publish_destination, index):
         error(f"Error traceback: {traceback.format_exc()}")
         if publish_destination in scheduler_logs:
             scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
+@scheduler_bp.route("/api/schedulers/events/by-id", methods=["DELETE"])
+def api_clear_event_by_id():
+    """
+    Clear a specific event by its unique ID.
+    
+    Route:
+    - /api/schedulers/events/by-id?destination=<id>&event_id=<id> - Destination and event ID are query params
+    - Add ?clear_history=true to also clear events from history
+    """
+    try:
+        # Get destination and event ID from query parameters
+        publish_destination = request.args.get("destination")
+        event_id = request.args.get("event_id")
+            
+        # Destination and event ID are required
+        if not publish_destination:
+            return jsonify({"error": "Destination ID is required"}), 400
+        if not event_id:
+            return jsonify({"error": "Event ID is required"}), 400
+            
+        # Get additional parameters
+        clear_history = request.args.get("clear_history", "false").lower() in ["true", "1", "yes"]
+        
+        from routes.scheduler_utils import clear_events_for_destination
+        
+        # Clear the event by ID
+        info(f"Clearing event with ID {event_id} from {publish_destination} (clear_history={clear_history})")
+        result = clear_events_for_destination(publish_destination, None, event_id, clear_history)
+        
+        return jsonify(result)
+    except Exception as e:
+        error_msg = f"Error clearing event: {str(e)}"
+        error(error_msg)
         return jsonify({"error": error_msg}), 500

@@ -1,86 +1,15 @@
 {
   "global": {},
-  "groups": {
-    "living-room": {
-      "a_theme": {
-        "friendly_name": "A theme of the day",
-        "owner": "cloud",
-        "timestamp": "2025-05-15T00:01:00.839404"
-      },
-      "b_theme": {
-        "friendly_name": "B theme of the day",
-        "owner": "cloud",
-        "timestamp": "2025-05-15T00:01:00.839404"
-      },
-      "style": {
-        "friendly_name": "Style of the day",
-        "owner": "cloud",
-        "timestamp": "2025-05-15T00:01:00.839404"
-      },
-      "guidance": {
-        "friendly_name": "Generator guidance",
-        "owner": "cloud",
-        "timestamp": "2025-05-15T00:01:00.839404"
-      }
-    }
-  },
+  "groups": {},
   "imports": {
     "a_theme": {
-      "south-screen": {
-        "imported_as": "_a_theme",
-        "source_type": "scope",
-        "source": "living-room",
-        "timestamp": "2025-05-14T21:00:01.077383"
-      },
       "north-screen": {
         "imported_as": "_a_theme",
         "source_type": "scope",
         "source": "living-room",
-        "timestamp": "2025-05-14T21:00:01.282577"
-      }
-    },
-    "b_theme": {
-      "south-screen": {
-        "imported_as": "_b_theme",
-        "source_type": "scope",
-        "source": "living-room",
-        "timestamp": "2025-05-14T21:00:01.077383"
-      },
-      "north-screen": {
-        "imported_as": "_b_theme",
-        "source_type": "scope",
-        "source": "living-room",
-        "timestamp": "2025-05-14T21:00:01.282577"
-      }
-    },
-    "style": {
-      "south-screen": {
-        "imported_as": "_style",
-        "source_type": "scope",
-        "source": "living-room",
-        "timestamp": "2025-05-14T21:00:01.077383"
-      },
-      "north-screen": {
-        "imported_as": "_style",
-        "source_type": "scope",
-        "source": "living-room",
-        "timestamp": "2025-05-14T21:00:01.282577"
-      }
-    },
-    "guidance": {
-      "south-screen": {
-        "imported_as": "_guidance",
-        "source_type": "scope",
-        "source": "living-room",
-        "timestamp": "2025-05-14T21:00:01.077383"
-      },
-      "north-screen": {
-        "imported_as": "_guidance",
-        "source_type": "scope",
-        "source": "living-room",
-        "timestamp": "2025-05-14T21:00:01.282577"
+        "timestamp": "2025-05-15T14:00:00.887693"
       }
     }
   },
-  "last_updated": "2025-05-15T00:01:04.268166"
+  "last_updated": "2025-05-15T14:00:00.914721"
 }
