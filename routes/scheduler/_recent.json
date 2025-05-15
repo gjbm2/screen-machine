@@ -2,7 +2,7 @@
   "schedule_stack": [],
   "context_stack": [],
   "state": "stopped",
-  "last_updated": "2025-05-15T17:48:39.117869",
+  "last_updated": "2025-05-16T00:02:01.439510",
   "last_trigger_executions": {},
   "active_events": {},
   "event_history": [
@@ -135,6 +135,32 @@
       "status": "EXPIRED",
       "consumed_by": "expiration",
       "consumed_at": "2025-05-15T17:48:39.109545"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-16T00:01:00.855961",
+      "expires": "2025-05-16T00:02:00.855961",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-16T00:01:00.855961",
+      "unique_id": "68e6a56d-1861-437b-9bb5-2e79b10ba703",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-16T00:02:01.422820"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-16T00:01:00.855961",
+      "expires": "2025-05-16T00:02:00.855961",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-16T00:01:00.855961",
+      "unique_id": "68e6a56d-1861-437b-9bb5-2e79b10ba703",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-16T00:02:01.422820"
     }
   ]
 }

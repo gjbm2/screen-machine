@@ -601,15 +601,15 @@
           "additionalProperties": false
         },
         {
-          "title": "Stop Schedule",
-          "description": "Stop the current schedule and terminate.",
+          "title": "Terminate Schedule",
+          "description": "Terminate the current schedule.",
           "type": "object",
           "properties": {
             "action": {
               "type": "string",
-              "const": "stop",
-              "default": "stop",
-              "description": "Fixed to 'stop' to select this instruction type.",
+              "const": "terminate",
+              "default": "terminate",
+              "description": "Fixed to 'terminate' to select this instruction type.",
               "uniforms": {
                 "hidden": true
               }
@@ -618,11 +618,11 @@
               "type": "string",
               "enum": ["normal", "immediate", "block"],
               "default": "normal",
-              "description": "Stop mode: 'normal' executes final_instructions before stopping, 'immediate' stops without final_instructions, 'block' exits current instruction block only."
+              "description": "Terminate mode: 'normal' executes final_instructions before terminating, 'immediate' terminates without final_instructions, 'block' exits current instruction block only."
             },
             "test": {
               "type": "string",
-              "description": "Optional Jinja expression that must evaluate to true for the stop to execute. If false or not provided, the stop instruction is ignored."
+              "description": "Optional Jinja expression that must evaluate to true for the terminate to execute. If false or not provided, the terminate instruction is ignored."
             }
           },
           "required": [

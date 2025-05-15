@@ -1790,16 +1790,34 @@ export class Api {
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/context/clear`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to clear scheduler context');
+      // The `/context/clear` endpoint doesn't exist in the backend
+      // Instead, we need to get the current context and then reset each variable
+      
+      // First, get the current context to see what variables exist
+      const contextResponse = await fetch(`${this.apiUrl}/schedulers/${destinationId}/context`);
+      
+      if (!contextResponse.ok) {
+        throw new Error('Failed to fetch current context');
       }
-
-      return await response.json();
+      
+      const contextData = await contextResponse.json();
+      const variables = contextData.vars || {};
+      
+      console.log(`[API] clearSchedulerContext - Found ${Object.keys(variables).length} variables to clear`);
+      
+      // Create a collection of promises to clear each variable
+      const clearPromises = Object.keys(variables).map(varName => {
+        console.log(`[API] clearSchedulerContext - Clearing variable: ${varName}`);
+        return this.setSchedulerContextVar(destinationId, varName, null);
+      });
+      
+      // Wait for all variables to be cleared
+      await Promise.all(clearPromises);
+      
+      return {
+        success: true,
+        cleared: Object.keys(variables).length
+      };
     } catch (error) {
       console.error('Error clearing scheduler context:', error);
       toast.error('Failed to clear scheduler context');

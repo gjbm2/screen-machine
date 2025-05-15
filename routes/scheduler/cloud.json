@@ -23,11 +23,7 @@
                 "instructions_block": [
                   {
                     "action": "throw_event",
-                    "event": "New_theme",
-                    "scope": "global",
-                    "ttl": "60s",
-                    "single_consumer": false,
-                    "payload": {}
+                    "event": "New_theme"
                   }
                 ]
               }
@@ -147,10 +143,10 @@
   "context_stack": [
     {
       "vars": {
-        "a_theme": "The Sublime and Monstrous Ocean",
-        "b_theme": "The Mystical and Menacing Jungle",
-        "style": "Surrealist collage in the style of Max Ernst",
-        "guidance": "Create an image with a focus on contrasting interpretations of ocean and jungle themes, employing Ernst's Surrealist collage techniques. Use history to ensure each depiction remains fresh and distinct.",
+        "a_theme": "Retro futuristic consumer utopias",
+        "b_theme": "Industrial decay and decline",
+        "style": "Dadaist photomontage in the style of Hannah H\u00f6ch",
+        "guidance": "Choose distinct objects or scenes characteristic of future consumerist fantasies and decaying industrial frames, creating sharp contrasts through a Dadaist lens with varied, innovative composition techniques. Consult the recent image history to ensure non-repetitiveness.",
         "history_var": [
           {
             "timestamp": "2025-05-08 10:29:02",
@@ -346,6 +342,19 @@
             },
             "text_input": "The last seven days were: [{'timestamp': '2025-...",
             "explanation": "This choice leans towards a theme-led approach, providing a rich contrast between familiar yet po..."
+          },
+          {
+            "timestamp": "2025-05-16 00:01:02",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "Retro futuristic consumer utopias",
+              "b_theme": "Industrial decay and decline",
+              "style": "Dadaist photomontage in the style of Hannah H\u00f6ch",
+              "guidance": "Choose distinct objects or scenes characteristic of future consumerist fantasies and decaying industrial frames, creating sharp contrasts through a Dadaist lens with varied, innovative composition techniques. Consult the recent image history to ensure non-repetitiveness."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "To counterbalance recent outputs leaning towards natural and architectural themes, a style-led fo..."
           }
         ]
       },
@@ -353,16 +362,8 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-15T22:45:01.776077",
-  "last_trigger_executions": {
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_23": "2025-05-15T18:15:00.046034",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_24": "2025-05-15T19:00:01.203119",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_25": "2025-05-15T19:45:01.385203",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_26": "2025-05-15T20:30:00.917272",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_27": "2025-05-15T21:15:00.701657",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_28": "2025-05-15T22:00:00.366909",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_29": "2025-05-15T22:45:01.666489"
-  },
+  "last_updated": "2025-05-16T00:46:41.437278",
+  "last_trigger_executions": {},
   "active_events": {},
   "event_history": [
     {
@@ -715,6 +716,32 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_cloud",
       "consumed_at": "2025-05-15T18:26:35.871623"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-16T00:01:00.855961",
+      "expires": "2025-05-16T00:02:00.855961",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-16T00:01:00.855961",
+      "unique_id": "148f8965-0a1b-4d59-884b-60de3168d841",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-16T00:01:02.928077"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-16T00:01:00.855961",
+      "expires": "2025-05-16T00:02:00.855961",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-16T00:01:00.855961",
+      "unique_id": "148f8965-0a1b-4d59-884b-60de3168d841",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-16T00:01:02.928077"
     }
   ]
 }

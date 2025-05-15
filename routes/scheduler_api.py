@@ -1150,3 +1150,83 @@ def api_clear_event_by_id():
         error_msg = f"Error clearing event: {str(e)}"
         error(error_msg)
         return jsonify({"error": error_msg}), 500
+
+@scheduler_bp.route("/api/schedulers/terminate", methods=["POST"])
+def api_terminate_script():
+    """Terminate a script or scripts by scope (destination ID, group, or 'global')."""
+    try:
+        data = request.json or {}
+        if not isinstance(data, dict):
+            return jsonify({"error": "Invalid JSON data"}), 400
+            
+        # Use scope instead of destination to support groups and global termination
+        scope = data.get("scope")
+        if not scope:
+            return jsonify({"error": "Missing scope parameter"}), 400
+        
+        # Use routes.utils to expand the scope to target destinations
+        from routes.utils import get_destinations_for_group
+        target_destinations = get_destinations_for_group(scope)
+        
+        if not target_destinations:
+            return jsonify({"error": f"No destinations found for scope: {scope}"}), 404
+            
+        # Use immediate mode for API termination
+        from routes.scheduler_utils import throw_event
+        
+        # Throw event once with proper scope - scheduler_utils will handle distribution
+        throw_event(
+            scope=scope,  # This will handle global, group, or individual destination
+            key="__terminate_immediate__", 
+            ttl="60s",
+            payload={
+                "mode": "immediate",
+                "prevent_unload": False  # Default to allowing unload for API calls
+            }
+        )
+        
+        return jsonify({
+            "success": True, 
+            "message": f"Script termination signal sent to scope '{scope}'",
+            "affected_destinations": target_destinations
+        }), 200
+        
+    except Exception as e:
+        error(f"Error in api_terminate_script: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@scheduler_bp.route("/api/schedulers/<string:destination>/terminate", methods=["POST"])
+def api_terminate_script_by_destination(destination):
+    """Terminate a script for a specific destination."""
+    try:
+        # Use immediate mode for API termination
+        from routes.scheduler_utils import throw_event
+        
+        # Throw a __terminate_immediate__ event which will be picked up urgently
+        throw_event(
+            scope=destination,
+            key="__terminate_immediate__", 
+            ttl="60s",
+            payload={
+                "mode": "immediate",
+                "prevent_unload": False  # Default to allowing unload for API calls
+            }
+        )
+        
+        return jsonify({"success": True, "message": f"Script termination signal sent for {destination}"}), 200
+    except Exception as e:
+        error(f"Error in api_terminate_script_by_destination: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@scheduler_bp.route("/api/schedulers/<string:destination>/stop", methods=["POST"])
+def api_stop_scheduler_loop(destination):
+    """Stop the scheduler loop immediately (like pulling the plug)."""
+    try:
+        # Direct stop without using events
+        from routes.scheduler import stop_scheduler
+        stop_scheduler(destination)
+        
+        return jsonify({"success": True, "message": f"Scheduler loop stopped for {destination}"}), 200
+    except Exception as e:
+        error(f"Error in api_stop_scheduler_loop: {str(e)}")
+        return jsonify({"error": str(e)}), 500
