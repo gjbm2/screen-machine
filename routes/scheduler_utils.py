@@ -12,6 +12,8 @@ import hashlib
 import threading
 from dataclasses import dataclass, field
 from collections import deque
+import time
+import uuid
 
 # Thread-safety lock for global state operations
 _state_lock = threading.RLock()
@@ -33,7 +35,11 @@ class EventEntry:
     display_name: str = None       # Optional friendly title for UI/logs
     payload: Any = None            # Optional: Arbitrary data to be carried with the event
     single_consumer: bool = False  # If True, event is removed after first trigger 
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=datetime.now)
+    unique_id: str = None          # Unique identifier for this specific event instance
+    consumed_by: str = None        # Who/what consumed this event (scheduler ID, "expiration", etc.)
+    consumed_at: datetime = None   # When the event was consumed
+    status: str = "ACTIVE"         # Status: "ACTIVE", "CONSUMED", "EXPIRED"
 
 scheduler_logs: Dict[str, List[str]] = {}
 scheduler_schedule_stacks: Dict[str, List[Dict[str, Any]]] = {}  # Store stacks of schedules by destination
@@ -44,8 +50,6 @@ important_triggers: Dict[str, List[Dict[str, Any]]] = {}  # Store important trig
 # Enhanced event storage:
 # destination -> {event_name: deque[EventEntry]}
 active_events: Dict[str, Dict[str, deque[EventEntry]]] = {}
-# group -> {event_name: deque[EventEntry]} (for shared/non-cascading events)
-group_events: Dict[str, Dict[str, deque[EventEntry]]] = {}
 # Keep history of recent events for UI display (capped length)
 event_history: Dict[str, List[EventEntry]] = {}
 # Maximum history entries to retain per destination
@@ -428,6 +432,71 @@ def parse_ttl(ttl: Union[str, int, None], default: int = 60) -> int:
         error(f"Invalid TTL format: {ttl}, using default {default}")
         return default
 
+@thread_safe
+def check_all_expired_events() -> Dict[str, int]:
+    """
+    Check all events across all destinations for expiration and move expired events to history.
+    This function should be called periodically to ensure expired events are properly tracked.
+    
+    Returns:
+        Dict with counts of expired events moved to history by destination
+    """
+    global active_events, event_history
+    now = datetime.now()
+    expired_counts = {}
+    
+    # Process each destination's events
+    for dest_id, event_queues in active_events.items():
+        total_expired = 0
+        keys_to_remove = []
+        all_expired_events = []  # Accumulate all expired events for this destination
+        # Process each event queue for this destination
+        for event_key, queue in event_queues.items():
+            expired_events = []
+            # Look for expired events
+            for event in list(queue):  # Use list to avoid modification during iteration
+                if event.expires < now:
+                    # Mark as expired
+                    event.status = "EXPIRED"
+                    event.consumed_by = "expiration"
+                    event.consumed_at = now
+                    
+                    # Add to expired list
+                    expired_events.append(event)
+                    
+                    # Remove from active queue
+                    try:
+                        queue.remove(event)
+                    except ValueError:
+                        pass  # Event might have been removed already
+                    
+                    # Log expiration
+                    info(f"EVENT EXPIRED: '{event.key}' [id:{event.unique_id}] that was created at {event.created_at}")
+            # If the queue is now empty, mark the key for removal
+            if len(queue) == 0:
+                keys_to_remove.append(event_key)
+            all_expired_events.extend(expired_events)  # Accumulate for the destination
+        # Remove empty event keys after processing
+        for key in keys_to_remove:
+            del event_queues[key]
+        # Add expired events to history
+        if all_expired_events:
+            if dest_id not in event_history:
+                event_history[dest_id] = []
+            event_history[dest_id].extend(all_expired_events)
+            total_expired += len(all_expired_events)
+            # Keep history size under control
+            if len(event_history[dest_id]) > MAX_EVENT_HISTORY:
+                event_history[dest_id] = event_history[dest_id][-MAX_EVENT_HISTORY:]
+        # Record count for this destination
+        if total_expired > 0:
+            expired_counts[dest_id] = total_expired
+            info(f"Moved {total_expired} expired events to history for '{dest_id}'")
+            # Save state to persist changes
+            update_scheduler_state(dest_id, force_save=True)
+    
+    return expired_counts
+
 def parse_time(time_val: Union[str, datetime, None]) -> Optional[datetime]:
     """
     Parse a time string or datetime object.
@@ -461,18 +530,56 @@ def get_destinations_for_group(group_id: str) -> List[str]:
         group_id: Group identifier
         
     Returns:
-        List of destination IDs in the group
+        List of destination IDs in the group that have a bucket
     """
+    debug(f"get_destinations_for_group called for group: '{group_id}'")
+    
     try:
         from routes.utils import _load_json_once
         destinations = _load_json_once("destination", "publish-destinations.json")
         
-        # Find destinations in this group
+        # Find destinations in this group that have buckets
         dest_ids = []
-        for dest in destinations.get("pub_dests", {}):
-            if group_id in dest.get("groups", []):
-                dest_ids.append(dest.get("id"))
+        
+        # Handle the case where destinations is a list (new format)
+        if isinstance(destinations, list):
+            debug(f"Processing destinations in list format (found {len(destinations)})")
+            
+            for dest in destinations:
+                if not isinstance(dest, dict):
+                    continue
                 
+                dest_id = dest.get("id")
+                in_group = group_id in dest.get("groups", [])
+                has_bucket = dest.get("has_bucket", False)
+                
+                debug(f"Dest {dest_id}: in_group={in_group}, has_bucket={has_bucket}")
+                
+                if in_group and has_bucket:
+                    dest_ids.append(dest_id)
+                    debug(f"Added {dest_id} to group members")
+                elif in_group and not has_bucket:
+                    debug(f"Skipped {dest_id} - in group but no bucket")
+                elif not in_group and has_bucket:
+                    debug(f"Skipped {dest_id} - has bucket but not in group")
+                    
+        # Handle the case where destinations is a dict with pub_dests key (old format)
+        elif isinstance(destinations, dict) and "pub_dests" in destinations:
+            debug(f"Processing destinations in dict format")
+            
+            for dest_id, dest in destinations.get("pub_dests", {}).items():
+                in_group = group_id in dest.get("groups", [])
+                has_bucket = dest.get("has_bucket", False)
+                
+                debug(f"Dest {dest_id}: in_group={in_group}, has_bucket={has_bucket}")
+                
+                if in_group and has_bucket:
+                    dest_ids.append(dest_id)
+                    debug(f"Added {dest_id} to group members")
+                elif in_group and not has_bucket:
+                    debug(f"Skipped {dest_id} - in group but no bucket")
+                    
+        debug(f"Returning {len(dest_ids)} destinations for group '{group_id}': {dest_ids}")
         return dest_ids
     except Exception as e:
         error(f"Error getting destinations for group {group_id}: {str(e)}")
@@ -480,17 +587,31 @@ def get_destinations_for_group(group_id: str) -> List[str]:
 
 def all_destinations() -> List[str]:
     """
-    Get all active destinations.
+    Get all active destinations that have buckets.
     
     Returns:
-        List of all destination IDs
+        List of all destination IDs that have a bucket
     """
     try:
         from routes.utils import _load_json_once
         destinations = _load_json_once("destination", "publish-destinations.json")
         
-        # Get all destination IDs
-        dest_ids = list(destinations.get("pub_dests", {}).keys())
+        # Get all destination IDs with buckets
+        dest_ids = []
+        
+        # Handle the case where destinations is a list (new format)
+        if isinstance(destinations, list):
+            for dest in destinations:
+                if (isinstance(dest, dict) and 
+                    "id" in dest and 
+                    dest.get("has_bucket", False)):
+                    dest_ids.append(dest.get("id"))
+        # Handle the case where destinations is a dict with pub_dests key (old format)
+        elif isinstance(destinations, dict) and "pub_dests" in destinations:
+            for dest_id, dest in destinations.get("pub_dests", {}).items():
+                if dest.get("has_bucket", False):
+                    dest_ids.append(dest_id)
+                
         return dest_ids
     except Exception as e:
         error(f"Error getting all destinations: {str(e)}")
@@ -524,9 +645,9 @@ def throw_event(scope: str, key: str, ttl: Union[str, int] = "60s",
     Returns:
         Dict with status and details
     """
-    global active_events, group_events, event_history
+    global active_events, event_history
     
-    now = datetime.utcnow()
+    now = datetime.now()
     
     # Calculate activation time
     if future_time is not None:
@@ -543,6 +664,9 @@ def throw_event(scope: str, key: str, ttl: Union[str, int] = "60s",
     ttl_seconds = parse_ttl(ttl)
     expires = active_from + timedelta(seconds=ttl_seconds)
     
+    # Generate a unique ID for this event instance
+    event_uuid = str(uuid.uuid4())
+    
     # Create event entry
     entry = EventEntry(
         key=key,
@@ -551,7 +675,9 @@ def throw_event(scope: str, key: str, ttl: Union[str, int] = "60s",
         display_name=display_name,
         payload=payload,
         single_consumer=single_consumer,
-        created_at=now
+        created_at=now,
+        unique_id=event_uuid,
+        status="ACTIVE"
     )
     
     result = {
@@ -559,8 +685,21 @@ def throw_event(scope: str, key: str, ttl: Union[str, int] = "60s",
         "key": key,
         "active_from": active_from.isoformat(),
         "expires": expires.isoformat(),
+        "unique_id": event_uuid,
         "destinations": []
     }
+    
+    # Log event creation
+    activation_info = ""
+    if active_from > now:
+        time_until_active = (active_from - now).total_seconds()
+        if time_until_active < 60:
+            activation_info = f", activates in {time_until_active:.1f}s"
+        else:
+            activation_info = f", activates in {time_until_active/60:.1f}m"
+    
+    expiry_info = f", expires in {ttl_seconds}s"
+    payload_info = ", with payload" if payload else ""
     
     if scope == "dest":
         if not dest_id:
@@ -573,26 +712,53 @@ def throw_event(scope: str, key: str, ttl: Union[str, int] = "60s",
             active_events[dest_id][key] = []
         active_events[dest_id][key].append(entry)
         
-        # Add to history
-        if dest_id not in event_history:
-            event_history[dest_id] = []
-        event_history[dest_id].append(entry)
-        
+        # Don't add to history yet - will be moved to history when consumed or expired
         result["destinations"].append(dest_id)
+        
+        # Log event creation
+        info(f"EVENT CREATED: '{key}' [id:{event_uuid}] for destination '{dest_id}'{activation_info}{expiry_info}{payload_info}")
         
     elif scope == "group":
         if not group_id:
             return {"status": "error", "message": "group_id required for scope='group'"}
             
-        # Store in group events
-        if group_id not in group_events:
-            group_events[group_id] = {}
-        if key not in group_events[group_id]:
-            group_events[group_id][key] = []
-        group_events[group_id][key].append(entry)
+        # Get all destinations in this group
+        destinations = get_destinations_for_group(group_id)
+        
+        if not destinations:
+            return {"status": "error", "message": f"No destinations found in group '{group_id}'"}
+        
+        # Fan out to all destinations in the group
+        for dest in destinations:
+            if dest not in active_events:
+                active_events[dest] = {}
+            if key not in active_events[dest]:
+                active_events[dest][key] = []
+                
+            # Generate a new unique ID for each destination instance
+            dest_event_uuid = str(uuid.uuid4())
+                
+            # Create a copy of the event for each destination to avoid shared references
+            dest_entry = EventEntry(
+                key=key,
+                active_from=active_from,
+                expires=expires,
+                display_name=display_name,
+                payload=payload,
+                single_consumer=single_consumer,
+                created_at=now,
+                unique_id=dest_event_uuid,
+                status="ACTIVE"
+            )
+            active_events[dest][key].append(dest_entry)
+            
+            # Don't add to history yet - will be moved to history when consumed or expired
+            result["destinations"].append(dest)
+            
+            # Log each individual event creation
+            info(f"EVENT CREATED: '{key}' [id:{dest_event_uuid}] for destination '{dest}' (via group '{group_id}'){activation_info}{expiry_info}{payload_info}")
         
         result["group"] = group_id
-        result["cascade"] = False  # Group events don't cascade by default
         
     elif scope == "global":
         # Get all destinations
@@ -604,14 +770,32 @@ def throw_event(scope: str, key: str, ttl: Union[str, int] = "60s",
                 active_events[dest] = {}
             if key not in active_events[dest]:
                 active_events[dest][key] = []
-            active_events[dest][key].append(entry)
+                
+            # Generate a new unique ID for each destination instance
+            dest_event_uuid = str(uuid.uuid4())
             
-            # Add to history
-            if dest not in event_history:
-                event_history[dest] = []
-            event_history[dest].append(entry)
+            # Create a copy of the event for each destination
+            dest_entry = EventEntry(
+                key=key,
+                active_from=active_from,
+                expires=expires,
+                display_name=display_name,
+                payload=payload,
+                single_consumer=single_consumer,
+                created_at=now,
+                unique_id=dest_event_uuid,
+                status="ACTIVE"
+            )
+            active_events[dest][key].append(dest_entry)
             
+            # Don't add to history yet - will be moved to history when consumed or expired
             result["destinations"].append(dest)
+            
+            # Log each individual event creation
+            info(f"EVENT CREATED: '{key}' [id:{dest_event_uuid}] for destination '{dest}' (via global scope){activation_info}{expiry_info}{payload_info}")
+        
+        # Add a summary log for global events
+        info(f"EVENT FANOUT COMPLETE: '{key}' to {len(destinations)} destinations globally{activation_info}{expiry_info}{payload_info}")
             
     else:
         return {"status": "error", "message": f"Invalid scope: {scope}"}
@@ -619,7 +803,7 @@ def throw_event(scope: str, key: str, ttl: Union[str, int] = "60s",
     return result
 
 @thread_safe
-def pop_next_event(dest_id: str, event_key: str, now: datetime = None) -> Optional[EventEntry]:
+def pop_next_event(dest_id: str, event_key: str, now: datetime = None, consumer_id: str = None, event_trigger_mode: bool = False) -> Optional[EventEntry]:
     """
     Get and optionally remove the next available event matching the key.
     
@@ -627,93 +811,200 @@ def pop_next_event(dest_id: str, event_key: str, now: datetime = None) -> Option
         dest_id: Destination ID
         event_key: Event identifier
         now: Current time (defaults to utcnow if None)
+        consumer_id: Optional ID of the consumer (defaults to destination ID)
+        event_trigger_mode: If True, prioritize consumption over expiration
         
     Returns:
         EventEntry if found and active, None otherwise
     """
-    global active_events
+    global active_events, event_history
     
     if now is None:
-        now = datetime.utcnow()
+        now = datetime.now()
+        
+    # Default consumer_id to destination ID if not provided
+    if consumer_id is None:
+        consumer_id = f"scheduler_{dest_id}"
         
     # Check destination-specific queue only (no more group events)
     if dest_id in active_events and event_key in active_events[dest_id]:
         queue = active_events[dest_id][event_key]
         if not queue:  # Handle empty queue case
             return None
-        return _pop_event_from_queue(queue, now)
+        
+        # Log that we're checking for this event
+        info(f"EVENT CHECK: Looking for '{event_key}' in destination '{dest_id}' queue ({len(queue)} events)")
+        
+        # Get event and handle expired events - pass the event_trigger_mode flag
+        valid_event, expired_events = _pop_event_from_queue(queue, now, event_trigger_mode)
+        
+        # Add any expired events to history
+        if expired_events:
+            if dest_id not in event_history:
+                event_history[dest_id] = []
+            
+            event_history[dest_id].extend(expired_events)
+            
+            # Keep history size under control
+            if len(event_history[dest_id]) > MAX_EVENT_HISTORY:
+                # Remove oldest events when we exceed the limit
+                event_history[dest_id] = event_history[dest_id][-MAX_EVENT_HISTORY:]
+                
+            info(f"Added {len(expired_events)} expired events to history for '{dest_id}'")
+        
+        # Add consumed event to history if we found one
+        if valid_event:
+            # Mark the event as consumed
+            valid_event.status = "CONSUMED"
+            valid_event.consumed_by = consumer_id
+            valid_event.consumed_at = now
+            # Add consumed event to history
+            if dest_id not in event_history:
+                event_history[dest_id] = []
+            event_history[dest_id].append(valid_event)
+            
+            # Keep history size under control
+            if len(event_history[dest_id]) > MAX_EVENT_HISTORY:
+                # Remove oldest events when we exceed the limit
+                event_history[dest_id] = event_history[dest_id][-MAX_EVENT_HISTORY:]
+                
+            info(f"EVENT CONSUMED: '{event_key}' [id:{valid_event.unique_id}] from destination '{dest_id}' by {consumer_id}, {len(queue)} events remaining in queue")
+        
+        return valid_event
             
     return None
 
-def _pop_event_from_queue(queue: deque, now: datetime) -> Optional[EventEntry]:
+def _pop_event_from_queue(queue: deque, now: datetime, event_trigger_mode: bool = False) -> tuple:
     """
     Helper to get the next event from a queue, handling expiry and activation time.
     
     Args:
         queue: Queue of EventEntry objects
         now: Current time
+        event_trigger_mode: If True, prioritize consumption over expiration checking
         
     Returns:
-        EventEntry if found and active, None otherwise
+        Tuple of (valid_event, expired_events) where:
+        - valid_event: EventEntry if found and active, None otherwise
+        - expired_events: List of expired events that were removed from the queue
     """
     # Handle empty queue case
     if not queue:
         debug("Queue is empty, returning None")
-        return None
-    
-    # Debug the queue contents 
-    debug(f"Processing event queue with {len(queue)} events")
+        return None, []
     
     # Make a copy of the queue to avoid modifying while iterating
     items = list(queue)
     
-    # First check if any events are expired, and remove them
-    expired = []
+    # Track valid event and expired events
+    valid_event = None
+    expired_events = []
+    
+    # In event trigger mode, first look for consumable events before expiring anything
+    if event_trigger_mode:
+        # First pass: look for valid events without expiring any
+        for event in items:
+            try:
+                # Check if event is active (not expired and not in the future)
+                if event.expires > now and event.active_from <= now:
+                    valid_event = event
+                    break  # We found a valid event to consume, stop looking
+            except Exception as e:
+                error(f"Error processing event: {str(e)}")
+                debug(f"Problem event: {event}")
+                
+        # If we found a valid event, remove it from the queue and return it
+        if valid_event:
+            try:
+                queue.remove(valid_event)
+                # If this is a single-consumer event, mark it as consumed
+                if valid_event.single_consumer:
+                    valid_event.status = "CONSUMED"
+                    valid_event.consumed_at = now
+                    # The consumer will be set in pop_next_event
+                else:
+                    # For non-single-consumer events, we still remove it from queue
+                    # but we don't mark it as consumed since it's reusable
+                    pass
+            except ValueError:
+                pass  # Event might have been removed already
+                
+            # In event trigger mode, we can leave expired events for the next check
+            # This ensures we prioritize consumption over expiration
+            return valid_event, []
+    
+    # Regular flow (non-event trigger mode) or no valid event was found in trigger mode
+    # Check all events for expiration first
     for i, event in enumerate(items):
         try:
             # Convert times to the same timezone for comparison
-            # If times have different tzinfo (or None), normalize them
             event_expires = event.expires
             event_active_from = event.active_from
             
-            # Debug time comparison info
-            debug(f"Event {event.key}: active_from={event_active_from}, expires={event_expires}, now={now}")
-            
-            # Handle expiration
-            if event_expires < now:
-                debug(f"Event {event.key} is expired")
-                expired.append(i)
+            # Handle expiration - ONLY IF the event has become active
+            # An event should not expire if it hasn't even had a chance to be active yet
+            if event_expires < now and event_active_from <= now:
+                # Mark as expired before adding to expired_events
+                event.status = "EXPIRED"
+                event.consumed_by = "expiration"
+                event.consumed_at = now
+                
+                # Log event expiration
+                info(f"EVENT EXPIRED: '{event.key}' [id:{event.unique_id}] that was created at {event.created_at}")
+                expired_events.append(event)
+                # We'll remove it from the queue later
                 continue
                 
             # Check if event is active yet
             if event_active_from > now:
-                debug(f"Event {event.key} is not active yet")
+                debug(f"Event {event.key} [id:{event.unique_id}] is not active yet")
                 continue
                 
-            # Event is valid - remove from queue if it's single consumer
-            debug(f"Popped event {event.key}")
-            valid_event = event
-            if event.single_consumer:
-                queue.remove(event)
-            else:
-                # For non-single-consumer events, we still need to remove it from the queue
-                # but it will be re-added by the caller if needed
-                queue.remove(event)
-            return valid_event
+            # First active event found - we'll return this one
+            if valid_event is None:
+                debug(f"Found valid event {event.key} [id:{event.unique_id}]")
+                valid_event = event
+                # We'll remove it from the queue later if single_consumer
+                # (We don't break here because we still need to check other events for expiration)
                 
         except Exception as e:
             error(f"Error processing event: {str(e)}")
             debug(f"Problem event: {event}")
     
-    # Clean up expired events
-    for i in sorted(expired, reverse=True):
+    # Now remove expired events from the queue
+    for event in expired_events:
         try:
-            queue.remove(items[i])
+            queue.remove(event)
         except ValueError:
-            pass  # Item might already be removed
+            pass  # Event might have been removed already
+    # If the queue is now empty after removing expired events, try to remove the key from active_events
+    # (We need to find the parent dict, so this is best-effort)
+    try:
+        if hasattr(queue, '__parent_dict__'):
+            parent_dict = queue.__parent_dict__
+            for k, v in list(parent_dict.items()):
+                if v is queue and len(queue) == 0:
+                    del parent_dict[k]
+    except Exception:
+        pass
     
-    # No valid event found
-    return None
+    # Update the valid event if it's being consumed
+    if valid_event:
+        try:
+            queue.remove(valid_event)
+            # If this is a single-consumer event, mark it as consumed
+            if valid_event.single_consumer:
+                valid_event.status = "CONSUMED"
+                valid_event.consumed_at = now
+                # The consumer will be set in pop_next_event
+            else:
+                # For non-single-consumer events, we still remove it from queue
+                # but we don't mark it as consumed since it's reusable
+                pass
+        except ValueError:
+            pass  # Event might have been removed already
+    
+    return valid_event, expired_events
 
 def get_events_for_destination(dest_id: str, include_group_events: bool = True) -> Dict[str, Any]:
     """
@@ -726,9 +1017,9 @@ def get_events_for_destination(dest_id: str, include_group_events: bool = True) 
     Returns:
         Dict with queue and history
     """
-    global active_events, group_events, event_history
+    global active_events, event_history
     
-    now = datetime.utcnow()
+    now = datetime.now()
     result = {
         "queue": [],
         "history": []
@@ -745,85 +1036,127 @@ def get_events_for_destination(dest_id: str, include_group_events: bool = True) 
                     dest_events.append({
                         "key": entry.key,
                         "display_name": entry.display_name,
-                        "scope": "dest",
+                        "scope": dest_id,  # Use actual destination ID as scope
                         "active_from": entry.active_from.isoformat(),
                         "expires": entry.expires.isoformat(),
                         "has_payload": entry.payload is not None,
                         "single_consumer": entry.single_consumer,
-                        "created_at": entry.created_at.isoformat()
+                        "created_at": entry.created_at.isoformat(),
+                        "unique_id": entry.unique_id,
+                        "status": entry.status
                     })
     
     # Add destination events to queue
     result["queue"].extend(dest_events)
     
-    # Get group events for this destination
-    if include_group_events:
-        from routes.scheduler_utils import get_groups_for_destination
-        dest_groups = get_groups_for_destination(dest_id)
-        
-        for group_id in dest_groups:
-            if group_id in group_events:
-                for key, event_queue in group_events[group_id].items():
-                    # Filter out expired events
-                    active_entries = [entry for entry in event_queue if entry.expires > now]
-                    if active_entries:
-                        for entry in active_entries:
-                            result["queue"].append({
-                                "key": entry.key,
-                                "display_name": entry.display_name,
-                                "scope": "group",
-                                "group": group_id,
-                                "active_from": entry.active_from.isoformat(),
-                                "expires": entry.expires.isoformat(),
-                                "has_payload": entry.payload is not None,
-                                "single_consumer": entry.single_consumer,
-                                "created_at": entry.created_at.isoformat()
-                            })
-    
-    # Add history
+    # Add history - only include events NOT in the active queue
     if dest_id in event_history:
+        active_event_keys = set()
+        if dest_id in active_events:
+            for key, event_queue in active_events[dest_id].items():
+                for entry in event_queue:
+                    if entry.expires > now:  # Only consider non-expired events
+                        active_event_keys.add(entry.key)
+        
+        # Only include events in history that aren't in the active queue
         for entry in event_history[dest_id]:
-            result["history"].append({
+            # Skip events that are still active in the queue
+            if entry.key in active_event_keys and entry.expires > now:
+                continue
+                
+            history_entry = {
                 "key": entry.key,
                 "display_name": entry.display_name,
-                "scope": "dest",
+                "scope": dest_id,  # Use actual destination ID as scope
                 "active_from": entry.active_from.isoformat(),
                 "expires": entry.expires.isoformat(),
                 "has_payload": entry.payload is not None,
                 "single_consumer": entry.single_consumer,
-                "created_at": entry.created_at.isoformat()
-            })
+                "created_at": entry.created_at.isoformat(),
+                "unique_id": entry.unique_id,
+                "status": entry.status
+            }
+            
+            # Add consumption info if available
+            if entry.consumed_at:
+                history_entry["consumed_at"] = entry.consumed_at.isoformat()
+            if entry.consumed_by:
+                history_entry["consumed_by"] = entry.consumed_by
+                
+            result["history"].append(history_entry)
+    
+    # Log summary of events found
+    total_events = len(result["queue"]) + len(result["history"])
+    if total_events > 0:
+        info(f"EVENT STATE: Found {len(result['queue'])} active events and {len(result['history'])} history events for '{dest_id}'")
+    else:
+        info(f"EVENT STATE: No events found for '{dest_id}'")
     
     return result
 
-def clear_events_for_destination(dest_id: str, event_key: Optional[str] = None) -> Dict[str, int]:
+def clear_events_for_destination(dest_id: str, event_key: Optional[str] = None, event_id: Optional[str] = None, clear_history: bool = False) -> Dict[str, int]:
     """
     Clear events for a destination.
     
     Args:
         dest_id: Destination ID
         event_key: Optional specific event key to clear
+        event_id: Optional specific event ID (unique_id) to clear
+        clear_history: Whether to also clear event history
         
     Returns:
         Dict with counts of cleared events
     """
-    global active_events
+    global active_events, event_history
     
-    cleared = 0
+    cleared_active = 0
+    cleared_history = 0
     
+    # Clear active events
     if dest_id in active_events:
-        if event_key:
-            # Clear specific event
+        if event_key and not event_id:
+            # Clear by event key
             if event_key in active_events[dest_id]:
-                cleared = len(active_events[dest_id][event_key])
+                cleared_active = len(active_events[dest_id][event_key])
                 active_events[dest_id][event_key].clear()
+        elif event_id:
+            # Clear by event ID
+            for key, event_queue in active_events[dest_id].items():
+                for i, event in enumerate(list(event_queue)):
+                    if event.unique_id == event_id:
+                        event_queue.remove(event)
+                        cleared_active += 1
+                        info(f"Cleared active event ID {event_id} (key: {event.key}) from {dest_id}")
         else:
             # Clear all events
             for key in list(active_events[dest_id].keys()):
-                cleared += len(active_events[dest_id][key])
+                cleared_active += len(active_events[dest_id][key])
                 active_events[dest_id][key].clear()
     
-    return {"cleared": cleared}
+    # Clear history if requested
+    if clear_history and dest_id in event_history:
+        if event_key and not event_id:
+            # Remove events with matching key
+            original_len = len(event_history[dest_id])
+            event_history[dest_id] = [e for e in event_history[dest_id] if e.key != event_key]
+            cleared_history = original_len - len(event_history[dest_id])
+        elif event_id:
+            # Remove event with matching ID
+            original_len = len(event_history[dest_id])
+            event_history[dest_id] = [e for e in event_history[dest_id] if e.unique_id != event_id]
+            cleared_history = original_len - len(event_history[dest_id])
+            if cleared_history > 0:
+                info(f"Cleared history event ID {event_id} from {dest_id}")
+        else:
+            # Clear all history
+            cleared_history = len(event_history[dest_id])
+            event_history[dest_id] = []
+    
+    return {
+        "cleared_active": cleared_active,
+        "cleared_history": cleared_history,
+        "total_cleared": cleared_active + cleared_history
+    }
 
 # === Context Functions ===
 def default_context():
@@ -860,8 +1193,7 @@ def get_scheduler_storage_path(publish_destination: str) -> str:
 @thread_safe
 def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
     """Load scheduler state from disk."""
-    global scheduler_schedule_stacks, scheduler_contexts_stacks, scheduler_states, scheduler_logs, last_trigger_executions
-    global active_events, event_history
+    global scheduler_schedule_stacks, scheduler_contexts_stacks, scheduler_states, active_events, event_history, last_trigger_executions, scheduler_logs
     
     # Initialize global variables if they don't exist
     if publish_destination not in scheduler_schedule_stacks:
@@ -880,133 +1212,148 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
         event_history[publish_destination] = []
     
     path = get_scheduler_storage_path(publish_destination)
+    data = {}
     
-    if os.path.exists(path):
-        try:
-            with open(path, 'r') as f:
-                file_content = f.read()
-                state = json.loads(file_content)
-                
-            # Validate state structure
-            if not isinstance(state, dict):
-                raise ValueError("Invalid state format: not a dictionary")
-                
-            # Ensure required fields exist
-            if 'state' not in state:
-                state['state'] = 'stopped'
-            
-            if 'context_stack' not in state:
-                state['context_stack'] = []
-            if 'schedule_stack' not in state:
-                state['schedule_stack'] = []
-                    
-            # Load last trigger executions if available
-            if 'last_trigger_executions' in state:
-                # Convert string timestamps back to datetime objects
-                trigger_executions = {}
-                for trigger_id, timestamp_str in state['last_trigger_executions'].items():
-                    try:
-                        trigger_executions[trigger_id] = datetime.fromisoformat(timestamp_str)
-                    except (ValueError, TypeError) as e:
-                        error(f"Error parsing trigger execution timestamp: {str(e)}")
-                        continue
-                
-                # Store in the global variable
-                last_trigger_executions[publish_destination] = trigger_executions
-            else:
-                # No saved execution history
-                last_trigger_executions[publish_destination] = {}
-                
-            # Load active events if available
-            if 'active_events' in state:
-                try:
-                    dest_events = {}
-                    for key, events_data in state['active_events'].items():
-                        event_queue = deque()
-                        for event_dict in events_data:
-                            try:
-                                # Skip expired events
-                                expires = datetime.fromisoformat(event_dict['expires'])
-                                if expires < datetime.utcnow():
-                                    continue
-                                    
-                                entry = EventEntry(
-                                    key=event_dict['key'],
-                                    active_from=datetime.fromisoformat(event_dict['active_from']),
-                                    expires=expires,
-                                    display_name=event_dict.get('display_name'),
-                                    payload=event_dict.get('payload'),
-                                    single_consumer=event_dict.get('single_consumer', False),
-                                    created_at=datetime.fromisoformat(event_dict.get('created_at', 
-                                                                     event_dict.get('active_from')))
-                                )
-                                event_queue.append(entry)
-                            except (ValueError, KeyError) as e:
-                                error(f"Error parsing event entry: {str(e)}")
-                                continue
-                            
-                        if event_queue:  # Only add events that aren't all expired
-                            dest_events[key] = event_queue
-                                
-                    active_events[publish_destination] = dest_events
-                    debug(f"Loaded {sum(len(q) for q in dest_events.values())} active events for {publish_destination}")
-                except Exception as e:
-                    error(f"Error loading active events: {str(e)}")
-                    active_events[publish_destination] = {}
-                    
-            # Load event history if available
-            if 'event_history' in state:
-                try:
-                    history = []
-                    for event_dict in state['event_history']:
-                        try:
-                            entry = EventEntry(
-                                key=event_dict['key'],
-                                active_from=datetime.fromisoformat(event_dict['active_from']),
-                                expires=datetime.fromisoformat(event_dict['expires']),
-                                display_name=event_dict.get('display_name'),
-                                payload=event_dict.get('payload'),
-                                single_consumer=event_dict.get('single_consumer', False),
-                                created_at=datetime.fromisoformat(event_dict.get('created_at', 
-                                                                     event_dict.get('active_from')))
-                            )
-                            history.append(entry)
-                        except (ValueError, KeyError) as e:
-                            error(f"Error parsing history entry: {str(e)}")
-                            continue
-                            
-                    # Limit history length
-                    event_history[publish_destination] = history[-MAX_EVENT_HISTORY:]
-                    debug(f"Loaded {len(history)} event history entries for {publish_destination}")
-                except Exception as e:
-                    error(f"Error loading event history: {str(e)}")
-                    event_history[publish_destination] = []
-                    
-            return state
-            
-        except Exception as e:
-            error(f"Error loading scheduler state for {publish_destination}: {str(e)}")
-            import traceback
-            error(f"Error traceback: {traceback.format_exc()}")
-            
-    # Create a new state with empty stacks if loading failed or file doesn't exist
-    state = {
-        "schedule_stack": [],
-        "context_stack": [],
-        "state": "stopped",
-        "last_trigger_executions": {},
-        "active_events": {},
-        "event_history": [],
-        "last_updated": datetime.now().isoformat()
-    }
-    
-    # Save the initial state to disk
     try:
-        save_scheduler_state(publish_destination, state)
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                data = json.load(f)
+                
+                # Load schedule stack
+                if "schedule_stack" in data:
+                    scheduler_schedule_stacks[publish_destination] = data["schedule_stack"]
+                    
+                # Load context stack
+                if "context_stack" in data:
+                    scheduler_contexts_stacks[publish_destination] = data["context_stack"]
+                    
+                # Load scheduler state
+                if "state" in data:
+                    scheduler_states[publish_destination] = data["state"]
+                
+                # Load active events
+                if "active_events" in data:
+                    active_events_data = data["active_events"]
+                    if publish_destination not in active_events:
+                        active_events[publish_destination] = {}
+                        
+                    for key, events_list in active_events_data.items():
+                        active_events[publish_destination][key] = deque()
+                        for event_data in events_list:
+                            try:
+                                # Create an EventEntry object from the saved data
+                                active_from = _parse_iso_datetime(event_data["active_from"])
+                                expires = _parse_iso_datetime(event_data["expires"])
+                                created_at = _parse_iso_datetime(event_data["created_at"])
+                                
+                                # Handle possible additional consumption fields
+                                consumed_at = None
+                                if "consumed_at" in event_data and event_data["consumed_at"]:
+                                    consumed_at = _parse_iso_datetime(event_data["consumed_at"])
+                                
+                                # Create the event entry
+                                entry = EventEntry(
+                                    key=event_data["key"],
+                                    active_from=active_from,
+                                    expires=expires,
+                                    display_name=event_data.get("display_name"),
+                                    payload=event_data.get("payload"),
+                                    single_consumer=event_data.get("single_consumer", False),
+                                    created_at=created_at,
+                                    unique_id=event_data.get("unique_id"),
+                                    status=event_data.get("status", "ACTIVE"),
+                                    consumed_by=event_data.get("consumed_by"),
+                                    consumed_at=consumed_at
+                                )
+                                active_events[publish_destination][key].append(entry)
+                            except Exception as e:
+                                error(f"Error restoring event {event_data.get('key', 'unknown')}: {str(e)}")
+                
+                # Load event history
+                if "event_history" in data:
+                    history_data = data["event_history"]
+                    if publish_destination not in event_history:
+                        event_history[publish_destination] = []
+                        
+                    for event_data in history_data:
+                        try:
+                            # Create an EventEntry object from the saved data
+                            active_from = _parse_iso_datetime(event_data["active_from"])
+                            expires = _parse_iso_datetime(event_data["expires"])
+                            created_at = _parse_iso_datetime(event_data["created_at"])
+                            
+                            # Handle possible additional consumption fields
+                            consumed_at = None
+                            if "consumed_at" in event_data and event_data["consumed_at"]:
+                                consumed_at = _parse_iso_datetime(event_data["consumed_at"])
+                            
+                            # Create the event entry
+                            entry = EventEntry(
+                                key=event_data["key"],
+                                active_from=active_from,
+                                expires=expires,
+                                display_name=event_data.get("display_name"),
+                                payload=event_data.get("payload"),
+                                single_consumer=event_data.get("single_consumer", False),
+                                created_at=created_at,
+                                unique_id=event_data.get("unique_id"),
+                                status=event_data.get("status", "ACTIVE"),
+                                consumed_by=event_data.get("consumed_by"),
+                                consumed_at=consumed_at
+                            )
+                            event_history[publish_destination].append(entry)
+                        except Exception as e:
+                            error(f"Error restoring history event {event_data.get('key', 'unknown')}: {str(e)}")
+                
+                # Load last trigger executions
+                if "last_trigger_executions" in data:
+                    trigger_executions = {}
+                    for trigger_id, execution_time_str in data["last_trigger_executions"].items():
+                        try:
+                            if execution_time_str and isinstance(execution_time_str, str):
+                                trigger_executions[trigger_id] = _parse_iso_datetime(execution_time_str)
+                            else:
+                                trigger_executions[trigger_id] = None
+                        except Exception as e:
+                            error(f"Error parsing trigger execution time: {str(e)}")
+                    last_trigger_executions[publish_destination] = trigger_executions
+                    
+                info(f"Loaded scheduler state for {publish_destination}, state: {scheduler_states.get(publish_destination, 'unknown')}")
+        else:
+            info(f"No existing state file found for {publish_destination}, starting with empty state")
+            # Create new state with empty values
+            new_state = {
+                "schedule_stack": [],
+                "context_stack": [],
+                "state": "stopped",
+                "last_updated": datetime.now().isoformat()
+            }
+            try:
+                save_scheduler_state(publish_destination, new_state)
+            except Exception as e:
+                error(f"Error saving initial scheduler state: {str(e)}")
+            
     except Exception as e:
-        error(f"Error saving initial scheduler state for {publish_destination}: {str(e)}")
-    
-    return state
+        error(f"Error loading scheduler state for {publish_destination}: {str(e)}")
+        import traceback
+        error(f"Error traceback: {traceback.format_exc()}")
+        
+    return data
+
+def _parse_iso_datetime(dt_str):
+    """Helper function to parse ISO format datetime strings."""
+    if not dt_str:
+        return None
+    try:
+        return datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+    except Exception:
+        # Fallback for different ISO formats
+        try:
+            from dateutil import parser
+            return parser.parse(dt_str)
+        except Exception as e:
+            error(f"Failed to parse datetime: {dt_str} - {str(e)}")
+            return datetime.now()  # Default to current time
     
 @thread_safe
 def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None) -> None:
@@ -1057,7 +1404,11 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
                         "display_name": event.display_name,
                         "payload": event.payload,
                         "single_consumer": event.single_consumer,
-                        "created_at": event.created_at.isoformat()
+                        "created_at": event.created_at.isoformat(),
+                        "unique_id": event.unique_id,
+                        "status": event.status,
+                        "consumed_by": event.consumed_by,
+                        "consumed_at": event.consumed_at.isoformat() if event.consumed_at else None
                     }
                     for event in event_queue
                 ]
@@ -1073,7 +1424,11 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
                     "display_name": event.display_name,
                     "payload": event.payload,
                     "single_consumer": event.single_consumer,
-                    "created_at": event.created_at.isoformat()
+                    "created_at": event.created_at.isoformat(),
+                    "unique_id": event.unique_id,
+                    "status": event.status,
+                    "consumed_by": event.consumed_by,
+                    "consumed_at": event.consumed_at.isoformat() if event.consumed_at else None
                 }
                 for event in event_history[publish_destination]
             ]
@@ -1234,26 +1589,38 @@ def get_current_context(publish_destination: str) -> Optional[Dict[str, Any]]:
 def extract_instructions(instruction_container: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Extract instructions from the new schema's instruction container structure."""
     if not instruction_container:
-        debug("instruction_container is empty or None")
         return []
-    
-    debug(f"Extracting instructions from container type: {type(instruction_container).__name__}")
-    debug(f"Container keys: {list(instruction_container.keys()) if isinstance(instruction_container, dict) else 'Not a dict'}")
         
+    # Add throttling for debug logging
+    if not hasattr(extract_instructions, '_last_debug_log_time'):
+        extract_instructions._last_debug_log_time = {}
+    
+    should_log_debug = False
+    current_time = time.time()
+    log_key = id(instruction_container)  # Use container object ID as key
+    
+    # Only log once every 5 minutes for the same container
+    if log_key not in extract_instructions._last_debug_log_time or \
+       (current_time - extract_instructions._last_debug_log_time.get(log_key, 0)) > 30:
+        should_log_debug = True
+        extract_instructions._last_debug_log_time[log_key] = current_time
+    
+    # Only log if throttling allows it
+    if should_log_debug:
+        debug(f"Extracting instructions from container type: {type(instruction_container).__name__}")
+    
     # Check if this is an instruction array object with an instructions_block
     if isinstance(instruction_container, dict) and "instructions_block" in instruction_container:
         result = instruction_container.get("instructions_block", [])
-        debug(f"Found instructions_block with {len(result)} instructions")
-        if len(result) > 0:
-            debug(f"First instruction: {result[0]}")
+        if should_log_debug and len(result) > 0:
+            debug(f"Found instructions_block with {len(result)} instructions")
         return result
         
     # Fallback for old format or direct instruction arrays
     if isinstance(instruction_container, dict) and "instructions" in instruction_container:
         result = instruction_container.get("instructions", [])
-        debug(f"Found instructions with {len(result)} instructions")
-        if len(result) > 0:
-            debug(f"First instruction: {result[0]}")
+        if should_log_debug and len(result) > 0:
+            debug(f"Found instructions with {len(result)} instructions")
         return result
     
     # Check for direct trigger_actions format
@@ -1262,19 +1629,22 @@ def extract_instructions(instruction_container: Dict[str, Any]) -> List[Dict[str
         trigger_actions = instruction_container.get("trigger_actions", {})
         if isinstance(trigger_actions, dict) and "instructions_block" in trigger_actions:
             result = trigger_actions.get("instructions_block", [])
-            debug(f"Found instructions_block in trigger_actions with {len(result)} instructions")
+            if should_log_debug and len(result) > 0:
+                debug(f"Found instructions_block in trigger_actions with {len(result)} instructions")
             return result
         if isinstance(trigger_actions, dict) and "instructions" in trigger_actions:
             result = trigger_actions.get("instructions", [])
-            debug(f"Found instructions in trigger_actions with {len(result)} instructions")
+            if should_log_debug and len(result) > 0:
+                debug(f"Found instructions in trigger_actions with {len(result)} instructions")
             return result
         
     # Check if this might be a direct array of instructions
     if isinstance(instruction_container, list):
-        debug(f"Container is a direct list with {len(instruction_container)} items")
+        if should_log_debug:
+            debug(f"Container is a direct list with {len(instruction_container)} items")
         return instruction_container
     
-    debug(f"No instructions found in container: {instruction_container}")
+    # No logging for empty results
     return []
 
 def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, minute_of_day: int, publish_destination: str = None, apply_grace_period: bool = False) -> List[Dict[str, Any]]:
@@ -1302,12 +1672,13 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
         last_trigger_executions[publish_destination] = {}
     
     # Add rate-limiting for debug logging
-    global _last_debug_log_time
     if not hasattr(process_time_schedules, '_last_debug_log_time'):
         process_time_schedules._last_debug_log_time = {}
     
     should_log = False
-    current_time = now.timestamp()
+    current_time = time.time()
+    
+    # Only log once every 5 minutes per destination
     if publish_destination not in process_time_schedules._last_debug_log_time or \
        (current_time - process_time_schedules._last_debug_log_time.get(publish_destination, 0)) > 30:
         should_log = True
@@ -1409,9 +1780,8 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                     # different days (e.g. yesterday's `_14` vs today's `_14`).
                     # Format: <schedule_hash>_<YYYY-MM-DD>_<interval_number>
                     interval_id = f"{schedule_id}_{now.date().isoformat()}_{current_interval}"
-                    #interval_id = f"{schedule_id}_{current_interval}"
                     
-                    # Rate-limited debug logging
+                    # Only log debug info if we're not throttling
                     if should_log:
                         debug(f"Schedule check: ID={interval_id}, current={now}, " +
                               f"expected_execution={expected_execution_time}, next={next_expected_time}, " +
@@ -1438,19 +1808,17 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                         if publish_destination:
                             log_schedule(message, publish_destination, now)
                         
+                        # Only log if we're not throttling - and only if we're actually executing
                         if should_log:
                             debug(f"Executing schedule (ID={interval_id}): current={now}, " +
                                   f"interval={repeat_interval}m, seconds_since_start={seconds_since_start}s, " +
                                   f"expected_time={expected_execution_time}, time_since_expected={time_since_expected}s")
                         
                         matched_schedules.append(schedule)
-                    else:
-                        if should_log:
+                    elif should_log:
+                        # Only log skipped executions if we're not throttling
                             if interval_id in last_trigger_executions[publish_destination]:
                                 debug(f"Skipping execution (ID={interval_id}): already executed this interval")
-                            else:
-                                debug(f"Skipping execution (ID={interval_id}): outside execution window, " +
-                                      f"now={now}, expected={expected_execution_time}, time_since_expected={time_since_expected}s")
             except (ValueError, TypeError) as e:
                 error(f"Error processing repeat schedule: {e}")
                 continue
@@ -1471,8 +1839,7 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                     if publish_destination:
                         log_schedule(message, publish_destination, now)
                     matched_schedules.append(schedule)
-                else:
-                    if should_log:
+                elif should_log:
                         debug(f"Skipping one-time trigger (ID={one_time_id}) that already executed today: {time_str}")
     
     return matched_schedules
@@ -1847,7 +2214,7 @@ def log_next_scheduled_action(publish_destination: str, schedule: Dict[str, Any]
             log_schedule(f"Next scheduled action at {next_action_time} ({hours}h {mins}m from now): {next_action_description}", publish_destination)
     else:
         log_schedule("No upcoming scheduled actions found", publish_destination)
-
+    
 def catch_up_on_important_actions(publish_destination: str, schedule: Dict[str, Any]):
     """Check for and execute important actions in the current cycle that may have been missed."""
     now = datetime.now()
@@ -2657,19 +3024,49 @@ def determine_scope_type(scope: str) -> tuple:
           - dest_id is the destination ID (if scope_type is "dest", else None)
           - group_id is the group name (if scope_type is "group", else None)
     """
+    debug(f"determine_scope_type called with scope: '{scope}'")
+    
     if scope == "global":
+        debug(f"Identified 'global' scope")
         return "global", None, None
         
     # Check if scope is a group name
     group_members = get_destinations_for_group(scope)
     if group_members:
         # It's a group name
+        debug(f"Identified group '{scope}' with members: {group_members}")
         return "group", None, scope
         
+    # Log if not found as a group
+    debug(f"'{scope}' not found as a group")
+    
     # Assume it's a destination ID
+    debug(f"Assuming '{scope}' is a destination ID")
     return "dest", scope, None
 
+def get_groups_for_destination(dest_id: str) -> list:
+    """
+    Get all groups that a destination belongs to.
+    
+    Args:
+        dest_id: Destination identifier
         
+    Returns:
+        List of group names that the destination belongs to
+    """
+    try:
+        from routes.utils import _load_json_once
+        destinations = _load_json_once("destination", "publish-destinations.json")
+        
+        # Find the destination's groups
+        for dest in destinations:
+            if dest["id"] == dest_id and "groups" in dest:
+                return dest.get("groups", [])
+        
+        return []  # Destination not found or has no groups
+    except Exception as e:
+        error(f"Error getting groups for destination {dest_id}: {str(e)}")
+        return []
 
 # === Event Persistence Functions ===
     

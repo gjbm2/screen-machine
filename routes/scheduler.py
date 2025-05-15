@@ -229,27 +229,32 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
     # Check event triggers (these can match regardless of other triggers)
     from routes.scheduler_utils import pop_next_event, active_events
     
-    # Debug: Print all available events for this destination 
-    if publish_destination in active_events:
+    # Debug: Print all available events for this destination - but only when should_log is true
+    if should_log and publish_destination in active_events:
         for evt_key, evt_queue in active_events[publish_destination].items():
-            debug(f"Available event key in {publish_destination}: {evt_key} with {len(evt_queue)} events")
+            if len(evt_queue) > 0:  # Only log if there are actual events
+                debug(f"Available event key in {publish_destination}: {evt_key} with {len(evt_queue)} events")
     
     for trigger in schedule.get("triggers", []):
-        debug(f"Processing trigger: {trigger.get('type')} - {trigger.get('value', 'no value')}")
+        # Only log trigger processing when it's an important trigger (not day_of_week)
+        if trigger["type"] != "day_of_week" and should_log:
+            debug(f"Processing trigger: {trigger.get('type')} - {trigger.get('value', 'no value')}")
+            
         if trigger["type"] == "event" and "value" in trigger:
             event_key = trigger["value"]
-            debug(f"Looking for event trigger '{event_key}' in {publish_destination}")
+            
+            # Only log if should_log is true
+            if should_log:
+                debug(f"Looking for event trigger '{event_key}' in {publish_destination}")
             
             # Check if this event is active for this destination
             try:
-                # Print what we have in active_events directly
-                if publish_destination in active_events and event_key in active_events[publish_destination]:
+                # Only log debug info when enabled
+                if should_log and publish_destination in active_events and event_key in active_events[publish_destination]:
                     debug(f"Found event queue for '{event_key}' with {len(active_events[publish_destination][event_key])} entries")
-                    for i, evt in enumerate(active_events[publish_destination][event_key]):
-                        debug(f"  Event {i}: active_from={evt.active_from}, expires={evt.expires}, now={now}")
                 
-                # Try getting an event
-                event_entry = pop_next_event(publish_destination, event_key, now)
+                # Try getting an event - use event_trigger_mode=True to prioritize consumption
+                event_entry = pop_next_event(publish_destination, event_key, now, event_trigger_mode=True)
                 
                 if event_entry:
                     matched_any_trigger = True
@@ -259,27 +264,35 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                     info(message)
                     log_schedule(message, publish_destination, now)
                     
+                    # Store the event payload in the context as _event for use in jinja templates
+                    if "vars" not in context:
+                        context["vars"] = {}
+                    context["vars"]["_event"] = {
+                        "key": event_key,
+                        "payload": event_entry.payload,
+                        "unique_id": event_entry.unique_id,
+                        "created_at": event_entry.created_at.isoformat() if event_entry.created_at else None,
+                        "display_name": event_entry.display_name
+                    }
+                    debug(f"Added event payload to context as _event: {context['vars']['_event']}")
+                    
                     # Get the trigger actions
                     trigger_actions = trigger.get("trigger_actions", {})
-                    debug(f"Trigger actions: {trigger_actions}")
+                    if should_log:
+                        debug(f"Trigger actions: {trigger_actions}")
                     
                     # Extract instructions from trigger_actions
                     event_instructions = extract_instructions(trigger_actions)
-                    debug(f"Extracted {len(event_instructions)} instructions from event trigger")
-                    if not event_instructions:
-                        debug(f"WARNING: No instructions found in event trigger actions: {trigger_actions}")
+                    if should_log:
+                        debug(f"Extracted {len(event_instructions)} instructions from event trigger")
+                        if not event_instructions:
+                            debug(f"WARNING: No instructions found in event trigger actions: {trigger_actions}")
                     
                     # Add to accumulated instructions
                     all_instructions.extend(event_instructions)
                     found_actions_to_execute = True
                     
-                    # If the queue is empty now, clean it up completely
-                    if publish_destination in active_events and event_key in active_events[publish_destination]:
-                        if len(active_events[publish_destination][event_key]) == 0:
-                            # Event triggered, deliberately leave empty queue
-                            pass
-                else:
-                    debug(f"No active events found for '{event_key}'")
+                # Don't log "No active events" messages for normal event checking
             except Exception as e:
                 error_msg = f"Error processing event trigger {event_key}: {str(e)}"
                 error(error_msg)
@@ -295,11 +308,10 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
             log_schedule("No triggers produced actions, running final actions", publish_destination, now)
             all_instructions.extend(final_instructions)
     
-    if not all_instructions:
-        if should_log:
+    if should_log:
+        if not all_instructions:
             debug("No matching triggers or final actions found")
-    else:
-        if should_log:
+        else:
             debug(f"Found {len(all_instructions)} instructions to execute")
         
     return all_instructions
@@ -746,6 +758,7 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
         
         last_check_time = None
         last_debug_log_time = 0  # Track when we last did debug logging
+        last_expiration_check_time = 0  # Track when we last checked for expired events
         
         while True:
             # Check if scheduler is stopped
@@ -777,6 +790,18 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
             if current_time - last_debug_log_time > 30:
                 should_log_debug = True
                 last_debug_log_time = current_time
+            
+            # Periodically check for expired events (every 30 seconds)
+            # This ensures expired events are properly moved to history even if not explicitly requested
+            if current_time - last_expiration_check_time > 30:
+                try:
+                    from routes.scheduler_utils import check_all_expired_events
+                    expired_counts = check_all_expired_events()
+                    if expired_counts and should_log_debug:
+                        debug(f"Checked for expired events: {expired_counts}")
+                    last_expiration_check_time = current_time
+                except Exception as e:
+                    error(f"Error checking expired events: {str(e)}")
             
             # Check if stopping flag is set (for normal mode stopping)
             if current_context and current_context.get("stopping") == True:

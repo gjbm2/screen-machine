@@ -1,21 +1,19 @@
 import pytest
 import json
 from datetime import datetime, timedelta
-from routes.scheduler_utils import active_events, group_events, event_history
+from routes.scheduler_utils import active_events, event_history
 
 @pytest.fixture
 def clean_events_state():
     """Reset event-related state before and after tests."""
     # Clear before test
     active_events.clear()
-    group_events.clear()
     event_history.clear()
     
     yield
     
     # Clear after test
     active_events.clear()
-    group_events.clear()
     event_history.clear()
 
 def test_throw_and_get_event(test_client, clean_events_state):
@@ -176,13 +174,12 @@ def test_group_event_api(test_client, clean_events_state, monkeypatch):
     
     monkeypatch.setattr("routes.scheduler_utils.determine_scope_type", mock_determine_scope_type)
     
-    # Throw a group event with cascade=False
+    # Throw a group event 
     response = test_client.post(
         "/api/schedulers/events/throw",
         json={
             "event": "group_event",
             "scope": "test_group",
-            "cascade": False,
             "ttl": "60s"
         }
     )
@@ -192,9 +189,9 @@ def test_group_event_api(test_client, clean_events_state, monkeypatch):
     data = json.loads(response.data)
     assert data["status"] == "queued"
     assert data["group"] == "test_group"
-    assert data["cascade"] is False
     
-    # Verify event was created in group_events, not in individual destinations
-    assert "test_group" in group_events
-    assert "group_event" in group_events["test_group"]
-    assert "dest1" not in active_events or "group_event" not in active_events.get("dest1", {}) 
+    # Verify events were created for each destination in the group
+    assert "dest1" in active_events
+    assert "group_event" in active_events["dest1"]
+    assert "dest2" in active_events
+    assert "group_event" in active_events["dest2"] 
