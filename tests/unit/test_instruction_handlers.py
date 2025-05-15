@@ -7,9 +7,10 @@ from routes.scheduler_handlers import (
     handle_random_choice, handle_generate, 
     handle_animate, handle_display, handle_wait, handle_unload,
     handle_device_media_sync, handle_device_wake, handle_device_sleep,
-    handle_set_var, handle_reason
+    handle_set_var, handle_reason, MAX_HISTORY_SIZE
 )
 from routes.scheduler import resolve_schedule
+import mock
 
 @pytest.fixture(autouse=True)
 def enable_testing_mode():
@@ -767,4 +768,44 @@ def test_handle_set_var_no_duplicate_logging(base_context):
     handle_set_var(instruction, base_context, now, output_ref, dest_id)
     assert len(scheduler_logs[dest_id]) == 2, "Expected exactly two distinct log entries after second set_var"
     # Clean up
-    del scheduler_logs[dest_id] 
+    del scheduler_logs[dest_id]
+
+def test_history_variable_capping():
+    """Test that history_var is properly capped at MAX_HISTORY_SIZE."""
+    # Create context with history variable that is at the size limit
+    context = {
+        "vars": {
+            "test_history": [{"index": i} for i in range(MAX_HISTORY_SIZE)]
+        }
+    }
+    
+    now = datetime.now()
+    output = []
+    
+    # Create a reason instruction that uses the same history_var
+    reason_instruction = {
+        "action": "reason",
+        "text_input": "Test reason",
+        "reasoner": "default",
+        "output_vars": ["output1"],
+        "history_var": "test_history"
+    }
+    
+    # Mock the OpenAI call
+    with mock.patch('routes.openai.openai_prompt') as mock_openai:
+        mock_openai.return_value = {
+            "outputs": ["test output"],
+            "explanation": "test explanation"
+        }
+        
+        # Run the instruction
+        handle_reason(reason_instruction, context, now, output, "test_dest")
+        
+        # Check that history was capped
+        assert len(context["vars"]["test_history"]) == MAX_HISTORY_SIZE
+        
+        # Verify the oldest item was removed (index 0)
+        assert context["vars"]["test_history"][0]["index"] == 1
+        
+        # Verify the newest item is last and has the right type
+        assert context["vars"]["test_history"][-1]["type"] == "reason" 

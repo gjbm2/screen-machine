@@ -139,6 +139,12 @@ def handle_generate(instruction, context, now, output, publish_destination):
                 "workflow": workflow,
                 "image_url": image_url
             })
+            
+            # Cap history size to prevent unlimited growth
+            if len(context["vars"][history_var]) > MAX_HISTORY_SIZE:
+                # Remove oldest entries first (keeping most recent MAX_HISTORY_SIZE entries)
+                context["vars"][history_var] = context["vars"][history_var][-MAX_HISTORY_SIZE:]
+                debug(f"Capped {history_var} at {MAX_HISTORY_SIZE} entries")
         
         success_msg = f"Generated image from: '{prompt}'"
         # Add more detailed success logging
@@ -222,6 +228,12 @@ def handle_animate(instruction, context, now, output, publish_destination):
                 "refiner": refiner,
                 "animation_id": animation_id
             })
+            
+            # Cap history size to prevent unlimited growth
+            if len(context["vars"][history_var]) > MAX_HISTORY_SIZE:
+                # Remove oldest entries first (keeping most recent MAX_HISTORY_SIZE entries)
+                context["vars"][history_var] = context["vars"][history_var][-MAX_HISTORY_SIZE:]
+                debug(f"Capped {history_var} at {MAX_HISTORY_SIZE} entries")
         
         log_schedule(f"ANIMATE SUCCESS: {success_msg}", publish_destination, now, output)
         return result
@@ -864,6 +876,12 @@ def handle_reason(instruction, context, now, output, publish_destination):
                 
             # Add the entry to history
             context["vars"][history_var].append(history_entry)
+            
+            # Cap history size to prevent unlimited growth
+            if len(context["vars"][history_var]) > MAX_HISTORY_SIZE:
+                # Remove oldest entries first (keeping most recent MAX_HISTORY_SIZE entries)
+                context["vars"][history_var] = context["vars"][history_var][-MAX_HISTORY_SIZE:]
+                debug(f"Capped {history_var} at {MAX_HISTORY_SIZE} entries")
         
         success_msg = f"Completed reasoning with '{reasoner_id}'"
         log_schedule(success_msg, publish_destination, now, output)
