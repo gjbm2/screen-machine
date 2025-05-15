@@ -450,59 +450,80 @@ def handle_set_var(instruction, context, now, output, publish_destination):
     
     return False
 
-# Stops scheduler but doesn't unload
 def handle_stop(instruction, context, now, output, publish_destination):
+    """
+    Stops scheduler execution based on mode.
+    Args:
+        instruction: The stop instruction containing:
+            - mode: 'normal' (default) runs final_instructions before stopping
+                   'immediate' stops without final_instructions
+                   'block' exits current instruction block only
+            - test: Optional Jinja expression that must evaluate to true
+        context: The current context
+        now: Current datetime
+        output: List to append log messages to
+        publish_destination: The current scheduler's publish destination ID
+    Returns:
+        bool or str: True if should unload schedule, 'EXIT_BLOCK' to exit block, False otherwise
+    """
     from routes.scheduler import running_schedulers
     from routes.scheduler_utils import scheduler_states, update_scheduler_state
-    
-    # Get the stop mode - 'normal' (default) or 'immediate'
+    from routes.scheduler_utils import process_jinja_template
+
     stop_mode = instruction.get("mode", "normal")
-    
-    # Set a stopping flag in the context to indicate normal stop in progress
+    test_expr = instruction.get("test")
+    if test_expr:
+        try:
+            test_result = process_jinja_template(test_expr, context)
+            if not test_result or test_result.lower() in ('false', '0', 'none', ''):
+                msg = f"Stop instruction test condition evaluated to false: '{test_expr}'"
+                log_schedule(msg, publish_destination, now, output)
+                return False
+        except Exception as e:
+            error_msg = f"Error evaluating stop test condition: {str(e)}"
+            log_schedule(error_msg, publish_destination, now, output)
+            return False
+
     if stop_mode == "normal":
-        context["stopping"] = True
         msg = "Stop instruction received (normal mode) - will run final_instructions before stopping."
         log_schedule(msg, publish_destination, now, output)
-        return False  # Don't unload yet, let final_instructions run
-    else:  # immediate mode
+        return True  # Signal to unload after final_instructions
+    elif stop_mode == "immediate":
         msg = "Stop instruction received (immediate mode) - stopping scheduler immediately without running final_instructions."
         log_schedule(msg, publish_destination, now, output)
-        
-        # Explicitly remove from running_schedulers without unloading
         if publish_destination in running_schedulers:
             scheduler_info = running_schedulers.pop(publish_destination, None)
-            # Handle both new (dict) and old (future-only) formats for robustness
             if isinstance(scheduler_info, dict):
                 future = scheduler_info.get("future")
                 loop = scheduler_info.get("loop")
             else:
                 future = scheduler_info
                 loop = None
-
-            # Cancel the running task if available
             try:
                 if future and not future.done() and not future.cancelled():
                     future.cancel()
             except AttributeError:
-                # In tests, future might be a simple stub without these methods
                 pass
-
-            # Stop the event loop for this destination if we created one
             if loop is not None:
                 from routes.scheduler import stop_event_loop
                 try:
                     stop_event_loop(publish_destination)
                 except Exception:
                     pass
-            
-            # Update state to stopped, but preserve schedule and context
             scheduler_states[publish_destination] = "stopped"
             update_scheduler_state(
                 publish_destination,
                 state="stopped"
             )
-        
         return True  # Unload the schedule immediately
+    elif stop_mode == "block":
+        msg = "Stop instruction received (block mode) - exiting current instruction block."
+        log_schedule(msg, publish_destination, now, output)
+        return "EXIT_BLOCK"
+    else:
+        error_msg = f"Invalid stop mode: {stop_mode}"
+        log_schedule(error_msg, publish_destination, now, output)
+        return False
 
 def handle_import_var(instruction, context, now, output, publish_destination):
     """
@@ -925,86 +946,53 @@ def handle_log(instruction, context, now, output, publish_destination):
 def handle_throw_event(instruction, context, now, output, publish_destination):
     """
     Throw an event based on instruction parameters.
-    
     Args:
         instruction: The throw_event instruction
         context: The current context
         now: Current datetime
         output: List to append log messages to
         publish_destination: The current scheduler's publish destination ID
-    
     Returns:
         bool: False (don't unload the schedule)
     """
-    from routes.scheduler_utils import throw_event, determine_scope_type
-    
+    from routes.scheduler_utils import throw_event
+
     # Get parameters from the instruction
     event_key = instruction["event"]
     scope = instruction.get("scope", publish_destination)  # Default to current destination 
     display_name = instruction.get("display_name")
-    
-    # Get TTL, delay, and future time settings
     ttl = instruction.get("ttl", "60s")
     delay = instruction.get("delay")
     future_time = instruction.get("future_time")
-    
-    # Get single consumer flag
     single_consumer = instruction.get("single_consumer", False)
-    
-    # Get optional payload
     payload = instruction.get("payload")
-    
-    # Determine scope type (destination, group, or global)
-    try:
-        scope_type, dest_id, group_id = determine_scope_type(scope)
-    except Exception as e:
-        error_msg = f"Error determining scope type: {str(e)}"
-        log_schedule(error_msg, publish_destination, now, output)
-        # Default to destination scope with current destination
-        scope_type = "dest"
-        dest_id = publish_destination
-        group_id = None
-    
-    # If scope resolved to destination but no ID specified, use current destination
-    if scope_type == "dest" and not dest_id:
-        dest_id = publish_destination
-    
-    # Throw the event
+
+    # Throw the event (let throw_event handle all scope logic)
     result = throw_event(
-        scope=scope_type,
+        scope=scope,
         key=event_key,
         ttl=ttl,
         delay=delay,
         future_time=future_time,
-        dest_id=dest_id,
-        group_id=group_id,
         display_name=display_name,
         payload=payload,
         single_consumer=single_consumer
     )
-    
+
     # Log the action
     if result.get("status") == "queued":
-        if scope_type == "dest":
-            msg = f"Threw event '{event_key}' to destination '{dest_id}'"
-            if display_name:
-                msg += f" ({display_name})"
-        elif scope_type == "group":
-            msg = f"Threw event '{event_key}' to group '{group_id}'"
-        else:  # global
-            msg = f"Threw global event '{event_key}'"
-                
-        # Add timing information
+        msg = f"Threw event '{event_key}' to scope '{scope}'"
+        if display_name:
+            msg += f" ({display_name})"
         if future_time:
             msg += f", active from {result.get('active_from', '')}"
         elif delay:
             msg += f", delayed by {delay}"
-            
         log_schedule(msg, publish_destination, now, output)
     else:
         error_msg = f"Failed to throw event: {result.get('message', 'unknown error')}"
         log_schedule(error_msg, publish_destination, now, output)
-    
+
     return False  # Don't unload the schedule
 
 # Delete the duplicate process_time_schedules function that was copied here 

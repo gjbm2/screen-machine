@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from collections import deque
 import time
 import uuid
+from routes.utils import get_destinations_for_group
 
 # Thread-safety lock for global state operations
 _state_lock = threading.RLock()
@@ -49,9 +50,9 @@ important_triggers: Dict[str, List[Dict[str, Any]]] = {}  # Store important trig
 
 # Enhanced event storage:
 # destination -> {event_name: deque[EventEntry]}
-active_events: Dict[str, Dict[str, deque[EventEntry]]] = {}
+active_events: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
 # Keep history of recent events for UI display (capped length)
-event_history: Dict[str, List[EventEntry]] = {}
+event_history: Dict[str, List[Dict[str, Any]]] = {}
 # Maximum history entries to retain per destination
 MAX_EVENT_HISTORY = 1000
 
@@ -522,133 +523,26 @@ def parse_time(time_val: Union[str, datetime, None]) -> Optional[datetime]:
     
     return None
 
-def get_destinations_for_group(group_id: str) -> List[str]:
-    """
-    Get all destinations that belong to a group.
-    
-    Args:
-        group_id: Group identifier
-        
-    Returns:
-        List of destination IDs in the group that have a bucket
-    """
-    debug(f"get_destinations_for_group called for group: '{group_id}'")
-    
-    try:
-        from routes.utils import _load_json_once
-        destinations = _load_json_once("destination", "publish-destinations.json")
-        
-        # Find destinations in this group that have buckets
-        dest_ids = []
-        
-        # Handle the case where destinations is a list (new format)
-        if isinstance(destinations, list):
-            debug(f"Processing destinations in list format (found {len(destinations)})")
-            
-            for dest in destinations:
-                if not isinstance(dest, dict):
-                    continue
-                
-                dest_id = dest.get("id")
-                in_group = group_id in dest.get("groups", [])
-                has_bucket = dest.get("has_bucket", False)
-                
-                debug(f"Dest {dest_id}: in_group={in_group}, has_bucket={has_bucket}")
-                
-                if in_group and has_bucket:
-                    dest_ids.append(dest_id)
-                    debug(f"Added {dest_id} to group members")
-                elif in_group and not has_bucket:
-                    debug(f"Skipped {dest_id} - in group but no bucket")
-                elif not in_group and has_bucket:
-                    debug(f"Skipped {dest_id} - has bucket but not in group")
-                    
-        # Handle the case where destinations is a dict with pub_dests key (old format)
-        elif isinstance(destinations, dict) and "pub_dests" in destinations:
-            debug(f"Processing destinations in dict format")
-            
-            for dest_id, dest in destinations.get("pub_dests", {}).items():
-                in_group = group_id in dest.get("groups", [])
-                has_bucket = dest.get("has_bucket", False)
-                
-                debug(f"Dest {dest_id}: in_group={in_group}, has_bucket={has_bucket}")
-                
-                if in_group and has_bucket:
-                    dest_ids.append(dest_id)
-                    debug(f"Added {dest_id} to group members")
-                elif in_group and not has_bucket:
-                    debug(f"Skipped {dest_id} - in group but no bucket")
-                    
-        debug(f"Returning {len(dest_ids)} destinations for group '{group_id}': {dest_ids}")
-        return dest_ids
-    except Exception as e:
-        error(f"Error getting destinations for group {group_id}: {str(e)}")
-        return []
 
-def all_destinations() -> List[str]:
-    """
-    Get all active destinations that have buckets.
-    
-    Returns:
-        List of all destination IDs that have a bucket
-    """
-    try:
-        from routes.utils import _load_json_once
-        destinations = _load_json_once("destination", "publish-destinations.json")
-        
-        # Get all destination IDs with buckets
-        dest_ids = []
-        
-        # Handle the case where destinations is a list (new format)
-        if isinstance(destinations, list):
-            for dest in destinations:
-                if (isinstance(dest, dict) and 
-                    "id" in dest and 
-                    dest.get("has_bucket", False)):
-                    dest_ids.append(dest.get("id"))
-        # Handle the case where destinations is a dict with pub_dests key (old format)
-        elif isinstance(destinations, dict) and "pub_dests" in destinations:
-            for dest_id, dest in destinations.get("pub_dests", {}).items():
-                if dest.get("has_bucket", False):
-                    dest_ids.append(dest_id)
-                
-        return dest_ids
-    except Exception as e:
-        error(f"Error getting all destinations: {str(e)}")
-        # Fallback to running destinations
-        return list(running_schedulers.keys())
 
 @thread_safe
-def throw_event(scope: str, key: str, ttl: Union[str, int] = "60s",
-                delay: Union[str, int, None] = None,
-                future_time: Union[str, datetime, None] = None,
-                dest_id: Optional[str] = None, 
-                group_id: Optional[str] = None,
-                display_name: Optional[str] = None,
-                payload: Any = None,
-                single_consumer: bool = False) -> Dict[str, Any]:
+def throw_event(
+    scope: str,
+    key: str,
+    ttl: Union[str, int] = "60s",
+    delay: Union[str, int, None] = None,
+    future_time: Union[str, datetime, None] = None,
+    display_name: Optional[str] = None,
+    payload: Any = None,
+    single_consumer: bool = False
+) -> Dict[str, Any]:
     """
-    Create and store an event.
-    
-    Args:
-        scope: "dest", "group", or "global"
-        key: Event identifier
-        ttl: Time to live (seconds or string like "60s")
-        delay: Optional delay before event becomes active
-        future_time: Optional specific time when event becomes active
-        dest_id: Destination ID (required for scope="dest")
-        group_id: Group ID (required for scope="group")
-        display_name: Optional friendly name for UI display
-        payload: Optional data payload
-        single_consumer: Whether event is removed after first consumption
-        
-    Returns:
-        Dict with status and details
+    Create and store an event for all destinations resolved by the scope.
     """
     global active_events, event_history
-    
+
     now = datetime.now()
-    
+
     # Calculate activation time
     if future_time is not None:
         active_from = parse_time(future_time)
@@ -659,147 +553,51 @@ def throw_event(scope: str, key: str, ttl: Union[str, int] = "60s",
         active_from = now + timedelta(seconds=delay_seconds)
     else:
         active_from = now
-        
+
     # Calculate expiry
     ttl_seconds = parse_ttl(ttl)
     expires = active_from + timedelta(seconds=ttl_seconds)
-    
-    # Generate a unique ID for this event instance
-    event_uuid = str(uuid.uuid4())
-    
-    # Create event entry
-    entry = EventEntry(
-        key=key,
-        active_from=active_from,
-        expires=expires,
-        display_name=display_name,
-        payload=payload,
-        single_consumer=single_consumer,
-        created_at=now,
-        unique_id=event_uuid,
-        status="ACTIVE"
-    )
-    
+
+    # Get all destinations for this scope
+    pub_dests = get_destinations_for_group(scope)
+
     result = {
         "status": "queued",
         "key": key,
         "active_from": active_from.isoformat(),
         "expires": expires.isoformat(),
-        "unique_id": event_uuid,
-        "destinations": []
+        "unique_ids": [],
+        "destinations": pub_dests,
     }
-    
-    # Log event creation
+
     activation_info = ""
     if active_from > now:
-        time_until_active = (active_from - now).total_seconds()
-        if time_until_active < 60:
-            activation_info = f", activates in {time_until_active:.1f}s"
-        else:
-            activation_info = f", activates in {time_until_active/60:.1f}m"
-    
-    expiry_info = f", expires in {ttl_seconds}s"
-    payload_info = ", with payload" if payload else ""
-    
-    if scope == "dest":
-        if not dest_id:
-            return {"status": "error", "message": "dest_id required for scope='dest'"}
-            
-        # Store in destination events
-        if dest_id not in active_events:
-            active_events[dest_id] = {}
-        if key not in active_events[dest_id]:
-            active_events[dest_id][key] = []
-        active_events[dest_id][key].append(entry)
-        
-        # Don't add to history yet - will be moved to history when consumed or expired
-        result["destinations"].append(dest_id)
-        
-        # Log event creation
-        info(f"EVENT CREATED: '{key}' [id:{event_uuid}] for destination '{dest_id}'{activation_info}{expiry_info}{payload_info}")
-        
-    elif scope == "group":
-        if not group_id:
-            return {"status": "error", "message": "group_id required for scope='group'"}
-            
-        # Get all destinations in this group
-        destinations = get_destinations_for_group(group_id)
-        
-        if not destinations:
-            return {"status": "error", "message": f"No destinations found in group '{group_id}'"}
-        
-        # Fan out to all destinations in the group
-        for dest in destinations:
-            if dest not in active_events:
-                active_events[dest] = {}
-            if key not in active_events[dest]:
-                active_events[dest][key] = []
-                
-            # Generate a new unique ID for each destination instance
-            dest_event_uuid = str(uuid.uuid4())
-                
-            # Create a copy of the event for each destination to avoid shared references
-            dest_entry = EventEntry(
-                key=key,
-                active_from=active_from,
-                expires=expires,
-                display_name=display_name,
-                payload=payload,
-                single_consumer=single_consumer,
-                created_at=now,
-                unique_id=dest_event_uuid,
-                status="ACTIVE"
-            )
-            active_events[dest][key].append(dest_entry)
-            
-            # Don't add to history yet - will be moved to history when consumed or expired
-            result["destinations"].append(dest)
-            
-            # Log each individual event creation
-            info(f"EVENT CREATED: '{key}' [id:{dest_event_uuid}] for destination '{dest}' (via group '{group_id}'){activation_info}{expiry_info}{payload_info}")
-        
-        result["group"] = group_id
-        
-    elif scope == "global":
-        # Get all destinations
-        destinations = all_destinations()
-        
-        # Store in each destination's events
-        for dest in destinations:
-            if dest not in active_events:
-                active_events[dest] = {}
-            if key not in active_events[dest]:
-                active_events[dest][key] = []
-                
-            # Generate a new unique ID for each destination instance
-            dest_event_uuid = str(uuid.uuid4())
-            
-            # Create a copy of the event for each destination
-            dest_entry = EventEntry(
-                key=key,
-                active_from=active_from,
-                expires=expires,
-                display_name=display_name,
-                payload=payload,
-                single_consumer=single_consumer,
-                created_at=now,
-                unique_id=dest_event_uuid,
-                status="ACTIVE"
-            )
-            active_events[dest][key].append(dest_entry)
-            
-            # Don't add to history yet - will be moved to history when consumed or expired
-            result["destinations"].append(dest)
-            
-            # Log each individual event creation
-            info(f"EVENT CREATED: '{key}' [id:{dest_event_uuid}] for destination '{dest}' (via global scope){activation_info}{expiry_info}{payload_info}")
-        
-        # Add a summary log for global events
-        info(f"EVENT FANOUT COMPLETE: '{key}' to {len(destinations)} destinations globally{activation_info}{expiry_info}{payload_info}")
-            
-    else:
-        return {"status": "error", "message": f"Invalid scope: {scope}"}
-        
+        activation_info = f", activates in {(active_from - now).total_seconds():.1f}s"
+    info(f"EVENT CREATED: '{key}' for scope '{scope}', expires in {ttl_seconds}s{activation_info}")
+
+    for dest in pub_dests:
+        if dest not in active_events:
+            active_events[dest] = {}
+        if key not in active_events[dest]:
+            active_events[dest][key] = deque()
+        dest_event_uuid = str(uuid.uuid4())
+        dest_entry = EventEntry(
+            key=key,
+            active_from=active_from,
+            expires=expires,
+            display_name=display_name,
+            payload=payload,
+            single_consumer=single_consumer,
+            created_at=now,
+            unique_id=dest_event_uuid,
+            status="ACTIVE"
+        )
+        active_events[dest][key].append(dest_entry)
+        result["unique_ids"].append(dest_event_uuid)
+        if dest not in event_history:
+            event_history[dest] = []
+        event_history[dest].append(dest_entry)
+
     return result
 
 @thread_safe
@@ -3010,63 +2808,6 @@ def log_schedule_diff(old_schedule: Dict[str, Any], new_schedule: Dict[str, Any]
 # Grace period (in seconds) during which a missed repeating trigger will still execute.
 # Set to 5 minutes to avoid surprises after scheduler reloads while allowing quick catch-up
 LATE_EXECUTION_GRACE_PERIOD_SECONDS = 5 * 60
-
-def determine_scope_type(scope: str) -> tuple:
-    """
-    Determine whether a scope string is a destination ID, group name, or 'global'.
-    
-    Args:
-        scope: The scope identifier to check
-        
-    Returns:
-        Tuple of (scope_type, dest_id, group_id) where:
-          - scope_type is one of "dest", "group", or "global"
-          - dest_id is the destination ID (if scope_type is "dest", else None)
-          - group_id is the group name (if scope_type is "group", else None)
-    """
-    debug(f"determine_scope_type called with scope: '{scope}'")
-    
-    if scope == "global":
-        debug(f"Identified 'global' scope")
-        return "global", None, None
-        
-    # Check if scope is a group name
-    group_members = get_destinations_for_group(scope)
-    if group_members:
-        # It's a group name
-        debug(f"Identified group '{scope}' with members: {group_members}")
-        return "group", None, scope
-        
-    # Log if not found as a group
-    debug(f"'{scope}' not found as a group")
-    
-    # Assume it's a destination ID
-    debug(f"Assuming '{scope}' is a destination ID")
-    return "dest", scope, None
-
-def get_groups_for_destination(dest_id: str) -> list:
-    """
-    Get all groups that a destination belongs to.
-    
-    Args:
-        dest_id: Destination identifier
-        
-    Returns:
-        List of group names that the destination belongs to
-    """
-    try:
-        from routes.utils import _load_json_once
-        destinations = _load_json_once("destination", "publish-destinations.json")
-        
-        # Find the destination's groups
-        for dest in destinations:
-            if dest["id"] == dest_id and "groups" in dest:
-                return dest.get("groups", [])
-        
-        return []  # Destination not found or has no groups
-    except Exception as e:
-        error(f"Error getting groups for destination {dest_id}: {str(e)}")
-        return []
 
 # === Event Persistence Functions ===
     

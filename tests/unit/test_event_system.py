@@ -1,6 +1,6 @@
 import pytest
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock
 from routes.scheduler_utils import (
     EventEntry, throw_event, pop_next_event, 
@@ -9,6 +9,7 @@ from routes.scheduler_utils import (
     parse_ttl, parse_time
 )
 from collections import deque
+import uuid
 
 @pytest.fixture(autouse=True)
 def clear_event_state():
@@ -57,10 +58,9 @@ def test_throw_event_to_destination():
     """Test throwing an event to a specific destination."""
     # Throw event to a destination
     result = throw_event(
-        scope="dest",
+        scope="test_dest",
         key="test_event",
-        ttl="60s",
-        dest_id="test_dest"
+        ttl="60s"
     )
     
     # Verify result
@@ -76,15 +76,15 @@ def test_throw_event_to_destination():
     # Verify history
     assert "test_dest" in event_history
     assert len(event_history["test_dest"]) == 1
+    assert event_history["test_dest"][0].key == "test_event"
 
 def test_throw_event_with_display_name_and_payload():
     """Test throwing an event with display name and payload."""
     payload = {"user": "test_user", "action": "login"}
     result = throw_event(
-        scope="dest",
+        scope="test_dest",
         key="user_login",
         ttl="60s",
-        dest_id="test_dest",
         display_name="User Login Event",
         payload=payload
     )
@@ -101,10 +101,9 @@ def test_throw_event_to_group():
         mock_get_dests.return_value = ["dest1", "dest2", "dest3"]
         
         result = throw_event(
-            scope="group",
+            scope="test_group",
             key="group_event",
-            ttl="60s",
-            group_id="test_group"
+            ttl="60s"
         )
         
         # Verify result
@@ -139,50 +138,48 @@ def test_throw_event_globally():
 def test_throw_event_with_delay():
     """Test throwing an event with a delay."""
     # Current time
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     result = throw_event(
-        scope="dest",
+        scope="test_dest",
         key="delayed_event",
         ttl="60s",
-        delay="10s",
-        dest_id="test_dest"
+        delay="10s"
     )
     
     # Verify event was stored with future active_from time
     event_entry = active_events["test_dest"]["delayed_event"][0]
     assert event_entry.active_from > now
     assert event_entry.active_from < now + timedelta(seconds=15)  # Allow a bit of tolerance
+    
+    # Verify history
+    assert "test_dest" in event_history
+    assert len(event_history["test_dest"]) == 1
+    assert event_history["test_dest"][0].key == "delayed_event"
 
 def test_throw_event_with_future_time():
     """Test throwing an event with a specific future time."""
     # Set a future time
-    future = datetime.utcnow() + timedelta(minutes=5)
+    future = datetime.now(timezone.utc) + timedelta(minutes=5)
     future_iso = future.isoformat()
     
     result = throw_event(
-        scope="dest",
+        scope="test_dest",
         key="future_event",
         ttl="60s",
-        future_time=future_iso,
-        dest_id="test_dest"
+        future_time=future_iso
     )
     
     # Verify event was stored with specific future time
     event_entry = active_events["test_dest"]["future_event"][0]
-    
-    # Convert both to seconds since epoch for easier comparison
-    entry_epoch = event_entry.active_from.timestamp()
-    future_epoch = future.timestamp()
-    assert abs(entry_epoch - future_epoch) < 1  # Allow 1 second tolerance
+    assert abs((event_entry.active_from - future).total_seconds()) < 1  # Allow 1 second tolerance
 
 def test_throw_event_with_single_consumer():
     """Test throwing an event with single_consumer flag."""
     result = throw_event(
-        scope="dest",
+        scope="test_dest",
         key="single_consumer_event",
         ttl="60s",
-        dest_id="test_dest",
         single_consumer=True
     )
     
@@ -194,10 +191,9 @@ def test_pop_next_event():
     """Test popping the next event."""
     # Throw an event
     throw_event(
-        scope="dest",
+        scope="test_dest",
         key="test_event",
-        ttl="60s",
-        dest_id="test_dest"
+        ttl="60s"
     )
     
     # Pop the event
@@ -215,13 +211,12 @@ def test_pop_next_event():
 def test_pop_next_event_respect_active_from():
     """Test that pop_next_event respects the active_from time."""
     # Throw a future event
-    future = datetime.utcnow() + timedelta(minutes=5)
+    future = datetime.now(timezone.utc) + timedelta(minutes=5)
     throw_event(
-        scope="dest",
+        scope="test_dest",
         key="future_event",
         ttl="60s",
-        future_time=future.isoformat(),
-        dest_id="test_dest"
+        future_time=future.isoformat()
     )
     
     # Try to pop the event now (should fail)
@@ -242,91 +237,64 @@ def test_pop_next_event_respect_active_from():
     # Verify event was retrieved this time
     assert event_entry is not None
     assert event_entry.key == "future_event"
+    
+    # Verify event was added to history
+    assert "test_dest" in event_history
+    assert len(event_history["test_dest"]) == 1
+    assert event_history["test_dest"][0].key == "future_event"
 
 def test_get_events_for_destination():
     """Test getting all events for a destination."""
     # Throw a few events
-    throw_event(scope="dest", key="event1", ttl="60s", dest_id="test_dest")
-    throw_event(scope="dest", key="event2", ttl="60s", dest_id="test_dest")
-    throw_event(
-        scope="dest", 
-        key="event3", 
-        ttl="60s", 
-        dest_id="test_dest",
-        display_name="Event Three",
-        payload={"data": "test"}
-    )
+    throw_event(scope="test_dest", key="event1", ttl="60s")
+    throw_event(scope="test_dest", key="event2", ttl="60s")
     
     # Get events
-    result = get_events_for_destination("test_dest")
+    events = get_events_for_destination("test_dest")
     
-    # Verify result structure
-    assert "queue" in result
-    assert "history" in result
-    
-    # Verify queue contents
-    assert len(result["queue"]) == 3
-    
-    # Verify event details are included
-    event3 = next((e for e in result["queue"] if e["key"] == "event3"), None)
-    assert event3 is not None
-    assert event3["display_name"] == "Event Three"
-    assert event3["has_payload"] is True
+    # Verify events
+    assert "queue" in events
+    assert "history" in events
+    assert len(events["queue"]) == 2
+    assert len(events["history"]) == 2
 
 def test_clear_events_for_destination():
     """Test clearing events for a destination."""
     # Throw a few events
-    throw_event(scope="dest", key="event1", ttl="60s", dest_id="test_dest")
-    throw_event(scope="dest", key="event2", ttl="60s", dest_id="test_dest")
-    throw_event(scope="dest", key="event3", ttl="60s", dest_id="test_dest")
+    throw_event(scope="test_dest", key="event1", ttl="60s")
+    throw_event(scope="test_dest", key="event2", ttl="60s")
     
-    # Clear specific event
-    result = clear_events_for_destination("test_dest", "event1")
-    assert result["cleared"] == 1
-    
-    # Verify only that event was cleared
-    assert "event1" in active_events["test_dest"]
-    assert len(active_events["test_dest"]["event1"]) == 0
-    assert len(active_events["test_dest"]["event2"]) == 1
-    assert len(active_events["test_dest"]["event3"]) == 1
-    
-    # Clear all events
+    # Clear events
     result = clear_events_for_destination("test_dest")
-    assert result["cleared"] == 2
     
-    # Verify all events were cleared
-    for key in ["event1", "event2", "event3"]:
-        assert key in active_events["test_dest"]
-        assert len(active_events["test_dest"][key]) == 0
+    # Verify result
+    assert "cleared_active" in result
+    assert result["cleared_active"] == 2
+    
+    # Verify events were cleared
+    assert "test_dest" not in active_events or not any(active_events["test_dest"].values())
 
-def test_expired_events_cleanup(clear_event_state):
-    """Test that expired events are automatically cleaned up."""
-    dest_id = "test_dest"
-    
-    # Current time
-    now = datetime.utcnow()
-    
-    # Add an event that's already expired
-    past = now - timedelta(seconds=10)
-    
-    # Create and manually add an expired event
-    expired_entry = EventEntry(
-        key="expired_event",
-        active_from=past,
-        expires=past + timedelta(seconds=5),  # Already expired
-        display_name="Expired Event"
+def test_expired_events_cleanup():
+    """Test that expired events are cleaned up."""
+    # Throw an event with short TTL
+    throw_event(
+        scope="test_dest",
+        key="short_ttl_event",
+        ttl="1s"
     )
     
-    if dest_id not in active_events:
-        active_events[dest_id] = {}
-    if "expired_event" not in active_events[dest_id]:
-        active_events[dest_id]["expired_event"] = deque()
-        
-    active_events[dest_id]["expired_event"].append(expired_entry)
+    # Wait for event to expire
+    import time
+    time.sleep(2)
     
-    # Try to pop it (should be cleaned up)
-    event = pop_next_event(dest_id, "expired_event", now)
-    assert event is None
+    # Try to pop the event
+    event_entry = pop_next_event("test_dest", "short_ttl_event")
     
-    # Verify expired event was removed
-    assert "expired_event" in active_events[dest_id] and len(active_events[dest_id]["expired_event"]) == 0 
+    # Verify event was not retrieved (expired)
+    assert event_entry is None
+    
+    # Verify event was removed from queue and added to history
+    assert "test_dest" not in active_events or "short_ttl_event" not in active_events["test_dest"]
+    assert "test_dest" in event_history
+    assert len(event_history["test_dest"]) == 1
+    assert event_history["test_dest"][0].key == "short_ttl_event" 

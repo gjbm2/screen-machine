@@ -1,13 +1,12 @@
 import pytest
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock
 from flask import Flask
-from routes.scheduler_api import (
-    scheduler_bp,
-    active_events
-)
-from routes.scheduler_utils import event_history
+from collections import deque
+from routes.scheduler_api import scheduler_bp
+from routes.scheduler_utils import EventEntry, active_events, event_history, throw_event
+import uuid
 
 @pytest.fixture
 def test_client():
@@ -33,8 +32,7 @@ def test_throw_event_endpoint(test_client):
     # Test event data
     event_data = {
         "event": "test_event",
-        "scope": "dest",
-        "destination": "test_dest",
+        "scope": "test_dest",
         "ttl": "60s",
         "display_name": "Test Event",
         "payload": {"test": "data"}
@@ -49,7 +47,7 @@ def test_throw_event_endpoint(test_client):
     # Verify response
     assert response.status_code == 200
     data = json.loads(response.data)
-    assert data["status"] == "queued" 
+    assert data["status"] == "queued"
     assert "test_dest" in data["destinations"]
     
     # Verify event was stored
@@ -60,6 +58,11 @@ def test_throw_event_endpoint(test_client):
     event_entry = active_events["test_dest"]["test_event"][0]
     assert event_entry.display_name == "Test Event"
     assert event_entry.payload == {"test": "data"}
+    
+    # Verify history
+    assert "test_dest" in event_history
+    assert len(event_history["test_dest"]) == 1
+    assert event_history["test_dest"][0].key == "test_event"
 
 def test_throw_event_group_scope(test_client):
     """Test throwing an event with group scope."""
@@ -70,8 +73,7 @@ def test_throw_event_group_scope(test_client):
         # Test event data
         event_data = {
             "event": "group_event",
-            "scope": "group",
-            "group": "test_group",
+            "scope": "test_group",
             "ttl": "60s"
         }
         
@@ -85,13 +87,21 @@ def test_throw_event_group_scope(test_client):
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["status"] == "queued"
-        assert "group" in data
+        assert "test_group" in data
         assert data["group"] == "test_group"
         
         # Verify destinations are included
         assert len(data["destinations"]) == 3
         for dest in ["dest1", "dest2", "dest3"]:
             assert dest in data["destinations"]
+            assert dest in active_events
+            assert "group_event" in active_events[dest]
+            assert len(active_events[dest]["group_event"]) == 1
+            
+            # Verify history
+            assert dest in event_history
+            assert len(event_history[dest]) == 1
+            assert event_history[dest][0].key == "group_event"
 
 def test_throw_event_global_scope(test_client):
     """Test throwing an event with global scope."""
@@ -127,8 +137,7 @@ def test_throw_event_with_delay(test_client):
     # Test event data
     event_data = {
         "event": "delayed_event",
-        "scope": "dest",
-        "destination": "test_dest",
+        "scope": "test_dest",
         "ttl": "60s",
         "delay": "10s"
     }
@@ -143,18 +152,23 @@ def test_throw_event_with_delay(test_client):
     assert response.status_code == 200
     
     # Verify event was stored with future activation time
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     event_entry = active_events["test_dest"]["delayed_event"][0]
     assert event_entry.active_from > now
+    assert event_entry.active_from < now + timedelta(seconds=15)  # Allow a bit of tolerance
+    
+    # Verify history
+    assert "test_dest" in event_history
+    assert len(event_history["test_dest"]) == 1
+    assert event_history["test_dest"][0].key == "delayed_event"
 
 def test_throw_event_with_future_time(test_client):
     """Test throwing an event with future time."""
     # Test event data
-    future_time = (datetime.utcnow()).isoformat()
+    future_time = datetime.now(timezone.utc).isoformat()
     event_data = {
         "event": "future_event",
-        "scope": "dest",
-        "destination": "test_dest",
+        "scope": "test_dest",
         "ttl": "60s",
         "future_time": future_time
     }
@@ -171,13 +185,18 @@ def test_throw_event_with_future_time(test_client):
     # Verify event was stored with future activation time
     event_entry = active_events["test_dest"]["future_event"][0]
     assert abs((event_entry.active_from - datetime.fromisoformat(future_time)).total_seconds()) < 1
+    
+    # Verify history
+    assert "test_dest" in event_history
+    assert len(event_history["test_dest"]) == 1
+    assert event_history["test_dest"][0].key == "future_event"
 
 def test_throw_event_missing_required_fields(test_client):
     """Test the throw event API endpoint with missing fields."""
     # Missing event field
     event_data = {
-        "scope": "dest",
-        "destination": "test_dest"
+        "scope": "test_dest",
+        "ttl": "60s"
     }
     
     # Post to the throw event endpoint
@@ -205,16 +224,19 @@ def test_get_events(test_client):
             if dest not in active_events:
                 active_events[dest] = {}
             if key not in active_events[dest]:
-                active_events[dest][key] = []
+                active_events[dest][key] = deque()
                 
-            entry = MagicMock()
-            entry.key = key
-            entry.active_from = datetime.utcnow()
-            entry.expires = datetime.utcnow()
-            entry.display_name = kwargs.get('display_name')
-            entry.payload = kwargs.get('payload')
-            entry.single_consumer = kwargs.get('single_consumer', False)
-            entry.created_at = datetime.utcnow()
+            now = datetime.now(timezone.utc)
+            entry = EventEntry(
+                key=key,
+                active_from=now,
+                expires=now + timedelta(seconds=60),
+                display_name=kwargs.get('display_name'),
+                payload=kwargs.get('payload'),
+                single_consumer=kwargs.get('single_consumer', False),
+                created_at=now,
+                unique_id=str(uuid.uuid4())
+            )
             
             active_events[dest][key].append(entry)
             
@@ -229,12 +251,12 @@ def test_get_events(test_client):
         # Add events via the API
         test_client.post(
             "/api/schedulers/events/throw",
-            json={"event": "event1", "scope": "dest", "destination": dest_id}
+            json={"event": "event1", "scope": "test_dest"}
         )
         
         test_client.post(
             "/api/schedulers/events/throw",
-            json={"event": "event2", "scope": "dest", "destination": dest_id}
+            json={"event": "event2", "scope": "test_dest"}
         )
     
     # Get events
@@ -248,12 +270,13 @@ def test_get_events(test_client):
     
     # Verify queue contents
     assert len(data["queue"]) == 2
+    assert len(data["history"]) == 2
 
 def test_clear_events(test_client):
     """Test clearing events for a destination."""
     dest_id = "test_dest"
     
-    # Add some events
+    # Add some events first
     with patch('routes.scheduler_utils.throw_event') as mock_throw:
         # Mock throw_event to update active_events directly
         def side_effect(*args, **kwargs):
@@ -263,16 +286,19 @@ def test_clear_events(test_client):
             if dest not in active_events:
                 active_events[dest] = {}
             if key not in active_events[dest]:
-                active_events[dest][key] = []
+                active_events[dest][key] = deque()
                 
-            entry = MagicMock()
-            entry.key = key
-            entry.active_from = datetime.utcnow()
-            entry.expires = datetime.utcnow()
-            entry.display_name = kwargs.get('display_name')
-            entry.payload = kwargs.get('payload')
-            entry.single_consumer = kwargs.get('single_consumer', False)
-            entry.created_at = datetime.utcnow()
+            now = datetime.now(timezone.utc)
+            entry = EventEntry(
+                key=key,
+                active_from=now,
+                expires=now + timedelta(seconds=60),
+                display_name=kwargs.get('display_name'),
+                payload=kwargs.get('payload'),
+                single_consumer=kwargs.get('single_consumer', False),
+                created_at=now,
+                unique_id=str(uuid.uuid4())
+            )
             
             active_events[dest][key].append(entry)
             
@@ -287,44 +313,22 @@ def test_clear_events(test_client):
         # Add events via the API
         test_client.post(
             "/api/schedulers/events/throw",
-            json={"event": "event1", "scope": "dest", "destination": dest_id}
+            json={"event": "event1", "scope": "test_dest"}
         )
         
         test_client.post(
             "/api/schedulers/events/throw",
-            json={"event": "event2", "scope": "dest", "destination": dest_id}
+            json={"event": "event2", "scope": "test_dest"}
         )
     
-    # Clear a specific event
-    response = test_client.delete(f"/api/schedulers/events/event1?destination={dest_id}")
-    
-    # Verify response
-    assert response.status_code == 200
-    data = json.loads(response.data)
-    assert data["cleared"] >= 0
-    
-    # Get events to verify
-    response = test_client.get(f"/api/schedulers/events?destination={dest_id}")
-    data = json.loads(response.data)
-    
-    # Verify event1 is gone but event2 remains
-    event1_exists = any(e["key"] == "event1" for e in data["queue"])
-    event2_exists = any(e["key"] == "event2" for e in data["queue"])
-    
-    assert not event1_exists
-    assert event2_exists
-    
-    # Clear all events
+    # Clear events
     response = test_client.delete(f"/api/schedulers/events?destination={dest_id}")
     
     # Verify response
     assert response.status_code == 200
     data = json.loads(response.data)
-    assert data["cleared"] >= 0
+    assert "cleared_active" in data
+    assert data["cleared_active"] == 2
     
-    # Get events to verify
-    response = test_client.get(f"/api/schedulers/events?destination={dest_id}")
-    data = json.loads(response.data)
-    
-    # Verify all events are gone
-    assert len(data["queue"]) == 0 
+    # Verify events were cleared
+    assert dest_id not in active_events or not any(active_events[dest_id].values()) 

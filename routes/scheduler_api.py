@@ -38,7 +38,7 @@ from routes.scheduler_utils import (
     catch_up_on_important_actions,
     # Globals from scheduler_utils
     scheduler_logs, scheduler_schedule_stacks, scheduler_contexts_stacks, scheduler_states, 
-    running_schedulers, important_triggers, active_events
+    running_schedulers, important_triggers, active_events, get_events_for_destination
 )
 
 # === Storage for global scheduler state ===
@@ -694,7 +694,6 @@ def api_clear_all_events():
 def api_throw_event():
     """
     Throw an event to a destination, group, or globally.
-    
     Route:
     - /api/schedulers/events/throw - With scope in request body
     """
@@ -705,19 +704,10 @@ def api_throw_event():
 
         if "event" not in data:
             return jsonify({"error": "Request must include 'event' field"}), 400
-            
+        
         # Get the scope from the request, default to "global"
         scope = data.get("scope", "global")
-        
-        # Determine scope type (dest, group, or global)
-        from routes.scheduler_utils import determine_scope_type, throw_event
-        
-        try:
-            scope_type, dest_id, group_id = determine_scope_type(scope)
-        except Exception as e:
-            error_msg = f"Error determining scope type: {str(e)}"
-            error(error_msg)
-            return jsonify({"error": error_msg}), 400
+        from routes.scheduler_utils import throw_event
         
         # Extract parameters from request
         event_key = data["event"]
@@ -730,20 +720,17 @@ def api_throw_event():
         
         # Throw the event
         result = throw_event(
-            scope=scope_type,
+            scope=scope,
             key=event_key,
             ttl=ttl,
             delay=delay,
             future_time=future_time,
-            dest_id=dest_id,
-            group_id=group_id,
             display_name=display_name,
             payload=payload,
             single_consumer=single_consumer
         )
         
-        scope_msg = f"globally" if scope_type == "global" else f"to {scope}"
-        info(f"Threw event '{event_key}' {scope_msg}")
+        info(f"Threw event '{event_key}' to scope '{scope}'")
         return jsonify(result)
     except Exception as e:
         error_msg = f"Error throwing event: {str(e)}"

@@ -43,7 +43,7 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-15T18:28:40.380273",
+  "last_updated": "2025-05-15T21:30:59.989184",
   "last_trigger_executions": {},
   "active_events": {
     "Next": [],
@@ -777,6 +777,58 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_devtest",
       "consumed_at": "2025-05-15T18:28:40.319922"
+    },
+    {
+      "key": "Next",
+      "active_from": "2025-05-15T21:30:37.481413",
+      "expires": "2025-05-15T21:31:37.481413",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T21:30:37.481413",
+      "unique_id": "3ca2b10a-a26b-40b3-8cfa-fd4033268da2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-05-15T21:30:37.483080"
+    },
+    {
+      "key": "Next",
+      "active_from": "2025-05-15T21:30:37.481413",
+      "expires": "2025-05-15T21:31:37.481413",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T21:30:37.481413",
+      "unique_id": "3ca2b10a-a26b-40b3-8cfa-fd4033268da2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-05-15T21:30:37.483080"
+    },
+    {
+      "key": "Previous",
+      "active_from": "2025-05-15T21:30:43.209164",
+      "expires": "2025-05-15T21:31:43.209164",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T21:30:43.209164",
+      "unique_id": "0e095729-9249-4488-b845-f2258acc2fe1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-05-15T21:30:43.581695"
+    },
+    {
+      "key": "Previous",
+      "active_from": "2025-05-15T21:30:43.209164",
+      "expires": "2025-05-15T21:31:43.209164",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T21:30:43.209164",
+      "unique_id": "0e095729-9249-4488-b845-f2258acc2fe1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-05-15T21:30:43.581695"
     }
   ]
 }

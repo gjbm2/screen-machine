@@ -30,9 +30,57 @@
         "imported_as": "_a_theme",
         "source_type": "scope",
         "source": "living-room",
-        "timestamp": "2025-05-15T14:00:00.887693"
+        "timestamp": "2025-05-15T23:00:00.999365"
+      },
+      "south-screen": {
+        "imported_as": "_a_theme",
+        "source_type": "scope",
+        "source": "living-room",
+        "timestamp": "2025-05-15T23:00:00.510140"
+      }
+    },
+    "b_theme": {
+      "north-screen": {
+        "imported_as": "_b_theme",
+        "source_type": "scope",
+        "source": "living-room",
+        "timestamp": "2025-05-15T23:00:00.999365"
+      },
+      "south-screen": {
+        "imported_as": "_b_theme",
+        "source_type": "scope",
+        "source": "living-room",
+        "timestamp": "2025-05-15T23:00:00.510140"
+      }
+    },
+    "style": {
+      "north-screen": {
+        "imported_as": "_style",
+        "source_type": "scope",
+        "source": "living-room",
+        "timestamp": "2025-05-15T23:00:00.999365"
+      },
+      "south-screen": {
+        "imported_as": "_style",
+        "source_type": "scope",
+        "source": "living-room",
+        "timestamp": "2025-05-15T23:00:00.510140"
+      }
+    },
+    "guidance": {
+      "north-screen": {
+        "imported_as": "_guidance",
+        "source_type": "scope",
+        "source": "living-room",
+        "timestamp": "2025-05-15T23:00:00.999365"
+      },
+      "south-screen": {
+        "imported_as": "_guidance",
+        "source_type": "scope",
+        "source": "living-room",
+        "timestamp": "2025-05-15T23:00:00.510140"
       }
     }
   },
-  "last_updated": "2025-05-15T18:26:40.142382"
+  "last_updated": "2025-05-15T23:00:01.103956"
 }

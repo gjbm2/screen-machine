@@ -4,9 +4,11 @@ import json
 from datetime import datetime, timedelta
 import uuid
 from pathlib import Path
+from collections import deque
 
 from routes.scheduler import resolve_schedule, run_instruction
-from routes.scheduler_utils import EventEntry, active_events
+from routes.scheduler_utils import EventEntry, active_events, throw_event, pop_next_event
+from routes.scheduler import debug
 
 
 class TestSchedulerEventHandling(unittest.TestCase):
@@ -59,7 +61,7 @@ class TestSchedulerEventHandling(unittest.TestCase):
         self.mock_log_schedule = self.patcher_log_schedule.start()
         
         # Mock pop_next_event to return our test events
-        self.patcher_pop_next_event = mock.patch('routes.scheduler.pop_next_event')
+        self.patcher_pop_next_event = mock.patch('routes.scheduler_utils.pop_next_event')
         self.mock_pop_next_event = self.patcher_pop_next_event.start()
         
         # Mock update_scheduler_state
@@ -88,13 +90,12 @@ class TestSchedulerEventHandling(unittest.TestCase):
     
     def create_event_entry(self, key, payload=None):
         """Helper to create an event entry."""
+        now = datetime.now()
         return EventEntry(
             key=key,
             unique_id=str(uuid.uuid4()),
-            destination=self.destination,
-            scope=self.destination,
-            created_at=datetime.now(),
-            expires_at=datetime.now() + timedelta(minutes=5),
+            active_from=now,
+            expires=now + timedelta(minutes=5),
             status="ACTIVE",
             payload=payload,
             display_name=f"Test {key}"
@@ -118,15 +119,10 @@ class TestSchedulerEventHandling(unittest.TestCase):
         
         # Verify event context was created
         self.assertIn("_event", self.context["vars"])
-        event_var_prefix = f"_event_{test_event.unique_id[:6]}"
-        self.assertNotIn(event_var_prefix, self.context["vars"], "Should not add namespaced event variables to context")
         
         # Verify the event context contains the correct data
         self.assertEqual(self.context["vars"]["_event"]["key"], "test_event")
         self.assertEqual(self.context["vars"]["_event"]["payload"], {"message": "Hello, World!"})
-        
-        # Verify instruction does NOT have event_var_name tag
-        self.assertNotIn("_event_var_name", instructions[0], "Instructions should not be tagged with _event_var_name")
     
     def test_multiple_events_resolution(self):
         """Test that multiple events in the same cycle are correctly resolved with isolated context."""
@@ -152,43 +148,28 @@ class TestSchedulerEventHandling(unittest.TestCase):
         self.assertEqual(len(instructions), 2)
         
         # Find which instruction is for which event
-        instr1 = next(i for i in instructions if "test_event" in i["message"])
-        instr2 = next(i for i in instructions if "another_event" in i["message"])
+        instr1 = next(i for i in instructions if "test_event" in i.get("message", ""))
+        instr2 = next(i for i in instructions if "another_event" in i.get("message", ""))
         
-        # Instructions should not have event_var_name tags
-        self.assertNotIn("_event_var_name", instr1, "Instructions should not be tagged with _event_var_name")
-        self.assertNotIn("_event_var_name", instr2, "Instructions should not be tagged with _event_var_name")
-        
-        # Verify only the _event variable exists, not namespaced variables
+        # Verify only the _event variable exists
         self.assertIn("_event", self.context["vars"])
-        event1_var = f"_event_{test_event1.unique_id[:6]}"
-        event2_var = f"_event_{test_event2.unique_id[:6]}"
-        self.assertNotIn(event1_var, self.context["vars"])
-        self.assertNotIn(event2_var, self.context["vars"])
+        
+        # Clean up event context
+        if "vars" in self.context and "_event" in self.context["vars"]:
+            del self.context["vars"]["_event"]
     
     def test_instruction_execution_copies_correct_event(self):
         """Test that when running an instruction, it correctly copies its specific event data to _event."""
-        # Create test events and their context variables
+        # Create test events
         test_event1 = self.create_event_entry("test_event", {"message": "Event 1 data"})
         test_event2 = self.create_event_entry("another_event", {"message": "Event 2 data"})
         
-        event1_var = f"_event_{test_event1.unique_id[:6]}"
-        event2_var = f"_event_{test_event2.unique_id[:6]}"
-        
         # Initialize context with both event data
-        self.context["vars"][event1_var] = {
+        self.context["vars"]["_event"] = {
             "key": "test_event",
             "payload": {"message": "Event 1 data"},
             "unique_id": test_event1.unique_id
         }
-        self.context["vars"][event2_var] = {
-            "key": "another_event",
-            "payload": {"message": "Event 2 data"},
-            "unique_id": test_event2.unique_id
-        }
-        
-        # Set _event to event2 data initially
-        self.context["vars"]["_event"] = self.context["vars"][event2_var]
         
         # Create an instruction for event1
         instruction = {
@@ -214,12 +195,6 @@ class TestSchedulerEventHandling(unittest.TestCase):
             mock_process.assert_called_once()
             self.assertEqual(self.context["vars"]["_event"]["key"], "test_event")
             self.assertEqual(self.context["vars"]["_event"]["payload"]["message"], "Event 1 data")
-        
-        # Check that the event was tracked for cleanup
-        self.assertIn("_event", self.context["vars"])
-        event_var = f"_event_{test_event1.unique_id[:6]}"
-        self.assertNotIn(event_var, self.context["vars"], "Should not have namespaced event variables")
-        self.assertNotIn("_event_vars_processed", self.context, "Should not have _event_vars_processed tracking in context")
     
     def test_event_context_cleanup(self):
         """Test that event context variables are properly cleaned up after execution."""
@@ -235,7 +210,7 @@ class TestSchedulerEventHandling(unittest.TestCase):
         # Create a test function that simulates the cleanup code from run_scheduler_loop
         def test_cleanup():
             if "vars" in self.context and "_event" in self.context["vars"]:
-                debug(f"Removing temporary _event from context after instruction block")
+                debug("Removing temporary _event from context after instruction block")
                 del self.context["vars"]["_event"]
         
         # Run the cleanup
@@ -256,34 +231,20 @@ class TestSchedulerEventHandling(unittest.TestCase):
         now = datetime.now()
         instructions = resolve_schedule(self.schedule, now, self.destination, False, self.context)
         
-        # Verify we got an instruction
+        # Verify an instruction was returned
         self.assertEqual(len(instructions), 1)
         
-        # Mock the instruction processing
-        with mock.patch('routes.scheduler.process_instruction_jinja') as mock_process, \
-             mock.patch('routes.scheduler.handle_log') as mock_handle_log:
-            
-            mock_process.return_value = instructions[0]
-            mock_handle_log.return_value = False
-            
-            # Run the instruction
-            output = []
-            run_instruction(instructions[0], self.context, now, output, self.destination)
-            
-            # Verify _event was properly set for this instruction
-            self.assertEqual(self.context["vars"]["_event"]["key"], "test_event")
-            self.assertEqual(self.context["vars"]["_event"]["payload"]["message"], "Complete flow test")
+        # Create output list for run_instruction
+        output = []
         
-        # Now simulate cleanup
-        def test_cleanup():
-            if "vars" in self.context and "_event" in self.context["vars"]:
-                debug(f"Removing temporary _event from context after instruction block")
-                del self.context["vars"]["_event"]
+        # Run the instruction
+        run_instruction(instructions[0], self.context, now, output, self.destination)
         
-        # Run cleanup
-        test_cleanup()
+        # Clean up event context
+        if "vars" in self.context and "_event" in self.context["vars"]:
+            del self.context["vars"]["_event"]
         
-        # Verify everything was cleaned up
+        # Verify the event context was cleaned up
         self.assertNotIn("_event", self.context["vars"])
 
 

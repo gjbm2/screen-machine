@@ -616,9 +616,13 @@
             },
             "mode": {
               "type": "string",
-              "enum": ["normal", "immediate"],
+              "enum": ["normal", "immediate", "block"],
               "default": "normal",
-              "description": "Stop mode: 'normal' executes final_instructions before stopping, 'immediate' stops without final_instructions."
+              "description": "Stop mode: 'normal' executes final_instructions before stopping, 'immediate' stops without final_instructions, 'block' exits current instruction block only."
+            },
+            "test": {
+              "type": "string",
+              "description": "Optional Jinja expression that must evaluate to true for the stop to execute. If false or not provided, the stop instruction is ignored."
             }
           },
           "required": [

@@ -388,17 +388,16 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
     if context_stack and len(context_stack) > 0:
         # Store the updated context back in the context stack
         context_stack[-1] = context
-        
-        # Debug what we're about to persist
         debug(f"[PERSISTENCE] After instruction {action}, saving context for {publish_destination}")
         if "vars" in context:
             debug(f"[PERSISTENCE] Context vars: {list(context.get('vars', {}).keys())}")
-        
-        # Unconditionally save all state
         update_scheduler_state(publish_destination, context_stack=context_stack)
     else:
         debug(f"[PERSISTENCE] Warning: No context stack found for {publish_destination} after {action}")
-    
+
+    # Propagate EXIT_BLOCK if returned
+    if result == "EXIT_BLOCK":
+        return "EXIT_BLOCK"
     return result  # Return the saved result
 
 # === Scheduler Runtime ===
@@ -439,6 +438,9 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
             for instr in initial_instructions:
                 try:
                     should_unload = run_instruction(instr, current_context, datetime.now(), scheduler_logs[publish_destination], publish_destination)
+                    if should_unload == "EXIT_BLOCK":
+                        debug(f"EXIT_BLOCK signal received, breaking out of instruction block early")
+                        break  # Exit the current instruction block
                     if should_unload:
                         scheduler_schedule_stacks[publish_destination].pop()
                         pop_context(publish_destination)  # Pop the context too
@@ -467,8 +469,11 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
                 for instr in final_instructions:
                     try:
                         should_unload = run_instruction(instr, current_context, datetime.now(), scheduler_logs[publish_destination], publish_destination)
+                        if should_unload == "EXIT_BLOCK":
+                            debug(f"EXIT_BLOCK signal received, breaking out of instruction block early")
+                            break  # Exit the current instruction block
                         if should_unload:
-                            break  # Stop running more final instructions if one requests unload
+                            break  # Skip remaining instructions if one requests unload
                     except Exception as e:
                         error_msg = f"Error running final instruction: {str(e)}"
                         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
@@ -826,6 +831,9 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                         try:
                             # Make sure we're using current_context to store the results
                             should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
+                            if should_unload == "EXIT_BLOCK":
+                                debug(f"EXIT_BLOCK signal received, breaking out of instruction block early")
+                                break  # Exit the current instruction block
                             if should_unload:
                                 break  # Skip remaining instructions if one requests unload
                         except Exception as e:
@@ -861,18 +869,18 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                     for instr in instructions:
                         try:
                             should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
+                            if should_unload == "EXIT_BLOCK":
+                                debug(f"EXIT_BLOCK signal received, breaking out of instruction block early")
+                                break  # Exit the current instruction block
                             if should_unload:
                                 scheduler_schedule_stacks[publish_destination].pop()
                                 pop_context(publish_destination)  # Pop the context too
                                 scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] Unloaded schedule")
-                                
-                                # Sync state after unload
                                 update_scheduler_state(
                                     publish_destination,
                                     schedule_stack=scheduler_schedule_stacks[publish_destination],
                                     context_stack=scheduler_contexts_stacks[publish_destination]
                                 )
-                                
                                 if not scheduler_schedule_stacks[publish_destination]:
                                     scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] No schedules left in stack, stopping scheduler")
                                     return
@@ -884,8 +892,15 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                 if "vars" in current_context and "_event" in current_context["vars"]:
                     debug(f"Removing temporary _event from context after instruction block")
                     del current_context["vars"]["_event"]
-                    # Persist the cleaned context
                     update_scheduler_state(publish_destination, context_stack=scheduler_contexts_stacks[publish_destination])
+                
+                # Check for exit_block flag - if set, exit the current instruction block
+                if current_context.get("exit_block"):
+                    debug(f"Exit block flag set, exiting current instruction block")
+                    current_context["exit_block"] = False  # Clear the flag
+                    update_scheduler_state(publish_destination, context_stack=scheduler_contexts_stacks[publish_destination])
+                    # Skip to next iteration without running more instructions
+                    continue
                 
                 # Store the epoch second so that the next iteration can calculate a
                 # positive time difference regardless of day rollover.

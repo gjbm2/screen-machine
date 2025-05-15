@@ -10,7 +10,7 @@ from routes.scheduler_handlers import (
     handle_set_var, handle_reason, MAX_HISTORY_SIZE
 )
 from routes.scheduler import resolve_schedule
-import mock
+from unittest import mock
 
 @pytest.fixture(autouse=True)
 def enable_testing_mode():
