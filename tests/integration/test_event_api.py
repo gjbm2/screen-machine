@@ -1,7 +1,8 @@
 import pytest
 import json
 from datetime import datetime, timedelta
-from routes.scheduler_utils import active_events, event_history
+from collections import deque
+from routes.scheduler_utils import EventEntry, active_events, event_history
 
 @pytest.fixture
 def clean_events_state():
@@ -26,7 +27,8 @@ def test_throw_and_get_event(test_client, clean_events_state):
         json={
             "event": "test_event",
             "display_name": "Test Event",
-            "scope": dest_id,
+            "scope": "dest",
+            "destination": dest_id,
             "ttl": "300s",
             "payload": {"test": "data"}
         }
@@ -64,7 +66,8 @@ def test_throw_and_get_event(test_client, clean_events_state):
         "/api/schedulers/events/throw",
         json={
             "event": "direct_event",
-            "scope": dest_id,
+            "scope": "dest",
+            "destination": dest_id,
             "ttl": "300s"
         }
     )
@@ -85,7 +88,8 @@ def test_throw_and_clear_event(test_client, clean_events_state):
         "/api/schedulers/events/throw",
         json={
             "event": "test_event",
-            "scope": dest_id,
+            "scope": "dest",
+            "destination": dest_id,
             "ttl": "300s"
         }
     )
@@ -96,11 +100,12 @@ def test_throw_and_clear_event(test_client, clean_events_state):
     assert len(data["queue"]) == 1
     
     # Clear the event
-    response = test_client.delete(f"/api/schedulers/events/test_event?destination={dest_id}")
+    response = test_client.delete(f"/api/schedulers/events?destination={dest_id}")
     
     # Check clear response
     assert response.status_code == 200
     data = json.loads(response.data)
+    assert "cleared" in data
     assert data["cleared"] == 1
     
     # Verify it was cleared
@@ -131,7 +136,6 @@ def test_global_event_api(test_client, clean_events_state, monkeypatch):
         json={
             "event": "global_event",
             "scope": "global",
-            "cascade": True,
             "ttl": "60s"
         }
     )
@@ -179,7 +183,8 @@ def test_group_event_api(test_client, clean_events_state, monkeypatch):
         "/api/schedulers/events/throw",
         json={
             "event": "group_event",
-            "scope": "test_group",
+            "scope": "group",
+            "group": "test_group",
             "ttl": "60s"
         }
     )

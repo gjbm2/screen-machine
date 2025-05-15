@@ -772,3 +772,45 @@ def ensure_sidecar_for(file_path: Path) -> None:
 def sidecar_path(file_path: Path) -> Path:
     """Return the path for a file's sidecar JSON."""
     return file_path.with_suffix(file_path.suffix + '.json')
+
+def get_groups_for_destination(dest_id: str) -> list:
+    """
+    Get all groups that a destination belongs to.
+    Args:
+        dest_id: Destination identifier
+    Returns:
+        List of group names that the destination belongs to
+    """
+    try:
+        from routes.utils import _load_json_once
+        destinations = _load_json_once("destination", "publish-destinations.json")
+        for dest in destinations:
+            if dest["id"] == dest_id and "groups" in dest:
+                return dest.get("groups", [])
+        return []  # Destination not found or has no groups
+    except Exception as e:
+        from utils.logger import error
+        error(f"Error getting groups for destination {dest_id}: {str(e)}")
+        return []
+
+def get_destinations_for_group(scope: str) -> list:
+    """
+    Given a scope (destination ID, group name, or 'global'), return a list of destination IDs.
+    """
+    from routes.utils import _load_json_once
+    destinations = _load_json_once("destination", "publish-destinations.json")
+
+    # If scope is 'global', return all destinations with a bucket
+    if scope == "global":
+        return [d["id"] for d in destinations if d.get("has_bucket", False)]
+
+    # If scope matches a destination ID, return it if it has a bucket
+    for d in destinations:
+        if d["id"] == scope and d.get("has_bucket", False):
+            return [scope]
+
+    # Otherwise, treat as group name
+    return [
+        d["id"] for d in destinations
+        if scope in d.get("groups", []) and d.get("has_bucket", False)
+    ]

@@ -488,7 +488,7 @@ def start(
             ):
                 display_index_message = (
                     f"{publish_destination}: "
-                    f"{f'{new_percentage}% - ' if new_percentage is not "" else ''}"
+                    f"{f'{new_percentage}% - ' if new_percentage != "" else ''}"
                     f"{new_message}"
                 )
                 routes.display.send_overlay(
