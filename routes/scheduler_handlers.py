@@ -450,78 +450,145 @@ def handle_set_var(instruction, context, now, output, publish_destination):
     
     return False
 
-def handle_stop(instruction, context, now, output, publish_destination):
+def handle_terminate(instruction, context, now, output, publish_destination):
     """
-    Stops scheduler execution based on mode.
+    Process a terminate instruction, which can end script execution in various ways.
+    
     Args:
-        instruction: The stop instruction containing:
-            - mode: 'normal' (default) runs final_instructions before stopping
-                   'immediate' stops without final_instructions
+        instruction: The terminate instruction containing:
+            - mode: 'normal' (default) runs final_instructions before terminating
+                   'immediate' terminates without final_instructions
                    'block' exits current instruction block only
             - test: Optional Jinja expression that must evaluate to true
         context: The current context
         now: Current datetime
         output: List to append log messages to
         publish_destination: The current scheduler's publish destination ID
+    
     Returns:
-        bool or str: True if should unload schedule, 'EXIT_BLOCK' to exit block, False otherwise
+        str or bool: "EXIT_BLOCK" to exit current block, True to unload schedule, False otherwise
     """
     from routes.scheduler import running_schedulers
     from routes.scheduler_utils import scheduler_states, update_scheduler_state
     from routes.scheduler_utils import process_jinja_template
-
-    stop_mode = instruction.get("mode", "normal")
+    from routes.scheduler_utils import throw_event, scheduler_schedule_stacks
+    
+    # Get the terminate mode - 'normal' (default), 'immediate', or 'block'
+    terminate_mode = instruction.get("mode", "normal")
+    
+    # Check test condition if provided
     test_expr = instruction.get("test")
     if test_expr:
         try:
+            # Process the test expression with Jinja
             test_result = process_jinja_template(test_expr, context)
+            # Convert to boolean - empty string, 0, false, none are all False
             if not test_result or test_result.lower() in ('false', '0', 'none', ''):
-                msg = f"Stop instruction test condition evaluated to false: '{test_expr}'"
+                msg = f"Terminate instruction test condition evaluated to false: '{test_expr}'"
                 log_schedule(msg, publish_destination, now, output)
-                return False
+                return False  # Don't terminate if test is false
         except Exception as e:
-            error_msg = f"Error evaluating stop test condition: {str(e)}"
+            error_msg = f"Error evaluating terminate test condition: {str(e)}"
             log_schedule(error_msg, publish_destination, now, output)
+            return False  # Don't terminate if test evaluation fails
+    
+    # Get current schedule to check prevent_unload
+    prevent_unload = False
+    try:
+        if publish_destination in scheduler_schedule_stacks and scheduler_schedule_stacks[publish_destination]:
+            current_schedule = scheduler_schedule_stacks[publish_destination][-1]
+            prevent_unload = current_schedule.get("prevent_unload", False)
+    except Exception as e:
+        error_msg = f"Error accessing current schedule: {str(e)}"
+        log_schedule(error_msg, publish_destination, now, output)
+    
+    # Check if this is already from an event to prevent infinite loop
+    from_event = instruction.get("from_event", False)
+    
+    # For terminating, we'll throw a special event that will be picked up urgently
+    if terminate_mode == "normal":
+        msg = "Terminate instruction received (normal mode) - will run final_instructions before terminating."
+        log_schedule(msg, publish_destination, now, output)
+        
+        # If this is from an event, don't throw another event (prevents infinite loop)
+        if from_event:
+            debug(f"Not throwing __terminate__ event as this instruction is already from an event")
             return False
-
-    if stop_mode == "normal":
-        msg = "Stop instruction received (normal mode) - will run final_instructions before stopping."
-        log_schedule(msg, publish_destination, now, output)
-        return True  # Signal to unload after final_instructions
-    elif stop_mode == "immediate":
-        msg = "Stop instruction received (immediate mode) - stopping scheduler immediately without running final_instructions."
-        log_schedule(msg, publish_destination, now, output)
-        if publish_destination in running_schedulers:
-            scheduler_info = running_schedulers.pop(publish_destination, None)
-            if isinstance(scheduler_info, dict):
-                future = scheduler_info.get("future")
-                loop = scheduler_info.get("loop")
-            else:
-                future = scheduler_info
-                loop = None
-            try:
-                if future and not future.done() and not future.cancelled():
-                    future.cancel()
-            except AttributeError:
-                pass
-            if loop is not None:
-                from routes.scheduler import stop_event_loop
-                try:
-                    stop_event_loop(publish_destination)
-                except Exception:
-                    pass
-            scheduler_states[publish_destination] = "stopped"
-            update_scheduler_state(
-                publish_destination,
-                state="stopped"
+            
+        # Throw a __terminate__ event which will be picked up urgently
+        try:
+            throw_event(
+                scope=publish_destination,
+                key="__terminate__", 
+                ttl="60s",
+                payload={
+                    "mode": "normal",
+                    "prevent_unload": prevent_unload
+                }
             )
-        return True  # Unload the schedule immediately
-    elif stop_mode == "block":
-        msg = "Stop instruction received (block mode) - exiting current instruction block."
+        except Exception as e:
+            error_msg = f"Error throwing terminate event: {str(e)}"
+            log_schedule(error_msg, publish_destination, now, output)
+        
+        return False  # Don't unload directly from here
+        
+    elif terminate_mode == "immediate":
+        msg = "Terminate instruction received (immediate mode) - terminating immediately without running final_instructions."
         log_schedule(msg, publish_destination, now, output)
-        return "EXIT_BLOCK"
+        
+        # If this is from an event, don't throw another event (prevents infinite loop)
+        if from_event:
+            debug(f"Not throwing __terminate_immediate__ event as this instruction is already from an event")
+            # If immediate termination from an event, signal that we should unload
+            if prevent_unload:
+                debug(f"Script has prevent_unload=true, stopping scheduler loop instead")
+                from routes.scheduler import stop_scheduler
+                stop_scheduler(publish_destination)
+                return False
+            return True  # Signal that we should unload
+        
+        # Throw a __terminate_immediate__ event which will be picked up urgently
+        try:
+            throw_event(
+                scope=publish_destination,
+                key="__terminate_immediate__", 
+                ttl="60s",
+                payload={
+                    "mode": "immediate",
+                    "prevent_unload": prevent_unload
+                }
+            )
+        except Exception as e:
+            error_msg = f"Error throwing immediate terminate event: {str(e)}"
+            log_schedule(error_msg, publish_destination, now, output)
+            
+        return False  # Don't unload directly from here
+        
+    elif terminate_mode == "block":
+        msg = "Terminate instruction received (block mode) - exiting current instruction block."
+        log_schedule(msg, publish_destination, now, output)
+        
+        # If this is from an event, don't throw another event
+        if from_event:
+            debug(f"Not throwing __exit_block__ event as this instruction is already from an event")
+            return "EXIT_BLOCK"  # Signal to exit the current block
+        
+        # Throw a __exit_block__ event which will be picked up urgently
+        try:
+            throw_event(
+                scope=publish_destination,
+                key="__exit_block__", 
+                ttl="60s",
+                payload={"mode": "block"}
+            )
+        except Exception as e:
+            error_msg = f"Error throwing exit block event: {str(e)}"
+            log_schedule(error_msg, publish_destination, now, output)
+            
+        return "EXIT_BLOCK"  # Signal to exit the current block
+        
     else:
-        error_msg = f"Invalid stop mode: {stop_mode}"
+        error_msg = f"Invalid terminate mode: {terminate_mode}"
         log_schedule(error_msg, publish_destination, now, output)
         return False
 
