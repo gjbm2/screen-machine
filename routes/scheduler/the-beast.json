@@ -352,6 +352,14 @@
             "refiner": "nous_values",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8895de24-df15-4912-9d1c-8b6ef95f154b-e1/69862033.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T150053Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=604db98b14a5fae58325503b81dc897882e2847da2deea25679596dabac5927d"
+          },
+          {
+            "timestamp": "2025-05-15 18:00:01",
+            "type": "generation",
+            "prompt": "See through",
+            "refiner": "nous_values",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fa8f0672-6674-43f7-ab91-a9f7a55a2ccf-e1/f916a521.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T170025Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=afa3c5284a1894299a59654e4461effe3be253e69e6585f3b9a3520d4b7f25a3"
           }
         ],
         "animate_history": [
@@ -594,15 +602,23 @@
             "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8895de24-df15-4912-9d1c-8b6ef95f154b-e1/69862033.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T150053Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=604db98b14a5fae58325503b81dc897882e2847da2deea25679596dabac5927d",
             "refiner": "animator",
             "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-15 18:00:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fa8f0672-6674-43f7-ab91-a9f7a55a2ccf-e1/f916a521.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T170025Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=afa3c5284a1894299a59654e4461effe3be253e69e6585f3b9a3520d4b7f25a3",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8895de24-df15-4912-9d1c-8b6ef95f154b-e1/69862033.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T150053Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=604db98b14a5fae58325503b81dc897882e2847da2deea25679596dabac5927d",
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fa8f0672-6674-43f7-ab91-a9f7a55a2ccf-e1/f916a521.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T170025Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=afa3c5284a1894299a59654e4461effe3be253e69e6585f3b9a3520d4b7f25a3",
       "publish_destination": "the-beast"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-15T17:55:46.904754",
+  "last_updated": "2025-05-15T18:25:10.547616",
   "last_trigger_executions": {
     "079570ca92555f499bd5738772bc4a1b_2025-05-12T08:00:00": "2025-05-12T08:00:01.309513",
     "079570ca92555f499bd5738772bc4a1b_2025-05-12T10:00:00": "2025-05-12T10:00:01.396289",
@@ -621,7 +637,8 @@
     "079570ca92555f499bd5738772bc4a1b_2025-05-15_1": "2025-05-15T10:00:00.503202",
     "079570ca92555f499bd5738772bc4a1b_2025-05-15_2": "2025-05-15T12:00:01.806271",
     "079570ca92555f499bd5738772bc4a1b_2025-05-15_3": "2025-05-15T14:00:00.612340",
-    "079570ca92555f499bd5738772bc4a1b_2025-05-15_4": "2025-05-15T16:00:02.795536"
+    "079570ca92555f499bd5738772bc4a1b_2025-05-15_4": "2025-05-15T16:00:02.795536",
+    "079570ca92555f499bd5738772bc4a1b_2025-05-15_5": "2025-05-15T18:00:01.716988"
   },
   "active_events": {},
   "event_history": [

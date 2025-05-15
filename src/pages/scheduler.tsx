@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +13,8 @@ import {
   X, 
   Settings,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Zap
 } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { useConsoleManagement } from '@/hooks/use-console-management';
@@ -23,6 +24,7 @@ import { SchemaEditModal } from '../components/scheduler/SchemaEditModal';
 import { SetVarsButton } from '../components/scheduler/SetVarsButton';
 import { VarsRegistryCard } from '../components/scheduler/VarsRegistryCard';
 import { SchedulerEventsPanel } from '../components/scheduler/SchedulerEventsPanel';
+import { extractEventTriggers } from '@/utils/scheduleUtils';
 
 // Extend Window interface to include fetchDestinations
 declare global {
@@ -963,6 +965,45 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   
+  // Extract event triggers from all schedule layers
+  const eventTriggers = useMemo(() => {
+    if (!destination.scheduleStack || destination.scheduleStack.length === 0) {
+      return [];
+    }
+    
+    // Extract event triggers from each layer and combine them
+    const allTriggers = new Set<string>();
+    destination.scheduleStack.forEach(layer => {
+      const layerTriggers = extractEventTriggers(layer);
+      layerTriggers.forEach(trigger => allTriggers.add(trigger));
+    });
+    
+    return Array.from(allTriggers);
+  }, [destination.scheduleStack]);
+  
+  // Handle throwing an event
+  const handleThrowEvent = async (eventKey: string) => {
+    try {
+      await apiService.throwEvent({
+        event: eventKey,
+        scope: destination.id,
+        ttl: "60s"
+      });
+      
+      toast({
+        title: 'Event Triggered',
+        description: `Event "${eventKey}" sent to "${destination.name}"`,
+      });
+    } catch (error) {
+      console.error('Error throwing event:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to trigger event',
+        variant: 'destructive',
+      });
+    }
+  };
+  
   // Debug logs
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -1140,6 +1181,25 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
           <div className="flex items-center space-x-2">
             <span>{destination.name}</span>
             {statusBadge()}
+            
+            {/* Event trigger buttons - only show when scheduler is running */}
+            {destination.isRunning && eventTriggers.length > 0 && (
+              <div className="flex flex-wrap gap-1 ml-2">
+                {eventTriggers.map(trigger => (
+                  <Button
+                    key={trigger}
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-xs bg-amber-50 hover:bg-amber-100 border-amber-200"
+                    onClick={() => handleThrowEvent(trigger)}
+                    title={`Trigger "${trigger}" event`}
+                  >
+                    <Zap className="h-3 w-3 mr-1 text-amber-500" />
+                    {trigger}
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button

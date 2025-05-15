@@ -22,45 +22,12 @@
               "trigger_actions": {
                 "instructions_block": [
                   {
-                    "action": "log",
-                    "message": "** Set the theme of the day **"
-                  },
-                  {
-                    "action": "reason",
-                    "history_var": "history_var",
-                    "image_inputs": [],
-                    "output_vars": [
-                      "a_theme",
-                      "b_theme",
-                      "style",
-                      "guidance"
-                    ],
-                    "reasoner": "theme_and_style",
-                    "text_input": "The last seven days were: {{ history_var[-7:] }}"
-                  },
-                  {
-                    "action": "export_var",
-                    "friendly_name": "A theme of the day",
-                    "scope": "living-room",
-                    "var_name": "a_theme"
-                  },
-                  {
-                    "action": "export_var",
-                    "friendly_name": "B theme of the day",
-                    "scope": "living-room",
-                    "var_name": "b_theme"
-                  },
-                  {
-                    "action": "export_var",
-                    "friendly_name": "Style of the day",
-                    "scope": "living-room",
-                    "var_name": "style"
-                  },
-                  {
-                    "action": "export_var",
-                    "friendly_name": "Generator guidance",
-                    "scope": "living-room",
-                    "var_name": "guidance"
+                    "action": "throw_event",
+                    "event": "New_theme",
+                    "scope": "global",
+                    "ttl": "60s",
+                    "single_consumer": false,
+                    "payload": {}
                   }
                 ]
               }
@@ -120,6 +87,55 @@
               }
             }
           ]
+        },
+        {
+          "type": "event",
+          "value": "New_theme",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "log",
+                "message": "** Set the theme of the day **"
+              },
+              {
+                "action": "reason",
+                "text_input": "The last seven days were: {{ history_var[-7:] }}",
+                "image_inputs": [],
+                "reasoner": "theme_and_style",
+                "output_vars": [
+                  "a_theme",
+                  "b_theme",
+                  "style",
+                  "guidance"
+                ],
+                "history_var": "history_var"
+              },
+              {
+                "action": "export_var",
+                "var_name": "a_theme",
+                "friendly_name": "A theme of the day",
+                "scope": "living-room"
+              },
+              {
+                "action": "export_var",
+                "var_name": "b_theme",
+                "friendly_name": "B theme of the day",
+                "scope": "living-room"
+              },
+              {
+                "action": "export_var",
+                "var_name": "style",
+                "friendly_name": "Style of the day",
+                "scope": "living-room"
+              },
+              {
+                "action": "export_var",
+                "var_name": "guidance",
+                "friendly_name": "Generator guidance",
+                "scope": "living-room"
+              }
+            ]
+          }
         }
       ],
       "final_actions": {
@@ -131,10 +147,10 @@
   "context_stack": [
     {
       "vars": {
-        "a_theme": "Contemporary Urban Regeneration - Revitalized Spaces",
-        "b_theme": "Architectural Ruin and Rebirth - Abandoned Structures",
-        "style": "Futuristic Dystopian Imagery - Blade Runner Inspired Visuals",
-        "guidance": "Focus on depicting various abandoned and revitalized urban spaces with specific architectural details, capturing the nuances of both decay and renewal in a dystopian futuristic style. Avoid repeating recent subjects for fresh visual narratives.",
+        "a_theme": "The Sublime and Monstrous Ocean",
+        "b_theme": "The Mystical and Menacing Jungle",
+        "style": "Surrealist collage in the style of Max Ernst",
+        "guidance": "Create an image with a focus on contrasting interpretations of ocean and jungle themes, employing Ernst's Surrealist collage techniques. Use history to ensure each depiction remains fresh and distinct.",
         "history_var": [
           {
             "timestamp": "2025-05-08 10:29:02",
@@ -208,8 +224,8 @@
             "outputs": {
               "a_theme": "Moments of Quiet Bravery",
               "b_theme": "Public Acts of Heroism",
-              "style": "Berthe Morisot\u2019s Impressionist brushwork",
-              "guidance": "Focus on depicting various instances of personal courage in intimate settings, ensuring diversity and freshness by avoiding repetition with recent image history, all while employing Berthe Morisot\u2019s soft and fluid Impressionist brushwork."
+              "style": "Berthe Morisot's Impressionist brushwork",
+              "guidance": "Focus on depicting various instances of personal courage in intimate settings, ensuring diversity and freshness by avoiding repetition with recent image history, all while employing Berthe Morisot's soft and fluid Impressionist brushwork."
             },
             "text_input": "The last seven days were: [{'timestamp': '2025-...",
             "explanation": "Theme-led approach focusing on contrasting subtle personal moments against more grandiose acts, w..."
@@ -221,8 +237,8 @@
             "outputs": {
               "a_theme": "The Subtle Art of Distraction",
               "b_theme": "Mastery in the Moment",
-              "style": "Alex Colville\u2019s precise realism",
-              "guidance": "Select scenes or subjects capturing everyday distractions versus moments of intense presence, ensuring each piece stands out by avoiding historical repetition; render them with the calm, clear composition and meticulous attention to detail reminiscent of Colville\u2019s works."
+              "style": "Alex Colville's precise realism",
+              "guidance": "Select scenes or subjects capturing everyday distractions versus moments of intense presence, ensuring each piece stands out by avoiding historical repetition; render them with the calm, clear composition and meticulous attention to detail reminiscent of Colville's works."
             },
             "text_input": "The last seven days were: [{'timestamp': '2025-...",
             "explanation": "Style-led approach focusing on Alex Colville's precise realism, which brings a focused tranquilit..."
@@ -234,8 +250,8 @@
             "outputs": {
               "a_theme": "Preserved Ancient Civilizations",
               "b_theme": "Futuristic Societal Constructs",
-              "style": "Katsushika Hokusai\u2019s ukiyo-e woodblock print style",
-              "guidance": "Choose specific depictions of ancient civilizations and futuristic cities, rendered in Hokusai\u2019s detailed and delicate woodblock print style. Ensure each scenario is unique by avoiding repetition from recent images, highlighting the contrast between preserved past and anticipated future."
+              "style": "Katsushika Hokusai's ukiyo-e woodblock print style",
+              "guidance": "Choose specific depictions of ancient civilizations and futuristic cities, rendered in Hokusai's detailed and delicate woodblock print style. Ensure each scenario is unique by avoiding repetition from recent images, highlighting the contrast between preserved past and anticipated future."
             },
             "text_input": "The last seven days were: [{'timestamp': '2025-...",
             "explanation": "This is a style-led approach. Hokusai's ukiyo-e style offers an intricate and cultural visual lan..."
@@ -247,8 +263,8 @@
             "outputs": {
               "a_theme": "Conversations with the Ocean",
               "b_theme": "Dialogues in the Desert",
-              "style": "Zhang Daqian\u2019s splash ink style",
-              "guidance": "Focus on pairing subjects that interact dynamically with their environments\u2014choose distinct oceanscapes and desert scenes, leveraging Daqian\u2019s expressive, fluid ink techniques to capture mood and movement, while ensuring variety and originality from recent image histories."
+              "style": "Zhang Daqian's splash ink style",
+              "guidance": "Focus on pairing subjects that interact dynamically with their environmentschoose distinct oceanscapes and desert scenes, leveraging Daqian's expressive, fluid ink techniques to capture mood and movement, while ensuring variety and originality from recent image histories."
             },
             "text_input": "The last seven days were: [{'timestamp': '2025-...",
             "explanation": "Theme-led approach focusing on contrasting dynamic conversations between natural environments and..."
@@ -261,7 +277,7 @@
               "a_theme": "Melancholic Modern Ruins",
               "b_theme": "Joyful Urban Resurgence",
               "style": "Edward Burtynsky's aerial photography",
-              "guidance": "Choose unique urban environments or structures captured from above\u2014convey loss and decay contrasted with renewal and vibrancy, ensuring variety and uniqueness using recent imagery only as a reference to diverge from."
+              "guidance": "Choose unique urban environments or structures captured from aboveconvey loss and decay contrasted with renewal and vibrancy, ensuring variety and uniqueness using recent imagery only as a reference to diverge from."
             },
             "text_input": "The last seven days were: [{'timestamp': '2025-...",
             "explanation": "This is a style-led approach, utilizing Edward Burtynsky's distinctive aerial photography style t..."
@@ -278,6 +294,58 @@
             },
             "text_input": "The last seven days were: [{'timestamp': '2025-...",
             "explanation": "I prioritized a theme-led approach focusing on architectural contrasts of ruin and renewal, using..."
+          },
+          {
+            "timestamp": "2025-05-15 18:03:43",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "The Serenity of Bees",
+              "b_theme": "The Chaos of Hornets",
+              "style": "Art Nouveau illustration",
+              "guidance": "Illustrate a distinct aspect of bee and hornet behavior within your theme using Art Nouveau's elegant and decorative style, ensuring diversity in imagery by consulting image history and avoiding repetition."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "A theme-led approach is chosen here, utilizing the contrast between bees and hornets to draw out ..."
+          },
+          {
+            "timestamp": "2025-05-15 18:10:27",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "The glimpse of bygone epochs",
+              "b_theme": "Vignettes of tomorrow's promise",
+              "style": "Albrecht D's detailed woodcut style",
+              "guidance": "Select diverse historical and futuristic scenes, capturing them with D's intricate and meticulous woodcut technique. Focus on depicting different epochs and imagined futures, ensuring each is distinct by referring to recent image history to avoid repetition."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "Theme-led approach inspired by the idea of contrasting historical epochs with futuristic visions,..."
+          },
+          {
+            "timestamp": "2025-05-15 18:13:38",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "The Grandeur of Railways",
+              "b_theme": "Modern Transit Innovations",
+              "style": "California Impressionism",
+              "guidance": "Select dramatic or iconic elements from railway history and modern transit, capturing them through lush and atmospheric brushwork typical of California Impressionists. Ensure each depiction is fresh by reviewing recent images to avoid duplication."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "Theme-led approach where the grandeur and nostalgia of historical railways are contrasted with cu..."
+          },
+          {
+            "timestamp": "2025-05-15 18:26:35",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "The Sublime and Monstrous Ocean",
+              "b_theme": "The Mystical and Menacing Jungle",
+              "style": "Surrealist collage in the style of Max Ernst",
+              "guidance": "Create an image with a focus on contrasting interpretations of ocean and jungle themes, employing Ernst's Surrealist collage techniques. Use history to ensure each depiction remains fresh and distinct."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "This choice leans towards a theme-led approach, providing a rich contrast between familiar yet po..."
           }
         ]
       },
@@ -285,180 +353,14 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-15T17:55:46.926846",
+  "last_updated": "2025-05-15T18:26:40.161540",
   "last_trigger_executions": {
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-14_26": "2025-05-14T20:30:01.744493",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-14_27": "2025-05-14T21:15:00.616924",
-    "92f765f04c5aeea59798bdd045e76ebe_2025-05-15": "2025-05-15T00:01:00.839404",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_0": "2025-05-15T01:00:01.734842",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_1": "2025-05-15T01:45:01.610331",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_2": "2025-05-15T02:30:01.473130",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_3": "2025-05-15T03:15:00.695341",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_4": "2025-05-15T04:00:01.008475",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_5": "2025-05-15T04:45:01.614014",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_6": "2025-05-15T05:30:01.576277",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_7": "2025-05-15T06:15:00.818519",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_8": "2025-05-15T07:00:00.859603",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_9": "2025-05-15T07:45:01.617390",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_10": "2025-05-15T08:30:01.241866",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_11": "2025-05-15T09:15:01.781490",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_12": "2025-05-15T10:00:01.048853",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_13": "2025-05-15T10:45:00.749559",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_14": "2025-05-15T11:30:01.532449",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_15": "2025-05-15T12:15:00.164654",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_16": "2025-05-15T13:00:00.530274",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_17": "2025-05-15T13:45:03.603701",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_18": "2025-05-15T14:30:00.506797",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_19": "2025-05-15T15:15:00.349463",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_20": "2025-05-15T16:00:02.984904",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_21": "2025-05-15T16:45:00.249732",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_22": "2025-05-15T17:30:01.336919"
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-15_23": "2025-05-15T18:15:00.046034"
   },
-  "active_events": {},
+  "active_events": {
+    "New_theme": []
+  },
   "event_history": [
-    {
-      "key": "test10",
-      "active_from": "2025-05-15T14:22:24.939782",
-      "expires": "2025-05-15T14:23:24.939782",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T14:22:24.939782",
-      "unique_id": "cf8d4fb3-bbba-428f-b4a9-aacd22ad96ad",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T14:23:31.063610"
-    },
-    {
-      "key": "test11",
-      "active_from": "2025-05-15T14:34:32.214146",
-      "expires": "2025-05-15T14:35:32.214146",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T14:34:32.214146",
-      "unique_id": "0d24a504-05e8-4372-8c7d-f0d4bd74157f",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T14:35:54.172640"
-    },
-    {
-      "key": "test12",
-      "active_from": "2025-05-15T14:43:17.989306",
-      "expires": "2025-05-15T14:44:17.989306",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T14:43:17.989306",
-      "unique_id": "1559fc0d-0b0e-47e2-bfdd-6f61ca6acfdc",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T14:44:23.418033"
-    },
-    {
-      "key": "test14",
-      "active_from": "2025-05-15T15:04:30.477838",
-      "expires": "2025-05-15T15:05:30.477838",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T15:04:30.477838",
-      "unique_id": "baf4a52f-a4fe-4644-827b-2d189380c4e5",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T15:05:39.265145"
-    },
-    {
-      "key": "test15",
-      "active_from": "2025-05-15T15:20:31.872787",
-      "expires": "2025-05-15T15:21:31.872787",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T15:20:31.872787",
-      "unique_id": "7221e5b8-98fc-4e1e-b19b-3a2b181f3215",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T15:21:51.419399"
-    },
-    {
-      "key": "test",
-      "active_from": "2025-05-15T16:53:30.381656",
-      "expires": "2025-05-15T16:54:30.381656",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T16:53:30.381656",
-      "unique_id": "dd1a7f34-a948-43fc-8100-22fb8de1bf72",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T16:54:56.745340"
-    },
-    {
-      "key": "test",
-      "active_from": "2025-05-15T16:55:17.199771",
-      "expires": "2025-05-15T16:56:17.199771",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T16:55:17.199771",
-      "unique_id": "6ae38639-03eb-45af-b5fd-79c3b10c5c54",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T16:56:30.361322"
-    },
-    {
-      "key": "test",
-      "active_from": "2025-05-15T16:57:03.844244",
-      "expires": "2025-05-15T16:58:03.844244",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T16:57:03.844244",
-      "unique_id": "250ab121-bca6-41d9-82e9-ff01fe2cdb59",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T16:58:03.916559"
-    },
-    {
-      "key": "test",
-      "active_from": "2025-05-15T16:57:10.890405",
-      "expires": "2025-05-15T16:58:10.890405",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T16:57:10.890405",
-      "unique_id": "bf43611f-2784-4be1-868b-d395cad71e6c",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T16:58:38.338830"
-    },
-    {
-      "key": "test",
-      "active_from": "2025-05-15T17:01:57.661674",
-      "expires": "2025-05-15T17:02:57.661674",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T17:01:57.661674",
-      "unique_id": "453463e0-0667-4d54-a455-5b48c5959b3a",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T17:03:05.889694"
-    },
-    {
-      "key": "test",
-      "active_from": "2025-05-15T17:10:26.253827",
-      "expires": "2025-05-15T17:11:26.253827",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T17:10:26.253827",
-      "unique_id": "1b020f4c-8074-420d-a4f2-dbd43aa969f3",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T17:11:37.273062"
-    },
     {
       "key": "test10",
       "active_from": "2025-05-15T14:22:24.939782",
@@ -757,6 +659,58 @@
       "status": "EXPIRED",
       "consumed_by": "expiration",
       "consumed_at": "2025-05-15T17:48:39.109545"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-15T18:03:42.962838",
+      "expires": "2025-05-15T18:04:42.962838",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T18:03:42.962838",
+      "unique_id": "667d566f-7415-48fe-9c5d-ee5888bf5bf3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-15T18:03:43.988425"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-15T18:10:26.567273",
+      "expires": "2025-05-15T18:11:26.567273",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T18:10:26.567273",
+      "unique_id": "bd4c38cf-c6f0-4178-9eb3-072442953b19",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-15T18:10:27.790437"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-15T18:13:37.136431",
+      "expires": "2025-05-15T18:14:37.136431",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T18:13:37.136431",
+      "unique_id": "3ee244e8-7213-43ba-a993-6bc016266bfe",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-15T18:13:38.059941"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-15T18:26:34.015995",
+      "expires": "2025-05-15T18:27:34.015995",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T18:26:34.015995",
+      "unique_id": "6a93201d-944e-44e3-915c-32ed74997812",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-15T18:26:35.871623"
     }
   ]
 }
