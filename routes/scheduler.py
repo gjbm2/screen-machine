@@ -108,7 +108,7 @@ def get_current_schema() -> Dict[str, Any]:
         return {"title": "Error", "description": f"Error loading schema: {str(e)}", "type": "object", "properties": {}}
 
 # === Schedule Resolver ===
-def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destination: str, include_initial_actions: bool = False) -> List[Dict[str, Any]]:
+def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destination: str, include_initial_actions: bool = False, context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     # Add rate-limiting for debug logging
     if not hasattr(resolve_schedule, '_last_debug_log_time'):
         resolve_schedule._last_debug_log_time = {}
@@ -119,6 +119,14 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
        (current_time - resolve_schedule._last_debug_log_time.get(publish_destination, 0)) > 30:
         should_log = True
         resolve_schedule._last_debug_log_time[publish_destination] = current_time
+    
+    # Get the context if not provided
+    if context is None:
+        context = get_current_context(publish_destination) or {"vars": {}}
+    
+    # Ensure the vars dict exists in context
+    if "vars" not in context:
+        context["vars"] = {}
     
     if should_log:
         debug(f"Resolving schedule at {now}")
@@ -265,8 +273,6 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                     log_schedule(message, publish_destination, now)
                     
                     # Store the event payload in the context as _event for use in jinja templates
-                    if "vars" not in context:
-                        context["vars"] = {}
                     context["vars"]["_event"] = {
                         "key": event_key,
                         "payload": event_entry.payload,
@@ -291,7 +297,6 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                     # Add to accumulated instructions
                     all_instructions.extend(event_instructions)
                     found_actions_to_execute = True
-                    
                 # Don't log "No active events" messages for normal event checking
             except Exception as e:
                 error_msg = f"Error processing event trigger {event_key}: {str(e)}"
@@ -324,7 +329,7 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
     
     action = processed_instruction.get("action")
     # Don't add running message to output - will be added by handlers with the result
-    log_schedule(f"Running {action}", publish_destination, now)
+    log_schedule(f"Running {action}", publish_destination, now, output)
     debug(f"[INSTRUCTION] Running {action} for {publish_destination}")
     
     try:
@@ -367,17 +372,17 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
         else:
             error_msg = f"Unknown action: {action}"
             output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
-            log_schedule(error_msg, publish_destination, now)
+            log_schedule(error_msg, publish_destination, now, output)
             result = False
     except Exception as e:
         error_msg = f"Error in {action}: {str(e)}"
         output.append(f"[{now.strftime('%H:%M')}] {error_msg}")
-        log_schedule(error_msg, publish_destination, now)
+        log_schedule(error_msg, publish_destination, now, output)
         error(f"Exception in run_instruction: {str(e)}")
         import traceback
         error(traceback.format_exc())
         result = False  # Ensure we return False on exceptions
-
+    
     # Update global context after execution
     context_stack = get_context_stack(publish_destination)
     if context_stack and len(context_stack) > 0:
@@ -851,7 +856,7 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                 current_context = get_current_context(publish_destination)
                 
                 # Execute instructions - don't include initial actions (False flag)
-                instructions = resolve_schedule(current_schedule, now, publish_destination, False)
+                instructions = resolve_schedule(current_schedule, now, publish_destination, False, current_context)
                 if instructions:
                     for instr in instructions:
                         try:
@@ -874,6 +879,13 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                         except Exception as e:
                             error_msg = f"Error running instruction: {str(e)}"
                             scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+                
+                # After running all instructions, clean up any _event variables 
+                if "vars" in current_context and "_event" in current_context["vars"]:
+                    debug(f"Removing temporary _event from context after instruction block")
+                    del current_context["vars"]["_event"]
+                    # Persist the cleaned context
+                    update_scheduler_state(publish_destination, context_stack=scheduler_contexts_stacks[publish_destination])
                 
                 # Store the epoch second so that the next iteration can calculate a
                 # positive time difference regardless of day rollover.

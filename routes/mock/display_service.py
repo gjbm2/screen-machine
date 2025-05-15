@@ -18,7 +18,7 @@ class MockDisplayService:
         
         Args:
             publish_destination_id (str): The destination ID to display to
-            mode (str): The display mode ("Next", "Random", or "Blank")
+            mode (str): The display mode ("Next", "Random", "Previous", or "Blank")
             silent (bool): Whether to use silent mode
             **kwargs: Additional parameters
             
@@ -35,6 +35,8 @@ class MockDisplayService:
             item = "blank_screen"
         elif mode == "Random":
             item = f"random_favorite_{len(self.displayed_items[publish_destination_id])}"
+        elif mode == "Previous":
+            item = f"previous_favorite_{len(self.displayed_items[publish_destination_id])}"
         else:  # Next
             item = f"next_favorite_{len(self.displayed_items[publish_destination_id])}"
             

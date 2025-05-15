@@ -775,12 +775,12 @@ export const SchedulerEventsPanel: React.FC = () => {
             All Scheduler Events
             {eventsData && (
               <Badge variant="secondary" className="ml-2">
-                {(eventsData.queue?.length || 0) + (eventsData.history?.length || 0)}
+                {eventsData.queue?.length || 0}
               </Badge>
             )}
           </CardTitle>
           <div className="flex gap-2">
-            {eventsData && eventsData.queue?.length + eventsData.history?.length > 0 && (
+            {eventsData && eventsData.queue?.length > 0 && (
               <Button variant="outline" size="sm" onClick={(e) => {
                 e.stopPropagation(); // Prevent event from toggling the panel
                 handleClearAllEvents();

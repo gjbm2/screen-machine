@@ -1,12 +1,15 @@
 {
   "schedule_stack": [
     {
+      "final_actions": {
+        "instructions_block": []
+      },
       "initial_actions": {
         "instructions_block": []
       },
+      "prevent_unload": true,
       "triggers": [
         {
-          "type": "day_of_week",
           "days": [
             "Monday",
             "Tuesday",
@@ -18,6 +21,9 @@
           ],
           "scheduled_actions": [
             {
+              "repeat_schedule": {
+                "every": "60"
+              },
               "time": "06:00",
               "trigger_actions": {
                 "instructions_block": [
@@ -64,9 +70,6 @@
                     "refiner": "curator"
                   }
                 ]
-              },
-              "repeat_schedule": {
-                "every": "60"
               }
             },
             {
@@ -84,13 +87,34 @@
                 ]
               }
             }
-          ]
+          ],
+          "type": "day_of_week"
+        },
+        {
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Blank"
+              }
+            ]
+          },
+          "type": "event",
+          "value": "Blank"
+        },
+        {
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Random"
+              }
+            ]
+          },
+          "type": "event",
+          "value": "Random"
         }
-      ],
-      "final_actions": {
-        "instructions_block": []
-      },
-      "prevent_unload": true
+      ]
     }
   ],
   "context_stack": [
@@ -100,7 +124,7 @@
         "_b_theme": "Architectural Ruin and Rebirth - Abandoned Structures",
         "_style": "Futuristic Dystopian Imagery - Blade Runner Inspired Visuals",
         "_guidance": "Focus on depicting various abandoned and revitalized urban spaces with specific architectural details, capturing the nuances of both decay and renewal in a dystopian futuristic style. Avoid repeating recent subjects for fresh visual narratives.",
-        "prompt": "Floating megastructure hovering over decayed urban ruins, interconnected domes support self-sustaining ecosystems, phosphorescent ambiance merging dystopian desolation with vibrant renewal.",
+        "prompt": "Futuristic mausoleum within a decaying cityscape, mirrored surfaces reflect tech advancements and skeletal remains, glowing bioluminescent flora scattered among rusted monuments, symbolizing renewal in dystopia.",
         "history_var": [
           {
             "timestamp": "2025-05-08 00:38:23",
@@ -2009,6 +2033,16 @@
             },
             "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
             "explanation": "I chose a floating megastructure concept distinct from past prompts to avoid repetition. This ima..."
+          },
+          {
+            "timestamp": "2025-05-15 18:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Futuristic mausoleum within a decaying cityscape, mirrored surfaces reflect tech advancements and skeletal remains, glowing bioluminescent flora scattered among rusted monuments, symbolizing renewal in dystopia."
+            },
+            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
+            "explanation": "I focused on a futuristic mausoleum to depict both decay and renewal, using mirrored surfaces for..."
           }
         ],
         "prompt_history": [
@@ -3523,6 +3557,14 @@
             "refiner": "curator",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ef8d6f1a-433d-4ae5-8197-7a4051289046-e1/c6a92dd7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T160225Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9aa5e7ba8b05a97e5b77cc90b495b974fb47f332e70984c01272addb8733c200"
+          },
+          {
+            "timestamp": "2025-05-15 18:00:01",
+            "type": "generation",
+            "prompt": "Futuristic mausoleum within a decaying cityscap...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4d224dec-ece9-4554-abeb-bb46eb54a955-e1/f0028f7b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T170110Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6052601ac92675eab4679e17e96684bec8d77f2a3a5132d9f0802f613cf20d06"
           }
         ],
         "animation_history": [
@@ -4021,64 +4063,28 @@
             "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/31846cd4-31d1-45b7-b05d-70d05c9ed458-e1/bcb4267b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T150114Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=589f3a9e84956113f6c5eef267d420a0e824f7cfbc6a9db3f54154001e110b66",
             "refiner": "animator",
             "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-15 18:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4d224dec-ece9-4554-abeb-bb46eb54a955-e1/f0028f7b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T170110Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6052601ac92675eab4679e17e96684bec8d77f2a3a5132d9f0802f613cf20d06",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ef8d6f1a-433d-4ae5-8197-7a4051289046-e1/c6a92dd7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T160225Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9aa5e7ba8b05a97e5b77cc90b495b974fb47f332e70984c01272addb8733c200"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4d224dec-ece9-4554-abeb-bb46eb54a955-e1/f0028f7b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T170110Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6052601ac92675eab4679e17e96684bec8d77f2a3a5132d9f0802f613cf20d06"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-15T17:55:46.813535",
-  "last_trigger_executions": {
-    "1e41f37db26e89ac37d55f3771482626_6": "2025-05-13T12:00:00.763369",
-    "8b0160f252dc1affd80c933c62e85005_3": "2025-05-13T12:05:01.791220",
-    "1e41f37db26e89ac37d55f3771482626_7": "2025-05-13T13:00:00.888129",
-    "1e41f37db26e89ac37d55f3771482626_8": "2025-05-13T14:00:01.995536",
-    "8b0160f252dc1affd80c933c62e85005_4": "2025-05-13T14:05:01.105271",
-    "1e41f37db26e89ac37d55f3771482626_9": "2025-05-13T15:00:00.482866",
-    "1e41f37db26e89ac37d55f3771482626_10": "2025-05-13T16:00:00.431188",
-    "8b0160f252dc1affd80c933c62e85005_5": "2025-05-13T16:05:00.304897",
-    "1e41f37db26e89ac37d55f3771482626_11": "2025-05-13T17:00:01.219872",
-    "1e41f37db26e89ac37d55f3771482626_12": "2025-05-13T18:00:01.695597",
-    "8b0160f252dc1affd80c933c62e85005_6": "2025-05-13T18:05:01.606698",
-    "1e41f37db26e89ac37d55f3771482626_13": "2025-05-13T19:00:00.198133",
-    "1e41f37db26e89ac37d55f3771482626_14": "2025-05-13T20:00:00.967325",
-    "8b0160f252dc1affd80c933c62e85005_7": "2025-05-13T20:05:00.871457",
-    "1e41f37db26e89ac37d55f3771482626_15": "2025-05-13T21:00:01.797328",
-    "1e41f37db26e89ac37d55f3771482626_16": "2025-05-13T22:00:00.838772",
-    "8b0160f252dc1affd80c933c62e85005_8": "2025-05-13T22:05:00.911097",
-    "1e41f37db26e89ac37d55f3771482626_17": "2025-05-13T23:00:01.287288",
-    "1e41f37db26e89ac37d55f3771482626_0": "2025-05-14T06:00:01.509469",
-    "8b0160f252dc1affd80c933c62e85005_0": "2025-05-14T06:05:00.718152",
-    "1e41f37db26e89ac37d55f3771482626_1": "2025-05-14T07:00:01.689989",
-    "1e41f37db26e89ac37d55f3771482626_2": "2025-05-14T08:00:01.531702",
-    "8b0160f252dc1affd80c933c62e85005_1": "2025-05-14T08:05:01.857970",
-    "1e41f37db26e89ac37d55f3771482626_3": "2025-05-14T09:00:03.431461",
-    "1e41f37db26e89ac37d55f3771482626_4": "2025-05-14T10:00:01.735120",
-    "8b0160f252dc1affd80c933c62e85005_2": "2025-05-14T10:05:01.884925",
-    "1e41f37db26e89ac37d55f3771482626_5": "2025-05-14T11:00:01.320450",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-14_15": "2025-05-14T21:00:01.282577",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_0": "2025-05-15T06:00:00.071748",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-15_0": "2025-05-15T06:05:02.361618",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_1": "2025-05-15T07:00:01.269835",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_2": "2025-05-15T08:00:00.246225",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-15_1": "2025-05-15T08:05:00.091429",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_3": "2025-05-15T09:00:00.460882",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_4": "2025-05-15T10:00:01.477590",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-15_2": "2025-05-15T10:05:01.670160",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_5": "2025-05-15T11:00:01.249360",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_6": "2025-05-15T12:00:01.295689",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-15_3": "2025-05-15T12:05:00.117543",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_7": "2025-05-15T13:00:00.631247",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_8": "2025-05-15T14:00:00.887693",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-15_4": "2025-05-15T14:05:00.093645",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_9": "2025-05-15T15:00:01.892350",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_10": "2025-05-15T16:00:02.769346",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-15_5": "2025-05-15T16:05:00.652852",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_11": "2025-05-15T17:00:01.828692"
+  "last_updated": "2025-05-15T18:25:50.254174",
+  "last_trigger_executions": {},
+  "active_events": {
+    "Blank": [],
+    "Random": []
   },
-  "active_events": {},
   "event_history": [
     {
       "key": "test6",
@@ -4261,6 +4267,58 @@
       "status": "EXPIRED",
       "consumed_by": "expiration",
       "consumed_at": "2025-05-15T17:48:39.109545"
+    },
+    {
+      "key": "Blank",
+      "active_from": "2025-05-15T18:17:06.836174",
+      "expires": "2025-05-15T18:18:06.836174",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T18:17:06.836174",
+      "unique_id": "9ff30569-585f-4306-b9e5-528f49dd0ac9",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-15T18:17:07.127833"
+    },
+    {
+      "key": "Random",
+      "active_from": "2025-05-15T18:25:37.502006",
+      "expires": "2025-05-15T18:26:37.502006",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T18:25:37.502006",
+      "unique_id": "21f1393d-8123-4180-97ed-7cc93f53e6c8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-15T18:25:37.559307"
+    },
+    {
+      "key": "Blank",
+      "active_from": "2025-05-15T18:25:42.572990",
+      "expires": "2025-05-15T18:26:42.572990",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T18:25:42.572990",
+      "unique_id": "87b56c87-763c-4dc3-8181-8acda107b7d8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-15T18:25:43.879729"
+    },
+    {
+      "key": "Random",
+      "active_from": "2025-05-15T18:25:49.560589",
+      "expires": "2025-05-15T18:26:49.560589",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T18:25:49.560589",
+      "unique_id": "f9363d0e-e03c-4ca7-badf-127ce1ad873f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-15T18:25:50.068879"
     }
   ]
 }

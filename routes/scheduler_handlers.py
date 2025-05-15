@@ -9,6 +9,10 @@ from routes.scheduler_utils import log_schedule, scheduler_contexts_stacks, get_
 from routes.service_factory import get_generation_service, get_animation_service, get_display_service
 from routes.utils import dict_substitute, build_schema_subs
 import routes.openai
+from time import time
+
+# Maximum number of items to keep in history variables
+MAX_HISTORY_SIZE = 20
 
 def handle_random_choice(instruction, context, now, output, publish_destination):
     var = instruction["var"]
@@ -230,8 +234,8 @@ def handle_animate(instruction, context, now, output, publish_destination):
 
 def handle_display(instruction, context, now, output, publish_destination):
     show = instruction["show"]
-    if show not in ["Next", "Random", "Blank"]:
-        error_msg = f"Invalid display mode: {show}. Must be 'Next', 'Random', or 'Blank'."
+    if show not in ["Next", "Random", "Previous", "Blank"]:
+        error_msg = f"Invalid display mode: {show}. Must be 'Next', 'Random', 'Previous', or 'Blank'."
         log_schedule(error_msg, publish_destination, now, output)
         return False
 

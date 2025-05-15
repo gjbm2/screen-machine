@@ -1,0 +1,152 @@
+{
+  "name": "Display Example",
+  "description": "Demonstrates all display modes available in the scheduler",
+  "triggers": [
+    {
+      "type": "event",
+      "value": "next",
+      "trigger_actions": {
+        "instructions": [
+          {
+            "action": "display",
+            "show": "Next",
+            "silent": false
+          },
+          {
+            "action": "log",
+            "message": "Displayed next favorite image in sequence"
+          }
+        ]
+      }
+    },
+    {
+      "type": "event",
+      "value": "previous",
+      "trigger_actions": {
+        "instructions": [
+          {
+            "action": "display",
+            "show": "Previous",
+            "silent": false
+          },
+          {
+            "action": "log",
+            "message": "Displayed previous favorite image in sequence"
+          }
+        ]
+      }
+    },
+    {
+      "type": "event",
+      "value": "random",
+      "trigger_actions": {
+        "instructions": [
+          {
+            "action": "display",
+            "show": "Random",
+            "silent": false
+          },
+          {
+            "action": "log",
+            "message": "Displayed random favorite image"
+          }
+        ]
+      }
+    },
+    {
+      "type": "event",
+      "value": "blank",
+      "trigger_actions": {
+        "instructions": [
+          {
+            "action": "display",
+            "show": "Blank",
+            "silent": true
+          },
+          {
+            "action": "log",
+            "message": "Displayed blank screen"
+          }
+        ]
+      }
+    },
+    {
+      "type": "event",
+      "value": "slideshow_start",
+      "trigger_actions": {
+        "instructions": [
+          {
+            "action": "display",
+            "show": "Next",
+            "silent": false
+          },
+          {
+            "action": "set_var",
+            "var_name": "slideshow_running",
+            "value": "true"
+          },
+          {
+            "action": "log",
+            "message": "Started slideshow, will show next image every 30 seconds"
+          },
+          {
+            "action": "sleep",
+            "duration": 30
+          },
+          {
+            "action": "throw_event",
+            "event": "slideshow_next",
+            "scope": "{{publish_destination}}"
+          }
+        ]
+      }
+    },
+    {
+      "type": "event",
+      "value": "slideshow_next",
+      "trigger_actions": {
+        "instructions": [
+          {
+            "action": "display",
+            "show": "Next",
+            "silent": true
+          },
+          {
+            "action": "sleep",
+            "duration": 30
+          },
+          {
+            "action": "throw_event",
+            "event": "slideshow_next",
+            "scope": "{{publish_destination}}"
+          }
+        ]
+      }
+    },
+    {
+      "type": "event",
+      "value": "slideshow_stop",
+      "trigger_actions": {
+        "instructions": [
+          {
+            "action": "set_var",
+            "var_name": "slideshow_running",
+            "value": "false"
+          },
+          {
+            "action": "log",
+            "message": "Stopped slideshow"
+          }
+        ]
+      }
+    }
+  ],
+  "initial_actions": {
+    "instructions": [
+      {
+        "action": "log",
+        "message": "Display example schedule loaded. Use events 'next', 'previous', 'random', 'blank', 'slideshow_start', and 'slideshow_stop'."
+      }
+    ]
+  }
+} 

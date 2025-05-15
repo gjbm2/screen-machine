@@ -101,7 +101,7 @@ def test_handle_animate(base_context, mock_now, output_list):
 def test_handle_display(base_context, mock_now, output_list):
     """Test the display instruction handler."""
     # Test with different display modes
-    modes = ["Next", "Random", "Blank"]
+    modes = ["Next", "Random", "Previous", "Blank"]
     
     for mode in modes:
         instruction = {

@@ -800,7 +800,7 @@ def display_from_bucket(
     
     Args:
         publish_destination_id: ID of the destination to display to
-        mode: Display mode - "Next", "Random", or "Blank"
+        mode: Display mode - "Next", "Random", "Previous", or "Blank"
         silent: If True, suppress overlay display
         
     Returns:
@@ -808,9 +808,9 @@ def display_from_bucket(
     """
     debug(f"display_from_bucket called for {publish_destination_id} with mode={mode}, silent={silent}")
     
-    if mode not in ["Next", "Random", "Blank"]:
-        error(f"Invalid display mode: {mode}. Must be 'Next', 'Random', or 'Blank'.")
-        return {"success": False, "error": f"Invalid display mode: {mode}. Must be 'Next', 'Random', or 'Blank'."}
+    if mode not in ["Next", "Random", "Previous", "Blank"]:
+        error(f"Invalid display mode: {mode}. Must be 'Next', 'Random', 'Previous', or 'Blank'.")
+        return {"success": False, "error": f"Invalid display mode: {mode}. Must be 'Next', 'Random', 'Previous', or 'Blank'."}
 
     if mode == "Blank":
         debug(f"Using blank mode for {publish_destination_id}")
@@ -834,8 +834,8 @@ def display_from_bucket(
     current_image = published_info.get("published")
     debug(f"Current published image for {publish_destination_id}: {current_image}")
     
-    if mode == "Next":
-        debug(f"Next mode - checking if current image {current_image} is in favorites")
+    if mode == "Next" or mode == "Previous":
+        debug(f"{mode} mode - checking if current image {current_image} is in favorites")
         
         current_pos = -1
         
@@ -850,13 +850,18 @@ def display_from_bucket(
                     break
         
         if current_pos >= 0:
-            next_pos = (current_pos + 1) % len(favorites)
-            filename = favorites[next_pos]
-            debug(f"Current image found at position {current_pos} in favorites. Next position is {next_pos}, filename: {filename}")
+            if mode == "Next":
+                next_pos = (current_pos + 1) % len(favorites)
+                filename = favorites[next_pos]
+                debug(f"Current image found at position {current_pos} in favorites. Next position is {next_pos}, filename: {filename}")
+            else:  # mode == "Previous"
+                prev_pos = (current_pos - 1) % len(favorites)
+                filename = favorites[prev_pos]
+                debug(f"Current image found at position {current_pos} in favorites. Previous position is {prev_pos}, filename: {filename}")
         else:
             filename = favorites[0]
             debug(f"Current image not found in favorites. Using first favorite: {filename}")
-    else:
+    else:  # mode == "Random"
         filename = random.choice(favorites)
         debug(f"Random mode - selected: {filename}")
 
