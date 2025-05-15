@@ -3912,7 +3912,7 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-15T18:27:56.938877",
+  "last_updated": "2025-05-15T18:34:55.261104",
   "last_trigger_executions": {
     "1e41f37db26e89ac37d55f3771482626_2025-05-10T11:00:00": "2025-05-10T11:21:12.555262",
     "b812f679a565a0c56311d86bfaf3ca2d_2025-05-10T11:05:00": "2025-05-10T11:21:12.555262",
@@ -4031,7 +4031,10 @@
     "b812f679a565a0c56311d86bfaf3ca2d_2025-05-15_5": "2025-05-15T17:05:01.613572",
     "1e41f37db26e89ac37d55f3771482626_2025-05-15_12": "2025-05-15T18:00:01.438603"
   },
-  "active_events": {},
+  "active_events": {
+    "Blank": [],
+    "Random": []
+  },
   "event_history": [
     {
       "key": "test10",
@@ -5046,6 +5049,32 @@
       "status": "EXPIRED",
       "consumed_by": "expiration",
       "consumed_at": "2025-05-15T17:48:39.109545"
+    },
+    {
+      "key": "Blank",
+      "active_from": "2025-05-15T18:34:48.678451",
+      "expires": "2025-05-15T18:35:48.678451",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T18:34:48.678451",
+      "unique_id": "81bb75c0-6160-45a9-afa9-0f96db0b5fac",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-05-15T18:34:49.012663"
+    },
+    {
+      "key": "Random",
+      "active_from": "2025-05-15T18:34:54.144706",
+      "expires": "2025-05-15T18:35:54.144706",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T18:34:54.144706",
+      "unique_id": "b7bd7d01-aa34-4d3f-8a5e-6192f0eb8fba",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-05-15T18:34:55.113108"
     }
   ]
 }

@@ -4079,7 +4079,7 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-15T18:25:50.254174",
+  "last_updated": "2025-05-15T18:34:56.073382",
   "last_trigger_executions": {},
   "active_events": {
     "Blank": [],
@@ -4319,6 +4319,32 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
       "consumed_at": "2025-05-15T18:25:50.068879"
+    },
+    {
+      "key": "Blank",
+      "active_from": "2025-05-15T18:34:49.369781",
+      "expires": "2025-05-15T18:35:49.369781",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T18:34:49.369781",
+      "unique_id": "f7fbdc76-ea73-4933-8bf2-8fb2e0971a6c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-15T18:34:49.634977"
+    },
+    {
+      "key": "Random",
+      "active_from": "2025-05-15T18:34:54.969674",
+      "expires": "2025-05-15T18:35:54.969674",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-15T18:34:54.969674",
+      "unique_id": "0690374f-9854-4fec-9ae0-1b03e900b29a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-15T18:34:55.780320"
     }
   ]
 }
