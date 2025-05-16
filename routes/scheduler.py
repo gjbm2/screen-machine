@@ -318,7 +318,7 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                     matched_any_trigger = True
                     
                     # Check if this trigger is marked as urgent or important
-                    # First check trigger_actions for flags, then fallback to trigger itself
+                    # Determine urgency/importance from trigger_actions first, then trigger-level fallback
                     trigger_actions = trigger.get("trigger_actions", {})
                     is_urgent = trigger_actions.get("urgent", trigger.get("urgent", False))
                     is_important = trigger_actions.get("important", trigger.get("important", False))
@@ -368,11 +368,8 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                         if not event_instructions:
                             debug(f"WARNING: No instructions found in event trigger actions: {trigger_actions}")
                     
-                    # Check if this trigger is marked as urgent or important
-                    is_urgent = trigger.get("urgent", False)
-                    is_important = trigger.get("important", False)
-                    
-                    debug(f"Event trigger '{event_key}' urgent={is_urgent}, important={is_important}, trigger data: {trigger.get('urgent')}")
+                    # Log the final urgency/importance flags (computed above from trigger_actions or trigger)
+                    debug(f"Event trigger '{event_key}' final flags: urgent={is_urgent}, important={is_important}")
 
                     if is_urgent:
                         debug(f"Event trigger '{event_key}' is marked as URGENT - will interrupt wait states")
@@ -458,8 +455,8 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
     
     # Don't add running message to output - will be added by handlers with the result
     if should_log_action:
-    log_schedule(f"Running {action}", publish_destination, now, output)
-    debug(f"[INSTRUCTION] Running {action} for {publish_destination}")
+        log_schedule(f"Running {action}", publish_destination, now, output)
+        debug(f"[INSTRUCTION] Running {action} for {publish_destination}")
     
     try:
         # Store the result instead of immediately returning it
@@ -582,29 +579,14 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
                     debug(f"Processing instruction block from {source}{flags_str}")
                     
                 for instr in block:
-                try:
-                    should_unload = run_instruction(instr, current_context, datetime.now(), scheduler_logs[publish_destination], publish_destination)
+                    try:
+                        should_unload = run_instruction(instr, current_context, datetime.now(), scheduler_logs[publish_destination], publish_destination)
                         if should_unload == "EXIT_BLOCK":
                             debug(f"EXIT_BLOCK signal received, breaking out of instruction block early")
                             break  # Exit the current instruction block
-                    if should_unload:
-                        scheduler_schedule_stacks[publish_destination].pop()
-                        pop_context(publish_destination)  # Pop the context too
-                        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Unloaded schedule")
-                        
-                        # Sync state after unload
-                        update_scheduler_state(
-                            publish_destination,
-                            schedule_stack=scheduler_schedule_stacks[publish_destination],
-                            context_stack=scheduler_contexts_stacks[publish_destination]
-                        )
-                        
-                        if not scheduler_schedule_stacks[publish_destination]:
-                            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] No schedules left in stack, stopping scheduler")
-                            return
-                except Exception as e:
-                    error_msg = f"Error running instruction: {str(e)}"
-                    scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
+                    except Exception as e:
+                        error_msg = f"Error running instruction: {str(e)}"
+                        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
         
         # If no triggers, run final actions and stop
         if has_no_triggers:
@@ -1008,9 +990,9 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                             important=True,
                             urgent=True
                         )
-                        except Exception as e:
+                except Exception as e:
                     error_msg = f"Error processing triggers: {str(e)}"
-                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
                     import traceback
                     error(traceback.format_exc())
                 
@@ -1096,7 +1078,7 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                         debug(f"Running instruction {instr.get('action', 'unknown')}{flags_str} from queue")
                     
                     # Run the instruction
-                            should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
+                    should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
                     
                     # Check if we're entering wait state
                     if instr.get("action") == "wait" and not should_unload:
@@ -1111,23 +1093,23 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                         # For unload, clear the queue and pop the schedule
                         debug(f"Unload signal received, clearing queue and popping schedule")
                         clear_instruction_queue(publish_destination)
-                                scheduler_schedule_stacks[publish_destination].pop()
-                                pop_context(publish_destination)  # Pop the context too
-                                scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] Unloaded schedule")
-                                
-                                # Sync state after unload
-                                update_scheduler_state(
-                                    publish_destination,
-                                    schedule_stack=scheduler_schedule_stacks[publish_destination],
-                                    context_stack=scheduler_contexts_stacks[publish_destination]
-                                )
-                                
-                                if not scheduler_schedule_stacks[publish_destination]:
-                                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] No schedules left in stack, stopping scheduler")
-                                    return
-                        except Exception as e:
-                            error_msg = f"Error running instruction: {str(e)}"
-                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+                        scheduler_schedule_stacks[publish_destination].pop()
+                        pop_context(publish_destination)  # Pop the context too
+                        scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] Unloaded schedule")
+                        
+                        # Sync state after unload
+                        update_scheduler_state(
+                            publish_destination,
+                            schedule_stack=scheduler_schedule_stacks[publish_destination],
+                            context_stack=scheduler_contexts_stacks[publish_destination]
+                        )
+                        
+                        if not scheduler_schedule_stacks[publish_destination]:
+                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] No schedules left in stack, stopping scheduler")
+                            return
+                except Exception as e:
+                    error_msg = f"Error running instruction: {str(e)}"
+                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
                     import traceback
                     error(traceback.format_exc())
             
