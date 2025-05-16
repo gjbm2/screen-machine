@@ -8,7 +8,7 @@ from routes.utils import (
     get_qr,
     _load_json_once
 )
-from routes.scheduler_utils import get_exported_variables_with_values
+from routes.scheduler_utils import get_exported_variables_with_values, throw_event
 # Import modules rather than functions to avoid circular imports
 import routes.openai
 import routes.generate
@@ -495,12 +495,27 @@ def process(data):
                 # Fetch relevant image inputs
                 targets = result.get("data", {}).get("targets", []) if isinstance(result.get("data", {}).get("targets"), list) else []
                 async_amimate(targets = targets, obj = result)
+            
+                # Throw a user_interacting event for animation with 30m wait
+                target_destinations = result.get("data", {}).get("targets", [])
+                for dest in target_destinations:
+                    throw_user_interacting_event(dest, action_type="animate")
+                
     
             case "generate_image":
                 # Ensure we're using the currently selected refiner
                 result.setdefault("data", {})["refiner"] = current_app.config.get("REFINER", "Enrich")
                 if not result.get("data", {}).get("prompt"):
                     result["data"]["prompt"] = f"{alexa_intent} {utterance}"        
+
+                # Throw user_interacting event if we have targets
+                targets = result.get("data", {}).get("targets", [])
+                if isinstance(targets, list):
+                    for target in targets:
+                        throw_user_interacting_event(target, action_type="generate")
+                elif closest_screen:
+                    # Use closest screen if no targets specified
+                    throw_user_interacting_event(closest_screen, action_type="generate")
 
                 # Run the refinement + generation flow in background
                 threading.Thread(
@@ -567,3 +582,46 @@ def async_amimate(targets, obj = {}):
     ).start()
 
     return None
+
+def throw_user_interacting_event(publish_destination, action_type="generate"):
+    """
+    Throw a 'user_interacting' event for the specified destination with an appropriate wait time
+    based on the action type.
+    
+    Args:
+        publish_destination: The destination ID to throw the event for
+        action_type: The type of user action ('generate', 'animate', etc.)
+    """
+    if not publish_destination:
+        utils.logger.warning("Cannot throw user_interacting event: no destination specified")
+        return
+    
+    # Different wait times based on action type
+    wait_times = {
+        "generate": "10m",
+        "animate": "30m",
+        "default": "15m"
+    }
+    
+    wait_time = wait_times.get(action_type, wait_times["default"])
+    
+    # Create payload with wait time
+    payload = {
+        "wait": wait_time,
+        "action": action_type
+    }
+    
+    # Throw the event
+    try:
+        utils.logger.info(f"Throwing user_interacting event for {publish_destination} with {wait_time} wait")
+        result = throw_event(
+            scope=publish_destination,
+            key="user_interacting",
+            ttl="3h",  # Long TTL to ensure it's available for processing
+            display_name="User Interaction",
+            payload=payload,
+            single_consumer=False  # Allow multiple consumers if needed
+        )
+        utils.logger.info(f"Event thrown: {result}")
+    except Exception as e:
+        utils.logger.error(f"Error throwing user_interacting event: {str(e)}")

@@ -277,73 +277,165 @@ def handle_sleep(instruction, context, now, output, publish_destination):
     return False
 
 def handle_wait(instruction, context, now, output, publish_destination):
-    # Get duration - already processed and converted by process_instruction_jinja
-    duration = instruction.get("duration")
+    """
+    Process a wait instruction. This pauses execution for the specified duration,
+    but allows urgent events to interrupt the wait.
     
-    # Try to convert duration to float if it's still a string
-    # (This might happen if process_instruction_jinja encountered an error)
-    if isinstance(duration, str):
-        try:
-            duration = float(duration.strip())
-            # Convert to int if it's a whole number for backward compatibility
-            if duration == int(duration):
-                duration = int(duration)
-        except (ValueError, TypeError):
-            error_msg = f"Invalid wait duration string: '{duration}' - must be convertible to a number"
-            log_schedule(error_msg, publish_destination, now, output)
-            # Use a default duration to allow execution to continue
-            duration = 1
-            error_msg = f"Using default duration of {duration} minute"
-            log_schedule(error_msg, publish_destination, now, output)
+    The wait is implemented as a non-blocking state rather than an actual delay,
+    so the scheduler continues running and can process urgent events.
     
-    if duration is None or not isinstance(duration, (int, float)):
-        error_msg = f"Invalid or missing wait duration: {duration} (type: {type(duration).__name__})"
-        log_schedule(error_msg, publish_destination, now, output)
-        return False
+    Args:
+        instruction: The wait instruction with a 'duration' property (can be string with units or number)
+        context: The current context
+        now: Current datetime
+        output: List to append log messages to
+        publish_destination: The current scheduler's publish destination ID
         
-    # If we're not already waiting, start the wait
-    if "wait_until" not in context:
-        # For fractional minutes, convert to seconds first, then to timedelta
-        seconds = duration * 60
-        wait_until = now + timedelta(seconds=seconds)
-        context["wait_until"] = wait_until
-        
-        # Format duration for display
-        if duration < 1:
-            duration_str = f"{int(duration * 60)} seconds"
-        elif duration == int(duration):
-            duration_str = f"{int(duration)} minute{'s' if duration != 1 else ''}"
-        else:
-            minutes = int(duration)
-            seconds = int((duration - minutes) * 60)
-            duration_str = f"{minutes} minute{'s' if minutes != 1 else ''} and {seconds} seconds"
+    Returns:
+        bool: True if wait is complete, False if still waiting
+    """
+    from routes.scheduler_utils import parse_duration
+    
+    # Store the last time the wait status was checked, to avoid excessive logging
+    # This is a static variable that persists between function calls
+    if not hasattr(handle_wait, '_last_check_times'):
+        handle_wait._last_check_times = {}
+    
+    # Get a unique key for this wait instance
+    wait_instance_key = f"{publish_destination}"
+    
+    # Only perform detailed processing and logging at most once every 2 seconds for each destination
+    current_time = time()
+    last_check_time = handle_wait._last_check_times.get(wait_instance_key, 0)
+    should_process_fully = (current_time - last_check_time) >= 2.0
+    
+    # Get duration - already processed by process_instruction_jinja
+    duration_raw = instruction.get("duration")
+    
+    # Don't log anything for duration 0 - this is just a status check call
+    is_status_check = duration_raw == 0 or duration_raw == "0"
+    
+    # Parse the duration into seconds using the utility function
+    try:
+        seconds = parse_duration(duration_raw, default_seconds=60)
+        if should_process_fully and not is_status_check:
+            debug_str = f"Parsed wait duration '{duration_raw}' to {seconds} seconds"
+            log_schedule(debug_str, publish_destination, now, output)
+            handle_wait._last_check_times[wait_instance_key] = current_time
+    except (ValueError, TypeError) as e:
+        if should_process_fully and not is_status_check:
+            error_msg = f"Invalid wait duration: '{duration_raw}' - using default of 1 minute"
+            log_schedule(error_msg, publish_destination, now, output)
+            handle_wait._last_check_times[wait_instance_key] = current_time
+        seconds = 60  # Default to 1 minute
+    
+    # Convert back to minutes for display
+    duration_minutes = seconds / 60
+    
+    # Handle any errors in the wait state
+    try:    
+        # If we're not already waiting, start the wait
+        if "wait_until" not in context:
+            # Calculate end time
+            wait_until = now + timedelta(seconds=seconds)
+            context["wait_until"] = wait_until  # Store as datetime object
+            context["last_wait_log"] = now  # Initialize last log time
             
-        msg = f"Started waiting for {duration_str} (until {wait_until.strftime('%H:%M:%S')})"
-        log_schedule(msg, publish_destination, now, output)
-        return False  # Don't unload yet - we're just starting the wait
-    
-    # If we are waiting, check if it's complete
-    if now >= context["wait_until"]:
-        msg = "Wait period complete"
-        log_schedule(msg, publish_destination, now, output)
-        del context["wait_until"]  # Clear the wait state
+            # Format duration for display
+            if duration_minutes < 1:
+                seconds_display = int(seconds)
+                duration_str = f"{seconds_display} second{'s' if seconds_display != 1 else ''}"
+            elif duration_minutes == int(duration_minutes):
+                minutes_display = int(duration_minutes)
+                duration_str = f"{minutes_display} minute{'s' if minutes_display != 1 else ''}"
+            else:
+                minutes_display = int(duration_minutes)
+                seconds_display = int((duration_minutes - minutes_display) * 60)
+                duration_str = f"{minutes_display} minute{'s' if minutes_display != 1 else ''}"
+                if seconds_display > 0:
+                    duration_str += f" and {seconds_display} second{'s' if seconds_display != 1 else ''}"
+                
+            msg = f"Started waiting for {duration_str} (until {wait_until.strftime('%H:%M:%S')})"
+            log_schedule(msg, publish_destination, now, output)
+            handle_wait._last_check_times[wait_instance_key] = current_time
+            return False  # Don't unload yet - we're just starting the wait
+        
+        # Ensure wait_until is a datetime object
+        wait_until = context["wait_until"]
+        if isinstance(wait_until, str):
+            # If it's a string (from JSON serialization), convert it back to datetime
+            try:
+                from dateutil import parser
+                wait_until = parser.parse(wait_until)
+                context["wait_until"] = wait_until  # Update with the proper datetime object
+            except Exception as e:
+                if should_process_fully:
+                    error_msg = f"Error in wait: could not parse wait_until date: {e}"
+                    log_schedule(error_msg, publish_destination, now, output)
+                    handle_wait._last_check_times[wait_instance_key] = current_time
+                # Reset the wait state to avoid getting stuck
+                if "wait_until" in context:
+                    del context["wait_until"]
+                if "last_wait_log" in context:
+                    del context["last_wait_log"]
+                return True  # Signal that we can unload now
+        
+        # If we are waiting, check if it's complete
+        if now >= wait_until:
+            msg = "Wait period complete"
+            log_schedule(msg, publish_destination, now, output)
+            del context["wait_until"]  # Clear the wait state
+            if "last_wait_log" in context:
+                del context["last_wait_log"]  # Also clear the log timestamp
+            handle_wait._last_check_times[wait_instance_key] = current_time
+            return True  # Signal that we can unload now
+        
+        # Only log status update every 60 seconds (instead of 30)
+        last_log = context.get("last_wait_log", now - timedelta(seconds=61))
+        # Ensure last_log is a datetime object
+        if isinstance(last_log, str):
+            try:
+                from dateutil import parser
+                last_log = parser.parse(last_log)
+            except Exception:
+                last_log = now - timedelta(seconds=61)  # Default if parsing fails
+        
+        should_log = (now - last_log).total_seconds() >= 60
+        
+        if should_log and should_process_fully:
+            # Still waiting
+            remaining = (wait_until - now).total_seconds() / 60
+            
+            # Format remaining time for display
+            if remaining < 1:
+                seconds_remaining = int(remaining * 60)
+                remaining_str = f"{seconds_remaining} second{'s' if seconds_remaining != 1 else ''}"
+            elif remaining == int(remaining):
+                minutes_remaining = int(remaining)
+                remaining_str = f"{minutes_remaining} minute{'s' if minutes_remaining != 1 else ''}"
+            else:
+                minutes_remaining = int(remaining)
+                seconds_remaining = int((remaining - minutes_remaining) * 60)
+                remaining_str = f"{minutes_remaining} minute{'s' if minutes_remaining != 1 else ''}"
+                if seconds_remaining > 0:
+                    remaining_str += f" and {seconds_remaining} second{'s' if seconds_remaining != 1 else ''}"
+            
+            msg = f"Still waiting, {remaining_str} remaining"
+            log_schedule(msg, publish_destination, now, output)
+            context["last_wait_log"] = now  # Update the timestamp
+            handle_wait._last_check_times[wait_instance_key] = current_time
+    except Exception as e:
+        if should_process_fully:
+            error_msg = f"Error in wait: {str(e)}"
+            log_schedule(error_msg, publish_destination, now, output)
+            handle_wait._last_check_times[wait_instance_key] = current_time
+        # Reset the wait state to avoid getting stuck
+        if "wait_until" in context:
+            del context["wait_until"]
+        if "last_wait_log" in context:
+            del context["last_wait_log"]
         return True  # Signal that we can unload now
     
-    # Still waiting
-    remaining = (context["wait_until"] - now).total_seconds() / 60
-    
-    # Format remaining time for display
-    if remaining < 1:
-        remaining_str = f"{int(remaining * 60)} seconds"
-    elif remaining == int(remaining):
-        remaining_str = f"{int(remaining)} minute{'s' if remaining != 1 else ''}"
-    else:
-        minutes = int(remaining)
-        seconds = int((remaining - minutes) * 60)
-        remaining_str = f"{minutes} minute{'s' if minutes != 1 else ''} and {seconds} seconds"
-    
-    msg = f"Still waiting, {remaining_str} remaining"
-    log_schedule(msg, publish_destination, now, output)
     return False  # Don't unload while still waiting
 
 def handle_unload(instruction, context, now, output, publish_destination):

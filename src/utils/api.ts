@@ -861,6 +861,49 @@ export class Api {
     }
   }
 
+  // Get instruction queue for a scheduler
+  async getInstructionQueue(destinationId: string) {
+    if (this.mockMode) {
+      console.info('[MOCK BACKEND] Getting instruction queue for scheduler ID:', destinationId);
+      return {
+        status: 'success',
+        destination: destinationId,
+        queue_size: 2,
+        instructions: [
+          {
+            action: 'generate',
+            important: false,
+            urgent: false,
+            details: {
+              prompt: 'A mock generation prompt',
+              workflow: 'default'
+            }
+          },
+          {
+            action: 'publish',
+            important: true,
+            urgent: false,
+            details: {
+              source: 'recent://latest',
+              destination: 'mock-destination'
+            }
+          }
+        ]
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.apiUrl}/schedulers/${destinationId}/instructions`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch instruction queue');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching instruction queue:', error);
+      throw error;
+    }
+  }
+
   // Set scheduler context
   async setSchedulerContext(destinationId: string, context: any) {
     if (this.mockMode) {

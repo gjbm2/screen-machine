@@ -168,6 +168,9 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
     
     # Keep track of matched schedules to avoid duplicate processing
     processed_schedule_ids = set()
+    
+    # Keep track of all matched trigger/instruction data with urgency information
+    all_trigger_data = []
 
     # First check all date triggers (these take precedence)
     for trigger in schedule.get("triggers", []):
@@ -188,6 +191,17 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                     info(message)
                     log_schedule(message, publish_destination, now)
 
+                    # Check if this trigger is marked as urgent or important
+                    # First check trigger level, then fallback to global trigger level
+                    trigger_actions = trigger.get("trigger_actions", {})
+                    is_urgent = trigger_actions.get("urgent", trigger.get("urgent", False))
+                    is_important = trigger_actions.get("important", trigger.get("important", False))
+                    
+                    if is_urgent:
+                        debug(f"Date trigger for {date_str} is marked as URGENT - will interrupt wait states")
+                    if is_important:
+                        debug(f"Date trigger for {date_str} is marked as IMPORTANT - will not be removed by other urgent actions")
+
                     # Extract instructions from matched schedules
                     for matched_schedule in matched_schedules:
                         # Generate a unique ID for this schedule to avoid duplicates
@@ -197,7 +211,18 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                             instructions = extract_instructions(matched_schedule.get("trigger_actions", {}))
                             if should_log:
                                 debug(f"Extracted {len(instructions)} instructions from date trigger schedule")
-                            all_instructions.extend(instructions)
+                                
+                            # Also check if the individual schedule has urgency flags that override the parent trigger
+                            schedule_urgent = matched_schedule.get("urgent", is_urgent)
+                            schedule_important = matched_schedule.get("important", is_important)
+                            
+                            # Add to all_trigger_data with urgency/importance flags
+                            all_trigger_data.append({
+                                "block": instructions,
+                                "urgent": schedule_urgent, 
+                                "important": schedule_important,
+                                "source": f"date:{date_str}"
+                            })
                         else:
                             if should_log:
                                 debug(f"Skipping duplicate schedule in date trigger")
@@ -221,6 +246,17 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                     info(message)
                     log_schedule(message, publish_destination, now)
                     
+                    # Check if this trigger is marked as urgent or important
+                    # First check trigger level, then fallback to global trigger level
+                    trigger_actions = trigger.get("trigger_actions", {})
+                    is_urgent = trigger_actions.get("urgent", trigger.get("urgent", False))
+                    is_important = trigger_actions.get("important", trigger.get("important", False))
+                    
+                    if is_urgent:
+                        debug(f"Day-of-week trigger for {day_str} is marked as URGENT - will interrupt wait states")
+                    if is_important:
+                        debug(f"Day-of-week trigger for {day_str} is marked as IMPORTANT - will not be removed by other urgent actions")
+                    
                     # Extract instructions from matched schedules
                     for matched_schedule in matched_schedules:
                         # Generate a unique ID for this schedule to avoid duplicates
@@ -230,7 +266,18 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                             instructions = extract_instructions(matched_schedule.get("trigger_actions", {}))
                             if should_log:
                                 debug(f"Extracted {len(instructions)} instructions from day_of_week trigger schedule")
-                            all_instructions.extend(instructions)
+                                
+                            # Also check if the individual schedule has urgency flags that override the parent trigger
+                            schedule_urgent = matched_schedule.get("urgent", is_urgent)
+                            schedule_important = matched_schedule.get("important", is_important)
+                            
+                            # Add to all_trigger_data with urgency/importance flags
+                            all_trigger_data.append({
+                                "block": instructions,
+                                "urgent": schedule_urgent, 
+                                "important": schedule_important,
+                                "source": f"day_of_week:{day_str}"
+                            })
                         else:
                             if should_log:
                                 debug(f"Skipping duplicate schedule in day_of_week trigger")
@@ -255,6 +302,8 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
             # Only log if should_log is true
             if should_log:
                 debug(f"Looking for event trigger '{event_key}' in {publish_destination}")
+                # Add detailed debugging for trigger definition
+                debug(f"Event trigger definition: urgent={trigger.get('urgent', False)}, important={trigger.get('important', False)}")
             
             # Check if this event is active for this destination
             try:
@@ -267,7 +316,28 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                 
                 if event_entry:
                     matched_any_trigger = True
-                    message = f"Matched event trigger: {event_key}"
+                    
+                    # Check if this trigger is marked as urgent or important
+                    # First check trigger_actions for flags, then fallback to trigger itself
+                    trigger_actions = trigger.get("trigger_actions", {})
+                    is_urgent = trigger_actions.get("urgent", trigger.get("urgent", False))
+                    is_important = trigger_actions.get("important", trigger.get("important", False))
+                    
+                    # Debug the actual trigger info directly from source
+                    debug(f"*** EVENT MATCH: '{event_key}' - Extracted flags from trigger_actions or trigger: urgent={is_urgent}, important={is_important}")
+                    debug(f"*** Source: urgent from trigger_actions={trigger_actions.get('urgent')}, from trigger={trigger.get('urgent')}")
+                    debug(f"*** Source: important from trigger_actions={trigger_actions.get('important')}, from trigger={trigger.get('important')}")
+                    
+                    # Create message with importance/urgency flags
+                    flags = []
+                    if is_important:
+                        flags.append("Important")
+                    if is_urgent:
+                        flags.append("Urgent")
+                    
+                    # Format message with flags if any
+                    flags_str = f" {' '.join(flags)}" if flags else ""
+                    message = f"Matched{flags_str} event trigger: {event_key}"
                     if event_entry.payload:
                         message += f" with payload {event_entry.payload}"
                     info(message)
@@ -281,6 +351,8 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                         "created_at": event_entry.created_at.isoformat() if event_entry.created_at else None,
                         "display_name": event_entry.display_name
                     }
+                    # Also store at top level for process_jinja_template to find it
+                    context["_event"] = context["vars"]["_event"]
                     debug(f"Added event payload to context as _event: {context['vars']['_event']}")
                     
                     # Get the trigger actions
@@ -290,13 +362,31 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                     
                     # Extract instructions from trigger_actions
                     event_instructions = extract_instructions(trigger_actions)
+                    debug(f"Event block contains {len(event_instructions)} instructions that will all have access to this event data")
                     if should_log:
                         debug(f"Extracted {len(event_instructions)} instructions from event trigger")
                         if not event_instructions:
                             debug(f"WARNING: No instructions found in event trigger actions: {trigger_actions}")
                     
-                    # Add to accumulated instructions
-                    all_instructions.extend(event_instructions)
+                    # Check if this trigger is marked as urgent or important
+                    is_urgent = trigger.get("urgent", False)
+                    is_important = trigger.get("important", False)
+                    
+                    debug(f"Event trigger '{event_key}' urgent={is_urgent}, important={is_important}, trigger data: {trigger.get('urgent')}")
+
+                    if is_urgent:
+                        debug(f"Event trigger '{event_key}' is marked as URGENT - will interrupt wait states")
+                    if is_important:
+                        debug(f"Event trigger '{event_key}' is marked as IMPORTANT - will not be removed by other urgent actions")
+                    
+                    # Add to all_trigger_data with urgency/importance flags
+                    all_trigger_data.append({
+                        "block": event_instructions,
+                        "urgent": is_urgent, 
+                        "important": is_important,
+                        "source": f"event:{event_key}"
+                    })
+                    
                     found_actions_to_execute = True
                 # Don't log "No active events" messages for normal event checking
             except Exception as e:
@@ -312,24 +402,62 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
             if should_log:
                 debug("No trigger produced actions, running final actions")
             log_schedule("No triggers produced actions, running final actions", publish_destination, now)
-            all_instructions.extend(final_instructions)
+            
+            # Add to all_trigger_data - these are never urgent
+            all_trigger_data.append({
+                "block": final_instructions,
+                "urgent": False,
+                "important": False,
+                "source": "final_actions"
+            })
     
     if should_log:
-        if not all_instructions:
+        if not all_trigger_data:
             debug("No matching triggers or final actions found")
         else:
-            debug(f"Found {len(all_instructions)} instructions to execute")
+            total_instructions = sum(len(data.get("block", [])) for data in all_trigger_data)
+            debug(f"Found {total_instructions} instructions to execute from {len(all_trigger_data)} trigger sources")
         
-    return all_instructions
+    return all_trigger_data
 
 # === Instruction Execution ===
 def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: datetime, output: List[str], publish_destination: str) -> bool:
     """Run a single instruction."""
+    # Ensure event data is accessible at the top level 
+    # This is needed for proper Jinja processing of templates like {{ _event.payload.wait }}
+    if "vars" in context and "_event" in context["vars"] and "_event" not in context:
+        context["_event"] = context["vars"]["_event"]
+        debug(f"Copied _event from vars to context root for Jinja processing: {context['_event']}")
+    elif "_event" in context:
+        debug(f"Context already has _event at root level: {context['_event']}")
+    elif "vars" in context and "_event" in context["vars"]:
+        debug(f"Context has _event in vars but not at root level")
+    else:
+        debug(f"No _event found in context (neither root nor vars)")
+    
     # Process the entire instruction with Jinja templating first
     processed_instruction = process_instruction_jinja(instruction, context, publish_destination)
     
     action = processed_instruction.get("action")
+    
+    # Throttle logging for wait instructions
+    # Use a static dictionary to track last log time per destination
+    if not hasattr(run_instruction, '_last_wait_log_times'):
+        run_instruction._last_wait_log_times = {}
+    
+    should_log_action = True
+    
+    # For wait actions specifically, only log at most once every 5 seconds per destination
+    if action == "wait" and "wait_until" in context:
+        current_time = time.time()
+        last_log_time = run_instruction._last_wait_log_times.get(publish_destination, 0)
+        if current_time - last_log_time < 30.0:  # Only log every 5 seconds
+            should_log_action = False
+        else:
+            run_instruction._last_wait_log_times[publish_destination] = current_time
+    
     # Don't add running message to output - will be added by handlers with the result
+    if should_log_action:
     log_schedule(f"Running {action}", publish_destination, now, output)
     debug(f"[INSTRUCTION] Running {action} for {publish_destination}")
     
@@ -395,7 +523,7 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
         update_scheduler_state(publish_destination, context_stack=context_stack)
     else:
         debug(f"[PERSISTENCE] Warning: No context stack found for {publish_destination} after {action}")
-
+    
     # Propagate EXIT_BLOCK if returned
     if result == "EXIT_BLOCK":
         return "EXIT_BLOCK"
@@ -433,15 +561,32 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
         has_no_triggers = "triggers" not in current_schedule or not current_schedule["triggers"]
         
         # Execute initial instructions
-        initial_instructions = extract_instructions(current_schedule.get("initial_actions", {}))
+        initial_instructions = resolve_schedule(current_schedule, datetime.now(), publish_destination, include_initial_actions=True, context=current_context)
         if initial_instructions:
             info("Executing initial actions")
-            for instr in initial_instructions:
+            # Flatten and process all instruction blocks
+            for trigger_data in initial_instructions:
+                block = trigger_data.get("block", [])
+                is_urgent = trigger_data.get("urgent", False)
+                is_important = trigger_data.get("important", False)
+                source = trigger_data.get("source", "unknown")
+                
+                # Log what we're processing
+                if is_urgent or is_important:
+                    flags = []
+                    if is_urgent:
+                        flags.append("urgent")
+                    if is_important:
+                        flags.append("important")
+                    flags_str = f" ({', '.join(flags)})" if flags else ""
+                    debug(f"Processing instruction block from {source}{flags_str}")
+                    
+                for instr in block:
                 try:
                     should_unload = run_instruction(instr, current_context, datetime.now(), scheduler_logs[publish_destination], publish_destination)
-                    if should_unload == "EXIT_BLOCK":
-                        debug(f"EXIT_BLOCK signal received, breaking out of instruction block early")
-                        break  # Exit the current instruction block
+                        if should_unload == "EXIT_BLOCK":
+                            debug(f"EXIT_BLOCK signal received, breaking out of instruction block early")
+                            break  # Exit the current instruction block
                     if should_unload:
                         scheduler_schedule_stacks[publish_destination].pop()
                         pop_context(publish_destination)  # Pop the context too
@@ -774,6 +919,9 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
         # Initialize or get the instruction queue for this destination
         instruction_queue = get_instruction_queue(publish_destination)
         
+        # Track if the scheduler is in a waiting state
+        is_in_wait_state = False
+        
         while True:
             # Check if scheduler is stopped
             if publish_destination not in running_schedulers:
@@ -797,6 +945,9 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
             
             # Get current context
             current_context = get_current_context(publish_destination)
+            
+            # Check if we're in waiting state (wait instruction is being executed)
+            is_in_wait_state = current_context and "wait_until" in current_context
             
             # Rate-limit debug logging
             should_log_debug = False
@@ -828,31 +979,106 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                     # 1. Process triggers and add to queue
                     triggers = process_triggers(current_schedule, now, publish_destination, current_context)
                     for trigger in triggers:
+                        block = trigger.get("block", [])
+                        is_urgent = trigger.get("urgent", False)
+                        is_important = trigger.get("important", False)
+                        source = trigger.get("source", "unknown")
+                        
+                        # Debug log exactly what we're pushing to the queue
+                        flags = []
+                        if is_urgent:
+                            flags.append("URGENT")
+                        if is_important:
+                            flags.append("IMPORTANT")
+                        flags_str = f" [{', '.join(flags)}]" if flags else ""
+                        debug(f"Adding instruction block from {source}{flags_str} to the queue with {len(block)} instructions")
+                        
                         instruction_queue.push_block(
-                            trigger["block"],
-                            important=trigger.get("important", False),
-                            urgent=trigger.get("urgent", False)
+                            block,
+                            important=is_important,
+                            urgent=is_urgent
                         )
-                    
+
                     # 2. Check for urgent events
                     urgent_event = check_urgent_events(publish_destination)
                     if urgent_event:
+                        debug(f"Found special urgent event: {urgent_event['key']}")
                         instruction_queue.push_block(
                             urgent_event["block"],
                             important=True,
                             urgent=True
                         )
-                except Exception as e:
+                        except Exception as e:
                     error_msg = f"Error processing triggers: {str(e)}"
-                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
                     import traceback
                     error(traceback.format_exc())
                 
                 # Store the epoch second so that the next trigger check isn't too soon
                 last_check_time = current_epoch_second
             
-            # 3. Execute one instruction per tick if queue is not empty
-            entry = instruction_queue.pop_next()
+            # 3. Execute instructions with special handling for wait state
+            # If we're in waiting state, only process urgent instructions
+            entry = None
+            
+            if is_in_wait_state:
+                # In wait state, only check for urgent instructions
+                debug(f"Scheduler in wait state, checking for urgent instructions that could interrupt")
+                
+                # First, update the wait to reflect passage of time
+                debug(f"Updating wait state status")
+                should_unload = run_instruction({"action": "wait", "duration": 0}, current_context, now, 
+                                              scheduler_logs[publish_destination], publish_destination)
+
+                # Check if the wait has completed normally
+                if should_unload:
+                    debug(f"Wait completed normally")
+                    is_in_wait_state = False
+                    
+                    # Now we can process next instruction as normal
+                    entry = instruction_queue.pop_next()
+                else:
+                    # We're still in wait state - only check for urgent instructions
+                    urgent_entry = instruction_queue.peek_next_urgent()
+                    
+                    # Log wait interrupt status for debugging
+                    if urgent_entry:
+                        # Found an urgent instruction - interrupt the wait
+                        action_name = urgent_entry['instruction'].get('action', 'unknown')
+                        debug(f"WAIT INTERRUPT: Found urgent instruction {action_name} that will interrupt wait state")
+                        
+                        # Clear the wait state
+                        if "wait_until" in current_context:
+                            previous_wait_until = current_context["wait_until"]
+                            del current_context["wait_until"]
+                            log_message = f"Wait interrupted by urgent {action_name} instruction (was waiting until {previous_wait_until.strftime('%H:%M:%S')})"
+                            log_schedule(log_message, publish_destination, now, scheduler_logs[publish_destination])
+                            
+                            # Also remove last_wait_log if it exists
+                            if "last_wait_log" in current_context:
+                                del current_context["last_wait_log"]
+                            
+                            # Save context changes immediately
+                            debug(f"Saving context after clearing wait state")
+                            update_scheduler_state(publish_destination, context_stack=scheduler_contexts_stacks[publish_destination])
+                            
+                        # Get the entry that will be processed - ONLY get urgent instruction
+                        entry = instruction_queue.pop_next(urgent_only=True)
+                        if entry:
+                            debug(f"Popped urgent instruction for immediate execution: {action_name}")
+                            is_in_wait_state = False
+                        else:
+                            debug(f"WARNING: Failed to pop urgent instruction that was previously found - something went wrong")
+                            # We'll keep the wait state in this case since we couldn't pop the urgent entry
+                    else:
+                        debug(f"No urgent instructions found that could interrupt the wait")
+                        # Important: Don't process ANY instructions when in wait state, not even if queue appears empty
+                        # This prevents normal instructions from being processed during wait
+            else:
+                # Normal operation - process next instruction
+                entry = instruction_queue.pop_next()
+            
+            # Execute the instruction if we have one
             if entry:
                 try:
                     instr = entry["instruction"]
@@ -870,7 +1096,11 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                         debug(f"Running instruction {instr.get('action', 'unknown')}{flags_str} from queue")
                     
                     # Run the instruction
-                    should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
+                            should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
+                    
+                    # Check if we're entering wait state
+                    if instr.get("action") == "wait" and not should_unload:
+                        is_in_wait_state = "wait_until" in current_context
                     
                     # Handle stop/unload logic based on the return value
                     if should_unload == "EXIT_BLOCK":
@@ -881,35 +1111,48 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                         # For unload, clear the queue and pop the schedule
                         debug(f"Unload signal received, clearing queue and popping schedule")
                         clear_instruction_queue(publish_destination)
-                        scheduler_schedule_stacks[publish_destination].pop()
-                        pop_context(publish_destination)  # Pop the context too
-                        scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] Unloaded schedule")
-                        
-                        # Sync state after unload
-                        update_scheduler_state(
-                            publish_destination,
-                            schedule_stack=scheduler_schedule_stacks[publish_destination],
-                            context_stack=scheduler_contexts_stacks[publish_destination]
-                        )
-                        
-                        if not scheduler_schedule_stacks[publish_destination]:
-                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] No schedules left in stack, stopping scheduler")
-                            return
-                except Exception as e:
-                    error_msg = f"Error running instruction: {str(e)}"
-                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+                                scheduler_schedule_stacks[publish_destination].pop()
+                                pop_context(publish_destination)  # Pop the context too
+                                scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] Unloaded schedule")
+                                
+                                # Sync state after unload
+                                update_scheduler_state(
+                                    publish_destination,
+                                    schedule_stack=scheduler_schedule_stacks[publish_destination],
+                                    context_stack=scheduler_contexts_stacks[publish_destination]
+                                )
+                                
+                                if not scheduler_schedule_stacks[publish_destination]:
+                                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] No schedules left in stack, stopping scheduler")
+                                    return
+                        except Exception as e:
+                            error_msg = f"Error running instruction: {str(e)}"
+                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
                     import traceback
                     error(traceback.format_exc())
             
-                # After running an instruction, clean up any _event variables 
-                if "vars" in current_context and "_event" in current_context["vars"]:
-                    debug(f"Removing temporary _event from context after instruction execution")
+                # After running an instruction, clean up any _event variables
+                # Only remove _event data if:
+                # 1. We're not in a wait state (already handled) AND
+                # 2. There are no more instructions in the queue from this event
+                # This ensures event data persists throughout the entire event-triggered instruction block
+                if ("vars" in current_context and "_event" in current_context["vars"] and
+                    not (instr and instr.get("action") == "wait" and not should_unload) and
+                    instruction_queue.is_empty()):
+                    payload_debug = "unknown"
+                    if "_event" in current_context and isinstance(current_context["_event"], dict):
+                        payload_debug = current_context["_event"].get("payload", "no payload")
+                    debug(f"Removing temporary _event from context - instruction block complete. Payload was: {payload_debug}")
                     del current_context["vars"]["_event"]
+                    if "_event" in current_context:
+                        del current_context["_event"]
                     update_scheduler_state(publish_destination, context_stack=scheduler_contexts_stacks[publish_destination])
-            
+                
             # Sleep after processing (either running an instruction or finding none to run)
             # Wait a small amount of time to allow for urgent events to be processed quickly
-            await asyncio.sleep(0.1)
+            # Use a shorter sleep when in wait state to be more responsive to urgent interruptions
+            sleep_time = 0.05 if is_in_wait_state else 0.1
+            await asyncio.sleep(sleep_time)
             
     except asyncio.CancelledError:
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M:%S')}] Scheduler cancelled")

@@ -1230,3 +1230,65 @@ def api_stop_scheduler_loop(destination):
     except Exception as e:
         error(f"Error in api_stop_scheduler_loop: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@scheduler_bp.route("/api/schedulers/<publish_destination>/instructions", methods=["GET"])
+def api_get_instruction_queue(publish_destination):
+    """Get the current instruction queue for a destination."""
+    try:
+        # Import the instruction queue utilities
+        from routes.scheduler_queue import get_instruction_queue
+        
+        # Get the instruction queue for this destination
+        queue = get_instruction_queue(publish_destination)
+        
+        # Convert the queue to a list of dictionaries for JSON serialization
+        queue_items = []
+        for item in list(queue.queue):  # Create a copy of the queue to avoid modifying it
+            instruction = item['instruction']
+            
+            # Create a simplified representation for the UI
+            queue_item = {
+                'action': instruction.get('action', 'unknown'),
+                'important': item.get('important', False),
+                'urgent': item.get('urgent', False),
+                'details': {}
+            }
+            
+            # Add relevant details based on action type
+            if instruction.get('action') == 'generate':
+                queue_item['details'] = {
+                    'prompt': instruction.get('prompt', ''),
+                    'workflow': instruction.get('workflow', ''),
+                }
+            elif instruction.get('action') == 'publish':
+                queue_item['details'] = {
+                    'source': instruction.get('source', ''),
+                    'destination': instruction.get('destination', ''),
+                }
+            elif instruction.get('action') == 'set_var':
+                queue_item['details'] = {
+                    'var': instruction.get('var', ''),
+                    'value_type': type(instruction.get('value', '')).__name__,
+                }
+            elif instruction.get('action') == 'throw_event':
+                queue_item['details'] = {
+                    'event': instruction.get('event', ''),
+                    'scope': instruction.get('scope', 'global'),
+                }
+            elif instruction.get('action') == 'terminate':
+                queue_item['details'] = {
+                    'mode': instruction.get('mode', 'normal'),
+                }
+            
+            queue_items.append(queue_item)
+        
+        return jsonify({
+            "status": "success",
+            "destination": publish_destination,
+            "queue_size": queue.get_size(),
+            "instructions": queue_items
+        })
+    except Exception as e:
+        error_msg = f"Error getting instruction queue: {str(e)}"
+        error(error_msg)
+        return jsonify({"error": error_msg}), 500
