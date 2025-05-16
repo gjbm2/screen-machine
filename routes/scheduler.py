@@ -965,6 +965,34 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                         is_urgent = trigger.get("urgent", False)
                         is_important = trigger.get("important", False)
                         source = trigger.get("source", "unknown")
+
+                        # During wait state:
+                        # 1. URGENT triggers queue immediately and interrupt the wait
+                        # 2. IMPORTANT (but non-urgent) triggers queue for execution after wait completes
+                        # 3. Normal triggers (neither urgent nor important) are skipped during wait
+                        #
+                        # This applies to all trigger types: time-based, events, etc.
+                        if is_in_wait_state and not is_urgent and not is_important:
+                            if should_log_debug:
+                                debug(
+                                    f"WAIT STATE: Skipping normal trigger from {source} (will reevaluate after wait)"
+                                )
+                            # Add to scheduler logs (visible in UI)
+                            log_schedule(
+                                f"Skipping normal trigger from {source} during wait (will check again after wait finishes)",
+                                publish_destination, now
+                            )
+                            continue
+                        elif is_in_wait_state and is_important and not is_urgent:
+                            if should_log_debug:
+                                debug(
+                                    f"WAIT STATE: Queuing important (non-urgent) trigger from {source} (will execute after wait)"
+                                )
+                            # Add to scheduler logs (visible in UI)
+                            log_schedule(
+                                f"Queued important trigger from {source} (will execute after wait completes)",
+                                publish_destination, now
+                            )
                         
                         # Debug log exactly what we're pushing to the queue
                         flags = []
@@ -974,7 +1002,7 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                             flags.append("IMPORTANT")
                         flags_str = f" [{', '.join(flags)}]" if flags else ""
                         debug(f"Adding instruction block from {source}{flags_str} to the queue with {len(block)} instructions")
-                        
+
                         instruction_queue.push_block(
                             block,
                             important=is_important,
