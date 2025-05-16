@@ -23,7 +23,7 @@ def get_generation_service():
     else:
         # In production, we use the real implementation
         # For now we just return a function object that can be called directly
-        from routes.alexa import handle_image_generation
+        from routes.generate_handler import handle_image_generation
         return handle_image_generation
 
 def get_animation_service():
@@ -39,8 +39,8 @@ def get_animation_service():
     else:
         # In production, we use the real implementation
         # For now we just return a function object that can be called directly
-        from routes.alexa import async_amimate
-        return async_amimate 
+        from routes.generate_handler import async_amimate
+        return async_amimate
 
 def get_display_service():
     """

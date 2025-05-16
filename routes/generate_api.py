@@ -4,14 +4,16 @@ Generate API - Routes for generating content from other content
 from flask import Blueprint, request, jsonify, current_app
 from pathlib import Path
 import os
+import json
 from urllib.parse import unquote
 
 from routes.manage_jobs import cancel_all_jobs as cancel_jobs
 from utils.logger import log_to_console, info, error, warning, debug
-from routes.generate_handler import jpg_from_mp4_handler
+from routes.generate_handler import jpg_from_mp4_handler, process_generate_image_request
+from routes.utils import encode_image_uploads, encode_reference_urls
 
 # Use the existing Blueprint
-generate_api = Blueprint('generate_api', __name__, url_prefix="/api/generate")
+generate_api = Blueprint('generate_api', __name__)
 
 
 @generate_api.route('/cancel_all_jobs', methods=['GET', 'POST'])
@@ -145,3 +147,54 @@ def jpg_from_mp4():
     except Exception as e:
         error(f"Error in jpg_from_mp4 endpoint: {e}")
         return f"Error: {e}", 500
+
+#
+# *** Generate Image ***
+#
+
+
+@generate_api.route('/generate-image', methods=['POST'])
+def generate_image_route():
+    """
+    Generate image(s) from a prompt, optionally with reference images.
+    """
+    # Extract JSON data from the form
+    json_data = request.form.get('data')
+    if not json_data:
+        error("Missing data parameter in request")
+        return jsonify({"error": "Missing data parameter"}), 400
+    
+    try:
+        data = json.loads(json_data)
+    except Exception as e:
+        error(f"Invalid JSON: {str(e)}")
+        return jsonify({"error": f"Invalid JSON: {str(e)}"}), 400
+
+    info(f"Full blob: {data}")
+    
+    # Process reference URLs
+    reference_urls = data.get('referenceUrls', [])
+    info(f"[generate_image_route] Calling encode_reference_urls with {len(reference_urls)} URLs")
+    images = encode_reference_urls(reference_urls, max_file_size_mb=5)
+    info(f"[generate_image_route] Finished encode_reference_urls, got {len(images)} images")
+
+    # Process uploaded files
+    image_files = request.files.getlist('image')
+    images.extend(encode_image_uploads(image_files, max_file_size_mb=5))
+
+    # Log processed image details
+    for img in images:
+        info(f"Processed uploaded image '{img['name']}' with length {len(img['image'])}.")
+    
+    try:
+        # Call the handler function with the processed data
+        result = process_generate_image_request(data, uploaded_images=images)
+        return jsonify(result)
+    except ValueError as e:
+        error(f"Value error in image generation: {e}")
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        error(f"Error in image generation: {e}")
+        import traceback
+        error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500

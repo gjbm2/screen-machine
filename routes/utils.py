@@ -39,6 +39,48 @@ SEARCH_PATHS = [
     os.path.join(SCRIPT_DIR, "src", "data", "workflows"),
 ]
 
+# === Type-safe casting utilities ===
+def unwrap_optional_type(tp):
+    """
+    If tp is an Optional (i.e., Union[X, None]), return X. Otherwise, return tp.
+    """
+    from typing import get_origin, get_args, Union
+    import types
+    origin = get_origin(tp)
+    if origin in (Union, types.UnionType):
+        args = [t for t in get_args(tp) if t is not type(None)]
+        if len(args) == 1:
+            return args[0]
+    return tp
+
+def safe_cast(val, target_type, default=None):
+    """
+    Attempts to cast val to the given target_type, handling common types and Optionals.
+    Returns default if casting fails.
+    """
+    import ast
+    target_type = unwrap_optional_type(target_type)
+    if val is None:
+        return default
+    try:
+        if target_type is bool:
+            if isinstance(val, str):
+                return val.lower() in ("true", "1", "yes", "on", "y")
+            return bool(val)
+        if target_type is int:
+            return int(val)
+        elif target_type is float:
+            return float(val)
+        elif target_type is str:
+            return str(val)
+        elif target_type in (list, dict):
+            return ast.literal_eval(val)
+        return target_type(val)
+    except Exception as e:
+        from utils.logger import error
+        error(f"[safe_cast] Failed to cast {val!r} to {target_type}: {e}")
+        return default
+
 def findfile(file_param):
     """
     Check if a file exists with or without a path.
