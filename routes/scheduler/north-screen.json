@@ -120,172 +120,12 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "The Sublime and Monstrous Ocean",
-        "_b_theme": "The Mystical and Menacing Jungle",
-        "_style": "Surrealist collage in the style of Max Ernst",
-        "_guidance": "Create an image with a focus on contrasting interpretations of ocean and jungle themes, employing Ernst's Surrealist collage techniques. Use history to ensure each depiction remains fresh and distinct.",
-        "prompt": "Surreal tidal wave of intertwining tree canopies, vibrant marine life soaring through lush foliage, Max Ernst-inspired collage blending oceanic grandeur with jungle mystique.",
+        "_a_theme": "Tamed Gardens - Pristine Horticulture",
+        "_b_theme": "Wild Gardens - Overgrown Luxury",
+        "_style": "Baroque tapestry-inspired compositions",
+        "_guidance": "Select diverse garden scenes that encompass both riotous, untamed growth and meticulous, controlled elegance. Render these using the intricate and ornate qualities of Baroque tapestry, ensuring freshness by referencing recent image history to avoid similar depictions.",
+        "prompt": "Baroque tapestry-style garden: sprawling rose labyrinth entwined with ivy, hidden sundial at center, ambient candlelight glow reflecting on intricate floral patterns, merging wild charm and refined symmetry.",
         "history_var": [
-          {
-            "timestamp": "2025-05-14 11:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Aerial shot of defunct shipping containers transformed into vibrant community hubs, colorful walls blending with nature, embodying regeneration within industrial decay, in Burtynsky's detailed approach."
-            },
-            "text_input": "'Joyful Urban Resurgence' in the style of 'Edwa...",
-            "explanation": "I depicted an aerial view of repurposed shipping containers, focusing on their transformation int..."
-          },
-          {
-            "timestamp": "2025-05-14 21:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Elevated railway bridges overtaken by lush urban farms, intertwining verdant growth and weathered steel beneath clear blue skies, emulating nature\u2019s triumph over industrial past in Burtynsky's aerial grandeur."
-            },
-            "text_input": "'Joyful Urban Resurgence' in the style of 'Edwa...",
-            "explanation": "I focused on the transformation of elevated railway bridges into urban farms, a subject distinct ..."
-          },
-          {
-            "timestamp": "2025-05-15 06:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Shadowy alleyways bustling with neon-lit market stalls, vendors in AI-driven pop-up kiosks, blending cyberpunk vibrancy and derelict charm in a Blade Runner-esque city-vignette."
-            },
-            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
-            "explanation": "I chose to focus on an urban marketplace with neon lights reflecting a futuristic vibe, as oppose..."
-          },
-          {
-            "timestamp": "2025-05-15 07:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Glistening rain-soaked streets with revitalized modular buildings shimmering with augmented reality signage, combining urban renewal's sleekness and Blade Runner's dimly lit futuristic ambiance."
-            },
-            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
-            "explanation": "I depicted rain-soaked streets and revitalized modular buildings with augmented reality, focusing..."
-          },
-          {
-            "timestamp": "2025-05-15 08:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Futuristic revitalized art district in a dystopian city, blending holographic projections with decaying concrete, vibrant street murals guiding visitors through narrow, neon-lit alleyways."
-            },
-            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
-            "explanation": "This prompt focuses on an art district within a dystopian city, emphasizing the merging of futuri..."
-          },
-          {
-            "timestamp": "2025-05-15 09:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Futuristic urban plaza with vertical gardens climbing shattered skyscrapers, digital screens flickering amidst greenery, duality of technology and nature's resilience in a Blade Runner-esque atmosphere."
-            },
-            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
-            "explanation": "I focused on a futuristic urban plaza blending digital and natural elements, avoiding previous se..."
-          },
-          {
-            "timestamp": "2025-05-15 10:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "A labyrinthine network of suspended walkways woven through derelict skyscrapers, kinetic sculptures and green pods clinging, evoking a regenerated vertical cityscape in Blade Runner style."
-            },
-            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
-            "explanation": "I focused on creating a vertically interconnected cityscape with walkways and sculptures, distinc..."
-          },
-          {
-            "timestamp": "2025-05-15 11:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Monolithic structures with transparent biomes emerging from dust coated ruins, faint crimson glow illuminating new life within traditional dystopian skyline, evoking enigmatic renewal."
-            },
-            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
-            "explanation": "I chose monolithic structures with biomes, accentuating renewal within a dystopian context. Avoid..."
-          },
-          {
-            "timestamp": "2025-05-15 12:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Futuristic train station cloaked in morning fog, skeletal structures blending with sleek monorails, soft neon highlighting a juxtaposition of decay and modern renewal."
-            },
-            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
-            "explanation": "By focusing on a futuristic train station enveloped in morning fog, this prompt highlights the th..."
-          },
-          {
-            "timestamp": "2025-05-15 13:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Renovated urban amphitheater with crumbling facades, holographic performers on stage, digital rain cascading overhead, blending historic decay and futuristic revival in a Blade Runner-style atmosphere."
-            },
-            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
-            "explanation": "I chose a unique perspective by focusing on an urban amphitheater with holographic elements rathe..."
-          },
-          {
-            "timestamp": "2025-05-15 14:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Grand domed greenhouse amid a dystopian concrete sprawl; verdant flora encased under shattered glass, neon ethereal mist seeping through cracks, rebirth amidst urban decay."
-            },
-            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
-            "explanation": "I avoided repeating subjects by envisioning a greenhouse encapsulated in a decaying concrete land..."
-          },
-          {
-            "timestamp": "2025-05-15 15:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Futuristic solarium built atop a skeletal factory framework, vibrant biospheres glowing beneath transparent solar panels, a symbiotic dance of decay and innovation under a crimson-hued sky."
-            },
-            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
-            "explanation": "I imagined a solarium constructed on a derelict factory structure, focusing on the interplay betw..."
-          },
-          {
-            "timestamp": "2025-05-15 16:00:02",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Abandoned cathedral reimagined with luminescent graphene walls and drone-tended vertical farms, light casts cybernetic shadows across gothic arches, reflecting dystopian transformation and renewal."
-            },
-            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
-            "explanation": "I focused on the iconic structural form of a cathedral, specifically its gothic architectural det..."
-          },
-          {
-            "timestamp": "2025-05-15 17:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Floating megastructure hovering over decayed urban ruins, interconnected domes support self-sustaining ecosystems, phosphorescent ambiance merging dystopian desolation with vibrant renewal."
-            },
-            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
-            "explanation": "I chose a floating megastructure concept distinct from past prompts to avoid repetition. This ima..."
-          },
-          {
-            "timestamp": "2025-05-15 18:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Futuristic mausoleum within a decaying cityscape, mirrored surfaces reflect tech advancements and skeletal remains, glowing bioluminescent flora scattered among rusted monuments, symbolizing renewal in dystopia."
-            },
-            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
-            "explanation": "I focused on a futuristic mausoleum to depict both decay and renewal, using mirrored surfaces for..."
-          },
-          {
-            "timestamp": "2025-05-15 19:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Vibrant jungle intertwined with oceanic remnants; surreal creatures blend flora and water forms, ethereal pathways and coralline-trees illustrating the eerie fusion using Max Ernst collage style."
-            },
-            "text_input": "'The Mystical and Menacing Jungle' in the style...",
-            "explanation": "I crafted a prompt depicting the blending of jungle and ocean by focusing on the fusion and trans..."
-          },
           {
             "timestamp": "2025-05-15 20:00:00",
             "type": "reason",
@@ -325,145 +165,169 @@
             },
             "text_input": "'The Sublime and Monstrous Ocean' in the style ...",
             "explanation": "The prompt focuses on a tidal wave composed of tree canopies and marine life, avoiding static ele..."
+          },
+          {
+            "timestamp": "2025-05-16 06:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Enchanted wild garden with baroque tapestry detail; cascading fountains, symmetrically pruned roses contrast untamed lavender fields, golden hour light enhancing opulence and natural beauty."
+            },
+            "text_input": "'Wild Gardens - Overgrown Luxury' in the style ...",
+            "explanation": "The prompt combines the intricate style of Baroque tapestry with the theme of wild yet luxurious ..."
+          },
+          {
+            "timestamp": "2025-05-16 07:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Ornate tapestry garden scene with vivid tulip beds, maze-like yew hedges, untamed ivy arbors, capturing Baroque opulence and nature's balance, enriched by soft dawn illumination."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "To create a unique prompt, I depicted a garden scene without fountains or roses, focusing on tuli..."
+          },
+          {
+            "timestamp": "2025-05-16 08:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Lush garden tapestry scene: exuberant sunlit wildflowers opposing perfectly geometric boxwood hedges, butterflies fluttering among them, evoking Baroque artistry's dynamic contrasts."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "I avoided duplication by focusing on elements not previously mentioned, such as boxwood hedges an..."
+          },
+          {
+            "timestamp": "2025-05-16 09:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Exquisite wild garden tapestry with labyrinthine vine tunnels, sumptuous peony haloes; exotic birds with iridescent feathers, Baroque opulence celebrating structural chaos and symmetry."
+            },
+            "text_input": "'Wild Gardens - Overgrown Luxury' in the style ...",
+            "explanation": "I focused on vine tunnels and peony haloes to create a unique scene, avoiding references to casca..."
+          },
+          {
+            "timestamp": "2025-05-16 10:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Intricate garden tapestry depicting elegant serpentine labyrinths of topiary with wild climbing roses; gentle autumnal hues, and radiant sunlight casting dramatic Baroque shadows."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "I focused on labyrinthine topiary and climbing roses, which weren't present in the specified rece..."
+          },
+          {
+            "timestamp": "2025-05-16 11:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Colorful garden tapestry with secluded vine-enclosed gazebo, harmonious wildflower borders and manicured pathways, sunlight filtering through tree canopies, embodying Baroque's lush intricacies."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "I depicted a secluded gazebo encapsulated by nature, focusing on vine enclosures and harmonious c..."
+          },
+          {
+            "timestamp": "2025-05-16 12:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baroque tapestry garden scene with vibrant, festooned apple orchard, wild poppies sprawling beneath, heavenly cherubs tending blossoms, radiating textures imbued with nature's exuberance and cultivated artistry."
+            },
+            "text_input": "'Wild Gardens - Overgrown Luxury' in the style ...",
+            "explanation": "To ensure uniqueness, I focused on an orchard setting with poppies and cherubs, avoiding previous..."
+          },
+          {
+            "timestamp": "2025-05-16 13:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Majestic Baroque tapestry garden: secluded lotus pond surrounded by wild wisteria and sculpted marble statues, celestial light creating a serene interplay of untamed beauty and crafted elegance."
+            },
+            "text_input": "'Wild Gardens - Overgrown Luxury' in the style ...",
+            "explanation": "I avoided previous themes by selecting a lotus pond scene flanked by wisteria and statues, elemen..."
+          },
+          {
+            "timestamp": "2025-05-16 14:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baroque-inspired garden tapestry: cascading terraces of blooming camellias interwoven with ivy tendrils, classical sculptures peeking through, gentle rain adding mystical sheen."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "I focused on the interplay between cascading terraces and camellias, a novel choice distinct from..."
+          },
+          {
+            "timestamp": "2025-05-16 15:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baroque tapestry-inspired garden scene of tranquil Japanese garden; crafted bonsai trees among vivid, unkempt rhododendron bushes, reflective koi ponds, soft twilight glow enhances textured elegance."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "To craft a unique prompt, I selected a Japanese garden setting, focusing on bonsai trees and koi ..."
+          },
+          {
+            "timestamp": "2025-05-16 16:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baroque-inspired tapestry: secluded Victorian greenhouse crowned with climbing jasmine, verdant topiary peacocks amidst irises, autumn light casting intricate shadow plays."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "I focused on an enclosed greenhouse scene to evoke a sanctuary of growth, distinguishing it from ..."
+          },
+          {
+            "timestamp": "2025-05-16 17:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baroque tapestry garden: a curved reflective lily pond encircled by opulent flower arches, thick ferns, and lush grasses, bathed in warm afternoon glow."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "By focusing on reflective water elements like a lily pond with flower arches, I created a unique ..."
+          },
+          {
+            "timestamp": "2025-05-16 18:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baroque tapestry-inspired garden: cascading bougainvillea on tiered stone walls, mingling with wild violets, hummingbirds darting through, capturing nature's structured chaos and ornate elegance."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "I focused on bougainvillea and tiered stone walls to diversify the imagery, a departure from prev..."
+          },
+          {
+            "timestamp": "2025-05-16 19:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baroque tapestry-inspired image of tranquil Zen garden: balanced stone formations among riotous clover carpets and curled maple leaves, serene koi swimming beneath intricate lily pads."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "I chose a Zen garden setting to differentiate it from previous European-focused prompts, incorpor..."
+          },
+          {
+            "timestamp": "2025-05-16 20:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baroque tapestry-inspired scene: a majestic sunlit courtyard with orange trees in ornate ceramic pots, their blossoms amid wild lavender bursts, evoking opulent charm and unbridled energy."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "I went with a courtyard setting, featuring orange trees juxtaposed with wild lavender for contras..."
+          },
+          {
+            "timestamp": "2025-05-16 21:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baroque tapestry-style garden: sprawling rose labyrinth entwined with ivy, hidden sundial at center, ambient candlelight glow reflecting on intricate floral patterns, merging wild charm and refined symmetry."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "I focused on a rose labyrinth as a unique garden element, contrasting with previous settings like..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2025-05-14 11:00:01",
-            "type": "generation",
-            "prompt": "Aerial shot of defunct shipping containers tran...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f095fb05-1117-48e0-be09-2b0d374d4a09-e1/402e7cfe.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T100123Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b8e9abb8957a479e761d13fd285af5d9b8ea410107da8009af16be33ae43deef"
-          },
-          {
-            "timestamp": "2025-05-14 21:00:01",
-            "type": "generation",
-            "prompt": "Elevated railway bridges overtaken by lush urba...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/52c1e553-f24f-4170-a3c8-0ce85c74d670-e1/307b24c4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T200118Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=fa41acf06f0b78e8992606205000f38336aa8cc56ddb87c049d23f551f9610e7"
-          },
-          {
-            "timestamp": "2025-05-15 06:00:00",
-            "type": "generation",
-            "prompt": "Shadowy alleyways bustling with neon-lit market...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/35308467-19c1-47be-8f2a-27ac36b2b81b-e1/366effad.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T050057Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2a4626b9438fb33f7127e1d0ba39b3f095e86853db77a8da639c02254695a335"
-          },
-          {
-            "timestamp": "2025-05-15 07:00:01",
-            "type": "generation",
-            "prompt": "Glistening rain-soaked streets with revitalized...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/fcd4b8fd-9a4f-4870-bfac-28622e39ee0f-e1/03ec8063.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T060050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=8a8c532df3d3a87ef23f577e03146582bd9e2ea51f569bbca85d280212db0d98"
-          },
-          {
-            "timestamp": "2025-05-15 08:00:00",
-            "type": "generation",
-            "prompt": "Futuristic revitalized art district in a dystop...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f51f5bdb-a754-4940-bedf-ea2337704460-e1/edda71e6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T070047Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4e388c7b39779ec6a56b9a7a4c7795881d4270f2dab74de65d69bcfa48602ff4"
-          },
-          {
-            "timestamp": "2025-05-15 09:00:00",
-            "type": "generation",
-            "prompt": "Futuristic urban plaza with vertical gardens cl...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8a8844b8-9eeb-49d4-8b71-476fa986577d-e1/fad86dfe.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T080028Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=13139271b05565f2365dae0ec9070ad8b6f74c8f20776dbeff255111bc3f9faf"
-          },
-          {
-            "timestamp": "2025-05-15 10:00:01",
-            "type": "generation",
-            "prompt": "A labyrinthine network of suspended walkways wo...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e688b5bc-1f02-4873-ac9b-87ce7571e166-e1/0b0f5ca1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T090106Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9582d0a148ad64698e4860a9d2948082177f320294c7346bba1ca48f4f2edf23"
-          },
-          {
-            "timestamp": "2025-05-15 11:00:01",
-            "type": "generation",
-            "prompt": "Monolithic structures with transparent biomes e...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/87a50453-82fa-40ac-be8e-1c07e9317a30-e1/4a767a6a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T100034Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=cf0fe25059caa98bb8a6ee511b176487301ae44f9f796369613d978958b9ddce"
-          },
-          {
-            "timestamp": "2025-05-15 12:00:01",
-            "type": "generation",
-            "prompt": "Futuristic train station cloaked in morning fog...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/14933ef8-adf4-493d-af91-b97d7e27fb9e-e1/e9552133.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T110050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b41a5d0daed5c30128cb4118608cab48a4bf31f16cab91f4cb28fa7e159bebb8"
-          },
-          {
-            "timestamp": "2025-05-15 13:00:00",
-            "type": "generation",
-            "prompt": "Renovated urban amphitheater with crumbling fac...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d3ce46f6-e7a3-488a-940d-4728cb65753d-e1/f9b514a2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T120131Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=30429cf40db214c1c43cc856dca6bd03575da3696846369f823f7e97eb8a1d20"
-          },
-          {
-            "timestamp": "2025-05-15 14:00:00",
-            "type": "generation",
-            "prompt": "Grand domed greenhouse amid a dystopian concret...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b00a1d2f-4af0-4a44-a212-33fd8d3f562d-e1/36ede7b8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T130052Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=959d339a0eef83b1d358789306509822ca1492d5fe6fa838983045a375cd34a6"
-          },
-          {
-            "timestamp": "2025-05-15 15:00:01",
-            "type": "generation",
-            "prompt": "Futuristic solarium built atop a skeletal facto...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/6252b98a-10d1-4be4-baba-1e8ef6b205c2-e1/4d2d427e.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T140037Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0d4de445622ef75bfb0ed17ae764fb49ef74cf1ec76099e668e337dcacb32bd2"
-          },
-          {
-            "timestamp": "2025-05-15 16:00:02",
-            "type": "generation",
-            "prompt": "Abandoned cathedral reimagined with luminescent...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/31846cd4-31d1-45b7-b05d-70d05c9ed458-e1/bcb4267b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T150114Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=589f3a9e84956113f6c5eef267d420a0e824f7cfbc6a9db3f54154001e110b66"
-          },
-          {
-            "timestamp": "2025-05-15 17:00:01",
-            "type": "generation",
-            "prompt": "Floating megastructure hovering over decayed ur...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ef8d6f1a-433d-4ae5-8197-7a4051289046-e1/c6a92dd7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T160225Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9aa5e7ba8b05a97e5b77cc90b495b974fb47f332e70984c01272addb8733c200"
-          },
-          {
-            "timestamp": "2025-05-15 18:00:01",
-            "type": "generation",
-            "prompt": "Futuristic mausoleum within a decaying cityscap...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4d224dec-ece9-4554-abeb-bb46eb54a955-e1/f0028f7b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T170110Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6052601ac92675eab4679e17e96684bec8d77f2a3a5132d9f0802f613cf20d06"
-          },
-          {
-            "timestamp": "2025-05-15 19:00:01",
-            "type": "generation",
-            "prompt": "Vibrant jungle intertwined with oceanic remnant...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a0048884-0c17-46c0-bcc4-951091f0a5d0-e1/2202cf56.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T180117Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=720048473f3c278111f8cdd63632f75ff5bae23d473dc36addcf50aa58c67b82"
-          },
-          {
-            "timestamp": "2025-05-15 20:00:00",
-            "type": "generation",
-            "prompt": "Surrealist seascape collage with oceanic dreadn...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7034c31c-8e1a-42f3-b932-d626aa15bdeb-e1/803435f8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T190055Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=569a7ace30141dc6de87614836c9ab0e745ce3ce1edffa2e7e64cc147de2fea9"
-          },
           {
             "timestamp": "2025-05-15 21:00:01",
             "type": "generation",
@@ -487,81 +351,145 @@
             "refiner": "curator",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4166345c-1370-4419-8a56-0502d1283d2d-e1/ac7c27e9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T220109Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e2fd185f356d978f76cb5c54d7707f2288e961cec1858f284986b77cf34ba300"
+          },
+          {
+            "timestamp": "2025-05-16 06:00:08",
+            "type": "generation",
+            "prompt": "Enchanted wild garden with baroque tapestry det...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a6fd2fec-679e-43f2-99f5-1f94752c0c1d-e1/7ecf4bc1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T050053Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d1b1ef7d25a43f0a895ac6a546efae46c520ad577e45da7867e04a12d3b72395"
+          },
+          {
+            "timestamp": "2025-05-16 07:00:05",
+            "type": "generation",
+            "prompt": "Ornate tapestry garden scene with vivid tulip b...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/746c5b2d-6fb3-4bc7-a38c-79ef8c2b30e5-e1/327dce62.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T060051Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f245c1bc166030f48fb6d476564a7b2b762167eedf66b472a77a90107ca83369"
+          },
+          {
+            "timestamp": "2025-05-16 08:00:05",
+            "type": "generation",
+            "prompt": "Lush garden tapestry scene: exuberant sunlit wi...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/01181a50-c866-401a-ae87-ce561e21b688-e1/97c0a3c2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T070050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=06dd8f53a511bfa5348b9776f1ad5a832f8ae6e202c32ec6480b74acf2f5dabe"
+          },
+          {
+            "timestamp": "2025-05-16 09:00:06",
+            "type": "generation",
+            "prompt": "Exquisite wild garden tapestry with labyrinthin...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/3a1cc77a-0a70-4703-9eee-685308a2fc47-e1/427d3cab.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T080104Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=22a9c84ddd9e9addc0e66514973858c50ef00d4df0b88a0759304b64b72342b6"
+          },
+          {
+            "timestamp": "2025-05-16 10:00:05",
+            "type": "generation",
+            "prompt": "Intricate garden tapestry depicting elegant ser...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a5067821-f6b2-4274-a792-f0136e66fb5b-e1/b7db3bb1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T090104Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=61af6bd49f116e263424440fcd43ebc54e092467b7eeaa93ee21d9d0c2968a18"
+          },
+          {
+            "timestamp": "2025-05-16 11:00:07",
+            "type": "generation",
+            "prompt": "Colorful garden tapestry with secluded vine-enc...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/5294b181-3920-4336-8911-101a9df19d5d-e1/8b9e8848.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T100031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=45f558940cea0edadabfd0ea2b4d18e3d24f0738904c7b7b241bdf20e5319b82"
+          },
+          {
+            "timestamp": "2025-05-16 12:00:05",
+            "type": "generation",
+            "prompt": "Baroque tapestry garden scene with vibrant, fes...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9f2b7dda-41fa-4c61-afa5-7a1571414d64-e1/eeeeaa76.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T110045Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a059d06ed39b894a23a8b53b38c2f4d26c73ba59bc3f2d5ba431b363e79592b1"
+          },
+          {
+            "timestamp": "2025-05-16 13:00:05",
+            "type": "generation",
+            "prompt": "Majestic Baroque tapestry garden: secluded lotu...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d1ff9957-e8bc-4d05-9c61-94f2c5836027-e1/58834c6d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T120034Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=25cd7e466d3ed1e12edd19520779cdcae61c7f5f2c4685f9322bd7ffab319ee8"
+          },
+          {
+            "timestamp": "2025-05-16 14:00:05",
+            "type": "generation",
+            "prompt": "Baroque-inspired garden tapestry: cascading ter...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/32d488ac-4520-48ea-8866-bd4da3d7c140-e1/6e6186cd.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T130045Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=414b97d272b3130acc79adf49b04c58e7161d9ddb1c124edb8027e3aa7365e81"
+          },
+          {
+            "timestamp": "2025-05-16 15:00:06",
+            "type": "generation",
+            "prompt": "Baroque tapestry-inspired garden scene of tranq...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a9e9ec06-5b29-4335-a199-d2d2d945a842-e1/4d85a6f4.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T140055Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=78cf7ee2341dadee70abf262c65c772b2bc54fe979aa600fab93301850c4ba73"
+          },
+          {
+            "timestamp": "2025-05-16 16:00:05",
+            "type": "generation",
+            "prompt": "Baroque-inspired tapestry: secluded Victorian g...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/994a1a46-dbcd-45a9-b939-66c9adc946b3-e1/5c0ac5ff.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T150042Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e9d93e6f2a9bc56e88ab0a8b17785c90115e335a7a98203183c27d2952989ad7"
+          },
+          {
+            "timestamp": "2025-05-16 17:00:06",
+            "type": "generation",
+            "prompt": "Baroque tapestry garden: a curved reflective li...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ff738d9b-485a-4394-bffd-8a19ac015dad-e1/d4c83289.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T160034Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=470af9f42f44779088b7f77dbe881553fac5a4d1486866f82a33af58ab5a99ba"
+          },
+          {
+            "timestamp": "2025-05-16 18:00:05",
+            "type": "generation",
+            "prompt": "Baroque tapestry-inspired garden: cascading bou...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0dfc8f53-427f-4165-8229-6edab72dd048-e1/99056e84.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T170050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f324fb3ba141264388b6264c1535098fdb44aac34d2c6580d5773f217a101d97"
+          },
+          {
+            "timestamp": "2025-05-16 19:00:07",
+            "type": "generation",
+            "prompt": "Baroque tapestry-inspired image of tranquil Zen...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a322e2d3-f5c5-4bad-b918-27490e5aada6-e1/ec824c88.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T180029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=fac900fa547493ac0bac09948c914383db3361afa2a75bac72b17d862780e8da"
+          },
+          {
+            "timestamp": "2025-05-16 20:00:07",
+            "type": "generation",
+            "prompt": "Baroque tapestry-inspired scene: a majestic sun...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/63832f3a-567e-468e-93a2-1b2c407a303f-e1/0c177de9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T190059Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=30ee0700321a3c0573e72f5ee97cb63dff9514e353167b6733fa052b68bf0abc"
+          },
+          {
+            "timestamp": "2025-05-16 21:00:05",
+            "type": "generation",
+            "prompt": "Baroque tapestry-style garden: sprawling rose l...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/966d6e34-ff29-49bd-9f1c-fedd22bff59c-e1/7749c2fd.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T200049Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f96984d796200ae792145bff9b13f07984adfad0420217bfc936bb6ef830ea2a"
+          },
+          {
+            "timestamp": "2025-05-16 22:00:09",
+            "type": "generation",
+            "prompt": "Baroque tapestry-style garden: sprawling rose l...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e13a958d-16aa-47d3-808b-60642202ba37-e1/9d4311e1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T210104Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=432c80ad8d79fcc12620267c30aa6778d4e395c416f7d14409a290c501dee0d0"
           }
         ],
         "animation_history": [
-          {
-            "timestamp": "2025-05-13 08:05:01",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/dbf18b69-94ee-42d3-8d57-3c10dcb4d814-e1/5f7337a5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250513%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250513T070050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2d514612f96e768532d06c7c21064a50243eb5049ec6bcad4d75d2f8a8be7d33",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-13 10:05:00",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "[image_path]",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-13 12:05:01",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/db0b6c12-33c6-4c47-b4b2-06f9e2c14621-e1/f79d58aa.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250513%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250513T110048Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b4d820778120184be65f4ec7ab273b8b08fa0b61ccf07e12c958dee1510f7a46",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-13 14:05:01",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7a32798c-89d1-44f3-8023-336b27341ade-e1/4a7c442e.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250513%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250513T130052Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d263e61c81b58b00815ab388e8276599df07a34c3693d405ef26647185c7bb98",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-13 16:05:00",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9c0517b9-d51f-49e9-90e1-bb8effb1df52-e1/c3f0b67a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250513%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250513T150125Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6534869ab58c1a31f3ad22e6eebe0216a310672dddd893b26b2bf8a6875d6447",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-13 18:05:01",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "[image_path]",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-13 20:05:00",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e0a1e82d-164c-40c2-a97a-2d9aab72210d-e1/02d94da3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250513%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250513T190056Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9aa18c6f34350b0ea735b68734452aa921a8d3bf9c35df33a6248773b8b37ff2",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-13 22:05:00",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/13853d65-892d-4817-a96c-843e2158e73f-e1/694fb68a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250513%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250513T210030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d644e9985e40620632d247246f68d976674f9d5f3010f5631369b1808aa8f3c6",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-14 06:05:00",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/447912c2-12ee-4f6a-a8b6-1a4dba7cf1de-e1/e164030e.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T050121Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6a17be17324a75789e68121825dceb358097e64e7daedc0113181077ff104a6b",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
           {
             "timestamp": "2025-05-14 08:05:01",
             "type": "animation",
@@ -649,15 +577,87 @@
             "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/dd81c1fd-b4b0-448f-a261-afd5840567e2-e1/4a82cea5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T210052Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e43edb28c8a104db06d92f675514ff030053e8e98b049a0759e6ee05433063c4",
             "refiner": "animator",
             "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 06:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a6fd2fec-679e-43f2-99f5-1f94752c0c1d-e1/7ecf4bc1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T050053Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d1b1ef7d25a43f0a895ac6a546efae46c520ad577e45da7867e04a12d3b72395",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 08:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/01181a50-c866-401a-ae87-ce561e21b688-e1/97c0a3c2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T070050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=06dd8f53a511bfa5348b9776f1ad5a832f8ae6e202c32ec6480b74acf2f5dabe",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 10:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a5067821-f6b2-4274-a792-f0136e66fb5b-e1/b7db3bb1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T090104Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=61af6bd49f116e263424440fcd43ebc54e092467b7eeaa93ee21d9d0c2968a18",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 12:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9f2b7dda-41fa-4c61-afa5-7a1571414d64-e1/eeeeaa76.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T110045Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a059d06ed39b894a23a8b53b38c2f4d26c73ba59bc3f2d5ba431b363e79592b1",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 14:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/32d488ac-4520-48ea-8866-bd4da3d7c140-e1/6e6186cd.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T130045Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=414b97d272b3130acc79adf49b04c58e7161d9ddb1c124edb8027e3aa7365e81",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 16:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/994a1a46-dbcd-45a9-b939-66c9adc946b3-e1/5c0ac5ff.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T150042Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e9d93e6f2a9bc56e88ab0a8b17785c90115e335a7a98203183c27d2952989ad7",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 18:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0dfc8f53-427f-4165-8229-6edab72dd048-e1/99056e84.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T170050Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f324fb3ba141264388b6264c1535098fdb44aac34d2c6580d5773f217a101d97",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 20:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/63832f3a-567e-468e-93a2-1b2c407a303f-e1/0c177de9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T190059Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=30ee0700321a3c0573e72f5ee97cb63dff9514e353167b6733fa052b68bf0abc",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 22:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e13a958d-16aa-47d3-808b-60642202ba37-e1/9d4311e1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T210104Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=432c80ad8d79fcc12620267c30aa6778d4e395c416f7d14409a290c501dee0d0",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4166345c-1370-4419-8a56-0502d1283d2d-e1/ac7c27e9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T220109Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e2fd185f356d978f76cb5c54d7707f2288e961cec1858f284986b77cf34ba300"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e13a958d-16aa-47d3-808b-60642202ba37-e1/9d4311e1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T210104Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=432c80ad8d79fcc12620267c30aa6778d4e395c416f7d14409a290c501dee0d0"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-16T03:16:53.261110",
+  "last_updated": "2025-05-16T22:05:01.320559",
   "last_trigger_executions": {
     "1e41f37db26e89ac37d55f3771482626_2025-05-15_13": "2025-05-15T19:00:01.432280",
     "1e41f37db26e89ac37d55f3771482626_2025-05-15_14": "2025-05-15T20:00:00.337484",
@@ -665,7 +665,33 @@
     "1e41f37db26e89ac37d55f3771482626_2025-05-15_15": "2025-05-15T21:00:01.580128",
     "1e41f37db26e89ac37d55f3771482626_2025-05-15_16": "2025-05-15T22:00:00.841523",
     "8b0160f252dc1affd80c933c62e85005_2025-05-15_8": "2025-05-15T22:05:00.270647",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_17": "2025-05-15T23:00:00.999365"
+    "1e41f37db26e89ac37d55f3771482626_2025-05-15_17": "2025-05-15T23:00:00.999365",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_0": "2025-05-16T06:00:00.803290",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-16_0": "2025-05-16T06:05:00.478640",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_1": "2025-05-16T07:00:00.903234",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_2": "2025-05-16T08:00:01.846844",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-16_1": "2025-05-16T08:05:01.594809",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_3": "2025-05-16T09:00:01.914717",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_4": "2025-05-16T10:00:02.013313",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-16_2": "2025-05-16T10:05:01.112363",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_5": "2025-05-16T11:00:00.303839",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_6": "2025-05-16T12:00:00.231298",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-16_3": "2025-05-16T12:05:00.500787",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_7": "2025-05-16T13:00:00.912191",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_8": "2025-05-16T14:00:00.895182",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-16_4": "2025-05-16T14:05:01.771816",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_9": "2025-05-16T15:00:00.763249",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_10": "2025-05-16T16:00:00.234614",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-16_5": "2025-05-16T16:05:01.041028",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_11": "2025-05-16T17:00:01.805328",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_12": "2025-05-16T18:00:00.909121",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-16_6": "2025-05-16T18:05:01.131323",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_13": "2025-05-16T19:00:01.709713",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_14": "2025-05-16T20:00:01.138891",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-16_7": "2025-05-16T20:05:01.017452",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_15": "2025-05-16T21:00:00.213985",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_16": "2025-05-16T22:00:00.366074",
+    "8b0160f252dc1affd80c933c62e85005_2025-05-16_8": "2025-05-16T22:05:01.136248"
   },
   "active_events": {},
   "event_history": [

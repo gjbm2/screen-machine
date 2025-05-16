@@ -1,15 +1,12 @@
 {
   "schedule_stack": [
     {
-      "final_actions": {
-        "instructions_block": []
-      },
       "initial_actions": {
         "instructions_block": []
       },
-      "prevent_unload": true,
       "triggers": [
         {
+          "type": "day_of_week",
           "days": [
             "Monday",
             "Tuesday",
@@ -21,9 +18,6 @@
           ],
           "scheduled_actions": [
             {
-              "repeat_schedule": {
-                "every": "60"
-              },
               "time": "06:00",
               "trigger_actions": {
                 "instructions_block": [
@@ -70,13 +64,16 @@
                     "refiner": "curator"
                   }
                 ]
+              },
+              "repeat_schedule": {
+                "every": "60"
               }
             },
             {
               "repeat_schedule": {
                 "every": "120"
               },
-              "time": "06:05",
+              "time": "07:05",
               "trigger_actions": {
                 "instructions_block": [
                   {
@@ -87,10 +84,11 @@
                 ]
               }
             }
-          ],
-          "type": "day_of_week"
+          ]
         },
         {
+          "type": "event",
+          "value": "Blank",
           "trigger_actions": {
             "instructions_block": [
               {
@@ -98,11 +96,11 @@
                 "show": "Blank"
               }
             ]
-          },
-          "type": "event",
-          "value": "Blank"
+          }
         },
         {
+          "type": "event",
+          "value": "Random",
           "trigger_actions": {
             "instructions_block": [
               {
@@ -110,132 +108,24 @@
                 "show": "Random"
               }
             ]
-          },
-          "type": "event",
-          "value": "Random"
+          }
         }
-      ]
+      ],
+      "final_actions": {
+        "instructions_block": []
+      },
+      "prevent_unload": true
     }
   ],
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "The Sublime and Monstrous Ocean",
-        "_b_theme": "The Mystical and Menacing Jungle",
-        "_style": "Surrealist collage in the style of Max Ernst",
-        "_guidance": "Create an image with a focus on contrasting interpretations of ocean and jungle themes, employing Ernst's Surrealist collage techniques. Use history to ensure each depiction remains fresh and distinct.",
-        "prompt": "Jungle landscape where ocean waves morph into dense foliage, animistic figures emerged from undergrowth with subtle translucent aquatic elements, a surrealist collage by Max Ernst.",
+        "_a_theme": "Tamed Gardens - Pristine Horticulture",
+        "_b_theme": "Wild Gardens - Overgrown Luxury",
+        "_style": "Baroque tapestry-inspired compositions",
+        "_guidance": "Select diverse garden scenes that encompass both riotous, untamed growth and meticulous, controlled elegance. Render these using the intricate and ornate qualities of Baroque tapestry, ensuring freshness by referencing recent image history to avoid similar depictions.",
+        "prompt": "Serene riverside garden with rampant willow branches cascading over water, contrasted by meticulously arranged tulip beds; Baroque tapestry style captures flowing movement and balanced precision.",
         "history_var": [
-          {
-            "timestamp": "2025-05-14 09:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Aerial view of a post-apocalyptic amusement park, rusted rides tangled with vines, contrasting memories of fun with melancholy decline, captured in Burtynsky\u2019s dramatic style."
-            },
-            "text_input": "'Melancholic Modern Ruins' in the style of 'Edw...",
-            "explanation": "The prompt focuses on an amusement park, a unique choice not covered previously. It combines mode..."
-          },
-          {
-            "timestamp": "2025-05-14 21:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Aerial shot of neglected highways in a desert, overgrown with wildflowers. Burtynsky\u2019s perspective captures the tension between desolation and unexpected beauty."
-            },
-            "text_input": "'Melancholic Modern Ruins' in the style of 'Edw...",
-            "explanation": "I chose highways in the desert, focusing on a stark contrast between artificial infrastructure an..."
-          },
-          {
-            "timestamp": "2025-05-15 06:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Beneath looming neon skyscrapers, an overgrown plaza choked with vines, robotic drones weaving between faded billboards, capturing eerie calm in vibrant, dystopian hues."
-            },
-            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
-            "explanation": "I avoided previous prompts by focusing on a street-level view of a futuristic plaza with overgrow..."
-          },
-          {
-            "timestamp": "2025-05-15 07:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Nighttime view of submerged city ruins, bioluminescent fungi creating an ethereal glow, echoes of past life amidst futuristic urban decay, cinematic Blade Runner-inspired ambiance."
-            },
-            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
-            "explanation": "I chose a subaquatic urban environment illuminated by bioluminescent fungi, providing a setting d..."
-          },
-          {
-            "timestamp": "2025-05-15 08:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Futuristic cityscape with towering neon-lit facades, bustling markets alongside algae-covered relics, drones patrolling vibrant streets, embodying dystopian renewal's paradoxical aesthetics."
-            },
-            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
-            "explanation": "I focused on a vibrant, activity-filled view featuring neon-lit markets contrasting with remnants..."
-          },
-          {
-            "timestamp": "2025-05-15 09:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Fog-drenched dystopian canal snaking through revitalized ruins, hanging gardens drape from skeletal towers, illuminating satellite reflections on still waters, evoking serene resilience amid Blade Runner-inspired shadows."
-            },
-            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
-            "explanation": "To differentiate from previous prompts, I focused on a dystopian urban canal setting. Hanging gar..."
-          },
-          {
-            "timestamp": "2025-05-15 10:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "A domed greenhouse nestled in decaying factory ruins, juxtaposing lush hydroponic gardens with rusting metal, beneath neon skies, encapsulating hope amidst dystopian shadow."
-            },
-            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
-            "explanation": "I avoided duplication by concentrating on a greenhouse scene rather than sprawling urban views or..."
-          },
-          {
-            "timestamp": "2025-05-15 11:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Cross-section of a revitalized metro station, vibrant graffiti on aged concrete, bustling crowd mingling amidst synthetic cherry blossoms, blending urban decay and renewal in dystopian ambiance."
-            },
-            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
-            "explanation": "To create a unique prompt, I envisioned a metro station instead of outdoor urban landscapes. The ..."
-          },
-          {
-            "timestamp": "2025-05-15 12:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Night market beneath colossal monolithic arches, ghostly neon illuminating ancient stone, blending futuristic commerce and the haunting past in a Blade Runner-esque ambiance."
-            },
-            "text_input": "'Architectural Ruin and Rebirth - Abandoned Str...",
-            "explanation": "I focused on a night market set under grand, ancient arches contrasting with a futurist ambiance,..."
-          },
-          {
-            "timestamp": "2025-05-15 13:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Sunset-lit alley with ivy-clad cyberpunk kiosks, holographic projections flickering over cracked cobblestones, digital flora weaving into urban decay, encapsulating dystopian revival."
-            },
-            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
-            "explanation": "I focused on an alleyway scene with a cyberpunk twist. The integration of holographic elements an..."
-          },
-          {
-            "timestamp": "2025-05-15 14:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Abandoned skyline garden with ivy-overgrown walkways, solar panels shimmering under acid rain clouds, blending architectural decay and cutting-edge renewal in a Blade Runner-inspired atmosphere."
-            },
-            "text_input": "'Contemporary Urban Regeneration - Revitalized ...",
-            "explanation": "I depicted an abandoned skyline garden, focusing on juxtaposing natural regrowth and technologica..."
-          },
           {
             "timestamp": "2025-05-15 15:00:01",
             "type": "reason",
@@ -325,97 +215,119 @@
             },
             "text_input": "'The Mystical and Menacing Jungle' in the style...",
             "explanation": "This prompt emphasizes the transformation of ocean waves into jungle foliage, ensuring a clear de..."
+          },
+          {
+            "timestamp": "2025-05-16 06:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baroque tapestry depicting a grand estate garden, blending wild, blooming roses with perfectly manicured hedges; rich colors and dynamic patterns evoke a scene of opulent tranquility."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "The prompt creates a unique scene by focusing on a grand estate garden rather than specific eleme..."
+          },
+          {
+            "timestamp": "2025-05-16 07:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Arched garden gateway flanked by untamed rose vines and orderly boxwood hedges, Baroque tapestry style with rich textures, vivid hues highlighting contrasting elements of wildness and precision."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "I avoided duplicating previous prompts by incorporating an arched gateway, a unique structure dis..."
+          },
+          {
+            "timestamp": "2025-05-16 08:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Hidden garden alcove with unkempt flowers spilling from ornate stone planters, contrasts with manicured topiary archways; intricate patterns evoke Baroque tapestry's lavish details."
+            },
+            "text_input": "'Wild Gardens - Overgrown Luxury' in the style ...",
+            "explanation": "I crafted the prompt by emphasizing a hidden garden alcove, which hasn't been detailed in prior p..."
+          },
+          {
+            "timestamp": "2025-05-16 09:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Gardener's workshop at dusk, tools and baskets amidst blooming chaos; juxtaposed with orderly seed trays, intricate shadows mimic Baroque tapestry's depth and complexity."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "To create this prompt, I focused on a gardener's workshop, a setting previously unexplored. The d..."
+          },
+          {
+            "timestamp": "2025-05-16 10:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Lavish forest glade fresco with wildflowers interwoven, cascading water feature framed by deliberate cobblestone work, vibrant Baroque tapestry detailing across flora and architecture."
+            },
+            "text_input": "'Wild Gardens - Overgrown Luxury' in the style ...",
+            "explanation": "I created a distinct scene by choosing a forest glade rather than a structured garden. The inclus..."
+          },
+          {
+            "timestamp": "2025-05-16 11:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Opulent countryside courtyard, blend of riotous lilacs and precision-trimmed topiary, fountains mirror opulent chandeliers; intricate details embody Baroque tapestry aesthetics, serene yet regal."
+            },
+            "text_input": "'Wild Gardens - Overgrown Luxury' in the style ...",
+            "explanation": "I selected a countryside courtyard scene, a distinct setting not previously used, preserving both..."
+          },
+          {
+            "timestamp": "2025-05-16 12:00:00",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Grand terraced garden by a lakeside, vibrant blooms cascading over granite steps, juxtaposed with immaculate topiary mazes; intricate Baroque tapestry style captures bold dynamics and elegance."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "I chose a lakeside setting with terraced gardens, diverging from previous prompts focused on hidd..."
+          },
+          {
+            "timestamp": "2025-05-16 13:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baroque tapestry of a secret woodland grove, dense foliage interspersed with elegant marble benches, contrasting wild vines and sculpted flowerbeds, woven in vivid detail."
+            },
+            "text_input": "'Wild Gardens - Overgrown Luxury' in the style ...",
+            "explanation": "I designed a unique scene by focusing on a secluded woodland grove, incorporating both overgrown ..."
+          },
+          {
+            "timestamp": "2025-05-16 14:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Expansive cloister garden under soft moonlight, unruly jasmine creeping over carved stone columns, juxtaposed with manicured gravel paths, intricate Baroque tapestry style embodies serene opulence."
+            },
+            "text_input": "'Wild Gardens - Overgrown Luxury' in the style ...",
+            "explanation": "I crafted a scene featuring a cloister garden at night, a setting not previously used. This intro..."
+          },
+          {
+            "timestamp": "2025-05-16 15:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Enclosed royal garden pavilion surrounded by untamed wisteria and perfectly shaped boxwoods; moonlit night reveals intricate patterns of Baroque tapestry, juxtaposing chaos and symmetry."
+            },
+            "text_input": "'Wild Gardens - Overgrown Luxury' in the style ...",
+            "explanation": "I avoided duplication by selecting an indoor pavilion setting within a garden, contrasting untame..."
+          },
+          {
+            "timestamp": "2025-05-16 16:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Serene riverside garden with rampant willow branches cascading over water, contrasted by meticulously arranged tulip beds; Baroque tapestry style captures flowing movement and balanced precision."
+            },
+            "text_input": "'Wild Gardens - Overgrown Luxury' in the style ...",
+            "explanation": "I chose a riverside garden to provide a fresh setting, different from previous landscapes like co..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2025-05-14 09:00:00",
-            "type": "generation",
-            "prompt": "Aerial view of a post-apocalyptic amusement par...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f83f672a-f8d7-4fa0-beee-44ccf2f71983-e1/16b464bf.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T080029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=db5cbcc211c1b8535ab1d814ea356f5ce1b8fe740a8b05054e801c2b2de66220"
-          },
-          {
-            "timestamp": "2025-05-14 21:00:01",
-            "type": "generation",
-            "prompt": "Aerial shot of neglected highways in a desert, ...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/977454f7-29aa-47e1-b8f2-f7ca91998455-e1/9e581af7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250514%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250514T200117Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=3fc993e234865403cf2f3f032547b4c2b6e891a7efae44dd74fc2fbfb1d66dd3"
-          },
-          {
-            "timestamp": "2025-05-15 06:00:01",
-            "type": "generation",
-            "prompt": "Beneath looming neon skyscrapers, an overgrown ...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ce77899f-679c-47c6-a5c2-c3318d283dd3-e1/8d43ec02.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T050101Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=cdd784be73190b0d24f80e8888880f34ac532b5f1a7c8546e046c238eabdc1d6"
-          },
-          {
-            "timestamp": "2025-05-15 07:00:00",
-            "type": "generation",
-            "prompt": "Nighttime view of submerged city ruins, biolumi...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d213c5ff-c3b7-4b5a-a33b-c8f7f525bd71-e1/13f3ee0a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T060029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f19f526b09c369503f2fe27b0ba2f27821098e14bf2b128a19f501fa27078b42"
-          },
-          {
-            "timestamp": "2025-05-15 08:00:01",
-            "type": "generation",
-            "prompt": "Futuristic cityscape with towering neon-lit fac...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/79b088ef-5459-4b1a-8b5b-040118c3a980-e1/81cde5c9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T070102Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=dc1c388f261947e41728e7bcd7f9117c0bf8b7b11fcf3c8276f93b60c4a214cd"
-          },
-          {
-            "timestamp": "2025-05-15 09:00:00",
-            "type": "generation",
-            "prompt": "Fog-drenched dystopian canal snaking through re...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0785e49a-d7d3-4f94-9ff1-64e493c2c7d2-e1/09da126c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T080053Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1720561852f4bde94f2b4c73652f52d6a805f7b3fc1f555ef03183bbf42d906d"
-          },
-          {
-            "timestamp": "2025-05-15 10:00:00",
-            "type": "generation",
-            "prompt": "A domed greenhouse nestled in decaying factory ...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/1cb0fc15-3d85-4d67-9294-9d0c6201d3dd-e1/8c15b32c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T090043Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=90b29c4cfce8f8ccb7986ce5665c61550af101ce4896aca10b3561bbfa186c12"
-          },
-          {
-            "timestamp": "2025-05-15 11:00:00",
-            "type": "generation",
-            "prompt": "Cross-section of a revitalized metro station, v...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d2c0383b-19ef-436e-9f3c-f8803d2417de-e1/51ab1c1a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T100055Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4c54b86f9ecc6f0df7625fae6f630566d2a177e0929c818a4eceef9abc46a052"
-          },
-          {
-            "timestamp": "2025-05-15 12:00:01",
-            "type": "generation",
-            "prompt": "Night market beneath colossal monolithic arches...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8d4c5df9-65a1-436a-be4f-169ffcfc9458-e1/a705334c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T110047Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e022365642f85d41c1d443b575095ef03ad6ec11074f64f1463cc1b83d1698f5"
-          },
-          {
-            "timestamp": "2025-05-15 13:00:00",
-            "type": "generation",
-            "prompt": "Sunset-lit alley with ivy-clad cyberpunk kiosks...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/2cb960cc-ad66-4f90-8eee-8d726091d27a-e1/41037f24.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T120101Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=c1f222ddf8892a89022787486d2a56da47882403fdf81d0d6dce62805650c43a"
-          },
-          {
-            "timestamp": "2025-05-15 14:00:00",
-            "type": "generation",
-            "prompt": "Abandoned skyline garden with ivy-overgrown wal...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/df9ead9d-0b5c-481a-ae15-fe72ebbeb098-e1/462fbc91.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T130038Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=168d010a8b7b66e40171bac674755c70e0743569079b94020569a19c9cea505f"
-          },
           {
             "timestamp": "2025-05-15 15:00:01",
             "type": "generation",
@@ -487,57 +399,97 @@
             "refiner": "curator",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7abf643e-93dd-4eef-96a7-2268e153f4f5-e1/c4168523.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T220031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=242823a8563c386413113edecff939726f10aa1494c7eab8eda090a766bbaf80"
+          },
+          {
+            "timestamp": "2025-05-16 06:00:07",
+            "type": "generation",
+            "prompt": "Baroque tapestry depicting a grand estate garde...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/2d98be1c-52b7-4ad2-80b1-d828864ef06d-e1/4e05185e.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T050031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f2bcacf2444b04de8e7a87859a1eadd2dae2d11e27b9bbee1a22e87d5497affc"
+          },
+          {
+            "timestamp": "2025-05-16 07:00:06",
+            "type": "generation",
+            "prompt": "Arched garden gateway flanked by untamed rose v...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/36acef84-53d8-4082-b740-d5feae158f1d-e1/2d665c77.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T060030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a341c24ad69ccc88f38e108c28506ed8b992bd3fc2cddc653799f77b0727fe79"
+          },
+          {
+            "timestamp": "2025-05-16 08:00:05",
+            "type": "generation",
+            "prompt": "Hidden garden alcove with unkempt flowers spill...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8bbe3105-94c4-43ad-96fc-7d1f7c9846f4-e1/46831b16.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T070044Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=cd8180e761147dea6affc65a748a98ae556caaba79689e6bf6cb22e7de1ceae3"
+          },
+          {
+            "timestamp": "2025-05-16 09:00:02",
+            "type": "generation",
+            "prompt": "Gardener's workshop at dusk, tools and baskets ...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/73cafe7f-61d3-4c61-871e-ccf85df41b0a-e1/09bcc8e6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T080029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=069562634902fa1fd4d442384b99ded4349a41fdb41bddca486650bccb2c039d"
+          },
+          {
+            "timestamp": "2025-05-16 10:00:05",
+            "type": "generation",
+            "prompt": "Lavish forest glade fresco with wildflowers int...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/6633aea4-725a-4ebd-bc4c-89dceb53907f-e1/2db18b8a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T090044Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e70b23e4d5b9522226f511826741ed0d87833b387ece44448c09310066c69b6a"
+          },
+          {
+            "timestamp": "2025-05-16 11:00:06",
+            "type": "generation",
+            "prompt": "Opulent countryside courtyard, blend of riotous...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/3f7b215c-1552-4bc9-8b1b-81c53c7aa33b-e1/39d3238c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T100052Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4aae598c77d313856b8c1130be3b036bd3adc0edf379a9f81453c3a29795eb4a"
+          },
+          {
+            "timestamp": "2025-05-16 12:00:04",
+            "type": "generation",
+            "prompt": "Grand terraced garden by a lakeside, vibrant bl...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a963ff24-b480-48d8-8ccd-89598eae2066-e1/72de4d23.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T110054Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7898878112d9795b6bc316a39b1f56ce6fea757d6c5b80d6ec6f4e971434422a"
+          },
+          {
+            "timestamp": "2025-05-16 13:00:05",
+            "type": "generation",
+            "prompt": "Baroque tapestry of a secret woodland grove, de...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4ca1633d-fb1e-40ad-9028-747cf768586d-e1/27aff6a1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T120055Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d05d008c2f2d87da52eaf32b421269c2b284b0b4d44509cbcfea9424ad9b1e4a"
+          },
+          {
+            "timestamp": "2025-05-16 14:00:04",
+            "type": "generation",
+            "prompt": "Expansive cloister garden under soft moonlight,...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b1cb39b1-2d2a-448b-9ea9-def9285d0aee-e1/be445866.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T130116Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2f2c58124e7e178cbc4a149453548c41b742198a554f0bd451182fa6a63fd6b0"
+          },
+          {
+            "timestamp": "2025-05-16 15:00:06",
+            "type": "generation",
+            "prompt": "Enclosed royal garden pavilion surrounded by un...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/6716de8d-6dcd-4034-bbea-b64dcfc1733c-e1/a7331962.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T140032Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=569546006cbfdad6c3203585679a9a3a9457023670ae457a3cd326c644f01fc4"
+          },
+          {
+            "timestamp": "2025-05-16 16:00:06",
+            "type": "generation",
+            "prompt": "Serene riverside garden with rampant willow bra...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f02ef6db-d999-48c9-a4a5-86673ff11576-e1/a6bf47f5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T150033Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ffe1a133a6f041ad702f7a0b9114c23243193d97a312d20a9c3a4f102458619a"
           }
         ],
         "animation_history": [
-          {
-            "timestamp": "2025-05-13 07:05:01",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/de3a0d40-5f6c-4675-af75-2d90db5f17fb-e1/42a0f759.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250513%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250513T060034Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=a6afecf0f1039a90a6cda702c0b2908dd5719ff9fd9f6b754b6f8b721f2020ff",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-13 09:05:00",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "[image_path]",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-13 11:05:00",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "[image_path]",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-13 13:05:00",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/98dc6d75-9c7b-4749-9b42-77ca5e231c4e-e1/b1dae285.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250513%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250513T120049Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d2ea0770a0cc2bd20b6d236ee576af613a1924f66e3cb1de8e7f62b2a1698db3",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-13 15:05:00",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "[image_path]",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
-          {
-            "timestamp": "2025-05-13 17:05:01",
-            "type": "animation",
-            "prompt": "",
-            "image_path": "[image_path]",
-            "refiner": "animator",
-            "animation_id": "unknown"
-          },
           {
             "timestamp": "2025-05-13 19:05:01",
             "type": "animation",
@@ -649,139 +601,76 @@
             "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/99f2acf3-bc5d-40d9-881c-73a53164ad10-e1/ccad45cc.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T210109Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5156001412cf88fcdaf3f343713f346a22c1ba577c8441621e773903e275337c",
             "refiner": "animator",
             "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 06:05:00",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/2d98be1c-52b7-4ad2-80b1-d828864ef06d-e1/4e05185e.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T050031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f2bcacf2444b04de8e7a87859a1eadd2dae2d11e27b9bbee1a22e87d5497affc",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 08:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/8bbe3105-94c4-43ad-96fc-7d1f7c9846f4-e1/46831b16.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T070044Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=cd8180e761147dea6affc65a748a98ae556caaba79689e6bf6cb22e7de1ceae3",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 09:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/73cafe7f-61d3-4c61-871e-ccf85df41b0a-e1/09bcc8e6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T080029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=069562634902fa1fd4d442384b99ded4349a41fdb41bddca486650bccb2c039d",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 11:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/3f7b215c-1552-4bc9-8b1b-81c53c7aa33b-e1/39d3238c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T100052Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4aae598c77d313856b8c1130be3b036bd3adc0edf379a9f81453c3a29795eb4a",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 13:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4ca1633d-fb1e-40ad-9028-747cf768586d-e1/27aff6a1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T120055Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d05d008c2f2d87da52eaf32b421269c2b284b0b4d44509cbcfea9424ad9b1e4a",
+            "refiner": "animator",
+            "animation_id": "unknown"
+          },
+          {
+            "timestamp": "2025-05-16 15:05:01",
+            "type": "animation",
+            "prompt": "",
+            "image_path": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/6716de8d-6dcd-4034-bbea-b64dcfc1733c-e1/a7331962.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T140032Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=569546006cbfdad6c3203585679a9a3a9457023670ae457a3cd326c644f01fc4",
+            "refiner": "animator",
+            "animation_id": "unknown"
           }
         ]
       },
       "publish_destination": "south-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7abf643e-93dd-4eef-96a7-2268e153f4f5-e1/c4168523.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T220031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=242823a8563c386413113edecff939726f10aa1494c7eab8eda090a766bbaf80"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/f02ef6db-d999-48c9-a4a5-86673ff11576-e1/a6bf47f5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T150033Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ffe1a133a6f041ad702f7a0b9114c23243193d97a312d20a9c3a4f102458619a"
     }
   ],
-  "state": "running",
-  "last_updated": "2025-05-16T03:16:53.297915",
+  "state": "paused",
+  "last_updated": "2025-05-16T16:34:03.574933",
   "last_trigger_executions": {
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T11:00:00": "2025-05-10T11:21:12.555262",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-10T11:05:00": "2025-05-10T11:21:12.555262",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T12:00:00": "2025-05-10T12:00:00.310814",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T13:00:00": "2025-05-10T13:00:01.165396",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-10T13:05:00": "2025-05-10T13:05:00.647744",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T14:00:00": "2025-05-10T14:00:01.325054",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T15:00:00": "2025-05-10T15:00:00.593538",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-10T15:05:00": "2025-05-10T15:05:01.804285",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T16:00:00": "2025-05-10T16:00:00.877400",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T17:00:00": "2025-05-10T17:00:01.593010",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-10T17:05:00": "2025-05-10T17:05:00.534552",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T18:00:00": "2025-05-10T18:00:01.107677",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T19:00:00": "2025-05-10T19:00:01.194459",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-10T19:05:00": "2025-05-10T19:05:00.054358",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T20:00:00": "2025-05-10T20:00:00.527338",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T21:00:00": "2025-05-10T21:00:00.240183",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-10T21:05:00": "2025-05-10T21:05:02.654743",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T22:00:00": "2025-05-10T22:00:01.385235",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-10T23:00:00": "2025-05-10T23:00:01.971789",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-10T23:05:00": "2025-05-10T23:05:01.636748",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-11T15:00:00": "2025-05-11T15:02:07.365249",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-11T13:05:00": "2025-05-11T15:02:07.365249",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-11T15:05:00": "2025-05-11T15:05:01.578303",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-11T16:00:00": "2025-05-11T16:00:01.304599",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-11T17:00:00": "2025-05-11T17:00:00.131856",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-11T17:05:00": "2025-05-11T17:05:00.842851",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-11T18:00:00": "2025-05-11T18:00:01.008522",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-11T19:00:00": "2025-05-11T19:00:01.589816",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-11T19:05:00": "2025-05-11T19:05:00.651818",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-11T20:00:00": "2025-05-11T20:00:00.230211",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-11T21:00:00": "2025-05-11T21:00:33.948596",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-11T21:05:00": "2025-05-11T21:05:01.848062",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-11T22:00:00": "2025-05-11T22:00:01.006705",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-11T23:00:00": "2025-05-11T23:00:01.428830",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-11T23:05:00": "2025-05-11T23:05:01.273021",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T06:00:00": "2025-05-12T06:00:00.203066",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T07:00:00": "2025-05-12T07:00:00.855626",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-12T07:05:00": "2025-05-12T07:05:01.941725",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T08:00:00": "2025-05-12T08:00:00.802309",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T09:00:00": "2025-05-12T09:00:00.459733",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-12T09:05:00": "2025-05-12T09:05:01.894258",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T10:00:00": "2025-05-12T10:00:01.701972",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T11:00:00": "2025-05-12T11:00:01.758535",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-12T11:05:00": "2025-05-12T11:05:01.482148",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T12:00:00": "2025-05-12T12:00:01.846284",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T13:00:00": "2025-05-12T13:00:01.336401",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-12T13:05:00": "2025-05-12T13:05:00.597299",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T14:00:00": "2025-05-12T14:00:00.222372",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T15:00:00": "2025-05-12T15:00:00.097317",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-12T15:05:00": "2025-05-12T15:05:01.682261",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T16:00:00": "2025-05-12T16:00:01.226777",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T17:00:00": "2025-05-12T17:00:01.754211",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-12T17:05:00": "2025-05-12T17:05:00.037989",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T18:00:00": "2025-05-12T18:00:00.967005",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T19:00:00": "2025-05-12T19:00:00.123212",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-12T19:05:00": "2025-05-12T19:05:01.954559",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T20:00:00": "2025-05-12T20:00:01.666753",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T21:00:00": "2025-05-12T21:00:00.474188",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-12T21:05:00": "2025-05-12T21:05:01.543749",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T22:00:00": "2025-05-12T22:00:01.001866",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-12T23:00:00": "2025-05-12T23:00:00.016379",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-12T23:05:00": "2025-05-12T23:05:00.467589",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-13T06:00:00": "2025-05-13T06:00:01.459080",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-13T07:00:00": "2025-05-13T07:00:01.582484",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-13T07:05:00": "2025-05-13T07:05:01.631383",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-13T08:00:00": "2025-05-13T08:00:01.174134",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-13T09:00:00": "2025-05-13T09:00:01.771566",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-13T09:05:00": "2025-05-13T09:05:00.237473",
-    "1e41f37db26e89ac37d55f3771482626_4": "2025-05-13T10:00:01.434077",
-    "1e41f37db26e89ac37d55f3771482626_5": "2025-05-13T11:00:01.303200",
-    "b812f679a565a0c56311d86bfaf3ca2d_2": "2025-05-13T11:05:00.663669",
-    "1e41f37db26e89ac37d55f3771482626_6": "2025-05-13T12:00:00.202694",
-    "1e41f37db26e89ac37d55f3771482626_7": "2025-05-13T13:00:01.008057",
-    "b812f679a565a0c56311d86bfaf3ca2d_3": "2025-05-13T13:05:00.659442",
-    "1e41f37db26e89ac37d55f3771482626_8": "2025-05-13T14:00:01.736003",
-    "1e41f37db26e89ac37d55f3771482626_9": "2025-05-13T15:00:00.415132",
-    "b812f679a565a0c56311d86bfaf3ca2d_4": "2025-05-13T15:05:00.957933",
-    "1e41f37db26e89ac37d55f3771482626_10": "2025-05-13T16:00:00.478066",
-    "1e41f37db26e89ac37d55f3771482626_11": "2025-05-13T17:00:01.707473",
-    "b812f679a565a0c56311d86bfaf3ca2d_5": "2025-05-13T17:05:01.095797",
-    "1e41f37db26e89ac37d55f3771482626_12": "2025-05-13T18:00:01.278090",
-    "1e41f37db26e89ac37d55f3771482626_13": "2025-05-13T19:00:01.772631",
-    "b812f679a565a0c56311d86bfaf3ca2d_6": "2025-05-13T19:05:01.920017",
-    "1e41f37db26e89ac37d55f3771482626_14": "2025-05-13T20:00:01.027834",
-    "1e41f37db26e89ac37d55f3771482626_15": "2025-05-13T21:00:00.013309",
-    "b812f679a565a0c56311d86bfaf3ca2d_7": "2025-05-13T21:05:01.384722",
-    "1e41f37db26e89ac37d55f3771482626_16": "2025-05-13T22:00:01.552485",
-    "1e41f37db26e89ac37d55f3771482626_17": "2025-05-13T23:00:00.423855",
-    "b812f679a565a0c56311d86bfaf3ca2d_8": "2025-05-13T23:05:02.703969",
-    "1e41f37db26e89ac37d55f3771482626_0": "2025-05-14T06:00:00.345321",
-    "1e41f37db26e89ac37d55f3771482626_1": "2025-05-14T07:00:01.876428",
-    "b812f679a565a0c56311d86bfaf3ca2d_0": "2025-05-14T07:05:00.391839",
-    "1e41f37db26e89ac37d55f3771482626_2": "2025-05-14T08:00:00.929950",
-    "1e41f37db26e89ac37d55f3771482626_3": "2025-05-14T09:00:00.545761",
-    "b812f679a565a0c56311d86bfaf3ca2d_1": "2025-05-14T09:05:00.084705",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-14_15": "2025-05-14T21:00:01.077383",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-14_7": "2025-05-14T21:05:00.293627",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_0": "2025-05-15T06:00:01.042933",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_1": "2025-05-15T07:00:00.919630",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-15_0": "2025-05-15T07:05:00.409689",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_2": "2025-05-15T08:00:01.626183",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_3": "2025-05-15T09:00:00.754443",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-15_1": "2025-05-15T09:05:00.457443",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_4": "2025-05-15T10:00:00.972198",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_5": "2025-05-15T11:00:00.372059",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-15_2": "2025-05-15T11:05:00.581156",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_6": "2025-05-15T12:00:01.866374",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_7": "2025-05-15T13:00:00.354606",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-15_3": "2025-05-15T13:05:01.466636",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_8": "2025-05-15T14:00:00.891841",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_9": "2025-05-15T15:00:01.129125",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-15_4": "2025-05-15T15:05:00.739286",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_10": "2025-05-15T16:00:00.211166",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_11": "2025-05-15T17:00:01.850669",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-15_5": "2025-05-15T17:05:01.613572",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_12": "2025-05-15T18:00:01.438603",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_13": "2025-05-15T19:00:01.793517",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_14": "2025-05-15T20:00:00.858612",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-15_7": "2025-05-15T20:05:01.920820",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_15": "2025-05-15T21:00:01.294527",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_16": "2025-05-15T22:00:01.861779",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-15_8": "2025-05-15T22:05:00.075450",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_17": "2025-05-15T23:00:00.510140"
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_3": "2025-05-16T09:00:00.089490",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-16_1": "2025-05-16T09:05:01.876574",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_4": "2025-05-16T10:00:00.717966",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_5": "2025-05-16T11:00:01.695666",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-16_2": "2025-05-16T11:05:01.854383",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_6": "2025-05-16T12:00:00.219117",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_7": "2025-05-16T13:00:00.609820",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-16_3": "2025-05-16T13:05:01.768509",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_8": "2025-05-16T14:00:00.344424",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_9": "2025-05-16T15:00:01.942752",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-16_4": "2025-05-16T15:05:01.751003",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_10": "2025-05-16T16:00:01.575524"
   },
   "active_events": {},
   "event_history": [
