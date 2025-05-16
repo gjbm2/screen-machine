@@ -124,18 +124,8 @@
         "_b_theme": "Wild Gardens - Overgrown Luxury",
         "_style": "Baroque tapestry-inspired compositions",
         "_guidance": "Select diverse garden scenes that encompass both riotous, untamed growth and meticulous, controlled elegance. Render these using the intricate and ornate qualities of Baroque tapestry, ensuring freshness by referencing recent image history to avoid similar depictions.",
-        "prompt": "Baroque tapestry-style garden: sprawling rose labyrinth entwined with ivy, hidden sundial at center, ambient candlelight glow reflecting on intricate floral patterns, merging wild charm and refined symmetry.",
+        "prompt": "Baroque tapestry-style garden scene: statuesque fountains, autumn leaves swirling in lush hedgerows, golden sunlight casting elaborate shadows, merging dramatic wild growth with cultivated harmony.",
         "history_var": [
-          {
-            "timestamp": "2025-05-15 20:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Surrealist seascape collage with oceanic dreadnoughts emerging from lush jungles, kaleidoscopic sky and hybrid creatures, juxtaposing nature's wrath and wonders."
-            },
-            "text_input": "'The Sublime and Monstrous Ocean' in the style ...",
-            "explanation": "I crafted a vision of ocean dreadnoughts and lush jungles, emphasizing massive contrasts - machin..."
-          },
           {
             "timestamp": "2025-05-15 21:00:01",
             "type": "reason",
@@ -325,17 +315,19 @@
             },
             "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
             "explanation": "I focused on a rose labyrinth as a unique garden element, contrasting with previous settings like..."
+          },
+          {
+            "timestamp": "2025-05-16 23:00:01",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Baroque tapestry-style garden scene: statuesque fountains, autumn leaves swirling in lush hedgerows, golden sunlight casting elaborate shadows, merging dramatic wild growth with cultivated harmony."
+            },
+            "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
+            "explanation": "I focused on the interplay of autumn elements and statuesque architecture, avoiding previously us..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2025-05-15 21:00:01",
-            "type": "generation",
-            "prompt": "Silent lagoon where tangled jungle vines intert...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ef512c4c-a6f5-41d0-ac0e-591fecb1c981-e1/f16b93a0.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T200040Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7153e9f41f85e32cea68999fbb924102b44df4c73503e56cb58f1500cc32cd64"
-          },
           {
             "timestamp": "2025-05-15 22:00:00",
             "type": "generation",
@@ -487,6 +479,14 @@
             "refiner": "curator",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e13a958d-16aa-47d3-808b-60642202ba37-e1/9d4311e1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T210104Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=432c80ad8d79fcc12620267c30aa6778d4e395c416f7d14409a290c501dee0d0"
+          },
+          {
+            "timestamp": "2025-05-16 23:00:04",
+            "type": "generation",
+            "prompt": "Baroque tapestry-style garden scene: statuesque...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7b6b6f27-47d3-43b0-9eb2-80cea21627e5-e1/d400e867.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T220026Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=bbb3cabb7cf3ea3cc4f6a1bb01d6db3031069dc0f39ea6a64ac72b4e9cec9a73"
           }
         ],
         "animation_history": [
@@ -653,11 +653,11 @@
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e13a958d-16aa-47d3-808b-60642202ba37-e1/9d4311e1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T210104Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=432c80ad8d79fcc12620267c30aa6778d4e395c416f7d14409a290c501dee0d0"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7b6b6f27-47d3-43b0-9eb2-80cea21627e5-e1/d400e867.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T220026Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=bbb3cabb7cf3ea3cc4f6a1bb01d6db3031069dc0f39ea6a64ac72b4e9cec9a73"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-16T22:05:01.320559",
+  "last_updated": "2025-05-16T23:46:21.202956",
   "last_trigger_executions": {
     "1e41f37db26e89ac37d55f3771482626_2025-05-15_13": "2025-05-15T19:00:01.432280",
     "1e41f37db26e89ac37d55f3771482626_2025-05-15_14": "2025-05-15T20:00:00.337484",
@@ -691,7 +691,8 @@
     "8b0160f252dc1affd80c933c62e85005_2025-05-16_7": "2025-05-16T20:05:01.017452",
     "1e41f37db26e89ac37d55f3771482626_2025-05-16_15": "2025-05-16T21:00:00.213985",
     "1e41f37db26e89ac37d55f3771482626_2025-05-16_16": "2025-05-16T22:00:00.366074",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-16_8": "2025-05-16T22:05:01.136248"
+    "8b0160f252dc1affd80c933c62e85005_2025-05-16_8": "2025-05-16T22:05:01.136248",
+    "1e41f37db26e89ac37d55f3771482626_2025-05-16_17": "2025-05-16T23:00:00.633386"
   },
   "active_events": {},
   "event_history": [

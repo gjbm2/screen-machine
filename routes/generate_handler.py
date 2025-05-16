@@ -15,6 +15,7 @@ from io import BytesIO
 from flask import send_file
 from utils.logger import info, error, warning, debug
 from routes.bucketer import _append_to_bucket
+from routes.generate_utils import throw_user_interacting_event, process_generate_image_request, save_to_recent
 
 # Cache for GPU pricing to avoid repeated API calls
 _gpu_price_cache = {}
@@ -284,34 +285,238 @@ def jpg_from_mp4_handler(mp4_path):
     
     # The temp file cleanup is handled by the endpoint function 
 
-def save_to_recent(img_url, batch_id, metadata=None):
+def handle_image_generation(input_obj, wait=False, **kwargs):
     """
-    Downloads the image from img_url, converts it to JPEG, and appends it to the _recent bucket.
-    If *metadata* is provided, it is written to the side-car so that generation params are preserved.
-    Returns the target path if successful, None otherwise.
+    Core image generation logic that performs actual generation.
+    
+    This is a lower-level function that:
+    1. Handles prompt refinement via OpenAI
+    2. Manages image generation workflows
+    3. Creates and manages generation threads
+    
+    Called by both API handlers and internal components.
+    
+    Args:
+        input_obj: Dictionary containing data for generation
+        wait: Whether to wait for generation threads to complete
+        **kwargs: Additional keyword arguments to pass to routes.generate.start
+        
+    Returns:
+        List of results if wait=True, otherwise None
     """
-    try:
-        response = requests.get(img_url)
-        if response.status_code != 200:
-            error(f"[save_to_recent] Failed to download image from {img_url}: {response.status_code}")
+    # Import necessary modules
+    import threading
+    import uuid
+    import json
+    from routes.utils import build_schema_subs, resolve_runtime_value, dict_substitute, _load_json_once
+    import routes.openai
+    import routes.generate
+    import utils.logger
+    from utils.logger import info, error, warning, debug
+    
+    subs = build_schema_subs()
+       
+    data = input_obj.get("data", {})
+    prompt = data.get("prompt", None)
+    refiner = data.get("refiner", "none")  
+    workflow = data.get("workflow", None)
+    images = data.get("images", [])
+    batch_id = data.get("batch_id") or str(uuid.uuid4())  # Generate a batch_id if not provided
+
+    # If no workflow specified, get default workflow from workflows.json
+    if not workflow:
+        workflows = _load_json_once("workflow", "workflows.json")
+        default_workflow = next((w for w in workflows if w.get("default", False)), None)
+        if not default_workflow:
+            utils.logger.error("No default workflow found in workflows.json")
             return None
-        info(f"[save_to_recent] Downloaded image from {img_url}, converting to JPEG")
-        img = Image.open(BytesIO(response.content)).convert("RGB")
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
-            img.save(temp_file, format="JPEG", quality=90)
-            temp_file.flush()
-            temp_path = Path(temp_file.name)
-        info(f"[save_to_recent] Calling _append_to_bucket with batch_id={batch_id}")
-        target_path = _append_to_bucket("_recent", temp_path, batch_id=batch_id, metadata=metadata)
-        temp_path.unlink()
-        if target_path:
-            info(f"[save_to_recent] Successfully saved to _recent: {target_path}")
-            return target_path
+        workflow = default_workflow["id"]
+        utils.logger.debug(f"Using default workflow: {workflow}")
+
+    # Get "targets" from input data
+    targets = data.get("targets", [])
+
+    # If it's a string (possibly comma-separated), split and clean it
+    if isinstance(targets, str):
+        targets = [t.strip() for t in targets.split(",") if t.strip()]
+
+    # Ensure it's a list at this point
+    targets = targets if isinstance(targets, list) else [targets]
+
+    # Final fallback if empty
+    publish_targets = targets if targets else [None]
+
+    if not prompt and not images:
+        return None
+    
+    # Refine the prompt
+    input_dict = {
+        "prompt": prompt,
+        "workflow": workflow
+    }
+
+    utils.logger.debug(f"****input_dict {input_dict}")
+    
+    corrected_refiner = resolve_runtime_value("refiner", refiner, return_key="system_prompt")
+    
+    # TODO: should be done with a proper lookup NOT runtimevalue -- which should ONLY be used to resolve informal strings
+    images_required = resolve_runtime_value("refiner", refiner, return_key="uploadimages") or 0
+    
+    # Normalize input images list
+    images = images or []
+    prepared_images = []
+
+    if images_required == 1:
+        if len(images) >= 1:
+            prepared_images = [images[0]]
+    elif images_required == 2:
+        if len(images) >= 2:
+            prepared_images = [images[0], images[1]]
+        elif len(images) == 1:
+            prepared_images = [images[0], images[0]]  # reuse first image
+    else:
+        prepared_images = []  # none required
+       
+    utils.logger.info(f"> Using refiner: '{refiner}' -> '{corrected_refiner}'")
+    
+    # Refine if needed
+    if corrected_refiner is not None:
+        openai_args = {
+            "user_prompt": json.dumps(input_dict),
+            "system_prompt": dict_substitute(corrected_refiner, subs),
+            "schema": json.loads(dict_substitute("refiner-enrich.schema.json.j2", subs))
+        }
+        
+        if images_required:
+            openai_args["images"] = prepared_images
+            utils.logger.debug(f"[handle_image_generation] {len(prepared_images)} image(s) prepared for OpenAI prompt.")
+
+        utils.logger.debug(f"[handle_image_generation] Calling openai_prompt with args:")
+        utils.logger.debug(json.dumps(openai_args, indent=2)[:1000])  # print first 1000 chars to avoid base64 overflow
+
+        
+        refined_output = routes.openai.openai_prompt(**openai_args)
+        refined_prompt = refined_output.get("full_prompt", prompt)
+    else:
+        refined_output = {}
+        refined_prompt = prompt
+        
+    corrected_workflow = resolve_runtime_value(
+        category="workflow", 
+        input_value=refined_output.get("workflow", workflow),
+        return_key="id", 
+        match_key="id"
+    )
+    
+    # Translate prompt into Chinese if required (for WAN)
+    translate = data.get("translate") if "data" in locals() else False
+    if translate: 
+        openai_args = {
+            "user_prompt": refined_prompt,
+            "system_prompt": dict_substitute("prompt-translate.txt", subs)
+        }
+        final_prompt = routes.openai.openai_prompt(**openai_args)
+        utils.logger.info(f"Translated: {refined_prompt} to {final_prompt}")
+    else:
+        final_prompt = refined_prompt
+
+    # We don't want to force publication if no target was specified
+    no_targets = publish_targets == [None]
+
+    # One thread per image
+    threads=[]
+    results = [None] * len(publish_targets)  # Pre-size results list
+    safe_kwargs = kwargs.copy()
+    safe_kwargs.pop("publish_destination", None)  # remove if exists, else no-op
+    safe_kwargs["images"] = images
+    # Remove batch_id from safe_kwargs since it's already in the data dict
+    safe_kwargs.pop("batch_id", None)
+    
+    for idx, publish_destination in enumerate(publish_targets):
+        if no_targets:
+            corrected_publish_destination = None
         else:
-            error(f"[save_to_recent] _append_to_bucket returned None for {img_url}")
-            return None
-    except Exception as e:
-        error(f"[save_to_recent] Failed to save image to _recent: {e}")
-        import traceback
-        error(f"[save_to_recent] Traceback: {traceback.format_exc()}")
+            utils.logger.info(f"> For destination: {publish_destination}")
+            corrected_publish_destination = resolve_runtime_value("destination", publish_destination)
+            
+        def thread_fn(index=idx, destination=corrected_publish_destination):
+            result = routes.generate.start(
+                prompt=final_prompt,
+                workflow=corrected_workflow,
+                publish_destination=destination,
+                **safe_kwargs
+            )
+            results[index] = result  # Store result in shared list
+
+        thread = threading.Thread(target=thread_fn)
+        thread.start()
+        threads.append(thread)
+
+    utils.logger.info(f" * Spawned {len(threads)} generator threads.")
+
+    # if we need to wait until the end, do so
+    if wait:
+        for t in threads:
+            t.join()
+        utils.logger.info(" * All generator threads completed.")
+        return results
+    else:
         return None 
+
+def async_amimate(targets, obj = {}):
+    """
+    Process animation for the specified targets.
+    
+    Args:
+        targets: List of target IDs or single target ID
+        obj: Optional dictionary with additional configuration
+        
+    Returns:
+        None
+    """
+    # Import necessary modules
+    from utils.logger import info, error, warning, debug
+    from routes.utils import get_image_from_target, resolve_runtime_value
+    import threading
+    
+    # TODO: make this smarter; handle multiple targets, accept input prompts, refiners, etc.
+
+    result = obj
+    result.setdefault("data", {}).setdefault(
+        "targets",
+        targets if isinstance(targets, list) else []
+    )
+
+    # Get target ID directly (no need for resolve_runtime_value to fuzzy match)
+    target_image_file = targets[0] if targets and len(targets) > 0 else None
+
+    # Create a result dictionary
+    if target_image_file:
+        # Inject base64 image into result["data"]["images"]
+        image_payload = get_image_from_target(target_image_file)
+        
+        if image_payload:
+            result.setdefault("data", {})["images"] = [image_payload]
+            
+            info(
+                f"Will address: {target_image_file}, "
+                f"image present: True, "
+                f"image length: {len(image_payload.get('image'))}"
+            )
+        else:
+            warning(f"No image found at ./output/{target_image_file}.jpg or ./output/{target_image_file}.mp4")
+    else:
+        warning("No target specified for animation")
+    
+    # Ensure we're using the currently selected refiner
+    result.setdefault("data", {})["refiner"] = resolve_runtime_value("refiner", "animate")
+    
+    # Run the refinement + generation flow in background
+    threading.Thread(
+        target=handle_image_generation,
+        kwargs={
+            "input_obj": result
+        }
+    ).start()
+
+    return None 
