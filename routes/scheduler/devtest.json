@@ -86,30 +86,15 @@
   ],
   "context_stack": [
     {
-      "vars": {
-        "_event": {
-          "key": "Previous",
-          "payload": null,
-          "unique_id": "c0a5f139-6070-4f14-971b-7040b1b22f13",
-          "created_at": "2025-05-16T03:10:37.081135",
-          "display_name": null
-        }
-      },
-      "publish_destination": "devtest",
-      "_event": {
-        "key": "Previous",
-        "payload": null,
-        "unique_id": "c0a5f139-6070-4f14-971b-7040b1b22f13",
-        "created_at": "2025-05-16T03:10:37.081135",
-        "display_name": null
-      },
-      "wait_until": "2025-05-16 03:12:32.396368",
-      "last_wait_log": "2025-05-16 03:10:32.396368"
+      "vars": {},
+      "publish_destination": "devtest"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-16T03:11:16.801757",
-  "last_trigger_executions": {},
+  "last_updated": "2025-05-16T03:16:53.349076",
+  "last_trigger_executions": {
+    "1935847c9e137355054d47dbff96956e_2025-05-16_64": "2025-05-16T03:13:00.471748"
+  },
   "active_events": {},
   "event_history": [
     {

@@ -1032,11 +1032,35 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
             entry = None
             
             if is_in_wait_state:
-                # In wait state, only check for urgent instructions
-                debug(f"Scheduler in wait state, checking for urgent instructions that could interrupt")
+                # Rate limit debug logs during wait states
+                if not hasattr(run_scheduler_loop, '_wait_debug_logs'):
+                    run_scheduler_loop._wait_debug_logs = {}
+                
+                wait_debug_key = f"wait_state_{publish_destination}"
+                current_time = time.time()
+                should_log_wait_state = False
+                
+                if wait_debug_key not in run_scheduler_loop._wait_debug_logs or \
+                   (current_time - run_scheduler_loop._wait_debug_logs.get(wait_debug_key, 0)) > 30.0:
+                    should_log_wait_state = True
+                    run_scheduler_loop._wait_debug_logs[wait_debug_key] = current_time
+                    
+                    # When logging wait state, tell update_scheduler_state to also log (throttled)
+                    if not hasattr(update_scheduler_state, '_last_wait_log_times'):
+                        update_scheduler_state._last_wait_log_times = {}
+                    update_scheduler_state._last_wait_log_times[publish_destination] = current_time
+                    
+                    # And also silence run_instruction debug logs except at intervals
+                    if not hasattr(run_instruction, '_wait_debug_logs'):
+                        run_instruction._wait_debug_logs = {}
+                    run_instruction._wait_debug_logs[publish_destination] = current_time
+                
+                if should_log_wait_state:
+                    debug(f"Scheduler in wait state, checking for urgent instructions that could interrupt")
                 
                 # First, update the wait to reflect passage of time
-                debug(f"Updating wait state status")
+                if should_log_wait_state:
+                    debug(f"Updating wait state status")
                 should_unload = run_instruction({"action": "wait", "duration": 0}, current_context, now, 
                                               scheduler_logs[publish_destination], publish_destination)
 
@@ -1055,6 +1079,7 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                     if urgent_entry:
                         # Found an urgent instruction - interrupt the wait
                         action_name = urgent_entry['instruction'].get('action', 'unknown')
+                        # Always log wait interruptions regardless of rate limiting
                         debug(f"WAIT INTERRUPT: Found urgent instruction {action_name} that will interrupt wait state")
                         
                         # Clear the wait state
@@ -1078,10 +1103,12 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                             debug(f"Popped urgent instruction for immediate execution: {action_name}")
                             is_in_wait_state = False
                         else:
-                            debug(f"WARNING: Failed to pop urgent instruction that was previously found - something went wrong")
+                            if should_log_wait_state:
+                                debug(f"WARNING: Failed to pop urgent instruction that was previously found - something went wrong")
                             # We'll keep the wait state in this case since we couldn't pop the urgent entry
                     else:
-                        debug(f"No urgent instructions found that could interrupt the wait")
+                        if should_log_wait_state:
+                            debug(f"No urgent instructions found that could interrupt the wait")
                         # Important: Don't process ANY instructions when in wait state, not even if queue appears empty
                         # This prevents normal instructions from being processed during wait
             else:
@@ -1163,6 +1190,25 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
             # Use a shorter sleep when in wait state to be more responsive to urgent interruptions
             sleep_time = 0.05 if is_in_wait_state else 0.1
             await asyncio.sleep(sleep_time)
+            
+            # Add wait state debug logging rate limiting
+            if not hasattr(run_scheduler_loop, '_wait_debug_logs'):
+                run_scheduler_loop._wait_debug_logs = {}
+
+            # Use the publish_destination as the key for rate limiting
+            wait_debug_key = f"wait_state_{publish_destination}"
+            
+            # Throttle debug logs during wait state - during wait, we silence most debugging
+            # except at 30 second intervals or when actual events occur
+            if is_in_wait_state:
+                # Reset counter when wait state completes
+                if wait_debug_key in run_scheduler_loop._wait_debug_logs:
+                    del run_scheduler_loop._wait_debug_logs[wait_debug_key]
+            else:
+                # Set logging level back to normal when not in wait state
+                if wait_debug_key in run_scheduler_loop._wait_debug_logs:
+                    del run_scheduler_loop._wait_debug_logs[wait_debug_key]
+                    debug(f"Normal debug logging resumed after wait state ended")
             
     except asyncio.CancelledError:
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M:%S')}] Scheduler cancelled")

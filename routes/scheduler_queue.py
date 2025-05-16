@@ -2,6 +2,7 @@ from collections import deque
 from typing import Dict, Any, List, Optional, Union, Tuple
 from datetime import datetime
 from utils.logger import debug, info, error
+import time
 
 class InstructionQueue:
     """
@@ -94,8 +95,16 @@ class InstructionQueue:
         if not self.queue:
             return None
         
-        # Log what's in the queue for debugging
-        debug(f"peek_next_urgent: Checking {len(self.queue)} items in queue for urgent flag")
+        # Rate limit the logging during waits
+        if not hasattr(self.peek_next_urgent, '_last_log_time'):
+            self.peek_next_urgent._last_log_time = 0
+            
+        current_time = time.time()
+        should_log = (current_time - self.peek_next_urgent._last_log_time) > 30.0
+        
+        if should_log:
+            self.peek_next_urgent._last_log_time = current_time
+            debug(f"peek_next_urgent: Checking {len(self.queue)} items in queue for urgent flag")
         
         # Record details of items for debugging
         urgent_found = False
@@ -109,14 +118,15 @@ class InstructionQueue:
                 urgent_found = True
                 urgent_index = i
                 urgent_entry = entry
+                # Always log found urgent instructions regardless of rate limiting
                 debug(f"peek_next_urgent: Found URGENT instruction at position {i}: {action}")
                 # Store the index so we can remove it directly later
                 entry['_urgent_index'] = i
                 return entry
-            else:
+            elif should_log:
                 debug(f"peek_next_urgent: Non-urgent instruction at position {i}: {action}")
         
-        if not urgent_found:
+        if not urgent_found and should_log:
             debug("peek_next_urgent: No urgent instructions found in queue")
         
         return None
