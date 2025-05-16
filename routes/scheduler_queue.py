@@ -44,15 +44,81 @@ class InstructionQueue:
         else:
             debug(f"Skipped {len(entries)} non-important instructions (queue not empty)")
 
-    def pop_next(self) -> Optional[Dict[str, Any]]:
+    def pop_next(self, urgent_only: bool = False) -> Optional[Dict[str, Any]]:
         """
         Pop and return the next instruction entry from the queue.
+        
+        Args:
+            urgent_only: If True, only pop an urgent instruction (used during wait interruption)
         
         Returns:
             A dictionary with keys 'instruction', 'important', 'urgent', or None if queue is empty
         """
-        if self.queue:
-            return self.queue.popleft()
+        if not self.queue:
+            return None
+            
+        # If we're looking for urgent entries specifically (during wait interruption)
+        if urgent_only:
+            # First check if we have an urgent entry (peek sets _urgent_index)
+            urgent_entry = self.peek_next_urgent()
+            if urgent_entry and '_urgent_index' in urgent_entry:
+                # Found urgent entry - get its position
+                urgent_index = urgent_entry['_urgent_index']
+                # Remove the position marker
+                del urgent_entry['_urgent_index']
+                
+                # If it's the first item, use popleft for efficiency
+                if urgent_index == 0:
+                    return self.queue.popleft()
+                else:
+                    # Otherwise, we need to remove it by position
+                    # Convert to list, remove item, convert back to deque
+                    queue_list = list(self.queue)
+                    result = queue_list.pop(urgent_index)
+                    self.queue = deque(queue_list)
+                    debug(f"Removed urgent instruction at position {urgent_index} (not at front of queue)")
+                    return result
+            return None  # No urgent entries found when urgent_only=True
+            
+        # Normal case - just get the next instruction
+        return self.queue.popleft()
+
+    def peek_next_urgent(self) -> Optional[Dict[str, Any]]:
+        """
+        Look at the next urgent instruction without removing it.
+        
+        Returns:
+            The first urgent instruction entry, or None if no urgent entries are in the queue
+        """
+        # Find the first urgent item in the queue
+        if not self.queue:
+            return None
+        
+        # Log what's in the queue for debugging
+        debug(f"peek_next_urgent: Checking {len(self.queue)} items in queue for urgent flag")
+        
+        # Record details of items for debugging
+        urgent_found = False
+        urgent_index = -1
+        urgent_entry = None
+        
+        for i, entry in enumerate(self.queue):
+            is_urgent = entry.get('urgent', False)
+            action = entry.get('instruction', {}).get('action', 'unknown')
+            if is_urgent:
+                urgent_found = True
+                urgent_index = i
+                urgent_entry = entry
+                debug(f"peek_next_urgent: Found URGENT instruction at position {i}: {action}")
+                # Store the index so we can remove it directly later
+                entry['_urgent_index'] = i
+                return entry
+            else:
+                debug(f"peek_next_urgent: Non-urgent instruction at position {i}: {action}")
+        
+        if not urgent_found:
+            debug("peek_next_urgent: No urgent instructions found in queue")
+        
         return None
 
     def remove_non_important(self) -> None:
@@ -191,18 +257,51 @@ def process_triggers(schedule: Dict[str, Any], now: datetime, publish_destinatio
     """
     from routes.scheduler import resolve_schedule
     
-    triggers = []
+    # Check if we're in a wait state
+    is_in_wait_state = "wait_until" in context
+    if is_in_wait_state:
+        debug(f"process_triggers: WAIT STATE ACTIVE - only urgent triggers will interrupt the wait")
     
-    # Get instructions from regular schedule resolution
-    instructions = resolve_schedule(schedule, now, publish_destination, include_initial_actions=False, context=context)
+    # Get triggers with urgency/importance information from schedule resolution
+    # resolve_schedule now returns list of dicts with block, urgent, important flags
+    trigger_data = resolve_schedule(schedule, now, publish_destination, include_initial_actions=False, context=context)
     
-    if instructions:
-        # For now, treat all regular triggers as non-urgent, non-important
-        # Later you may want to extract importance/urgency from the trigger itself
-        triggers.append({
-            "block": instructions,
-            "important": False,
-            "urgent": False
-        })
+    if trigger_data:
+        debug(f"process_triggers: Received {len(trigger_data)} trigger data entries from resolve_schedule")
+        
+        if is_in_wait_state:
+            # In wait state, count how many could potentially interrupt
+            urgent_count = 0
+            for entry in trigger_data:
+                if entry.get("urgent", False):
+                    urgent_count += 1
+            
+            if urgent_count:
+                debug(f"process_triggers: Found {urgent_count} URGENT triggers that could interrupt the wait state")
+            else:
+                debug(f"process_triggers: None of the triggers are marked as urgent, wait will continue")
+        
+        for entry in trigger_data:
+            # Log details for debugging
+            urgent = entry.get("urgent", False)
+            important = entry.get("important", False)
+            block_size = len(entry.get("block", []))
+            source = entry.get("source", "unknown")
+            flags = []
+            if urgent:
+                flags.append("urgent")
+            if important:
+                flags.append("important")
+            flags_str = f" ({', '.join(flags)})" if flags else ""
+            
+            # Add wait state status to log when relevant
+            wait_msg = ""
+            if is_in_wait_state:
+                if urgent:
+                    wait_msg = " - will interrupt wait"
+                else:
+                    wait_msg = " - will NOT interrupt wait"
+            
+            debug(f"process_triggers: Found {block_size} instructions from {source}{flags_str}{wait_msg}")
     
-    return triggers 
+    return trigger_data 

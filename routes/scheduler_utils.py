@@ -392,46 +392,97 @@ def log_schedule(message: str, publish_destination: Optional[str] = None, now: O
 # === Event Handling Functions ===
 def parse_ttl(ttl: Union[str, int, None], default: int = 60) -> int:
     """
-    Parse a TTL string or integer into seconds.
+    Parse a TTL value in various formats and return seconds.
     
     Args:
-        ttl: String like "30s", "5m", "2h", "1d" or an integer (seconds)
+        ttl: Time to live in one of these formats:
+             - integer: interpreted as seconds
+             - string with suffix: e.g. "60s", "5m", "1h", "2d"
+             - None: uses the default
         default: Default value in seconds if ttl is None
         
     Returns:
-        Integer seconds
+        int: TTL in seconds
     """
     if ttl is None:
         return default
         
-    if isinstance(ttl, (int, float)):
-        return int(ttl)
+    if isinstance(ttl, int) or (isinstance(ttl, str) and ttl.isdigit()):
+        return int(ttl)  # Assume seconds
         
-    if not isinstance(ttl, str):
-        return default
-        
-    ttl = ttl.strip().lower()
-    
-    try:
-        # Simple integer (seconds)
-        if ttl.isdigit():
-            return int(ttl)
+    if isinstance(ttl, str):
+        # Parse strings like "60s", "5m", "1h", "2d"
+        match = re.match(r"^(\d+)([smhd])$", ttl)
+        if match:
+            value, unit = match.groups()
+            value = int(value)
             
-        # Parse units
-        if ttl.endswith('s'):
-            return int(float(ttl[:-1]))
-        elif ttl.endswith('m'):
-            return int(float(ttl[:-1]) * 60)
-        elif ttl.endswith('h'):
-            return int(float(ttl[:-1]) * 3600)
-        elif ttl.endswith('d'):
-            return int(float(ttl[:-1]) * 86400)
-        else:
-            # No units, assume seconds
-            return int(float(ttl))
-    except (ValueError, TypeError):
-        error(f"Invalid TTL format: {ttl}, using default {default}")
-        return default
+            if unit == "s":
+                return value
+            elif unit == "m":
+                return value * 60
+            elif unit == "h":
+                return value * 3600
+            elif unit == "d":
+                return value * 86400
+                
+    # Default
+    return default
+
+def parse_duration(duration: Union[str, int, float, None], default_seconds: int = 60) -> int:
+    """
+    Parse a duration value in various formats and return seconds.
+    
+    Args:
+        duration: Duration in one of these formats:
+                - integer or float: interpreted as minutes
+                - string with unit suffix: e.g. "60s", "5m", "1h"
+                - string without suffix: interpreted as minutes
+                - None: uses the default
+        default_seconds: Default value in seconds if duration is None
+        
+    Returns:
+        int: Duration in seconds
+    """
+    # Debug logging
+    debug(f"parse_duration called with: '{duration}' (type: {type(duration).__name__})")
+    
+    if duration is None:
+        return default_seconds
+        
+    # Handle numeric types (float or int)
+    if isinstance(duration, (int, float)):
+        return int(duration * 60)  # Convert from minutes to seconds
+        
+    # Handle string format
+    if isinstance(duration, str):
+        # Trim whitespace
+        duration = duration.strip()
+        
+        # Check if it has a unit suffix (s, m, h)
+        match = re.match(r"^(\d+(?:\.\d+)?)([smhd])$", duration)
+        if match:
+            value, unit = match.groups()
+            value = float(value)
+            
+            if unit == "s":
+                return int(value)
+            elif unit == "m":
+                return int(value * 60)
+            elif unit == "h":
+                return int(value * 3600)
+            elif unit == "d":
+                return int(value * 86400)
+        
+        # No unit suffix - try to parse as float (minutes)
+        try:
+            return int(float(duration) * 60)
+        except ValueError:
+            debug(f"Could not parse duration '{duration}' as a number")
+                
+    # Default
+    debug(f"Using default duration of {default_seconds} seconds")
+    return default_seconds
 
 @thread_safe
 def check_all_expired_events() -> Dict[str, int]:
@@ -500,13 +551,17 @@ def check_all_expired_events() -> Dict[str, int]:
 
 def parse_time(time_val: Union[str, datetime, None]) -> Optional[datetime]:
     """
-    Parse a time string or datetime object.
+    Parse a time/date value in various formats.
     
     Args:
-        time_val: ISO-8601 string or datetime object
-        
+        time_val: A time value in one of these formats:
+                 - ISO-8601 datetime string: "2023-04-01T14:30:00.000Z"
+                 - Future time offset: "+5m", "+1h", "+2d"
+                 - datetime object: returned as-is
+                 - None: returns None
+    
     Returns:
-        datetime object or None if parsing failed
+        datetime or None: Parsed datetime object, or None if input is None
     """
     if time_val is None:
         return None
@@ -2549,10 +2604,18 @@ def process_jinja_template(value: Any, context: Dict[str, Any], publish_destinat
             if "vars" in context:
                 template_vars.update(context["vars"])
             
-            # REMOVED: Automatic inclusion of exported variables
-            # Variables should only be available if they've been explicitly imported
-            # into the context via import_var instruction
-                
+            # Add _event if it exists in the context (crucial for event-triggered actions)
+            if "_event" in context:
+                template_vars["_event"] = context["_event"]
+            
+            # Also check if there's a current event being processed
+            if "current_event" in context:
+                # If _event isn't already set, use current_event as _event
+                if "_event" not in template_vars:
+                    template_vars["_event"] = context["current_event"]
+                # Also make it available as current_event
+                template_vars["current_event"] = context["current_event"]
+            
             # Render the template with our variables
             result = template.render(**template_vars)
             return result
@@ -2599,16 +2662,23 @@ def process_instruction_jinja(instruction: Dict[str, Any], context: Dict[str, An
         try:
             # Handle duration conversion for wait instruction
             if action == "wait" and "duration" in processed_instruction:
-                # Try to convert the duration to a floating-point number if it's a string
-                if isinstance(processed_instruction["duration"], str):
-                    try:
-                        processed_instruction["duration"] = float(processed_instruction["duration"])
-                        # Convert to int if it's a whole number for backward compatibility
-                        if processed_instruction["duration"] == int(processed_instruction["duration"]):
-                            processed_instruction["duration"] = int(processed_instruction["duration"])
-                    except (ValueError, TypeError) as e:
-                        error(f"Error converting wait duration to number: {processed_instruction['duration']} - {str(e)}")
-                        
+                # Make sure the duration is processed properly
+                duration_input = processed_instruction["duration"]
+                
+                # Log the raw value for debugging
+                debug(f"Processing wait duration: '{duration_input}' (type: {type(duration_input).__name__})")
+                
+                # Use our parse_duration utility to handle complex duration formats
+                # DO NOT modify the original duration string - it's needed for display
+                try:
+                    # Parse duration but don't overwrite the original value
+                    # Just ensure it's correctly parsed
+                    from routes.scheduler_utils import parse_duration
+                    parse_duration(duration_input)
+                    debug(f"Successfully parsed duration: {duration_input}")
+                except (ValueError, TypeError) as e:
+                    error(f"Error parsing wait duration: {duration_input} - {str(e)}")
+                    
             # Handle boolean conversions for dontwait property
             if "dontwait" in processed_instruction:
                 if isinstance(processed_instruction["dontwait"], str):
@@ -2636,8 +2706,8 @@ def process_instruction_jinja(instruction: Dict[str, Any], context: Dict[str, An
         except Exception as e:
             # Log error but continue - we don't want to block execution due to type conversion issues
             error(f"Error during type conversion in Jinja processing: {str(e)}")
-    
-    return processed_instruction 
+            
+    return processed_instruction
 
 def reset_trigger_execution_timestamps(publish_destination: str, allow_grace_period: bool = True) -> None:
     """

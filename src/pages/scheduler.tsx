@@ -14,7 +14,8 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
-  Zap
+  Zap,
+  List
 } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { useConsoleManagement } from '@/hooks/use-console-management';
@@ -77,6 +78,22 @@ interface NextAction {
 interface SchedulerStatus {
   is_running: boolean;
   next_action: NextAction | null;
+}
+
+// New interface for instruction queue items
+interface InstructionQueueItem {
+  action: string;
+  important: boolean;
+  urgent: boolean;
+  details: Record<string, any>;
+}
+
+// New interface for instruction queue response
+interface InstructionQueueResponse {
+  status: string;
+  destination: string;
+  queue_size: number;
+  instructions: InstructionQueueItem[];
 }
 
 interface CollapsibleCardHeaderProps {
@@ -143,6 +160,10 @@ const Scheduler = () => {
   const [showLogs, setShowLogs] = useState<{[key: string]: boolean}>({});
   const [showSchedule, setShowSchedule] = useState<{[key: string]: boolean}>({});
   const [schedulerStatus, setSchedulerStatus] = useState<{[key: string]: SchedulerStatus}>({});
+
+  // Add state for instruction queues
+  const [instructionQueues, setInstructionQueues] = useState<{[key: string]: InstructionQueueResponse}>({});
+  const [showInstructionQueue, setShowInstructionQueue] = useState<{[key: string]: boolean}>({});
 
   const [varsRegistryVisible, setVarsRegistryVisible] = useState(false);
   const [runningSectionVisible, setRunningSectionVisible] = useState(true);
@@ -741,6 +762,47 @@ const Scheduler = () => {
     }
   };
 
+  // Add function to fetch instruction queue for a destination
+  const fetchInstructionQueue = async (destinationId: string) => {
+    try {
+      const response = await apiService.getInstructionQueue(destinationId);
+      setInstructionQueues(prevQueues => ({
+        ...prevQueues,
+        [destinationId]: response
+      }));
+    } catch (error) {
+      console.error(`Error fetching instruction queue for destination ${destinationId}:`, error);
+      // Don't break the UI on error
+    }
+  };
+
+  // Modify the refreshInterval to also fetch instruction queues
+  useEffect(() => {
+    if (!loading) {
+      const interval = setInterval(() => {
+        destinations.forEach(destination => {
+          if (destination.isRunning) {
+            // Fetch status for running destinations
+            fetchSchedulerStatus(destination.id);
+            // Also fetch instruction queue
+            fetchInstructionQueue(destination.id);
+          }
+        });
+      }, 5000); // Refresh every 5 seconds
+      
+      return () => clearInterval(interval);
+    }
+  }, [loading, destinations]);
+
+  // Initial fetch of instruction queues for running destinations
+  useEffect(() => {
+    destinations.forEach(destination => {
+      if (destination.isRunning) {
+        fetchInstructionQueue(destination.id);
+      }
+    });
+  }, [destinations]);
+
   if (loading) {
     return (
       <MainLayout
@@ -849,6 +911,14 @@ const Scheduler = () => {
                       onUnload={handleUnloadSchedule}
                       onEdit={handleEditSchedule}
                       schedulerStatus={schedulerStatus}
+                      instructionQueue={instructionQueues[destination.id]}
+                      onToggleQueueView={() => {
+                        setShowInstructionQueue(prev => ({
+                          ...prev,
+                          [destination.id]: !prev[destination.id]
+                        }));
+                      }}
+                      showInstructionQueue={showInstructionQueue[destination.id] || false}
                     />
                   ))}
               </div>
@@ -880,6 +950,14 @@ const Scheduler = () => {
                       onUnload={handleUnloadSchedule}
                       onEdit={handleEditSchedule}
                       schedulerStatus={schedulerStatus}
+                      instructionQueue={instructionQueues[destination.id]}
+                      onToggleQueueView={() => {
+                        setShowInstructionQueue(prev => ({
+                          ...prev,
+                          [destination.id]: !prev[destination.id]
+                        }));
+                      }}
+                      showInstructionQueue={showInstructionQueue[destination.id] || false}
                     />
                   ))}
               </div>
@@ -911,6 +989,14 @@ const Scheduler = () => {
                       onUnload={handleUnloadSchedule}
                       onEdit={handleEditSchedule}
                       schedulerStatus={schedulerStatus}
+                      instructionQueue={instructionQueues[destination.id]}
+                      onToggleQueueView={() => {
+                        setShowInstructionQueue(prev => ({
+                          ...prev,
+                          [destination.id]: !prev[destination.id]
+                        }));
+                      }}
+                      showInstructionQueue={showInstructionQueue[destination.id] || false}
                     />
                   ))}
               </div>
@@ -946,6 +1032,9 @@ interface SchedulerCardProps {
   onUnload: (destinationId: string) => Promise<void>;
   onEdit: (destinationId: string, layer: number) => Promise<void>;
   schedulerStatus?: Record<string, SchedulerStatus>;
+  instructionQueue?: InstructionQueueResponse;
+  showInstructionQueue?: boolean;
+  onToggleQueueView: () => void;
 }
 
 const SchedulerCard: React.FC<SchedulerCardProps> = ({ 
@@ -956,13 +1045,22 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
   onStop, 
   onUnload,
   onEdit,
-  schedulerStatus
+  schedulerStatus,
+  instructionQueue,
+  showInstructionQueue,
+  onToggleQueueView
 }) => {
   const [showLogs, setShowLogs] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [activeTab, setActiveTab] = useState<'context' | 'script'>('context');
   const [logs, setLogs] = useState<string[]>(destination.logs || []);
+  const [logUpdatesPaused, setLogUpdatesPaused] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement>(null);
+  const selectionStateRef = useRef<{
+    start: number | null;
+    end: number | null;
+    text: string | null;
+  }>({ start: null, end: null, text: null });
   const { toast } = useToast();
   
   // Extract event triggers from all schedule layers
@@ -1028,7 +1126,26 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
       try {
         const logs = await apiService.getSchedulerLogs(destination.id);
         if (logs && logs.log) {
-          setLogs(logs.log);
+          // Save any active selection before updating the logs
+          if (logsContainerRef.current && window.getSelection) {
+            const selection = window.getSelection();
+            if (selection && selection.toString().length > 0) {
+              // User has text selected - don't update the display
+              if (!logUpdatesPaused) {
+                setLogUpdatesPaused(true);
+              }
+              return;
+            } else {
+              // No selection - safe to update
+              if (logUpdatesPaused) {
+                setLogUpdatesPaused(false);
+              }
+              setLogs(logs.log);
+            }
+          } else {
+            // No ref or selection API - just update
+            setLogs(logs.log);
+          }
         }
       } catch (error) {
         console.error(`Error fetching logs for ${destination.id}:`, error);
@@ -1045,7 +1162,7 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
     return () => {
       clearInterval(intervalId);
     };
-  }, [showLogs, destination.id]); // Re-run effect when showLogs changes
+  }, [showLogs, destination.id, logUpdatesPaused]); // Added logUpdatesPaused dependency
   
   // When destination.logs updates from parent (e.g., on manual refresh), update our local state
   useEffect(() => {
@@ -1174,6 +1291,48 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
     }
   };
   
+  // Add a render function for the instruction queue
+  const renderInstructionQueue = () => {
+    if (!instructionQueue || instructionQueue.queue_size === 0) {
+      return <div className="text-sm text-muted-foreground p-2">No active instructions in queue</div>;
+    }
+
+    return (
+      <div className="space-y-2">
+        {instructionQueue.instructions.map((instruction, index) => (
+          <div 
+            key={index} 
+            className={`p-2 rounded border ${instruction.urgent ? 'border-red-500 bg-red-50 dark:bg-red-950' : 
+              instruction.important ? 'border-amber-500 bg-amber-50 dark:bg-amber-950' : 
+              'border-gray-200 dark:border-gray-700'}`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="font-medium">
+                {instruction.action}
+                {instruction.urgent && (
+                  <Badge variant="destructive" className="ml-2">Urgent</Badge>
+                )}
+                {instruction.important && !instruction.urgent && (
+                  <Badge variant="secondary" className="ml-2">Important</Badge>
+                )}
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {Object.entries(instruction.details).map(([key, value]) => (
+                <div key={key} className="mt-1">
+                  <span className="font-medium">{key}: </span>
+                  <span className="text-xs">{typeof value === 'string' && value.length > 30 ? 
+                    value.substring(0, 30) + '...' : 
+                    String(value)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <Card className="shadow-md">
       <CardHeader className="bg-muted/30">
@@ -1388,19 +1547,41 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
         
         {/* Logs - Always show the option to view logs */}
         <div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setShowLogs(!showLogs)}
-            className="mb-2"
-          >
-            {showLogs ? 'Hide Logs' : 'Show Logs'}
-          </Button>
+          <div className="flex items-center mb-2 gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowLogs(!showLogs)}
+            >
+              {showLogs ? 'Hide Logs' : 'Show Logs'}
+            </Button>
+            
+            {showLogs && logUpdatesPaused && (
+              <Badge variant="outline" className="bg-yellow-100">
+                Updates paused during selection
+              </Badge>
+            )}
+          </div>
           
           {showLogs && (
             <div 
               ref={logsContainerRef}
               className="bg-black text-green-400 p-4 rounded-lg font-mono text-xs overflow-auto max-h-60"
+              onMouseUp={() => {
+                // Check if text is selected
+                const selection = window.getSelection();
+                if (selection && selection.toString().length > 0) {
+                  setLogUpdatesPaused(true);
+                } else {
+                  setLogUpdatesPaused(false);
+                }
+              }}
+              onClick={(e) => {
+                // If user clicks without dragging, and not on selected text, unpause
+                if (window.getSelection()?.toString().length === 0) {
+                  setLogUpdatesPaused(false);
+                }
+              }}
             >
               {logs && logs.length > 0 ? (
                 logs.map((log, index) => (
@@ -1409,6 +1590,33 @@ const SchedulerCard: React.FC<SchedulerCardProps> = ({
               ) : (
                 <p>No logs available</p>
               )}
+            </div>
+          )}
+        </div>
+
+        {/* Instruction Queue */}
+        <div>
+          <div 
+            className="flex items-center justify-between p-2 hover:bg-muted/50 rounded cursor-pointer"
+            onClick={onToggleQueueView}
+          >
+            <div className="font-medium flex items-center gap-2">
+              <List className="h-4 w-4" />
+              Instruction Queue 
+              {instructionQueue && instructionQueue.queue_size > 0 && (
+                <Badge variant="secondary">
+                  {instructionQueue.queue_size}
+                </Badge>
+              )}
+            </div>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+              {showInstructionQueue ? <ChevronDown /> : <ChevronRight />}
+            </Button>
+          </div>
+          
+          {showInstructionQueue && (
+            <div className="border rounded p-2 mt-1">
+              {renderInstructionQueue()}
             </div>
           )}
         </div>
