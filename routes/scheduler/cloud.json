@@ -143,8 +143,8 @@
   "context_stack": [
     {
       "vars": {
-        "a_theme": "Tamed Gardens - Pristine Horticulture",
-        "b_theme": "Wild Gardens - Overgrown Luxury",
+        "a_theme": "Wild Gardens - Overgrown Luxury",
+        "b_theme": "Tamed Gardens - Pristine Horticulture",
         "style": "Baroque tapestry-inspired compositions",
         "guidance": "Select diverse garden scenes that encompass both riotous, untamed growth and meticulous, controlled elegance. Render these using the intricate and ornate qualities of Baroque tapestry, ensuring freshness by referencing recent image history to avoid similar depictions.",
         "history_var": [
@@ -375,11 +375,36 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-16T03:16:53.414132",
+  "last_updated": "2025-05-16T22:00:02.401834",
   "last_trigger_executions": {
     "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_0": "2025-05-16T01:00:01.338917",
     "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_1": "2025-05-16T01:45:01.161611",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_2": "2025-05-16T02:30:01.511412"
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_2": "2025-05-16T02:30:01.511412",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_4": "2025-05-16T04:00:00.422138",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_5": "2025-05-16T04:45:00.088314",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_6": "2025-05-16T05:30:02.076849",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_7": "2025-05-16T06:15:00.141171",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_8": "2025-05-16T07:00:01.053901",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_9": "2025-05-16T07:45:01.213107",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_10": "2025-05-16T08:30:01.119456",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_11": "2025-05-16T09:15:00.745629",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_12": "2025-05-16T10:00:01.818647",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_13": "2025-05-16T10:45:00.094849",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_14": "2025-05-16T11:30:01.193587",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_15": "2025-05-16T12:15:00.406602",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_16": "2025-05-16T13:00:01.078596",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_17": "2025-05-16T13:45:01.464107",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_18": "2025-05-16T14:30:00.182297",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_19": "2025-05-16T15:15:00.376850",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_20": "2025-05-16T16:00:00.501501",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_21": "2025-05-16T16:45:00.334727",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_22": "2025-05-16T17:30:01.023601",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_23": "2025-05-16T18:15:01.270683",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_24": "2025-05-16T19:00:01.239523",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_25": "2025-05-16T19:45:00.508338",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_26": "2025-05-16T20:30:00.200792",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_27": "2025-05-16T21:15:00.856025",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_28": "2025-05-16T22:00:01.892017"
   },
   "active_events": {},
   "event_history": [
