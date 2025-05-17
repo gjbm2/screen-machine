@@ -32,7 +32,7 @@ def cancel_all_jobs():
             "error": str(e)
         }), 500
 
-@generate_api.route('/jpg_from_mp4', methods=['GET'])
+@generate_api.route('/generate/jpg_from_mp4', methods=['GET'])
 def jpg_from_mp4():
     """
     Extract the first frame from an MP4 file and return it as a JPG.

@@ -1,22 +1,21 @@
-
 // Metadata utilities for processing and extracting metadata from images
-import { extractMetadataUsingApi, extractMetadataUsingBrowser } from './metadataExtraction';
+import { extractMetadata } from './metadataExtraction';
 
 // Main function to extract metadata from an image file
-export const extractImageMetadata = async (url: string): Promise<Record<string, string>> => {
+export const getImageMetadata = async (url: string): Promise<Record<string, string>> => {
   try {
     console.log('Extracting metadata for image:', url);
     
     // Try with API endpoint first
     try {
-      return await extractMetadataUsingApi(url);
+      return await extractMetadata(url);
     } catch (apiError) {
       console.error('Error with API endpoint:', apiError);
       
       // Fallback to browser-based extraction if the API fails
       console.log('Falling back to browser-based extraction');
       try {
-        const browserMetadata = await extractMetadataUsingBrowser(url);
+        const browserMetadata = await extractMetadata(url);
         if (Object.keys(browserMetadata).length > 0) {
           return browserMetadata;
         }

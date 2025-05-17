@@ -1,7 +1,6 @@
-
 import { useState, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
-import { extractImageMetadata } from '../utils';
+import { getImageMetadata } from '../utils';
 
 export const useMetadataExtractor = () => {
   const [metadata, setMetadata] = useState<Record<string, string>>({});
@@ -62,7 +61,7 @@ export const useMetadataExtractor = () => {
         console.log('[useMetadataExtractor] Using cache-busted URL:', cacheBustUrl);
         
         // Try a direct API call first - skip it for now as the API doesn't seem to be working
-        const newMetadata = await extractImageMetadata(cacheBustUrl);
+        const newMetadata = await getImageMetadata(cacheBustUrl);
         console.log('[useMetadataExtractor] Extracted metadata:', newMetadata);
         
         if (Object.keys(newMetadata).length > 0) {

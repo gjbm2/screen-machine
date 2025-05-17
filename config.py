@@ -24,3 +24,7 @@ LOG_LIMIT = 100  # Default number of logs to return
 # File settings
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'webm'}
 MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size 
+
+# Scheduler settings
+SCHEDULER_TICK_INTERVAL = 2.0  # Seconds between scheduler trigger checks
+SCHEDULER_TICK_BUFFER = 0.5    # Additional buffer time for scheduler operations 

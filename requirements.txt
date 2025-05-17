@@ -22,6 +22,7 @@ iptcinfo3>=2.1.1
 opencv-python-headless>=4.5.0
 qrcode[pil]
 opencv-python
+ffmpeg-python>=0.2.0  # For video processing
 
 # Do NOT install asyncio directly (it's built-in)
 

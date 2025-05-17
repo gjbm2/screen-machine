@@ -27,6 +27,7 @@ from routes.scheduler_utils import (
 )
 import time
 from routes.scheduler_queue import get_instruction_queue, check_urgent_events, process_triggers, clear_instruction_queue
+from config import SCHEDULER_TICK_INTERVAL, SCHEDULER_TICK_BUFFER
 
 # === Event Loop Management ===
 # Per-destination event loops and threads
@@ -884,8 +885,16 @@ def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None
         error(traceback.format_exc())
 
 async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str, step_minutes: int = 1):
-    """Run just the scheduler loop part without executing initial instructions."""
+    """
+    Main scheduler loop that processes instructions and handles events.
+    """
+    # Initialize debug logging control
+    should_log_debug = True  # Default to True to maintain existing debug output
+    
     try:
+        # Initialize instruction queue for this destination if it doesn't exist
+        instruction_queue = get_instruction_queue(publish_destination)
+        
         # Initialize logs if not already initialized
         if publish_destination not in scheduler_logs:
             scheduler_logs[publish_destination] = []
@@ -897,9 +906,6 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
         last_check_time = None
         last_debug_log_time = 0  # Track when we last did debug logging
         last_expiration_check_time = 0  # Track when we last checked for expired events
-        
-        # Initialize or get the instruction queue for this destination
-        instruction_queue = get_instruction_queue(publish_destination)
         
         # Track if the scheduler is in a waiting state
         is_in_wait_state = False
@@ -950,9 +956,9 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                 except Exception as e:
                     error(f"Error checking expired events: {str(e)}")
             
-            # If this is our first loop or at least two seconds have elapsed since the
+            # If this is our first loop or at least one tick interval has elapsed since the
             # previous schedule evaluation, process triggers and update the queue
-            if last_check_time is None or (current_epoch_second - last_check_time) >= 2.0:
+            if last_check_time is None or (current_epoch_second - last_check_time) >= SCHEDULER_TICK_INTERVAL:
                 # Get current schedule and context from top of stacks
                 current_schedule = scheduler_schedule_stacks[publish_destination][-1]
                 current_context = get_current_context(publish_destination)

@@ -47,13 +47,20 @@ CORS(app)
 # Add project root to Python path
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
-# Register API blueprints
+# Set app config
+app.config['OUTPUT_DIR'] = OUTPUT_DIR
+
+# Register API blueprints with consistent prefix
 app.register_blueprint(publish_api, url_prefix=API_PREFIX)
 app.register_blueprint(generate_api, url_prefix=API_PREFIX)
-app.register_blueprint(buckets_bp)
+app.register_blueprint(buckets_bp, url_prefix=API_PREFIX)
+app.register_blueprint(scheduler_bp, url_prefix=API_PREFIX)
+
+# Register test blueprints (no prefix needed for test routes)
 app.register_blueprint(test_buckets_bp)
-app.register_blueprint(scheduler_bp)
 app.register_blueprint(test_scheduler_bp)
+
+# Register utility blueprints (no prefix needed for utility routes)
 app.register_blueprint(file_bp)
 
 # Initialize schedulers from saved states

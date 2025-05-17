@@ -453,7 +453,7 @@ export class Api {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30-second timeout
       
-      const response = await fetch(`${this.apiUrl}/publish`, {
+      const response = await fetch(`${this.apiUrl}/publish/publish`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1539,7 +1539,7 @@ export class Api {
 
   async cancelAllJobs(): Promise<{ success: boolean; cancelled?: number; error?: string }> {
     try {
-      const response = await fetch(`${this.apiUrl}/generate/cancel_all_jobs`, {
+      const response = await fetch(`${this.apiUrl}/cancel_all_jobs`, {
         method: 'POST',
       });
       
@@ -2234,6 +2234,41 @@ export class Api {
     } catch (error) {
       console.error('Error clearing all events:', error);
       throw error;
+    }
+  }
+
+  // Get published content for a specific destination
+  async getPublishedContentForDestination(destinationId: string): Promise<{
+    published: string | null;
+    publishedAt: string | null;
+    raw_url: string | null;
+    thumbnail_url: string | null;
+    meta?: any;
+  }> {
+    try {
+      const response = await fetch(`${this.apiUrl}/published/${destinationId}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get published content: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      return {
+        published: data.published || null,
+        publishedAt: data.published_at || null,
+        raw_url: data.raw_url || null,
+        thumbnail_url: data.thumbnail_url || null,
+        meta: data.meta || {}
+      };
+    } catch (error) {
+      console.error(`Error fetching published content for ${destinationId}:`, error);
+      return {
+        published: null,
+        publishedAt: null,
+        raw_url: null,
+        thumbnail_url: null,
+        meta: {}
+      };
     }
   }
 }
