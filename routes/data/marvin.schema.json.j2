@@ -6,8 +6,8 @@
     "properties": {
       "intent": {
         "type": "string",
-        "enum": ["respond_only", "generate_image", "other_action", "change_refiner", "animate", "set_variable"],
-        "description": "The user's intent. One of: 'respond_only', 'generate_image', 'other_action', 'animate', 'set_variable' or 'change_refiner'."
+        "enum": ["respond_only", "generate_image", "other_action", "change_refiner", "animate", "set_variable", "trigger"],
+        "description": "The user's intent. One of: 'respond_only', 'generate_image', 'other_action', 'animate', 'set_variable', 'change_refiner', or 'trigger'."
       },
       "response_ssml": {
         "type": "string",
@@ -26,6 +26,14 @@
           },
           "value": {
             "description": "The value to set the variable to when intent is set_variable."
+          },
+          "event_key": {
+            "type": "string",
+            "description": "The event key to trigger when intent is trigger."
+          },
+          "scope": {
+            "type": "string",
+            "description": "The scope (screen, group, or 'global') to trigger the event on when intent is trigger."
           },
           "targets": {
             "type": "array",

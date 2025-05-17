@@ -21,6 +21,23 @@
           ],
           "scheduled_actions": [
             {
+              "time": "06:00",
+              "trigger_actions": {
+                "important": true,
+                "instructions_block": [
+                  {
+                    "action": "device-wake"
+                  },
+                  {
+                    "action": "throw_event",
+                    "event": "Generate",
+                    "scope": "south-screen"
+                  }
+                ],
+                "urgent": true
+              }
+            },
+            {
               "repeat_schedule": {
                 "every": "60"
               },
@@ -28,46 +45,9 @@
               "trigger_actions": {
                 "instructions_block": [
                   {
-                    "action": "import_var",
-                    "as": "_a_theme",
-                    "scope": "living-room",
-                    "var_name": "a_theme"
-                  },
-                  {
-                    "action": "import_var",
-                    "as": "_b_theme",
-                    "scope": "living-room",
-                    "var_name": "b_theme"
-                  },
-                  {
-                    "action": "import_var",
-                    "as": "_style",
-                    "scope": "living-room",
-                    "var_name": "style"
-                  },
-                  {
-                    "action": "import_var",
-                    "as": "_guidance",
-                    "scope": "living-room",
-                    "var_name": "guidance"
-                  },
-                  {
-                    "action": "reason",
-                    "history_var": "history_var",
-                    "image_inputs": [],
-                    "output_vars": [
-                      "prompt"
-                    ],
-                    "reasoner": "devise_prompt",
-                    "text_input": "'{{ _a_theme }}' in the style of '{{ _style }}'. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. "
-                  },
-                  {
-                    "action": "generate",
-                    "history_var": "prompt_history",
-                    "input": {
-                      "prompt": "{{ prompt }}"
-                    },
-                    "refiner": "curator"
+                    "action": "throw_event",
+                    "event": "Generate",
+                    "scope": "south-screen"
                   }
                 ]
               }
@@ -80,9 +60,31 @@
               "trigger_actions": {
                 "instructions_block": [
                   {
-                    "action": "animate",
-                    "history_var": "animation_history",
-                    "refiner": "animator"
+                    "action": "import_var",
+                    "as": "animation_on",
+                    "scope": "living-room",
+                    "var_name": "animation_on"
+                  },
+                  {
+                    "action": "terminate",
+                    "mode": "block",
+                    "test": "{{ animation_on == false }}"
+                  },
+                  {
+                    "action": "throw_event",
+                    "event": "Animate",
+                    "scope": "south-screen"
+                  }
+                ]
+              }
+            },
+            {
+              "time": "23:00",
+              "trigger_actions": {
+                "important": true,
+                "instructions_block": [
+                  {
+                    "action": "device-sleep"
                   }
                 ]
               }
@@ -113,6 +115,87 @@
           },
           "type": "event",
           "value": "Random"
+        },
+        {
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "import_var",
+                "as": "_a_theme",
+                "scope": "living-room",
+                "var_name": "a_theme"
+              },
+              {
+                "action": "import_var",
+                "as": "_b_theme",
+                "scope": "living-room",
+                "var_name": "b_theme"
+              },
+              {
+                "action": "import_var",
+                "as": "_style",
+                "scope": "living-room",
+                "var_name": "style"
+              },
+              {
+                "action": "import_var",
+                "as": "_guidance",
+                "scope": "living-room",
+                "var_name": "guidance"
+              },
+              {
+                "action": "reason",
+                "history_var": "history_var",
+                "image_inputs": [],
+                "output_vars": [
+                  "prompt"
+                ],
+                "reasoner": "devise_prompt",
+                "text_input": "'{{ _a_theme }}' in the style of '{{ _style }}'. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. "
+              },
+              {
+                "action": "generate",
+                "history_var": "prompt_history",
+                "input": {
+                  "prompt": "{{ prompt }}"
+                },
+                "refiner": "curator"
+              }
+            ]
+          },
+          "type": "event",
+          "value": "Generate"
+        },
+        {
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "animate",
+                "history_var": "animation_history",
+                "refiner": "animator"
+              }
+            ]
+          },
+          "type": "event",
+          "value": "Animate"
+        },
+        {
+          "trigger_actions": {
+            "important": false,
+            "instructions_block": [
+              {
+                "action": "log",
+                "message": "User interaction detected: {{ _event.payload.action | default('unknown') }} - waiting for {{ _event.payload.wait | default('2m') }}"
+              },
+              {
+                "action": "wait",
+                "duration": "{{ _event.payload.wait | default('2m') }}"
+              }
+            ],
+            "urgent": true
+          },
+          "type": "event",
+          "value": "_user_interacting"
         }
       ]
     }
@@ -120,32 +203,12 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "Tamed Gardens - Pristine Horticulture",
-        "_b_theme": "Wild Gardens - Overgrown Luxury",
-        "_style": "Baroque tapestry-inspired compositions",
-        "_guidance": "Select diverse garden scenes that encompass both riotous, untamed growth and meticulous, controlled elegance. Render these using the intricate and ornate qualities of Baroque tapestry, ensuring freshness by referencing recent image history to avoid similar depictions.",
-        "prompt": "Baroque tapestry-style garden scene: statuesque fountains, autumn leaves swirling in lush hedgerows, golden sunlight casting elaborate shadows, merging dramatic wild growth with cultivated harmony.",
+        "_a_theme": "The Heavens Open - Assembly of Clouds",
+        "_b_theme": "The Earthly Canvas - Patterns of Land",
+        "_style": "Romantic Era landscape painting",
+        "_guidance": "Focus on depicting diverse cloudscapes and land patterns, enhancing their Romantic qualities through emotive color palettes and dynamic compositions. Ensure novel subject selection by consulting image history to maintain freshness and avoid repetition.",
+        "prompt": "Vast Romantic sky filled with cumulus clouds over a gently rolling meadow, sunbeams piercing through, wildflowers dotting the landscape, evoking tranquility amidst nature's grandeur.",
         "history_var": [
-          {
-            "timestamp": "2025-05-15 21:00:01",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Silent lagoon where tangled jungle vines intertwine with ocean waves; ethereal mist drifts, forming hybrid creatures, playful yet ominous, invoking Max Ernst's dreamlike layers."
-            },
-            "text_input": "'The Mystical and Menacing Jungle' in the style...",
-            "explanation": "I focused on a lagoon setting where jungle and ocean elements blend through mist and hybrid creat..."
-          },
-          {
-            "timestamp": "2025-05-15 22:00:00",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Whimsical forest where coral reefs emerge from tangled roots, surreal creatures dance between trees and waves, inspired by Max Ernst's radiant collage forms."
-            },
-            "text_input": "'The Mystical and Menacing Jungle' in the style...",
-            "explanation": "To maintain uniqueness, I depicted a whimsical forest where coral reefs sprout from roots, contra..."
-          },
           {
             "timestamp": "2025-05-15 23:00:00",
             "type": "reason",
@@ -325,25 +388,29 @@
             },
             "text_input": "'Tamed Gardens - Pristine Horticulture' in the ...",
             "explanation": "I focused on the interplay of autumn elements and statuesque architecture, avoiding previously us..."
+          },
+          {
+            "timestamp": "2025-05-17 01:10:49",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Expansive Romantic landscape; contrasting rocky cliffs and verdant valleys beneath swirling storm clouds, vibrant sunset reflections dance across pristine lakes, capturing intense natural beauty and wilderness spirit."
+            },
+            "text_input": "'The Earthly Canvas - Patterns of Land' in the ...",
+            "explanation": "I focused on a landscape featuring contrasting terrains like cliffs and valleys, with dynamic clo..."
+          },
+          {
+            "timestamp": "2025-05-17 03:21:12",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Vast Romantic sky filled with cumulus clouds over a gently rolling meadow, sunbeams piercing through, wildflowers dotting the landscape, evoking tranquility amidst nature's grandeur."
+            },
+            "text_input": "'The Heavens Open - Assembly of Clouds' in the ...",
+            "explanation": "Instead of focusing on contrasting terrains like cliffs and valleys or detailed garden elements, ..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2025-05-15 22:00:00",
-            "type": "generation",
-            "prompt": "Whimsical forest where coral reefs emerge from ...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/dd81c1fd-b4b0-448f-a261-afd5840567e2-e1/4a82cea5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T210052Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e43edb28c8a104db06d92f675514ff030053e8e98b049a0759e6ee05433063c4"
-          },
-          {
-            "timestamp": "2025-05-15 23:00:00",
-            "type": "generation",
-            "prompt": "Surreal tidal wave of intertwining tree canopie...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4166345c-1370-4419-8a56-0502d1283d2d-e1/ac7c27e9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250515%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250515T220109Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=e2fd185f356d978f76cb5c54d7707f2288e961cec1858f284986b77cf34ba300"
-          },
           {
             "timestamp": "2025-05-16 06:00:08",
             "type": "generation",
@@ -487,6 +554,22 @@
             "refiner": "curator",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7b6b6f27-47d3-43b0-9eb2-80cea21627e5-e1/d400e867.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T220026Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=bbb3cabb7cf3ea3cc4f6a1bb01d6db3031069dc0f39ea6a64ac72b4e9cec9a73"
+          },
+          {
+            "timestamp": "2025-05-17 01:10:52",
+            "type": "generation",
+            "prompt": "Expansive Romantic landscape; contrasting rocky...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/3289fc3f-4f7d-470d-98d2-decff9623606-e1/4c664eb8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250517%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250517T001113Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=dfbd57ceedc2e8ed48ab6b6b8b91442de25b2218f573b139c91da618823f94ce"
+          },
+          {
+            "timestamp": "2025-05-17 03:21:15",
+            "type": "generation",
+            "prompt": "Vast Romantic sky filled with cumulus clouds ov...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d3345ed5-ba58-4e22-8c18-760cd8fcaa34-e1/e486af21.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250517%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250517T022156Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b4d578089ffe499258401f33648ebea7b8d5acfd8cdb214ee2f2a468fde8773d"
           }
         ],
         "animation_history": [
@@ -653,47 +736,12 @@
         ]
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7b6b6f27-47d3-43b0-9eb2-80cea21627e5-e1/d400e867.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250516%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250516T220026Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=bbb3cabb7cf3ea3cc4f6a1bb01d6db3031069dc0f39ea6a64ac72b4e9cec9a73"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d3345ed5-ba58-4e22-8c18-760cd8fcaa34-e1/e486af21.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250517%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250517T022156Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b4d578089ffe499258401f33648ebea7b8d5acfd8cdb214ee2f2a468fde8773d"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-16T23:46:21.202956",
-  "last_trigger_executions": {
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_13": "2025-05-15T19:00:01.432280",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_14": "2025-05-15T20:00:00.337484",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-15_7": "2025-05-15T20:05:00.657823",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_15": "2025-05-15T21:00:01.580128",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_16": "2025-05-15T22:00:00.841523",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-15_8": "2025-05-15T22:05:00.270647",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-15_17": "2025-05-15T23:00:00.999365",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_0": "2025-05-16T06:00:00.803290",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-16_0": "2025-05-16T06:05:00.478640",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_1": "2025-05-16T07:00:00.903234",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_2": "2025-05-16T08:00:01.846844",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-16_1": "2025-05-16T08:05:01.594809",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_3": "2025-05-16T09:00:01.914717",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_4": "2025-05-16T10:00:02.013313",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-16_2": "2025-05-16T10:05:01.112363",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_5": "2025-05-16T11:00:00.303839",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_6": "2025-05-16T12:00:00.231298",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-16_3": "2025-05-16T12:05:00.500787",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_7": "2025-05-16T13:00:00.912191",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_8": "2025-05-16T14:00:00.895182",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-16_4": "2025-05-16T14:05:01.771816",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_9": "2025-05-16T15:00:00.763249",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_10": "2025-05-16T16:00:00.234614",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-16_5": "2025-05-16T16:05:01.041028",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_11": "2025-05-16T17:00:01.805328",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_12": "2025-05-16T18:00:00.909121",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-16_6": "2025-05-16T18:05:01.131323",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_13": "2025-05-16T19:00:01.709713",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_14": "2025-05-16T20:00:01.138891",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-16_7": "2025-05-16T20:05:01.017452",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_15": "2025-05-16T21:00:00.213985",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_16": "2025-05-16T22:00:00.366074",
-    "8b0160f252dc1affd80c933c62e85005_2025-05-16_8": "2025-05-16T22:05:01.136248",
-    "1e41f37db26e89ac37d55f3771482626_2025-05-16_17": "2025-05-16T23:00:00.633386"
-  },
+  "last_updated": "2025-05-17T03:46:24.228430",
+  "last_trigger_executions": {},
   "active_events": {},
   "event_history": [
     {
@@ -981,6 +1029,162 @@
       "status": "EXPIRED",
       "consumed_by": "expiration",
       "consumed_at": "2025-05-16T00:02:01.422820"
+    },
+    {
+      "key": "Random",
+      "active_from": "2025-05-17T00:28:05.938344",
+      "expires": "2025-05-17T00:29:05.938344",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T00:28:05.938344",
+      "unique_id": "b6c69935-6ef3-478f-a03e-ac067202ed22",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-17T00:28:07.542334"
+    },
+    {
+      "key": "Random",
+      "active_from": "2025-05-17T00:28:05.938344",
+      "expires": "2025-05-17T00:29:05.938344",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T00:28:05.938344",
+      "unique_id": "b6c69935-6ef3-478f-a03e-ac067202ed22",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-17T00:28:07.542334"
+    },
+    {
+      "key": "generate",
+      "active_from": "2025-05-17T01:10:46.986479",
+      "expires": "2025-05-17T01:11:46.986479",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T01:10:46.986479",
+      "unique_id": "3ea78cfe-5e84-4226-818c-54c4764a2d4f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-17T01:10:48.591126"
+    },
+    {
+      "key": "generate",
+      "active_from": "2025-05-17T01:10:46.986479",
+      "expires": "2025-05-17T01:11:46.986479",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T01:10:46.986479",
+      "unique_id": "3ea78cfe-5e84-4226-818c-54c4764a2d4f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-17T01:10:48.591126"
+    },
+    {
+      "key": "Blank",
+      "active_from": "2025-05-17T03:16:33.272909",
+      "expires": "2025-05-17T03:17:33.272909",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T03:16:33.272909",
+      "unique_id": "347103e0-e11f-40ce-91b3-cd0ac35df057",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-17T03:16:34.948406"
+    },
+    {
+      "key": "Blank",
+      "active_from": "2025-05-17T03:16:33.272909",
+      "expires": "2025-05-17T03:17:33.272909",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T03:16:33.272909",
+      "unique_id": "347103e0-e11f-40ce-91b3-cd0ac35df057",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-17T03:16:34.948406"
+    },
+    {
+      "key": "Next",
+      "active_from": "2025-05-17T03:17:40.105233",
+      "expires": "2025-05-17T03:18:40.105233",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T03:17:40.105233",
+      "unique_id": "c018548f-b781-4e7b-8719-1b524c994c16",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-17T03:19:04.437305"
+    },
+    {
+      "key": "Random",
+      "active_from": "2025-05-17T03:18:02.595029",
+      "expires": "2025-05-17T03:19:02.595029",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T03:18:02.595029",
+      "unique_id": "49e58d4b-2d1c-4f65-8dae-4bb104109888",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-17T03:18:03.689405"
+    },
+    {
+      "key": "Random",
+      "active_from": "2025-05-17T03:18:02.595029",
+      "expires": "2025-05-17T03:19:02.595029",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T03:18:02.595029",
+      "unique_id": "49e58d4b-2d1c-4f65-8dae-4bb104109888",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-17T03:18:03.689405"
+    },
+    {
+      "key": "Next",
+      "active_from": "2025-05-17T03:17:40.105233",
+      "expires": "2025-05-17T03:18:40.105233",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T03:17:40.105233",
+      "unique_id": "c018548f-b781-4e7b-8719-1b524c994c16",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-05-17T03:19:04.437305"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-17T03:21:11.432260",
+      "expires": "2025-05-17T03:22:11.432260",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T03:21:11.432260",
+      "unique_id": "49d43b79-b991-4664-8954-2f4dd4587ab9",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-17T03:21:11.690310"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-17T03:21:11.432260",
+      "expires": "2025-05-17T03:22:11.432260",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T03:21:11.432260",
+      "unique_id": "49d43b79-b991-4664-8954-2f4dd4587ab9",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-17T03:21:11.690310"
     }
   ]
 }

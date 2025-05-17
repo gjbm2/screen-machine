@@ -1,8 +1,7 @@
-
 import React, { useEffect, useState } from 'react';
 import { CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { extractImageMetadata } from "../utils";
+import { getImageMetadata } from "../utils";
 import { MetadataHeader } from './MetadataHeader';
 import { MetadataSearch } from './MetadataSearch';
 import { MetadataEntryList } from './MetadataEntryList';
@@ -85,7 +84,7 @@ export const MetadataTab: React.FC<MetadataTabProps> = ({
       
       // Skip API endpoint and use utility function directly
       try {
-        const metadata = await extractImageMetadata(cacheBustUrl);
+        const metadata = await getImageMetadata(cacheBustUrl);
         
         console.log('[MetadataTab] Fresh metadata from direct extraction:', metadata);
         

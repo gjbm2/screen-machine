@@ -44,7 +44,7 @@ from routes.scheduler_utils import (
 # === Storage for global scheduler state ===
 scheduler_bp = Blueprint("scheduler_bp", __name__)
 
-@scheduler_bp.route("/api/scheduler/schema", methods=["GET"])
+@scheduler_bp.route("/scheduler/schema", methods=["GET"])
 def api_get_schema():
     """Get the current schema with jinja substitutions as a string."""
     try:
@@ -56,15 +56,15 @@ def api_get_schema():
         return jsonify({"error": str(e)}), 500
 
 # === Run scheduler in real time ===
-@scheduler_bp.route("/api/schedulers", methods=["GET"])
+@scheduler_bp.route("/schedulers", methods=["GET"])
 def api_list_schedulers():
     return jsonify({"running": list_running_schedulers()})
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>", methods=["GET"])
+@scheduler_bp.route("/schedulers/<publish_destination>", methods=["GET"])
 def api_get_scheduler_log(publish_destination):
     return jsonify({"log": get_scheduler_log(publish_destination)})
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>/next_action", methods=["GET"])
+@scheduler_bp.route("/schedulers/<publish_destination>/next_action", methods=["GET"])
 def api_get_next_action(publish_destination: str):
     """Get the next scheduled action for a destination."""
     try:
@@ -90,7 +90,7 @@ def api_get_next_action(publish_destination: str):
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>", methods=["POST"])
+@scheduler_bp.route("/schedulers/<publish_destination>", methods=["POST"])
 def api_start_scheduler(publish_destination):
     """Start a scheduler with the provided publish_destination ID."""
     try:
@@ -149,7 +149,7 @@ def api_start_scheduler(publish_destination):
         error(f"Error traceback: {traceback.format_exc()}")
         return jsonify({"error": error_msg}), 400
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>", methods=["DELETE"])
+@scheduler_bp.route("/schedulers/<publish_destination>", methods=["DELETE"])
 def api_stop_scheduler(publish_destination):
     from routes.scheduler_utils import clean_registry_for_destination
     
@@ -169,7 +169,7 @@ def api_stop_scheduler(publish_destination):
         }
     })
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>/schedule", methods=["GET"])
+@scheduler_bp.route("/schedulers/<publish_destination>/schedule", methods=["GET"])
 def api_get_scheduler_schedule(publish_destination):
     try:
         # Get the current schedule from the top of the stack
@@ -198,7 +198,7 @@ def list_running_schedulers() -> List[str]:
 
 scheduler_schedules: Dict[str, Dict[str, Any]] = {}  # Store schedules by destination
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>/pause", methods=["POST"])
+@scheduler_bp.route("/schedulers/<publish_destination>/pause", methods=["POST"])
 def api_pause_scheduler(publish_destination):
     """Pause a running scheduler, preserving its state."""
     try:
@@ -270,7 +270,7 @@ def api_pause_scheduler(publish_destination):
         error(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>/unpause", methods=["POST"])
+@scheduler_bp.route("/schedulers/<publish_destination>/unpause", methods=["POST"])
 def api_unpause_scheduler(publish_destination):
     try:
         # Only update the state, don't modify context
@@ -289,7 +289,7 @@ def api_unpause_scheduler(publish_destination):
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>/status", methods=["GET"])
+@scheduler_bp.route("/schedulers/<publish_destination>/status", methods=["GET"])
 def api_get_scheduler_status(publish_destination):
     try:
         # Get the current state, defaulting to 'stopped' if not found
@@ -309,7 +309,7 @@ def get_scheduler_log(publish_destination: str) -> List[str]:
     return scheduler_logs.get(publish_destination, [])
 
 # Add new endpoints for context management
-@scheduler_bp.route("/api/schedulers/<publish_destination>/context", methods=["GET"])
+@scheduler_bp.route("/schedulers/<publish_destination>/context", methods=["GET"])
 def api_get_scheduler_context(publish_destination):
     try:
         # Get the context from the top of the stack
@@ -325,7 +325,7 @@ def api_get_scheduler_context(publish_destination):
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>/context", methods=["POST"])
+@scheduler_bp.route("/schedulers/<publish_destination>/context", methods=["POST"])
 def api_set_scheduler_context(publish_destination):
     try:
         data = request.json
@@ -401,7 +401,7 @@ def api_set_scheduler_context(publish_destination):
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>/schedule", methods=["POST"])
+@scheduler_bp.route("/schedulers/<publish_destination>/schedule", methods=["POST"])
 def api_load_schedule(publish_destination):
     """Load a schedule for a destination. If no scheduler exists, create one."""
     try:
@@ -517,7 +517,7 @@ def api_load_schedule(publish_destination):
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
         return jsonify({"error": str(e)}), 500
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>/schedule", methods=["DELETE"])
+@scheduler_bp.route("/schedulers/<publish_destination>/schedule", methods=["DELETE"])
 def api_unload_schedule(publish_destination):
     try:
         # Ensure scheduler_logs dictionary has an entry for this destination
@@ -574,7 +574,7 @@ def api_unload_schedule(publish_destination):
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>/schedule/stack", methods=["GET"])
+@scheduler_bp.route("/schedulers/<publish_destination>/schedule/stack", methods=["GET"])
 def api_get_schedule_stack(publish_destination):
     try:
         if publish_destination in scheduler_schedule_stacks:
@@ -589,13 +589,13 @@ def api_get_schedule_stack(publish_destination):
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/events", methods=["GET"])
+@scheduler_bp.route("/schedulers/events", methods=["GET"])
 def api_get_events():
     """
     Get events for a destination.
     
     Route:
-    - /api/schedulers/events?destination=<id> - Destination is provided as query param
+    - /schedulers/events?destination=<id> - Destination is provided as query param
     """
     try:
         # Get destination from query parameters
@@ -616,13 +616,13 @@ def api_get_events():
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/events/<event_key>", methods=["DELETE"])
+@scheduler_bp.route("/schedulers/events/<event_key>", methods=["DELETE"])
 def api_clear_event(event_key):
     """
     Clear a specific event for a destination.
     
     Route:
-    - /api/schedulers/events/<event_key>?destination=<id> - Destination is provided as query param
+    - /schedulers/events/<event_key>?destination=<id> - Destination is provided as query param
     - Add ?event_id=<id> to clear by unique ID instead of key
     - Add ?clear_history=true to also clear events from history
     """
@@ -656,13 +656,13 @@ def api_clear_event(event_key):
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/events", methods=["DELETE"])
+@scheduler_bp.route("/schedulers/events", methods=["DELETE"])
 def api_clear_all_events():
     """
     Clear all events for a destination.
     
     Route:
-    - /api/schedulers/events?destination=<id> - Destination is provided as query param
+    - /schedulers/events?destination=<id> - Destination is provided as query param
     - Add ?clear_history=true to also clear events from history
     """
     try:
@@ -690,12 +690,12 @@ def api_clear_all_events():
 
 # === Event API endpoints ===
 
-@scheduler_bp.route("/api/schedulers/events/throw", methods=["POST"])
+@scheduler_bp.route("/schedulers/events/throw", methods=["POST"])
 def api_throw_event():
     """
     Throw an event to a destination, group, or globally.
     Route:
-    - /api/schedulers/events/throw - With scope in request body
+    - /schedulers/events/throw - With scope in request body
     """
     try:
         data = request.json or {}
@@ -737,7 +737,7 @@ def api_throw_event():
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/all/status", methods=["GET"])
+@scheduler_bp.route("/schedulers/all/status", methods=["GET"])
 def api_get_all_scheduler_statuses():
     """Get the status of all schedulers at once."""
     statuses = {}
@@ -796,7 +796,7 @@ def api_get_all_scheduler_statuses():
     return response
 
 # --- Variable sharing endpoints ---
-@scheduler_bp.route("/api/schedulers/<publish_destination>/exported-vars", methods=["GET"])
+@scheduler_bp.route("/schedulers/<publish_destination>/exported-vars", methods=["GET"])
 def api_get_exported_vars(publish_destination):
     """
     Get all exported variables available to a destination.
@@ -818,7 +818,7 @@ def api_get_exported_vars(publish_destination):
         error(f"Error traceback: {traceback.format_exc()}")
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/vars-registry", methods=["GET"])
+@scheduler_bp.route("/vars-registry", methods=["GET"])
 def api_get_vars_registry():
     """
     Get a summary of the variable registry for UI display.
@@ -839,7 +839,7 @@ def api_get_vars_registry():
         error(f"Error traceback: {traceback.format_exc()}")
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/exported-vars/<var_name>", methods=["POST"])
+@scheduler_bp.route("/schedulers/exported-vars/<var_name>", methods=["POST"])
 def api_set_exported_var(var_name):
     """
     Set the value of an exported variable using its exported name.
@@ -951,7 +951,7 @@ def api_set_exported_var(var_name):
         error(f"Error traceback: {traceback.format_exc()}")
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/exported-vars/<var_name>", methods=["DELETE"])
+@scheduler_bp.route("/schedulers/exported-vars/<var_name>", methods=["DELETE"])
 def api_delete_exported_var(var_name):
     """
     Delete an exported variable from the registry.
@@ -1024,7 +1024,7 @@ from routes.scheduler_utils import load_vars_registry
 # This ensures the registry file exists when the app starts
 load_vars_registry()
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>/schedule/<int:index>", methods=["PUT"])
+@scheduler_bp.route("/schedulers/<publish_destination>/schedule/<int:index>", methods=["PUT"])
 def api_update_schedule_by_index(publish_destination, index):
     """Update a specific schedule by its index in the stack."""
     try:
@@ -1116,13 +1116,13 @@ def api_update_schedule_by_index(publish_destination, index):
             scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/events/by-id", methods=["DELETE"])
+@scheduler_bp.route("/schedulers/events/by-id", methods=["DELETE"])
 def api_clear_event_by_id():
     """
     Clear a specific event by its unique ID.
     
     Route:
-    - /api/schedulers/events/by-id?destination=<id>&event_id=<id> - Destination and event ID are query params
+    - /schedulers/events/by-id?destination=<id>&event_id=<id> - Destination and event ID are query params
     - Add ?clear_history=true to also clear events from history
     """
     try:
@@ -1151,7 +1151,7 @@ def api_clear_event_by_id():
         error(error_msg)
         return jsonify({"error": error_msg}), 500
 
-@scheduler_bp.route("/api/schedulers/terminate", methods=["POST"])
+@scheduler_bp.route("/schedulers/terminate", methods=["POST"])
 def api_terminate_script():
     """Terminate a script or scripts by scope (destination ID, group, or 'global')."""
     try:
@@ -1195,7 +1195,7 @@ def api_terminate_script():
         error(f"Error in api_terminate_script: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@scheduler_bp.route("/api/schedulers/<string:destination>/terminate", methods=["POST"])
+@scheduler_bp.route("/schedulers/<string:destination>/terminate", methods=["POST"])
 def api_terminate_script_by_destination(destination):
     """Terminate a script for a specific destination."""
     try:
@@ -1218,7 +1218,7 @@ def api_terminate_script_by_destination(destination):
         error(f"Error in api_terminate_script_by_destination: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@scheduler_bp.route("/api/schedulers/<string:destination>/stop", methods=["POST"])
+@scheduler_bp.route("/schedulers/<string:destination>/stop", methods=["POST"])
 def api_stop_scheduler_loop(destination):
     """Stop the scheduler loop immediately (like pulling the plug)."""
     try:
@@ -1231,7 +1231,7 @@ def api_stop_scheduler_loop(destination):
         error(f"Error in api_stop_scheduler_loop: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@scheduler_bp.route("/api/schedulers/<publish_destination>/instructions", methods=["GET"])
+@scheduler_bp.route("/schedulers/<publish_destination>/instructions", methods=["GET"])
 def api_get_instruction_queue(publish_destination):
     """Get the current instruction queue for a destination."""
     try:

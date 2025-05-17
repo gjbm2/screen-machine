@@ -16,48 +16,51 @@ from routes.bucketer import _append_to_bucket
 from routes.scheduler_utils import throw_event
 from routes.utils import safe_cast
 
-def throw_user_interacting_event(publish_destination, action_type="generate"):
+def throw_user_interacting_event(publish_destination, action_type="generate", wait_time=None):
     """
     Throw a 'user_interacting' event for the specified destination with an appropriate wait time
     based on the action type.
-    
+
     Args:
-        publish_destination: The destination ID to throw the event for
-        action_type: The type of user action ('generate', 'animate', etc.)
+        publish_destination (str): The destination ID to throw the event for.
+        action_type (str): The type of user action ('generate', 'animate', etc.).
+        wait_time (str, optional): Explicit wait time. If provided, it overrides the default for the action type.
     """
     if not publish_destination:
         warning("Cannot throw user_interacting event: no destination specified")
         return
-    
-    # Different wait times based on action type
+
+    # Define default wait times for different action types
     wait_times = {
+        "info": "90s",
         "generate": "10m",
         "animate": "30m",
         "default": "15m"
     }
-    
-    wait_time = wait_times.get(action_type, wait_times["default"])
-    
-    # Create payload with wait time
+
+    # Apply action-specific wait time if not explicitly given
+    if wait_time is None:
+        wait_time = wait_times.get(action_type, wait_times["default"])
+
     payload = {
         "wait": wait_time,
         "action": action_type
     }
-    
-    # Throw the event
+
     try:
         info(f"Throwing user_interacting event for {publish_destination} with {wait_time} wait")
         result = throw_event(
             scope=publish_destination,
-            key="user_interacting",
-            ttl="3h",  # Long TTL to ensure it's available for processing
+            key="_user_interacting",
+            ttl="3h",
             display_name="User Interaction",
             payload=payload,
-            single_consumer=False  # Allow multiple consumers if needed
+            single_consumer=False
         )
         info(f"Event thrown: {result}")
     except Exception as e:
         error(f"Error throwing user_interacting event: {str(e)}")
+
 
 def save_to_recent(img_url, batch_id, metadata=None):
     """

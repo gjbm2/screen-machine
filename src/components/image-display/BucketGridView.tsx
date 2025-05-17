@@ -1726,24 +1726,21 @@ export const BucketGridView = ({
         for (const dest of visibleDestinations) {
           try {
             // Use direct API call to get full metadata
-            const response = await fetch(`${apiService.getApiUrl()}/published/${dest.id}`);
-            if (!response.ok) continue;
-            
-            const data = await response.json();
-            if (!data.published) continue;
+            const response = await apiService.getPublishedContentForDestination(dest.id);
+            if (!response.published) continue;
             
             publishedImages.push({
-              id: `${dest.id}:${data.published}`,
-              urlFull: data.raw_url || '',
-              urlThumb: data.thumbnail_url || data.raw_url || '',
-              promptKey: data.meta?.prompt || '',
-              seed: data.meta?.seed || 0,
-              createdAt: data.published_at || new Date().toISOString(),
+              id: `${dest.id}:${response.published}`,
+              urlFull: response.raw_url || '',
+              urlThumb: response.thumbnail_url || response.raw_url || '',
+              promptKey: response.meta?.prompt || '',
+              seed: response.meta?.seed || 0,
+              createdAt: response.publishedAt || new Date().toISOString(),
               isFavourite: false,
-              mediaType: (data.raw_url || '').toLowerCase().match(/\.mp4|\.webm/) ? 'video' : 'image',
+              mediaType: (response.raw_url || '').toLowerCase().match(/\.mp4|\.webm/) ? 'video' : 'image',
               bucketId: dest.id,
               destinationName: dest.name || dest.id,
-              metadata: data.meta || {},
+              metadata: response.meta || {},
               isPublished: true,
               disableFavorite: true
             });

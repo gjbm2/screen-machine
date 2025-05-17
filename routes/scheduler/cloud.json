@@ -1,12 +1,15 @@
 {
   "schedule_stack": [
     {
+      "final_actions": {
+        "instructions_block": []
+      },
       "initial_actions": {
         "instructions_block": []
       },
+      "prevent_unload": true,
       "triggers": [
         {
-          "type": "day_of_week",
           "days": [
             "Monday",
             "Tuesday",
@@ -28,10 +31,10 @@
                 ]
               }
             }
-          ]
+          ],
+          "type": "day_of_week"
         },
         {
-          "type": "day_of_week",
           "days": [
             "Monday",
             "Tuesday",
@@ -43,6 +46,9 @@
           ],
           "scheduled_actions": [
             {
+              "repeat_schedule": {
+                "every": "45"
+              },
               "time": "01:00",
               "trigger_actions": {
                 "instructions_block": [
@@ -77,16 +83,12 @@
                     "var": "_temp"
                   }
                 ]
-              },
-              "repeat_schedule": {
-                "every": "45"
               }
             }
-          ]
+          ],
+          "type": "day_of_week"
         },
         {
-          "type": "event",
-          "value": "New_theme",
           "trigger_actions": {
             "instructions_block": [
               {
@@ -95,58 +97,85 @@
               },
               {
                 "action": "reason",
-                "text_input": "The last seven days were: {{ history_var[-7:] }}",
+                "history_var": "history_var",
                 "image_inputs": [],
-                "reasoner": "theme_and_style",
                 "output_vars": [
                   "a_theme",
                   "b_theme",
                   "style",
                   "guidance"
                 ],
-                "history_var": "history_var"
+                "reasoner": "theme_and_style",
+                "text_input": "The last seven days were: {{ history_var[-7:] }}"
               },
               {
                 "action": "export_var",
-                "var_name": "a_theme",
                 "friendly_name": "A theme of the day",
-                "scope": "living-room"
+                "scope": "living-room",
+                "var_name": "a_theme"
               },
               {
                 "action": "export_var",
-                "var_name": "b_theme",
                 "friendly_name": "B theme of the day",
-                "scope": "living-room"
+                "scope": "living-room",
+                "var_name": "b_theme"
               },
               {
                 "action": "export_var",
-                "var_name": "style",
                 "friendly_name": "Style of the day",
-                "scope": "living-room"
+                "scope": "living-room",
+                "var_name": "style"
               },
               {
                 "action": "export_var",
-                "var_name": "guidance",
                 "friendly_name": "Generator guidance",
-                "scope": "living-room"
+                "scope": "living-room",
+                "var_name": "guidance"
               }
             ]
-          }
+          },
+          "type": "event",
+          "value": "New_theme"
+        },
+        {
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "log",
+                "message": "** Toggling animation state **"
+              },
+              {
+                "action": "set_var",
+                "input": {
+                  "value": "{% if animation_on is defined and animation_on == true %}false{% else %}true{% endif %}"
+                },
+                "var": "animation_on"
+              },
+              {
+                "action": "export_var",
+                "friendly_name": "Animation on",
+                "scope": "living-room",
+                "var_name": "animation_on"
+              },
+              {
+                "action": "log",
+                "message": "Animation is now {{ 'OFF' if animation_on == false else 'ON' }}"
+              }
+            ]
+          },
+          "type": "event",
+          "value": "toggle_animation"
         }
-      ],
-      "final_actions": {
-        "instructions_block": []
-      },
-      "prevent_unload": true
+      ]
     }
   ],
   "context_stack": [
     {
       "vars": {
-        "a_theme": "Wild Gardens - Overgrown Luxury",
-        "b_theme": "Tamed Gardens - Pristine Horticulture",
-        "style": "Baroque tapestry-inspired compositions",
-        "guidance": "Select diverse garden scenes that encompass both riotous, untamed growth and meticulous, controlled elegance. Render these using the intricate and ornate qualities of Baroque tapestry, ensuring freshness by referencing recent image history to avoid similar depictions.",
+        "a_theme": "The Heavens Open - Assembly of Clouds",
+        "b_theme": "The Earthly Canvas - Patterns of Land",
+        "style": "Romantic Era landscape painting",
+        "guidance": "Focus on depicting diverse cloudscapes and land patterns, enhancing their Romantic qualities through emotive color palettes and dynamic compositions. Ensure novel subject selection by consulting image history to maintain freshness and avoid repetition.",
         "history_var": [
           {
             "timestamp": "2025-05-08 10:29:02",
@@ -368,45 +397,32 @@
             },
             "text_input": "The last seven days were: [{'timestamp': '2025-...",
             "explanation": "Opting for a theme-led approach with striking contrasts between 'overgrown' versus 'tamed,' which..."
+          },
+          {
+            "timestamp": "2025-05-17 00:01:03",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "The Heavens Open - Assembly of Clouds",
+              "b_theme": "The Earthly Canvas - Patterns of Land",
+              "style": "Romantic Era landscape painting",
+              "guidance": "Focus on depicting diverse cloudscapes and land patterns, enhancing their Romantic qualities through emotive color palettes and dynamic compositions. Ensure novel subject selection by consulting image history to maintain freshness and avoid repetition."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "Theme-led choice that celebrates the natural contrast between the skies and the land, paired with..."
           }
-        ]
+        ],
+        "animation_on": "false"
       },
       "publish_destination": "cloud"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-16T23:46:21.498035",
+  "last_updated": "2025-05-17T03:46:24.345962",
   "last_trigger_executions": {
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_0": "2025-05-16T01:00:01.338917",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_1": "2025-05-16T01:45:01.161611",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_2": "2025-05-16T02:30:01.511412",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_4": "2025-05-16T04:00:00.422138",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_5": "2025-05-16T04:45:00.088314",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_6": "2025-05-16T05:30:02.076849",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_7": "2025-05-16T06:15:00.141171",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_8": "2025-05-16T07:00:01.053901",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_9": "2025-05-16T07:45:01.213107",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_10": "2025-05-16T08:30:01.119456",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_11": "2025-05-16T09:15:00.745629",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_12": "2025-05-16T10:00:01.818647",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_13": "2025-05-16T10:45:00.094849",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_14": "2025-05-16T11:30:01.193587",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_15": "2025-05-16T12:15:00.406602",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_16": "2025-05-16T13:00:01.078596",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_17": "2025-05-16T13:45:01.464107",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_18": "2025-05-16T14:30:00.182297",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_19": "2025-05-16T15:15:00.376850",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_20": "2025-05-16T16:00:00.501501",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_21": "2025-05-16T16:45:00.334727",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_22": "2025-05-16T17:30:01.023601",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_23": "2025-05-16T18:15:01.270683",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_24": "2025-05-16T19:00:01.239523",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_25": "2025-05-16T19:45:00.508338",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_26": "2025-05-16T20:30:00.200792",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_27": "2025-05-16T21:15:00.856025",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_28": "2025-05-16T22:00:01.892017",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_29": "2025-05-16T22:45:00.965977",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-16_30": "2025-05-16T23:30:00.461832"
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_1": "2025-05-17T01:45:00.335229",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_2": "2025-05-17T02:30:00.691633",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_3": "2025-05-17T03:15:00.004366"
   },
   "active_events": {},
   "event_history": [
@@ -1215,6 +1231,84 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_cloud",
       "consumed_at": "2025-05-16T00:51:32.786834"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-17T00:01:01.435348",
+      "expires": "2025-05-17T00:02:01.435348",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T00:01:01.435348",
+      "unique_id": "5eb1c6dc-9f03-4f26-9f3f-bcf5fb4e1e5a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-17T00:01:03.434254"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-17T00:01:01.435348",
+      "expires": "2025-05-17T00:02:01.435348",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T00:01:01.435348",
+      "unique_id": "5eb1c6dc-9f03-4f26-9f3f-bcf5fb4e1e5a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-17T00:01:03.434254"
+    },
+    {
+      "key": "toggle_animation",
+      "active_from": "2025-05-17T01:09:22.434136",
+      "expires": "2025-05-17T01:10:22.434136",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T01:09:22.434136",
+      "unique_id": "f5f2cf38-b03b-470b-938f-bdec0bdccf20",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-17T01:09:23.579555"
+    },
+    {
+      "key": "toggle_animation",
+      "active_from": "2025-05-17T01:09:22.434136",
+      "expires": "2025-05-17T01:10:22.434136",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T01:09:22.434136",
+      "unique_id": "f5f2cf38-b03b-470b-938f-bdec0bdccf20",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-17T01:09:23.579555"
+    },
+    {
+      "key": "toggle_animation",
+      "active_from": "2025-05-17T01:10:36.874049",
+      "expires": "2025-05-17T01:11:36.874049",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T01:10:36.874049",
+      "unique_id": "da1641ff-f626-4dfe-a450-2673314cf0a8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-17T01:10:37.206362"
+    },
+    {
+      "key": "toggle_animation",
+      "active_from": "2025-05-17T01:10:36.874049",
+      "expires": "2025-05-17T01:11:36.874049",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T01:10:36.874049",
+      "unique_id": "da1641ff-f626-4dfe-a450-2673314cf0a8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-17T01:10:37.206362"
     }
   ]
 }

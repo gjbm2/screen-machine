@@ -12,6 +12,7 @@ class InstructionQueue:
     def __init__(self):
         """Initialize an empty instruction queue."""
         self.queue = deque()
+        self._last_urgent_log_time = 0  # Store rate-limiting state as instance variable
 
     def push_block(self, instructions: List[Dict[str, Any]], important: bool = False, urgent: bool = False) -> None:
         """
@@ -96,14 +97,11 @@ class InstructionQueue:
             return None
         
         # Rate limit the logging during waits
-        if not hasattr(self.peek_next_urgent, '_last_log_time'):
-            self.peek_next_urgent._last_log_time = 0
-            
         current_time = time.time()
-        should_log = (current_time - self.peek_next_urgent._last_log_time) > 30.0
+        should_log = (current_time - self._last_urgent_log_time) > 30.0
         
         if should_log:
-            self.peek_next_urgent._last_log_time = current_time
+            self._last_urgent_log_time = current_time
             debug(f"peek_next_urgent: Checking {len(self.queue)} items in queue for urgent flag")
         
         # Record details of items for debugging

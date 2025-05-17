@@ -55,18 +55,18 @@ from utils.logger import log_to_console, info, error, warning, debug, console_lo
 # Blueprint
 # ----------------------------------------------------------------------------
 
-buckets_bp = Blueprint("buckets", __name__, url_prefix="/api/buckets")
+buckets_bp = Blueprint("buckets", __name__)
 
 # -- list & create -----------------------------------------------------------
 
-@buckets_bp.route("/", methods=["GET"])
+@buckets_bp.route("/buckets/", methods=["GET"])
 def list_buckets():
     """List all buckets (only destinations with has_bucket=true)"""
     dests = _load_json_once("publish_destinations", "publish-destinations.json")
     #return jsonify([d["id"] for d in dests])
     return jsonify([d["id"] for d in dests if d.get("has_bucket")])
 
-@buckets_bp.route("/", methods=["POST"])
+@buckets_bp.route("/buckets/", methods=["POST"])
 def create_bucket():
     """Create a new bucket (only for destinations with has_bucket=true)"""
     data = request.get_json()
@@ -85,7 +85,7 @@ def create_bucket():
 
 # -- items -------------------------------------------------------------------
 
-@buckets_bp.route("/<bucket_id>/items", methods=["GET"])
+@buckets_bp.route("/buckets/<bucket_id>/items", methods=["GET"])
 def list_items(bucket_id: str):
     """List items in a bucket"""
     # Verify this is a valid destination with has_bucket=true
@@ -139,7 +139,7 @@ def list_items(bucket_id: str):
     
     return jsonify(bucket_meta)
 
-@buckets_bp.route("/<bucket_id>/upload", methods=["POST"])
+@buckets_bp.route("/buckets/<bucket_id>/upload", methods=["POST"])
 def upload(bucket_id: str):
     """Upload a file to a bucket"""
     # Verify this is a valid destination with has_bucket=true
@@ -209,7 +209,7 @@ def upload(bucket_id: str):
 
 # -- publish -----------------------------------------------------------------
 
-@buckets_bp.route("/<bucket_id>/publish/<filename>", methods=["POST"])
+@buckets_bp.route("/buckets/<bucket_id>/publish/<filename>", methods=["POST"])
 def publish(bucket_id: str, filename: str):
     """
     DEPRECATED: This endpoint is deprecated. Use /api/publish instead.
@@ -254,7 +254,7 @@ def publish(bucket_id: str, filename: str):
 # Currently displayed
 
 # Serve the 256×256 thumbnail for a given media filename
-@buckets_bp.route("/<bucket_id>/thumbnail/<filename>")
+@buckets_bp.route("/buckets/<bucket_id>/thumbnail/<filename>")
 def thumbnail(bucket_id: str, filename: str):
     """Get thumbnail for a file in a bucket"""
     # Verify this is a valid destination with has_bucket=true
@@ -268,7 +268,7 @@ def thumbnail(bucket_id: str, filename: str):
     return send_from_directory(thumb_dir, thumb_name)
 
 # Provide current publish info (filename, when, raw URL, thumbnail URL)
-@buckets_bp.route("/<bucket_id>/info", methods=["GET"])
+@buckets_bp.route("/buckets/<bucket_id>/info", methods=["GET"])
 def published_info(bucket_id: str):
     """Get published info for a bucket"""
     # Verify this is a valid destination with has_bucket=true
@@ -293,7 +293,7 @@ def published_info(bucket_id: str):
 
 # -- favourites --------------------------------------------------------------
 
-@buckets_bp.route("/<bucket_id>/favorite/<filename>", methods=["POST"])
+@buckets_bp.route("/buckets/<bucket_id>/favorite/<filename>", methods=["POST"])
 def favorite(bucket_id: str, filename: str):
     """Favorite a file in a bucket"""
     # Verify this is a valid destination with has_bucket=true
@@ -310,7 +310,7 @@ def favorite(bucket_id: str, filename: str):
     return jsonify({"status": "favorited"})
 
 
-@buckets_bp.route("/<bucket_id>/favorite/<filename>", methods=["DELETE"])
+@buckets_bp.route("/buckets/<bucket_id>/favorite/<filename>", methods=["DELETE"])
 def unfavorite(bucket_id: str, filename: str):
     """Unfavorite a file in a bucket"""
     # Verify this is a valid destination with has_bucket=true
@@ -327,7 +327,7 @@ def unfavorite(bucket_id: str, filename: str):
 
 # -- delete ------------------------------------------------------------------
 
-@buckets_bp.route("/<bucket_id>/<filename>", methods=["DELETE"])
+@buckets_bp.route("/buckets/<bucket_id>/<filename>", methods=["DELETE"])
 def delete_file(bucket_id: str, filename: str):
     """Delete a file from a bucket"""
     # Verify this is a valid destination with has_bucket=true
@@ -375,7 +375,7 @@ def delete_file(bucket_id: str, filename: str):
 
 # -- move / copy -------------------------------------------------------------
 
-@buckets_bp.route("/add_image_to_new_bucket", methods=["POST"])
+@buckets_bp.route("/buckets/add_image_to_new_bucket", methods=["POST"])
 def add_image_to_new_bucket():
     """Add an image to a new bucket"""
     data = request.get_json()
@@ -404,7 +404,7 @@ def add_image_to_new_bucket():
 
 # -- sequence reorder --------------------------------------------------------
 
-@buckets_bp.route("/<bucket_id>/move-to/<filename>", methods=["POST"])
+@buckets_bp.route("/buckets/<bucket_id>/move-to/<filename>", methods=["POST"])
 def move_to(bucket_id: str, filename: str):
     """Move a file to a specific position in the sequence, after the specified file"""
     # Verify this is a valid destination with has_bucket=true
@@ -450,7 +450,7 @@ def move_to(bucket_id: str, filename: str):
         "insert_after": insert_after
     })
 
-@buckets_bp.route("/<bucket_id>/move-up/<filename>", methods=["POST"])
+@buckets_bp.route("/buckets/<bucket_id>/move-up/<filename>", methods=["POST"])
 def move_up(bucket_id: str, filename: str):
     """Move a file up in a bucket"""
     # Verify this is a valid destination with has_bucket=true
@@ -473,7 +473,7 @@ def move_up(bucket_id: str, filename: str):
     return jsonify({"status": "moved-up", "index": seq.index(filename)})
 
 
-@buckets_bp.route("/<bucket_id>/move-down/<filename>", methods=["POST"])
+@buckets_bp.route("/buckets/<bucket_id>/move-down/<filename>", methods=["POST"])
 def move_down(bucket_id: str, filename: str):
     """Move a file down in a bucket"""
     # Verify this is a valid destination with has_bucket=true
@@ -497,7 +497,7 @@ def move_down(bucket_id: str, filename: str):
 
 # -- raw file helper ---------------------------------------------------------
 
-@buckets_bp.route("/<bucket_id>/raw/<path:filename>")
+@buckets_bp.route("/buckets/<bucket_id>/raw/<path:filename>")
 def raw(bucket_id: str, filename: str):
     """Get raw file from a bucket"""
     # Verify this is a valid destination with has_bucket=true
@@ -511,7 +511,7 @@ def raw(bucket_id: str, filename: str):
 
 # ───────────────────────────── bucket maintenance ───────────────────────────
 
-@buckets_bp.route("/<bucket_id>/purge", methods=["DELETE"])
+@buckets_bp.route("/buckets/<bucket_id>/purge", methods=["DELETE"])
 def purge_bucket_endpoint(bucket_id: str):
     """Purge files from a bucket, optionally including favorites."""
     include_favorites = request.args.get("include_favorites", "false").lower() == "true"
@@ -519,7 +519,7 @@ def purge_bucket_endpoint(bucket_id: str):
     result = purge_bucket(bucket_id, include_favorites=include_favorites)
     return jsonify(result)
 
-@buckets_bp.route("/reindex", methods=["POST"])
+@buckets_bp.route("/buckets/reindex", methods=["POST"])
 def reindex_all():
     """Reindex all buckets, optionally rebuilding metadata and thumbnails."""
     rebuild_all_sidecars = request.args.get("rebuild_all_sidecars", "false").lower() == "true"
@@ -531,7 +531,7 @@ def reindex_all():
     )
     return jsonify(result)
 
-@buckets_bp.route("/<bucket_id>/reindex", methods=["POST"])
+@buckets_bp.route("/buckets/<bucket_id>/reindex", methods=["POST"])
 def reindex_single(bucket_id: str):
     """Reindex a single bucket, optionally rebuilding metadata and thumbnails."""
     rebuild_all_sidecars = request.args.get("rebuild_all_sidecars", "false").lower() == "true"
@@ -544,7 +544,7 @@ def reindex_single(bucket_id: str):
     )
     return jsonify(result)
 
-@buckets_bp.route("/<bucket_id>/extractjson", methods=["POST"])
+@buckets_bp.route("/buckets/<bucket_id>/extractjson", methods=["POST"])
 def extract_json(bucket_id: str):
     """Extract JSON metadata from all files in bucket"""
     # Verify this is a valid destination with has_bucket=true
@@ -556,7 +556,7 @@ def extract_json(bucket_id: str):
     result = extract_json(bucket_id)
     return jsonify(result)
 
-@buckets_bp.route("/<bucket_id>/complete", methods=["GET"])
+@buckets_bp.route("/buckets/<bucket_id>/complete", methods=["GET"])
 def get_bucket_complete(bucket_id: str):
     """Get complete bucket info"""
     # Verify this is a valid destination with has_bucket=true

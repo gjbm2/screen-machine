@@ -62,7 +62,7 @@ export const getReferenceUrl = (item: any): string => {
         ? `${window.location.origin}${videoRawUrl}`
         : videoRawUrl;
         
-      const highResImageUrl = `${apiService.getApiUrl()}/generate/jpg_from_mp4?file=${encodeURIComponent(absoluteVideoUrl)}`;
+      const highResImageUrl = `${apiService.getApiUrl()}/jpg_from_mp4?file=${encodeURIComponent(absoluteVideoUrl)}`;
       console.log('Using high-resolution first frame for video reference:', highResImageUrl);
       return highResImageUrl;
     }
@@ -72,7 +72,7 @@ export const getReferenceUrl = (item: any): string => {
       item.thumbnail_url || 
       item.image?.thumbnail_url || 
       item.image?.urlThumb ||
-      (item.bucketId && filename ? `/api/thumbnails/jpg_from_mp4/${item.bucketId}/${filename}` : null);
+      (item.bucketId && filename ? `/api/thumbnails/api/jpg_from_mp4/${item.bucketId}/${filename}` : null);
     
     if (thumbnailUrl) {
       console.log('Falling back to thumbnail_url for video reference:', thumbnailUrl);
