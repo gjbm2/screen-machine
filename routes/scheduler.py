@@ -13,7 +13,7 @@ from routes.scheduler_handlers import (
     handle_sleep, handle_wait, handle_unload, handle_device_media_sync,
     handle_device_wake, handle_device_sleep, handle_set_var, handle_terminate,
     handle_random_choice, handle_generate, handle_animate, handle_display,
-    handle_import_var, handle_export_var, handle_reason, handle_log, handle_throw_event
+    handle_import_var, handle_export_var, handle_reason, handle_log, handle_throw_event, handle_device_standby
 )
 from routes.scheduler_utils import (
     log_schedule, default_context, copy_context, 
@@ -496,6 +496,8 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
             result = handle_log(processed_instruction, context, now, output, publish_destination)
         elif action == "throw_event" or action == "throw":
             result = handle_throw_event(processed_instruction, context, now, output, publish_destination)
+        elif action == "device_standby":
+            result = handle_device_standby(processed_instruction, context, now, output, publish_destination)    
         else:
             error_msg = f"Unknown action: {action}"
             output.append(f"[{now.strftime('%H:%M')}] {error_msg}")

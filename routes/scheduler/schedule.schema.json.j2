@@ -170,6 +170,26 @@
           "additionalProperties": false
         },
         {
+          "title": "Device Standby",
+          "description": "Put the Samsung display into standby mode.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "device_standby",
+              "default": "device_standby",
+              "description": "Identifies this instruction as a device standby operation.",
+              "uniforms": {
+                "hidden": true
+              }
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
           "title": "Import Variable",
           "description": "Import a variable from another scheduler's context, a group, or global scope.",
           "type": "object",

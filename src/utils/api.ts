@@ -453,19 +453,12 @@ export class Api {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30-second timeout
       
-      const response = await fetch(`${this.apiUrl}/publish/publish`, {
+      const response = await fetch(`${this.apiUrl}/publish`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          dest_bucket_id: data.dest_bucket_id,
-          src_bucket_id: data.src_bucket_id,
-          filename: data.filename,
-          source_url: data.source_url,
-          metadata: data.metadata,
-          skip_bucket: data.skip_bucket
-        }),
+        body: JSON.stringify(data),
         signal: controller.signal
       });
       
@@ -489,7 +482,8 @@ export class Api {
         };
       }
       
-      console.log(`[publishImageUnified] Success!`);
+      const result = await response.json();
+      console.log(`[publishImageUnified] Success!`, result);
       return { success: true };
     } catch (error) {
       // Check if this is an abort error (timeout)

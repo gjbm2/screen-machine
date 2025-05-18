@@ -172,37 +172,11 @@
   "context_stack": [
     {
       "vars": {
-        "a_theme": "The Heavens Open - Assembly of Clouds",
-        "b_theme": "The Earthly Canvas - Patterns of Land",
-        "style": "Romantic Era landscape painting",
-        "guidance": "Focus on depicting diverse cloudscapes and land patterns, enhancing their Romantic qualities through emotive color palettes and dynamic compositions. Ensure novel subject selection by consulting image history to maintain freshness and avoid repetition.",
+        "a_theme": "Architectural Wonders in Ruins",
+        "b_theme": "Treasures Under the Sea",
+        "style": "Alphonse Mucha's Art Nouveau style",
+        "guidance": "Choose unique and intriguing ruins for theme A, and diverse sea creatures or treasures for theme B, illustrating them with the ornate and decorative qualities of Mucha\u2019s Art Nouveau style. Consult image history to ensure a new perspective and prevent repetition.",
         "history_var": [
-          {
-            "timestamp": "2025-05-08 10:29:02",
-            "type": "reason",
-            "reasoner": "theme_and_style",
-            "outputs": {
-              "a_theme": "Mirrored Landscapes",
-              "b_theme": "Urban Abandonment",
-              "style": "Baroque Engravings",
-              "guidance": "Select varied landscapes and urban scenes ensuring unique focal points from previous history, rendering them with intricate details characteristic of Baroque engraving."
-            },
-            "text_input": "The last seven days were: [history reference]",
-            "explanation": "Style-led approach leveraging the ornate complexity of Baroque engravings, which offers a visuall..."
-          },
-          {
-            "timestamp": "2025-05-08 10:33:35",
-            "type": "reason",
-            "reasoner": "theme_and_style",
-            "outputs": {
-              "a_theme": "Endangered wildlife portrayed in their habitats",
-              "b_theme": "Extinct animals imagined in modern world settings",
-              "style": "Art Nouveau style inspired by Alphonse Mucha",
-              "guidance": "Focus on differentiating the species highlighted in each image, ensuring clear contrasts and diversity from the recent image history, executed in the fluid lines and ornamental elegance of Mucha's Art Nouveau."
-            },
-            "text_input": "The last seven days were: [{'timestamp': '2025-...",
-            "explanation": "Theme-led approach emphasizing the intriguing contrasts between endangered and extinct species, e..."
-          },
           {
             "timestamp": "2025-05-08 10:34:01",
             "type": "reason",
@@ -410,19 +384,126 @@
             },
             "text_input": "The last seven days were: [{'timestamp': '2025-...",
             "explanation": "Theme-led choice that celebrates the natural contrast between the skies and the land, paired with..."
+          },
+          {
+            "timestamp": "2025-05-17 11:45:02",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "The Erosion of Memory: Buildings Vanishing into Time",
+              "b_theme": "Architectural Ghosts: Imagining Structures Long Gone",
+              "style": "Contemporary moody photography styled after Hiroshi Sugimoto",
+              "guidance": "Capture distinct architectural structures in impending conditions of disappearance or ghostly imagined representations, emulating Sugimoto's atmospheric and nuanced photographic approach. Select fresh subjects not previously depicted in the image history."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "This is a style-led approach, focusing on Hiroshi Sugimoto's atmospheric photography style to con..."
+          },
+          {
+            "timestamp": "2025-05-17 11:48:12",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "Symphonies of the Urban Crescendo",
+              "b_theme": "Ethereal Serenades of Solitude",
+              "style": "Edvard Munch's Expressionistic style"
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "Introducing a theme-led approach that captures the juxtaposition of vibrant urban life against tr..."
+          },
+          {
+            "timestamp": "2025-05-17 13:20:22",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "Enigmatic Urban Shadows",
+              "b_theme": "Light Play and Modern Design",
+              "style": "L\u00e1szl\u00f3 Moholy-Nagy's Bauhaus Photography",
+              "guidance": "Select distinct urban environments and architectural designs that demonstrate contrasts between light and shadow, rendering them in Moholy-Nagy's innovative Bauhaus photographic approach. Ensure each subject is unique by consulting recent image history to avoid repetition."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "Style-led decision motivated by Moholy-Nagy\u2019s Bauhaus photography, celebrating modernity and desi..."
+          },
+          {
+            "timestamp": "2025-05-18 00:01:02",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "Architectural Wonders in Ruins",
+              "b_theme": "Treasures Under the Sea",
+              "style": "Alphonse Mucha's Art Nouveau style",
+              "guidance": "Choose unique and intriguing ruins for theme A, and diverse sea creatures or treasures for theme B, illustrating them with the ornate and decorative qualities of Mucha\u2019s Art Nouveau style. Consult image history to ensure a new perspective and prevent repetition."
+            },
+            "text_input": "The last seven days were: [{'timestamp': '2025-...",
+            "explanation": "Theme-led approach emphasizing the duality of civilization's decay versus nature\u2019s hidden beauty,..."
           }
         ],
-        "animation_on": "false"
+        "animation_on": true
       },
       "publish_destination": "cloud"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-17T03:46:24.345962",
+  "last_updated": "2025-05-18T21:15:02.501699",
   "last_trigger_executions": {
     "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_1": "2025-05-17T01:45:00.335229",
     "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_2": "2025-05-17T02:30:00.691633",
-    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_3": "2025-05-17T03:15:00.004366"
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_3": "2025-05-17T03:15:00.004366",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_4": "2025-05-17T04:00:01.637875",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_5": "2025-05-17T04:45:01.743619",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_6": "2025-05-17T05:30:01.446517",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_7": "2025-05-17T06:15:00.368299",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_8": "2025-05-17T07:00:00.425783",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_9": "2025-05-17T07:45:00.626525",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_10": "2025-05-17T08:30:01.309181",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_11": "2025-05-17T09:15:01.482146",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_12": "2025-05-17T10:00:01.599854",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_13": "2025-05-17T10:45:01.844395",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_14": "2025-05-17T11:30:01.691064",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_15": "2025-05-17T12:15:01.780560",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_16": "2025-05-17T13:00:01.345406",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_17": "2025-05-17T13:45:00.948418",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_18": "2025-05-17T14:30:00.823421",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_19": "2025-05-17T15:15:00.784666",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_20": "2025-05-17T16:00:00.149119",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_21": "2025-05-17T16:45:01.685433",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_22": "2025-05-17T17:30:00.061712",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_23": "2025-05-17T18:15:00.675545",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_24": "2025-05-17T19:00:01.509609",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_25": "2025-05-17T19:45:01.222946",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_26": "2025-05-17T20:30:01.019008",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_27": "2025-05-17T21:15:00.293971",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_28": "2025-05-17T22:00:01.371732",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_29": "2025-05-17T22:45:01.413927",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-17_30": "2025-05-17T23:30:00.653870",
+    "92f765f04c5aeea59798bdd045e76ebe_2025-05-18": "2025-05-18T00:01:00.549145",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_0": "2025-05-18T01:00:01.322920",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_1": "2025-05-18T01:45:01.957155",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_2": "2025-05-18T02:30:00.241275",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_3": "2025-05-18T03:15:00.594552",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_4": "2025-05-18T04:00:01.988502",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_5": "2025-05-18T04:45:01.645156",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_6": "2025-05-18T05:30:00.333856",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_7": "2025-05-18T06:15:01.495271",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_8": "2025-05-18T07:00:01.146440",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_9": "2025-05-18T07:45:01.854691",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_10": "2025-05-18T08:30:01.068854",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_11": "2025-05-18T09:15:01.606977",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_12": "2025-05-18T10:00:01.986566",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_13": "2025-05-18T10:45:01.280879",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_14": "2025-05-18T11:30:01.267484",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_15": "2025-05-18T12:15:00.613910",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_16": "2025-05-18T13:00:00.718732",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_17": "2025-05-18T13:45:01.440383",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_18": "2025-05-18T14:30:00.066412",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_19": "2025-05-18T15:15:01.710098",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_20": "2025-05-18T16:00:01.317049",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_21": "2025-05-18T16:45:00.069562",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_22": "2025-05-18T17:30:00.336126",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_23": "2025-05-18T18:15:01.720409",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_24": "2025-05-18T19:00:00.368869",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_25": "2025-05-18T19:45:00.409933",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_26": "2025-05-18T20:30:00.652528",
+    "e49b71602bbc1c22cf98f59dce38d879_2025-05-18_27": "2025-05-18T21:15:01.928237"
   },
   "active_events": {},
   "event_history": [
@@ -1309,6 +1390,110 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_cloud",
       "consumed_at": "2025-05-17T01:10:37.206362"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-17T11:45:01.188060",
+      "expires": "2025-05-17T11:46:01.188060",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T11:45:01.188060",
+      "unique_id": "9413de4f-60ea-4072-a2d8-26dcdc4bfad0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-17T11:45:02.364846"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-17T11:45:01.188060",
+      "expires": "2025-05-17T11:46:01.188060",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T11:45:01.188060",
+      "unique_id": "9413de4f-60ea-4072-a2d8-26dcdc4bfad0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-17T11:45:02.364846"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-17T11:48:12.217152",
+      "expires": "2025-05-17T11:49:12.217152",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T11:48:12.217152",
+      "unique_id": "e3ee92cc-5b06-4fa6-99e5-0227dc52a221",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-17T11:48:12.479790"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-17T11:48:12.217152",
+      "expires": "2025-05-17T11:49:12.217152",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T11:48:12.217152",
+      "unique_id": "e3ee92cc-5b06-4fa6-99e5-0227dc52a221",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-17T11:48:12.479790"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-17T13:20:21.503952",
+      "expires": "2025-05-17T13:21:21.503952",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T13:20:21.503952",
+      "unique_id": "50aacf2e-81a2-41e8-b78b-152795734d8b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-17T13:20:21.929381"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-17T13:20:21.503952",
+      "expires": "2025-05-17T13:21:21.503952",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-17T13:20:21.503952",
+      "unique_id": "50aacf2e-81a2-41e8-b78b-152795734d8b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-17T13:20:21.929381"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-18T00:01:00.574509",
+      "expires": "2025-05-18T00:02:00.574509",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-18T00:01:00.574509",
+      "unique_id": "f47ab1a9-0197-41d2-b974-3ab178555aea",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-18T00:01:02.635241"
+    },
+    {
+      "key": "New_theme",
+      "active_from": "2025-05-18T00:01:00.574509",
+      "expires": "2025-05-18T00:02:00.574509",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-18T00:01:00.574509",
+      "unique_id": "f47ab1a9-0197-41d2-b974-3ab178555aea",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-18T00:01:02.635241"
     }
   ]
 }
