@@ -21,7 +21,10 @@
 	"alexavisible": true,
 	"alexadefault": true,
 	"alexaclosest": "amzn1.ask.device.AMA5SEU6U57FHKEA2WF3YZAURBLE2L6NKGJPPAECPPIHHH6JSAGZNN53TNIJU2EVOTWORQPRCUIZZPNHRULAEG26T4QKDYS6OSQWS723NFBUTLBTX5YRXB7QXWYCO3AJHD6V5XXBQBDNVNDWVE2AYC4W76FNRQEGLPFY5QFGTMU2Y7HAA5UP4O7PVNUN2BK6KZO52F2T4O2E3HI",
-    "groups": ["living-room", "home"]
+    "groups": ["living-room", "home"],
+    "samsung-token": "north-screen-token.txt",
+    "ip-address": "192.168.2.61",
+    "mac":"04:E4:B6:33:B6:36"
   },
   {
     "id": "south-screen",
@@ -35,7 +38,10 @@
 	"alexavisible": true,
 	"alexadefault": true,	
 	"alexaclosest": "amzn1.ask.device.AMAZUTGGYC5NVOOX2BOEVWIJ2QEUXQEPVHNODMGQK62XELJQHCHIWLYHF73HCM5RFDZTDJ6IR75HPDXKADUFP6ZOPUUS7FSTCX2QINRM5MWFWMO2DOGYCCPG2VIIALCS25YIWVB35ULFC3GWZTRZVFMXCFIGIP5VRXRDNAMEZ3CTE6Q5Y3T4FSXQDN5ENLWB5BXEVW4XKQ7I36JX",
-    "groups": ["living-room", "home"]
+    "groups": ["living-room", "home"],
+    "samsung-token": "south-screen-token.txt",
+    "ip-address": "192.168.2.142",
+    "mac": "04:E4:B6:34:00:28"
   },
   {
     "id": "work-laptop-background",

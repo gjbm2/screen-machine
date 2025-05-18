@@ -8,6 +8,7 @@ import json
 from routes.scheduler_utils import log_schedule, scheduler_contexts_stacks, get_next_scheduled_action as get_next_action, process_jinja_template
 from routes.service_factory import get_generation_service, get_animation_service, get_display_service
 from routes.utils import dict_substitute, build_schema_subs
+from routes.samsung_utils import device_sleep, device_wake, device_sync, device_standby
 import routes.openai
 from time import time
 
@@ -455,25 +456,49 @@ def handle_unload(instruction, context, now, output, publish_destination):
     return True  # Signal that we should unload the temporary schedule
 
 def handle_device_media_sync(instruction, context, now, output, publish_destination):
-    # This is where we would call the device media sync endpoint
-    # ...
-    msg = "Syncing media with device"
-    log_schedule(msg, publish_destination, now, output)
-    return False
+    """Handle device media sync instruction."""
+    try:
+        device_sync(publish_destination)
+        log_schedule("Device media sync completed", publish_destination, now, output)
+    except Exception as e:
+        error_msg = f"Error in handle_device_media_sync: {str(e)}"
+        log_schedule(error_msg, publish_destination, now, output)
+        import traceback
+        error(traceback.format_exc())
 
 def handle_device_wake(instruction, context, now, output, publish_destination):
-    # This is where we would call the device wake endpoint
-    # ...
-    msg = "Waking device"
-    log_schedule(msg, publish_destination, now, output)
-    return False
+    """Handle device wake instruction."""
+    try:
+        device_wake(publish_destination)
+        log_schedule("Device wake completed", publish_destination, now, output)
+    except Exception as e:
+        error_msg = f"Error in handle_device_wake: {str(e)}"
+        log_schedule(error_msg, publish_destination, now, output)
+        import traceback
+        error(traceback.format_exc())
 
 def handle_device_sleep(instruction, context, now, output, publish_destination):
-    # This is where we would call the device sleep endpoint
-    # ...
-    msg = "Putting device to sleep"
-    log_schedule(msg, publish_destination, now, output)
-    return False
+    """Handle device sleep instruction."""
+    try:
+        device_sleep(publish_destination)
+        log_schedule("Device sleep completed", publish_destination, now, output)
+    except Exception as e:
+        error_msg = f"Error in handle_device_sleep: {str(e)}"
+        log_schedule(error_msg, publish_destination, now, output)
+        import traceback
+        error(traceback.format_exc())
+
+def handle_device_standby(instruction, context, now, output, publish_destination):
+    """Handle device standby instruction."""
+    debug(f"*************************************************handle_device_standby: {publish_destination}")
+    try:
+        device_standby(publish_destination)
+        log_schedule("Device standby completed", publish_destination, now, output)
+    except Exception as e:
+        error_msg = f"Error in handle_device_standby: {str(e)}"
+        log_schedule(error_msg, publish_destination, now, output)
+        import traceback
+        error(traceback.format_exc())
 
 def handle_set_var(instruction, context, now, output, publish_destination):
     # Get var_name - already processed with Jinja at instruction level
