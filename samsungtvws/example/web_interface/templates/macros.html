@@ -1,0 +1,34 @@
+{% macro render_modal(value, size) %}
+  <!-- Modal -->
+  <div class="modal fade" id="textModal-{{value.id}}" tabindex="-1" aria-labelledby="DisplayImage">
+    <div class="modal-dialog modal-dialog-centered {{ size }}" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <img src="{{ url_for('static',filename=value.name) }}" width=20% >&nbsp;
+          <h5 class="modal-title" id="itemLabel">{{ value.header }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="modal-body">
+          {% if value.description is defined %}
+            <p>{{ value.description|safe }}</p>
+          {% endif %}
+          <p>{{ value.details|safe }}</p>
+        </div>
+        {% if value.location is defined or value.time is defined or value.credit is defined %}
+          <div class="modal-footer">
+            {% if value.credit is defined and value.credit %}
+                <span class="float-left"><b>Credit:</b> {{ value.credit }}</span>
+            {% endif %}
+            {% if value.location is defined and value.location %}
+                <span class="ms-auto"><b>Location:</b> {{ value.location }}</span>
+            {% endif %}
+            {% if value.time is defined and value.time %}
+                <span><b>Time:</b> {{ value.time }}</span>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <!-- End Modal -->
+{% endmacro %}
