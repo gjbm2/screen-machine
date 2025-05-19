@@ -3,11 +3,12 @@ Utility functions for controlling Samsung displays.
 """
 
 from samsungtvws import SamsungTVWS
-from utils.logger import info, error, debug
+from utils.logger import info, error, debug, warning
 from routes.utils import _load_json_once
-import json, time
+import json, time, threading
 from typing import Literal
 from wakeonlan import send_magic_packet
+from contextlib import suppress
 
 _tv_cache = {}
 
@@ -28,7 +29,8 @@ def _get_tv(publish_destination: str) -> SamsungTVWS:
                     host=ip_address,
                     name="screen-machine",
                     port=8002,
-                    token_file=token_file
+                    token_file=token_file,
+                    timeout=5  # Short network timeout so calls don't hang indefinitely
                 )
                 debug(f"[get_tv] Created and cached TV object for {publish_destination}")
                 _tv_cache[publish_destination] = tv
@@ -50,8 +52,14 @@ def device_info(publish_destination: str):
     #app_info = tv.rest_app_status()
     art_status = tv.art().get_artmode()
 
+    # Retrieve information about the currently selected art
+    info = tv.art().get_current()
+    #info('current art: {}'.format(info))
+    #content_id = info['content_id']
+
     print(f"DEVICE INFO\n{json.dumps(device_info, indent=2)}")
     print(f"\n\nART MODE\n{json.dumps(art_status, indent=2)}")
+    print(f"\n\nART\n{json.dumps(info, indent=2)}")
     #print(f"APP INFO\n{json.dumps(app_info, indent=2)}")
 
 PowerState = Literal["off", "art-mode", "on", "standby"]
@@ -87,14 +95,17 @@ def get_power_state(publish_destination: str) -> PowerState:
 def device_sleep(publish_destination: str) -> None:
     state = get_power_state(publish_destination)
 
-    if state == "on":
+    if state in ("on", "standby"):
         tv = _get_tv(publish_destination)
         tv.send_key("KEY_POWER")  # toggles to Art Mode
         info(f"{publish_destination} sent to sleep (Art Mode)")
+        return True
     elif state == "art-mode":
         info(f"{publish_destination} already in Art Mode — no action taken")
+        return False
     else:
         info(f"{publish_destination} appears to be off — cannot sleep it")
+        return False
 
 def device_wake(publish_destination: str) -> None:
     state = get_power_state(publish_destination)
@@ -112,14 +123,14 @@ def device_wake(publish_destination: str) -> None:
             state = get_power_state(publish_destination)
         else:
             error(f"{publish_destination} is off and no MAC address is available for WoL")
-            return
+            return False
 
     if state == "standby":
         # Wake with KEY_POWER, then re-check
         tv = _get_tv(publish_destination)
         if not tv:
             error(f"Could not retrieve TV object to wake {publish_destination}")
-            return
+            return False
         tv.send_key("KEY_POWER")
         info(f"{publish_destination} sent KEY_POWER to exit standby")
         time.sleep(1.5)
@@ -131,12 +142,16 @@ def device_wake(publish_destination: str) -> None:
         if tv:
             tv.send_key("KEY_POWER")
             info(f"{publish_destination} was in Art Mode — sent KEY_POWER to exit")
+            return True
         else:
             error(f"Could not retrieve TV object to exit Art Mode for {publish_destination}")
+            return False
     elif state == "on":
         info(f"{publish_destination} is already on — no action needed")
+        return False
     else:
         error(f"{publish_destination} is still off or unresponsive after wake attempt")
+        return False
 
 def device_sync(publish_destination: str) -> None:
     """
@@ -147,16 +162,20 @@ def device_sync(publish_destination: str) -> None:
     """
     # TODO: Implement Samsung display sync command
 
-def device_standby(publish_destination: str) -> None:
-    debug(f"*************************************************device_standby: {publish_destination}")
-    state = get_power_state(publish_destination)
+# --- Device standby helper ----------------------------------------------
 
-    if state in ("art-mode", "on"):
-        debug(f"*************************************************device_standby: {publish_destination} in art-mode or on")
-        tv = _get_tv(publish_destination)
-        tv.send_key("KEY_POWER", press=True)
-        time.sleep(6)
-        tv.send_key("KEY_POWER", press=False)
-        info(f"{publish_destination} sent KEY_POWER to exit Art Mode")
-    else:
-        info(f"{publish_destination} is off or in standby — cannot sync it")
+def device_standby(publish_destination: str) -> None:
+    # Although wacky, this does seem to work if TV is first in wake mode, though I'll be buggered if I know why...
+    if device_wake(publish_destination):
+        time.sleep(3)	
+
+    # Now send standby
+    info(f"{publish_destination} sending to standby (takes 30s).")
+    tv = _get_tv(publish_destination)
+    tv.hold_key("KEY_POWER", 8)
+
+    #debug("Hold for 10s while daemon completes...")
+    #time.sleep(10)
+
+    return True
+

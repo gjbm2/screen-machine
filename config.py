@@ -28,3 +28,6 @@ MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
 # Scheduler settings
 SCHEDULER_TICK_INTERVAL = 2.0  # Seconds between scheduler trigger checks
 SCHEDULER_TICK_BUFFER = 0.5    # Additional buffer time for scheduler operations 
+MAX_EVENT_HISTORY = 100
+# Path to the exported variables registry
+VARS_REGISTRY_PATH = os.path.join(os.path.dirname(__file__), "scheduler", "_vars.json")

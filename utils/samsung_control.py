@@ -5,13 +5,14 @@ from pathlib import Path
 # Add the project root to sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from routes.samsung_utils import device_sleep, device_wake, device_sync, device_info
+from routes.samsung_utils import device_sleep, device_wake, device_sync, device_info, device_standby
 
 COMMANDS = {
     "sleep": device_sleep,
     "wake": device_wake,
     "sync": device_sync,
     "info": device_info,
+    "standby": device_standby,
 }
 
 def main():
