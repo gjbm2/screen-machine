@@ -29,5 +29,5 @@ __pycache__/
 .env
 
 
-/output/*
-*/images/*
+output/*
+samsungtvws/example/web_interface/images
