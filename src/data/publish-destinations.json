@@ -87,5 +87,16 @@
     "type": "output_file",
     "has_bucket": true,
     "description": "Publish to cloud storage"
+  },
+  {
+    "id": "greg-mobile",
+    "name": "Greg's mobile",
+    "icon": "MonitorSmartphone",
+    "headless" :  true,
+    "type": "output_file",
+    "has_bucket": true,
+    "description": "Publish to mobile lock screen",
+    "maxwidth": 1080,
+    "maxheight": 2400
   }
 ]

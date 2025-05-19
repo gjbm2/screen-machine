@@ -1,0 +1,29 @@
+{
+  "global": {},
+  "groups": {
+    "living-room": {
+      "a_theme": {
+        "friendly_name": "A theme of the day",
+        "owner": "cloud",
+        "timestamp": "2025-05-20T00:01:07.314613"
+      },
+      "b_theme": {
+        "friendly_name": "B theme of the day",
+        "owner": "cloud",
+        "timestamp": "2025-05-20T00:01:07.449765"
+      },
+      "style": {
+        "friendly_name": "Style of the day",
+        "owner": "cloud",
+        "timestamp": "2025-05-20T00:01:07.577215"
+      },
+      "guidance": {
+        "friendly_name": "Generator guidance",
+        "owner": "cloud",
+        "timestamp": "2025-05-20T00:01:07.743638"
+      }
+    }
+  },
+  "imports": {},
+  "last_updated": "2025-05-20T00:01:07.751927"
+}

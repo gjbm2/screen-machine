@@ -54,7 +54,7 @@ active_events: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
 # Keep history of recent events for UI display (capped length)
 event_history: Dict[str, List[Dict[str, Any]]] = {}
 # Maximum history entries to retain per destination
-MAX_EVENT_HISTORY = 1000
+from config import MAX_EVENT_HISTORY
 
 # Store running scheduler tasks
 running_schedulers = {}
@@ -68,8 +68,7 @@ _last_debug_log_time = {}
 
 # === Additional functions for exported variable registry ===
 
-# Path to the exported variables registry
-VARS_REGISTRY_PATH = os.path.join(os.path.dirname(__file__), "scheduler", "_vars.json")
+from config import VARS_REGISTRY_PATH
 
 def load_vars_registry() -> Dict[str, Any]:
     """Load the exported variables registry from disk."""
