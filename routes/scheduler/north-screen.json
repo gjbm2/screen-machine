@@ -227,6 +227,32 @@
               }
             }
           ]
+        },
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "03:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "purge",
+                    "days": 30,
+                    "include_favorites": false
+                  }
+                ]
+              }
+            }
+          ]
         }
       ],
       "final_actions": {
@@ -238,22 +264,12 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "The Transience of Online Impressions",
-        "_b_theme": "Reflections of Digital Identity",
+        "_a_theme": "Reflections of Digital Identity",
+        "_b_theme": "The Transience of Online Impressions",
         "_style": "Rene Magritte's Surrealist Technique",
         "_guidance": "Select subjects such as digital avatars, social media profiles, and ephemeral stories. Render them using the whimsical and thought-provoking elements of Magritte\u2019s surrealism. Ensure each subject is unique by consulting recent image history to maintain diversity and prevent repetition.",
-        "prompt": "Ethereal cloud of digital avatars interspersed with delicate origami birds, evoking fleeting online connections, set against Magritte-inspired sky with illusionistic depth.",
+        "prompt": "Floating surreal digital clock with sockets, its hands held aloft by digital avatars transcending time, beneath enigmatic Magritte sky, shadows suggesting fluid passage of digital existence.",
         "history_var": [
-          {
-            "timestamp": "2025-05-20 21:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Solitary fisherman casting net from a snow-dusted pier, rippling water reflecting overcast sky, scene depicted with gentle ink gradients and soft snowy hues."
-            },
-            "text_input": "'Mourning in Winter Solitude' in the style of '...",
-            "explanation": "I focused on a solitary fisherman casting his net, a unique perspective, as icy rivers, temple be..."
-          },
           {
             "timestamp": "2025-05-20 22:00:04",
             "type": "reason",
@@ -443,17 +459,19 @@
             },
             "text_input": "'The Transience of Online Impressions' in the s...",
             "explanation": "I avoided repetition by focusing on a delicate mix of digital avatars and origami birds, contrast..."
+          },
+          {
+            "timestamp": "2025-05-21 23:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Floating surreal digital clock with sockets, its hands held aloft by digital avatars transcending time, beneath enigmatic Magritte sky, shadows suggesting fluid passage of digital existence."
+            },
+            "text_input": "'Reflections of Digital Identity' in the style ...",
+            "explanation": "I avoided previous subjects by introducing a surreal digital clock with sockets whose hands are h..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2025-05-20 21:00:07",
-            "type": "generation",
-            "prompt": "Solitary fisherman casting net from a snow-dust...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/2c078eb1-7b91-476c-9d03-a8281553d81b-e1/7637ccbf.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250520%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250520T200027Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=3337422b4449972cf797ce783907613423f8850e7cfc4a19265e4ba162569c05"
-          },
           {
             "timestamp": "2025-05-20 22:00:09",
             "type": "generation",
@@ -605,6 +623,14 @@
             "refiner": "curator",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0ee7c064-457e-4603-8000-472bdfe3328d-e1/51e59c8d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250521%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250521T210110Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=98e722d28ec93f665b06bde257a9ebcb1daa321e749e1d5d084d39de3062f600"
+          },
+          {
+            "timestamp": "2025-05-21 23:00:09",
+            "type": "generation",
+            "prompt": "Floating surreal digital clock with sockets, it...",
+            "refiner": "curator",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a65999c6-731c-45e8-8109-99b9fce5843d-e1/565cf9a3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250521%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250521T220030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=654b34aeb2824b73a19940351ea2d7f53567fc4e3cfa3b304c3e17c7b6fafb8b"
           }
         ],
         "animation_history": [
@@ -772,94 +798,19 @@
         "animation_on": false
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0ee7c064-457e-4603-8000-472bdfe3328d-e1/51e59c8d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250521%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250521T210110Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=98e722d28ec93f665b06bde257a9ebcb1daa321e749e1d5d084d39de3062f600"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a65999c6-731c-45e8-8109-99b9fce5843d-e1/565cf9a3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250521%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250521T220030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=654b34aeb2824b73a19940351ea2d7f53567fc4e3cfa3b304c3e17c7b6fafb8b"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-21T22:41:51.003151",
+  "last_updated": "2025-05-21T23:05:02.305254",
   "last_trigger_executions": {
-    "86f019f352e8516f5b28d3608f06e3d8_2025-05-21": "2025-05-21T04:00:01.357511",
-    "442611d85057ffa0800e12b27cc0ea8b_2025-05-21": "2025-05-21T07:00:00.428555",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_0": "2025-05-21T07:00:00.428555",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-21_0": "2025-05-21T07:05:00.562651",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_1": "2025-05-21T08:00:01.727680",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_2": "2025-05-21T09:00:02.545213",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-21_1": "2025-05-21T09:05:01.639455",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_3": "2025-05-21T10:00:01.234540",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_4": "2025-05-21T11:00:00.845691",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-21_2": "2025-05-21T11:05:01.339076",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_5": "2025-05-21T12:00:00.958800",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_6": "2025-05-21T13:00:00.581047",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-21_3": "2025-05-21T13:05:01.235095",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_7": "2025-05-21T14:00:01.845490",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_8": "2025-05-21T15:00:01.546020",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-21_4": "2025-05-21T15:05:00.178938",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_9": "2025-05-21T16:00:01.893059",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_10": "2025-05-21T17:00:00.639196",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-21_5": "2025-05-21T17:05:00.996097",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_11": "2025-05-21T18:00:01.201703",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_12": "2025-05-21T19:00:01.923486",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-21_6": "2025-05-21T19:05:01.815590",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_13": "2025-05-21T20:00:00.604626",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_14": "2025-05-21T21:00:01.965143",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-21_7": "2025-05-21T21:05:01.128734",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-21_15": "2025-05-21T22:00:01.178638"
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-21_8": "2025-05-21T23:05:00.181650"
   },
-  "active_events": {},
+  "active_events": {
+    "__exit_block__": []
+  },
   "event_history": [
     {
-      "key": "Generate",
-      "active_from": "2025-05-20T16:00:02.033422",
-      "expires": "2025-05-20T16:01:02.033422",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-20T16:00:02.033422",
-      "unique_id": "12fb1ea6-e6bc-4b10-97ad-ed793425f530",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-20T16:00:04.034144"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-20T16:00:02.033422",
-      "expires": "2025-05-20T16:01:02.033422",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-20T16:00:02.033422",
-      "unique_id": "12fb1ea6-e6bc-4b10-97ad-ed793425f530",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-20T16:00:04.034144"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-20T17:00:00.818081",
-      "expires": "2025-05-20T17:01:00.818081",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-20T17:00:00.818081",
-      "unique_id": "1dc0e3a3-46ea-409f-af0a-d05303e512d6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-20T17:00:02.788575"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-20T17:00:00.818081",
-      "expires": "2025-05-20T17:01:00.818081",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-20T17:00:00.818081",
-      "unique_id": "1dc0e3a3-46ea-409f-af0a-d05303e512d6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-20T17:00:02.788575"
-    },
-    {
       "key": "__exit_block__",
       "active_from": "2025-05-20T17:05:01.225297",
       "expires": "2025-05-20T17:06:01.225297",
@@ -2226,6 +2177,62 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
       "consumed_at": "2025-05-21T22:00:03.214275"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-21T23:00:00.983923",
+      "expires": "2025-05-21T23:01:00.983923",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-21T23:00:00.983923",
+      "unique_id": "8a3bead1-29b3-48bd-a16b-46e53ad98e38",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-21T23:00:02.963519"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-21T23:00:00.983923",
+      "expires": "2025-05-21T23:01:00.983923",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-21T23:00:00.983923",
+      "unique_id": "8a3bead1-29b3-48bd-a16b-46e53ad98e38",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-21T23:00:02.963519"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-21T23:05:00.388773",
+      "expires": "2025-05-21T23:06:00.388773",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-21T23:05:00.388773",
+      "unique_id": "daa4fd03-5c45-44d3-952d-9f7fa30c6494",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-21T23:05:02.266352"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-21T23:05:00.388773",
+      "expires": "2025-05-21T23:06:00.388773",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-21T23:05:00.388773",
+      "unique_id": "daa4fd03-5c45-44d3-952d-9f7fa30c6494",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-21T23:05:02.266352"
     }
   ]
 }

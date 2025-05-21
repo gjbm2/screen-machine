@@ -178,7 +178,7 @@ const Scheduler = () => {
       const runningSchedulers = response.running || [];
       
       // Get publish destinations from the service
-      const publishDestinations = await apiService.getPublishDestinations();
+      const publishDestinations = await apiService.getPublishDestinations(true);
       
       // Extract destination IDs from the publish destinations
       const destinationIds = publishDestinations.map(dest => dest.id);
