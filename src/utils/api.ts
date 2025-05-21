@@ -1341,9 +1341,14 @@ export class Api {
     return response.json();
   }
 
-  async purgeBucket(bucketId: string): Promise<{ status: string; removed: string[] }> {
-    const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/purge`, {
-      method: 'POST',
+  async purgeBucket(bucketId: string, days?: number): Promise<{ status: string; removed: string[] }> {
+    const url = new URL(`${this.apiUrl}/buckets/${bucketId}/purge`);
+    if (days !== undefined) {
+      url.searchParams.append('days', days.toString());
+    }
+    
+    const response = await fetch(url.toString(), {
+      method: 'DELETE',
     });
     if (!response.ok) {
       throw new Error(`Failed to purge bucket: ${response.statusText}`);

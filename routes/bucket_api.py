@@ -47,7 +47,9 @@ from routes.utils import (
     _extract_mp4_comment_json,
     sidecar_path,
     ensure_sidecar_for,
-    generate_thumbnail
+    generate_thumbnail,
+    seq_to_filenames,             # Add this new import
+    upsert_seq                    # Add this new import
 )
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
 
@@ -303,7 +305,8 @@ def favorite(bucket_id: str, filename: str):
         abort(400, "Invalid bucket_id or destination does not support buckets")
     
     meta = load_meta(bucket_id)
-    if filename not in meta.get("sequence", []):
+    # Use seq_to_filenames helper to handle both string and dict entries
+    if filename not in seq_to_filenames(meta.get("sequence", [])):
         abort(404, "not in bucket")
     meta.setdefault("favorites", []).append(filename)
     save_meta(bucket_id, meta)
@@ -418,26 +421,31 @@ def move_to(bucket_id: str, filename: str):
     
     meta = load_meta(bucket_id)
     seq = meta.get("sequence", [])
+    filenames = seq_to_filenames(seq)
     
     # Verify the file exists in the sequence
-    if filename not in seq:
+    if filename not in filenames:
         abort(404, "file not in sequence")
     
+    # Get the index of the file in the sequence
+    idx = filenames.index(filename)
+    # Get the actual entry
+    entry = seq[idx]
     # Remove the file from its current position
-    seq.remove(filename)
+    seq.pop(idx)
     
     if insert_after:
         # Verify insert_after file exists in sequence
-        if insert_after not in seq:
+        if insert_after not in filenames:
             abort(404, "insert_after file not in sequence")
         # Find the index to insert after
-        insert_index = seq.index(insert_after) + 1
+        insert_index = filenames.index(insert_after) + 1
     else:
         # Move to top
         insert_index = 0
     
     # Insert the file at the new position
-    seq.insert(insert_index, filename)
+    seq.insert(insert_index, entry)
     
     # Update the metadata
     meta["sequence"] = seq
@@ -461,16 +469,28 @@ def move_up(bucket_id: str, filename: str):
     
     meta = load_meta(bucket_id)
     seq = meta.get("sequence", [])
-    if filename not in seq:
+    filenames = seq_to_filenames(seq)
+    
+    if filename not in filenames:
         abort(404, "file not in sequence")
-    i = seq.index(filename)
+    
+    # Get the index in the filenames list
+    i = filenames.index(filename)
+    
+    # Swap the entries in the original sequence
     if i == 0:
+        # Move from first to last
         seq.append(seq.pop(0))
     else:
+        # Swap with previous item
         seq[i - 1], seq[i] = seq[i], seq[i - 1]
+    
     meta["sequence"] = seq
     save_meta(bucket_id, meta)
-    return jsonify({"status": "moved-up", "index": seq.index(filename)})
+    
+    # Return the new index in the updated filenames list
+    updated_filenames = seq_to_filenames(seq)
+    return jsonify({"status": "moved-up", "index": updated_filenames.index(filename)})
 
 
 @buckets_bp.route("/buckets/<bucket_id>/move-down/<filename>", methods=["POST"])
@@ -484,16 +504,28 @@ def move_down(bucket_id: str, filename: str):
     
     meta = load_meta(bucket_id)
     seq = meta.get("sequence", [])
-    if filename not in seq:
+    filenames = seq_to_filenames(seq)
+    
+    if filename not in filenames:
         abort(404, "file not in sequence")
-    i = seq.index(filename)
+    
+    # Get the index in the filenames list
+    i = filenames.index(filename)
+    
+    # Swap the entries in the original sequence
     if i == len(seq) - 1:
+        # Move from last to first
         seq.insert(0, seq.pop())
     else:
+        # Swap with next item
         seq[i + 1], seq[i] = seq[i], seq[i + 1]
+    
     meta["sequence"] = seq
     save_meta(bucket_id, meta)
-    return jsonify({"status": "moved-down", "index": seq.index(filename)})
+    
+    # Return the new index in the updated filenames list
+    updated_filenames = seq_to_filenames(seq)
+    return jsonify({"status": "moved-down", "index": updated_filenames.index(filename)})
 
 # -- raw file helper ---------------------------------------------------------
 
@@ -513,11 +545,23 @@ def raw(bucket_id: str, filename: str):
 
 @buckets_bp.route("/buckets/<bucket_id>/purge", methods=["DELETE"])
 def purge_bucket_endpoint(bucket_id: str):
-    """Purge files from a bucket, optionally including favorites."""
+    """Purge files from a bucket, optionally including favorites and filtering by age."""
     include_favorites = request.args.get("include_favorites", "false").lower() == "true"
+    days = request.args.get("days")
+    if days is not None:
+        try:
+            days = int(days)
+        except ValueError:
+            abort(400, "days parameter must be an integer")
     
-    result = purge_bucket(bucket_id, include_favorites=include_favorites)
-    return jsonify(result)
+    try:
+        result = purge_bucket(bucket_id, include_favorites=include_favorites, days=days)
+        return jsonify(result)
+    except ValueError as e:
+        abort(400, str(e))
+    except Exception as e:
+        error(f"Error purging bucket {bucket_id}: {str(e)}")
+        abort(500, str(e))
 
 @buckets_bp.route("/buckets/reindex", methods=["POST"])
 def reindex_all():

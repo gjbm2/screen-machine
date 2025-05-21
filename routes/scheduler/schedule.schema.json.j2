@@ -757,6 +757,38 @@
             "required": ["delay", "future_time"]
           },
           "additionalProperties": false
+        },
+        {
+          "title": "Purge Bucket",
+          "description": "Clean up files in the bucket, with options to keep favorites and filter by age.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "purge",
+              "default": "purge",
+              "description": "Fixed to 'purge' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "days": {
+              "type": ["number", "null"],
+              "title": "Age in Days",
+              "description": "Optional: Only delete files older than this many days. If not specified, all files will be deleted based on favorites setting."
+            },
+            "include_favorites": {
+              "type": "boolean",
+              "title": "Include Favorites",
+              "description": "Whether to remove favorite files as well. Default is false (keep favorites).",
+              "default": false
+            },
+            "dontwait": { "$ref": "#/definitions/dontWaitProp" }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
         }
       ]
     },

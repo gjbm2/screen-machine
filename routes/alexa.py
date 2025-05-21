@@ -28,6 +28,7 @@ from utils.logger import info, error, warning, debug
 import utils
 import json
 import re
+import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from flask import current_app
@@ -37,6 +38,7 @@ from routes.manage_jobs import cancel_all_jobs
 from typing import Dict, Any
 import uuid
 from routes.generate_handler import throw_user_interacting_event, handle_image_generation, async_amimate
+from routes.samsung_utils import device_wake, device_sleep, device_sync
 
 def Brianize(text: str) -> str:
     # Already contains Brian *and* prosody — leave untouched
@@ -283,11 +285,17 @@ def process(data):
     request_type = data.get("request", {}).get("type", "")
 
     utils.logger.info(f"========================================================")
+    utils.logger.debug(f"device_id: {device_id}")
+    utils.logger.info(f"========================================================")
 
     # == User just said 'Computer, use AI' 
     if request_type == "LaunchRequest":
         
         if closest_screen:
+            # Wake the device, and if it was sleeping, give it time to wake up
+            if device_wake(closest_screen):
+                time.sleep(3)
+
             destinations = _load_json_once("destination", "publish-destinations.json")
             screen_name = next(
                 (d["name"] for d in destinations if d["id"] == closest_screen),
@@ -409,6 +417,7 @@ def process(data):
 
         # == Select system prompt based on Alexa intent ==
         use_system_prompt = None
+        initial_intent = "respond_only"
         match alexa_intent:
             case "repeat":
                 result = current_app.config.get("LASTRENDER", None)
@@ -437,6 +446,9 @@ def process(data):
                 use_system_prompt="alexa-animate.txt"
             case "trigger":
                 use_system_prompt="alexa-trigger-events.txt.j2"
+            case "sleep":
+                response_ssml = Brianize("Goodnight.")
+                device_sleep(closest_screen)
             case _:
                 use_system_prompt="alexa-triage.txt"
 
@@ -483,7 +495,7 @@ def process(data):
                 utils.logger.warning(f"⚠️ Triage failed: {str(e)}")
                 return response_ssml
             
-        intent = result.get("intent", "respond_only") if result else "respond_only"
+        intent = result.get("intent", "respond_only") if result else initial_intent
         
         #info(f"> processed object: {result}")
         #info(f"> intent: {intent}; response_ssml: {response_ssml}")    
