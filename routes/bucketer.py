@@ -280,6 +280,14 @@ def purge_bucket(publish_destination_id: str, include_favorites: bool = False, d
     
     # Get a list of just the filenames from the sequence
     filenames = seq_to_filenames(seq)
+    
+    # Create a mapping of filenames to their sequence entries for favorite checking
+    filename_to_entry = {}
+    for entry in seq:
+        if isinstance(entry, dict):
+            filename_to_entry[entry["file"]] = entry
+        else:
+            filename_to_entry[entry] = entry
 
     # Calculate cutoff time if days is specified
     cutoff_time = None
@@ -292,21 +300,25 @@ def purge_bucket(publish_destination_id: str, include_favorites: bool = False, d
     for i, fname in enumerate(filenames):
         # Skip favorites unless include_favorites is True
         if not include_favorites and fname in favs:
+            info(f"[purge] Skipping favorite file: {fname}")
             continue
             
         fp = bucket_path(publish_destination_id) / fname
         
         # Skip if file doesn't exist
         if not fp.exists():
+            warning(f"[purge] File does not exist, skipping: {fname}")
             continue
             
         # Check file age if days parameter is specified
         if cutoff_time is not None:
             file_mtime = datetime.fromtimestamp(fp.stat().st_mtime)
             if file_mtime > cutoff_time:
+                info(f"[purge] File is too new, skipping: {fname} (modified {file_mtime})")
                 continue
         
         # Remove the file and related files
+        info(f"[purge] Removing file: {fname}")
         fp.unlink(missing_ok=True)
         sidecar_path(fp).unlink(missing_ok=True)
         # remove its thumbnail
@@ -318,7 +330,13 @@ def purge_bucket(publish_destination_id: str, include_favorites: bool = False, d
 
     # Remove entries from the sequence that were removed
     if removed:
-        meta["sequence"] = [entry for entry in seq if (entry["file"] if isinstance(entry, dict) else entry) not in removed]
+        # Create a set of removed filenames for faster lookup
+        removed_set = set(removed)
+        # Filter out removed entries, handling both string and dict formats
+        meta["sequence"] = [
+            entry for entry in seq 
+            if (entry["file"] if isinstance(entry, dict) else entry) not in removed_set
+        ]
 
     # Delete any orphaned thumbnails
     thumb_dir = bucket_path(publish_destination_id) / "thumbnails"
@@ -332,9 +350,9 @@ def purge_bucket(publish_destination_id: str, include_favorites: bool = False, d
     # Update metadata
     if include_favorites:
         meta["favorites"] = []
-    meta["sequence"] = [entry for entry in meta["sequence"] if (entry["file"] if isinstance(entry, dict) else entry) not in removed]
     save_meta(publish_destination_id, meta)
 
+    info(f"[purge] Completed purge for {publish_destination_id}. Removed {len(removed)} files: {removed}")
     return {
         "status": "purged",
         "removed": removed,

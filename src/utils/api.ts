@@ -1341,7 +1341,7 @@ export class Api {
     return response.json();
   }
 
-  async purgeBucket(bucketId: string, days?: number): Promise<{ status: string; removed: string[] }> {
+  async purgeBucket(bucketId: string, days?: number): Promise<{ status: string; removed: string[]; error?: string }> {
     const url = new URL(`${this.apiUrl}/buckets/${bucketId}/purge`);
     if (days !== undefined) {
       url.searchParams.append('days', days.toString());
@@ -1350,10 +1350,18 @@ export class Api {
     const response = await fetch(url.toString(), {
       method: 'DELETE',
     });
+    
     if (!response.ok) {
-      throw new Error(`Failed to purge bucket: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Failed to purge bucket: ${errorText}`);
     }
-    return response.json();
+    
+    const result = await response.json();
+    if (result.status !== 'purged') {
+      throw new Error(result.error || 'Failed to purge bucket');
+    }
+    
+    return result;
   }
 
   async reindexBuckets(): Promise<{ status: string; count: number }> {
@@ -1644,7 +1652,7 @@ export class Api {
   }
 
   // Get publish destinations
-  async getPublishDestinations(): Promise<PublishDestination[]> {
+  async getPublishDestinations(includeRecent: boolean = false): Promise<PublishDestination[]> {
     try {
       const response = await fetch(`${this.apiUrl}/publish-destinations`);
       if (!response.ok) {
@@ -1652,7 +1660,8 @@ export class Api {
       }
       const destinations = await response.json();
       return destinations
-        .filter((dest: any) => !dest.hidden) // Filter out hidden destinations
+        // Include all non-hidden destinations, plus _recent if includeRecent=true
+        .filter((dest: any) => (!dest.hidden) || (includeRecent && dest.id === '_recent'))
         .map((dest: any) => ({
         id: dest.id,
         name: dest.name || dest.id,

@@ -195,21 +195,22 @@ const MaintenanceModal = ({ isOpen, onClose, destination, onActionComplete }: {
   const [isLoading, setIsLoading] = useState(false);
 
   const handlePurge = async () => {
-    if (!confirm('Are you sure you want to purge non-favorite images?')) {
-      return;
-    }
-    
     setIsLoading(true);
     try {
-      const success = await apiService.purgeBucket(destination, days);
-      if (success) {
-        toast.success('Non-favorite images purged successfully');
+      const result = await apiService.purgeBucket(destination, days);
+      if (result.status === 'purged') {
+        const message = result.removed.length > 0 
+          ? `Purged ${result.removed.length} files successfully`
+          : 'No files were purged';
+        toast.success(message);
         onActionComplete();
         onClose();
+      } else {
+        toast.error(result.error || 'Failed to purge files');
       }
     } catch (error) {
-      console.error('Error purging non-favorites:', error);
-      toast.error('Failed to purge non-favorites');
+      console.error('Error purging files:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to purge files');
     } finally {
       setIsLoading(false);
     }
@@ -681,19 +682,8 @@ export const BucketGridView = ({
   };
 
   // Handle maintenance actions
-  const handlePurgeNonFavorites = async () => {
-    if (confirm('Are you sure you want to purge non-favorite images?')) {
-      try {
-        const success = await apiService.performBucketMaintenance(destination, 'purge');
-        if (success) {
-          toast.success('Non-favorite images purged successfully');
-          debouncedFetchBucketDetails();
-        }
-      } catch (error) {
-        console.error('Error purging non-favorites:', error);
-        toast.error('Failed to purge non-favorites');
-      }
-    }
+  const handlePurgeNonFavorites = () => {
+    setShowMaintenanceModal(true);
   };
 
   const handleReindex = async () => {
@@ -1985,85 +1975,93 @@ export const BucketGridView = ({
     <div className="h-full flex flex-col">
       {/* DnD interactions handled by global context; monitor via hooks */}
       {bucketDetails && (
-      <div className={`flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full ${headerPinned ? 'sticky top-12 z-40' : ''}`}>
-        <div className="flex items-start gap-3">
-          {/* Left side with droppable published image area */}
-          <PublishedImageDroppable currentImage={currentPublishedImage} />
-          
-          {/* Controls area */}
-          <div className="flex-1 flex flex-col min-w-0 h-full">
-            {/* All publish destinations use same layout */}
-            <div className="flex justify-between items-center">
-              <div className="flex flex-wrap gap-1 items-center">
-                <Button 
-                  size="sm" 
-                  variant="ghost" 
-                  onClick={handleRefresh} 
-                  disabled={loading || externalLoading}
-                  className="flex-nowrap h-8"
-                >
-                  <RefreshCw 
-                    className={`h-4 w-4 ${(loading || externalLoading) ? 'animate-spin' : ''}`} 
-                  />
-                  <span className="ml-1 hidden sm:inline">Refresh</span>
-                </Button>
-                {/* Only show upload/maintenance for destinations with buckets */}
-                {hasBucket && (
-                  <>
+        <>
+          <MaintenanceModal
+            isOpen={showMaintenanceModal}
+            onClose={() => setShowMaintenanceModal(false)}
+            destination={destination}
+            onActionComplete={debouncedFetchBucketDetails}
+          />
+          <div className={`flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full ${headerPinned ? 'sticky top-12 z-40' : ''}`}>
+            <div className="flex items-start gap-3">
+              {/* Left side with droppable published image area */}
+              <PublishedImageDroppable currentImage={currentPublishedImage} />
+              
+              {/* Controls area */}
+              <div className="flex-1 flex flex-col min-w-0 h-full">
+                {/* All publish destinations use same layout */}
+                <div className="flex justify-between items-center">
+                  <div className="flex flex-wrap gap-1 items-center">
                     <Button 
                       size="sm" 
-                      variant="secondary"
-                      onClick={() => setShowUploadModal(true)}
+                      variant="ghost" 
+                      onClick={handleRefresh} 
+                      disabled={loading || externalLoading}
                       className="flex-nowrap h-8"
                     >
-                      <Upload className="h-4 w-4" />
-                      <span className="ml-1 hidden sm:inline">Upload</span>
+                      <RefreshCw 
+                        className={`h-4 w-4 ${(loading || externalLoading) ? 'animate-spin' : ''}`} 
+                      />
+                      <span className="ml-1 hidden sm:inline">Refresh</span>
                     </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="outline" className="flex-nowrap h-8">
-                          <Settings className="h-4 w-4" />
-                          <span className="ml-1 hidden sm:inline">Maintenance</span>
+                    {/* Only show upload/maintenance for destinations with buckets */}
+                    {hasBucket && (
+                      <>
+                        <Button 
+                          size="sm" 
+                          variant="secondary"
+                          onClick={() => setShowUploadModal(true)}
+                          className="flex-nowrap h-8"
+                        >
+                          <Upload className="h-4 w-4" />
+                          <span className="ml-1 hidden sm:inline">Upload</span>
                         </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem onClick={handlePurgeNonFavorites}>
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Purge Non-Favorites
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleReindex}>
-                          <RefreshCw className="h-4 w-4 mr-2" />
-                          Re-Index
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleExtractJson}>
-                          <Copy className="h-4 w-4 mr-2" />
-                          Extract JSON
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleOpenSchedulerPage}>
-                          <Settings className="h-4 w-4 mr-2" />
-                          Scheduler
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </>
-                )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="outline" className="flex-nowrap h-8">
+                              <Settings className="h-4 w-4" />
+                              <span className="ml-1 hidden sm:inline">Maintenance</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem onClick={handlePurgeNonFavorites}>
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Purge Non-Favorites
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={handleReindex}>
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Re-Index
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={handleExtractJson}>
+                              <Copy className="h-4 w-4 mr-2" />
+                              Extract JSON
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={handleOpenSchedulerPage}>
+                              <Settings className="h-4 w-4 mr-2" />
+                              Scheduler
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Create a flex spacer that pushes the controls to the bottom */}
+                <div className="flex-grow"></div>
+                
+                {/* Replace the inline scheduler controls with the SchedulerControl component */}
+                <SchedulerControl 
+                  destination={destination}
+                  isRunning={schedulerStatus?.is_running}
+                  isPaused={schedulerStatus?.is_paused}
+                  nextAction={schedulerStatus?.next_action}
+                  refreshScheduler={refreshBucket}
+                />
               </div>
             </div>
-            
-            {/* Create a flex spacer that pushes the controls to the bottom */}
-            <div className="flex-grow"></div>
-            
-            {/* Replace the inline scheduler controls with the SchedulerControl component */}
-            <SchedulerControl 
-              destination={destination}
-              isRunning={schedulerStatus?.is_running}
-              isPaused={schedulerStatus?.is_paused}
-              nextAction={schedulerStatus?.next_action}
-              refreshScheduler={refreshBucket}
-            />
           </div>
-        </div>
-      </div>
+        </>
       )}
       
       {/* Error message */}
