@@ -9,6 +9,7 @@ from routes.scheduler_utils import log_schedule, scheduler_contexts_stacks, get_
 from routes.service_factory import get_generation_service, get_animation_service, get_display_service
 from routes.utils import dict_substitute, build_schema_subs
 from routes.samsung_utils import device_sleep, device_wake, device_sync, device_standby
+from routes.bucketer import purge_bucket as bucketer_purge_bucket  # Added import for purge_bucket
 import routes.openai
 from time import time
 
@@ -1178,5 +1179,58 @@ def handle_throw_event(instruction, context, now, output, publish_destination):
         log_schedule(error_msg, publish_destination, now, output)
 
     return False  # Don't unload the schedule
+
+def handle_purge(instruction, context, now, output, publish_destination):
+    """
+    Handle the purge instruction to clean up a bucket.
+    
+    Args:
+        instruction: The purge instruction, which may include:
+            - days: Optional number of days for age-based filtering
+            - include_favorites: Whether to include favorite files in purge
+        context: The current context
+        now: Current datetime
+        output: List to append log messages to
+        publish_destination: The bucket ID to purge
+        
+    Returns:
+        bool: False (don't unload the schedule)
+    """
+    # Get parameters from the instruction
+    days = instruction.get("days")
+    include_favorites = instruction.get("include_favorites", False)
+    
+    # Log what we're about to do
+    msg = f"Purging bucket '{publish_destination}'"
+    if days is not None:
+        msg += f" for files older than {days} days"
+    if not include_favorites:
+        msg += " (keeping favorites)"
+    else:
+        msg += " (including favorites)"
+    
+    log_schedule(msg, publish_destination, now, output)
+    
+    try:
+        # Call the actual purge_bucket function from bucketer
+        result = bucketer_purge_bucket(
+            publish_destination_id=publish_destination,
+            include_favorites=include_favorites,
+            days=days
+        )
+        
+        # Log the results
+        deleted_count = len(result.get("deleted_files", []))
+        msg = f"Purged {deleted_count} files from bucket '{publish_destination}'"
+        log_schedule(msg, publish_destination, now, output)
+        
+        return False  # Don't unload the schedule
+        
+    except Exception as e:
+        error_msg = f"Error in handle_purge: {str(e)}"
+        log_schedule(error_msg, publish_destination, now, output)
+        import traceback
+        error(traceback.format_exc())
+        return False
 
 # Delete the duplicate process_time_schedules function that was copied here 

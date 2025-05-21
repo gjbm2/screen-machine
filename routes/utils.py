@@ -660,14 +660,15 @@ def truncate_element(value, max_len=5000):
         return {k: truncate_element(v, max_len) for k, v in value.items()}
     return value  # other types (int, float, None, etc.)
     
-def find_destination_by_alexaclosest(alexa_id: str) -> str | None:
-    """
-    Find the destination `id` whose 'alexaclosest' field matches the given Alexa deviceId.
-    """
+def find_destination_by_alexaclosest(alexa_id: str) -> str:
     destinations = _load_json_once("destination", "publish-destinations.json")
     for dest in destinations:
-        if dest.get("alexaclosest") == alexa_id:
-            return dest["id"]
+        alexa_closest = dest.get("alexaclosest")
+        if alexa_closest:
+            if isinstance(alexa_closest, str) and alexa_closest == alexa_id:
+                return dest["id"]
+            elif isinstance(alexa_closest, list) and alexa_id in alexa_closest:
+                return dest["id"]
     return None
 
 def get_qr(publish=None, run=False, refiner=None, prompt=None):
@@ -856,3 +857,42 @@ def get_destinations_for_group(scope: str) -> list:
         d["id"] for d in destinations
         if scope in d.get("groups", []) and d.get("has_bucket", False)
     ]
+
+def seq_to_filenames(seq):
+    """Convert a sequence to a list of filenames, handling both string and dict formats.
+    
+    Args:
+        seq: A list that may contain strings or dicts with 'file' keys
+        
+    Returns:
+        A list containing only the filenames
+    """
+    if not seq:
+        return []
+    return [e['file'] if isinstance(e, dict) else e for e in seq]
+
+def upsert_seq(meta, filename, **extra):
+    """
+    Guarantee that meta['sequence'] contains a dict entry for filename.
+    This adds or updates an entry with any extra keys provided.
+    
+    Args:
+        meta: The bucket metadata dict
+        filename: The filename to add/update
+        **extra: Additional keys to add to the entry
+        
+    Returns:
+        The updated metadata dict
+    """
+    seq = meta.setdefault('sequence', [])
+    entry = {'file': filename, **extra}
+    
+    # Remove any existing entries for this filename
+    filenames = seq_to_filenames(seq)
+    if filename in filenames:
+        idx = filenames.index(filename)
+        seq.pop(idx)
+        
+    # Add the new entry
+    seq.append(entry)
+    return meta

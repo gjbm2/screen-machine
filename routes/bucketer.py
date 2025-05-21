@@ -2,7 +2,7 @@ from typing import Dict, Any, List
 from pathlib import Path
 import json
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 import shutil
 from PIL import Image, ExifTags
@@ -15,7 +15,9 @@ from routes.utils import (
     sidecar_path,
     ensure_sidecar_for,
     _extract_exif_json,
-    _extract_mp4_comment_json
+    _extract_mp4_comment_json,
+    seq_to_filenames,
+    upsert_seq
 )
 
 # ----------------------------------------------------------------------------
@@ -250,18 +252,20 @@ def reindex_bucket(publish_destination_id: str = None, rebuild_all_sidecars: boo
         "buckets": reindexed
     }
 
-def purge_bucket(publish_destination_id: str, include_favorites: bool = False) -> Dict[str, Any]:
+def purge_bucket(publish_destination_id: str, include_favorites: bool = False, days: int = None) -> Dict[str, Any]:
     """
-    Purge files from a bucket, optionally including favorites.
+    Purge files from a bucket, optionally including favorites and filtering by age.
     
     Args:
         publish_destination_id: The bucket to purge
         include_favorites: If True, remove all files including favorites. If False, keep favorites.
+        days: If specified, only remove files older than this many days. If None, remove all files.
     
     Returns:
         Dict with status and details of what was purged
     """
     from routes.utils import _load_json_once
+    from datetime import datetime, timedelta
     
     # Verify this is a valid destination with has_bucket=true
     dests = _load_json_once("publish_destinations", "publish-destinations.json")
@@ -273,20 +277,48 @@ def purge_bucket(publish_destination_id: str, include_favorites: bool = False) -
     meta = load_meta(publish_destination_id)
     favs = set(meta.get("favorites", []))
     seq = meta.get("sequence", [])
+    
+    # Get a list of just the filenames from the sequence
+    filenames = seq_to_filenames(seq)
+
+    # Calculate cutoff time if days is specified
+    cutoff_time = None
+    if days is not None:
+        cutoff_time = datetime.now() - timedelta(days=days)
 
     removed = []
     # Remove media + side-cars + matching thumbs
-    for fname in list(seq):  # iterate on a copy
+    # Create a copy of the sequence to iterate over while we modify the original
+    for i, fname in enumerate(filenames):
+        # Skip favorites unless include_favorites is True
         if not include_favorites and fname in favs:
             continue
+            
         fp = bucket_path(publish_destination_id) / fname
+        
+        # Skip if file doesn't exist
+        if not fp.exists():
+            continue
+            
+        # Check file age if days parameter is specified
+        if cutoff_time is not None:
+            file_mtime = datetime.fromtimestamp(fp.stat().st_mtime)
+            if file_mtime > cutoff_time:
+                continue
+        
+        # Remove the file and related files
         fp.unlink(missing_ok=True)
         sidecar_path(fp).unlink(missing_ok=True)
         # remove its thumbnail
         thumb_fp = bucket_path(publish_destination_id) / "thumbnails" / f"{Path(fname).stem}{Path(fname).suffix}.jpg"
         thumb_fp.unlink(missing_ok=True)
-        seq.remove(fname)
+        
+        # Add to the removed list
         removed.append(fname)
+
+    # Remove entries from the sequence that were removed
+    if removed:
+        meta["sequence"] = [entry for entry in seq if (entry["file"] if isinstance(entry, dict) else entry) not in removed]
 
     # Delete any orphaned thumbnails
     thumb_dir = bucket_path(publish_destination_id) / "thumbnails"
@@ -300,13 +332,14 @@ def purge_bucket(publish_destination_id: str, include_favorites: bool = False) -
     # Update metadata
     if include_favorites:
         meta["favorites"] = []
-    meta["sequence"] = seq
+    meta["sequence"] = [entry for entry in meta["sequence"] if (entry["file"] if isinstance(entry, dict) else entry) not in removed]
     save_meta(publish_destination_id, meta)
 
     return {
         "status": "purged",
         "removed": removed,
-        "favorites_removed": include_favorites
+        "favorites_removed": include_favorites,
+        "days_filter": days
     }
 
 def extract_metadata(file_path: Path, force_rebuild: bool = False) -> bool:
@@ -624,7 +657,8 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
     # Update destination metadata
     try:
         dmeta = load_meta(target_publish_destination)
-        dmeta.setdefault("sequence", []).append(target_filename)
+        # Use upsert_seq instead of directly appending to the sequence
+        upsert_seq(dmeta, target_filename)
         save_meta(target_publish_destination, dmeta)
         debug(f"[copy_image_from_bucket_to_bucket] Updated destination metadata: added {target_filename} to sequence")
     except Exception as e:

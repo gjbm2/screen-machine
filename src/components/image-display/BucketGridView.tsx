@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format, formatDistance } from 'date-fns';
 import apiService from '@/utils/api';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { BucketItem as ApiBucketItem, Bucket as ApiBucket } from '@/utils/api';
 import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, Settings, ExternalLink, Send, Trash2, Copy, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop, Maximize2, ArrowUp, ArrowDown, Pause, Square, ChevronUp, ChevronDown, Play, X } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
@@ -190,22 +191,117 @@ const MaintenanceModal = ({ isOpen, onClose, destination, onActionComplete }: {
   destination: string;
   onActionComplete: () => void;
 }) => {
-  // Simplified maintenance modal
+  const [days, setDays] = useState<number | undefined>();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handlePurge = async () => {
+    if (!confirm('Are you sure you want to purge non-favorite images?')) {
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const success = await apiService.purgeBucket(destination, days);
+      if (success) {
+        toast.success('Non-favorite images purged successfully');
+        onActionComplete();
+        onClose();
+      }
+    } catch (error) {
+      console.error('Error purging non-favorites:', error);
+      toast.error('Failed to purge non-favorites');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReindex = async () => {
+    setIsLoading(true);
+    try {
+      const success = await apiService.performBucketMaintenance(destination, 'reindex');
+      if (success) {
+        toast.success('Bucket reindexed successfully');
+        onActionComplete();
+        onClose();
+      }
+    } catch (error) {
+      console.error('Error reindexing bucket:', error);
+      toast.error('Failed to reindex bucket');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleExtractJson = async () => {
+    setIsLoading(true);
+    try {
+      const success = await apiService.performBucketMaintenance(destination, 'extract');
+      if (success) {
+        toast.success('JSON extracted successfully');
+        onActionComplete();
+        onClose();
+      }
+    } catch (error) {
+      console.error('Error extracting JSON:', error);
+      toast.error('Failed to extract JSON');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Maintenance for {destination}</DialogTitle>
+          <DialogTitle>Bucket Maintenance</DialogTitle>
+          <DialogDescription>
+            Perform maintenance operations on this bucket
+          </DialogDescription>
         </DialogHeader>
-        <p>Maintenance options</p>
-        <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={onActionComplete}>
-            Apply
-          </Button>
-        </DialogFooter>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Purge Non-Favorites</Label>
+            <div className="flex items-center space-x-2">
+              <Input
+                type="number"
+                placeholder="Days (optional)"
+                value={days || ''}
+                onChange={(e) => setDays(e.target.value ? parseInt(e.target.value) : undefined)}
+                min={1}
+              />
+              <Button 
+                onClick={handlePurge} 
+                disabled={isLoading}
+                variant="destructive"
+              >
+                Purge
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {days ? `Will remove non-favorite files older than ${days} days` : 'Will remove all non-favorite files'}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Reindex Bucket</Label>
+            <Button 
+              onClick={handleReindex} 
+              disabled={isLoading}
+              variant="outline"
+            >
+              Reindex
+            </Button>
+          </div>
+          <div className="space-y-2">
+            <Label>Extract JSON</Label>
+            <Button 
+              onClick={handleExtractJson} 
+              disabled={isLoading}
+              variant="outline"
+            >
+              Extract
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

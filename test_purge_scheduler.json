@@ -1,0 +1,28 @@
+{
+  "initial_actions": {
+    "instructions_block": [
+      {
+        "action": "log",
+        "message": "Starting bucket purge test schedule"
+      },
+      {
+        "action": "purge",
+        "days": 30,
+        "include_favorites": false
+      },
+      {
+        "action": "log",
+        "message": "Purge operation completed"
+      }
+    ]
+  },
+  "triggers": [],
+  "final_actions": {
+    "instructions_block": [
+      {
+        "action": "log",
+        "message": "Purge test schedule completed"
+      }
+    ]
+  }
+} 
