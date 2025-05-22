@@ -654,16 +654,25 @@ def get_bucket_complete(bucket_id: str):
         # Get sequence entry data
         seq_entry = sequence_entries.get(filename, {})
         
-        # Add file info to list
+        # Prefer explicit timestamp from sidecar metadata or sequence entry
+        # Fallback to file modification time (st_mtime) which is preserved by shutil.copy2.
+        # We avoid st_ctime because on Unix-like systems it represents the inode change time
+        # and will always be updated on copy, leading to "Today" grouping.
+        timestamp = (
+            file_meta.get("timestamp")
+            or seq_entry.get("timestamp")
+            or file_stats.st_mtime
+        )
+
         files.append({
             "filename": file_path.name,
             "size": file_stats.st_size,
             "modified": file_stats.st_mtime,
-            "created_at": file_stats.st_ctime,  # Add created timestamp
+            "created_at": timestamp,
             "metadata": {
                 **file_meta,
-                "timestamp": file_meta.get("timestamp") or file_stats.st_ctime,  # Ensure timestamp exists
-                "batchId": seq_entry.get("batchId")  # Include batchId from sequence entry
+                "timestamp": timestamp,
+                "batchId": seq_entry.get("batchId")
             },
             "favorite": file_path.name in meta.get("favorites", []),
             "sequence_index": filenames_only.index(file_path.name),

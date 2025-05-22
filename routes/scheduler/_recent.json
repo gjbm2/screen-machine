@@ -45,8 +45,10 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-21T22:59:15.108041",
-  "last_trigger_executions": {},
+  "last_updated": "2025-05-22T09:18:00.840313",
+  "last_trigger_executions": {
+    "86fcab81240ed277bf13e63c5c2c9595_2025-05-22": "2025-05-22T03:00:01.127769"
+  },
   "active_events": {},
   "event_history": [
     {
