@@ -1220,7 +1220,7 @@ def handle_purge(instruction, context, now, output, publish_destination):
         )
         
         # Log the results
-        deleted_count = len(result.get("deleted_files", []))
+        deleted_count = len(result.get("removed", []))
         msg = f"Purged {deleted_count} files from bucket '{publish_destination}'"
         log_schedule(msg, publish_destination, now, output)
         

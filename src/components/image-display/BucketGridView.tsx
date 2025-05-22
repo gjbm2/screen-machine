@@ -669,9 +669,11 @@ export const BucketGridView = ({
     try {
       // Extract the original ID if this is a duplicate image
       const originalId = getOriginalId(image.id);
-      const result = await apiService.copyImageToBucket(destination, targetBucket, originalId);
-      if (result && result.status === 'copied') {
-        toast.success(`Image copied to ${targetBucket} successfully`);
+      const result = await apiService.copyImageToBucket(destination, targetBucket, originalId, true);
+      if (result && (result.status === 'copied' || result.status === 'moved')) {
+        toast.success(`Image ${result.status} to ${targetBucket} successfully`);
+        // Refresh the target bucket to show the new image
+        debouncedFetchBucketDetails();
       } else {
         toast.error(`Failed to copy image to ${targetBucket}`);
       }

@@ -9,6 +9,8 @@ from PIL import Image, ExifTags
 import subprocess
 import cv2
 import os
+import time
+import re
 
 from utils.logger import info, error, warning, debug
 from routes.utils import (
@@ -389,7 +391,7 @@ def _append_to_bucket(screen: str, published_path: Path, batch_id: str = None, m
     Copy *published_path* plus side-car into <bucket>/ preserving history:
     • If that exact filename already exists in the bucket, create a
       timestamp-uuid filename instead and store that.
-    • Always create a unique filename for cross-bucket operations
+    • Preserve original timestamps during cross-bucket operations
     • Copy the sidecar if it exists
     • Update bucket metadata sequence
     • Generate thumbnail for the bucket copy
@@ -400,61 +402,61 @@ def _append_to_bucket(screen: str, published_path: Path, batch_id: str = None, m
     # Check if this is a cross-bucket operation
     is_cross_bucket = not str(published_path).startswith(str(bucket_dir))
     
-    # choose filename (avoid collisions or always unique for cross-bucket)
-    if is_cross_bucket:
-        # Always use a unique name for cross-bucket operations
-        target_name = unique_name(published_path.name)
-        
-        # If a batchId is provided, insert it into the filename
-        if batch_id:
-            # Strip any file extensions from batch_id to prevent concatenation
-            clean_batch_id = batch_id
-            if '.' in clean_batch_id:
-                clean_batch_id = clean_batch_id.split('.')[0]
-                
-            # Extract timestamp part and suffix
-            parts = target_name.split('-', 2)
-            if len(parts) >= 2:
-                date_part = parts[0]
-                time_part = parts[1]
-                remaining = parts[2] if len(parts) > 2 else ''
-                
-                # Format with clean batch ID
-                target_name = f"{date_part}-{time_part}-{remaining}_batch-{clean_batch_id}{published_path.suffix}"
-            else:
-                # If name doesn't have expected format, just append batch-id to it
-                base, ext = os.path.splitext(target_name)
-                target_name = f"{base}_batch-{clean_batch_id}{ext}"
+    # Try to extract timestamp from original filename (format: YYYYMMDD-HHMMSS)
+    timestamp_match = re.match(r"(\d{8}-\d{6})", published_path.name)
+    
+    if timestamp_match:
+        # Use the original timestamp but generate a new UUID
+        ts = timestamp_match.group(1)
+        uid = uuid.uuid4().hex[:8]
+        target_name = f"{ts}-{uid}{published_path.suffix.lower()}"
+    else:
+        # If no timestamp in original name, use the original name as is for same-bucket,
+        # or generate a new timestamped name for cross-bucket
+        if is_cross_bucket:
+            target_name = unique_name(published_path.name)
+        else:
+            target_name = published_path.name
+    
+    target_path = bucket_dir / target_name
+    
+    # If target exists, generate a new unique name while still trying to preserve timestamp
+    if target_path.exists():
+        if timestamp_match:
+            # Keep using the same timestamp, just generate a new UUID
+            uid = uuid.uuid4().hex[:8]
+            target_name = f"{ts}-{uid}{published_path.suffix.lower()}"
+            target_path = bucket_dir / target_name
+            # If still exists, then fall back to new timestamp
+            if target_path.exists():
+                target_name = unique_name(published_path.name)
+                target_path = bucket_dir / target_name
+        else:
+            target_name = unique_name(published_path.name)
+            target_path = bucket_dir / target_name
+    
+    # If a batchId is provided, insert it into the filename
+    if batch_id:
+        # Strip any file extensions from batch_id to prevent concatenation
+        clean_batch_id = batch_id
+        if '.' in clean_batch_id:
+            clean_batch_id = clean_batch_id.split('.')[0]
+            
+        # Extract timestamp part and suffix
+        parts = target_name.split('-', 2)
+        if len(parts) >= 2:
+            date_part = parts[0]
+            time_part = parts[1]
+            remaining = parts[2] if len(parts) > 2 else ''
+            
+            # Format with clean batch ID
+            target_name = f"{date_part}-{time_part}-{remaining}_batch-{clean_batch_id}{published_path.suffix}"
+        else:
+            # If name doesn't have expected format, just append batch-id to it
+            base, ext = os.path.splitext(target_name)
+            target_name = f"{base}_batch-{clean_batch_id}{ext}"
         
         target_path = bucket_dir / target_name
-    else:
-        # For same-bucket operations, only create unique name if file exists
-        target_path = bucket_dir / published_path.name
-        if target_path.exists():
-            target_name = unique_name(published_path.name)
-            
-            # If a batchId is provided, insert it into the filename
-            if batch_id:
-                # Strip any file extensions from batch_id to prevent concatenation
-                clean_batch_id = batch_id
-                if '.' in clean_batch_id:
-                    clean_batch_id = clean_batch_id.split('.')[0]
-                
-                # Extract timestamp part and suffix
-                parts = target_name.split('-', 2)
-                if len(parts) >= 2:
-                    date_part = parts[0]
-                    time_part = parts[1]
-                    remaining = parts[2] if len(parts) > 2 else ''
-                    
-                    # Format with clean batch ID
-                    target_name = f"{date_part}-{time_part}-{remaining}_batch-{clean_batch_id}{published_path.suffix}"
-                else:
-                    # If name doesn't have expected format, just append batch-id to it
-                    base, ext = os.path.splitext(target_name)
-                    target_name = f"{base}_batch-{clean_batch_id}{ext}"
-            
-            target_path = bucket_dir / target_name
 
     # copy media + side-car
     shutil.copy2(published_path, target_path)
@@ -593,6 +595,24 @@ def _extract_mp4_comment_json(video_path: Path) -> dict[str, Any] | None:
         warning(f"Failed to extract comment from {video_path}: {e}")
         return None 
 
+def preserve_timestamp_name(original_filename: str, force_unique: bool = True) -> str:
+    """
+    Generate a new filename while preserving the timestamp from the original if it exists.
+    If the original doesn't have a timestamp or force_unique is True, generate a new unique name.
+    """
+    # Try to extract timestamp from original filename (format: YYYYMMDD-HHMMSS)
+    timestamp_match = re.match(r"(\d{8}-\d{6})", original_filename)
+    
+    if timestamp_match and not force_unique:
+        # Preserve the original timestamp
+        ts = timestamp_match.group(1)
+    else:
+        # Generate new timestamp
+        ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    
+    uid = uuid.uuid4().hex[:8]
+    return f"{ts}-{uid}{Path(original_filename).suffix.lower()}"
+
 def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_publish_destination: str, filename: str, copy: bool = False) -> Dict[str, Any]:
     """
     Copy or move an image from one bucket to another.
@@ -626,9 +646,25 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
         error(f"[copy_image_from_bucket_to_bucket] Source file not found: {src_path}")
         raise FileNotFoundError("source file not found")
 
-    # Generate unique name for target
-    target_filename = unique_name(filename)
+    # Try to extract timestamp from original filename (format: YYYYMMDD-HHMMSS)
+    timestamp_match = re.match(r"(\d{8}-\d{6})", filename)
+    
+    if timestamp_match:
+        # Use the original timestamp but generate a new UUID
+        ts = timestamp_match.group(1)
+        uid = uuid.uuid4().hex[:8]
+        target_filename = f"{ts}-{uid}{Path(filename).suffix.lower()}"
+    else:
+        # If no timestamp in original name, use the original name as is
+        target_filename = filename
+        
     dst_path = bucket_path(target_publish_destination) / target_filename
+    
+    # If target exists, then generate a completely new name with current timestamp
+    if dst_path.exists():
+        target_filename = unique_name(filename)
+        dst_path = bucket_path(target_publish_destination) / target_filename
+        
     dst_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Copy main file
@@ -639,14 +675,21 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
         error(f"[copy_image_from_bucket_to_bucket] Failed to copy main file: {str(e)}")
         raise
 
-    # Copy sidecar
+    # Handle sidecar metadata
     sc_src, sc_dst = sidecar_path(src_path), sidecar_path(dst_path)
+    src_meta = {}
     if sc_src.exists():
         try:
-            shutil.copy2(sc_src, sc_dst)
-            debug(f"[copy_image_from_bucket_to_bucket] Copied sidecar: {sc_src} -> {sc_dst}")
+            # Read source sidecar metadata
+            with open(sc_src, 'r', encoding='utf-8') as f:
+                src_meta = json.load(f)
+            
+            # Write to destination sidecar, preserving original metadata
+            with open(sc_dst, 'w', encoding='utf-8') as f:
+                json.dump(src_meta, f, indent=2, ensure_ascii=False)
+            debug(f"[copy_image_from_bucket_to_bucket] Copied sidecar metadata: {sc_src} -> {sc_dst}")
         except Exception as e:
-            error(f"[copy_image_from_bucket_to_bucket] Failed to copy sidecar: {str(e)}")
+            error(f"[copy_image_from_bucket_to_bucket] Failed to copy sidecar metadata: {str(e)}")
             raise
 
     # Copy thumbnail
@@ -675,8 +718,10 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
     # Update destination metadata
     try:
         dmeta = load_meta(target_publish_destination)
-        # Use upsert_seq instead of directly appending to the sequence
-        upsert_seq(dmeta, target_filename)
+        # Add the new file to the sequence with the correct format
+        dmeta.setdefault("sequence", []).append({
+            "file": target_filename
+        })
         save_meta(target_publish_destination, dmeta)
         debug(f"[copy_image_from_bucket_to_bucket] Updated destination metadata: added {target_filename} to sequence")
     except Exception as e:
@@ -684,7 +729,6 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
         raise
 
     # Handle source deletion if this is a move (not copy)
-    debug(f"[copy_image_from_bucket_to_bucket] Final step: copy={copy}, will delete source={not copy}")
     if not copy:
         try:
             from routes.bucket_api import delete_file
@@ -695,9 +739,7 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
             error(f"[copy_image_from_bucket_to_bucket] Failed to delete source files: {str(e)}")
             raise
 
-    operation_type = "copied" if copy else "moved"
-    debug(f"[copy_image_from_bucket_to_bucket] Operation completed: {operation_type} {filename} -> {target_filename}")
     return {
-        "status": operation_type,
+        "status": "copied" if copy else "moved",
         "filename": target_filename
     } 

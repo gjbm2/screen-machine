@@ -1,30 +1,29 @@
 
+Display:
+1. Time / light-sensor driven overlay logic to control intensity
+2. Flakey north-screen internet...
 
-1. complete image card work on Generated tab
-2. show 'cloud' in 'copy to...' context menu
+Events:
+1. Slack triggers
 
----
+Alexa work:
+0. allow group names in instructions
+1. Use AI to load ...
 
-1. Load & unload via Alexa 
-2. truncate history vars for practical reasons
-3. Generally front end is a mess...
-4. event triggers definable by a var set to timestamp (for expiry period), then reset upon execution; allows imp exp of triggers
-	- related need 'throw' for events across various interfaces
+UI fixes:
+1. Control schedule from bucket
+2. Late-binding of workflow
+3. tags for images
+4. better css for schemaedit
+5. when publishing to a currently displayed bucket, we want to avoid a full page refresh -- it's distracting and unnecessary. we only need to refresh the dispaly of the currently published relement. this is triggered from dnd onto own tab OR onto 'currently pbulished' OR using 'publish to' and then choosing own tab. I hope all three go through same code path.. In each case the front end should only update currently published display NOT 
+6. few small bugs (favourites, copy to, etc. on recent view)
+7. show 'cloud' in 'copy to...' context menu
+8. less right & left padding in buckets (on mobile); re-style container css
 
 
 1. split scheduler_utils for performance reasons...
-5. add next instruction, loadable scripts to alexa get schedule (rename from get variables)
-6. allow generation, animation, with arbitrary list of params (e.g. length=xxx) in instruction
-7. paused scheduels after restart get stopped on resume...
-
-Need to have
-
-
-15. Control schedule from bucket
-18. device control calls (in due course)
-19. add 'blank'  to front end
-20. add 'display next' and 'display random' to front end
-21. event triggers to delay schedule
+2. Allow edit of alexa scripts, refiners, etc. through schemaedit
+3. allow generation, animation, with arbitrary list of params (e.g. length=xxx) in instruction
 
 
 Nice to have 
@@ -32,10 +31,6 @@ Nice to have
 2. on first page load, soft link to manage images, then unfurl generator section
 3. generator tab too prominent
 9. repair rendering status in index
-10. "Computer, use AI to schedule" 
-12. Slack triggers
-13. Temp schedule triggers (poke, user rendered)
-15. Samsung ws sync
 17. Styletransfer
 18. Jinju for workflows (clear up generator.py)
 19. general production readiness 
@@ -43,8 +38,6 @@ Nice to have
 21. better ws handling
 	- currently running jobs details
 	- alerts for new bucket additions
-22. important & urgent scheduling
-23. async scheduling
 24. scheduler passes images in vars (from generate > animate, etc.)
 25. shared history workarounds...?
 26. scheduler can appraise images and select the best
