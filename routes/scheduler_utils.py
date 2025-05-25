@@ -2594,6 +2594,10 @@ def process_jinja_template(value: Any, context: Dict[str, Any], publish_destinat
                 autoescape=False,  # Don't need HTML escaping
                 undefined=jinja2.Undefined  # Allow undefined variables
             )
+            
+            # Add now() function to Jinja environment
+            env.globals['now'] = datetime.now
+            
             template = env.from_string(value)
             
             # Create template variables from context

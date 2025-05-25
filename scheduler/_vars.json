@@ -5,22 +5,32 @@
       "a_theme": {
         "friendly_name": "A theme of the day",
         "owner": "cloud",
-        "timestamp": "2025-05-22T00:01:09.902417"
+        "timestamp": "2025-05-25T18:26:39.765073"
       },
       "b_theme": {
         "friendly_name": "B theme of the day",
         "owner": "cloud",
-        "timestamp": "2025-05-22T00:01:10.034666"
+        "timestamp": "2025-05-25T18:26:39.890280"
       },
       "style": {
         "friendly_name": "Style of the day",
         "owner": "cloud",
-        "timestamp": "2025-05-22T00:01:10.194875"
+        "timestamp": "2025-05-25T18:26:40.021096"
       },
       "guidance": {
         "friendly_name": "Generator guidance",
         "owner": "cloud",
-        "timestamp": "2025-05-22T00:01:10.356894"
+        "timestamp": "2025-05-25T18:26:40.148802"
+      },
+      "animation_on": {
+        "friendly_name": "Animation on",
+        "owner": "cloud",
+        "timestamp": "2025-05-22T12:14:05.854388"
+      },
+      "inspiration": {
+        "friendly_name": "inspiration",
+        "owner": "cloud",
+        "timestamp": "2025-05-25T18:26:35.057935"
       }
     }
   },
@@ -30,13 +40,13 @@
         "imported_as": "_a_theme",
         "source_type": "scope",
         "source": "living-room",
-        "timestamp": "2025-05-22T09:00:03.745438"
+        "timestamp": "2025-05-25T18:30:51.130987"
       },
       "south-screen": {
         "imported_as": "_a_theme",
         "source_type": "scope",
         "source": "living-room",
-        "timestamp": "2025-05-22T08:30:03.455060"
+        "timestamp": "2025-05-25T18:30:47.194559"
       }
     },
     "b_theme": {
@@ -44,13 +54,13 @@
         "imported_as": "_b_theme",
         "source_type": "scope",
         "source": "living-room",
-        "timestamp": "2025-05-22T09:00:03.925437"
+        "timestamp": "2025-05-25T18:30:51.300479"
       },
       "south-screen": {
         "imported_as": "_b_theme",
         "source_type": "scope",
         "source": "living-room",
-        "timestamp": "2025-05-22T08:30:03.660710"
+        "timestamp": "2025-05-25T18:30:47.380819"
       }
     },
     "style": {
@@ -58,13 +68,13 @@
         "imported_as": "_style",
         "source_type": "scope",
         "source": "living-room",
-        "timestamp": "2025-05-22T09:00:04.060308"
+        "timestamp": "2025-05-25T18:30:51.475868"
       },
       "south-screen": {
         "imported_as": "_style",
         "source_type": "scope",
         "source": "living-room",
-        "timestamp": "2025-05-22T08:30:03.826476"
+        "timestamp": "2025-05-25T18:30:47.501942"
       }
     },
     "guidance": {
@@ -72,15 +82,29 @@
         "imported_as": "_guidance",
         "source_type": "scope",
         "source": "living-room",
-        "timestamp": "2025-05-22T09:00:04.186732"
+        "timestamp": "2025-05-25T18:30:51.621632"
       },
       "south-screen": {
         "imported_as": "_guidance",
         "source_type": "scope",
         "source": "living-room",
-        "timestamp": "2025-05-22T08:30:03.962784"
+        "timestamp": "2025-05-25T18:30:47.666101"
+      }
+    },
+    "animation_on": {
+      "north-screen": {
+        "imported_as": "animation_on",
+        "source_type": "scope",
+        "source": "living-room",
+        "timestamp": "2025-05-25T17:05:01.258676"
+      },
+      "south-screen": {
+        "imported_as": "animation_on",
+        "source_type": "scope",
+        "source": "living-room",
+        "timestamp": "2025-05-25T14:05:01.839093"
       }
     }
   },
-  "last_updated": "2025-05-22T09:00:04.189895"
+  "last_updated": "2025-05-25T18:30:51.625157"
 }
