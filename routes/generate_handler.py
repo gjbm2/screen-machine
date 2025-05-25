@@ -323,15 +323,9 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     images = data.get("images", [])
     batch_id = data.get("batch_id") or str(uuid.uuid4())  # Generate a batch_id if not provided
 
-    # If no workflow specified, get default workflow from workflows.json
-    if not workflow:
-        workflows = _load_json_once("workflow", "workflows.json")
-        default_workflow = next((w for w in workflows if w.get("default", False)), None)
-        if not default_workflow:
-            utils.logger.error("No default workflow found in workflows.json")
-            return None
-        workflow = default_workflow["id"]
-        utils.logger.debug(f"Using default workflow: {workflow}")
+    # NOTE: **Do NOT** apply a default workflow here.  We want the refiner to be
+    # free to suggest an appropriate workflow first.  A default will be added
+    # only after the refiner stage if none has been chosen.
 
     # Get "targets" from input data
     targets = data.get("targets", [])
@@ -349,11 +343,12 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     if not prompt and not images:
         return None
     
-    # Refine the prompt
-    input_dict = {
-        "prompt": prompt,
-        "workflow": workflow
-    }
+    # Build the dictionary that will be passed into the refiner.  Only include
+    # the workflow key if the caller explicitly provided one – otherwise leave
+    # it out so that the refiner can decide which workflow to apply.
+    input_dict = {"prompt": prompt}
+    if workflow:
+        input_dict["workflow"] = workflow
 
     utils.logger.debug(f"****input_dict {input_dict}")
     
@@ -408,6 +403,23 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         match_key="id"
     )
     
+    # FINAL FALLBACK: If everything above still left us without a workflow,
+    # select the default *now* ("last moment") so that the downstream
+    # generation call always has a valid workflow to load.
+    if not corrected_workflow:
+        try:
+            workflows = _load_json_once("workflow", "workflows.json")
+            default_workflow = next((w for w in workflows if w.get("default", False)), None)
+            if default_workflow:
+                corrected_workflow = default_workflow["id"]
+                utils.logger.debug(
+                    f"No workflow specified/chosen by refiner – using default workflow: {corrected_workflow}"
+                )
+            else:
+                utils.logger.error("No default workflow found in workflows.json – generation may fail.")
+        except Exception as e:
+            utils.logger.error(f"Failed to load default workflow list: {e}")
+
     # Translate prompt into Chinese if required (for WAN)
     translate = data.get("translate") if "data" in locals() else False
     if translate: 
