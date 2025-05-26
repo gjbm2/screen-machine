@@ -1,12 +1,15 @@
 {
   "schedule_stack": [
     {
+      "final_actions": {
+        "instructions_block": []
+      },
       "initial_actions": {
         "instructions_block": []
       },
+      "prevent_unload": true,
       "triggers": [
         {
-          "type": "day_of_week",
           "days": [
             "Monday",
             "Tuesday",
@@ -20,6 +23,7 @@
             {
               "time": "07:00",
               "trigger_actions": {
+                "important": true,
                 "instructions_block": [
                   {
                     "action": "device-wake"
@@ -30,7 +34,6 @@
                     "scope": "north-screen"
                   }
                 ],
-                "important": true,
                 "urgent": true
               }
             },
@@ -86,11 +89,10 @@
                 ]
               }
             }
-          ]
+          ],
+          "type": "day_of_week"
         },
         {
-          "type": "event",
-          "value": "Blank",
           "trigger_actions": {
             "instructions_block": [
               {
@@ -98,11 +100,11 @@
                 "show": "Blank"
               }
             ]
-          }
+          },
+          "type": "event",
+          "value": "Blank"
         },
         {
-          "type": "event",
-          "value": "Random",
           "trigger_actions": {
             "instructions_block": [
               {
@@ -110,75 +112,76 @@
                 "show": "Random"
               }
             ]
-          }
+          },
+          "type": "event",
+          "value": "Random"
         },
         {
-          "type": "event",
-          "value": "Generate",
           "trigger_actions": {
             "instructions_block": [
               {
                 "action": "import_var",
-                "var_name": "a_theme",
                 "as": "_a_theme",
-                "scope": "living-room"
+                "scope": "living-room",
+                "var_name": "a_theme"
               },
               {
                 "action": "import_var",
-                "var_name": "b_theme",
                 "as": "_b_theme",
-                "scope": "living-room"
+                "scope": "living-room",
+                "var_name": "b_theme"
               },
               {
                 "action": "import_var",
-                "var_name": "style",
                 "as": "_style",
-                "scope": "living-room"
+                "scope": "living-room",
+                "var_name": "style"
               },
               {
                 "action": "import_var",
-                "var_name": "guidance",
                 "as": "_guidance",
-                "scope": "living-room"
+                "scope": "living-room",
+                "var_name": "guidance"
               },
               {
                 "action": "reason",
-                "text_input": "'{{ _a_theme }}' in the style of '{{ _style }}'. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. ",
+                "history_var": "history_var",
                 "image_inputs": [],
-                "reasoner": "devise_prompt",
                 "output_vars": [
                   "prompt"
                 ],
-                "history_var": "history_var"
+                "reasoner": "devise_prompt",
+                "text_input": "'{{ _a_theme }}' in the style of '{{ _style }}'. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. "
               },
               {
                 "action": "generate",
+                "history_var": "prompt_history",
                 "input": {
                   "prompt": "{{ prompt }}"
                 },
-                "refiner": "enrich",
-                "history_var": "prompt_history"
+                "refiner": "enrich"
               }
             ]
-          }
+          },
+          "type": "event",
+          "value": "Generate"
         },
         {
-          "type": "event",
-          "value": "Animate",
           "trigger_actions": {
             "instructions_block": [
               {
                 "action": "animate",
-                "refiner": "animator",
-                "history_var": "animation_history"
+                "history_var": "animation_history",
+                "refiner": "animator"
               }
             ]
-          }
+          },
+          "type": "event",
+          "value": "Animate"
         },
         {
-          "type": "event",
-          "value": "_user_interacting",
           "trigger_actions": {
+            "important": false,
             "instructions_block": [
               {
                 "action": "log",
@@ -189,23 +192,23 @@
                 "duration": "{{ _event.payload.wait | default('2m') }}"
               }
             ],
-            "important": false,
             "urgent": true
-          }
+          },
+          "type": "event",
+          "value": "_user_interacting"
         },
         {
-          "type": "event",
-          "value": "sync",
           "trigger_actions": {
             "instructions_block": [
               {
                 "action": "device-media-sync"
               }
             ]
-          }
+          },
+          "type": "event",
+          "value": "sync"
         },
         {
-          "type": "day_of_week",
           "days": [
             "Monday",
             "Tuesday",
@@ -226,10 +229,10 @@
                 ]
               }
             }
-          ]
+          ],
+          "type": "day_of_week"
         },
         {
-          "type": "day_of_week",
           "days": [
             "Monday",
             "Tuesday",
@@ -252,214 +255,110 @@
                 ]
               }
             }
-          ]
+          ],
+          "type": "day_of_week"
+        },
+        {
+          "trigger_actions": {
+            "important": true,
+            "instructions_block": [
+              {
+                "action": "device-sleep"
+              }
+            ],
+            "urgent": true
+          },
+          "type": "event",
+          "value": "sleep"
+        },
+        {
+          "trigger_actions": {
+            "important": true,
+            "instructions_block": [
+              {
+                "action": "device-wake"
+              }
+            ],
+            "urgent": true
+          },
+          "type": "event",
+          "value": "wake"
+        },
+        {
+          "trigger_actions": {
+            "important": true,
+            "instructions_block": [
+              {
+                "action": "device_standby"
+              }
+            ],
+            "urgent": true
+          },
+          "type": "event",
+          "value": "Standby"
+        },
+        {
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "04:10",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "device-media-sync"
+                  }
+                ]
+              }
+            }
+          ],
+          "type": "day_of_week"
+        },
+        {
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "03:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "purge",
+                    "days": 30,
+                    "include_favorites": false
+                  }
+                ]
+              }
+            }
+          ],
+          "type": "day_of_week"
         }
-      ],
-      "final_actions": {
-        "instructions_block": []
-      },
-      "prevent_unload": true
+      ]
     }
   ],
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "Delicate plant studies highlighting the intricacies of individual blooms",
-        "_b_theme": "Vivid floral displays from the Chelsea Flower Show captured in bold color",
-        "_style": "Botanical illustration in the style of contemporary artist Sarah Simblet",
-        "_guidance": "Render broad, colorful panoramas of the Chelsea Flower Show alongside careful, detailed studies of single species, ensuring each image is distinct and avoids repetition of recent subjects.",
-        "prompt": "Intricately detailed rendering of an isolated orchid bloom, highlighting its delicate textures, in a minimalist contemporary botanical style, soft palette, elegant negative space emphasizing its grace.",
+        "_a_theme": "Pianos perched on the rooftops of urban high-rises",
+        "_b_theme": "Pianos nestled among rows of solar panels on desert solar farms",
+        "_style": "Urban exploration photographic style featuring a gritty yet whimsical touch",
+        "_guidance": "Capture the unexpected and surprising placement of pianos against the backdrop of human ingenuity, ensuring that each scenario is distinct and does not repeat any recent image subjects.",
+        "prompt": "Upright pianos sitting atop urban rooftop gardens, nestled among solar panels and beehives, city skyline in the backdrop, capturing gritty yet whimsical sustainable narratives.",
         "history_var": [
-          {
-            "timestamp": "2025-05-24 23:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Brown bear immersed in a Richard Hamilton-inspired collage, juxtaposing retro piano fragments with eclectic pop culture icons and dynamic text overlays, striking a balance of nostalgia and modernity."
-            },
-            "text_input": "'Bears playing old pianos ' in the style of 'po...",
-            "explanation": "I selected Richard Hamilton's collage style, infusing the image with a blend of past and present ..."
-          },
-          {
-            "timestamp": "2025-05-25 00:01:11",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "A giant, gnarled oak stands sentinel under moonlight, surrounded by delicate faeries with gossamer wings, intricately detailed in Rackham's whimsical style, guarding the ancient forest glade."
-            },
-            "text_input": "'Mystical Faery Guardians of Ancient Forests' i...",
-            "explanation": "I selected an iconic natural landmark, an oak tree, to anchor the scene, surrounded by faeries fo..."
-          },
-          {
-            "timestamp": "2025-05-25 07:00:07",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Serene woodland pond at dusk, radiant faeries with translucent wings gather, Rackham's detailed linework capturing reflections on water, mist creating an otherworldly, enchanted atmosphere."
-            },
-            "text_input": "'Mystical Faery Guardians of Ancient Forests' i...",
-            "explanation": "Avoided stationary landmarks or glades, focusing on a pond scene. Inspired by Rackham's love for ..."
-          },
-          {
-            "timestamp": "2025-05-25 08:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Crumbling castle towers silhouetted against a misty dawn, spectral knights and ethereal ladies in Rackham's detailed linework, mysteriously roaming the ivy-laden battlements."
-            },
-            "text_input": "'Bewitching Spectres of Forgotten Castles' in t...",
-            "explanation": "I avoided typical faery subjects and forest settings by focusing on spectral knights and ladies h..."
-          },
-          {
-            "timestamp": "2025-05-25 09:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Welsh dragon soaring above mystical fjord, surrounded by ethereal mist and ancient stone circles, rendered in Bauer\u2019s enchanting illustrative style, with intricate textures and expressive lines."
-            },
-            "text_input": "'Dragons of Welsh Legend' in the style of 'John...",
-            "explanation": "I chose a Welsh dragon, distinct from selkies or kelpies, set in a mystical fjord rather than typ..."
-          },
-          {
-            "timestamp": "2025-05-25 09:45:25",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Raging volcanic crater beneath a star-studded sky, vibrant lava flows illuminate the dark landscape, intense volcanic activity captured in breathtaking detail for an unforgettable spectacle."
-            },
-            "text_input": "'Spectacular volcanic eruptions' in the style o...",
-            "explanation": "I depicted a volcanic crater at night, capturing the raw power of an eruption. The combination of..."
-          },
-          {
-            "timestamp": "2025-05-25 09:49:46",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Imposing volcano on rocky seacoast, lava cascading to ocean, steam and ash cloud merging into vibrant sunset, intense Flux1 photography capturing nature's fiery artistry."
-            },
-            "text_input": "'Spectacular volcanic eruptions' in the style o...",
-            "explanation": "To create a unique prompt, I focused on a coastal volcanic eruption, contrasting with previous im..."
-          },
-          {
-            "timestamp": "2025-05-25 10:00:02",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Volcanic peak amidst dense rainforest, glowing lava rivers snaking through lush canopies, explosive eruption under a stormy sky, captured with Flux1's vivid contrasts and dramatic hues."
-            },
-            "text_input": "'Spectacular volcanic eruptions' in the style o...",
-            "explanation": "I chose a rainforest setting to juxtapose the vibrant ecosystem with the volcanic eruption, empha..."
-          },
-          {
-            "timestamp": "2025-05-25 11:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Sky-high view of active volcanic peak, ash plumes spiral skyward, vivid Flux1 contrasts illuminate fiery lava streams carving lunar-like landscape beneath starlit canopy."
-            },
-            "text_input": "'Spectacular effects of volcanos erupting ' in ...",
-            "explanation": "I focused on an aerial perspective, emphasizing the towering ash plume and dynamic flow of lava f..."
-          },
-          {
-            "timestamp": "2025-05-25 12:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Volcanic caldera bathed in dawn light, wisps of steam rise amidst tranquil crater lake, captured with Flux1's enhanced color palette, emphasizing nature's serene and fiery duality."
-            },
-            "text_input": "'Spectacular effects of volcanos erupting ' in ...",
-            "explanation": "I focused on a tranquil scene within a volcanic caldera, avoiding night or coastline settings. By..."
-          },
-          {
-            "timestamp": "2025-05-25 13:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Molten lava cascades from the rugged slope of an ancient shield volcano, phosphorescent ochre and crimson hues glow under midday sun, delicate Flux1's texture emphasis."
-            },
-            "text_input": "'Spectacular volcanic eruptions' in the style o...",
-            "explanation": "I depicted an ancient shield volcano during the day to contrast with previous nighttime or rainfo..."
-          },
-          {
-            "timestamp": "2025-05-25 14:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Rings of fire encircle a molten lava lake, vivid cascades cascade over blackened rock, all viewed in Flux1's intense contrast on a cloud-swirled evening."
-            },
-            "text_input": "'Spectacular effects of volcanos erupting ' in ...",
-            "explanation": "I depicted rings of fire surrounding a lake of lava, avoiding prior perspectives like aerial view..."
-          },
-          {
-            "timestamp": "2025-05-25 15:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Glimmering lava fountains jet from volcanic fissures across expansive grasslands at twilight, illuminating the landscape, captured in Flux1's vivid detail and contrast."
-            },
-            "text_input": "'Spectacular effects of volcanos erupting ' in ...",
-            "explanation": "I explored the spectacle of volcanic fissures amidst grasslands, a unique setting not covered bef..."
-          },
-          {
-            "timestamp": "2025-05-25 16:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Torrid geysers teeming along volcanic plateau, simmering sulfur pools unleash steam clouds, engulfed in vivid Flux1 panoramas, igniting earth and sky in fiery dance."
-            },
-            "text_input": "'Spectacular effects of volcanos erupting ' in ...",
-            "explanation": "I chose a volcanic plateau with geysers and sulfur pools to create a dynamic and vibrant scene. T..."
-          },
-          {
-            "timestamp": "2025-05-25 17:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Giant volcano cone towering above a desolate valley, golden lava reaches crest the summit, under soft swirling clouds captured in vivid Flux1's lighting dynamics."
-            },
-            "text_input": "'Spectacular effects of volcanos erupting ' in ...",
-            "explanation": "To avoid duplication, I depicted a singular towering volcano cone with golden lava reaching the s..."
-          },
-          {
-            "timestamp": "2025-05-25 18:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Vibrant pattern of lava arcs over snow-capped mountains, fiery hues against icy white, captured in Flux1's vivid detail, emphasizing nature\u2019s majestic contrasts."
-            },
-            "text_input": "'Spectacular effects of volcanos erupting ' in ...",
-            "explanation": "I avoided previously used subjects by choosing a volcanic eruption over snow-capped mountains, co..."
-          },
-          {
-            "timestamp": "2025-05-25 18:19:41",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Victorian flower vendors arranging vibrant bouquets under gaslit lanterns, morning mist blending with aromas of fresh blooms, Tissot's precise detailing capturing bustling early market exchanges."
-            },
-            "text_input": "'Bustling Flower Markets of Victorian London in...",
-            "explanation": "To create a unique scene, I focused on the early morning activities of flower vendors, blending t..."
-          },
-          {
-            "timestamp": "2025-05-25 18:25:44",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Secretive Victorian garden gate, sunlight piercing through twisted wrought iron onto cobblestone path, delicate shadows play, infusing Grimshaw's luminescence and intricate detailing."
-            },
-            "text_input": "'Spring Awakenings: Morning mist over a Victori...",
-            "explanation": "I avoided flower market scenes by focusing on a private garden location. The image centers around..."
-          },
-          {
-            "timestamp": "2025-05-25 18:26:42",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Chelsea Flower Show greenhouse interior, sunlit daisies on intricate vines, enveloping an elegant fountain; Sarah Simblet's precise linework emphasizing botanical harmony."
-            },
-            "text_input": "'Vivid floral displays from the Chelsea Flower ...",
-            "explanation": "I chose an interior setting within a greenhouse, focusing on daisies and vines instead of broad g..."
-          },
           {
             "timestamp": "2025-05-25 18:30:51",
             "type": "reason",
@@ -469,161 +368,199 @@
             },
             "text_input": "'Delicate plant studies highlighting the intric...",
             "explanation": "I focused on a single orchid bloom to emphasize the theme of individual plant studies. By highlig..."
+          },
+          {
+            "timestamp": "2025-05-25 19:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Elegant botanical illustration featuring a single sunflower, showcasing detailed petal structure, soft shadow play against a luminous backdrop; Sarah Simblet's style captures intricate patterns."
+            },
+            "text_input": "'Delicate plant studies highlighting the intric...",
+            "explanation": "I avoided previous subjects by selecting a sunflower, not previously depicted. This shifts focus ..."
+          },
+          {
+            "timestamp": "2025-05-25 19:42:41",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Bustling Chelsea Flower Show entrance, vibrant arch of flowers framing visitors, detailed studies of orchids and roses in Sarah Simblet's minimalist botanical style."
+            },
+            "text_input": "'Vivid floral displays from the Chelsea Flower ...",
+            "explanation": "This prompt focuses on the entrance of the Chelsea Flower Show, a location not previously covered..."
+          },
+          {
+            "timestamp": "2025-05-25 19:43:32",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Sprawling beds of tulips form intricate patterns, a kaleidoscope of colors at the Chelsea Flower Show, each bloom precisely detailed in modern botanical artistry."
+            },
+            "text_input": "'Vivid floral displays from the Chelsea Flower ...",
+            "explanation": "I chose to portray vast expanses of tulip arrangements, an element not previously focused on, ens..."
+          },
+          {
+            "timestamp": "2025-05-25 19:45:07",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Wildflowers blossoming through cracks in urban pavements, detailed linework capturing petals and leaves amid concrete, influenced by Ernst Haeckel\u2019s precise botanical studies."
+            },
+            "text_input": "'Wildflowers flourishing in unexpected urban sp...",
+            "explanation": "I avoided focusing on broad urban panoramas or existing flower show scenes and instead depicted a..."
+          },
+          {
+            "timestamp": "2025-05-25 19:45:53",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Twisting tulip stems rise whimsically above a surreal desert oasis; vivid colors and bizarre perspectives echo Dal\u00ed's dreamlike distortions, creating a fantastical floral wonderland."
+            },
+            "text_input": "'Wild Blooms in Surreal Landscapes' in the styl...",
+            "explanation": "I avoided existing garden or historical themes by setting the scene in a surreal desert oasis. Th..."
+          },
+          {
+            "timestamp": "2025-05-25 19:49:39",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Dramatic monochrome scene of steam billowing from blackened lava over stark landscape, highlighting cracked textures, capturing the raw, dynamic transformation of earth's crust."
+            },
+            "text_input": "'Lava flows carving their path down a mountains...",
+            "explanation": "I focused on the aftermath of lava flows rather than the colorful eruption itself, seeking a dist..."
+          },
+          {
+            "timestamp": "2025-05-25 19:54:54",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A grand piano atop a remote desert dune, stark shadows elongating into the valley, detailed sky with dynamic clouds highlighting the surreal solitude."
+            },
+            "text_input": "'Pianos in unfrequented desert landscapes' in t...",
+            "explanation": "I created a unique image by placing a grand piano on a desert dune, away from the typical seashor..."
+          },
+          {
+            "timestamp": "2025-05-25 20:00:04",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Solitary upright piano amidst tidal flats at dawn, mist veiling distant cliffs, high-contrast monochrome, invoking both serenity and mystery."
+            },
+            "text_input": "'Pianos within floating seascapes at dawn' in t...",
+            "explanation": "I utilized a tidal flat setting with an upright piano, shifting from previous desert scene and av..."
+          },
+          {
+            "timestamp": "2025-05-25 21:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Grand piano perched on jagged coastal rocks at low tide, silhouetted against dramatic dawn sky, utilizing Adams' contrast to highlight raw textures and piano's elegant form."
+            },
+            "text_input": "'Pianos within floating seascapes at dawn' in t...",
+            "explanation": "I chose a rocky coastal setting, focusing on a specific time (low tide) and dramatic sky, differe..."
+          },
+          {
+            "timestamp": "2025-05-25 22:00:04",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Upright piano in an arid, rugged desert canyon; long shadows emphasize uneven terrain, clouds casting eerie patterns, capturing stark beauty in dynamic black and white."
+            },
+            "text_input": "'Pianos in unfrequented desert landscapes' in t...",
+            "explanation": "I focused on a desert canyon setting, which distinguishes this prompt from a previous scene of a ..."
+          },
+          {
+            "timestamp": "2025-05-25 23:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Desolate salt flat under cloudy skies with a solitary baby grand piano; shadows enhancing cracked white ground, capturing serene emptiness via Ansel Adams-style high contrast."
+            },
+            "text_input": "'Pianos in unfrequented desert landscapes' in t...",
+            "explanation": "This prompt evokes the unexpected by placing a piano on a salt flat, a location not previously us..."
+          },
+          {
+            "timestamp": "2025-05-26 00:01:16",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Grand royal procession with elegant, flowing banners and a background of gathered crowds, juxtaposed within soft-focus close-up of intimate tea service at a palace window."
+            },
+            "text_input": "'Ceremonial occasions during King George V's re...",
+            "explanation": "I contrasted a royal procession with intimate indoor moments which are distinct from previous flo..."
+          },
+          {
+            "timestamp": "2025-05-26 07:00:05",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Princess reading in garden alcove, sun-dappled leaves surrounding her, soft-focus style capturing serenity; contrasted with opulent ballroom visible through open door, heralding grandeur."
+            },
+            "text_input": "'Private moments within the royal family \u2014 inti...",
+            "explanation": "I depicted an intimate moment of solitary reading in a garden to avoid repetition of previously s..."
+          },
+          {
+            "timestamp": "2025-05-26 08:00:04",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Candle-lit royal library, Prince reviewing battle maps, soft-focus highlighting reflection on polished wood, intimate contrast with grand portrait gallery faintly visible through ajar door."
+            },
+            "text_input": "'Private moments within the royal family \u2014 inti...",
+            "explanation": "This prompt centers on a private indoor scene within a royal environment, avoiding previous subje..."
+          },
+          {
+            "timestamp": "2025-05-26 08:50:34",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Vibrant grand piano melting into rusting factory beams, distorted shadows cast by surreal sunsets, echoing Dal\u00ed's dreamlike vistas amidst industrial decay."
+            },
+            "text_input": "'Pianos in abandoned industrial sites' in the s...",
+            "explanation": "I combined the decaying industrial setting with a surreal, melting piano, taking inspiration from..."
+          },
+          {
+            "timestamp": "2025-05-26 09:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Floating grand piano levitating within derelict factory, steel beams twist into organic forms, dramatic shadows mimic Dal\u00ed's fluid style, juxtaposed with vibrant sunset sky."
+            },
+            "text_input": "'Pianos in abandoned industrial sites' in the s...",
+            "explanation": "I emphasized surrealism by having the piano levitate, incorporating Dal\u00ed-esque twisted beams that..."
+          },
+          {
+            "timestamp": "2025-05-26 09:20:34",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Grand piano hanging precariously from narrow vine bridge in lush rainforest; vibrant colors, eerie shadows, evoking a thrilling dreamlike tension."
+            },
+            "text_input": "'Pianos on the edge of steep mountain cliffs' i...",
+            "explanation": "I placed the piano on a narrow vine bridge, creating a unique setting different from previous cli..."
+          },
+          {
+            "timestamp": "2025-05-26 10:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Intricately carved piano sprouting from moss-covered rainforest cliff, surrounded by vivid orchids and mist, bathed in ethereal light, capturing Dal\u00ed\u2019s blend of enchantment and the surreal."
+            },
+            "text_input": "'Pianos integrated into dense rainforest foliag...",
+            "explanation": "I focused on the piano being part of the rainforest cliff itself, integrating it into natural ele..."
+          },
+          {
+            "timestamp": "2025-05-26 10:04:27",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Upright pianos sitting atop urban rooftop gardens, nestled among solar panels and beehives, city skyline in the backdrop, capturing gritty yet whimsical sustainable narratives."
+            },
+            "text_input": "'Pianos perched on the rooftops of urban high-r...",
+            "explanation": "I selected a rooftop garden as the setting, incorporating solar panels and beehives, which differ..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2025-05-24 23:00:08",
-            "type": "generation",
-            "prompt": "Brown bear immersed in a Richard Hamilton-inspi...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/e17e5e78-2646-46ff-ba14-73e667b84d98-e1/893eeb6a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250524%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250524T220033Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=302878320982d5cb37bbb38a83a01e50c3fc9d31bdd04f7567130ac718441e4c"
-          },
-          {
-            "timestamp": "2025-05-25 00:01:15",
-            "type": "generation",
-            "prompt": "A giant, gnarled oak stands sentinel under moon...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/41016fad-c3c4-4475-a24e-ded2fd41cc8f-e1/b9d98004.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250524%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250524T230200Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2972b6d56f02faa8d2b9059e9ec0b24f5b3f443411a79e1c2b676a05c2e790df"
-          },
-          {
-            "timestamp": "2025-05-25 07:00:09",
-            "type": "generation",
-            "prompt": "Serene woodland pond at dusk, radiant faeries w...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ab609ba4-c845-4830-9a94-9f6eac5a1027-e1/5e00992c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T060048Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=bf7a298de687ae88b60f1a2ca0bee0a9af601269444022b3275e9fd576dc3dee"
-          },
-          {
-            "timestamp": "2025-05-25 08:00:06",
-            "type": "generation",
-            "prompt": "Crumbling castle towers silhouetted against a m...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/c0ab0963-047c-4048-9b3a-25c86a462472-e1/d9568b30.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T070032Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=82cbf6906cc72dbf25e9b0079764013d86196c9c64c3cc28d3acbed4f46ec4db"
-          },
-          {
-            "timestamp": "2025-05-25 09:00:07",
-            "type": "generation",
-            "prompt": "Welsh dragon soaring above mystical fjord, surr...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/dad08ca6-33c6-460b-9812-d14720108332-e1/2aa9b8af.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T080030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=f04215ba4604f5b0710d86d017a27f1dd893f649cfeea1796b3d12d9892afac0"
-          },
-          {
-            "timestamp": "2025-05-25 09:45:28",
-            "type": "generation",
-            "prompt": "Raging volcanic crater beneath a star-studded s...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4b31f814-34e5-49be-9602-87df9486d04f-e1/aea81125.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T084553Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7817499776006fa4e4a4438fdbf5a81a4ab7cad92b46ba11907cf637ad873df4"
-          },
-          {
-            "timestamp": "2025-05-25 09:49:49",
-            "type": "generation",
-            "prompt": "Imposing volcano on rocky seacoast, lava cascad...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/bfe12e5b-6b24-4715-828c-3ae6bd9a1319-e1/5c902b8b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T085114Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=66aa6a4471c25c58b0888aae4a79d2964bcc30089e70a147c41a791f6b0bf833"
-          },
-          {
-            "timestamp": "2025-05-25 10:00:04",
-            "type": "generation",
-            "prompt": "Volcanic peak amidst dense rainforest, glowing ...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/5b5c9b73-a650-4e1c-93d6-9c0d54b5ab18-e1/26791c8a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T090030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5b5d505ad716020d1b85defde87f46e1daa11980f5d9c269c5a2c9c59665bee2"
-          },
-          {
-            "timestamp": "2025-05-25 11:00:07",
-            "type": "generation",
-            "prompt": "Sky-high view of active volcanic peak, ash plum...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/d15924df-9f40-417a-b029-6a89374d9cce-e1/942db4d7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T100032Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=876f774827245595eb3e88fd1ada2e739cbd81a527e46ebd765e3f2b88f39e3d"
-          },
-          {
-            "timestamp": "2025-05-25 12:00:07",
-            "type": "generation",
-            "prompt": "Volcanic caldera bathed in dawn light, wisps of...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/09b2c290-995c-4a3b-875e-79a6810a08ce-e1/20b3a3e0.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T110038Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=bc02a13b12edb48e9c2c755d39cdedcb8b06205d47a5bbc45a21c2dbb4a4195a"
-          },
-          {
-            "timestamp": "2025-05-25 13:00:07",
-            "type": "generation",
-            "prompt": "Molten lava cascades from the rugged slope of a...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7a24e44f-740a-4e17-b25c-97ae502dd07a-e1/833f785b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T120031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=1c657ac219f918b1b9a5c3aaefa6d4164f2bb5c6736f6dc5ad832d0ca8dbde51"
-          },
-          {
-            "timestamp": "2025-05-25 14:00:06",
-            "type": "generation",
-            "prompt": "Rings of fire encircle a molten lava lake, vivi...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/611d2434-f7ab-4f6c-a8c8-ba9e16ed8bd6-e1/65395e10.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T130030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=32c3a3b80e2044c6c2b5a878d1f0b1b0a1016c62cd208f5685cc5e11fb0907e2"
-          },
-          {
-            "timestamp": "2025-05-25 15:00:07",
-            "type": "generation",
-            "prompt": "Glimmering lava fountains jet from volcanic fis...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/bf63677a-4258-4909-9046-73840a0d1656-e1/6fb3f4a6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T140032Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=dca871f06e63881b12cf86a0974861ff52c6d2cc7a42f46902e0f5de2a154e69"
-          },
-          {
-            "timestamp": "2025-05-25 16:00:07",
-            "type": "generation",
-            "prompt": "Torrid geysers teeming along volcanic plateau, ...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a06eef7e-07c8-4052-a0cb-74f4a863ace8-e1/0bedad07.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T150031Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=96dfa4b01068925f1c096995100dc9d9cca91b3404c5668444239b31b1d4c97e"
-          },
-          {
-            "timestamp": "2025-05-25 17:00:08",
-            "type": "generation",
-            "prompt": "Giant volcano cone towering above a desolate va...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/210889db-8ef6-4c7a-be0c-e8c3df8b3392-e1/66bc5834.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T160030Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=10134b08ba74e0a9d9d7f843d8366d4cf87a2b4b9b6e3db634232ec195a9c9ab"
-          },
-          {
-            "timestamp": "2025-05-25 18:00:06",
-            "type": "generation",
-            "prompt": "Vibrant pattern of lava arcs over snow-capped m...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0a756dd1-e233-4aa0-a4e5-e7b97a1df288-e1/2a891cda.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T170029Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=df1e50e32316acaba57103754b60118b96d5ab34f10a85b190c0564368cedf67"
-          },
-          {
-            "timestamp": "2025-05-25 18:19:44",
-            "type": "generation",
-            "prompt": "Victorian flower vendors arranging vibrant bouq...",
-            "refiner": "curator",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/4e6289ed-b048-4c87-8b4c-97584c1f07ba-e1/0f21f063.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T172010Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=c6e50d71951d0687776492d7a5ca874ac67411737a7b50ac19e0bcfa60ce235a"
-          },
-          {
-            "timestamp": "2025-05-25 18:25:47",
-            "type": "generation",
-            "prompt": "Secretive Victorian garden gate, sunlight pierc...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/a2426da8-c7d7-4d9b-a38b-fe761b29e714-e1/e037d0c7.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T172609Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=380debb65a24d2ab6d08cdf1bef641519a550e5812ab933c31251f2b860cfec9"
-          },
-          {
-            "timestamp": "2025-05-25 18:26:45",
-            "type": "generation",
-            "prompt": "Chelsea Flower Show greenhouse interior, sunlit...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/84ea7474-4d82-46bb-b195-5b89ba8c37f6-e1/725630cf.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T172709Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=b46bb083991dd3fd18d8cc8871373c9ff99f23a44aa29c013bbd83f6a29d3f81"
-          },
           {
             "timestamp": "2025-05-25 18:30:54",
             "type": "generation",
@@ -631,6 +568,158 @@
             "refiner": "enrich",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/c01276bb-f12e-4526-889b-b7491cf33f49-e1/268c513f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T173116Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=15693f11133aea6a0c3e8c9f8c3afede06990eddbfb90fd5313cf4d5a30abb41"
+          },
+          {
+            "timestamp": "2025-05-25 19:00:06",
+            "type": "generation",
+            "prompt": "Elegant botanical illustration featuring a sing...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ebca08fd-4f12-488c-b191-9aededb9a47d-e1/8b69ebe5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T180104Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9e810c663c638fae0400f381a15ebdcbb72e1e5e68355d800ab5c15ce83d9ae0"
+          },
+          {
+            "timestamp": "2025-05-25 19:42:43",
+            "type": "generation",
+            "prompt": "Bustling Chelsea Flower Show entrance, vibrant ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/14182c87-1240-4eca-a1a6-e8b17b4793ad-e1/168c2e95.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T184306Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2dfb7131f044eace319a955feb77feca0c3fca54e344dd8a2a411b89cd94d513"
+          },
+          {
+            "timestamp": "2025-05-25 19:43:36",
+            "type": "generation",
+            "prompt": "Sprawling beds of tulips form intricate pattern...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/08a937e6-0174-4c64-9f9b-d4cc748b1816-e1/42103909.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T184356Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=3c36550c004923eecce4eec33ac0bda4e7fba42eadcf66e1b0716bc4dd122c0f"
+          },
+          {
+            "timestamp": "2025-05-25 19:45:10",
+            "type": "generation",
+            "prompt": "Wildflowers blossoming through cracks in urban ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0d9c2493-cebc-44d1-aec4-0d44e69fc5e9-e1/eb2e0321.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T184534Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=17011c188e3d97d329773bc25ff33996f9ebd49dc0d18a34c5571a54bb33e5c8"
+          },
+          {
+            "timestamp": "2025-05-25 19:45:57",
+            "type": "generation",
+            "prompt": "Twisting tulip stems rise whimsically above a s...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/ce58668c-90e9-4990-8cd8-f8c87f2b8c7c-e1/19c01af5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T184641Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=24ccc001cd9c731991e18e58bbb99e8e5987e739fec4ba6f5f55ff9377cb0701"
+          },
+          {
+            "timestamp": "2025-05-25 19:49:42",
+            "type": "generation",
+            "prompt": "Dramatic monochrome scene of steam billowing fr...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/c7f5bf6c-9ff1-4d85-8b8a-4f96f66e0790-e1/cdd4a3d9.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T185049Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=49283e8371487e37996993ed299f0da3f420499b4b7d7aa9963d318111afad9a"
+          },
+          {
+            "timestamp": "2025-05-25 19:54:57",
+            "type": "generation",
+            "prompt": "A grand piano atop a remote desert dune, stark ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/6f0ae96f-c062-47bf-b154-5fc7863d5381-e1/628f26b6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T185523Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=6ba3792c9a73929cfdecdeba93cc20b3168d6c3e223c33f45aa0de5e46bdc4dd"
+          },
+          {
+            "timestamp": "2025-05-25 20:00:08",
+            "type": "generation",
+            "prompt": "Solitary upright piano amidst tidal flats at da...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/601aa79e-dc87-4e9a-a2bc-db76cbfed07a-e1/b05c8fe5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T190037Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7bff6960f07f0db80650699c1ae8402eb74347c1f89a698896aaf11fdea7dfaf"
+          },
+          {
+            "timestamp": "2025-05-25 21:00:06",
+            "type": "generation",
+            "prompt": "Grand piano perched on jagged coastal rocks at ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/948324e5-fa95-45a4-adcb-7bf7038682f4-e1/55e2d8c6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T200034Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=5dccd2b7975956c1ffff386df890f6086fb77612f8166d8f61b4de9a5681806a"
+          },
+          {
+            "timestamp": "2025-05-25 22:00:08",
+            "type": "generation",
+            "prompt": "Upright piano in an arid, rugged desert canyon;...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/618c9c9d-3c52-4293-87a4-98b5d0bd4961-e1/7d6c93c6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T210037Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=889a220169e911048cc41c38ac38eb07ae9c35d8218b61d83c3d060836943092"
+          },
+          {
+            "timestamp": "2025-05-25 23:00:05",
+            "type": "generation",
+            "prompt": "Desolate salt flat under cloudy skies with a so...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7a8983eb-be57-4b0e-a4b0-5323ca4ef06d-e1/77fca766.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T220037Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=8e7cf8cc568c347e2c0d51de2a0bb7066cee64d17f4e4204249850b4baf6eced"
+          },
+          {
+            "timestamp": "2025-05-26 00:01:18",
+            "type": "generation",
+            "prompt": "Grand royal procession with elegant, flowing ba...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b40f0431-43e9-456b-b3f1-36928766d91d-e1/43f3b8fe.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T230143Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2a2853cd81b21319ac2b3455fde6fda62a8056740da5de0814a3cd8f6f1bfa26"
+          },
+          {
+            "timestamp": "2025-05-26 07:00:10",
+            "type": "generation",
+            "prompt": "Princess reading in garden alcove, sun-dappled ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/588283b2-651c-4827-8926-b68296e78913-e1/ac43ff46.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T060059Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=9245966755027cba18d8a1f76d22be2c65e2276059df9ae616ee6406bf4e1dbc"
+          },
+          {
+            "timestamp": "2025-05-26 08:00:08",
+            "type": "generation",
+            "prompt": "Candle-lit royal library, Prince reviewing batt...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/03373cad-4917-4031-bf66-bbcc90d99de7-e1/f69aada5.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T070040Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=2d39457d8e2743ea80123c3a3e18fbbba43b6cad2a027dc231c7e5c52834df66"
+          },
+          {
+            "timestamp": "2025-05-26 08:50:38",
+            "type": "generation",
+            "prompt": "Vibrant grand piano melting into rusting factor...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/345aec73-2c2b-43ff-8176-994e845f85ee-e1/e703cd8b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T075133Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4b0d1b164e0d68568fd127356f1a58f7c98902d3302316ed7713827393b7a7e6"
+          },
+          {
+            "timestamp": "2025-05-26 09:00:07",
+            "type": "generation",
+            "prompt": "Floating grand piano levitating within derelict...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/b3308962-3a97-49ef-ae8d-9fc8ad0316f1-e1/578e774a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T080041Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=314290a43134e75e4ee33d2a3dc6c84d7d3395517c8d379543ae93aed2a29cab"
+          },
+          {
+            "timestamp": "2025-05-26 09:20:36",
+            "type": "generation",
+            "prompt": "Grand piano hanging precariously from narrow vi...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/c009874e-8f56-4369-a6c4-23f9378aa43b-e1/22846c8f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T082059Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=61048de2a39f95eef00d50ddfb817e0e624007131058de7004154b5e81e053b5"
+          },
+          {
+            "timestamp": "2025-05-26 10:00:07",
+            "type": "generation",
+            "prompt": "Intricately carved piano sprouting from moss-co...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/1fadeb0b-63ca-4c3d-b97d-b2b478ce73a8-e1/1e6311d6.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T090032Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=0092959b8b14189b0b771bb185c679089e06642d6b184dd18e1ed99eb77b7d83"
+          },
+          {
+            "timestamp": "2025-05-26 10:04:30",
+            "type": "generation",
+            "prompt": "Upright pianos sitting atop urban rooftop garde...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9095f141-5784-4757-8dfd-faa8014a48f1-e1/0b2528b0.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T090511Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=13c28ed650678a0fbdfc4ec8fe0516309a4a133fbf2a5169e9f330d33aeb60bb"
           }
         ],
         "animation_history": [
@@ -798,730 +887,36 @@
         "animation_on": "false"
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/c01276bb-f12e-4526-889b-b7491cf33f49-e1/268c513f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250525%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250525T173116Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=15693f11133aea6a0c3e8c9f8c3afede06990eddbfb90fd5313cf4d5a30abb41"
+      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9095f141-5784-4757-8dfd-faa8014a48f1-e1/0b2528b0.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T090511Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=13c28ed650678a0fbdfc4ec8fe0516309a4a133fbf2a5169e9f330d33aeb60bb"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-25T18:31:19.799974",
-  "last_trigger_executions": {},
+  "last_updated": "2025-05-26T10:05:13.685034",
+  "last_trigger_executions": {
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-25_12": "2025-05-25T19:00:00.388156",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-25_6": "2025-05-25T19:05:00.952220",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-25_13": "2025-05-25T20:00:01.942799",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-25_14": "2025-05-25T21:00:00.680582",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-25_7": "2025-05-25T21:05:01.166622",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-25_15": "2025-05-25T22:00:01.899819",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-25_16": "2025-05-25T23:00:01.064822",
+    "27e0dceb3734ee5d0e5e05e5462f7064_2025-05-25": "2025-05-25T23:00:01.064822",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-25_8": "2025-05-25T23:05:01.511226",
+    "86fcab81240ed277bf13e63c5c2c9595_2025-05-26": "2025-05-26T03:00:01.844331",
+    "86f019f352e8516f5b28d3608f06e3d8_2025-05-26": "2025-05-26T04:00:01.488314",
+    "158578f4060f785538defa5246c1f15b_2025-05-26": "2025-05-26T04:10:00.760099",
+    "442611d85057ffa0800e12b27cc0ea8b_2025-05-26": "2025-05-26T07:00:00.499493",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-26_0": "2025-05-26T07:00:00.499493",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-26_0": "2025-05-26T07:05:00.957120",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-26_1": "2025-05-26T08:00:01.478420",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-26_2": "2025-05-26T09:00:00.321024",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-26_1": "2025-05-26T09:05:00.442168",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-26_3": "2025-05-26T10:00:00.405840"
+  },
   "active_events": {},
   "event_history": [
     {
       "key": "Generate",
-      "active_from": "2025-05-24T11:00:00.746699",
-      "expires": "2025-05-24T11:01:00.746699",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T11:00:00.746699",
-      "unique_id": "f3163e27-1071-4af2-9572-1effb9401780",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T11:00:02.734235"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T11:00:00.746699",
-      "expires": "2025-05-24T11:01:00.746699",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T11:00:00.746699",
-      "unique_id": "f3163e27-1071-4af2-9572-1effb9401780",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T11:00:02.734235"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T11:05:00.586944",
-      "expires": "2025-05-24T11:06:00.586944",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T11:05:00.586944",
-      "unique_id": "f9c91888-3e98-4fce-aa59-bbb4b40acb5f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T11:05:02.449087"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T11:05:00.586944",
-      "expires": "2025-05-24T11:06:00.586944",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T11:05:00.586944",
-      "unique_id": "f9c91888-3e98-4fce-aa59-bbb4b40acb5f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T11:05:02.449087"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T12:00:00.795723",
-      "expires": "2025-05-24T12:01:00.795723",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T12:00:00.795723",
-      "unique_id": "46a9bace-9e13-40c7-8098-96d2859bbfbe",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T12:00:02.853116"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T12:00:00.795723",
-      "expires": "2025-05-24T12:01:00.795723",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T12:00:00.795723",
-      "unique_id": "46a9bace-9e13-40c7-8098-96d2859bbfbe",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T12:00:02.853116"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T13:00:00.203559",
-      "expires": "2025-05-24T13:01:00.203559",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T13:00:00.203559",
-      "unique_id": "616ca905-c8b2-414f-84b9-21928eca3aca",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T13:00:02.247667"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T13:00:00.203559",
-      "expires": "2025-05-24T13:01:00.203559",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T13:00:00.203559",
-      "unique_id": "616ca905-c8b2-414f-84b9-21928eca3aca",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T13:00:02.247667"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T13:05:00.350464",
-      "expires": "2025-05-24T13:06:00.350464",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T13:05:00.350464",
-      "unique_id": "0d011bd0-0d19-4bdf-917b-f30dc55914ce",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T13:05:02.188901"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T13:05:00.350464",
-      "expires": "2025-05-24T13:06:00.350464",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T13:05:00.350464",
-      "unique_id": "0d011bd0-0d19-4bdf-917b-f30dc55914ce",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T13:05:02.188901"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T14:00:01.717512",
-      "expires": "2025-05-24T14:01:01.717512",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T14:00:01.717512",
-      "unique_id": "5df18dd5-a5a8-4669-a5ed-fc9ca80868ef",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T14:00:03.773733"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T14:00:01.717512",
-      "expires": "2025-05-24T14:01:01.717512",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T14:00:01.717512",
-      "unique_id": "5df18dd5-a5a8-4669-a5ed-fc9ca80868ef",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T14:00:03.773733"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T15:00:01.211221",
-      "expires": "2025-05-24T15:01:01.211221",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T15:00:01.211221",
-      "unique_id": "3f8ea533-2ac9-40dd-9e31-dc41ee08aff6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T15:00:03.264333"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T15:00:01.211221",
-      "expires": "2025-05-24T15:01:01.211221",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T15:00:01.211221",
-      "unique_id": "3f8ea533-2ac9-40dd-9e31-dc41ee08aff6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T15:00:03.264333"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T15:05:01.602208",
-      "expires": "2025-05-24T15:06:01.602208",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T15:05:01.602208",
-      "unique_id": "8a0cfc0a-b41a-4bc9-840f-14fbdcd4fe72",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T15:05:03.557850"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T15:05:01.602208",
-      "expires": "2025-05-24T15:06:01.602208",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T15:05:01.602208",
-      "unique_id": "8a0cfc0a-b41a-4bc9-840f-14fbdcd4fe72",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T15:05:03.557850"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T16:00:00.974324",
-      "expires": "2025-05-24T16:01:00.974324",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T16:00:00.974324",
-      "unique_id": "9915b69e-d7a3-4406-b8c0-034ac6b49427",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T16:00:02.963528"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T16:00:00.974324",
-      "expires": "2025-05-24T16:01:00.974324",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T16:00:00.974324",
-      "unique_id": "9915b69e-d7a3-4406-b8c0-034ac6b49427",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T16:00:02.963528"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T17:00:01.974298",
-      "expires": "2025-05-24T17:01:01.974298",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T17:00:01.974298",
-      "unique_id": "6d24bba9-5050-4514-acfd-c849a3d1628a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T17:00:03.982908"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T17:00:01.974298",
-      "expires": "2025-05-24T17:01:01.974298",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T17:00:01.974298",
-      "unique_id": "6d24bba9-5050-4514-acfd-c849a3d1628a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T17:00:03.982908"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T17:05:01.284005",
-      "expires": "2025-05-24T17:06:01.284005",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T17:05:01.284005",
-      "unique_id": "80a317fe-c249-4562-b89c-acdb36540944",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T17:05:03.198746"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T17:05:01.284005",
-      "expires": "2025-05-24T17:06:01.284005",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T17:05:01.284005",
-      "unique_id": "80a317fe-c249-4562-b89c-acdb36540944",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T17:05:03.198746"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T18:00:01.473706",
-      "expires": "2025-05-24T18:01:01.473706",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T18:00:01.473706",
-      "unique_id": "4cc3dd31-478b-4cc5-81d0-61fb4bdea410",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T18:00:03.488379"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T18:00:01.473706",
-      "expires": "2025-05-24T18:01:01.473706",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T18:00:01.473706",
-      "unique_id": "4cc3dd31-478b-4cc5-81d0-61fb4bdea410",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T18:00:03.488379"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T19:00:00.201984",
-      "expires": "2025-05-24T19:01:00.201984",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T19:00:00.201984",
-      "unique_id": "1d78652e-5ab2-4db4-9ff3-0734c284d1d0",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T19:00:02.249266"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T19:00:00.201984",
-      "expires": "2025-05-24T19:01:00.201984",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T19:00:00.201984",
-      "unique_id": "1d78652e-5ab2-4db4-9ff3-0734c284d1d0",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T19:00:02.249266"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T19:05:01.805669",
-      "expires": "2025-05-24T19:06:01.805669",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T19:05:01.805669",
-      "unique_id": "4502d069-7954-40ac-a4a7-350645805aaf",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T19:05:03.675437"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T19:05:01.805669",
-      "expires": "2025-05-24T19:06:01.805669",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T19:05:01.805669",
-      "unique_id": "4502d069-7954-40ac-a4a7-350645805aaf",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T19:05:03.675437"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T20:00:01.251958",
-      "expires": "2025-05-24T20:01:01.251958",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T20:00:01.251958",
-      "unique_id": "9da26afa-fa9f-442b-a521-342454ee89f9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T20:00:03.323420"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T20:00:01.251958",
-      "expires": "2025-05-24T20:01:01.251958",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T20:00:01.251958",
-      "unique_id": "9da26afa-fa9f-442b-a521-342454ee89f9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T20:00:03.323420"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T21:00:00.072583",
-      "expires": "2025-05-24T21:01:00.072583",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T21:00:00.072583",
-      "unique_id": "1af10ba9-1ec0-44ae-8c63-752e7c0d4047",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T21:00:02.098122"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T21:00:00.072583",
-      "expires": "2025-05-24T21:01:00.072583",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T21:00:00.072583",
-      "unique_id": "1af10ba9-1ec0-44ae-8c63-752e7c0d4047",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T21:00:02.098122"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T21:05:00.590072",
-      "expires": "2025-05-24T21:06:00.590072",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T21:05:00.590072",
-      "unique_id": "4b992ba9-4666-410c-9523-c93535b7e88e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T21:05:02.519928"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T21:05:00.590072",
-      "expires": "2025-05-24T21:06:00.590072",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T21:05:00.590072",
-      "unique_id": "4b992ba9-4666-410c-9523-c93535b7e88e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T21:05:02.519928"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T22:00:01.898763",
-      "expires": "2025-05-24T22:01:01.898763",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T22:00:01.898763",
-      "unique_id": "608fcdf8-683e-4bc8-846d-ee779a9a4dfc",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T22:00:03.959922"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T22:00:01.898763",
-      "expires": "2025-05-24T22:01:01.898763",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T22:00:01.898763",
-      "unique_id": "608fcdf8-683e-4bc8-846d-ee779a9a4dfc",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T22:00:03.959922"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T23:00:01.382092",
-      "expires": "2025-05-24T23:01:01.382092",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T23:00:01.382092",
-      "unique_id": "e2a8f80a-9f16-4b6a-a2c5-ec7d8ae0501b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T23:00:03.361126"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-24T23:00:01.382092",
-      "expires": "2025-05-24T23:01:01.382092",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-24T23:00:01.382092",
-      "unique_id": "e2a8f80a-9f16-4b6a-a2c5-ec7d8ae0501b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T23:00:03.361126"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T23:05:02.203131",
-      "expires": "2025-05-24T23:06:02.203131",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T23:05:02.203131",
-      "unique_id": "f8326156-270e-4a62-a5f6-56fc18db20e6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T23:05:04.025167"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-24T23:05:02.203131",
-      "expires": "2025-05-24T23:06:02.203131",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-24T23:05:02.203131",
-      "unique_id": "f8326156-270e-4a62-a5f6-56fc18db20e6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-24T23:05:04.025167"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-25T00:01:10.527296",
-      "expires": "2025-05-25T00:02:10.527296",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-25T00:01:10.527296",
-      "unique_id": "5fb14d7f-e175-404a-958e-b715fd7531d2",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-25T00:01:11.033785"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-25T00:01:10.527296",
-      "expires": "2025-05-25T00:02:10.527296",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-25T00:01:10.527296",
-      "unique_id": "5fb14d7f-e175-404a-958e-b715fd7531d2",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-25T00:01:11.033785"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-25T07:00:04.299528",
-      "expires": "2025-05-25T07:01:04.299528",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-25T07:00:04.299528",
-      "unique_id": "cf2c562f-d9ba-4a13-8018-fff4af9b172f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-25T07:00:06.364665"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-25T07:00:04.299528",
-      "expires": "2025-05-25T07:01:04.299528",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-25T07:00:04.299528",
-      "unique_id": "cf2c562f-d9ba-4a13-8018-fff4af9b172f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-25T07:00:06.364665"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-25T07:05:01.366102",
-      "expires": "2025-05-25T07:06:01.366102",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-25T07:05:01.366102",
-      "unique_id": "c3193c06-0be3-424a-ac13-376c95ea8afe",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-25T07:05:03.243453"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-25T07:05:01.366102",
-      "expires": "2025-05-25T07:06:01.366102",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-25T07:05:01.366102",
-      "unique_id": "c3193c06-0be3-424a-ac13-376c95ea8afe",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-25T07:05:03.243453"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-25T08:00:00.691405",
-      "expires": "2025-05-25T08:01:00.691405",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-25T08:00:00.691405",
-      "unique_id": "6a0d0d8f-0849-490e-88d6-11e832e38e6f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-25T08:00:02.682775"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-25T08:00:00.691405",
-      "expires": "2025-05-25T08:01:00.691405",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-25T08:00:00.691405",
-      "unique_id": "6a0d0d8f-0849-490e-88d6-11e832e38e6f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-25T08:00:02.682775"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-05-25T08:50:26.199289",
-      "expires": "2025-05-25T11:50:26.199289",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "90s",
-        "action": "info"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-25T08:50:26.199289",
-      "unique_id": "06dee3ea-2e76-4be3-83ab-137ea9161644",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-25T08:50:27.383511"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-05-25T08:50:26.199289",
-      "expires": "2025-05-25T11:50:26.199289",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "90s",
-        "action": "info"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-25T08:50:26.199289",
-      "unique_id": "06dee3ea-2e76-4be3-83ab-137ea9161644",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-25T08:50:27.383511"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-25T08:51:40.680057",
-      "expires": "2025-05-25T08:52:40.680057",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-25T08:51:40.680057",
-      "unique_id": "190fc50f-ed0d-4151-86cb-9ef75ade8792",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-25T08:51:41.031764"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-25T08:51:40.680057",
-      "expires": "2025-05-25T08:52:40.680057",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-25T08:51:40.680057",
-      "unique_id": "190fc50f-ed0d-4151-86cb-9ef75ade8792",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-25T08:51:41.031764"
-    },
-    {
-      "key": "Generate",
       "active_from": "2025-05-25T09:00:01.679727",
       "expires": "2025-05-25T09:01:01.679727",
       "display_name": null,
@@ -2181,6 +1576,702 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
       "consumed_at": "2025-05-25T18:30:51.130987"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:00:00.398276",
+      "expires": "2025-05-25T19:01:00.398276",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:00:00.398276",
+      "unique_id": "eb12b6b0-69c5-41d3-a042-7e68ad00d935",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:00:02.469496"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:00:00.398276",
+      "expires": "2025-05-25T19:01:00.398276",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:00:00.398276",
+      "unique_id": "eb12b6b0-69c5-41d3-a042-7e68ad00d935",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:00:02.469496"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-25T19:05:01.091453",
+      "expires": "2025-05-25T19:06:01.091453",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:05:01.091453",
+      "unique_id": "be2e2ab5-0d9e-4a40-903e-1dd43b1613a4",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:05:02.960523"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-25T19:05:01.091453",
+      "expires": "2025-05-25T19:06:01.091453",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:05:01.091453",
+      "unique_id": "be2e2ab5-0d9e-4a40-903e-1dd43b1613a4",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:05:02.960523"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:42:40.291316",
+      "expires": "2025-05-25T19:43:40.291316",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:42:40.291316",
+      "unique_id": "acf3a859-f60f-4231-8fc7-2d1496fab20c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:42:40.548102"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:42:40.291316",
+      "expires": "2025-05-25T19:43:40.291316",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:42:40.291316",
+      "unique_id": "acf3a859-f60f-4231-8fc7-2d1496fab20c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:42:40.548102"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:43:31.511646",
+      "expires": "2025-05-25T19:44:31.511646",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:43:31.511646",
+      "unique_id": "acaa201a-4307-45f8-a93b-b97f5c8f9dc2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:43:32.305631"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:43:31.511646",
+      "expires": "2025-05-25T19:44:31.511646",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:43:31.511646",
+      "unique_id": "acaa201a-4307-45f8-a93b-b97f5c8f9dc2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:43:32.305631"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:45:06.405059",
+      "expires": "2025-05-25T19:46:06.405059",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:45:06.405059",
+      "unique_id": "62afe906-4787-4d48-b21f-7edbaf64f69e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:45:07.395035"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:45:06.405059",
+      "expires": "2025-05-25T19:46:06.405059",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:45:06.405059",
+      "unique_id": "62afe906-4787-4d48-b21f-7edbaf64f69e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:45:07.395035"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:45:51.923073",
+      "expires": "2025-05-25T19:46:51.923073",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:45:51.923073",
+      "unique_id": "93c55fc1-d43f-461a-9f70-224332ea45b7",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:45:53.265781"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:45:51.923073",
+      "expires": "2025-05-25T19:46:51.923073",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:45:51.923073",
+      "unique_id": "93c55fc1-d43f-461a-9f70-224332ea45b7",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:45:53.265781"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:49:37.867882",
+      "expires": "2025-05-25T19:50:37.867882",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:49:37.867882",
+      "unique_id": "c7996e9f-7394-40e1-82f9-a36ccf6800ad",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:49:39.114339"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:49:37.867882",
+      "expires": "2025-05-25T19:50:37.867882",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:49:37.867882",
+      "unique_id": "c7996e9f-7394-40e1-82f9-a36ccf6800ad",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:49:39.114339"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:54:53.794572",
+      "expires": "2025-05-25T19:55:53.794572",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:54:53.794572",
+      "unique_id": "4e185e2e-ae7f-4e5f-8af5-ff84e4a67bdf",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:54:54.039056"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T19:54:53.794572",
+      "expires": "2025-05-25T19:55:53.794572",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-25T19:54:53.794572",
+      "unique_id": "4e185e2e-ae7f-4e5f-8af5-ff84e4a67bdf",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T19:54:54.039056"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T20:00:01.974005",
+      "expires": "2025-05-25T20:01:01.974005",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T20:00:01.974005",
+      "unique_id": "2c473746-91d1-4a8b-923b-b4a893ed0722",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T20:00:03.947312"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T20:00:01.974005",
+      "expires": "2025-05-25T20:01:01.974005",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T20:00:01.974005",
+      "unique_id": "2c473746-91d1-4a8b-923b-b4a893ed0722",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T20:00:03.947312"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T21:00:00.707635",
+      "expires": "2025-05-25T21:01:00.707635",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T21:00:00.707635",
+      "unique_id": "0d516c19-5eaa-497a-81c6-dccbede52f43",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T21:00:02.704905"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T21:00:00.707635",
+      "expires": "2025-05-25T21:01:00.707635",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T21:00:00.707635",
+      "unique_id": "0d516c19-5eaa-497a-81c6-dccbede52f43",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T21:00:02.704905"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-25T21:05:01.315022",
+      "expires": "2025-05-25T21:06:01.315022",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-25T21:05:01.315022",
+      "unique_id": "72c00749-c072-4163-9a48-1723558edd69",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T21:05:03.185298"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-25T21:05:01.315022",
+      "expires": "2025-05-25T21:06:01.315022",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-25T21:05:01.315022",
+      "unique_id": "72c00749-c072-4163-9a48-1723558edd69",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T21:05:03.185298"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T22:00:01.928693",
+      "expires": "2025-05-25T22:01:01.928693",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T22:00:01.928693",
+      "unique_id": "0d0af8fb-f97a-40eb-9bf1-5764eb7d61a6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T22:00:03.939794"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T22:00:01.928693",
+      "expires": "2025-05-25T22:01:01.928693",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T22:00:01.928693",
+      "unique_id": "0d0af8fb-f97a-40eb-9bf1-5764eb7d61a6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T22:00:03.939794"
+    },
+    {
+      "key": "sleep",
+      "active_from": "2025-05-25T22:41:09.450029",
+      "expires": "2025-05-25T22:42:09.450029",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T22:41:09.450029",
+      "unique_id": "b37f6939-9de9-473f-bae8-277bc76b6011",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T22:41:09.817254"
+    },
+    {
+      "key": "sleep",
+      "active_from": "2025-05-25T22:41:09.450029",
+      "expires": "2025-05-25T22:42:09.450029",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T22:41:09.450029",
+      "unique_id": "b37f6939-9de9-473f-bae8-277bc76b6011",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T22:41:09.817254"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T23:00:01.079552",
+      "expires": "2025-05-25T23:01:01.079552",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T23:00:01.079552",
+      "unique_id": "798784bb-4018-4456-9fe9-ccca4a3b57d0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T23:00:03.144612"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-25T23:00:01.079552",
+      "expires": "2025-05-25T23:01:01.079552",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-25T23:00:01.079552",
+      "unique_id": "798784bb-4018-4456-9fe9-ccca4a3b57d0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T23:00:03.144612"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-25T23:05:01.695539",
+      "expires": "2025-05-25T23:06:01.695539",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-25T23:05:01.695539",
+      "unique_id": "9e11e4ad-6a74-46b2-ba3d-61ba812cd083",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T23:05:03.520078"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-25T23:05:01.695539",
+      "expires": "2025-05-25T23:06:01.695539",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-25T23:05:01.695539",
+      "unique_id": "9e11e4ad-6a74-46b2-ba3d-61ba812cd083",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-25T23:05:03.520078"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T00:01:13.504330",
+      "expires": "2025-05-26T00:02:13.504330",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-26T00:01:13.504330",
+      "unique_id": "7e387f5b-7740-4c7d-99da-b4fdbfffe53c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T00:01:15.546239"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T00:01:13.504330",
+      "expires": "2025-05-26T00:02:13.504330",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-26T00:01:13.504330",
+      "unique_id": "7e387f5b-7740-4c7d-99da-b4fdbfffe53c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T00:01:15.546239"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T07:00:03.211429",
+      "expires": "2025-05-26T07:01:03.211429",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-26T07:00:03.211429",
+      "unique_id": "c0de9e5a-d56d-42e6-aa19-d66bd5ec575e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T07:00:05.272701"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T07:00:03.211429",
+      "expires": "2025-05-26T07:01:03.211429",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-26T07:00:03.211429",
+      "unique_id": "c0de9e5a-d56d-42e6-aa19-d66bd5ec575e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T07:00:05.272701"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-26T07:05:01.158161",
+      "expires": "2025-05-26T07:06:01.158161",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-26T07:05:01.158161",
+      "unique_id": "890be2a9-83c8-4ca4-b91d-3f9dceadb65b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T07:05:02.983860"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-26T07:05:01.158161",
+      "expires": "2025-05-26T07:06:01.158161",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-26T07:05:01.158161",
+      "unique_id": "890be2a9-83c8-4ca4-b91d-3f9dceadb65b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T07:05:02.983860"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T08:00:01.494071",
+      "expires": "2025-05-26T08:01:01.494071",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-26T08:00:01.494071",
+      "unique_id": "288d4ef1-8d26-42cb-ac24-23ff40be6222",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T08:00:03.507750"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T08:00:01.494071",
+      "expires": "2025-05-26T08:01:01.494071",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-26T08:00:01.494071",
+      "unique_id": "288d4ef1-8d26-42cb-ac24-23ff40be6222",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T08:00:03.507750"
+    },
+    {
+      "key": "wake",
+      "active_from": "2025-05-26T08:48:37.868902",
+      "expires": "2025-05-26T08:49:37.868902",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-26T08:48:37.868902",
+      "unique_id": "0bcbdf62-57a9-47e2-841e-3851c9b84017",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T08:48:38.389062"
+    },
+    {
+      "key": "wake",
+      "active_from": "2025-05-26T08:48:37.868902",
+      "expires": "2025-05-26T08:49:37.868902",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-26T08:48:37.868902",
+      "unique_id": "0bcbdf62-57a9-47e2-841e-3851c9b84017",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T08:48:38.389062"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T08:50:31.242318",
+      "expires": "2025-05-26T08:51:31.242318",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-26T08:50:31.242318",
+      "unique_id": "ee68be5a-85a7-4b4e-961d-9673e0c9665d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T08:50:33.702494"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T08:50:31.242318",
+      "expires": "2025-05-26T08:51:31.242318",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-26T08:50:31.242318",
+      "unique_id": "ee68be5a-85a7-4b4e-961d-9673e0c9665d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T08:50:33.702494"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T09:00:00.356191",
+      "expires": "2025-05-26T09:01:00.356191",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-26T09:00:00.356191",
+      "unique_id": "4a3d2314-8b72-4f45-ab56-6b3ff4478d2a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T09:00:02.356236"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T09:00:00.356191",
+      "expires": "2025-05-26T09:01:00.356191",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-26T09:00:00.356191",
+      "unique_id": "4a3d2314-8b72-4f45-ab56-6b3ff4478d2a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T09:00:02.356236"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-26T09:05:00.627910",
+      "expires": "2025-05-26T09:06:00.627910",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-26T09:05:00.627910",
+      "unique_id": "b7f816d9-a199-4c15-b13a-2a370012786e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T09:05:02.523910"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-26T09:05:00.627910",
+      "expires": "2025-05-26T09:06:00.627910",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-26T09:05:00.627910",
+      "unique_id": "b7f816d9-a199-4c15-b13a-2a370012786e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T09:05:02.523910"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T09:20:33.429225",
+      "expires": "2025-05-26T09:21:33.429225",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-26T09:20:33.429225",
+      "unique_id": "8e8ed8e7-9e2c-41e2-a253-37ecd899bdd7",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T09:20:33.943933"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T09:20:33.429225",
+      "expires": "2025-05-26T09:21:33.429225",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-26T09:20:33.429225",
+      "unique_id": "8e8ed8e7-9e2c-41e2-a253-37ecd899bdd7",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T09:20:33.943933"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T10:00:00.413791",
+      "expires": "2025-05-26T10:01:00.413791",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-26T10:00:00.413791",
+      "unique_id": "0a0d2d58-712e-44e9-b80e-80e3bc10a72f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T10:00:02.471619"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T10:00:00.413791",
+      "expires": "2025-05-26T10:01:00.413791",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-26T10:00:00.413791",
+      "unique_id": "0a0d2d58-712e-44e9-b80e-80e3bc10a72f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T10:00:02.471619"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T10:04:25.142543",
+      "expires": "2025-05-26T10:05:25.142543",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-26T10:04:25.142543",
+      "unique_id": "8be65440-2f61-428a-b1e7-1c486c4b496a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T10:04:26.525572"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-26T10:04:25.142543",
+      "expires": "2025-05-26T10:05:25.142543",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-26T10:04:25.142543",
+      "unique_id": "8be65440-2f61-428a-b1e7-1c486c4b496a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-26T10:04:26.525572"
     }
   ]
 }
