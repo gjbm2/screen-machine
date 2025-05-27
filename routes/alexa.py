@@ -277,6 +277,7 @@ def get_event_triggers_for_scope(target_screen: str) -> dict:
 def process(data):
     # Re-import logging functions to ensure they're available in this scope
     from utils.logger import info, error, warning, debug
+    import time  # Re-import time module to ensure it's available
     
     alexa_intent = data.get("request", {}).get("intent", {}).get("name", "unspecified")
     utterance = data.get("request", {}).get("intent", {}).get("slots", {}).get("utterance", {}).get("value", "unspecified")
@@ -448,7 +449,8 @@ def process(data):
                 use_system_prompt="alexa-trigger-events.txt.j2"
             case "sleep":
                 response_ssml = Brianize("Goodnight.")
-                device_sleep(closest_screen)
+                # Set result to include sleep intent
+                result = {"intent": "sleep"}
             case _:
                 use_system_prompt="alexa-triage.txt"
 
@@ -559,7 +561,6 @@ def process(data):
                     throw_user_interacting_event(scope, action_type="clear_wait", wait_time=wait_time)
                     
                     # Wait for at least one full scheduler tick plus buffer
-                    import time
                     time.sleep(SCHEDULER_TICK_INTERVAL + SCHEDULER_TICK_BUFFER)
                     
                     # Now throw the actual requested event
@@ -601,6 +602,30 @@ def process(data):
                         "input_obj": result
                     }
                 ).start()
+            # Handle sleep command in background
+            case "sleep":
+                if closest_screen:
+                    def sleep_screens():
+                        # Get all groups for the closest screen
+                        groups = get_groups_for_destination(closest_screen)
+                        if groups:
+                            # Get all destinations in those groups
+                            destinations = _load_json_once("destination", "publish-destinations.json")
+                            # Find all screens in the same groups that have an IP address
+                            target_screens = [
+                                d["id"] for d in destinations
+                                if any(g in d.get("groups", []) for g in groups)
+                                and d.get("ip-address")  # Only include screens with an IP address
+                            ]
+                            # Send sleep command to all target screens
+                            for screen in target_screens:
+                                device_sleep(screen)
+                        else:
+                            # If no groups found, just sleep the closest screen
+                            device_sleep(closest_screen)
+                    
+                    # Run sleep commands in background
+                    threading.Thread(target=sleep_screens).start()
             # User wants to change the refiner
             case "change_refiner":
                 # Just switch to a new refiner

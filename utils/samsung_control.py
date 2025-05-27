@@ -5,7 +5,7 @@ Command-line helper to control Samsung Frame TVs and sync images.
 
 Usage
 -----
-python3 samsung_control.py <publish_destination> [--wait 180] [--action {info,sync,sleep,wake}] [--timeout 30]
+python3 samsung_control.py <publish_destination> [--wait 180] [--action {info,sync,sleep,wake,status}] [--timeout 30]
 
 • <publish_destination> is the ID from *publish-destinations.json* (e.g.
   "north-screen", "south-screen", ...).
@@ -21,6 +21,7 @@ import os
 import sys
 import time
 import logging
+import json
 
 # Ensure project root is on sys.path when executed from anywhere
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -28,7 +29,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 # Import after path tweak
-from routes.samsung_utils import device_sync, device_info, device_sleep, device_wake, pair_device
+from routes.samsung_utils import device_sync, device_info, device_sleep, device_wake, pair_device, get_status
 from utils.logger import info, debug, warning, error
 
 
@@ -37,7 +38,7 @@ def main() -> None:
     parser.add_argument("destination", help="publish-destination ID (as seen in publish-destinations.json)")
     parser.add_argument("--wait", type=int, default=180, help="seconds to keep the process alive while the background sync runs (0 = exit immediately)")
     parser.add_argument("--debug", action="store_true", help="enable debug logging")
-    parser.add_argument("--action", choices=["info", "sync", "sleep", "wake"], default="sync", help="action to perform (default: sync)")
+    parser.add_argument("--action", choices=["info", "sync", "sleep", "wake", "status"], default="sync", help="action to perform (default: sync)")
     parser.add_argument("--timeout", type=int, default=30, help="timeout in seconds for TV operations (default: 30)")
     parser.add_argument("--pair", action="store_true", help="delete stored token first to force pairing")
     parser.add_argument("--delay", type=int, default=0, help="delay execution by specified seconds before proceeding (default: 0)")
@@ -65,11 +66,43 @@ def main() -> None:
     if args.action == "info":
         device_info(args.destination, timeout=args.timeout)
     elif args.action == "sync":
-        device_sync(args.destination, debug_mode=args.debug, timeout=args.timeout)
+        result = device_sync(args.destination, debug_mode=args.debug, timeout=args.timeout)
+        if result == "fail":
+            error(f"Failed to start sync for {args.destination}")
+            sys.exit(1)
+        elif result == "no_action":
+            info(f"No images to sync for {args.destination}")
+        else:
+            info(f"Sync started for {args.destination}")
     elif args.action == "sleep":
-        device_sleep(args.destination, timeout=args.timeout)
+        result = device_sleep(args.destination, timeout=args.timeout)
+        if result == "fail":
+            error(f"Failed to put {args.destination} to sleep")
+            sys.exit(1)
+        elif result == "no_action":
+            info(f"No action needed for {args.destination}")
+        else:
+            info(f"Successfully put {args.destination} to sleep")
     elif args.action == "wake":
-        device_wake(args.destination, timeout=args.timeout)
+        result = device_wake(args.destination, timeout=args.timeout)
+        if result == "fail":
+            error(f"Failed to wake {args.destination}")
+            sys.exit(1)
+        elif result == "no_action":
+            info(f"No action needed for {args.destination}")
+        else:
+            info(f"Successfully woke {args.destination}")
+    elif args.action == "status":
+        # Use a shorter timeout for status checks to fail fast
+        status_timeout = min(args.timeout, 5)  # Cap at 5 seconds for status checks
+        status = get_status(args.destination, timeout=status_timeout)
+        print(json.dumps({
+            "power_state": status.power_state,
+            "art_mode": status.art_mode,
+            "is_network_connected": status.is_network_connected,
+            "error_message": status.error_message,
+            "art_mode_source": status.art_mode_source
+        }, indent=2))
 
     # Optionally wait so we can watch progress in logs
     if args.wait > 0:

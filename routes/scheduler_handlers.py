@@ -459,8 +459,13 @@ def handle_unload(instruction, context, now, output, publish_destination):
 def handle_device_media_sync(instruction, context, now, output, publish_destination):
     """Handle device media sync instruction."""
     try:
-        device_sync(publish_destination)
-        log_schedule("Device media sync completed", publish_destination, now, output)
+        result = device_sync(publish_destination)
+        if result == "fail":
+            log_schedule("Device media sync failed", publish_destination, now, output)
+        elif result == "no_action":
+            log_schedule("Device media sync - no action needed", publish_destination, now, output)
+        else:
+            log_schedule("Device media sync started successfully", publish_destination, now, output)
     except Exception as e:
         error_msg = f"Error in handle_device_media_sync: {str(e)}"
         log_schedule(error_msg, publish_destination, now, output)
@@ -470,8 +475,14 @@ def handle_device_media_sync(instruction, context, now, output, publish_destinat
 def handle_device_wake(instruction, context, now, output, publish_destination):
     """Handle device wake instruction."""
     try:
-        device_wake(publish_destination)
-        log_schedule("Device wake completed", publish_destination, now, output)
+        # Use a longer timeout for wake operations to allow for TV response
+        result = device_wake(publish_destination, timeout=30)
+        if result == "fail":
+            log_schedule("Device wake failed", publish_destination, now, output)
+        elif result == "no_action":
+            log_schedule("Device wake - no action needed", publish_destination, now, output)
+        else:
+            log_schedule("Device wake completed successfully", publish_destination, now, output)
     except Exception as e:
         error_msg = f"Error in handle_device_wake: {str(e)}"
         log_schedule(error_msg, publish_destination, now, output)
@@ -481,8 +492,13 @@ def handle_device_wake(instruction, context, now, output, publish_destination):
 def handle_device_sleep(instruction, context, now, output, publish_destination):
     """Handle device sleep instruction."""
     try:
-        device_sleep(publish_destination)
-        log_schedule("Device sleep completed", publish_destination, now, output)
+        result = device_sleep(publish_destination)
+        if result == "fail":
+            log_schedule("Device sleep failed", publish_destination, now, output)
+        elif result == "no_action":
+            log_schedule("Device sleep - no action needed", publish_destination, now, output)
+        else:
+            log_schedule("Device sleep completed successfully", publish_destination, now, output)
     except Exception as e:
         error_msg = f"Error in handle_device_sleep: {str(e)}"
         log_schedule(error_msg, publish_destination, now, output)

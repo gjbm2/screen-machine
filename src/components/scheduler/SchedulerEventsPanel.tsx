@@ -41,10 +41,12 @@ import {
 } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Clock, Calendar, Maximize, Package, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { Clock, Calendar, Maximize, Package, ChevronDown, ChevronRight, Trash2, Send, History, List } from 'lucide-react';
 import apiService from '@/utils/api';
 import { toast } from 'sonner';
 import { PublishDestination } from '@/utils/api';
+import { HierarchicalHeader } from './HierarchicalHeader';
+import { HierarchicalContent } from './HierarchicalContent';
 
 interface EventItem {
   key: string;
@@ -69,7 +71,11 @@ interface EventsData {
   history: EventItem[];
 }
 
-export const SchedulerEventsPanel: React.FC = () => {
+interface SchedulerEventsPanelProps {
+  onEventCountChange?: (count: number) => void;
+}
+
+export const SchedulerEventsPanel: React.FC<SchedulerEventsPanelProps> = ({ onEventCountChange }) => {
   // State for form fields
   const [eventKey, setEventKey] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -106,6 +112,11 @@ export const SchedulerEventsPanel: React.FC = () => {
   // Add pagination state for history table
   const [historyPage, setHistoryPage] = useState(0);
   const [historyPageSize, setHistoryPageSize] = useState(10);
+  
+  // Add state for hierarchical sections
+  const [triggerFormOpen, setTriggerFormOpen] = useState(false);
+  const [queueSectionOpen, setQueueSectionOpen] = useState(false);
+  const [historySectionOpen, setHistorySectionOpen] = useState(false);
   
   // Function to toggle expanded state
   const toggleExpanded = () => {
@@ -726,10 +737,16 @@ export const SchedulerEventsPanel: React.FC = () => {
   // Add useEffect for debug logging of count and expanded state
   useEffect(() => {
     if (eventsData) {
+      const queueCount = eventsData.queue?.length || 0;
       console.log('SchedulerEventsPanel: Current event count:', 
-        (eventsData.queue?.length || 0) + (eventsData.history?.length || 0));
+        queueCount + (eventsData.history?.length || 0));
+      
+      // Call the callback with the queue count
+      if (onEventCountChange) {
+        onEventCountChange(queueCount);
+      }
     }
-  }, [eventsData]);
+  }, [eventsData, onEventCountChange]);
 
   useEffect(() => {
     console.log('SchedulerEventsPanel: Expanded state changed to:', isExpanded);
@@ -760,41 +777,18 @@ export const SchedulerEventsPanel: React.FC = () => {
   };
 
   return (
-    <Card>
-      <CardHeader 
-        className="cursor-pointer hover:bg-muted/50 transition-colors" 
-        onClick={toggleExpanded}
-      >
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-xl font-bold flex items-center">
-            {isExpanded ? (
-              <ChevronDown className="h-5 w-5 mr-2 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-5 w-5 mr-2 text-muted-foreground" />
-            )}
-            All Scheduler Events
-            {eventsData && (
-              <Badge variant="secondary" className="ml-2">
-                {eventsData.queue?.length || 0}
-              </Badge>
-            )}
-          </CardTitle>
-          <div className="flex gap-2">
-            {eventsData && eventsData.queue?.length > 0 && (
-              <Button variant="outline" size="sm" onClick={(e) => {
-                e.stopPropagation(); // Prevent event from toggling the panel
-                handleClearAllEvents();
-              }}>
-                <Trash2 className="h-4 w-4 mr-1" />
-                Clear All
-              </Button>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      {isExpanded && (
-        <CardContent>
-          <div className="space-y-4">
+    <>
+      {/* Level 2: Trigger Event Form */}
+      <Card className="mb-4">
+        <HierarchicalHeader
+          title="Trigger Event"
+          level={2}
+          isOpen={triggerFormOpen}
+          onToggle={() => setTriggerFormOpen(!triggerFormOpen)}
+          icon={<Send className="h-4 w-4" />}
+        />
+        {triggerFormOpen && (
+          <HierarchicalContent level={2}>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -910,22 +904,43 @@ export const SchedulerEventsPanel: React.FC = () => {
                 <Button type="submit">Throw Event</Button>
               </div>
             </form>
+          </HierarchicalContent>
+        )}
+      </Card>
 
-            <Tabs defaultValue="queue" className="w-full">
-              <TabsList>
-                <TabsTrigger value="queue">Queue</TabsTrigger>
-                <TabsTrigger value="history">History</TabsTrigger>
-              </TabsList>
-              <TabsContent value="queue">
-                {renderQueueTable()}
-              </TabsContent>
-              <TabsContent value="history">
-                {renderHistoryTable()}
-              </TabsContent>
-            </Tabs>
-          </div>
-        </CardContent>
-      )}
+      {/* Level 2: Event Queue */}
+      <Card className="mb-4">
+        <HierarchicalHeader
+          title="Event Queue"
+          level={2}
+          isOpen={queueSectionOpen}
+          onToggle={() => setQueueSectionOpen(!queueSectionOpen)}
+          count={eventsData?.queue?.length || 0}
+          icon={<List className="h-4 w-4" />}
+        />
+        {queueSectionOpen && (
+          <HierarchicalContent level={2}>
+            {renderQueueTable()}
+          </HierarchicalContent>
+        )}
+      </Card>
+
+      {/* Level 2: Event History */}
+      <Card>
+        <HierarchicalHeader
+          title="Event History"
+          level={2}
+          isOpen={historySectionOpen}
+          onToggle={() => setHistorySectionOpen(!historySectionOpen)}
+          count={eventsData?.history?.length || 0}
+          icon={<History className="h-4 w-4" />}
+        />
+        {historySectionOpen && (
+          <HierarchicalContent level={2}>
+            {renderHistoryTable()}
+          </HierarchicalContent>
+        )}
+      </Card>
       
       {/* Payload Dialog */}
       <Dialog open={payloadDialogOpen} onOpenChange={setPayloadDialogOpen}>
@@ -946,6 +961,6 @@ export const SchedulerEventsPanel: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </>
   );
 }; 
