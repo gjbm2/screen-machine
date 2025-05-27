@@ -6,12 +6,24 @@ from samsungtvws import SamsungTVWS
 from utils.logger import info, error, debug, warning
 from routes.utils import _load_json_once, seq_to_filenames
 import json, time, threading, os
-from typing import Literal
+from typing import Literal, Optional
 from wakeonlan import send_magic_packet
 from contextlib import suppress
 from pathlib import Path
+from dataclasses import dataclass
 
 _tv_cache = {}
+
+DeviceActionResult = Literal["success", "no_action", "fail"]
+
+@dataclass
+class TVStatus:
+    """Represents the current state of a Samsung TV."""
+    power_state: Literal["off", "on", "standby", "unknown"]
+    art_mode: Optional[Literal["on", "off"]]  # Just on/off, no inference in the value
+    is_network_connected: bool
+    error_message: Optional[str] = None
+    art_mode_source: Optional[Literal["direct", "inferred", "unknown"]] = None  # How we determined the art mode state
 
 def _get_tv(publish_destination: str, timeout: int = 5) -> SamsungTVWS:
     """
@@ -74,16 +86,19 @@ def device_info(publish_destination: str, timeout: int = 5):
         return
 
     device_info = tv.rest_device_info()
+    print(f"DEVICE INFO\n{json.dumps(device_info, indent=2)}")
+
     #app_info = tv.rest_app_status()
     art_status = tv.art(timeout).get_artmode()
+    print(f"\n\nART MODE\n{json.dumps(art_status, indent=2)}")
 
     # Retrieve information about the currently selected art
     info = tv.art(timeout).get_current()
     #info('current art: {}'.format(info))
     #content_id = info['content_id']
 
-    print(f"DEVICE INFO\n{json.dumps(device_info, indent=2)}")
-    print(f"\n\nART MODE\n{json.dumps(art_status, indent=2)}")
+    
+
     print(f"\n\nART\n{json.dumps(info, indent=2)}")
     #print(f"APP INFO\n{json.dumps(app_info, indent=2)}")
 
@@ -117,26 +132,47 @@ def get_power_state(publish_destination: str, timeout: int = 5) -> PowerState:
 
     return "on"
 
-def device_sleep(publish_destination: str, timeout: int = 5) -> None:
-    state = get_power_state(publish_destination, timeout)
+def device_sleep(publish_destination: str, timeout: int = 5) -> DeviceActionResult:
+    """Put the TV into art mode.
+    
+    Returns:
+        "success" if TV was put into art mode
+        "no_action" if TV was already in art mode or off
+        "fail" if TV was unreachable or command failed
+    """
+    status = get_status(publish_destination, timeout)
 
-    if state in ("on", "standby"):
+    if not status.is_network_connected:
+        error(f"{publish_destination} is not reachable on network")
+        return "fail"
+
+    if status.power_state in ["on", "standby"]:
         tv = _get_tv(publish_destination, timeout)
+        if not tv:
+            error(f"Could not get TV object for {publish_destination}")
+            return "fail"
         tv.send_key("KEY_POWER")  # toggles to Art Mode
         info(f"{publish_destination} sent to sleep (Art Mode)")
-        return True
-    elif state == "art-mode":
+        return "success"
+    elif status.art_mode == "on":
         info(f"{publish_destination} already in Art Mode — no action taken")
-        return False
+        return "no_action"
     else:
         info(f"{publish_destination} appears to be off — cannot sleep it")
-        return False
+        return "no_action"
 
-def device_wake(publish_destination: str, timeout: int = 5) -> None:
-    state = get_power_state(publish_destination, timeout)
+def device_wake(publish_destination: str, timeout: int = 5) -> DeviceActionResult:
+    """Wake the TV from art mode or standby.
+    
+    Returns:
+        "success" if TV was woken from art mode or standby
+        "no_action" if TV was already on
+        "fail" if TV was unreachable or command failed
+    """
+    status = get_status(publish_destination, timeout)
 
-    if state == "off":
-        # Fallback to Wake-on-LAN
+    if not status.is_network_connected:
+        # Try Wake-on-LAN if we have MAC address
         destinations = _load_json_once("destination", "publish-destinations.json")
         config = next((d for d in destinations if d["id"] == publish_destination), None)
         mac = config.get("mac") if config else None
@@ -145,57 +181,82 @@ def device_wake(publish_destination: str, timeout: int = 5) -> None:
             send_magic_packet(mac)
             info(f"{publish_destination} appears off — sent Wake-on-LAN packet")
             time.sleep(2)  # give TV a moment to power up
-            state = get_power_state(publish_destination, timeout)
+            status = get_status(publish_destination, timeout)
         else:
             error(f"{publish_destination} is off and no MAC address is available for WoL")
-            return False
+            return "fail"
 
-    if state == "standby":
+    if status.power_state == "standby":
         # Wake with KEY_POWER, then re-check
         tv = _get_tv(publish_destination, timeout)
         if not tv:
             error(f"Could not retrieve TV object to wake {publish_destination}")
-            return False
+            return "fail"
         tv.send_key("KEY_POWER")
         info(f"{publish_destination} sent KEY_POWER to exit standby")
         time.sleep(1.5)
-        state = get_power_state(publish_destination, timeout)
+        status = get_status(publish_destination, timeout)
 
-    if state == "art-mode":
+    if status.art_mode == "on":
         # Exit Art Mode
         tv = _get_tv(publish_destination, timeout)
         if tv:
             tv.send_key("KEY_POWER")
             info(f"{publish_destination} was in Art Mode — sent KEY_POWER to exit")
-            return True
+            return "success"
         else:
             error(f"Could not retrieve TV object to exit Art Mode for {publish_destination}")
-            return False
-    elif state == "on":
+            return "fail"
+    elif status.power_state == "on":
         info(f"{publish_destination} is already on — no action needed")
-        return False
+        return "no_action"
     else:
         error(f"{publish_destination} is still off or unresponsive after wake attempt")
-        return False
+        return "fail"
 
-def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int = 5) -> None:
+def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int = 5) -> DeviceActionResult:
     """
     Synchronise the Frame TV's "My Photos" folder so that it contains *exactly*
     the bucket favourites (JPG only) for *publish_destination* in the *same*
-    order as the bucket sequence.  Order on the TV cannot be changed directly
-    so we delete everything first then upload in the desired order.
+    order as the bucket sequence.
 
-    The work is performed in a background thread so that a long-running sync
-    does not block the scheduler.  If the TV is unreachable, the function
-    returns immediately and logs an error.
+    Returns:
+        "success" if TV is reachable and sync was started
+        "no_action" if no images to sync
+        "fail" if TV is unreachable or sync cannot be started
     """
+    # First check if TV is reachable and in a state where we can sync
+    status = get_status(publish_destination, timeout)
+    if not status.is_network_connected:
+        error(f"[device_sync] {publish_destination} is not reachable on network")
+        return "fail"
 
-    def log_debug(msg):
+    if status.power_state not in ["on", "art-mode"]:
+        error(f"[device_sync] {publish_destination} is not in a state where we can sync (power state: {status.power_state})")
+        return "fail"
+
+    # Check if we have any images to sync
+    try:
+        from routes.bucketer import load_meta, bucket_path  # lazy import – heavy modules
+        meta = load_meta(publish_destination)
+        fav_set = set(meta.get("favorites", []))
+        seq_raw = meta.get("sequence", [])
+        filenames = seq_to_filenames(seq_raw)
+        ordered_jpgs = [
+            fname for fname in filenames
+            if fname in fav_set and Path(fname).suffix.lower() in {".jpg", ".jpeg"}
+        ]
+        if not ordered_jpgs:
+            info(f"[device_sync] No favourite JPGs in bucket {publish_destination}; nothing to sync")
+            return "no_action"
+    except Exception as e:
+        error(f"[device_sync] Failed to load bucket meta: {e}")
         if debug_mode:
-            from utils.logger import debug as _debug
-            _debug(msg)
+            import traceback
+            traceback.print_exc()
+        return "fail"
 
-    # ----- async wrapper ---------------------------------------------------
+    # TV is reachable and we have images to sync - start the sync in background
     def _sync_task():
         try:
             info(f"[device_sync] Starting image sync for {publish_destination}")
@@ -363,23 +424,51 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
     sync_thread = threading.Thread(target=_sync_task, name=f"samsung-sync-{publish_destination}", daemon=True)
     sync_thread.start()
     debug(f"[device_sync] Spawned sync thread for {publish_destination} (id={sync_thread.ident})")
+    return "success"
 
 # --- Device standby helper ----------------------------------------------
 
-def device_standby(publish_destination: str) -> None:
-    # Although wacky, this does seem to work if TV is first in wake mode, though I'll be buggered if I know why...
-    if device_wake(publish_destination):
-        time.sleep(3)	
+def device_standby(publish_destination: str, timeout: int = 5) -> DeviceActionResult:
+    """Put the TV into standby mode.
+    
+    Returns:
+        "success" if TV was put into standby
+        "no_action" if TV was already off or in standby
+        "fail" if TV was unreachable or command failed
+    """
+    status = get_status(publish_destination, timeout)
 
-    # Now send standby
-    info(f"{publish_destination} sending to standby (takes 30s).")
-    tv = _get_tv(publish_destination)
-    tv.hold_key("KEY_POWER", 8)
+    if not status.is_network_connected:
+        error(f"{publish_destination} is not reachable on network")
+        return "fail"
 
-    #debug("Hold for 10s while daemon completes...")
-    #time.sleep(10)
+    # If TV is off or in standby, no action needed
+    if status.power_state in ["off", "standby"]:
+        info(f"{publish_destination} is already off or in standby — no action taken")
+        return "no_action"
 
-    return True
+    # If TV is in art mode, we need to exit it first
+    if status.art_mode == "on":
+        tv = _get_tv(publish_destination, timeout)
+        if not tv:
+            error(f"Could not get TV object for {publish_destination}")
+            return "fail"
+        tv.send_key("KEY_POWER")  # Exit art mode
+        time.sleep(1.5)  # Give TV time to exit art mode
+        status = get_status(publish_destination, timeout)
+
+    # Now send to standby
+    if status.power_state == "on":
+        tv = _get_tv(publish_destination, timeout)
+        if not tv:
+            error(f"Could not get TV object for {publish_destination}")
+            return "fail"
+        info(f"{publish_destination} sending to standby (takes 30s).")
+        tv.hold_key("KEY_POWER", 8)
+        return "success"
+    else:
+        info(f"{publish_destination} is not in a state where we can send it to standby")
+        return "fail"
 
 def pair_device(publish_destination: str) -> bool:
     """Delete the stored token so the next connection forces a fresh pairing.
@@ -405,4 +494,91 @@ def pair_device(publish_destination: str) -> bool:
     except Exception as e:
         error(f"[pair_device] Failed to remove token file {token_file}: {e}")
         return False
+
+def get_status(publish_destination: str, timeout: int = 5) -> TVStatus:
+    """
+    Get the current status of the Samsung TV, handling various edge cases and timeouts.
+    
+    Returns:
+        TVStatus object containing:
+        - power_state: "off", "on", "standby", or "unknown"
+        - art_mode: "on" or "off" (or None if TV is off/standby)
+        - is_network_connected: True if TV is reachable on network
+        - error_message: Any error details if something went wrong
+        - art_mode_source: How we determined the art mode state ("direct", "inferred", or "unknown")
+    """
+    # First try to get TV object with a short timeout
+    try:
+        tv = _get_tv(publish_destination, timeout=timeout)
+        if not tv:
+            return TVStatus(
+                power_state="unknown",
+                art_mode=None,
+                is_network_connected=False,
+                error_message="Could not create TV connection object",
+                art_mode_source="unknown"
+            )
+    except Exception as e:
+        return TVStatus(
+            power_state="unknown",
+            art_mode=None,
+            is_network_connected=False,
+            error_message=f"Failed to create TV connection: {str(e)}",
+            art_mode_source="unknown"
+        )
+
+    # Check power state with timeout
+    try:
+        device_info = tv.rest_device_info()
+        power_state = device_info.get("device", {}).get("PowerState", "unknown").lower()
+        
+        # If we got here, TV is at least network connected
+        if power_state not in ["on", "standby", "off"]:
+            power_state = "unknown"
+            
+        # If TV is off or standby, we can't check art mode
+        if power_state in ["off", "standby"]:
+            return TVStatus(
+                power_state=power_state,
+                art_mode=None,
+                is_network_connected=True,
+                art_mode_source="unknown"
+            )
+            
+        # TV is on, try to check art mode with timeout
+        try:
+            art_mode = tv.art(timeout).get_artmode()
+            if str(art_mode).lower() == "on":
+                return TVStatus(
+                    power_state=power_state,
+                    art_mode="on",
+                    is_network_connected=True,
+                    art_mode_source="direct"
+                )
+            else:
+                return TVStatus(
+                    power_state=power_state,
+                    art_mode="off",
+                    is_network_connected=True,
+                    art_mode_source="direct"
+                )
+        except Exception as e:
+            # Art mode app not running or timed out - TV is on but art mode is off
+            return TVStatus(
+                power_state=power_state,
+                art_mode="off",  # We know it's off because the app isn't running
+                is_network_connected=True,
+                error_message=f"Art mode check failed: {str(e)}",
+                art_mode_source="inferred"
+            )
+            
+    except Exception as e:
+        # Network connection lost or timeout
+        return TVStatus(
+            power_state="unknown",
+            art_mode=None,
+            is_network_connected=False,
+            error_message=f"Network error or timeout: {str(e)}",
+            art_mode_source="unknown"
+        )
 

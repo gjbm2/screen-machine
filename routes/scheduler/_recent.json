@@ -61,12 +61,13 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-26T03:00:03.318498",
+  "last_updated": "2025-05-27T03:00:02.831023",
   "last_trigger_executions": {
     "86fcab81240ed277bf13e63c5c2c9595_2025-05-23": "2025-05-23T03:00:01.813204",
     "86fcab81240ed277bf13e63c5c2c9595_2025-05-24": "2025-05-24T03:00:01.099844",
     "86fcab81240ed277bf13e63c5c2c9595_2025-05-25": "2025-05-25T03:00:01.839420",
-    "86fcab81240ed277bf13e63c5c2c9595_2025-05-26": "2025-05-26T03:00:00.925938"
+    "86fcab81240ed277bf13e63c5c2c9595_2025-05-26": "2025-05-26T03:00:00.925938",
+    "86fcab81240ed277bf13e63c5c2c9595_2025-05-27": "2025-05-27T03:00:00.425453"
   },
   "active_events": {
     "purge": []
@@ -1137,6 +1138,32 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler__recent",
       "consumed_at": "2025-05-26T03:00:02.964416"
+    },
+    {
+      "key": "purge",
+      "active_from": "2025-05-27T03:00:00.446683",
+      "expires": "2025-05-27T03:01:00.446683",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T03:00:00.446683",
+      "unique_id": "70dc35dd-5112-4c2d-aa18-5492e4472588",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler__recent",
+      "consumed_at": "2025-05-27T03:00:02.439112"
+    },
+    {
+      "key": "purge",
+      "active_from": "2025-05-27T03:00:00.446683",
+      "expires": "2025-05-27T03:01:00.446683",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T03:00:00.446683",
+      "unique_id": "70dc35dd-5112-4c2d-aa18-5492e4472588",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler__recent",
+      "consumed_at": "2025-05-27T03:00:02.439112"
     }
   ]
 }

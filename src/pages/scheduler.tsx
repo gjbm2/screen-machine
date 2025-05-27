@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { useConsoleManagement } from '@/hooks/use-console-management';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import apiService from '@/utils/api';
 import { useNavigate } from 'react-router-dom';
 import { SchemaEditModal } from '../components/scheduler/SchemaEditModal';
@@ -26,6 +27,17 @@ import { SetVarsButton } from '../components/scheduler/SetVarsButton';
 import { VarsRegistryCard } from '../components/scheduler/VarsRegistryCard';
 import { SchedulerEventsPanel } from '../components/scheduler/SchedulerEventsPanel';
 import { extractEventTriggers } from '@/utils/scheduleUtils';
+import { MobileActionSheet } from '@/components/ui/MobileActionSheet';
+import { SchedulerCard } from '../components/scheduler/SchedulerCard';
+import { CollapsibleCardHeader } from '../components/scheduler/CollapsibleCardHeader';
+import { HierarchicalHeader } from '../components/scheduler/HierarchicalHeader';
+import { HierarchicalContent } from '../components/scheduler/HierarchicalContent';
+import { 
+  Destination, 
+  SchedulerStatus, 
+  InstructionQueueResponse,
+  NextAction
+} from '@/types/scheduler';
 
 // Extend Window interface to include fetchDestinations
 declare global {
@@ -55,32 +67,6 @@ interface ScheduleStack {
   context: Context;
 }
 
-interface Destination {
-  id: string;    // The destination ID used for API calls
-  name: string;  // The display name shown in the UI
-  schedules: Schedule[];
-  isRunning?: boolean;
-  isPaused?: boolean;
-  logs?: string[];
-  scheduleStack?: any[];
-  contextStack?: Context[];  // Changed from Record<string, Context> to Context[]
-}
-
-interface NextAction {
-  has_next_action: boolean;
-  next_time: string | null;
-  description: string | null;
-  minutes_until_next: number | null;
-  timestamp: string;
-  time_until_display?: string;
-}
-
-interface SchedulerStatus {
-  is_running: boolean;
-  next_action: NextAction | null;
-}
-
-// New interface for instruction queue items
 interface InstructionQueueItem {
   action: string;
   important: boolean;
@@ -88,53 +74,12 @@ interface InstructionQueueItem {
   details: Record<string, any>;
 }
 
-// New interface for instruction queue response
-interface InstructionQueueResponse {
-  status: string;
-  destination: string;
-  queue_size: number;
-  instructions: InstructionQueueItem[];
-}
-
-interface CollapsibleCardHeaderProps {
-  title: string;
-  isOpen: boolean;
-  onToggle: () => void;
-  count?: number;
-}
-
-const CollapsibleCardHeader: React.FC<CollapsibleCardHeaderProps> = ({ 
-  title, 
-  isOpen, 
-  onToggle,
-  count
-}) => {
-  return (
-    <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={onToggle}>
-      <div className="flex items-center justify-between">
-        <CardTitle className="text-xl font-bold flex items-center">
-          {isOpen ? (
-            <ChevronDown className="h-5 w-5 mr-2 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-5 w-5 mr-2 text-muted-foreground" />
-          )}
-          {title}
-          {count !== undefined && (
-            <Badge variant="secondary" className="ml-2">
-              {count}
-            </Badge>
-          )}
-        </CardTitle>
-      </div>
-    </CardHeader>
-  );
-};
-
 const Scheduler = () => {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const { 
     consoleVisible, 
     consoleLogs, 
@@ -169,6 +114,10 @@ const Scheduler = () => {
   const [runningSectionVisible, setRunningSectionVisible] = useState(true);
   const [pausedSectionVisible, setPausedSectionVisible] = useState(false);
   const [stoppedSectionVisible, setStoppedSectionVisible] = useState(false);
+  const [eventsSectionVisible, setEventsSectionVisible] = useState(false);
+  const [eventCount, setEventCount] = useState(0);
+
+  const [mobileActionSheetOpen, setMobileActionSheetOpen] = useState(false);
 
   const fetchDestinations = useCallback(async () => {
     setLoading(true);
@@ -856,772 +805,197 @@ const Scheduler = () => {
       consoleLogs={consoleLogs}
       onClearConsole={clearConsole}
     >
-      <div className="container mx-auto p-4 space-y-4">
-        {/* Page Header with Refresh Button */}
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-3xl font-bold">Schedulers</h1>
-          <Button 
-            variant="outline" 
-            onClick={fetchDestinations} 
-            disabled={loading}
-          >
-            <RefreshCcw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        </div>
-
-        {/* Vars Registry Section */}
-        <Card>
-          <CollapsibleCardHeader
-            title="Variables Registry"
-            isOpen={varsRegistryVisible}
-            onToggle={() => setVarsRegistryVisible(!varsRegistryVisible)}
-          />
-          {varsRegistryVisible && (
-            <CardContent>
-              <VarsRegistryCard />
-            </CardContent>
-          )}
-        </Card>
-
-        {/* Events Section */}
-        <SchedulerEventsPanel />
-
-        {/* Running Schedulers Section */}
-        <Card>
-          <CollapsibleCardHeader
-            title="Running Schedulers"
-            isOpen={runningSectionVisible}
-            onToggle={() => setRunningSectionVisible(!runningSectionVisible)}
-            count={destinations.filter(d => d.isRunning && !d.isPaused).length}
-          />
-          {runningSectionVisible && (
-            <CardContent>
-              <div className="grid gap-4">
-                {destinations
-                  .filter(d => d.isRunning && !d.isPaused)
-                  .map(destination => (
-                    <SchedulerCard
-                      key={destination.id}
-                      destination={destination}
-                      onToggle={handleToggleSchedule}
-                      onCreate={handleCreateSchedule}
-                      onStart={handleStartScheduler}
-                      onStop={handleStopScheduler}
-                      onUnload={handleUnloadSchedule}
-                      onEdit={handleEditSchedule}
-                      schedulerStatus={schedulerStatus}
-                      instructionQueue={instructionQueues[destination.id]}
-                      onToggleQueueView={() => {
-                        setShowInstructionQueue(prev => ({
-                          ...prev,
-                          [destination.id]: !prev[destination.id]
-                        }));
-                      }}
-                      showInstructionQueue={showInstructionQueue[destination.id] || false}
-                    />
-                  ))}
-              </div>
-            </CardContent>
-          )}
-        </Card>
-
-        {/* Paused Schedulers Section */}
-        <Card>
-          <CollapsibleCardHeader
-            title="Paused Schedulers"
-            isOpen={pausedSectionVisible}
-            onToggle={() => setPausedSectionVisible(!pausedSectionVisible)}
-            count={destinations.filter(d => d.isPaused).length}
-          />
-          {pausedSectionVisible && (
-            <CardContent>
-              <div className="grid gap-4">
-                {destinations
-                  .filter(d => d.isPaused)
-                  .map(destination => (
-                    <SchedulerCard
-                      key={destination.id}
-                      destination={destination}
-                      onToggle={handleToggleSchedule}
-                      onCreate={handleCreateSchedule}
-                      onStart={handleStartScheduler}
-                      onStop={handleStopScheduler}
-                      onUnload={handleUnloadSchedule}
-                      onEdit={handleEditSchedule}
-                      schedulerStatus={schedulerStatus}
-                      instructionQueue={instructionQueues[destination.id]}
-                      onToggleQueueView={() => {
-                        setShowInstructionQueue(prev => ({
-                          ...prev,
-                          [destination.id]: !prev[destination.id]
-                        }));
-                      }}
-                      showInstructionQueue={showInstructionQueue[destination.id] || false}
-                    />
-                  ))}
-              </div>
-            </CardContent>
-          )}
-        </Card>
-
-        {/* Stopped Schedulers Section */}
-        <Card>
-          <CollapsibleCardHeader
-            title="Stopped Schedulers"
-            isOpen={stoppedSectionVisible}
-            onToggle={() => setStoppedSectionVisible(!stoppedSectionVisible)}
-            count={destinations.filter(d => !d.isRunning && !d.isPaused).length}
-          />
-          {stoppedSectionVisible && (
-            <CardContent>
-              <div className="grid gap-4">
-                {destinations
-                  .filter(d => !d.isRunning && !d.isPaused)
-                  .map(destination => (
-                    <SchedulerCard
-                      key={destination.id}
-                      destination={destination}
-                      onToggle={handleToggleSchedule}
-                      onCreate={handleCreateSchedule}
-                      onStart={handleStartScheduler}
-                      onStop={handleStopScheduler}
-                      onUnload={handleUnloadSchedule}
-                      onEdit={handleEditSchedule}
-                      schedulerStatus={schedulerStatus}
-                      instructionQueue={instructionQueues[destination.id]}
-                      onToggleQueueView={() => {
-                        setShowInstructionQueue(prev => ({
-                          ...prev,
-                          [destination.id]: !prev[destination.id]
-                        }));
-                      }}
-                      showInstructionQueue={showInstructionQueue[destination.id] || false}
-                    />
-                  ))}
-              </div>
-            </CardContent>
-          )}
-        </Card>
-
-        {/* Schema Edit Modal */}
-        {schemaEditModalOpen && schemaEditData && (
-          <SchemaEditModal
-            open={schemaEditModalOpen}
-            onOpenChange={setSchemaEditModalOpen}
-            onSave={handleSchemaEditSave}
-            destination={schemaEditData.destination}
-            schema={schemaEditData.schema}
-            initialData={schemaEditData.initialData}
-            saveEndpoint={schemaEditData.saveEndpoint}
-            saveMethod={schemaEditData.saveMethod}
-            scriptsDirectory="routes/scheduler/scripts"
-          />
-        )}
-      </div>
-    </MainLayout>
-  );
-};
-
-interface SchedulerCardProps {
-  destination: Destination;
-  onToggle: (destinationId: string, currentlyPaused: boolean) => Promise<void>;
-  onCreate: (destinationId: string) => Promise<void>;
-  onStart: (destinationId: string) => Promise<void>;
-  onStop: (destinationId: string) => Promise<void>;
-  onUnload: (destinationId: string) => Promise<void>;
-  onEdit: (destinationId: string, layer: number) => Promise<void>;
-  schedulerStatus?: Record<string, SchedulerStatus>;
-  instructionQueue?: InstructionQueueResponse;
-  showInstructionQueue?: boolean;
-  onToggleQueueView: () => void;
-}
-
-const SchedulerCard: React.FC<SchedulerCardProps> = ({ 
-  destination, 
-  onToggle, 
-  onCreate, 
-  onStart, 
-  onStop, 
-  onUnload,
-  onEdit,
-  schedulerStatus,
-  instructionQueue,
-  showInstructionQueue,
-  onToggleQueueView
-}) => {
-  const [showLogs, setShowLogs] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [activeTab, setActiveTab] = useState<'context' | 'script'>('context');
-  const [logs, setLogs] = useState<string[]>(destination.logs || []);
-  const [logUpdatesPaused, setLogUpdatesPaused] = useState(false);
-  const logsContainerRef = useRef<HTMLDivElement>(null);
-  const selectionStateRef = useRef<{
-    start: number | null;
-    end: number | null;
-    text: string | null;
-  }>({ start: null, end: null, text: null });
-  const { toast } = useToast();
-  
-  // Extract event triggers from all schedule layers
-  const eventTriggers = useMemo(() => {
-    if (!destination.scheduleStack || destination.scheduleStack.length === 0) {
-      return [];
-    }
-    
-    // Extract event triggers from each layer and combine them
-    const allTriggers = new Set<string>();
-    destination.scheduleStack.forEach(layer => {
-      const layerTriggers = extractEventTriggers(layer);
-      layerTriggers.forEach(trigger => allTriggers.add(trigger));
-    });
-    
-    return Array.from(allTriggers);
-  }, [destination.scheduleStack]);
-  
-  // Handle throwing an event
-  const handleThrowEvent = async (eventKey: string) => {
-    try {
-      await apiService.throwEvent({
-        event: eventKey,
-        scope: destination.id,
-        ttl: "60s"
-      });
-      
-      toast({
-        title: 'Event Triggered',
-        description: `Event "${eventKey}" sent to "${destination.name}"`,
-      });
-    } catch (error) {
-      console.error('Error throwing event:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to trigger event',
-        variant: 'destructive',
-      });
-    }
-  };
-  
-  // Debug logs
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`SchedulerCard for ${destination.name} (${destination.id}):`);
-      console.log(`- isRunning: ${destination.isRunning}`);
-      console.log(`- isPaused: ${destination.isPaused}`);
-      console.log(`- Has scheduleStack: ${destination.scheduleStack ? destination.scheduleStack.length : 0} items`);
-      console.log(`- Has contextStack: ${destination.contextStack ? destination.contextStack.length : 0} items`);
-      if (destination.contextStack && destination.contextStack.length > 0) {
-        console.log(`- First context:`, destination.contextStack[0]);
-      }
-    }
-  }, [destination]);
-  
-  // Set up polling for logs when they're visible
-  useEffect(() => {
-    // Don't poll if logs aren't visible
-    if (!showLogs) return;
-    
-    // Function to fetch the latest logs
-    const fetchLogs = async () => {
-      try {
-        const logs = await apiService.getSchedulerLogs(destination.id);
-        if (logs && logs.log) {
-          // Save any active selection before updating the logs
-          if (logsContainerRef.current && window.getSelection) {
-            const selection = window.getSelection();
-            if (selection && selection.toString().length > 0) {
-              // User has text selected - don't update the display
-              if (!logUpdatesPaused) {
-                setLogUpdatesPaused(true);
-              }
-              return;
-            } else {
-              // No selection - safe to update
-              if (logUpdatesPaused) {
-                setLogUpdatesPaused(false);
-              }
-              setLogs(logs.log);
-            }
-          } else {
-            // No ref or selection API - just update
-            setLogs(logs.log);
-          }
-        }
-      } catch (error) {
-        console.error(`Error fetching logs for ${destination.id}:`, error);
-      }
-    };
-    
-    // Fetch logs immediately when becoming visible
-    fetchLogs();
-    
-    // Set up polling interval (5 seconds)
-    const intervalId = setInterval(fetchLogs, 5000);
-    
-    // Clean up interval when component unmounts or logs hidden
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [showLogs, destination.id, logUpdatesPaused]); // Added logUpdatesPaused dependency
-  
-  // When destination.logs updates from parent (e.g., on manual refresh), update our local state
-  useEffect(() => {
-    setLogs(destination.logs || []);
-  }, [destination.logs]);
-  
-  // Scroll logs to bottom whenever they change or become visible
-  useEffect(() => {
-    if (showLogs && logsContainerRef.current) {
-      // Use requestAnimationFrame to ensure DOM has updated before scrolling
-      requestAnimationFrame(() => {
-        if (logsContainerRef.current) {
-          logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
-        }
-      });
-    }
-  }, [logs, showLogs]);
-  
-  // Display status more prominently
-  const statusBadge = () => {
-    if (destination.isPaused) {
-      return (
-        <Badge variant="outline" className="px-3 py-1 bg-amber-100">
-          Paused
-        </Badge>
-      );
-    } else if (destination.isRunning) {
-      return (
-        <Badge variant="default" className="px-3 py-1">
-          Running
-        </Badge>
-      );
-    } else {
-      return (
-        <Badge variant="secondary" className="px-3 py-1">
-          Stopped
-        </Badge>
-      );
-    }
-  };
-
-  // Format next scheduled action time
-  const formatNextAction = (nextAction: NextAction | null) => {
-    if (!nextAction || !nextAction.has_next_action) {
-      return <p className="text-sm text-muted-foreground">No upcoming actions</p>;
-    }
-
-    return (
-      <div className="text-sm border-l-4 border-primary pl-2 mt-2">
-        <p className="font-medium">Next action: {nextAction.next_time}</p>
-        <p className="text-muted-foreground">{nextAction.description}</p>
-        {nextAction.minutes_until_next !== null && (
-          <p className="text-xs">
-            {/* Use the pre-formatted time_until_display from the backend if available */}
-            {nextAction.time_until_display || 
-              // Fallback to calculate it here if not available
-              (nextAction.minutes_until_next < 60 
-                ? `${Math.round(nextAction.minutes_until_next)} minutes from now`
-                : `${Math.floor(nextAction.minutes_until_next / 60)}h ${Math.round(nextAction.minutes_until_next % 60)}m from now`)
-            }
-          </p>
-        )}
-      </div>
-    );
-  };
-
-  // Render context variables
-  const renderContextVariables = (context: any) => {
-    if (!context) {
-      return <p className="text-sm text-muted-foreground">No context available</p>;
-    }
-    
-    if (!context.vars) {
-      return <p className="text-sm text-muted-foreground">No variables in context</p>;
-    }
-    
-    return (
-      <div className="bg-accent/10 p-2 rounded-md">
-        {Object.keys(context.vars).length === 0 ? (
-          <p className="text-sm text-muted-foreground mb-2">No variables in context</p>
-        ) : (
-          <>
-            <h5 className="text-sm font-medium mb-2">Variables:</h5>
-            <ul className="text-xs space-y-1">
-              {Object.entries(context.vars).map(([key, value]) => (
-                <li key={key} className="flex items-start">
-                  <span className="font-semibold mr-2">{key}:</span>
-                  <span className="text-muted-foreground whitespace-pre-wrap break-all">
-                    {typeof value === 'object' 
-                      ? JSON.stringify(value, null, 2)
-                      : String(value)
-                    }
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-        {context.last_generated && (
-          <div className={Object.keys(context.vars).length === 0 ? "" : "mt-2"}>
-            <h5 className="text-sm font-medium">Last Generated:</h5>
-            <p className="text-xs text-muted-foreground">{context.last_generated}</p>
-          </div>
-        )}
-      </div>
-    );
-  };
-  
-  // Handle state updates after script edits
-  const handleScriptEdit = async (layer: number) => {
-    try {
-      // Call the parent's edit handler
-      await onEdit(destination.id, layer);
-      
-      // After successful edit, refresh the destination's data
-      if (window.fetchDestinations) {
-        await window.fetchDestinations();
-      }
-    } catch (error) {
-      console.error('Error editing script:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to edit script',
-        variant: 'destructive',
-      });
-    }
-  };
-  
-  // Add a render function for the instruction queue
-  const renderInstructionQueue = () => {
-    if (!instructionQueue || instructionQueue.queue_size === 0) {
-      return <div className="text-sm text-muted-foreground p-2">No active instructions in queue</div>;
-    }
-
-    return (
-      <div className="space-y-2">
-        {instructionQueue.instructions.map((instruction, index) => (
-          <div 
-            key={index} 
-            className={`p-2 rounded border ${instruction.urgent ? 'border-red-500 bg-red-50 dark:bg-red-950' : 
-              instruction.important ? 'border-amber-500 bg-amber-50 dark:bg-amber-950' : 
-              'border-gray-200 dark:border-gray-700'}`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="font-medium">
-                {instruction.action}
-                {instruction.urgent && (
-                  <Badge variant="destructive" className="ml-2">Urgent</Badge>
-                )}
-                {instruction.important && !instruction.urgent && (
-                  <Badge variant="secondary" className="ml-2">Important</Badge>
-                )}
-              </div>
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {Object.entries(instruction.details).map(([key, value]) => (
-                <div key={key} className="mt-1">
-                  <span className="font-medium">{key}: </span>
-                  <span className="text-xs">{typeof value === 'string' && value.length > 30 ? 
-                    value.substring(0, 30) + '...' : 
-                    String(value)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  return (
-    <Card className="shadow-md">
-      <CardHeader className="bg-muted/30">
-        <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center space-x-2">
-            <span>{destination.name}</span>
-            {statusBadge()}
-            
-            {/* Event trigger buttons - only show when scheduler is running */}
-            {destination.isRunning && eventTriggers.length > 0 && (
-              <div className="flex flex-wrap gap-1 ml-2">
-                {eventTriggers.map(trigger => (
-                  <Button
-                    key={trigger}
-                    size="sm"
-                    variant="outline"
-                    className="h-6 px-2 text-xs bg-amber-50 hover:bg-amber-100 border-amber-200"
-                    onClick={() => handleThrowEvent(trigger)}
-                    title={`Trigger "${trigger}" event`}
-                  >
-                    <Zap className="h-3 w-3 mr-1 text-amber-500" />
-                    {trigger}
-                  </Button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              onClick={() => onCreate(destination.id)}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Create
-            </Button>
-            {destination.isPaused ? (
-              <Button
-                size="sm"
-                variant="default"
-                onClick={() => onToggle(destination.id, true)}
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Resume
-              </Button>
-            ) : destination.isRunning ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onToggle(destination.id, false)}
-              >
-                <Pause className="h-4 w-4 mr-2" />
-                Pause
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="default"
-                onClick={() => onStart(destination.id)}
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Start
-              </Button>
-            )}
-            {(destination.isRunning || destination.isPaused) && (
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => onStop(destination.id)}
-              >
-                <X className="h-4 w-4 mr-2" />
-                Stop
-              </Button>
-            )}
-          </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="mt-4">
-        {/* Next Scheduled Action */}
-        {destination.isRunning && (
-          <div className="mb-4 p-3 bg-accent/30 rounded-md">
-            <h4 className="text-sm font-medium mb-1">Status</h4>
-            {formatNextAction(schedulerStatus?.[destination.id]?.next_action || null)}
-          </div>
-        )}
-      
-        {/* Empty State Message */}
-        {(!destination.scheduleStack || destination.scheduleStack.length === 0) && (
-          <div className="text-center py-4 text-muted-foreground">
-            <p>No schedules found for this destination.</p>
-            <p className="text-sm mt-2">Click "Create" to add a schedule or "Start" to create a default schedule.</p>
-          </div>
-        )}
-        
-        {/* Schedule Stack - Only show if we have schedules */}
-        {destination.scheduleStack && destination.scheduleStack.length > 0 && (
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setShowSchedule(!showSchedule)}
-              >
-                {showSchedule ? 'Hide details' : 'Show details'}
-              </Button>
-              {showSchedule && destination.scheduleStack && destination.scheduleStack.length > 0 && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => onUnload(destination.id)}
-                >
-                  <ArrowDownToLine className="h-4 w-4 mr-2" />
-                  Unload Top Schedule
-                </Button>
-              )}
-            </div>
-            
-            {showSchedule && (
-              <div className="bg-muted/30 p-4 rounded-lg">
-                {destination.scheduleStack && destination.scheduleStack.length > 0 ? (
-                  <div className="space-y-4">
-                    {destination.scheduleStack.map((layer, index) => (
-                      <div key={index} className="border rounded-lg p-4 bg-card">
-                        <div className="flex justify-between items-center mb-2">
-                          <h4 className="font-semibold">Layer {index + 1}</h4>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleScriptEdit(index)}
-                            >
-                              Edit
-                            </Button>
-                            <SetVarsButton
-                              destinationId={destination.id}
-                              contextVars={destination.contextStack && destination.contextStack[index] ? destination.contextStack[index].vars || {} : {}}
-                              onVarsSaved={(updatedVars) => {
-                                // Update the context stack with the new vars
-                                if (destination.contextStack && destination.contextStack[index]) {
-                                  destination.contextStack[index].vars = updatedVars;
-                                }
-                                // Force a refresh of the destinations to get the latest state
-                                if (window.fetchDestinations) {
-                                  window.fetchDestinations();
-                                }
-                                toast({
-                                  title: "Success",
-                                  description: "Variable saved"
-                                });
-                              }}
-                            />
-                          </div>
-                        </div>
-                        
-                        {/* Tabs for Context and Script */}
-                        <div className="border-b mb-4">
-                          <div className="flex space-x-2">
-                            <button
-                              className={`pb-2 px-1 text-sm transition-colors relative ${
-                                activeTab === 'context' 
-                                  ? 'font-medium text-primary' 
-                                  : 'text-muted-foreground hover:text-foreground'
-                              }`}
-                              onClick={() => setActiveTab('context')}
-                            >
-                              Context
-                              {activeTab === 'context' && (
-                                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-                              )}
-                            </button>
-                            <button
-                              className={`pb-2 px-1 text-sm transition-colors relative ${
-                                activeTab === 'script' 
-                                  ? 'font-medium text-primary' 
-                                  : 'text-muted-foreground hover:text-foreground'
-                              }`}
-                              onClick={() => setActiveTab('script')}
-                            >
-                              Script
-                              {activeTab === 'script' && (
-                                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                        
-                        {/* Tab content */}
-                        {activeTab === 'context' && (
-                          <div className="mb-4">
-                            {destination.contextStack && destination.contextStack[index] ? (
-                              renderContextVariables(destination.contextStack[index])
-                            ) : (
-                              <p className="text-sm text-muted-foreground">No context available for this schedule layer</p>
-                            )}
-                          </div>
-                        )}
-                        
-                        {activeTab === 'script' && (
-                          <pre className="text-xs bg-muted p-2 rounded-md overflow-auto max-h-40">
-                            {JSON.stringify(layer, null, 2)}
-                          </pre>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">No schedule stack found</p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Logs - Always show the option to view logs */}
-        <div>
-          <div className="flex items-center mb-2 gap-2">
+      <div className={isMobile ? "-mx-4" : ""}>
+        <div className={`mx-auto ${
+          isMobile 
+            ? 'px-1 pb-20 max-w-full space-y-2' 
+            : 'px-4 pb-24 max-w-7xl space-y-4'
+        }`}>
+          {/* Page Header with Refresh Button */}
+          <div className="flex justify-between items-center mb-4 px-3">
+            <h1 className="text-2xl sm:text-3xl font-bold">Schedulers</h1>
             <Button 
               variant="outline" 
-              size="sm" 
-              onClick={() => setShowLogs(!showLogs)}
+              onClick={fetchDestinations} 
+              disabled={loading}
+              size={isMobile ? "sm" : "default"}
             >
-              {showLogs ? 'Hide Logs' : 'Show Logs'}
+              <RefreshCcw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              {!isMobile && 'Refresh'}
             </Button>
-            
-            {showLogs && logUpdatesPaused && (
-              <Badge variant="outline" className="bg-yellow-100">
-                Updates paused during selection
-              </Badge>
-            )}
           </div>
-          
-          {showLogs && (
-            <div 
-              ref={logsContainerRef}
-              className="bg-black text-green-400 p-4 rounded-lg font-mono text-xs overflow-auto max-h-60"
-              onMouseUp={() => {
-                // Check if text is selected
-                const selection = window.getSelection();
-                if (selection && selection.toString().length > 0) {
-                  setLogUpdatesPaused(true);
-                } else {
-                  setLogUpdatesPaused(false);
-                }
-              }}
-              onClick={(e) => {
-                // If user clicks without dragging, and not on selected text, unpause
-                if (window.getSelection()?.toString().length === 0) {
-                  setLogUpdatesPaused(false);
-                }
-              }}
-            >
-              {logs && logs.length > 0 ? (
-                logs.map((log, index) => (
-                  <div key={index}>{log}</div>
-                ))
-              ) : (
-                <p>No logs available</p>
-              )}
-            </div>
-          )}
-        </div>
 
-        {/* Instruction Queue */}
-        <div>
-          <div 
-            className="flex items-center justify-between p-2 hover:bg-muted/50 rounded cursor-pointer"
-            onClick={onToggleQueueView}
-          >
-            <div className="font-medium flex items-center gap-2">
-              <List className="h-4 w-4" />
-              Instruction Queue 
-              {instructionQueue && instructionQueue.queue_size > 0 && (
-                <Badge variant="secondary">
-                  {instructionQueue.queue_size}
-                </Badge>
-              )}
-            </div>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-              {showInstructionQueue ? <ChevronDown /> : <ChevronRight />}
-            </Button>
-          </div>
-          
-          {showInstructionQueue && (
-            <div className="border rounded p-2 mt-1">
-              {renderInstructionQueue()}
-            </div>
+          {/* Vars Registry Section */}
+          <Card>
+            <HierarchicalHeader
+              title="Variables Registry"
+              level={1}
+              isOpen={varsRegistryVisible}
+              onToggle={() => setVarsRegistryVisible(!varsRegistryVisible)}
+            />
+            {varsRegistryVisible && (
+              <HierarchicalContent level={1}>
+                <VarsRegistryCard />
+              </HierarchicalContent>
+            )}
+          </Card>
+
+          {/* Events Section */}
+          <Card>
+            <HierarchicalHeader
+              title="All Scheduler Events"
+              level={1}
+              isOpen={eventsSectionVisible}
+              onToggle={() => setEventsSectionVisible(!eventsSectionVisible)}
+              count={eventCount}
+            />
+            {eventsSectionVisible && (
+              <HierarchicalContent level={1}>
+                <SchedulerEventsPanel onEventCountChange={setEventCount} />
+              </HierarchicalContent>
+            )}
+          </Card>
+
+          {/* Running Schedulers Section */}
+          <Card>
+            <HierarchicalHeader
+              title="Running Schedulers"
+              level={1}
+              isOpen={runningSectionVisible}
+              onToggle={() => setRunningSectionVisible(!runningSectionVisible)}
+              count={destinations.filter(d => d.isRunning && !d.isPaused).length}
+            />
+            {runningSectionVisible && (
+              <HierarchicalContent level={1}>
+                <div className={`grid ${isMobile ? 'gap-2' : 'gap-4'}`}>
+                  {destinations
+                    .filter(d => d.isRunning && !d.isPaused)
+                    .map(destination => (
+                      <SchedulerCard
+                        key={destination.id}
+                        destination={destination}
+                        onToggle={handleToggleSchedule}
+                        onCreate={handleCreateSchedule}
+                        onStart={handleStartScheduler}
+                        onStop={handleStopScheduler}
+                        onUnload={handleUnloadSchedule}
+                        onEdit={handleEditSchedule}
+                        schedulerStatus={schedulerStatus}
+                        instructionQueue={instructionQueues[destination.id]}
+                        onToggleQueueView={() => {
+                          setShowInstructionQueue(prev => ({
+                            ...prev,
+                            [destination.id]: !prev[destination.id]
+                          }));
+                        }}
+                        showInstructionQueue={showInstructionQueue[destination.id] || false}
+                        isMobile={isMobile}
+                      />
+                    ))}
+                </div>
+              </HierarchicalContent>
+            )}
+          </Card>
+
+          {/* Paused Schedulers Section */}
+          <Card>
+            <HierarchicalHeader
+              title="Paused Schedulers"
+              level={1}
+              isOpen={pausedSectionVisible}
+              onToggle={() => setPausedSectionVisible(!pausedSectionVisible)}
+              count={destinations.filter(d => d.isPaused).length}
+            />
+            {pausedSectionVisible && (
+              <HierarchicalContent level={1}>
+                <div className={`grid ${isMobile ? 'gap-2' : 'gap-4'}`}>
+                  {destinations
+                    .filter(d => d.isPaused)
+                    .map(destination => (
+                      <SchedulerCard
+                        key={destination.id}
+                        destination={destination}
+                        onToggle={handleToggleSchedule}
+                        onCreate={handleCreateSchedule}
+                        onStart={handleStartScheduler}
+                        onStop={handleStopScheduler}
+                        onUnload={handleUnloadSchedule}
+                        onEdit={handleEditSchedule}
+                        schedulerStatus={schedulerStatus}
+                        instructionQueue={instructionQueues[destination.id]}
+                        onToggleQueueView={() => {
+                          setShowInstructionQueue(prev => ({
+                            ...prev,
+                            [destination.id]: !prev[destination.id]
+                          }));
+                        }}
+                        showInstructionQueue={showInstructionQueue[destination.id] || false}
+                        isMobile={isMobile}
+                      />
+                    ))}
+                </div>
+              </HierarchicalContent>
+            )}
+          </Card>
+
+          {/* Stopped Schedulers Section */}
+          <Card>
+            <HierarchicalHeader
+              title="Stopped Schedulers"
+              level={1}
+              isOpen={stoppedSectionVisible}
+              onToggle={() => setStoppedSectionVisible(!stoppedSectionVisible)}
+              count={destinations.filter(d => !d.isRunning && !d.isPaused).length}
+            />
+            {stoppedSectionVisible && (
+              <HierarchicalContent level={1}>
+                <div className={`grid ${isMobile ? 'gap-2' : 'gap-4'}`}>
+                  {destinations
+                    .filter(d => !d.isRunning && !d.isPaused)
+                    .map(destination => (
+                      <SchedulerCard
+                        key={destination.id}
+                        destination={destination}
+                        onToggle={handleToggleSchedule}
+                        onCreate={handleCreateSchedule}
+                        onStart={handleStartScheduler}
+                        onStop={handleStopScheduler}
+                        onUnload={handleUnloadSchedule}
+                        onEdit={handleEditSchedule}
+                        schedulerStatus={schedulerStatus}
+                        instructionQueue={instructionQueues[destination.id]}
+                        onToggleQueueView={() => {
+                          setShowInstructionQueue(prev => ({
+                            ...prev,
+                            [destination.id]: !prev[destination.id]
+                          }));
+                        }}
+                        showInstructionQueue={showInstructionQueue[destination.id] || false}
+                        isMobile={isMobile}
+                      />
+                    ))}
+                </div>
+              </HierarchicalContent>
+            )}
+          </Card>
+
+          {/* Schema Edit Modal */}
+          {schemaEditModalOpen && schemaEditData && (
+            <SchemaEditModal
+              open={schemaEditModalOpen}
+              onOpenChange={setSchemaEditModalOpen}
+              onSave={handleSchemaEditSave}
+              destination={schemaEditData.destination}
+              schema={schemaEditData.schema}
+              initialData={schemaEditData.initialData}
+              saveEndpoint={schemaEditData.saveEndpoint}
+              saveMethod={schemaEditData.saveMethod}
+              scriptsDirectory="routes/scheduler/scripts"
+            />
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </MainLayout>
   );
 };
 
