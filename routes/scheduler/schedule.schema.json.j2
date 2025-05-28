@@ -328,18 +328,34 @@
               "enum": {{ ALL_WORKFLOWS | default([null]) | tojson }},
               "description": "Optional: select a predefined generation workflow."
             },
+            "publish": {
+              "type": "boolean",
+              "title": "Publish to Display",
+              "description": "Whether to display the generated image on the output device. If false, the image is saved to the bucket but not shown.",
+              "default": true
+            },
+            "output_var": {
+              "type": "string",
+              "title": "Output Variable",
+              "description": "Optional: variable name to store the generated image path(s). If batch > 1, stores a list of paths."
+            },
             "history_var": {
               "type": "string",
               "title": "History Variable",
               "description": "Optional: variable name where operation history will be stored. Each entry contains timestamp, prompt, and generation results."
             },
-            "dontwait": { "$ref": "#/definitions/dontWaitProp" }
+            "dontwait": { "$ref": "#/definitions/dontWaitProp" },
+            "additionalProperties": {
+              "type": "string",
+              "title": "Additional Properties",
+              "description": "Additional parameters to pass to the generation service. Format: 'param_name=value' (e.g. 'height=1024,width=1024,batch=4'). Values can be numbers, strings, booleans, etc."
+            }
           },
           "required": [
             "action",
             "input"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "title": "Reason",
@@ -361,13 +377,9 @@
               "description": "Optional: The input text to process. Supports Jinja expressions like {{ variable_name }}."
             },
             "image_inputs": {
-              "type": "array",
+              "type": "string",
               "title": "Image Inputs",
-              "description": "Optional: Array of image paths or variables containing images to include in the reasoning.",
-              "items": {
-                "type": "string",
-                "description": "Image path or variable name. Supports Jinja expressions."
-              }
+              "description": "Name of a variable containing image path(s) to reason about."
             },
             "reasoner": {
               "type": "string",
@@ -787,6 +799,47 @@
           },
           "required": [
             "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Publish Images",
+          "description": "Publish images from variables to output devices.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "publish",
+              "default": "publish",
+              "description": "Fixed to 'publish' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "source": {
+              "type": "string",
+              "title": "Image Source",
+              "description": "Image path(s) to publish. Supports Jinja expressions. Can be a single path or a list of paths."
+            },
+            "targets": {
+              "type": "array",
+              "title": "Target Destinations",
+              "description": "List of destination IDs to publish to. Defaults to current destination if not specified.",
+              "items": {
+                "type": "string",
+                "enum": {{ ALL_DESTINATIONS | default([]) | tojson }}
+              }
+            },
+            "silent": {
+              "type": "boolean",
+              "title": "Silent Mode",
+              "description": "If true, suppress overlay display when publishing.",
+              "default": false
+            }
+          },
+          "required": [
+            "action",
+            "source"
           ],
           "additionalProperties": false
         }

@@ -99,6 +99,7 @@ def publish_to_destination(
     blank: bool = False,
     cross_bucket_mode: bool = False,
     batch_id: str | None = None,
+    update_published: bool = True,
 ) -> dict:
     """
     Publish an image to a destination, optionally saving to a bucket.
@@ -112,6 +113,7 @@ def publish_to_destination(
         blank: If True, display blank screen instead of source image
         cross_bucket_mode: If True, use cross-bucket URL format with /output/<id>.<ext>
         batch_id: Optional batch ID for the publish operation
+        update_published: If False, save to bucket but don't update the published pointer
 
     Returns:
         dict with success status and optional error message
@@ -141,7 +143,8 @@ def publish_to_destination(
                 skip_bucket=True,
                 silent=True,
                 cross_bucket_mode=False,
-                batch_id=batch_id
+                batch_id=batch_id,
+                update_published=update_published
             )
             if result["success"]:
                 _update_published_info(publish_destination_id, None, None)
@@ -234,7 +237,8 @@ def publish_to_destination(
                                 skip_bucket=skip_bucket,
                                 silent=silent,
                                 cross_bucket_mode=cross_bucket_mode or True,  # URL sources are like cross-bucket
-                                batch_id=batch_id
+                                batch_id=batch_id,
+                                update_published=update_published
                             )
                 
                 # If source comes from a full URL that contains buckets/raw/
@@ -256,7 +260,8 @@ def publish_to_destination(
                             skip_bucket=skip_bucket,
                             silent=silent,
                             cross_bucket_mode=cross_bucket_mode or True,  # URL sources are like cross-bucket
-                            batch_id=batch_id
+                            batch_id=batch_id,
+                            update_published=update_published
                         )
 
                 # If we get here, we need to download the remote URL
@@ -329,7 +334,8 @@ def publish_to_destination(
                     skip_bucket=skip_bucket,
                     silent=silent,
                     cross_bucket_mode=cross_bucket_mode or True,  # URL sources are like cross-bucket
-                    batch_id=batch_id
+                    batch_id=batch_id,
+                    update_published=update_published
                 )
                 
                 # Clean up the temporary file
@@ -353,7 +359,8 @@ def publish_to_destination(
                 skip_bucket=skip_bucket,
                 silent=silent,
                 cross_bucket_mode=cross_bucket_mode,
-                batch_id=batch_id
+                batch_id=batch_id,
+                update_published=update_published
             )
             
             return result
@@ -513,6 +520,7 @@ def _publish_to_destination(
     silent: bool,
     cross_bucket_mode: bool = False,
     batch_id: str | None = None,
+    update_published: bool = True,
 ) -> dict:
     """Internal helper for publish_to_destination."""
     try:
@@ -575,16 +583,19 @@ def _publish_to_destination(
             
             debug(f"Same-bucket publishing - source file is already in place at {display_path}")
             
-            direct_output_path = base_output_dir / f"{dest['id']}{file_extension}"
-            debug(f"Same-bucket publishing - also copying to direct output path: {direct_output_path}")
-            
-            try:
-                shutil.copy2(source_filepath, direct_output_path)
-                direct_output_path.touch()
-            except Exception as e:
-                error(f"Failed to copy to direct output path: {e}")
+            # Only copy to direct output path if we're updating the published pointer
+            if update_published:
+                direct_output_path = base_output_dir / f"{dest['id']}{file_extension}"
+                debug(f"Same-bucket publishing - also copying to direct output path: {direct_output_path}")
+                
+                try:
+                    shutil.copy2(source_filepath, direct_output_path)
+                    direct_output_path.touch()
+                except Exception as e:
+                    error(f"Failed to copy to direct output path: {e}")
         
-        if source_filepath != display_path:
+        # Only copy to display path if we're updating the published pointer
+        if update_published and source_filepath != display_path:
             display_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source_filepath, display_path)
             display_path.touch()
@@ -607,17 +618,19 @@ def _publish_to_destination(
                     
         publish_time = datetime.utcnow().isoformat() + "Z"
         
-        _record_publish(
-            bucket=publish_destination_id,
-            filename=bucket_filename or source_filepath.name, 
-            when=publish_time,
-            source_metadata=effective_metadata,
-            cross_bucket_mode=cross_bucket_mode,
-            file_extension=file_extension
-        )
+        # Only update the published pointer if requested
+        if update_published:
+            _record_publish(
+                bucket=publish_destination_id,
+                filename=bucket_filename or source_filepath.name, 
+                when=publish_time,
+                source_metadata=effective_metadata,
+                cross_bucket_mode=cross_bucket_mode,
+                file_extension=file_extension
+            )
 
-        if not silent and effective_metadata:
-            _send_overlay_prompt(publish_destination_id, effective_metadata)
+            if not silent and effective_metadata:
+                _send_overlay_prompt(publish_destination_id, effective_metadata)
 
         return {
             "success": True,

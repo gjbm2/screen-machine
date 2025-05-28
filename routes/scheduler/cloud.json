@@ -244,37 +244,11 @@
   "context_stack": [
     {
       "vars": {
-        "a_theme": "Resilient plants breaking through concrete in forgotten spaces",
-        "b_theme": "Floral community gardens in urban environments",
-        "style": "Elliott Erwitt-style humanistic photography, focusing on poignant moments and subtle humor",
-        "guidance": "Capture scenes of inspiration where nature flourishes within urban landscapes, using Erwitt\u2019s approach to highlight human-nature connections; ensure unique subject matter not presented in recent image history.",
+        "a_theme": "Shadows as echoes \u2014 the play of light leaving transient imprints of solid forms",
+        "b_theme": "Masks as vessels \u2014 capturing histories and personas through their design",
+        "style": "Caravaggio-inspired chiaroscuro painting, emphasizing the dramatic interplay between light and darkness",
+        "guidance": "Connect the themes by selecting diverse masks that embody distinct cultures or histories, and use strong contrasts to illuminate the transient nature of shadows, ensuring each shadow form and mask is unique from past imagery.",
         "history_var": [
-          {
-            "timestamp": "2025-05-24 08:06:31",
-            "type": "reason",
-            "reasoner": "theme_and_style",
-            "outputs": {
-              "a_theme": "Bears engaging in human leisure activities",
-              "b_theme": "Bears in natural habitats performing curious actions",
-              "style": "19th-century scientific illustration with a touch of humor",
-              "guidance": "For this theme-led approach, select individual bears and depict them either mimicking human leisure activities or showcasing behavior that appears intriguingly intelligent or unexpected. Utilize the 19th-century scientific illustration style to blend realism with a subtle comedic element, ensuring each image remains unique by considering recent image history."
-            },
-            "text_input": "Take as your inspiration Bear playing the piano...",
-            "explanation": "The request inspired a theme-led approach, focusing on the concept of 'Bears playing the piano' w..."
-          },
-          {
-            "timestamp": "2025-05-24 08:09:50",
-            "type": "reason",
-            "reasoner": "theme_and_style",
-            "outputs": {
-              "a_theme": "Serenade of the Urban Wilderness: Intersections",
-              "b_theme": "Serenade of the Urban Wilderness: Solitudes",
-              "style": "Pierre Bonnard's post-impressionist style with intimate vibrancy and color richness",
-              "guidance": "Select specific urban scenes where nature intersects city life such as overgrown parks or urban wildlife. For solitary aspects, depict isolated natural elements amidst urban encroachment. Use Bonnard's vibrant color palette and intimate composition style to explore these themes distinctly, ensuring diversity and originality by considering recent history."
-            },
-            "text_input": "Take as your inspiration Bear playing the piano...",
-            "explanation": "Theme-led approach based on 'Bear playing the piano' hinting at harmony and contrast between urba..."
-          },
           {
             "timestamp": "2025-05-24 08:10:48",
             "type": "reason",
@@ -505,6 +479,31 @@
             },
             "text_input": "Take as your inspiration Today's art theme is '...",
             "explanation": "STYLE-led: The focus on 'Hope Blooms' implies a photographic exploration of resilience and togeth..."
+          },
+          {
+            "timestamp": "2025-05-28 00:01:07",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "Mature oak trees in full bloom capturing their majestic proportions",
+              "b_theme": "Mythological scenes showcasing the Oak King as a symbol of growth and strength",
+              "style": "Art Nouveau style drawing inspiration from Alphonse Mucha\u2019s intricate and flowing designs",
+              "guidance": "Depict powerful, mature oaks during high summer alongside mythical portrayals of the Oak King, in Mucha's detailed and flowing Art Nouveau aesthetic; ensure new motifs and settings are distinct from recent gallery outputs."
+            },
+            "text_input": "Take as your inspiration Today\u2019s art theme: Ret...",
+            "explanation": "THEME-led because 'Return of the Oak King' is a concrete concept focusing on myth and natural sym..."
+          },
+          {
+            "timestamp": "2025-05-28 00:41:16",
+            "type": "reason",
+            "reasoner": "theme_and_style",
+            "outputs": {
+              "a_theme": "Masks as vessels \u2014 capturing histories and personas through their design",
+              "b_theme": "Shadows as echoes \u2014 the play of light leaving transient imprints of solid forms",
+              "style": "Caravaggio-inspired chiaroscuro painting, emphasizing the dramatic interplay between light and darkness",
+              "guidance": "Connect the themes by selecting diverse masks that embody distinct cultures or histories, and use strong contrasts to illuminate the transient nature of shadows, ensuring each shadow form and mask is unique from past imagery."
+            },
+            "text_input": "Take as your inspiration Theme: \"Sculptural Sil..."
           }
         ],
         "animation_on": "false",
@@ -648,15 +647,35 @@
               "inspiration": "Today's art theme is 'Hope Blooms: Celebrating Togetherness and Resilience.'"
             },
             "text_input": "Devise an inspiration for today\u2019s art theme. It..."
+          },
+          {
+            "timestamp": "2025-05-28 00:01:02",
+            "type": "reason",
+            "reasoner": "general_reasoner",
+            "outputs": {
+              "inspiration": "Today\u2019s art theme: Return of the Oak King. Draw inspiration from the mythical Oak King, ruler of summer, who symbolizes growth and strength. Celebrate the shift towards summer as nature blooms, with visuals of powerful oak trees and mythological motifs."
+            },
+            "text_input": "Devise an inspiration for today\u2019s art theme. It...",
+            "explanation": "The Oak King is a character in Celtic mythology, representing the light half of the year. As we a..."
+          },
+          {
+            "timestamp": "2025-05-28 00:41:10",
+            "type": "reason",
+            "reasoner": "general_reasoner",
+            "outputs": {
+              "inspiration": "Theme: \"Sculptural Silhouettes: Exploring Immortality Through Masks and Shadows\""
+            },
+            "text_input": "Devise an inspiration for today\u2019s art theme. It...",
+            "explanation": "May 28 is not associated with a specific holiday or major historic event in the UK. Therefore, I ..."
           }
         ],
-        "inspiration": "Today's art theme is 'Hope Blooms: Celebrating Togetherness and Resilience.'"
+        "inspiration": "Theme: \"Sculptural Silhouettes: Exploring Immortality Through Masks and Shadows\""
       },
       "publish_destination": "cloud"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-27T20:30:04.191111",
+  "last_updated": "2025-05-28T01:00:04.406712",
   "last_trigger_executions": {
     "bff3e8e7981d7694c270e89d94c0e410_2025-05-25_35": "2025-05-25T18:30:01.952529",
     "bff3e8e7981d7694c270e89d94c0e410_2025-05-25_36": "2025-05-25T19:00:00.815989",
@@ -756,7 +775,15 @@
     "bff3e8e7981d7694c270e89d94c0e410_2025-05-27_36": "2025-05-27T19:00:01.705175",
     "bff3e8e7981d7694c270e89d94c0e410_2025-05-27_37": "2025-05-27T19:30:00.433207",
     "bff3e8e7981d7694c270e89d94c0e410_2025-05-27_38": "2025-05-27T20:00:00.070223",
-    "bff3e8e7981d7694c270e89d94c0e410_2025-05-27_39": "2025-05-27T20:30:01.129214"
+    "bff3e8e7981d7694c270e89d94c0e410_2025-05-27_39": "2025-05-27T20:30:01.129214",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-05-27_40": "2025-05-27T21:00:00.183555",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-05-27_41": "2025-05-27T21:30:01.218603",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-05-27_42": "2025-05-27T22:00:01.126114",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-05-27_43": "2025-05-27T22:30:01.880998",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-05-27_44": "2025-05-27T23:00:01.789437",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-05-27_45": "2025-05-27T23:30:00.991583",
+    "92f765f04c5aeea59798bdd045e76ebe_2025-05-28": "2025-05-28T00:01:00.578466",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-05-28_0": "2025-05-28T01:00:01.350425"
   },
   "active_events": {
     "Juggle_themes": []
@@ -764,292 +791,6 @@
   "event_history": [
     {
       "key": "Juggle_themes",
-      "active_from": "2025-05-26T20:00:00.408365",
-      "expires": "2025-05-26T20:01:00.408365",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T20:00:00.408365",
-      "unique_id": "d370e598-2f0a-4ef7-ae5e-23edeb14d16c",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T20:00:02.403420"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T20:00:00.408365",
-      "expires": "2025-05-26T20:01:00.408365",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T20:00:00.408365",
-      "unique_id": "d370e598-2f0a-4ef7-ae5e-23edeb14d16c",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T20:00:02.403420"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T20:30:01.310429",
-      "expires": "2025-05-26T20:31:01.310429",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T20:30:01.310429",
-      "unique_id": "72e5988d-9289-4574-b058-1957adf74646",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T20:30:03.353376"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T20:30:01.310429",
-      "expires": "2025-05-26T20:31:01.310429",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T20:30:01.310429",
-      "unique_id": "72e5988d-9289-4574-b058-1957adf74646",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T20:30:03.353376"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T21:00:01.332085",
-      "expires": "2025-05-26T21:01:01.332085",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T21:00:01.332085",
-      "unique_id": "9e34cef5-a928-4c22-a14b-547a26feb3b4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T21:00:03.344130"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T21:00:01.332085",
-      "expires": "2025-05-26T21:01:01.332085",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T21:00:01.332085",
-      "unique_id": "9e34cef5-a928-4c22-a14b-547a26feb3b4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T21:00:03.344130"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T21:30:01.657438",
-      "expires": "2025-05-26T21:31:01.657438",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T21:30:01.657438",
-      "unique_id": "1c4399a0-51e4-49bf-bcb9-8e54476b9359",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T21:30:03.639782"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T21:30:01.657438",
-      "expires": "2025-05-26T21:31:01.657438",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T21:30:01.657438",
-      "unique_id": "1c4399a0-51e4-49bf-bcb9-8e54476b9359",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T21:30:03.639782"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T22:00:01.508119",
-      "expires": "2025-05-26T22:01:01.508119",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T22:00:01.508119",
-      "unique_id": "15ff662b-fc15-42ea-879e-211173e0c2a2",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T22:00:03.519530"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T22:00:01.508119",
-      "expires": "2025-05-26T22:01:01.508119",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T22:00:01.508119",
-      "unique_id": "15ff662b-fc15-42ea-879e-211173e0c2a2",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T22:00:03.519530"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T22:30:01.614386",
-      "expires": "2025-05-26T22:31:01.614386",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T22:30:01.614386",
-      "unique_id": "2a0b044c-49ad-4d00-8de4-575772031a28",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T22:30:03.686533"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T22:30:01.614386",
-      "expires": "2025-05-26T22:31:01.614386",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T22:30:01.614386",
-      "unique_id": "2a0b044c-49ad-4d00-8de4-575772031a28",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T22:30:03.686533"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T23:00:01.894330",
-      "expires": "2025-05-26T23:01:01.894330",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T23:00:01.894330",
-      "unique_id": "ef1932f0-ec6f-43c3-ae06-437e628ad3ab",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T23:00:03.972778"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T23:00:01.894330",
-      "expires": "2025-05-26T23:01:01.894330",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T23:00:01.894330",
-      "unique_id": "ef1932f0-ec6f-43c3-ae06-437e628ad3ab",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T23:00:03.972778"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T23:30:01.302424",
-      "expires": "2025-05-26T23:31:01.302424",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T23:30:01.302424",
-      "unique_id": "2fd80807-8471-4280-9067-777f29f14bd7",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T23:30:03.349166"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-26T23:30:01.302424",
-      "expires": "2025-05-26T23:31:01.302424",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T23:30:01.302424",
-      "unique_id": "2fd80807-8471-4280-9067-777f29f14bd7",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-26T23:30:03.349166"
-    },
-    {
-      "key": "Get_inspiration",
-      "active_from": "2025-05-27T00:01:01.603147",
-      "expires": "2025-05-27T00:02:01.603147",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-27T00:01:01.603147",
-      "unique_id": "1a04522d-723e-4115-ba28-b832f338884f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-27T00:01:03.632707"
-    },
-    {
-      "key": "Get_inspiration",
-      "active_from": "2025-05-27T00:01:01.603147",
-      "expires": "2025-05-27T00:02:01.603147",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-27T00:01:01.603147",
-      "unique_id": "1a04522d-723e-4115-ba28-b832f338884f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-27T00:01:03.632707"
-    },
-    {
-      "key": "Develop_theme",
-      "active_from": "2025-05-27T00:01:11.534866",
-      "expires": "2025-05-27T00:02:11.534866",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-27T00:01:11.534866",
-      "unique_id": "91277264-5c57-47d2-a9bf-ac479eecfbac",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-27T00:01:13.522774"
-    },
-    {
-      "key": "Develop_theme",
-      "active_from": "2025-05-27T00:01:11.534866",
-      "expires": "2025-05-27T00:02:11.534866",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-27T00:01:11.534866",
-      "unique_id": "91277264-5c57-47d2-a9bf-ac479eecfbac",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-27T00:01:13.522774"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-27T01:00:00.629719",
-      "expires": "2025-05-27T01:01:00.629719",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-27T01:00:00.629719",
-      "unique_id": "720797bb-8f72-48d6-80b8-acb85c13f638",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-27T01:00:02.659682"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-05-27T01:00:00.629719",
-      "expires": "2025-05-27T01:01:00.629719",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-27T01:00:00.629719",
-      "unique_id": "720797bb-8f72-48d6-80b8-acb85c13f638",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-05-27T01:00:02.659682"
-    },
-    {
-      "key": "Juggle_themes",
       "active_from": "2025-05-27T01:30:00.100364",
       "expires": "2025-05-27T01:31:00.100364",
       "display_name": null,
@@ -2061,6 +1802,292 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_cloud",
       "consumed_at": "2025-05-27T20:30:03.141324"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-27T21:00:00.215808",
+      "expires": "2025-05-27T21:01:00.215808",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T21:00:00.215808",
+      "unique_id": "612ab9c4-eaca-40ef-827c-27ee5fc6de5b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-27T21:00:02.208292"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-27T21:00:00.215808",
+      "expires": "2025-05-27T21:01:00.215808",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T21:00:00.215808",
+      "unique_id": "612ab9c4-eaca-40ef-827c-27ee5fc6de5b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-27T21:00:02.208292"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-27T21:30:01.249255",
+      "expires": "2025-05-27T21:31:01.249255",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T21:30:01.249255",
+      "unique_id": "c3dd0522-ed83-4d0f-bfb5-ffaf6edd15da",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-27T21:30:03.237320"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-27T21:30:01.249255",
+      "expires": "2025-05-27T21:31:01.249255",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T21:30:01.249255",
+      "unique_id": "c3dd0522-ed83-4d0f-bfb5-ffaf6edd15da",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-27T21:30:03.237320"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-27T22:00:01.137368",
+      "expires": "2025-05-27T22:01:01.137368",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T22:00:01.137368",
+      "unique_id": "534ae6e2-b1ef-48a0-8bef-5a7d83a0aa46",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-27T22:00:03.175626"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-27T22:00:01.137368",
+      "expires": "2025-05-27T22:01:01.137368",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T22:00:01.137368",
+      "unique_id": "534ae6e2-b1ef-48a0-8bef-5a7d83a0aa46",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-27T22:00:03.175626"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-27T22:30:01.897536",
+      "expires": "2025-05-27T22:31:01.897536",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T22:30:01.897536",
+      "unique_id": "b805148a-8179-43cf-980a-d21c8a3069d5",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-27T22:30:03.910511"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-27T22:30:01.897536",
+      "expires": "2025-05-27T22:31:01.897536",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T22:30:01.897536",
+      "unique_id": "b805148a-8179-43cf-980a-d21c8a3069d5",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-27T22:30:03.910511"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-27T23:00:01.838622",
+      "expires": "2025-05-27T23:01:01.838622",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T23:00:01.838622",
+      "unique_id": "0503cbde-3d0c-4801-b832-ee23b2a0337e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-27T23:00:03.790148"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-27T23:00:01.838622",
+      "expires": "2025-05-27T23:01:01.838622",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T23:00:01.838622",
+      "unique_id": "0503cbde-3d0c-4801-b832-ee23b2a0337e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-27T23:00:03.790148"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-27T23:30:01.005306",
+      "expires": "2025-05-27T23:31:01.005306",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T23:30:01.005306",
+      "unique_id": "af5b814d-5dc3-4e2e-a39b-d39278ea64e3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-27T23:30:03.064677"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-27T23:30:01.005306",
+      "expires": "2025-05-27T23:31:01.005306",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-27T23:30:01.005306",
+      "unique_id": "af5b814d-5dc3-4e2e-a39b-d39278ea64e3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-27T23:30:03.064677"
+    },
+    {
+      "key": "Get_inspiration",
+      "active_from": "2025-05-28T00:01:00.613172",
+      "expires": "2025-05-28T00:02:00.613172",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-28T00:01:00.613172",
+      "unique_id": "5061658b-7068-48d4-8fab-07c52e0aa96f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-28T00:01:02.585400"
+    },
+    {
+      "key": "Get_inspiration",
+      "active_from": "2025-05-28T00:01:00.613172",
+      "expires": "2025-05-28T00:02:00.613172",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-28T00:01:00.613172",
+      "unique_id": "5061658b-7068-48d4-8fab-07c52e0aa96f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-28T00:01:02.585400"
+    },
+    {
+      "key": "Develop_theme",
+      "active_from": "2025-05-28T00:01:04.851043",
+      "expires": "2025-05-28T00:02:04.851043",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-28T00:01:04.851043",
+      "unique_id": "2271f196-5c8e-40f6-b28b-0a99e49213a1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-28T00:01:06.895459"
+    },
+    {
+      "key": "Develop_theme",
+      "active_from": "2025-05-28T00:01:04.851043",
+      "expires": "2025-05-28T00:02:04.851043",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-28T00:01:04.851043",
+      "unique_id": "2271f196-5c8e-40f6-b28b-0a99e49213a1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-28T00:01:06.895459"
+    },
+    {
+      "key": "Get_inspiration",
+      "active_from": "2025-05-28T00:41:08.381486",
+      "expires": "2025-05-28T00:42:08.381486",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-28T00:41:08.381486",
+      "unique_id": "7876d839-da81-4c81-980f-a38294c88926",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-28T00:41:09.959153"
+    },
+    {
+      "key": "Get_inspiration",
+      "active_from": "2025-05-28T00:41:08.381486",
+      "expires": "2025-05-28T00:42:08.381486",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-28T00:41:08.381486",
+      "unique_id": "7876d839-da81-4c81-980f-a38294c88926",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-28T00:41:09.959153"
+    },
+    {
+      "key": "Develop_theme",
+      "active_from": "2025-05-28T00:41:14.525631",
+      "expires": "2025-05-28T00:42:14.525631",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-28T00:41:14.525631",
+      "unique_id": "536d315a-48f3-4638-823c-f78500b3c3ef",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-28T00:41:16.552325"
+    },
+    {
+      "key": "Develop_theme",
+      "active_from": "2025-05-28T00:41:14.525631",
+      "expires": "2025-05-28T00:42:14.525631",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-28T00:41:14.525631",
+      "unique_id": "536d315a-48f3-4638-823c-f78500b3c3ef",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-28T00:41:16.552325"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-28T01:00:01.371696",
+      "expires": "2025-05-28T01:01:01.371696",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-28T01:00:01.371696",
+      "unique_id": "b075fcee-10fa-4996-af58-e44dc90732fe",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-28T01:00:03.364274"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-05-28T01:00:01.371696",
+      "expires": "2025-05-28T01:01:01.371696",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-28T01:00:01.371696",
+      "unique_id": "b075fcee-10fa-4996-af58-e44dc90732fe",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-05-28T01:00:03.364274"
     }
   ]
 }

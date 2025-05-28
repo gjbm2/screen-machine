@@ -190,7 +190,14 @@ def openai_prompt(
                         if not raw:
                             raise ValueError("Assistant returned an empty response")
 
-                        parsed = json.loads(raw)
+                        # Remove potential ``` wrappers from assistant output
+                        cleaned_raw = raw.strip()
+                        if cleaned_raw.startswith("```"):
+                            cleaned_raw = cleaned_raw.lstrip("` ")
+                            if cleaned_raw.lower().startswith("json"):
+                                cleaned_raw = cleaned_raw[4:].lstrip()
+                            cleaned_raw = cleaned_raw.rstrip("`").rstrip()
+                        parsed = json.loads(cleaned_raw)
                         debug(f"[openai_prompt] Parsed JSON:\n{json.dumps(parsed, indent=2)}")
 
                         if schema:

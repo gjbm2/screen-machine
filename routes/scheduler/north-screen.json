@@ -353,62 +353,12 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "Resilient plants breaking through concrete in forgotten spaces",
-        "_b_theme": "Floral community gardens in urban environments",
-        "_style": "Elliott Erwitt-style humanistic photography, focusing on poignant moments and subtle humor",
-        "_guidance": "Capture scenes of inspiration where nature flourishes within urban landscapes, using Erwitt\u2019s approach to highlight human-nature connections; ensure unique subject matter not presented in recent image history.",
-        "prompt": "Dandelions flourishing through a forgotten, graffitied parking meter, their seeds blowing whimsically in the breeze, evoking nature's resilience in a cityscape, with Erwitt\u2019s playful perspective.",
+        "_a_theme": "Masks as vessels \u2014 capturing histories and personas through their design",
+        "_b_theme": "Shadows as echoes \u2014 the play of light leaving transient imprints of solid forms",
+        "_style": "Caravaggio-inspired chiaroscuro painting, emphasizing the dramatic interplay between light and darkness",
+        "_guidance": "Connect the themes by selecting diverse masks that embody distinct cultures or histories, and use strong contrasts to illuminate the transient nature of shadows, ensuring each shadow form and mask is unique from past imagery.",
+        "prompt": "Artfully arranged masks of varied global origin, each subtly illuminated by dramatic chiaroscuro, contrasting shadow-rich backgrounds highlighting ancestral histories and veiled identities, Caravaggio-esque depth and emotion.",
         "history_var": [
-          {
-            "timestamp": "2025-05-26 19:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Avant-garde piano installation amidst neon-lit underground train station, vibrant advertisement screens, music sheet streams wrapping around columns and bustling commuters, encapsulating modern chaos with tranquil artistry."
-            },
-            "text_input": "'Pianos at the center of bustling metropolitan ...",
-            "explanation": "I avoided previous piano settings by choosing an underground train station filled with dynamic vi..."
-          },
-          {
-            "timestamp": "2025-05-26 19:35:21",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Vampires strolling along foggy, cobblestone streets, shadows of Big Ben towering above, silhouettes highlighted under street lamps, subtle nods to noir's dramatic chiaroscuro."
-            },
-            "text_input": "'Vampires adapting to contemporary metropolitan...",
-            "explanation": "The prompt diverges from previous entries by focusing on iconic London streets with fog and lampl..."
-          },
-          {
-            "timestamp": "2025-05-26 20:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "An aristocratic vampire couple reflected in a rain-soaked alleyway, framed by dimly glowing street lamps and vintage cars, stark chiaroscuro capturing the eerie London night."
-            },
-            "text_input": "'The timeless elegance of vampire fashion amids...",
-            "explanation": "I emphasized a unique perspective with reflections in a rain-soaked alley and vintage cars, steer..."
-          },
-          {
-            "timestamp": "2025-05-26 21:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Vampires convening atop the Shard, dramatic skyline aglow, capes blending with swirling fog, high-contrast deep shadows accentuating their watchful urban survey."
-            },
-            "text_input": "'Vampires adapting to contemporary metropolitan...",
-            "explanation": "To ensure originality, I depicted vampires atop an iconic London skyscraper, avoiding foggy stree..."
-          },
-          {
-            "timestamp": "2025-05-26 23:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "A lone vampire standing in a dimly lit Library Bar, illuminated only by oscillating neon cocktail signs, their silhouette reflecting on rustic wood, exuding an intimate noir mystery."
-            },
-            "text_input": "'Vampires adapting to contemporary metropolitan...",
-            "explanation": "I depicted a vampire within a specific, less-traveled urban setting\u2014a library bar. This diverges ..."
-          },
           {
             "timestamp": "2025-05-27 00:01:20",
             "type": "reason",
@@ -558,49 +508,59 @@
             },
             "text_input": "'Resilient plants breaking through concrete in ...",
             "explanation": "I chose a parking meter with dandelions, an original composition not depicted previously. This fo..."
+          },
+          {
+            "timestamp": "2025-05-27 21:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Elderly woman tending to a vibrant flower cart under a railway arch, passerby smiles as vivid petals frame rusty steel, capturing Erwitt's humanistic charm."
+            },
+            "text_input": "'Floral community gardens in urban environments...",
+            "explanation": "I focused on a unique urban scene involving an elderly vendor under a railway arch, distinct from..."
+          },
+          {
+            "timestamp": "2025-05-27 22:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Nature reclaims a forgotten skate park, vines cascading over ramps and rails, skaters paused mid-trick, contemplating nature's resilience, all captured with Erwitt's humor-infused lens."
+            },
+            "text_input": "'Resilient plants breaking through concrete in ...",
+            "explanation": "I focused on a skate park setting, avoiding previous subjects like phone booths, metro platforms,..."
+          },
+          {
+            "timestamp": "2025-05-27 23:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Cacti flourishing in an abandoned drive-in theater, protruding through asphalt and overtaking scattered rusted speakers, with city skyline in distance, captured in Erwitt's humorous, nostalgic style."
+            },
+            "text_input": "'Resilient plants breaking through concrete in ...",
+            "explanation": "I chose an abandoned drive-in theater as a unique setting not previously depicted. Cacti symboliz..."
+          },
+          {
+            "timestamp": "2025-05-28 00:01:15",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Ancient oak grove in twilight, detailed Art Nouveau depiction of Oak King crowned with leaves, moonlight casting ornate shadows on magical enchanted forest scene."
+            },
+            "text_input": "'Mature oak trees in full bloom capturing their...",
+            "explanation": "I avoided duplication by focusing on an evening scene with the Oak King, instead of typical dayti..."
+          },
+          {
+            "timestamp": "2025-05-28 00:41:22",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Artfully arranged masks of varied global origin, each subtly illuminated by dramatic chiaroscuro, contrasting shadow-rich backgrounds highlighting ancestral histories and veiled identities, Caravaggio-esque depth and emotion."
+            },
+            "text_input": "'Masks as vessels \u2014 capturing histories and per...",
+            "explanation": "To avoid similarity with previous prompts focused on nature and urban settings, I chose a control..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2025-05-26 19:00:10",
-            "type": "generation",
-            "prompt": "Avant-garde piano installation amidst neon-lit ...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/445c0586-f5a4-4c8f-b3c6-2c13c0b25817-e1/d57303fe.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T180041Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=61cdc72632bd97b53aa3b4a8c2dfd8ce8fec95f893533f16517cb52499e6b5ff"
-          },
-          {
-            "timestamp": "2025-05-26 19:35:25",
-            "type": "generation",
-            "prompt": "Vampires strolling along foggy, cobblestone str...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/2f63c5a0-60ad-4fac-ba09-f4629b493b4f-e1/3bdf8aaf.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T183629Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d167b82f58b7784235adabd3cb6a9ddbabe53ea729603194ca060b585f5555e7"
-          },
-          {
-            "timestamp": "2025-05-26 20:00:09",
-            "type": "generation",
-            "prompt": "An aristocratic vampire couple reflected in a r...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/07d1ca72-17ab-4c23-b88e-a3fda899a67e-e1/f1069cc1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T190042Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=92f40ec0d1f1daeab5c70bec3e65b0923ec2373670f2905bda74e4af19a34928"
-          },
-          {
-            "timestamp": "2025-05-26 21:00:07",
-            "type": "generation",
-            "prompt": "Vampires convening atop the Shard, dramatic sky...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/9acaf8a2-2436-4dbe-8e3a-806a96eae9fe-e1/345d397b.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T200039Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=ae31d001badbcd41fa283a30155f71dee78818d1dc11891581a392bcd40c8b26"
-          },
-          {
-            "timestamp": "2025-05-26 23:00:08",
-            "type": "generation",
-            "prompt": "A lone vampire standing in a dimly lit Library ...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0c1fd932-6eb9-48e1-8dcd-70101d65728f-e1/f1ad3b1a.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250526%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250526T220037Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=261eb11d399ead88266613c4c5834d62fec3f3d30adb23b7153da8226a840a10"
-          },
           {
             "timestamp": "2025-05-27 00:01:24",
             "type": "generation",
@@ -720,6 +680,58 @@
             "refiner": "enrich",
             "workflow": null,
             "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0f5c0bc8-9d56-4c6d-8f6c-8f8f13bd6daa-e1/f9e6270f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250527%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250527T190036Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7c3bb803bff187bf7f12ce8bb2ad1334205e656cca2d22d3360e5e7bcdb67dde"
+          },
+          {
+            "timestamp": "2025-05-27 21:00:09",
+            "type": "generation",
+            "prompt": "Elderly woman tending to a vibrant flower cart ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_url": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/7f754218-eba2-4520-8d35-4e7aee3ab3f1-e1/21713ba8.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250527%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250527T200036Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=3b17b5daa76b348c23eca159f3b30df6120a944305d822ea0ee1e357c18d32e6"
+          },
+          {
+            "timestamp": "2025-05-27 22:00:06",
+            "type": "generation",
+            "prompt": "Nature reclaims a forgotten skate park, vines c...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250527-210038-f24827c1.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-05-27 23:00:08",
+            "type": "generation",
+            "prompt": "Cacti flourishing in an abandoned drive-in thea...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250527-220111-80c713e6.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-05-28 00:01:19",
+            "type": "generation",
+            "prompt": "Ancient oak grove in twilight, detailed Art Nou...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250527-230144-67e41828.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-05-28 00:41:25",
+            "type": "generation",
+            "prompt": "Artfully arranged masks of varied global origin...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250527-234158-a656fe79.jpg"
+            ],
+            "published": true
           }
         ],
         "animation_history": [
@@ -887,11 +899,11 @@
         "animation_on": "false"
       },
       "publish_destination": "north-screen",
-      "last_generated": "https://stable-diffusion-bucket-gjbm2.s3.eu-west-2.amazonaws.com/05-25/0f5c0bc8-9d56-4c6d-8f6c-8f8f13bd6daa-e1/f9e6270f.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA2ZIOM4RBC6Z5JA2G%2F20250527%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20250527T190036Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=7c3bb803bff187bf7f12ce8bb2ad1334205e656cca2d22d3360e5e7bcdb67dde"
+      "last_generated": "20250527-234158-a656fe79.jpg"
     }
   ],
   "state": "running",
-  "last_updated": "2025-05-27T20:00:39.829739",
+  "last_updated": "2025-05-28T00:55:48.427154",
   "last_trigger_executions": {
     "615c22f09f03cb1b6164dab4b2980a01_2025-05-25_12": "2025-05-25T19:00:00.388156",
     "b812f679a565a0c56311d86bfaf3ca2d_2025-05-25_6": "2025-05-25T19:05:00.952220",
@@ -956,202 +968,18 @@
     "615c22f09f03cb1b6164dab4b2980a01_2025-05-27_11": "2025-05-27T18:00:01.996959",
     "615c22f09f03cb1b6164dab4b2980a01_2025-05-27_12": "2025-05-27T19:00:00.097389",
     "b812f679a565a0c56311d86bfaf3ca2d_2025-05-27_6": "2025-05-27T19:05:01.703330",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-05-27_13": "2025-05-27T20:00:01.139885"
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-27_13": "2025-05-27T20:00:01.139885",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-27_14": "2025-05-27T21:00:01.209907",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-27_7": "2025-05-27T21:05:00.110142",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-27_15": "2025-05-27T22:00:00.567405",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-05-27_16": "2025-05-27T23:00:01.164189",
+    "27e0dceb3734ee5d0e5e05e5462f7064_2025-05-27": "2025-05-27T23:00:01.164189",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-05-27_8": "2025-05-27T23:05:00.401274"
   },
   "active_events": {},
   "event_history": [
     {
       "key": "__exit_block__",
-      "active_from": "2025-05-26T13:05:00.340091",
-      "expires": "2025-05-26T13:06:00.340091",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-26T13:05:00.340091",
-      "unique_id": "07a62a25-161b-4352-8bff-c47ffa4ffcd6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T13:05:02.222693"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-26T13:05:00.340091",
-      "expires": "2025-05-26T13:06:00.340091",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-26T13:05:00.340091",
-      "unique_id": "07a62a25-161b-4352-8bff-c47ffa4ffcd6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T13:05:02.222693"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-26T14:00:01.410162",
-      "expires": "2025-05-26T14:01:01.410162",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-26T14:00:01.410162",
-      "unique_id": "ed2c688e-109e-4985-a792-d28cb97e90b0",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T14:00:03.453597"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-26T14:00:01.410162",
-      "expires": "2025-05-26T14:01:01.410162",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-26T14:00:01.410162",
-      "unique_id": "ed2c688e-109e-4985-a792-d28cb97e90b0",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T14:00:03.453597"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-26T15:00:00.747489",
-      "expires": "2025-05-26T15:01:00.747489",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-26T15:00:00.747489",
-      "unique_id": "4208b4b6-c729-490a-8097-8e0623326e4b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T15:00:02.789527"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-26T15:00:00.747489",
-      "expires": "2025-05-26T15:01:00.747489",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-26T15:00:00.747489",
-      "unique_id": "4208b4b6-c729-490a-8097-8e0623326e4b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T15:00:02.789527"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-26T15:05:01.026358",
-      "expires": "2025-05-26T15:06:01.026358",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-26T15:05:01.026358",
-      "unique_id": "f959eb1d-1f36-425d-974f-b7aa69548134",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T15:05:02.974163"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-05-26T15:05:01.026358",
-      "expires": "2025-05-26T15:06:01.026358",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-05-26T15:05:01.026358",
-      "unique_id": "f959eb1d-1f36-425d-974f-b7aa69548134",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T15:05:02.974163"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-26T15:08:31.934419",
-      "expires": "2025-05-26T15:09:31.934419",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T15:08:31.934419",
-      "unique_id": "fe3d412a-9ce8-415f-a202-bdba4d83f9a6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T15:08:33.217542"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-26T15:08:31.934419",
-      "expires": "2025-05-26T15:09:31.934419",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-05-26T15:08:31.934419",
-      "unique_id": "fe3d412a-9ce8-415f-a202-bdba4d83f9a6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T15:08:33.217542"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-26T16:00:00.125139",
-      "expires": "2025-05-26T16:01:00.125139",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-26T16:00:00.125139",
-      "unique_id": "7da5a569-4a04-4b45-9660-2dca86e8e135",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T16:00:02.178206"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-26T16:00:00.125139",
-      "expires": "2025-05-26T16:01:00.125139",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-26T16:00:00.125139",
-      "unique_id": "7da5a569-4a04-4b45-9660-2dca86e8e135",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T16:00:02.178206"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-26T17:00:01.355620",
-      "expires": "2025-05-26T17:01:01.355620",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-26T17:00:01.355620",
-      "unique_id": "9d940c3e-cbb8-41ea-a24e-28da3953da5c",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T17:00:03.403797"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-05-26T17:00:01.355620",
-      "expires": "2025-05-26T17:01:01.355620",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-26T17:00:01.355620",
-      "unique_id": "9d940c3e-cbb8-41ea-a24e-28da3953da5c",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-05-26T17:00:03.403797"
-    },
-    {
-      "key": "__exit_block__",
       "active_from": "2025-05-26T17:05:00.363052",
       "expires": "2025-05-26T17:06:00.363052",
       "display_name": null,
@@ -2323,6 +2151,196 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
       "consumed_at": "2025-05-27T20:00:03.188408"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-27T21:00:01.220404",
+      "expires": "2025-05-27T21:01:01.220404",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-27T21:00:01.220404",
+      "unique_id": "cd7245f3-fb15-4ba3-8b8e-d6fdf1d36b3a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-27T21:00:03.286742"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-27T21:00:01.220404",
+      "expires": "2025-05-27T21:01:01.220404",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-27T21:00:01.220404",
+      "unique_id": "cd7245f3-fb15-4ba3-8b8e-d6fdf1d36b3a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-27T21:00:03.286742"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-27T21:05:00.251118",
+      "expires": "2025-05-27T21:06:00.251118",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-27T21:05:00.251118",
+      "unique_id": "5d4e408f-94b2-472e-97e0-dd09d065775d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-27T21:05:02.120711"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-27T21:05:00.251118",
+      "expires": "2025-05-27T21:06:00.251118",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-27T21:05:00.251118",
+      "unique_id": "5d4e408f-94b2-472e-97e0-dd09d065775d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-27T21:05:02.120711"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-27T22:00:00.577161",
+      "expires": "2025-05-27T22:01:00.577161",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-27T22:00:00.577161",
+      "unique_id": "e6924cbc-963f-4fd9-aa8d-fe7c6872fd1e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-27T22:00:02.583813"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-27T22:00:00.577161",
+      "expires": "2025-05-27T22:01:00.577161",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-27T22:00:00.577161",
+      "unique_id": "e6924cbc-963f-4fd9-aa8d-fe7c6872fd1e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-27T22:00:02.583813"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-27T23:00:01.175277",
+      "expires": "2025-05-27T23:01:01.175277",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-27T23:00:01.175277",
+      "unique_id": "4f207030-0ddf-48b3-9bdd-bb3d54897f51",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-27T23:00:03.241447"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-27T23:00:01.175277",
+      "expires": "2025-05-27T23:01:01.175277",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-27T23:00:01.175277",
+      "unique_id": "4f207030-0ddf-48b3-9bdd-bb3d54897f51",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-27T23:00:03.241447"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-27T23:05:00.548033",
+      "expires": "2025-05-27T23:06:00.548033",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-27T23:05:00.548033",
+      "unique_id": "7da30cc0-36c2-469e-bf69-1e8004eea6f2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-27T23:05:02.411512"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-27T23:05:00.548033",
+      "expires": "2025-05-27T23:06:00.548033",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-27T23:05:00.548033",
+      "unique_id": "7da30cc0-36c2-469e-bf69-1e8004eea6f2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-27T23:05:02.411512"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-28T00:01:12.835044",
+      "expires": "2025-05-28T00:02:12.835044",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-28T00:01:12.835044",
+      "unique_id": "f478d239-7dab-4123-890c-997553170f2f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-28T00:01:14.838996"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-28T00:01:12.835044",
+      "expires": "2025-05-28T00:02:12.835044",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-28T00:01:12.835044",
+      "unique_id": "f478d239-7dab-4123-890c-997553170f2f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-28T00:01:14.838996"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-28T00:41:21.501449",
+      "expires": "2025-05-28T00:42:21.501449",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-28T00:41:21.501449",
+      "unique_id": "589ccefe-3cf0-4330-b401-e808aba56ea6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-28T00:41:21.860771"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-28T00:41:21.501449",
+      "expires": "2025-05-28T00:42:21.501449",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-05-28T00:41:21.501449",
+      "unique_id": "589ccefe-3cf0-4330-b401-e808aba56ea6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-28T00:41:21.860771"
     }
   ]
 }
