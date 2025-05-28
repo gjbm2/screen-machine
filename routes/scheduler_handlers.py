@@ -2,16 +2,19 @@
 
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from utils.logger import info, error, debug
+from utils.logger import info, error, debug, warning
 import random
 import json
 from routes.scheduler_utils import log_schedule, scheduler_contexts_stacks, get_next_scheduled_action as get_next_action, process_jinja_template
 from routes.service_factory import get_generation_service, get_animation_service, get_display_service
 from routes.utils import dict_substitute, build_schema_subs
 from routes.samsung_utils import device_sleep, device_wake, device_sync, device_standby
-from routes.bucketer import purge_bucket as bucketer_purge_bucket  # Added import for purge_bucket
+from routes.bucketer import purge_bucket as bucketer_purge_bucket, _append_to_bucket
 import routes.openai
 from time import time
+import os
+from routes.publisher import publish_to_destination
+import uuid
 
 # Maximum number of items to keep in history variables
 MAX_HISTORY_SIZE = 20
@@ -44,12 +47,46 @@ def handle_generate(instruction, context, now, output, publish_destination):
     refiner = instruction.get("refiner")
     workflow = instruction.get("workflow")
     
-    # Log and generate
+    # Get new publish parameter (default True for backward compatibility)
+    publish = instruction.get("publish", True)
+    output_var = instruction.get("output_var")
+    
+    # ------------------------------------------------------------------
+    # Determine requested batch size (if any) so we can log it clearly
+    # ------------------------------------------------------------------
+    requested_batch = None
+    # Check additionalProperties string/dict – we already processed it into send_obj["data"] below, so we
+    # will simply look it up afterwards.
+
+    # Log and generate – mention batch size if >1
     log_msg = f"Generating from: '{prompt}'"
+    requested_batch = instruction.get("additionalProperties", "")
+    # If provided as key=value string (e.g. "batch=4") or JSON
+    try:
+        _ap = instruction.get("additionalProperties")
+        batch_val = None
+        if isinstance(_ap, str):
+            # Look for batch in key=value pairs
+            for prop in _ap.split(","):
+                if "=" in prop:
+                    k, v = prop.split("=", 1)
+                    if k.strip() == "batch":
+                        batch_val = int(v.strip())
+                        break
+        elif isinstance(_ap, dict):
+            if "batch" in _ap:
+                batch_val = int(_ap["batch"])
+        if batch_val and batch_val > 1:
+            log_msg += f" (batch of {batch_val})"
+    except Exception:
+        pass
+    
     if refiner:
         log_msg += f" (using refiner: {refiner})"
     if workflow:
         log_msg += f" (using workflow: {workflow})"
+    if not publish:
+        log_msg += " (not publishing to display)"
     
     log_schedule(log_msg, publish_destination, now, output)
     
@@ -59,21 +96,68 @@ def handle_generate(instruction, context, now, output, publish_destination):
             log_schedule(error_msg, publish_destination, now, output)
             return 
         
-        debug(f"Preparing generation with prompt: '{prompt}', refiner: {refiner}")
+        debug(f"Preparing generation with prompt: '{prompt}', refiner: {refiner}, publish: {publish}")
 
+        # Build the send object
+        # If publish is False, we send empty targets list to prevent display
+        targets = [publish_destination] if publish else []
+        
+        # Create base send object with required fields
         send_obj = {
             "data": {
                 "prompt": prompt,
                 "images": [],  # Add empty images array
                 "refiner": refiner,
                 "workflow": workflow,
-                "targets": [publish_destination]
+                "targets": targets
             }
         }
-        #    # TODO: later add back: **call_args
+
+        # Handle additionalProperties - can be string containing JSON or key=value format
+        if "additionalProperties" in instruction:
+            props = instruction["additionalProperties"]
+            if isinstance(props, str):
+                # Try to parse as JSON first
+                try:
+                    props_dict = json.loads(props)
+                    if isinstance(props_dict, dict):
+                        # Successfully parsed JSON object
+                        for key, value in props_dict.items():
+                            send_obj["data"][key] = value
+                    else:
+                        # JSON parsed but not an object - treat as key=value string
+                        raise ValueError("Not a JSON object")
+                except (json.JSONDecodeError, ValueError):
+                    # Not valid JSON, treat as key=value string
+                    if props:
+                        for prop in props.split(","):
+                            if "=" in prop:
+                                key, value = prop.split("=", 1)
+                                key = key.strip()
+                                value = value.strip()
+                                # Try to convert to number if possible
+                                try:
+                                    if "." in value:
+                                        value = float(value)
+                                    else:
+                                        value = int(value)
+                                except ValueError:
+                                    pass  # Keep as string if not a number
+                                send_obj["data"][key] = value
+            elif isinstance(props, dict):
+                # Direct object format - add all properties
+                for key, value in props.items():
+                    send_obj["data"][key] = value
 
         # Now let's generate with prompt 
+        # Include batch info (if previously detected)
         start_msg = f"Starting image generation with prompt: '{prompt}', refiner: {refiner}"
+        try:
+            if batch_val and batch_val > 1:
+                start_msg += f", batch={batch_val}"
+        except Exception:
+            pass
+        
         log_schedule(start_msg, publish_destination, now, output)
             
         # Get the generation service from our factory
@@ -102,24 +186,82 @@ def handle_generate(instruction, context, now, output, publish_destination):
             log_schedule(error_msg, publish_destination, now, output)
             return    
 
-        # Extract the image URL from the response
-        image_url = None
-        if isinstance(response, list) and len(response) > 0:
-            first_result = response[0]
-            if isinstance(first_result, dict):
-                # Get the image URL from the message field, similar to app.py
-                image_url = first_result.get("message", None)
-                if image_url:
-                    # Record generation result with the actual image URL
-                    context["last_generated"] = image_url
-                    debug(f"Stored image URL in context: {image_url}")
-                else:
-                    debug("No image URL found in response message field")
+        # Extract the image paths from the response
+        image_paths = []
+        if isinstance(response, list):
+            for result in response:
+                if isinstance(result, dict):
+                    # Get the image path - prefer published_path, fallback to message
+                    path = result.get("published_path") or result.get("message")
+                    if path:
+                        image_paths.append(path)
         
-        # Default if no URL was found in the response
-        if not image_url:
-            context["last_generated"] = "[image_path]"
-            debug("Using default image path placeholder")
+        # If publish is False, we need to manually save to bucket using publish_to_destination
+        if not publish and image_paths:
+            saved_paths = []
+            
+            # Generate a batch_id for this batch of images
+            batch_id = f"batch_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+            
+            # Prepare metadata for the batch images
+            batch_metadata = {
+                "prompt": prompt,
+                "workflow": workflow,
+                "refiner": refiner,
+                "batch_id": batch_id,
+                "when_generated": now.isoformat(),
+                "publish": False  # Mark that this was not published to display
+            }
+            
+            # Add any additional metadata from the instruction
+            if "metadata" in instruction:
+                batch_metadata.update(instruction["metadata"])
+            
+            for idx, path in enumerate(image_paths):
+                # Add batch index to metadata
+                image_metadata = batch_metadata.copy()
+                image_metadata["batch_index"] = idx
+                
+                # Call publish_to_destination with silent=True to save to bucket without display
+                pub_result = publish_to_destination(
+                    source=path,
+                    publish_destination_id=publish_destination,
+                    silent=True,  # This prevents overlays but still saves to bucket
+                    metadata=image_metadata,
+                    batch_id=batch_id,
+                    update_published=False  # Don't update the published pointer for batch images
+                )
+                
+                if pub_result.get("success"):
+                    # Get the actual bucket path from the result
+                    if "meta" in pub_result and "filename" in pub_result["meta"]:
+                        # Store the full bucket path, not just the filename
+                        from routes.bucketer import bucket_path
+                        full_path = str(bucket_path(publish_destination) / pub_result["meta"]["filename"])
+                        saved_paths.append(full_path)
+                    else:
+                        saved_paths.append(path)
+                else:
+                    warning(f"Failed to save {path} to bucket: {pub_result.get('error', 'Unknown error')}")
+            
+            if saved_paths:
+                image_paths = saved_paths
+                debug(f"Saved {len(saved_paths)} images to bucket (silent mode).")
+        
+        # Store in output variable(s) if specified
+        if output_var and image_paths:
+            # Single output_var - store single path or list
+            if len(image_paths) == 1:
+                context["vars"][output_var] = image_paths[0]
+                debug(f"Stored image path in variable '{output_var}': {image_paths[0]}")
+            else:
+                context["vars"][output_var] = image_paths
+                debug(f"Stored {len(image_paths)} image paths in variable '{output_var}'")
+        
+        # Keep backward compatibility - store first image in context["last_generated"]
+        if image_paths:
+            context["last_generated"] = image_paths[0]
+            debug(f"Stored first image path in context['last_generated']: {image_paths[0]}")
 
         # Handle history if specified
         history_var = instruction.get("history_var")
@@ -139,7 +281,8 @@ def handle_generate(instruction, context, now, output, publish_destination):
                 "prompt": stored_prompt,
                 "refiner": refiner,
                 "workflow": workflow,
-                "image_url": image_url
+                "image_paths": image_paths,
+                "published": publish
             })
             
             # Cap history size to prevent unlimited growth
@@ -148,14 +291,14 @@ def handle_generate(instruction, context, now, output, publish_destination):
                 context["vars"][history_var] = context["vars"][history_var][-MAX_HISTORY_SIZE:]
                 debug(f"Capped {history_var} at {MAX_HISTORY_SIZE} entries")
         
-        success_msg = f"Generated image from: '{prompt}'"
-        # Add more detailed success logging
-        if isinstance(response, list) and len(response) > 0:
-            first_result = response[0]
-            if isinstance(first_result, dict):
-                result_details = first_result.get("file", image_url or "unknown")
-                success_msg = f"Generated image from: '{prompt}' -> {result_details}"
+        success_msg = f"Generated {len(image_paths)} image(s) from: '{prompt}'"
+        if not publish:
+            success_msg += " (saved to bucket only, not displayed)"
                 
+        # Log each generated image individually for better visibility
+        for i, pth in enumerate(image_paths, start=1):
+            log_schedule(f" → Image {i}/{len(image_paths)}: {os.path.basename(pth)}", publish_destination, now, output)
+        
         log_schedule(f"GENERATE SUCCESS: {success_msg}", publish_destination, now, output)
         
     except Exception as e:
@@ -957,7 +1100,52 @@ def handle_reason(instruction, context, now, output, publish_destination):
     image_inputs = instruction.get("image_inputs", [])
     reasoner_id = instruction.get("reasoner", "default")
     output_vars = instruction.get("output_vars", [])
-    
+
+    # If image_inputs is a string, it could be either a variable name or a string representation of a list
+    if isinstance(image_inputs, str):
+        # First check if it looks like a string representation of a list
+        if image_inputs.strip().startswith('[') and image_inputs.strip().endswith(']'):
+            # Try to parse it as a list
+            try:
+                import ast
+                parsed_list = ast.literal_eval(image_inputs)
+                if isinstance(parsed_list, list):
+                    image_inputs = parsed_list
+                else:
+                    # If it didn't parse to a list, treat as variable name
+                    var_value = context["vars"].get(image_inputs, [])
+                    if isinstance(var_value, list):
+                        image_inputs = var_value
+                    elif isinstance(var_value, str) and var_value:
+                        image_inputs = [var_value]
+                    else:
+                        image_inputs = []
+            except (ValueError, SyntaxError):
+                # If parsing failed, treat as variable name
+                var_value = context["vars"].get(image_inputs, [])
+                if isinstance(var_value, list):
+                    image_inputs = var_value
+                elif isinstance(var_value, str) and var_value:
+                    image_inputs = [var_value]
+                else:
+                    image_inputs = []
+        else:
+            # Doesn't look like a list, treat as variable name
+            var_value = context["vars"].get(image_inputs, [])
+            if isinstance(var_value, list):
+                image_inputs = var_value
+            elif isinstance(var_value, str) and var_value:
+                image_inputs = [var_value]
+            else:
+                image_inputs = []
+    # If image_inputs is already a list (from Jinja expression), use it directly
+    elif isinstance(image_inputs, list):
+        # Filter out any None or empty string values
+        image_inputs = [img for img in image_inputs if img]
+    else:
+        # For any other type, convert to empty list
+        image_inputs = []
+
     # Validate that we have at least one output variable
     if not output_vars:
         error_msg = "No output variables specified in reason instruction."
@@ -1021,7 +1209,13 @@ def handle_reason(instruction, context, now, output, publish_destination):
         if not result or "outputs" not in result or not isinstance(result["outputs"], list):
             error_msg = f"Reasoning with '{reasoner_id}' failed to return valid outputs array."
             log_schedule(error_msg, publish_destination, now, output)
-            return False
+
+            # Fallback: choose the first image (if any) or NONE so execution can continue
+            fallback_output = image_inputs[0] if image_inputs else "NONE"
+            result = {
+                "outputs": [fallback_output, "50%", "fallback selection"],
+                "explanation": "OpenAI reasoning failed – fallback applied"
+            }
         
         # Log the explanation if present
         if "explanation" in result and result["explanation"]:
@@ -1033,6 +1227,8 @@ def handle_reason(instruction, context, now, output, publish_destination):
             explanation_msg = f"Reasoner explanation: {log_explanation}"
             log_schedule(explanation_msg, publish_destination, now, output)
             
+        # (Result validation/mapping should be handled by each specific reasoner or by downstream logic.)
+        
         # Store each output variable in the context, mapping by position
         # Store only as many variables as we have outputs, up to the number requested
         for i, var_name in enumerate(output_vars):
@@ -1105,7 +1301,7 @@ def handle_reason(instruction, context, now, output, publish_destination):
                 context["vars"][history_var] = context["vars"][history_var][-MAX_HISTORY_SIZE:]
                 debug(f"Capped {history_var} at {MAX_HISTORY_SIZE} entries")
         
-        success_msg = f"Completed reasoning with '{reasoner_id}'"
+        success_msg = f"Completed reasoning with '{reasoner_id}' – outputs: {', '.join(result['outputs'])}"
         log_schedule(success_msg, publish_destination, now, output)
         
         return False
@@ -1115,7 +1311,11 @@ def handle_reason(instruction, context, now, output, publish_destination):
         log_schedule(error_msg, publish_destination, now, output)
         import traceback
         error(traceback.format_exc())
-        return False 
+        # Final fallback to keep scheduler alive
+        if image_inputs:
+            context["vars"][output_vars[0]] = image_inputs[0]
+            log_schedule(f"Fallback reasoner: set {output_vars[0]} to first image due to error", publish_destination, now, output)
+        return False
 
 def handle_log(instruction, context, now, output, publish_destination):
     """
@@ -1248,5 +1448,91 @@ def handle_purge(instruction, context, now, output, publish_destination):
         import traceback
         error(traceback.format_exc())
         return False
+
+def handle_publish(instruction, context, now, output, publish_destination):
+    """
+    Handle the publish instruction to display images on output devices.
+    
+    Args:
+        instruction: The publish instruction containing:
+            - source: Image path(s) or Jinja expression to publish
+            - targets: List of destination IDs (default: current destination)
+            - silent: Whether to suppress overlays (default: False)
+        context: The current context
+        now: Current datetime
+        output: List to append log messages to
+        publish_destination: The current scheduler's publish destination ID
+        
+    Returns:
+        bool: False (don't unload the schedule)
+    """
+    from routes.publisher import publish_to_destination
+    
+    # Get images from source
+    source = instruction.get("source")
+    
+    # Check for None or empty string
+    if source is None or source == "":
+        error_msg = "No 'source' specified for publish instruction"
+        log_schedule(error_msg, publish_destination, now, output)
+        return False
+    
+    # Handle both single image and list of images
+    images = []
+    if isinstance(source, list):
+        # Filter out empty strings from list
+        images = [img for img in source if img]
+    elif source:
+        images = [source]
+    
+    # Get targets (default to current destination)
+    targets = instruction.get("targets", [publish_destination])
+    if isinstance(targets, str):
+        targets = [targets]
+    
+    # Get silent flag
+    silent = instruction.get("silent", False)
+    
+    # Validate we have images to publish
+    if not images:
+        # Empty source - this is allowed for conditional publishing
+        msg = "No images to publish (empty source) - skipping"
+        log_schedule(msg, publish_destination, now, output)
+        return False
+    
+    # Log what we're about to do
+    msg = f"Publishing {len(images)} image(s) to {len(targets)} target(s)"
+    if silent:
+        msg += " (silent mode)"
+    log_schedule(msg, publish_destination, now, output)
+    
+    # Publish each image to each target
+    published_count = 0
+    for target in targets:
+        for image_path in images:
+            try:
+                # Call publish_to_destination
+                result = publish_to_destination(
+                    source=image_path,
+                    publish_destination_id=target,
+                    silent=silent
+                )
+                
+                if result.get("success"):
+                    published_count += 1
+                    debug(f"Published {image_path} to {target}")
+                else:
+                    warning(f"Failed to publish {image_path} to {target}: {result.get('error', 'Unknown error')}")
+                    
+            except Exception as e:
+                error_msg = f"Error publishing {image_path} to {target}: {str(e)}"
+                log_schedule(error_msg, publish_destination, now, output)
+                error(f"Traceback: {traceback.format_exc()}")
+    
+    # Log final result
+    success_msg = f"Successfully published {published_count} image(s)"
+    log_schedule(success_msg, publish_destination, now, output)
+    
+    return False  # Don't unload the schedule
 
 # Delete the duplicate process_time_schedules function that was copied here 

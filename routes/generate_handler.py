@@ -316,6 +316,40 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     
     subs = build_schema_subs()
        
+    # ------------------------------------------------------------------
+    # Batch handling (how many separate images to generate?)
+    # ------------------------------------------------------------------
+    # Batch can be supplied either through the incoming *data* payload or
+    # via keyword arguments (e.g. params from the API).  We take whichever
+    # is provided **first** – kwargs overrides the data payload – and fall
+    # back to 1 if nothing specified.
+    #
+    # We pop it out of *kwargs* so that it is NOT forwarded to the lower
+    # layers (routes.generate.start).  This ensures we create <batch>
+    # separate jobs here rather than relying on the workflow to batch.
+    # ------------------------------------------------------------------
+    batch_size = 1  # default
+
+    # Pull from kwargs if present – this takes priority
+    if "batch" in kwargs and kwargs["batch"] is not None:
+        try:
+            batch_size = int(kwargs.pop("batch"))
+        except (TypeError, ValueError):
+            batch_size = 1
+
+    # Otherwise fall back to data["batch"] if supplied
+    elif isinstance(input_obj.get("data", {}).get("batch"), (int, str)):
+        try:
+            batch_size = int(input_obj.get("data", {}).get("batch", 1))
+        except (TypeError, ValueError):
+            batch_size = 1
+
+    # Sanity-check
+    if batch_size < 1:
+        batch_size = 1
+
+    utils.logger.info(f"[handle_image_generation] Requested batch size = {batch_size}")
+
     data = input_obj.get("data", {})
     prompt = data.get("prompt", None)
     refiner = data.get("refiner", "none")  
@@ -435,34 +469,54 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     # We don't want to force publication if no target was specified
     no_targets = publish_targets == [None]
 
-    # One thread per image
-    threads=[]
-    results = [None] * len(publish_targets)  # Pre-size results list
-    safe_kwargs = kwargs.copy()
-    safe_kwargs.pop("publish_destination", None)  # remove if exists, else no-op
-    safe_kwargs["images"] = images
-    # Remove batch_id from safe_kwargs since it's already in the data dict
-    safe_kwargs.pop("batch_id", None)
-    
-    for idx, publish_destination in enumerate(publish_targets):
+    # ------------------------------------------------------------------
+    # Prepare common kwargs that will be sent to each generator invocation
+    # ------------------------------------------------------------------
+    base_kwargs = kwargs.copy()
+    base_kwargs.pop("publish_destination", None)  # Do not allow callers to override this here
+    base_kwargs["images"] = images                    # ensure images list is passed downstream
+    base_kwargs.pop("batch_id", None)                 # Already handled higher up
+
+    # ✨ Remove the seed if batch_size > 1 so that each run gets its own
+    #     random seed (generate.start will assign a random default).
+    if batch_size > 1:
+        base_kwargs.pop("seed", None)
+
+    # One thread per *image* (publish_target × batch)
+    total_jobs = len(publish_targets) * batch_size
+    threads = []
+    results = [None] * total_jobs  # Pre-size so we can keep ordering stable
+
+    job_index = 0  # Global index for results list
+
+    for publish_destination in publish_targets:
         if no_targets:
             corrected_publish_destination = None
         else:
             utils.logger.info(f"> For destination: {publish_destination}")
             corrected_publish_destination = resolve_runtime_value("destination", publish_destination)
-            
-        def thread_fn(index=idx, destination=corrected_publish_destination):
-            result = routes.generate.start(
-                prompt=final_prompt,
-                workflow=corrected_workflow,
-                publish_destination=destination,
-                **safe_kwargs
-            )
-            results[index] = result  # Store result in shared list
 
-        thread = threading.Thread(target=thread_fn)
-        thread.start()
-        threads.append(thread)
+        for _ in range(batch_size):
+            current_index = job_index  # Capture for closure
+
+            def thread_fn(index=current_index, destination=corrected_publish_destination):
+                try:
+                    result = routes.generate.start(
+                        prompt=final_prompt,
+                        workflow=corrected_workflow,
+                        publish_destination=destination,
+                        **base_kwargs
+                    )
+                    results[index] = result  # Store result in shared list
+                except Exception as e:
+                    utils.logger.error(f"Generation job failed: {e}")
+                    results[index] = None
+
+            thread = threading.Thread(target=thread_fn)
+            thread.start()
+            threads.append(thread)
+
+            job_index += 1
 
     utils.logger.info(f" * Spawned {len(threads)} generator threads.")
 
@@ -471,7 +525,8 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         for t in threads:
             t.join()
         utils.logger.info(" * All generator threads completed.")
-        return results
+        # Filter out any failed runs (None) just in case
+        return [r for r in results if r is not None]
     else:
         return None 
 

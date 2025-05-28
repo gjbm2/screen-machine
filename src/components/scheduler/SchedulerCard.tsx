@@ -94,7 +94,6 @@ export const SchedulerCard: React.FC<SchedulerCardProps> = ({
   onToggleQueueView,
   isMobile
 }) => {
-  const [showLogs, setShowLogs] = useState(false);
   const [showSchedule, setShowSchedule] = useState(!isMobile);
   const [activeTab, setActiveTab] = useState<'context' | 'script'>('context');
   const [logs, setLogs] = useState<string[]>(destination.logs || []);
@@ -150,7 +149,7 @@ export const SchedulerCard: React.FC<SchedulerCardProps> = ({
   
   // Set up polling for logs when they're visible
   useEffect(() => {
-    if (!showLogs) return;
+    if (!logsSectionOpen) return;
     
     const fetchLogs = async () => {
       try {
@@ -184,7 +183,7 @@ export const SchedulerCard: React.FC<SchedulerCardProps> = ({
     return () => {
       clearInterval(intervalId);
     };
-  }, [showLogs, destination.id, logUpdatesPaused]);
+  }, [logsSectionOpen, destination.id, logUpdatesPaused]);
   
   // When destination.logs updates from parent, update our local state
   useEffect(() => {
@@ -193,14 +192,14 @@ export const SchedulerCard: React.FC<SchedulerCardProps> = ({
   
   // Scroll logs to bottom whenever they change or become visible
   useEffect(() => {
-    if (showLogs && logsContainerRef.current) {
+    if (logsSectionOpen && logsContainerRef.current) {
       requestAnimationFrame(() => {
         if (logsContainerRef.current) {
           logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
         }
       });
     }
-  }, [logs, showLogs]);
+  }, [logs, logsSectionOpen]);
   
   // Display status badge
   const statusBadge = () => {
