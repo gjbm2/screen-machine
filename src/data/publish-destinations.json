@@ -24,7 +24,9 @@
     "groups": ["living-room", "home"],
     "samsung-token": "north-screen-token.txt",
     "ip-address": "192.168.2.60",
-    "mac":"04:E4:B6:33:B6:36"
+    "mac":"04:E4:B6:33:B6:36",
+    "lat": 51.5074,
+    "lon": -0.1278
   },
   {
     "id": "south-screen",
@@ -41,7 +43,9 @@
     "groups": ["living-room", "home"],
     "samsung-token": "south-screen-token.txt",
     "ip-address": "192.168.2.61",
-    "mac": "04:E4:B6:34:00:28"
+    "mac": "04:E4:B6:34:00:28",
+    "lat": 51.5074,
+    "lon": -0.1278
   },
   {
     "id": "work-laptop-background",

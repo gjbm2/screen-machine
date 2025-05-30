@@ -2279,6 +2279,35 @@ export class Api {
       };
     }
   }
+
+  // Get the ambient mask data for a display
+  async getMask(destinationId: string): Promise<{
+    hex: string;
+    alpha: number;
+    timestamp: string;
+  }> {
+    if (this.mockMode) {
+      // Return a mock transparent mask in mock mode
+      return {
+        hex: "#FFFFFF",
+        alpha: 0.0,
+        timestamp: new Date().toISOString()
+      };
+    }
+    
+    try {
+      const response = await fetch(`${this.apiUrl}/${destinationId}/mask`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch mask: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching mask:', error);
+      throw error;
+    }
+  }
 }
 
 // Create a singleton instance of the API service

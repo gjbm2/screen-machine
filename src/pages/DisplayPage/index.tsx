@@ -1,25 +1,27 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import useBaseFileName from "./hooks/useBaseFileName";
 import useFilePolling from "./hooks/useFilePolling";
 import { MediaDisplay } from "./MediaDisplay";
 import { OverlayContainer } from "./OverlayContainer";
 import useOverlayWebSocket from "./hooks/useOverlayWebSocket";
+import { useMask } from "./hooks/useMask";
 
 export default function DisplayPage() {
   const { screenId } = useParams();
+  const [searchParams] = useSearchParams();
   const baseFileName = useBaseFileName(screenId);
   const filePolling = useFilePolling(baseFileName);
-  const {
-    currentSrc,
-    fadeInSrc,
-    fadeInVisible,
-  } = filePolling;
+  const { currentSrc, videoKey: pollingVideoKey } = filePolling;
 
-  const [videoKey, setVideoKey] = useState(filePolling.videoKey);
+  const [videoKey, setVideoKey] = useState(pollingVideoKey);
   const [overlays, setOverlays] = useState([]);
 
   useOverlayWebSocket(screenId, setOverlays);
+
+  // Check for nomask parameter
+  const noMask = searchParams.has('nomask');
+  const { rgba: maskColor } = useMask(screenId, noMask);
 
   const containerRef = useRef(null);
   const [visibleSrc, setVisibleSrc] = useState<string | null>(null);
@@ -92,8 +94,8 @@ export default function DisplayPage() {
     <div ref={containerRef} style={outerStyle}> 
       <MediaDisplay
         src={visibleSrc || currentSrc}
-        fadeInSrc={fadeInSrc}
-        fadeInVisible={fadeInVisible}
+        fadeInSrc={null}
+        fadeInVisible={false}
         videoKey={videoKey}
         fadeOut={fadingOut}
         shouldPlay={shouldPlay}
@@ -106,12 +108,25 @@ export default function DisplayPage() {
           setShouldPlay(false);
 
           setTimeout(() => {
-            setVideoKey(filePolling.videoKey);
+            setVideoKey(pollingVideoKey);
             setFadingOut(false);
             setShouldPlay(true);
           }, 1000);
         }}
       />
+      
+      {/* Ambient mask overlay - placed between media and UI overlays */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundColor: maskColor,
+          pointerEvents: "none",
+          transition: "background-color 1000ms ease-in-out",
+          zIndex: 5, // Above media (0-2) but below UI overlays (9999+)
+        }}
+      />
+      
       <OverlayContainer overlays={overlays} />
     </div>
   );

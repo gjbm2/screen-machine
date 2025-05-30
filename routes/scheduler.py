@@ -421,17 +421,25 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
 # === Instruction Execution ===
 def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: datetime, output: List[str], publish_destination: str) -> bool:
     """Run a single instruction."""
+    # Add rate-limiting for debug logging
+    if not hasattr(run_instruction, '_last_debug_log_time'):
+        run_instruction._last_debug_log_time = {}
+    
+    should_log_debug = False
+    current_time = time.time()
+    if publish_destination not in run_instruction._last_debug_log_time or \
+       (current_time - run_instruction._last_debug_log_time.get(publish_destination, 0)) > 30:
+        should_log_debug = True
+        run_instruction._last_debug_log_time[publish_destination] = current_time
+    
     # Ensure event data is accessible at the top level 
     # This is needed for proper Jinja processing of templates like {{ _event.payload.wait }}
     if "vars" in context and "_event" in context["vars"] and "_event" not in context:
         context["_event"] = context["vars"]["_event"]
-        debug(f"Copied _event from vars to context root for Jinja processing: {context['_event']}")
-    elif "_event" in context:
+        if should_log_debug:
+            debug(f"Copied _event from vars to context root for Jinja processing")
+    elif "_event" in context and should_log_debug:
         debug(f"Context already has _event at root level: {context['_event']}")
-    elif "vars" in context and "_event" in context["vars"]:
-        debug(f"Context has _event in vars but not at root level")
-    else:
-        debug(f"No _event found in context (neither root nor vars)")
     
     # Process the entire instruction with Jinja templating first
     processed_instruction = process_instruction_jinja(instruction, context, publish_destination)
@@ -445,11 +453,11 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
     
     should_log_action = True
     
-    # For wait actions specifically, only log at most once every 5 seconds per destination
+    # For wait actions specifically, only log at most once every 30 seconds per destination
     if action == "wait" and "wait_until" in context:
         current_time = time.time()
         last_log_time = run_instruction._last_wait_log_times.get(publish_destination, 0)
-        if current_time - last_log_time < 30.0:  # Only log every 5 seconds
+        if current_time - last_log_time < 30.0:  # Only log every 30 seconds
             should_log_action = False
         else:
             run_instruction._last_wait_log_times[publish_destination] = current_time
@@ -457,7 +465,8 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
     # Don't add running message to output - will be added by handlers with the result
     if should_log_action:
         log_schedule(f"Running {action}", publish_destination, now, output)
-        debug(f"[INSTRUCTION] Running {action} for {publish_destination}")
+        if should_log_debug:
+            debug(f"[INSTRUCTION] Running {action} for {publish_destination}")
     
     try:
         # Store the result instead of immediately returning it
@@ -521,12 +530,14 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
     if context_stack and len(context_stack) > 0:
         # Store the updated context back in the context stack
         context_stack[-1] = context
-        debug(f"[PERSISTENCE] After instruction {action}, saving context for {publish_destination}")
-        if "vars" in context:
-            debug(f"[PERSISTENCE] Context vars: {list(context.get('vars', {}).keys())}")
+        if should_log_debug:
+            debug(f"[PERSISTENCE] After instruction {action}, saving context for {publish_destination}")
+            if "vars" in context:
+                debug(f"[PERSISTENCE] Context vars: {list(context.get('vars', {}).keys())}")
         update_scheduler_state(publish_destination, context_stack=context_stack)
     else:
-        debug(f"[PERSISTENCE] Warning: No context stack found for {publish_destination} after {action}")
+        if should_log_debug:
+            debug(f"[PERSISTENCE] Warning: No context stack found for {publish_destination} after {action}")
     
     # Propagate EXIT_BLOCK if returned
     if result == "EXIT_BLOCK":
