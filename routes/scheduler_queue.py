@@ -1,6 +1,6 @@
 from collections import deque
 from typing import Dict, Any, List, Optional, Union, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 from utils.logger import debug, info, error
 import time
 
@@ -265,16 +265,27 @@ def process_triggers(schedule: Dict[str, Any], now: datetime, publish_destinatio
     """
     from routes.scheduler import resolve_schedule
     
+    # Add rate-limiting for debug logging
+    if not hasattr(process_triggers, '_last_debug_log_time'):
+        process_triggers._last_debug_log_time = {}
+    
+    should_log = False
+    current_time = time.time()
+    if publish_destination not in process_triggers._last_debug_log_time or \
+       (current_time - process_triggers._last_debug_log_time.get(publish_destination, 0)) > 30:
+        should_log = True
+        process_triggers._last_debug_log_time[publish_destination] = current_time
+    
     # Check if we're in a wait state
     is_in_wait_state = "wait_until" in context
-    if is_in_wait_state:
+    if is_in_wait_state and should_log:
         debug(f"process_triggers: WAIT STATE ACTIVE - only urgent triggers will interrupt the wait")
     
     # Get triggers with urgency/importance information from schedule resolution
     # resolve_schedule now returns list of dicts with block, urgent, important flags
     trigger_data = resolve_schedule(schedule, now, publish_destination, include_initial_actions=False, context=context)
     
-    if trigger_data:
+    if trigger_data and should_log:
         debug(f"process_triggers: Received {len(trigger_data)} trigger data entries from resolve_schedule")
         
         if is_in_wait_state:

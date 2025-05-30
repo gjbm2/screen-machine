@@ -115,15 +115,15 @@ const PromptForm: React.FC<PromptFormProps> = ({
     console.log('handleImageUpload called with:', files);
     setImageFiles(files);
     
-    // Process each file - convert File objects to blob URLs
+    // Process each file - but DON'T convert File objects to blob URLs for reference
     for (const file of files) {
       if (typeof file === 'string') {
         console.log('Processing string URL:', file);
         addReferenceUrl(file, true);
       } else {
         console.log('Processing File object:', file);
-        const blobUrl = URL.createObjectURL(file);
-        addReferenceUrl(blobUrl, true);
+        // Don't create blob URLs for File objects - they need to be uploaded as files
+        // The imageFiles state already contains the File objects
       }
     }
   };
@@ -188,7 +188,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
   };
 
 	  const handleSubmit = () => {
-    if (prompt.trim() === '' && referenceUrls.length === 0) {
+    if (prompt.trim() === '' && referenceUrls.length === 0 && imageFiles.length === 0) {
 		toast.error('Please enter a prompt or upload an image');
 		return;
 	  }
@@ -200,8 +200,11 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
 	  setLocalLoading(true);
 
-    // Use only the referenceUrls from context as the source of truth
-	  const allImages: (File | string)[] = referenceUrls;
+    // Combine File objects from imageFiles with string URLs from referenceUrls
+    const allImages: (File | string)[] = [
+      ...imageFiles.filter(f => f instanceof File), // File objects
+      ...referenceUrls // String URLs
+    ];
 
 	  const refinerToUse = selectedRefiner === 'none' ? undefined : selectedRefiner;
 	  const publishToUse = selectedPublish === 'none' ? undefined : selectedPublish;
@@ -234,24 +237,27 @@ const PromptForm: React.FC<PromptFormProps> = ({
   };
 
   const handleRemoveImage = (index: number) => {
-    const url = referenceUrls[index];
+    // Determine if this is a File object or a reference URL based on index
+    const fileCount = imageFiles.filter(f => f instanceof File).length;
     
-    // Only revoke blob URLs that were created via URL.createObjectURL
-    if (url.startsWith('blob:')) {
-    URL.revokeObjectURL(url);
+    if (index < fileCount) {
+      // It's a File object
+      const fileIndex = imageFiles.findIndex((f, i) => f instanceof File && i === index);
+      if (fileIndex !== -1) {
+        setImageFiles(prev => prev.filter((_, i) => i !== fileIndex));
+      }
+    } else {
+      // It's a reference URL
+      const urlIndex = index - fileCount;
+      const url = referenceUrls[urlIndex];
+      if (url) {
+        removeReferenceUrl(url);
+      }
     }
-    
-    console.log('Removing image at index:', index, 'URL:', url);
-    
-    // Remove from context
-    removeReferenceUrl(url);
-    
-    // Also update imageFiles for backward compatibility
-    setImageFiles(prev => prev.filter(f => typeof f === 'object' || f !== url));
   };
 
   const clearAllImages = () => {
-    // Revoke any blob URLs
+    // Revoke any blob URLs that might have been created
     referenceUrls.forEach(url => {
       if (url.startsWith('blob:')) {
         URL.revokeObjectURL(url);
@@ -261,7 +267,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
     // Clear from context
     clearReferenceUrls();
     
-    // Also clear imageFiles for backward compatibility
+    // Clear imageFiles
     setImageFiles([]);
   };
 
@@ -273,7 +279,37 @@ const PromptForm: React.FC<PromptFormProps> = ({
     }
   };
 
-  const isButtonDisabled = localLoading || (prompt.trim() === '' && referenceUrls.length === 0);
+  const isButtonDisabled = localLoading || (prompt.trim() === '' && referenceUrls.length === 0 && imageFiles.length === 0);
+
+  // Create display URLs for File objects (for preview only)
+  const displayUrls = React.useMemo(() => {
+    const urls: string[] = [];
+    
+    // Add blob URLs for File objects (for display only)
+    imageFiles.forEach(file => {
+      if (file instanceof File) {
+        const blobUrl = URL.createObjectURL(file);
+        urls.push(blobUrl);
+      }
+    });
+    
+    // Add reference URLs
+    urls.push(...referenceUrls);
+    
+    return urls;
+  }, [imageFiles, referenceUrls]);
+
+  // Clean up blob URLs when component unmounts or imageFiles change
+  React.useEffect(() => {
+    return () => {
+      // Clean up any blob URLs we created for display
+      displayUrls.forEach(url => {
+        if (url.startsWith('blob:')) {
+          URL.revokeObjectURL(url);
+        }
+      });
+    };
+  }, [displayUrls]);
 
   return (
     <div className="w-full mb-8">
@@ -287,7 +323,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           isLoading={localLoading}
           isFirstRun={isFirstRun}
           onSubmit={handleSubmit}
-          uploadedImages={referenceUrls}
+          uploadedImages={displayUrls}
         />
         <PromptFormToolbar 
           isLoading={localLoading}
@@ -304,7 +340,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           isButtonDisabled={isButtonDisabled}
           workflows={workflows as unknown as WorkflowProps[]}
           isCompact={false}
-          hasUploadedImages={referenceUrls.length > 0}
+          hasUploadedImages={referenceUrls.length > 0 || imageFiles.length > 0}
         />
       </Card>
     </div>

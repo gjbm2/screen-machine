@@ -1,12 +1,66 @@
+from __future__ import annotations
 import asyncio
 import json
 import ast
 import os
-from routes.utils import findfile, dict_substitute
+from pathlib import Path
+from flask import Blueprint, jsonify, abort
+from routes.utils import findfile, dict_substitute, _load_json_once
+from routes.display_utils import ambient_rgba
 from overlay_ws_server import send_overlay_to_clients
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
+
+# Create Blueprint for mask routes
+mask_bp = Blueprint("mask", __name__)
+
+
+# ───────────────────── routes ─────────────────────────────────
+@mask_bp.route("/<dest_id>/mask", methods=["GET"])
+def mask(dest_id: str):
+    """
+    Example:
+        GET /api/lobby_tv/mask   →  {"hex":"#FFD5B1","alpha":0.73,…}
+        
+    If no lat/long exists for the destination, returns a non-masking layer:
+        {"hex":"#FFFFFF","alpha":0.0,"timestamp":"2023-03-14T12:00:00Z"}
+    """
+    dests = {dest["id"]: dest for dest in _load_json_once("destination", "publish-destinations.json")}
+    dest = dests.get(dest_id)
+    if not dest:
+        warning(f"[mask] Destination '{dest_id}' not found in publish-destinations.json")
+        abort(404, description=f"Unknown destination '{dest_id}'")
+
+    # Check if lat/long coordinates exist for this destination
+    if "lat" not in dest or "lon" not in dest:
+        debug(f"[mask] No coordinates for '{dest_id}' - returning non-masking layer")
+        # Return a non-masking layer (transparent white)
+        now_utc = datetime.utcnow().replace(tzinfo=timezone.utc)
+        payload = {
+            "hex": "#FFFFFF",
+            "alpha": 0.0,
+            "timestamp": now_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
+        }
+        return jsonify(payload)
+
+    # If coordinates exist, calculate the ambient color
+    lat = float(dest["lat"])
+    lon = float(dest["lon"])
+    debug(f"[mask] Calculating ambient color for '{dest_id}' at {lat}°N, {lon}°E")
+    payload = ambient_rgba(lat, lon)
+    
+    # Log the debug information
+    debug_info = payload.pop("_debug", {})  # Remove debug info from response
+    debug(f"[mask] Ambient calculation for '{dest_id}':")
+    debug(f"  • Solar elevation: {debug_info['solar_elevation']}°")
+    debug(f"  • Raw index: {debug_info['raw_index']} (before smoothing)")
+    debug(f"  • Smooth index: {debug_info['smooth_index']} (after smoothing)")
+    debug(f"  • Color temp: {debug_info['kelvin']}K")
+    debug(f"  • Alpha: {debug_info['alpha_raw']} (before rounding)")
+    debug(f"  • Final color: {payload['hex']}")
+    
+    return jsonify(payload)
 
 def send_overlay(
     html: str,

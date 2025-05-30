@@ -443,8 +443,19 @@ def parse_duration(duration: Union[str, int, float, None], default_seconds: int 
     Returns:
         int: Duration in seconds
     """
+    # Add rate-limiting for debug logging
+    if not hasattr(parse_duration, '_last_debug_log_time'):
+        parse_duration._last_debug_log_time = 0
+    
+    should_log = False
+    current_time = time.time()
+    if current_time - parse_duration._last_debug_log_time > 30:
+        should_log = True
+        parse_duration._last_debug_log_time = current_time
+    
     # Debug logging
-    debug(f"parse_duration called with: '{duration}' (type: {type(duration).__name__})")
+    if should_log:
+        debug(f"parse_duration called with: '{duration}' (type: {type(duration).__name__})")
     
     if duration is None:
         return default_seconds
@@ -477,10 +488,12 @@ def parse_duration(duration: Union[str, int, float, None], default_seconds: int 
         try:
             return int(float(duration) * 60)
         except ValueError:
-            debug(f"Could not parse duration '{duration}' as a number")
+            if should_log:
+                debug(f"Could not parse duration '{duration}' as a number")
                 
     # Default
-    debug(f"Using default duration of {default_seconds} seconds")
+    if should_log:
+        debug(f"Using default duration of {default_seconds} seconds")
     return default_seconds
 
 @thread_safe
@@ -1211,19 +1224,33 @@ def _parse_iso_datetime(dt_str):
 def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None) -> None:
     """Save the scheduler state to disk for a destination."""
     path = get_scheduler_storage_path(publish_destination)
-    debug(f"Starting state save for {publish_destination} to {path}")
+    
+    # Add rate-limiting for debug logging
+    if not hasattr(save_scheduler_state, '_last_debug_log_time'):
+        save_scheduler_state._last_debug_log_time = {}
+    
+    should_log = False
+    current_time = time.time()
+    if publish_destination not in save_scheduler_state._last_debug_log_time or \
+       (current_time - save_scheduler_state._last_debug_log_time.get(publish_destination, 0)) > 30:
+        should_log = True
+        save_scheduler_state._last_debug_log_time[publish_destination] = current_time
+    
+    if should_log:
+        debug(f"Starting state save for {publish_destination} to {path}")
     
     try:
         # Check what state was passed in
-        if state is not None:
-            passed_in_state = state.get("state", "none-passed")
-            debug(f"State object passed with state='{passed_in_state}' for {publish_destination}")
-        else:
-            debug(f"No state object passed for {publish_destination}")
-        
-        # Check what's in memory
-        in_memory_state = scheduler_states.get(publish_destination, "not-in-memory")
-        debug(f"Current in-memory state is '{in_memory_state}' for {publish_destination}")
+        if should_log:
+            if state is not None:
+                passed_in_state = state.get("state", "none-passed")
+                debug(f"State object passed with state='{passed_in_state}' for {publish_destination}")
+            else:
+                debug(f"No state object passed for {publish_destination}")
+            
+            # Check what's in memory
+            in_memory_state = scheduler_states.get(publish_destination, "not-in-memory")
+            debug(f"Current in-memory state is '{in_memory_state}' for {publish_destination}")
     
         # If state is provided, use it (with fallbacks to in-memory state for missing parts)
         # Otherwise use the complete in-memory state
@@ -1286,7 +1313,8 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
             ]
             state_to_save["event_history"] = history_data
         
-        debug(f"Will save state='{state_to_save['state']}' for {publish_destination}")
+        if should_log:
+            debug(f"Will save state='{state_to_save['state']}' for {publish_destination}")
         
         # Convert datetime objects in last_trigger_executions to ISO format strings
         if publish_destination in last_trigger_executions:
@@ -1300,7 +1328,7 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
                     error(f"Error converting trigger execution time: {e}")
         
         # Log what we're saving
-        if state_to_save["context_stack"]:
+        if should_log and state_to_save["context_stack"]:
             context_count = len(state_to_save["context_stack"])
             debug(f"[SAVING STATE] {publish_destination} has {context_count} contexts")
             
@@ -1312,7 +1340,8 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
                     debug(f"[SAVING STATE] First context has {var_count} vars: {var_names}")
         
         # Log the current state we're saving
-        debug(f"[SAVING STATE] Current state for {publish_destination} is: {state_to_save['state']}")
+        if should_log:
+            debug(f"[SAVING STATE] Current state for {publish_destination} is: {state_to_save['state']}")
         
         # Ensure the directory exists
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -1325,10 +1354,12 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
         
         # Rename the temporary file to the actual file (atomic operation)
         os.replace(temp_path, path)
-        debug(f"Successfully saved state='{state_to_save['state']}' for {publish_destination}")
+        if should_log:
+            debug(f"Successfully saved state='{state_to_save['state']}' for {publish_destination}")
         
     except Exception as e:
-        debug(f"Failed to save state for {publish_destination}: {str(e)}")
+        if should_log:
+            debug(f"Failed to save state for {publish_destination}: {str(e)}")
         error(f"CRITICAL ERROR: Failed to save state for {publish_destination}: {str(e)}")
         import traceback
         error(f"Error traceback: {traceback.format_exc()}")
@@ -1340,36 +1371,55 @@ def update_scheduler_state(publish_destination: str,
                          state: Optional[str] = None,
                          force_save: bool = False) -> None:
     """Update parts of the scheduler state and then save everything to disk."""
+    # Add rate-limiting for debug logging
+    if not hasattr(update_scheduler_state, '_last_debug_log_time'):
+        update_scheduler_state._last_debug_log_time = {}
+    
+    should_log = False
+    current_time = time.time()
+    if publish_destination not in update_scheduler_state._last_debug_log_time or \
+       (current_time - update_scheduler_state._last_debug_log_time.get(publish_destination, 0)) > 30:
+        should_log = True
+        update_scheduler_state._last_debug_log_time[publish_destination] = current_time
+    
     # Simple, unconditional updating
-    debug(f"Starting state update for {publish_destination}")
+    if should_log:
+        debug(f"Starting state update for {publish_destination}")
     
     # Check current state before update
     before_state = scheduler_states.get(publish_destination, "not-in-memory")
-    debug(f"Before update, in-memory state is '{before_state}' for {publish_destination}")
+    if should_log:
+        debug(f"Before update, in-memory state is '{before_state}' for {publish_destination}")
     
     # Update in-memory state with any provided values
     if schedule_stack is not None:
         scheduler_schedule_stacks[publish_destination] = schedule_stack
-        debug(f"Updated schedule_stack: {len(schedule_stack)} items")
+        if should_log:
+            debug(f"Updated schedule_stack: {len(schedule_stack)} items")
     
     if context_stack is not None:
         scheduler_contexts_stacks[publish_destination] = context_stack
-        debug(f"Updated context_stack: {len(context_stack)} contexts")
-        if context_stack and "vars" in context_stack[-1]:
-            debug(f"Top context vars: {list(context_stack[-1].get('vars', {}).keys())}")
+        if should_log:
+            debug(f"Updated context_stack: {len(context_stack)} contexts")
+            if context_stack and "vars" in context_stack[-1]:
+                debug(f"Top context vars: {list(context_stack[-1].get('vars', {}).keys())}")
     
     if state is not None:
-        debug(f"Updating state from '{before_state}' to '{state}' for {publish_destination}")
+        if should_log:
+            debug(f"Updating state from '{before_state}' to '{state}' for {publish_destination}")
         scheduler_states[publish_destination] = state
     else:
-        debug(f"No state provided, keeping current state '{before_state}' for {publish_destination}")
+        if should_log:
+            debug(f"No state provided, keeping current state '{before_state}' for {publish_destination}")
     
     # Check state after update
     after_state = scheduler_states.get(publish_destination, "not-in-memory")
-    debug(f"After update, in-memory state is '{after_state}' for {publish_destination}")
+    if should_log:
+        debug(f"After update, in-memory state is '{after_state}' for {publish_destination}")
     
     # Always save the full state to disk
-    debug(f"Calling save_scheduler_state for {publish_destination}")
+    if should_log:
+        debug(f"Calling save_scheduler_state for {publish_destination}")
     
     if force_save:
         # Create a complete state object to force saving everything
@@ -1381,12 +1431,14 @@ def update_scheduler_state(publish_destination: str,
             "last_updated": datetime.now().isoformat()
         }
         save_scheduler_state(publish_destination, save_state)
-        debug(f"Force-saved complete state for {publish_destination}")
+        if should_log:
+            debug(f"Force-saved complete state for {publish_destination}")
     else:
         # Use default save behavior
         save_scheduler_state(publish_destination)
     
-    debug(f"Completed state update for {publish_destination}")
+    if should_log:
+        debug(f"Completed state update for {publish_destination}")
 
 # === Context Stack Management ===
 def get_context_stack(publish_destination: str) -> List[Dict[str, Any]]:
@@ -1451,7 +1503,7 @@ def extract_instructions(instruction_container: Dict[str, Any]) -> List[Dict[str
     current_time = time.time()
     log_key = id(instruction_container)  # Use container object ID as key
     
-    # Only log once every 5 minutes for the same container
+    # Only log once every 30 seconds for the same container
     if log_key not in extract_instructions._last_debug_log_time or \
        (current_time - extract_instructions._last_debug_log_time.get(log_key, 0)) > 30:
         should_log_debug = True
@@ -1489,14 +1541,21 @@ def extract_instructions(instruction_container: Dict[str, Any]) -> List[Dict[str
             if should_log_debug and len(result) > 0:
                 debug(f"Found instructions in trigger_actions with {len(result)} instructions")
             return result
-        
+    
     # Check if this might be a direct array of instructions
     if isinstance(instruction_container, list):
-        if should_log_debug:
-            debug(f"Container is a direct list with {len(instruction_container)} items")
+        if should_log_debug and len(instruction_container) > 0:
+            debug(f"Container is a list with {len(instruction_container)} instructions")
         return instruction_container
     
-    # No logging for empty results
+    # If it's a single instruction wrapped in a dict
+    if isinstance(instruction_container, dict) and "action" in instruction_container:
+        if should_log_debug:
+            debug("Container appears to be a single instruction")
+        return [instruction_container]
+    
+    if should_log_debug:
+        debug("No instructions found in container")
     return []
 
 def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, minute_of_day: int, publish_destination: str = None, apply_grace_period: bool = False) -> List[Dict[str, Any]]:
@@ -1530,7 +1589,7 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
     should_log = False
     current_time = time.time()
     
-    # Only log once every 5 minutes per destination
+    # Only log once every 30 seconds per destination
     if publish_destination not in process_time_schedules._last_debug_log_time or \
        (current_time - process_time_schedules._last_debug_log_time.get(publish_destination, 0)) > 30:
         should_log = True
@@ -1669,8 +1728,8 @@ def process_time_schedules(time_schedules: List[Dict[str, Any]], now: datetime, 
                         matched_schedules.append(schedule)
                     elif should_log:
                         # Only log skipped executions if we're not throttling
-                            if interval_id in last_trigger_executions[publish_destination]:
-                                debug(f"Skipping execution (ID={interval_id}): already executed this interval")
+                        if interval_id in last_trigger_executions[publish_destination]:
+                            debug(f"Skipping execution (ID={interval_id}): already executed this interval")
             except (ValueError, TypeError) as e:
                 error(f"Error processing repeat schedule: {e}")
                 continue
@@ -2655,11 +2714,22 @@ def process_instruction_jinja(instruction: Dict[str, Any], context: Dict[str, An
     Returns:
         A new instruction object with all Jinja templates processed
     """
-    # Process the entire instruction using the generic processor
+    # Add rate-limiting for debug logging
+    if not hasattr(process_instruction_jinja, '_last_debug_log_time'):
+        process_instruction_jinja._last_debug_log_time = {}
+    
+    should_log = False
+    current_time = time.time()
+    if publish_destination not in process_instruction_jinja._last_debug_log_time or \
+       (current_time - process_instruction_jinja._last_debug_log_time.get(publish_destination, 0)) > 30:
+        should_log = True
+        process_instruction_jinja._last_debug_log_time[publish_destination] = current_time
+    
+    # Process the entire instruction recursively
     processed_instruction = process_jinja_template(instruction, context, publish_destination)
     
-    # Special handling for certain fields where we need to convert types
-    if "action" in processed_instruction:
+    # Special handling for specific actions
+    if isinstance(processed_instruction, dict) and "action" in processed_instruction:
         action = processed_instruction["action"]
         
         try:
@@ -2669,7 +2739,8 @@ def process_instruction_jinja(instruction: Dict[str, Any], context: Dict[str, An
                 duration_input = processed_instruction["duration"]
                 
                 # Log the raw value for debugging
-                debug(f"Processing wait duration: '{duration_input}' (type: {type(duration_input).__name__})")
+                if should_log:
+                    debug(f"Processing wait duration: '{duration_input}' (type: {type(duration_input).__name__})")
                 
                 # Use our parse_duration utility to handle complex duration formats
                 # DO NOT modify the original duration string - it's needed for display
@@ -2678,7 +2749,8 @@ def process_instruction_jinja(instruction: Dict[str, Any], context: Dict[str, An
                     # Just ensure it's correctly parsed
                     from routes.scheduler_utils import parse_duration
                     parse_duration(duration_input)
-                    debug(f"Successfully parsed duration: {duration_input}")
+                    if should_log:
+                        debug(f"Successfully parsed duration: {duration_input}")
                 except (ValueError, TypeError) as e:
                     error(f"Error parsing wait duration: {duration_input} - {str(e)}")
                     
