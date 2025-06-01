@@ -2282,31 +2282,47 @@ export class Api {
 
   // Get the ambient mask data for a display
   async getMask(destinationId: string): Promise<{
-    hex: string;
-    alpha: number;
+    brightness: number;
+    warm_hex: string;
+    warm_alpha: number;
     timestamp: string;
   }> {
-    if (this.mockMode) {
-      // Return a mock transparent mask in mock mode
-      return {
-        hex: "#FFFFFF",
-        alpha: 0.0,
-        timestamp: new Date().toISOString()
-      };
+    const response = await fetch(`${this.apiUrl}/${destinationId}/mask`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch mask');
     }
-    
-    try {
-      const response = await fetch(`${this.apiUrl}/${destinationId}/mask`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch mask: ${response.status}`);
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching mask:', error);
-      throw error;
+    return response.json();
+  }
+
+  // Enable masking for a display
+  async enableMask(destinationId: string): Promise<{ status: string; destination: string }> {
+    const response = await fetch(`${this.apiUrl}/${destinationId}/maskon`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to enable mask');
     }
+    return response.json();
+  }
+
+  // Disable masking for a display
+  async disableMask(destinationId: string): Promise<{ status: string; destination: string }> {
+    const response = await fetch(`${this.apiUrl}/${destinationId}/maskoff`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to disable mask');
+    }
+    return response.json();
+  }
+
+  // Get the current mask state for a display
+  async getMaskState(destinationId: string): Promise<{ enabled: boolean; destination: string }> {
+    const response = await fetch(`${this.apiUrl}/${destinationId}/maskstate`);
+    if (!response.ok) {
+      throw new Error('Failed to get mask state');
+    }
+    return response.json();
   }
 }
 

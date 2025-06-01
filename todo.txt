@@ -12,7 +12,6 @@ Alexa work:
 
 UI fixes:
 1. Control schedule from bucket
-2. Late-binding of workflow
 3. tags for images
 4. better css for schemaedit
 5. when publishing to a currently displayed bucket, we want to avoid a full page refresh -- it's distracting and unnecessary. we only need to refresh the dispaly of the currently published relement. this is triggered from dnd onto own tab OR onto 'currently pbulished' OR using 'publish to' and then choosing own tab. I hope all three go through same code path.. In each case the front end should only update currently published display NOT 
@@ -38,9 +37,7 @@ Nice to have
 21. better ws handling
 	- currently running jobs details
 	- alerts for new bucket additions
-24. scheduler passes images in vars (from generate > animate, etc.)
 25. shared history workarounds...?
-26. scheduler can appraise images and select the best
 27. Lora management component
 28. Ursula & Ida lora!
 
