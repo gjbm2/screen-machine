@@ -377,9 +377,23 @@
               "description": "Optional: The input text to process. Supports Jinja expressions like {{ variable_name }}."
             },
             "image_inputs": {
-              "type": "string",
+              "oneOf": [
+                {
+                  "type": "string",
+                  "title": "Image Variable Name",
+                  "description": "Name of a variable containing image path(s) to reason about."
+                },
+                {
+                  "type": "array",
+                  "title": "Image Paths Array",
+                  "description": "Array of image paths to reason about (can be empty).",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
               "title": "Image Inputs",
-              "description": "Name of a variable containing image path(s) to reason about."
+              "description": "Either a variable name containing images, or an array of image paths (can be empty for no images)."
             },
             "reasoner": {
               "type": "string",

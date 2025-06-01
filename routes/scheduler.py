@@ -651,45 +651,39 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
 
 def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, **kwargs) -> None:
     """
-    Start a scheduler for a destination. This will first stop any existing scheduler.
+    Start a scheduler with a given schedule.
+    
+    :param publish_destination: The destination ID to start the scheduler for
+    :param schedule: The schedule dictionary containing triggers, actions, etc.
     """
     try:
-        info(f"Starting scheduler for {publish_destination}")
+        info(f"Starting scheduler for destination '{publish_destination}'")
         
-        # Check if a scheduler is already running for this destination
+        # Check if already running
         if publish_destination in running_schedulers:
-            scheduler_info = running_schedulers[publish_destination]
-            future = scheduler_info["future"] if isinstance(scheduler_info, dict) else scheduler_info
+            future = running_schedulers[publish_destination]["future"]
             if not future.done() and not future.cancelled():
-                info(f"Scheduler for {publish_destination} already running, not starting a new one")
-                # Make sure the visible state reflects that it's running
-                scheduler_states[publish_destination] = "running"
-                return
-            else:
-                # Clean up the stale entry if it's done or cancelled
-                info(f"Found stale scheduler entry for {publish_destination}, cleaning up")
-                running_schedulers.pop(publish_destination, None)
+                error(f"Scheduler already running for {publish_destination}")
+                raise ValueError(f"Scheduler already running for {publish_destination}")
         
-        # Load existing context and schedule from state
-        loaded_state = load_scheduler_state(publish_destination)
+        # Validate schedule has required structure
+        if not isinstance(schedule, dict):
+            raise ValueError("Schedule must be a dictionary")
+            
+        # Initialize the schedule stack
+        schedule_stack = scheduler_schedule_stacks.get(publish_destination, [])
+        schedule_stack.append(schedule)
         
-        # Initialize context and schedule stacks
-        context_stack = loaded_state.get("context_stack", [])
-        schedule_stack = loaded_state.get("schedule_stack", [])
-        
-        # Create a fresh context if none exists
+        # Get the context stack - ensure it's not empty
+        context_stack = scheduler_contexts_stacks.get(publish_destination, [])
         if not context_stack:
-            context_stack = [{
-                "vars": {},
-                "publish_destination": publish_destination
-            }]
+            info(f"No context found for {publish_destination}, creating default context")
+            default_ctx = default_context()
+            default_ctx["publish_destination"] = publish_destination
+            context_stack = [default_ctx]
+            scheduler_contexts_stacks[publish_destination] = context_stack
         
-        # Important: We no longer reset the context here
-        # Push the new schedule onto the stack instead of replacing
-        schedule_stack = [schedule]
-        
-        # Set up global state
-        scheduler_contexts_stacks[publish_destination] = context_stack
+        # Update the global stacks
         scheduler_schedule_stacks[publish_destination] = schedule_stack
         
         # Update scheduler state
@@ -709,6 +703,9 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
             loop = get_event_loop(publish_destination)
         except TypeError:
             loop = get_event_loop()
+        except Exception as e:
+            error(f"Failed to get event loop for {publish_destination}: {str(e)}")
+            raise
         
         # Schedule the coroutine to run in the background
         future = asyncio.run_coroutine_threadsafe(
@@ -724,9 +721,12 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
         
         info(f"Scheduler for {publish_destination} started successfully")
     except Exception as e:
-        error(f"Error starting scheduler: {str(e)}")
+        error(f"Error starting scheduler for {publish_destination}: {str(e)}")
+        # Reset state to stopped on error
+        scheduler_states[publish_destination] = "stopped"
         import traceback
         error(traceback.format_exc())
+        raise  # Re-raise to be caught by API handler
 
 def initialize_schedulers_from_disk():
     """Initialize scheduler state from disk.
