@@ -97,7 +97,11 @@ def api_start_scheduler(publish_destination):
         # IMPORTANT: publish_destination should always be the ID, not the display name
         # If this is receiving display names instead of IDs, the frontend needs fixing
         schedule = request.json
-        debug(f"Received schedule for ID '{publish_destination}': {json.dumps(schedule, indent=2)}")
+        # Truncate large schedule objects in debug logs
+        debug_schedule = json.dumps(schedule, indent=2)
+        if len(debug_schedule) > 1000:
+            debug_schedule = debug_schedule[:1000] + "... (truncated)"
+        debug(f"Received schedule for ID '{publish_destination}': {debug_schedule}")
         
         # Check if an empty schedule was provided but we have an existing one
         if not schedule or (isinstance(schedule, dict) and not schedule):
@@ -135,7 +139,9 @@ def api_start_scheduler(publish_destination):
         try:
             jsonschema.validate(instance=schedule, schema=get_current_schema())
         except jsonschema.exceptions.ValidationError as e:
-            error_msg = f"Invalid schedule format: {str(e)}"
+            # Extract just the error message without the full schema
+            error_path = " -> ".join(str(p) for p in e.path) if e.path else "root"
+            error_msg = f"Invalid schedule format at {error_path}: {e.message}"
             error(error_msg)
             return jsonify({"error": error_msg}), 400
 
@@ -431,7 +437,9 @@ def api_load_schedule(publish_destination):
         try:
             jsonschema.validate(instance=schedule, schema=get_current_schema())
         except jsonschema.exceptions.ValidationError as e:
-            error_msg = f"Invalid schedule format: {str(e)}"
+            # Extract just the error message without the full schema
+            error_path = " -> ".join(str(p) for p in e.path) if e.path else "root"
+            error_msg = f"Invalid schedule format at {error_path}: {e.message}"
             error(error_msg)
             return jsonify({"error": error_msg}), 400
 
@@ -1036,7 +1044,9 @@ def api_update_schedule_by_index(publish_destination, index):
         try:
             jsonschema.validate(instance=schedule, schema=get_current_schema())
         except jsonschema.exceptions.ValidationError as e:
-            error_msg = f"Invalid schedule format: {str(e)}"
+            # Extract just the error message without the full schema
+            error_path = " -> ".join(str(p) for p in e.path) if e.path else "root"
+            error_msg = f"Invalid schedule format at {error_path}: {e.message}"
             error(error_msg)
             return jsonify({"error": error_msg}), 400
             

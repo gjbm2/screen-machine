@@ -123,39 +123,30 @@ def compute_mask(
 ) -> dict[str, str | float]:
     # Force fresh load of config
     import importlib.util
+    from routes.utils import _load_json_once
+    
     spec = importlib.util.spec_from_file_location("config", "config.py")
     config = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(config)
     
-    # Start with default config
-    cfg = cfg or config.INTENSITY_CFG.copy()
-    
-    # If no lat/lon provided, use defaults from config
-    if lat is None:
-        lat = cfg.get("default_lat", 51.5074)  # London
-    if lon is None:
-        lon = cfg.get("default_lon", -0.1278)  # London
-    
-    # Apply per-screen overrides if provided
+    # If screen_cfg provided, load its config
     if screen_cfg:
-        cfg.update(screen_cfg)
+        dests = {dest["id"]: dest for dest in _load_json_once("destination", "publish-destinations.json")}
+        dest = dests.get(screen_cfg.get("id"))
+        if dest:
+            screen_cfg = dest.get("intensity_cfg", {})
+            if screen_cfg.get("adjust", False):
+                lat = float(screen_cfg["lat"])
+                lon = float(screen_cfg["lon"])
     
-    now = (
-        time.replace(tzinfo=timezone.utc)
-        if time and not time.tzinfo
-        else time
-        if time
-        else now_utc or datetime.utcnow().replace(tzinfo=timezone.utc)
-    )
-
-    if lat is None or lon is None:
-        return { "brightness":1.0, "warm_hex":"#FFFFFF", "warm_alpha":0.0,
-                 "blend":"multiply", "timestamp":now.isoformat(timespec="seconds") }
-
-    idx_base, solar_noon = _solar_index(now, lat, lon, cfg)
-
+    # Use provided time or current time
+    now = time or now_utc or datetime.utcnow().replace(tzinfo=timezone.utc)
+    
+    # Get solar index
+    idx, solar_noon = _solar_index(now, lat, lon, config.INTENSITY_CFG)
+    
     # ── NEW  orientation bias  ───────────────────────────────────────
-    bias = cfg.get("east_west_bias", 0.0)          # Range -1 to 1: -1 = west-facing, +1 = east-facing
+    bias = config.INTENSITY_CFG.get("east_west_bias", 0.0)          # Range -1 to 1: -1 = west-facing, +1 = east-facing
     hours_from_noon = (now - solar_noon).total_seconds() / 3600.0
     
     # Apply skewing transformation using a smooth, continuous function
@@ -171,23 +162,23 @@ def compute_mask(
         # East-facing screens get less light in afternoon
         power = 1.0 + 0.8 * (abs(bias) ** 0.5) * (1 if bias > 0 else -1)  # Square root gives more gradual effect
     
-    idx = idx_base ** power
+    idx = idx ** power
     idx = max(0.0, min(1.0, idx))    # clamp back
 
     # ── brightness  ──────────────────────────────────────────────────
-    brightness = 1.0 - (1.0 - cfg["night_floor"]) * (1 - idx) ** cfg["gamma_brightness"]
+    brightness = config.INTENSITY_CFG["night_floor"] + (1 - config.INTENSITY_CFG["night_floor"]) * idx
 
     # ── colour temperature  ──────────────────────────────────────────
-    mired_night = 1e6 / cfg["warmest_temp_K"]
-    mired_day   = 1e6 / cfg["coolest_temp_K"]
-    mired_now   = mired_day + (1 - idx) ** cfg["beta_colour"] * (mired_night - mired_day)
+    mired_night = 1e6 / config.INTENSITY_CFG["warmest_temp_K"]
+    mired_day   = 1e6 / config.INTENSITY_CFG["coolest_temp_K"]
+    mired_now   = mired_day + (1 - idx) ** config.INTENSITY_CFG["beta_colour"] * (mired_night - mired_day)
     kelvin_now  = 1e6 / mired_now
     target_rgb  = _kelvin_to_srgb(kelvin_now)
 
     gain = tuple(min(1.0, t / w) for t, w in zip(target_rgb, _REF_WHITE))
 
-    warm_alpha_max = cfg.get("warm_alpha_max", 0.07)
-    warm_alpha = warm_alpha_max * (1 - idx) ** cfg["beta_colour"]
+    warm_alpha_max = config.INTENSITY_CFG.get("warm_alpha_max", 0.07)
+    warm_alpha = warm_alpha_max * (1 - idx) ** config.INTENSITY_CFG["beta_colour"]
     warm_hex   = _rgb_to_hex(gain)
 
     return {
@@ -197,7 +188,7 @@ def compute_mask(
         "blend":      "multiply",
         "timestamp":  now.isoformat(timespec="seconds").replace("+00:00", "Z"),
         "_debug": {
-            "idx_base":   round(idx_base, 3),
+            "idx_base":   round(idx, 3),
             "idx_skewed": round(idx, 3),
             "kelvin_now": round(kelvin_now),
             "brightness": round(brightness, 3),

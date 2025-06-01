@@ -193,7 +193,7 @@ INTENSITY_CFG = {
     # The effect is subtle and gradual, using a power curve to avoid
     # sudden changes. The bias affects both brightness and warmth timing.
 
-    "seasonality_factor": 0.5,
+    "seasonality_factor": 0.1,
     # Controls how much the solar curve varies with seasons.
     #
     # Range: 0.0 to 1.0.
