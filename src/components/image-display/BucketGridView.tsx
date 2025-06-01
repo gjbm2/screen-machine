@@ -50,6 +50,9 @@ import { isVideoFile } from '@/utils/image-utils';
 
 // Import the new useLoopeView context
 import { useLoopeView } from '@/contexts/LoopeViewContext';
+import { Switch } from "@/components/ui/switch";
+import { Moon } from "lucide-react";
+import { Api } from "@/utils/api";
 
 // Define the expected types based on the API response
 interface BucketItem extends ApiBucketItem {
@@ -348,6 +351,8 @@ export const BucketGridView = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [sectionToDelete, setSectionToDelete] = useState<string | null>(null);
   const [deleteImagesCount, setDeleteImagesCount] = useState(0);
+  const [maskEnabled, setMaskEnabled] = useState(true);
+  const api = new Api();
   
   const hasCamera = 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices;
 
@@ -372,6 +377,22 @@ export const BucketGridView = ({
   useEffect(() => {
     fetchBucketDetails();
     fetchDestinations();
+  }, [destination]);
+
+  // Fetch mask state on mount
+  useEffect(() => {
+    const fetchMaskState = async () => {
+      try {
+        const result = await api.getMaskState(destination);
+        setMaskEnabled(result.enabled);
+      } catch (error) {
+        console.error('Error fetching mask state:', error);
+        // Default to true if there's an error
+        setMaskEnabled(true);
+      }
+    };
+    
+    fetchMaskState();
   }, [destination]);
 
   const fetchDestinations = async () => {
@@ -1973,6 +1994,21 @@ export const BucketGridView = ({
     );
   };
 
+  // Add mask toggle handler
+  const handleMaskToggle = async (enabled: boolean) => {
+    try {
+      if (enabled) {
+        await api.enableMask(destination);
+      } else {
+        await api.disableMask(destination);
+      }
+      setMaskEnabled(enabled);
+    } catch (error) {
+      console.error('Error toggling mask:', error);
+      toast.error('Failed to toggle mask');
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* DnD interactions handled by global context; monitor via hooks */}
@@ -2038,14 +2074,20 @@ export const BucketGridView = ({
                               <Copy className="h-4 w-4 mr-2" />
                               Extract JSON
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={handleOpenSchedulerPage}>
-                              <Settings className="h-4 w-4 mr-2" />
-                              Scheduler
-                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </>
                     )}
+                  </div>
+
+                  {/* Add mask toggle */}
+                  <div className="flex items-center gap-2">
+                    <Moon className="h-4 w-4 text-muted-foreground" />
+                    <Switch
+                      checked={maskEnabled}
+                      onCheckedChange={handleMaskToggle}
+                      className="data-[state=checked]:bg-primary"
+                    />
                   </div>
                 </div>
                 

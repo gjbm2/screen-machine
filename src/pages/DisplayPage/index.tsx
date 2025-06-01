@@ -21,7 +21,8 @@ export default function DisplayPage() {
 
   // Check for nomask parameter
   const noMask = searchParams.has('nomask');
-  const { rgba: maskColor } = useMask(screenId, noMask);
+  const noColour = searchParams.has('nocolour');
+  const { brightness, warmHex, warmAlpha, rgba: brightnessLayer } = useMask(screenId, noMask);
 
   const containerRef = useRef(null);
   const [visibleSrc, setVisibleSrc] = useState<string | null>(null);
@@ -115,17 +116,33 @@ export default function DisplayPage() {
         }}
       />
       
-      {/* Ambient mask overlay - placed between media and UI overlays */}
+      {/* Brightness layer */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          backgroundColor: maskColor,
+          backgroundColor: brightnessLayer,
           pointerEvents: "none",
           transition: "background-color 1000ms ease-in-out",
-          zIndex: 5, // Above media (0-2) but below UI overlays (9999+)
+          zIndex: 5,
         }}
       />
+
+      {/* Warm color layer - only hide if nocolour is set */}
+      {!noColour && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundColor: warmHex,
+            mixBlendMode: "multiply",
+            opacity: warmAlpha,
+            pointerEvents: "none",
+            transition: "background-color 1000ms ease-in-out, opacity 1000ms ease-in-out",
+            zIndex: 6,
+          }}
+        />
+      )}
       
       <OverlayContainer overlays={overlays} />
     </div>

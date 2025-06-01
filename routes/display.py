@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from flask import Blueprint, jsonify, abort
 from routes.utils import findfile, dict_substitute, _load_json_once
-from routes.display_utils import ambient_rgba
+from routes.display_utils import compute_mask
 from overlay_ws_server import send_overlay_to_clients
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
 from datetime import datetime, timezone
@@ -15,16 +15,74 @@ import uuid
 # Create Blueprint for mask routes
 mask_bp = Blueprint("mask", __name__)
 
+# Store mask state for each destination
+mask_states = {}  # {dest_id: bool} - True = mask on, False = mask off
+
+# Store last output values per screen
+_last_output_by_screen = {}  # {dest_id: dict}
+
+# Store last debug output per screen
+_last_debug = {}  # {dest_id: str}
+
+def _get_last_output(dest_id: str) -> dict:
+    """Get the last output for a destination, initializing if needed."""
+    if dest_id not in _last_output_by_screen:
+        _last_output_by_screen[dest_id] = {
+            "brightness": None,
+            "warm_alpha": None,
+            "warm_hex": None
+        }
+    return _last_output_by_screen[dest_id]
 
 # ───────────────────── routes ─────────────────────────────────
+@mask_bp.route("/<dest_id>/maskon", methods=["POST"])
+def mask_on(dest_id: str):
+    """Enable masking for a destination."""
+    dests = {dest["id"]: dest for dest in _load_json_once("destination", "publish-destinations.json")}
+    if dest_id not in dests:
+        warning(f"[mask_on] Destination '{dest_id}' not found in publish-destinations.json")
+        abort(404, description=f"Unknown destination '{dest_id}'")
+    
+    mask_states[dest_id] = True
+    debug(f"[mask_on] Enabled masking for '{dest_id}'")
+    return jsonify({"status": "enabled", "destination": dest_id})
+
+@mask_bp.route("/<dest_id>/maskoff", methods=["POST"])
+def mask_off(dest_id: str):
+    """Disable masking for a destination."""
+    dests = {dest["id"]: dest for dest in _load_json_once("destination", "publish-destinations.json")}
+    if dest_id not in dests:
+        warning(f"[mask_off] Destination '{dest_id}' not found in publish-destinations.json")
+        abort(404, description=f"Unknown destination '{dest_id}'")
+    
+    mask_states[dest_id] = False
+    debug(f"[mask_off] Disabled masking for '{dest_id}'")
+    return jsonify({"status": "disabled", "destination": dest_id})
+
+@mask_bp.route("/<dest_id>/maskstate", methods=["GET"])
+def mask_state(dest_id: str):
+    """Get the current mask state for a destination."""
+    dests = {dest["id"]: dest for dest in _load_json_once("destination", "publish-destinations.json")}
+    if dest_id not in dests:
+        warning(f"[mask_state] Destination '{dest_id}' not found in publish-destinations.json")
+        abort(404, description=f"Unknown destination '{dest_id}'")
+    
+    # Default to True if not explicitly set
+    enabled = mask_states.get(dest_id, True)
+    debug(f"[mask_state] Mask state for '{dest_id}': {enabled}")
+    return jsonify({"enabled": enabled, "destination": dest_id})
+
 @mask_bp.route("/<dest_id>/mask", methods=["GET"])
 def mask(dest_id: str):
     """
     Example:
-        GET /api/lobby_tv/mask   →  {"hex":"#FFD5B1","alpha":0.73,…}
+        GET /api/lobby_tv/mask   →  {"brightness":0.42,"warm_hex":"#F6D0B5",…}
         
-    If no lat/long exists for the destination, returns a non-masking layer:
-        {"hex":"#FFFFFF","alpha":0.0,"timestamp":"2023-03-14T12:00:00Z"}
+    If intensity_cfg.adjust is False or not present, returns a non-masking layer:
+        {"brightness":1.0,"warm_hex":"#FFFFFF","warm_alpha":0.0,…}
+        
+    If masking is disabled for the destination, returns a non-masking layer:
+        {"brightness":1.0,"warm_hex":"#FFFFFF","warm_alpha":0.0,…}
     """
     dests = {dest["id"]: dest for dest in _load_json_once("destination", "publish-destinations.json")}
     dest = dests.get(dest_id)
@@ -32,33 +90,58 @@ def mask(dest_id: str):
         warning(f"[mask] Destination '{dest_id}' not found in publish-destinations.json")
         abort(404, description=f"Unknown destination '{dest_id}'")
 
-    # Check if lat/long coordinates exist for this destination
-    if "lat" not in dest or "lon" not in dest:
-        debug(f"[mask] No coordinates for '{dest_id}' - returning non-masking layer")
-        # Return a non-masking layer (transparent white)
+    # Check if masking is disabled for this destination
+    if dest_id in mask_states and not mask_states[dest_id]:
         now_utc = datetime.utcnow().replace(tzinfo=timezone.utc)
         payload = {
-            "hex": "#FFFFFF",
-            "alpha": 0.0,
+            "brightness": 1.0,  # No dimming (100% bright)
+            "warm_hex": "#FFFFFF",
+            "warm_alpha": 0.0,
             "timestamp": now_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
         }
-        return jsonify(payload)
+    # Check if this destination has intensity adjustment enabled
+    elif not dest.get("intensity_cfg", {}).get("adjust", False):
+        now_utc = datetime.utcnow().replace(tzinfo=timezone.utc)
+        payload = {
+            "brightness": 1.0,  # No dimming (100% bright)
+            "warm_hex": "#FFFFFF",
+            "warm_alpha": 0.0,
+            "timestamp": now_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
+        }
+    else:
+        # If adjustment is enabled, calculate the mask
+        lat = float(dest["intensity_cfg"]["lat"])
+        lon = float(dest["intensity_cfg"]["lon"])
+        payload = compute_mask(lat, lon, screen_cfg=dest["intensity_cfg"])
 
-    # If coordinates exist, calculate the ambient color
-    lat = float(dest["lat"])
-    lon = float(dest["lon"])
-    debug(f"[mask] Calculating ambient color for '{dest_id}' at {lat}°N, {lon}°E")
-    payload = ambient_rgba(lat, lon)
+    # Build debug output with aggressively rounded values
+    debug_output = f"\nMask values changed for {dest_id}:"
+    if "_debug" in payload:
+        debug_output += f"\n  • Solar index: {round(payload['_debug']['idx_skewed'], 2)}"
+        debug_output += f"\n  • Brightness: {round(payload['brightness'], 2)}"
+        debug_output += f"\n  • Warm alpha: {round(payload['warm_alpha'], 2)}"
+        debug_output += f"\n  • Bias: {round(payload['_debug']['bias'], 1)}"
+        debug_output += f"\n  • Power: {round(payload['_debug']['power'], 2)}"
+        debug_output += f"\n  • Elev: {round(payload['_debug']['elev'], 0)}"
+        debug_output += f"\n  • Solar noon: {payload['_debug']['solar_noon']}"
+        debug_output += f"\n  • Noon elev: {round(payload['_debug']['noon_elev'], 0)}"
+        debug_output += f"\n  • Hours from noon: {round(payload['_debug']['hours_from_noon'], 1)}"
+        # Round warm color to nearest 16 (one hex digit)
+        r, g, b = int(payload['warm_hex'][1:3], 16), int(payload['warm_hex'][3:5], 16), int(payload['warm_hex'][5:7], 16)
+        r, g, b = round(r/16)*16, round(g/16)*16, round(b/16)*16
+        debug_output += f"\n  • Warm color: #{r:02x}{g:02x}{b:02x}"
+    else:
+        debug_output += f"\n  • Brightness: {round(payload['brightness'], 2)}"
+        debug_output += f"\n  • Warm alpha: {round(payload['warm_alpha'], 2)}"
+        debug_output += f"\n  • Warm color: {payload['warm_hex']}"
+
+    # Only output if changed
+    if debug_output != _last_debug.get(dest_id):
+        debug(debug_output + "\n")
+        _last_debug[dest_id] = debug_output
     
-    # Log the debug information
-    debug_info = payload.pop("_debug", {})  # Remove debug info from response
-    debug(f"[mask] Ambient calculation for '{dest_id}':")
-    debug(f"  • Solar elevation: {debug_info['solar_elevation']}°")
-    debug(f"  • Raw index: {debug_info['raw_index']} (before smoothing)")
-    debug(f"  • Smooth index: {debug_info['smooth_index']} (after smoothing)")
-    debug(f"  • Color temp: {debug_info['kelvin']}K")
-    debug(f"  • Alpha: {debug_info['alpha_raw']} (before rounding)")
-    debug(f"  • Final color: {payload['hex']}")
+    # Remove debug info from response
+    payload.pop("_debug", None)
     
     return jsonify(payload)
 
