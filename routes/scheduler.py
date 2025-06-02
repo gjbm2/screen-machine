@@ -670,9 +670,8 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
         if not isinstance(schedule, dict):
             raise ValueError("Schedule must be a dictionary")
             
-        # Initialize the schedule stack
-        schedule_stack = scheduler_schedule_stacks.get(publish_destination, [])
-        schedule_stack.append(schedule)
+        # Initialize the schedule stack - replace instead of append
+        schedule_stack = [schedule]
         
         # Get the context stack - ensure it's not empty
         context_stack = scheduler_contexts_stacks.get(publish_destination, [])

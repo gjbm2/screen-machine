@@ -242,8 +242,8 @@
   "context_stack": [
     {
       "vars": {
-        "a_theme": "Coronation regalia as symbols of power",
-        "b_theme": "Westminster Abbey infused with echoes of past coronations",
+        "a_theme": "Westminster Abbey infused with echoes of past coronations",
+        "b_theme": "Coronation regalia as symbols of power",
         "style": "Gustav Klimt-inspired gold-leaf painting",
         "guidance": "Depict the opulence and ceremonial grandeur using lavish gold-leaf elements inspired by Klimt; focus on regalia and historic architecture while ensuring unique interpretations different from those in recent image history.",
         "history_var": [
@@ -711,90 +711,18 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-06-02T22:05:31.895685",
-  "last_trigger_executions": {},
-  "active_events": {},
+  "last_updated": "2025-06-03T00:38:56.135631",
+  "last_trigger_executions": {
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-02_43": "2025-06-02T22:30:00.600854",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-02_44": "2025-06-02T23:00:00.236991",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-02_45": "2025-06-02T23:30:00.160841"
+  },
+  "active_events": {
+    "Juggle_themes": []
+  },
   "event_history": [
     {
       "key": "Juggle_themes",
-      "active_from": "2025-06-01T21:30:01.459234",
-      "expires": "2025-06-01T21:31:01.459234",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-01T21:30:01.459234",
-      "unique_id": "fffda14b-4af1-4d17-a209-d1a3e77ed6ad",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-01T21:30:03.517880"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-01T21:30:01.459234",
-      "expires": "2025-06-01T21:31:01.459234",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-01T21:30:01.459234",
-      "unique_id": "fffda14b-4af1-4d17-a209-d1a3e77ed6ad",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-01T21:30:03.517880"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-01T22:00:01.450471",
-      "expires": "2025-06-01T22:01:01.450471",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-01T22:00:01.450471",
-      "unique_id": "e05e5d7f-3c4f-483d-b8a0-a349af2916a9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-01T22:00:03.530977"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-01T22:00:01.450471",
-      "expires": "2025-06-01T22:01:01.450471",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-01T22:00:01.450471",
-      "unique_id": "e05e5d7f-3c4f-483d-b8a0-a349af2916a9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-01T22:00:03.530977"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-01T22:30:01.545129",
-      "expires": "2025-06-01T22:31:01.545129",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-01T22:30:01.545129",
-      "unique_id": "2aa4c189-8494-4259-bbbe-5c2c206d817e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-01T22:30:03.607403"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-01T22:30:01.545129",
-      "expires": "2025-06-01T22:31:01.545129",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-01T22:30:01.545129",
-      "unique_id": "2aa4c189-8494-4259-bbbe-5c2c206d817e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-01T22:30:03.607403"
-    },
-    {
-      "key": "Juggle_themes",
       "active_from": "2025-06-01T23:00:00.058722",
       "expires": "2025-06-01T23:01:00.058722",
       "display_name": null,
@@ -2014,6 +1942,84 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_cloud",
       "consumed_at": "2025-06-02T22:00:03.287819"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-02T22:30:00.610475",
+      "expires": "2025-06-02T22:31:00.610475",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-02T22:30:00.610475",
+      "unique_id": "adcfd175-b509-49b4-aa40-3c603d42a073",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-02T22:30:02.616414"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-02T22:30:00.610475",
+      "expires": "2025-06-02T22:31:00.610475",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-02T22:30:00.610475",
+      "unique_id": "adcfd175-b509-49b4-aa40-3c603d42a073",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-02T22:30:02.616414"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-02T23:00:00.260891",
+      "expires": "2025-06-02T23:01:00.260891",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:00:00.260891",
+      "unique_id": "2741568d-54bb-42aa-ad75-0e0f92a8a05d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-02T23:00:02.330608"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-02T23:00:00.260891",
+      "expires": "2025-06-02T23:01:00.260891",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:00:00.260891",
+      "unique_id": "2741568d-54bb-42aa-ad75-0e0f92a8a05d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-02T23:00:02.330608"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-02T23:30:00.180849",
+      "expires": "2025-06-02T23:31:00.180849",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:30:00.180849",
+      "unique_id": "963212be-d9e1-4c25-b71d-22b38911652d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-02T23:30:02.198899"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-02T23:30:00.180849",
+      "expires": "2025-06-02T23:31:00.180849",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:30:00.180849",
+      "unique_id": "963212be-d9e1-4c25-b71d-22b38911652d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-02T23:30:02.198899"
     }
   ]
 }
