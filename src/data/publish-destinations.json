@@ -28,7 +28,7 @@
     "intensity_cfg": {
       "lat": 51.5074,
       "lon": -0.1278,
-      "east_west_bias": 0.5,
+      "east_west_bias": 0.25,
       "adjust": true
     }
   },
@@ -51,7 +51,7 @@
     "intensity_cfg": {
       "lat": 51.5074,
       "lon": -0.1278,
-      "east_west_bias": 0.5,
+      "east_west_bias": 0.25,
       "adjust": true
     }
   },

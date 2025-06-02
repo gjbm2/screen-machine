@@ -61,7 +61,7 @@ Only parameters that exist in this base config can be overridden.
 INTENSITY_CFG = {
     # ────────────── BRIGHTNESS CURVE ──────────────
 
-    "night_floor": 0.03,
+    "night_floor": 0.025,
     # Minimum brightness at night. This controls the maximum opacity
     # of the black overlay used to darken the image.
     # 
@@ -193,7 +193,7 @@ INTENSITY_CFG = {
     # The effect is subtle and gradual, using a power curve to avoid
     # sudden changes. The bias affects both brightness and warmth timing.
 
-    "seasonality_factor": 0.1,
+    "seasonality_factor": 0.0,
     # Controls how much the solar curve varies with seasons.
     #
     # Range: 0.0 to 1.0.
@@ -210,6 +210,13 @@ INTENSITY_CFG = {
     #
     # Values in between mix these behaviors. 1.0 is recommended for
     # most locations to maintain natural seasonal variation.
+
+    "day_stretch": 0.2,
+    # Daytime-stretch factor: -1.0 (day shrinks to point) → +1.0 (night shrinks to point)
+    # - -1.0 = extreme narrowing: day becomes very short, sharp peak at noon
+    # - 0.0 = neutral: no transformation applied
+    # - +1.0 = extreme broadening: night becomes very short, plateau during day
+    # Typical values: 0.3 to 0.6 for subtle broadening effect
 
     "default_lat": 51.5074,  # London
     "default_lon": -0.1278,  # London

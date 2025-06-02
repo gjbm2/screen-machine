@@ -114,7 +114,10 @@ def api_start_scheduler(publish_destination):
                 if state and "schedule_stack" in state and state["schedule_stack"]:
                     # Use the topmost schedule from the stack
                     schedule = state["schedule_stack"][-1]
-                    debug(f"Using existing schedule from disk: {json.dumps(schedule, indent=2)}")
+                    debug_schedule = json.dumps(schedule, indent=2)
+                    if len(debug_schedule) > 1000:
+                        debug_schedule = debug_schedule[:1000] + "... (truncated)"
+                    debug(f"Using existing schedule from disk: {debug_schedule}")
                 else:
                     error_msg = "No existing schedule found and empty schedule provided"
                     error(error_msg)

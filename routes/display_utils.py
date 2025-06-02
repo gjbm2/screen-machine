@@ -129,13 +129,45 @@ def compute_mask(
     config = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(config)
     
-    # If screen_cfg provided, load its config
+    # If screen_cfg provided, check if adjustments are enabled
     if screen_cfg:
         dests = {dest["id"]: dest for dest in _load_json_once("destination", "publish-destinations.json")}
         dest = dests.get(screen_cfg.get("id"))
         if dest:
             screen_cfg = dest.get("intensity_cfg", {})
-            if screen_cfg.get("adjust", False):
+            if not screen_cfg.get("adjust", False):
+                # No adjustments - return full brightness
+                return {
+                    "brightness": 1.0,
+                    "warm_hex": "#FFFFFF",
+                    "warm_alpha": 0.0,
+                    "blend": "multiply",
+                    "timestamp": (time or now_utc or datetime.utcnow().replace(tzinfo=timezone.utc)).isoformat(timespec="seconds").replace("+00:00", "Z"),
+                    "_debug": {
+                        "idx_base": 1.0,
+                        "idx_skewed": 1.0,
+                        "kelvin_now": config.INTENSITY_CFG["coolest_temp_K"],
+                        "brightness": 1.0,
+                        "warm_alpha": 0.0,
+                        "bias": 0.0,
+                        "power": 1.0,
+                        "gamma_str": 1.0,
+                        "stretch": 0.0,
+                        "elev": elevation(LocationInfo(latitude=lat, longitude=lon).observer, time or now_utc or datetime.utcnow().replace(tzinfo=timezone.utc)),
+                        "solar_noon": None,
+                        "noon_elev": None,
+                        "hours_from_noon": 0.0,
+                    },
+                }
+            
+            # Adjustments enabled - use all screen config values
+            for key, value in screen_cfg.items():
+                if key in config.INTENSITY_CFG:
+                    if isinstance(config.INTENSITY_CFG[key], bool):
+                        config.INTENSITY_CFG[key] = bool(value)
+                    else:
+                        config.INTENSITY_CFG[key] = float(value)
+            if "lat" in screen_cfg and "lon" in screen_cfg:
                 lat = float(screen_cfg["lat"])
                 lon = float(screen_cfg["lon"])
     
@@ -144,6 +176,7 @@ def compute_mask(
     
     # Get solar index
     idx, solar_noon = _solar_index(now, lat, lon, config.INTENSITY_CFG)
+    idx_base = idx  # Store original index for debug
     
     # ── NEW  orientation bias  ───────────────────────────────────────
     bias = config.INTENSITY_CFG.get("east_west_bias", 0.0)          # Range -1 to 1: -1 = west-facing, +1 = east-facing
@@ -163,6 +196,17 @@ def compute_mask(
         power = 1.0 + 0.8 * (abs(bias) ** 0.5) * (1 if bias > 0 else -1)  # Square root gives more gradual effect
     
     idx = idx ** power
+
+    # Combine orientation bias AND user-controlled day-stretch
+    stretch = config.INTENSITY_CFG.get("day_stretch", 0.0)   # –1 … +1
+    # New formula: -1 = day shrinks to point (γ=10), 0 = neutral (γ=1), +1 = night shrinks to point (γ=0.1)
+    if stretch == 0:
+        gamma_str = 1.0
+    else:
+        # Use exponential mapping for smooth transitions
+        gamma_str = 10 ** (-stretch)  # -1→10, 0→1, +1→0.1
+    
+    idx = idx ** gamma_str
     idx = max(0.0, min(1.0, idx))    # clamp back
 
     # ── brightness  ──────────────────────────────────────────────────
@@ -188,13 +232,15 @@ def compute_mask(
         "blend":      "multiply",
         "timestamp":  now.isoformat(timespec="seconds").replace("+00:00", "Z"),
         "_debug": {
-            "idx_base":   round(idx, 3),
+            "idx_base":   round(idx_base, 3),
             "idx_skewed": round(idx, 3),
             "kelvin_now": round(kelvin_now),
             "brightness": round(brightness, 3),
             "warm_alpha": round(warm_alpha, 3),
             "bias":       bias,
             "power":      round(power, 3),
+            "gamma_str":  round(gamma_str, 3),
+            "stretch":    stretch,
             "elev":       elevation(LocationInfo(latitude=lat, longitude=lon).observer, now),
             "solar_noon": solar_noon,
             "noon_elev":  elevation(LocationInfo(latitude=lat, longitude=lon).observer, solar_noon),
@@ -205,7 +251,7 @@ def compute_mask(
 
 def test_mask_hourly(lat: float = 51.5074, lon: float = -0.1278, dest_id: str = None):
     """
-    Display a table showing mask brightness by hour of day for today.
+    Display a table showing mask brightness by hour for today.
     Default coordinates are London, UK.
     
     Usage from console:
@@ -223,7 +269,7 @@ def test_mask_hourly(lat: float = 51.5074, lon: float = -0.1278, dest_id: str = 
     config = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(config)
     
-    # If dest_id provided, load its config
+    # Get screen config if dest_id provided
     screen_cfg = None
     if dest_id:
         dests = {dest["id"]: dest for dest in _load_json_once("destination", "publish-destinations.json")}
@@ -237,31 +283,24 @@ def test_mask_hourly(lat: float = 51.5074, lon: float = -0.1278, dest_id: str = 
             else:
                 lat = float(screen_cfg["lat"])
                 lon = float(screen_cfg["lon"])
-                print(f"\nUsing configuration for {dest_id}:")
-                print(f"  • Location: {lat}°N, {lon}°E")
-                print(f"  • East-west bias: {screen_cfg.get('east_west_bias', 0.0)}")
-                print(f"  • Seasonality: {screen_cfg.get('seasonality_factor', 1.0)}")
+    
+    # Print each config parameter and whether it's overridden
+    print("\nConfiguration:")
+    for key, default_value in config.INTENSITY_CFG.items():
+        if screen_cfg and key in screen_cfg:
+            print(f"  • {key}: {screen_cfg[key]} (overridden)")
+        else:
+            print(f"  • {key}: {default_value} (default)")
     
     # Start of today in UTC
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
     
-    # Get solar noon info from first mask call
-    first_mask = compute_mask(lat, lon, screen_cfg=screen_cfg, time=today)
+    # Get first mask to show solar info
+    first_mask = compute_mask(lat, lon, screen_cfg={"id": dest_id} if dest_id else None, time=today)
     solar_noon = first_mask['_debug']['solar_noon']
     noon_elev = first_mask['_debug']['noon_elev']
     
     print(f"\nSolar noon: {solar_noon} | Elevation: {noon_elev:.2f}")
-    
-    # Display config values
-    print("\nConfiguration:")
-    print(f"  • Night floor: {config.INTENSITY_CFG['night_floor']:.2f}")
-    print(f"  • Gamma brightness: {config.INTENSITY_CFG['gamma_brightness']:.2f}")
-    print(f"  • Beta colour: {config.INTENSITY_CFG['beta_colour']:.2f}")
-    print(f"  • Warmest temp: {config.INTENSITY_CFG['warmest_temp_K']}K")
-    print(f"  • Coolest temp: {config.INTENSITY_CFG['coolest_temp_K']}K")
-    print(f"  • Warm alpha max: {config.INTENSITY_CFG.get('warm_alpha_max', 0.07):.2f}")
-    print(f"  • Dusk offset: {config.INTENSITY_CFG['dusk_offset_deg']}°")
-    print(f"  • Smoothstep: {config.INTENSITY_CFG['smoothstep']}")
     
     # Header
     print(f"\nMask brightness by hour for {today.strftime('%Y-%m-%d')} UTC at lat={lat}, lon={lon}")
@@ -274,7 +313,7 @@ def test_mask_hourly(lat: float = 51.5074, lon: float = -0.1278, dest_id: str = 
     
     for hour in range(24):
         test_time = today.replace(hour=hour, tzinfo=timezone.utc)
-        mask = compute_mask(lat, lon, screen_cfg=screen_cfg, time=test_time)
+        mask = compute_mask(lat, lon, screen_cfg={"id": dest_id} if dest_id else None, time=test_time)
         
         print(f"{hour:02d}:00 | {mask['brightness']:>10.3f} | {mask['_debug']['idx_base']:>9.3f} | {mask['_debug']['idx_skewed']:>9.3f} | {mask['_debug']['power']:>6.3f} | {mask['_debug']['elev']:>11.1f} | {mask['_debug']['kelvin_now']:>6} | {mask['warm_alpha']:>10.3f} | {mask['_debug']['hours_from_noon']:>15.2f}")
         
