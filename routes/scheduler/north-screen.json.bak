@@ -1,0 +1,3505 @@
+{
+  "schedule_stack": [
+    {
+      "initial_actions": {
+        "instructions_block": []
+      },
+      "triggers": [
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "07:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "device-wake"
+                  },
+                  {
+                    "action": "throw_event",
+                    "event": "Generate",
+                    "scope": "north-screen"
+                  }
+                ],
+                "important": true,
+                "urgent": true
+              }
+            },
+            {
+              "repeat_schedule": {
+                "every": "60"
+              },
+              "time": "07:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "throw_event",
+                    "event": "Generate",
+                    "scope": "north-screen"
+                  }
+                ]
+              }
+            },
+            {
+              "repeat_schedule": {
+                "every": "120"
+              },
+              "time": "07:05",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "import_var",
+                    "as": "animation_on",
+                    "scope": "living-room",
+                    "var_name": "animation_on"
+                  },
+                  {
+                    "action": "terminate",
+                    "mode": "block",
+                    "test": "{{ animation_on|default('false') == 'false' }}"
+                  },
+                  {
+                    "action": "throw_event",
+                    "event": "Animate",
+                    "scope": "north-screen"
+                  }
+                ]
+              }
+            },
+            {
+              "time": "23:00",
+              "trigger_actions": {
+                "important": true,
+                "instructions_block": [
+                  {
+                    "action": "device-sleep"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "event",
+          "value": "Blank",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Blank"
+              }
+            ]
+          }
+        },
+        {
+          "type": "event",
+          "value": "Random",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Random"
+              }
+            ]
+          }
+        },
+        {
+          "type": "event",
+          "value": "Generate",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "import_var",
+                "var_name": "a_theme",
+                "as": "_a_theme",
+                "scope": "living-room"
+              },
+              {
+                "action": "import_var",
+                "var_name": "b_theme",
+                "as": "_b_theme",
+                "scope": "living-room"
+              },
+              {
+                "action": "import_var",
+                "var_name": "style",
+                "as": "_style",
+                "scope": "living-room"
+              },
+              {
+                "action": "import_var",
+                "var_name": "guidance",
+                "as": "_guidance",
+                "scope": "living-room"
+              },
+              {
+                "action": "reason",
+                "text_input": "'{{ _a_theme }}' in the style of '{{ _style }}'. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. ",
+                "reasoner": "devise_prompt",
+                "output_vars": [
+                  "prompt"
+                ],
+                "history_var": "history_var"
+              },
+              {
+                "action": "generate",
+                "input": {
+                  "prompt": "{{ prompt }}"
+                },
+                "refiner": "enrich",
+                "publish": true,
+                "history_var": "prompt_history"
+              }
+            ]
+          }
+        },
+        {
+          "type": "event",
+          "value": "Animate",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "animate",
+                "refiner": "animator",
+                "history_var": "animation_history"
+              }
+            ]
+          }
+        },
+        {
+          "type": "event",
+          "value": "_user_interacting",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "log",
+                "message": "User interaction detected: {{ _event.payload.action | default('unknown') }} - waiting for {{ _event.payload.wait | default('2m') }}"
+              },
+              {
+                "action": "wait",
+                "duration": "{{ _event.payload.wait | default('2m') }}"
+              }
+            ],
+            "important": false,
+            "urgent": true
+          }
+        },
+        {
+          "type": "event",
+          "value": "sync",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "device-media-sync"
+              }
+            ]
+          }
+        },
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "04:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "device-media-sync"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "03:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "purge",
+                    "days": 30,
+                    "include_favorites": false
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "event",
+          "value": "sleep",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "device-sleep"
+              }
+            ],
+            "important": true,
+            "urgent": true
+          }
+        },
+        {
+          "type": "event",
+          "value": "wake",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "device-wake"
+              }
+            ],
+            "important": true,
+            "urgent": true
+          }
+        },
+        {
+          "type": "event",
+          "value": "Standby",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "device_standby"
+              }
+            ],
+            "important": true,
+            "urgent": true
+          }
+        },
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "04:10",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "device-media-sync"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "03:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "purge",
+                    "days": 30,
+                    "include_favorites": false
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "00:15",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "display",
+                    "silent": true,
+                    "show": "Random"
+                  }
+                ]
+              },
+              "repeat_schedule": {
+                "every": "15",
+                "until": "06:59"
+              }
+            }
+          ]
+        }
+      ],
+      "final_actions": {
+        "instructions_block": []
+      },
+      "prevent_unload": true
+    },
+    {
+      "initial_actions": {
+        "instructions_block": []
+      },
+      "triggers": [
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "07:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "device-wake"
+                  },
+                  {
+                    "action": "throw_event",
+                    "event": "Generate",
+                    "scope": "north-screen"
+                  }
+                ],
+                "important": true,
+                "urgent": true
+              }
+            },
+            {
+              "repeat_schedule": {
+                "every": "60"
+              },
+              "time": "07:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "throw_event",
+                    "event": "Generate",
+                    "scope": "north-screen"
+                  }
+                ]
+              }
+            },
+            {
+              "repeat_schedule": {
+                "every": "120"
+              },
+              "time": "07:05",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "import_var",
+                    "as": "animation_on",
+                    "scope": "living-room",
+                    "var_name": "animation_on"
+                  },
+                  {
+                    "action": "terminate",
+                    "mode": "block",
+                    "test": "{{ animation_on|default('false') == 'false' }}"
+                  },
+                  {
+                    "action": "throw_event",
+                    "event": "Animate",
+                    "scope": "north-screen"
+                  }
+                ]
+              }
+            },
+            {
+              "time": "23:00",
+              "trigger_actions": {
+                "important": true,
+                "instructions_block": [
+                  {
+                    "action": "device-sleep"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "event",
+          "value": "Blank",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Blank"
+              }
+            ]
+          }
+        },
+        {
+          "type": "event",
+          "value": "Random",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "display",
+                "show": "Random"
+              }
+            ]
+          }
+        },
+        {
+          "type": "event",
+          "value": "Generate",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "import_var",
+                "var_name": "a_theme",
+                "as": "_a_theme",
+                "scope": "living-room"
+              },
+              {
+                "action": "import_var",
+                "var_name": "b_theme",
+                "as": "_b_theme",
+                "scope": "living-room"
+              },
+              {
+                "action": "import_var",
+                "var_name": "style",
+                "as": "_style",
+                "scope": "living-room"
+              },
+              {
+                "action": "import_var",
+                "var_name": "guidance",
+                "as": "_guidance",
+                "scope": "living-room"
+              },
+              {
+                "action": "reason",
+                "text_input": "'{{ _a_theme }}' in the style of '{{ _style }}'. Bear in mind, {{ _guidance }}. Avoid these subjects {{ history_var[-10:] }}. ",
+                "reasoner": "devise_prompt",
+                "output_vars": [
+                  "prompt"
+                ],
+                "history_var": "history_var"
+              },
+              {
+                "action": "generate",
+                "input": {
+                  "prompt": "{{ prompt }}"
+                },
+                "refiner": "enrich",
+                "publish": true,
+                "history_var": "prompt_history"
+              }
+            ]
+          }
+        },
+        {
+          "type": "event",
+          "value": "Animate",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "animate",
+                "refiner": "animator",
+                "history_var": "animation_history"
+              }
+            ]
+          }
+        },
+        {
+          "type": "event",
+          "value": "_user_interacting",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "log",
+                "message": "User interaction detected: {{ _event.payload.action | default('unknown') }} - waiting for {{ _event.payload.wait | default('2m') }}"
+              },
+              {
+                "action": "wait",
+                "duration": "{{ _event.payload.wait | default('2m') }}"
+              }
+            ],
+            "important": false,
+            "urgent": true
+          }
+        },
+        {
+          "type": "event",
+          "value": "sync",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "device-media-sync"
+              }
+            ]
+          }
+        },
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "04:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "device-media-sync"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "03:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "purge",
+                    "days": 30,
+                    "include_favorites": false
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "event",
+          "value": "sleep",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "device-sleep"
+              }
+            ],
+            "important": true,
+            "urgent": true
+          }
+        },
+        {
+          "type": "event",
+          "value": "wake",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "device-wake"
+              }
+            ],
+            "important": true,
+            "urgent": true
+          }
+        },
+        {
+          "type": "event",
+          "value": "Standby",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "device_standby"
+              }
+            ],
+            "important": true,
+            "urgent": true
+          }
+        },
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "04:10",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "device-media-sync"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "03:00",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "purge",
+                    "days": 30,
+                    "include_favorites": false
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "day_of_week",
+          "days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "scheduled_actions": [
+            {
+              "time": "00:15",
+              "trigger_actions": {
+                "instructions_block": [
+                  {
+                    "action": "display",
+                    "silent": true,
+                    "show": "Random"
+                  }
+                ]
+              },
+              "repeat_schedule": {
+                "every": "15",
+                "until": "06:59"
+              }
+            }
+          ]
+        }
+      ],
+      "final_actions": {
+        "instructions_block": []
+      },
+      "prevent_unload": true
+    }
+  ],
+  "context_stack": [
+    {
+      "vars": {},
+      "last_generated": null,
+      "publish_destination": "north-screen"
+    }
+  ],
+  "state": "running",
+  "last_updated": "2025-06-03T00:30:00.889837",
+  "last_trigger_executions": {
+    "62f2a3630480757a87877f58eafcf4bf_2025-06-03_1": "2025-06-03T00:30:00.731731"
+  },
+  "active_events": {},
+  "event_history": [
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T20:00:00.951764",
+      "expires": "2025-05-31T20:01:00.951764",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T20:00:00.951764",
+      "unique_id": "35dd37ca-7cd0-41b9-8593-ac39a90d7031",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T20:00:02.972654"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T20:00:00.951764",
+      "expires": "2025-05-31T20:01:00.951764",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T20:00:00.951764",
+      "unique_id": "35dd37ca-7cd0-41b9-8593-ac39a90d7031",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T20:00:02.972654"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T21:00:01.567270",
+      "expires": "2025-05-31T21:01:01.567270",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T21:00:01.567270",
+      "unique_id": "c549ea33-8582-4e3d-8e3a-d4fdbfdaf892",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T21:00:03.561946"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T21:00:01.567270",
+      "expires": "2025-05-31T21:01:01.567270",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T21:00:01.567270",
+      "unique_id": "c549ea33-8582-4e3d-8e3a-d4fdbfdaf892",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T21:00:03.561946"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-31T21:05:00.914846",
+      "expires": "2025-05-31T21:06:00.914846",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-31T21:05:00.914846",
+      "unique_id": "7e40b28e-dda8-4187-9532-54f60d282363",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T21:05:02.698932"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-31T21:05:00.914846",
+      "expires": "2025-05-31T21:06:00.914846",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-31T21:05:00.914846",
+      "unique_id": "7e40b28e-dda8-4187-9532-54f60d282363",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T21:05:02.698932"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T22:00:00.444185",
+      "expires": "2025-05-31T22:01:00.444185",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T22:00:00.444185",
+      "unique_id": "1160e645-45f6-4c8e-872f-dde860e72c68",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T22:00:02.478382"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T22:00:00.444185",
+      "expires": "2025-05-31T22:01:00.444185",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T22:00:00.444185",
+      "unique_id": "1160e645-45f6-4c8e-872f-dde860e72c68",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T22:00:02.478382"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T23:00:01.261170",
+      "expires": "2025-05-31T23:01:01.261170",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T23:00:01.261170",
+      "unique_id": "02a3390f-2b7e-4489-a6f2-4c354ec474cf",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T23:00:03.300554"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T23:00:01.261170",
+      "expires": "2025-05-31T23:01:01.261170",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T23:00:01.261170",
+      "unique_id": "02a3390f-2b7e-4489-a6f2-4c354ec474cf",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T23:00:03.300554"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-31T23:05:00.550885",
+      "expires": "2025-05-31T23:06:00.550885",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-31T23:05:00.550885",
+      "unique_id": "e0171376-ade9-42ab-a8ad-2585c29daa89",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T23:05:02.456406"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-31T23:05:00.550885",
+      "expires": "2025-05-31T23:06:00.550885",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-31T23:05:00.550885",
+      "unique_id": "e0171376-ade9-42ab-a8ad-2585c29daa89",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T23:05:02.456406"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T00:01:11.605872",
+      "expires": "2025-06-01T00:02:11.605872",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-01T00:01:11.605872",
+      "unique_id": "a2ceb682-4679-406d-b27f-95ddc4b085d0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T00:01:12.140157"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T00:01:11.605872",
+      "expires": "2025-06-01T00:02:11.605872",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-01T00:01:11.605872",
+      "unique_id": "a2ceb682-4679-406d-b27f-95ddc4b085d0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T00:01:12.140157"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T07:00:06.658246",
+      "expires": "2025-06-01T07:01:06.658246",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T07:00:06.658246",
+      "unique_id": "1d3f371d-2a6a-46eb-9529-4941177e6ad3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T07:00:08.681067"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T07:00:06.658246",
+      "expires": "2025-06-01T07:01:06.658246",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T07:00:06.658246",
+      "unique_id": "1d3f371d-2a6a-46eb-9529-4941177e6ad3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T07:00:08.681067"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T07:05:00.816621",
+      "expires": "2025-06-01T07:06:00.816621",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T07:05:00.816621",
+      "unique_id": "c440cb94-b4c9-49f1-8960-d01fe1d46e8a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T07:05:02.648630"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T07:05:00.816621",
+      "expires": "2025-06-01T07:06:00.816621",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T07:05:00.816621",
+      "unique_id": "c440cb94-b4c9-49f1-8960-d01fe1d46e8a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T07:05:02.648630"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T08:00:01.079383",
+      "expires": "2025-06-01T08:01:01.079383",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T08:00:01.079383",
+      "unique_id": "9033baa9-eb88-4bc7-a396-c5ed6231aaef",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T08:00:03.081377"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T08:00:01.079383",
+      "expires": "2025-06-01T08:01:01.079383",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T08:00:01.079383",
+      "unique_id": "9033baa9-eb88-4bc7-a396-c5ed6231aaef",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T08:00:03.081377"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T09:00:00.428211",
+      "expires": "2025-06-01T09:01:00.428211",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T09:00:00.428211",
+      "unique_id": "564b705a-3d86-4f64-80ac-768e30e54b51",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T09:00:02.421787"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T09:00:00.428211",
+      "expires": "2025-06-01T09:01:00.428211",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T09:00:00.428211",
+      "unique_id": "564b705a-3d86-4f64-80ac-768e30e54b51",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T09:00:02.421787"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T09:05:00.546866",
+      "expires": "2025-06-01T09:06:00.546866",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T09:05:00.546866",
+      "unique_id": "80d2b6c4-aef3-4b3f-add8-1aaf099c0d98",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T09:05:02.428569"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T09:05:00.546866",
+      "expires": "2025-06-01T09:06:00.546866",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T09:05:00.546866",
+      "unique_id": "80d2b6c4-aef3-4b3f-add8-1aaf099c0d98",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T09:05:02.428569"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T10:00:01.637552",
+      "expires": "2025-06-01T10:01:01.637552",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T10:00:01.637552",
+      "unique_id": "4fdd217c-5955-4222-947a-ac42d727ebbd",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T10:00:03.681980"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T10:00:01.637552",
+      "expires": "2025-06-01T10:01:01.637552",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T10:00:01.637552",
+      "unique_id": "4fdd217c-5955-4222-947a-ac42d727ebbd",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T10:00:03.681980"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T18:51:43.787093",
+      "expires": "2025-06-01T18:52:43.787093",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T18:51:43.787093",
+      "unique_id": "4535a0c3-9c6e-469e-bc36-df7686393eae",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T18:51:44.662453"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T18:51:43.787093",
+      "expires": "2025-06-01T18:52:43.787093",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T18:51:43.787093",
+      "unique_id": "4535a0c3-9c6e-469e-bc36-df7686393eae",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T18:51:44.662453"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T19:00:01.043926",
+      "expires": "2025-06-01T19:01:01.043926",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T19:00:01.043926",
+      "unique_id": "024ed803-8b83-439e-99e6-60535752cab5",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T19:00:03.043670"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T19:00:01.043926",
+      "expires": "2025-06-01T19:01:01.043926",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T19:00:01.043926",
+      "unique_id": "024ed803-8b83-439e-99e6-60535752cab5",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T19:00:03.043670"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T19:05:01.101344",
+      "expires": "2025-06-01T19:06:01.101344",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T19:05:01.101344",
+      "unique_id": "0b9a74e8-ccd7-407b-9454-742e32f0afec",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T19:05:02.947909"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T19:05:01.101344",
+      "expires": "2025-06-01T19:06:01.101344",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T19:05:01.101344",
+      "unique_id": "0b9a74e8-ccd7-407b-9454-742e32f0afec",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T19:05:02.947909"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T20:00:01.666869",
+      "expires": "2025-06-01T20:01:01.666869",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T20:00:01.666869",
+      "unique_id": "0d938ed5-5fbf-42fd-899a-f133a13550f6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T20:00:03.666094"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T20:00:01.666869",
+      "expires": "2025-06-01T20:01:01.666869",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T20:00:01.666869",
+      "unique_id": "0d938ed5-5fbf-42fd-899a-f133a13550f6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T20:00:03.666094"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T21:00:01.941953",
+      "expires": "2025-06-01T21:01:01.941953",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T21:00:01.941953",
+      "unique_id": "c6497638-013f-488d-9e72-74b1dc3208eb",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T21:00:03.951809"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T21:00:01.941953",
+      "expires": "2025-06-01T21:01:01.941953",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T21:00:01.941953",
+      "unique_id": "c6497638-013f-488d-9e72-74b1dc3208eb",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T21:00:03.951809"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T21:05:02.065444",
+      "expires": "2025-06-01T21:06:02.065444",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T21:05:02.065444",
+      "unique_id": "bbf7e413-3705-444a-976d-6c22e3803943",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T21:05:03.945427"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T21:05:02.065444",
+      "expires": "2025-06-01T21:06:02.065444",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T21:05:02.065444",
+      "unique_id": "bbf7e413-3705-444a-976d-6c22e3803943",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T21:05:03.945427"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T22:00:00.333819",
+      "expires": "2025-06-01T22:01:00.333819",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T22:00:00.333819",
+      "unique_id": "a8ea0452-4bf8-4348-a123-5910fa7f33e1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T22:00:02.367623"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T22:00:00.333819",
+      "expires": "2025-06-01T22:01:00.333819",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T22:00:00.333819",
+      "unique_id": "a8ea0452-4bf8-4348-a123-5910fa7f33e1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T22:00:02.367623"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T23:00:01.589237",
+      "expires": "2025-06-01T23:01:01.589237",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T23:00:01.589237",
+      "unique_id": "5321cf52-560c-4801-ac49-61c38b2fafe0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T23:00:03.587455"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T23:00:01.589237",
+      "expires": "2025-06-01T23:01:01.589237",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T23:00:01.589237",
+      "unique_id": "5321cf52-560c-4801-ac49-61c38b2fafe0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T23:00:03.587455"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T23:05:01.914087",
+      "expires": "2025-06-01T23:06:01.914087",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T23:05:01.914087",
+      "unique_id": "9f4ff123-e0d5-4316-80d3-70ca5ec302ab",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T23:05:03.766595"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T23:05:01.914087",
+      "expires": "2025-06-01T23:06:01.914087",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T23:05:01.914087",
+      "unique_id": "9f4ff123-e0d5-4316-80d3-70ca5ec302ab",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T23:05:03.766595"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T00:01:16.890476",
+      "expires": "2025-06-02T00:02:16.890476",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-02T00:01:16.890476",
+      "unique_id": "c65e3f5a-aeb5-44e8-8388-7d007a0a4817",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T00:01:16.903556"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T00:01:16.890476",
+      "expires": "2025-06-02T00:02:16.890476",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-02T00:01:16.890476",
+      "unique_id": "c65e3f5a-aeb5-44e8-8388-7d007a0a4817",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T00:01:16.903556"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T07:00:08.050708",
+      "expires": "2025-06-02T07:01:08.050708",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T07:00:08.050708",
+      "unique_id": "50418142-ed78-4d64-8ab0-aad375ade22e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T07:00:10.090357"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T07:00:08.050708",
+      "expires": "2025-06-02T07:01:08.050708",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T07:00:08.050708",
+      "unique_id": "50418142-ed78-4d64-8ab0-aad375ade22e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T07:00:10.090357"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T07:05:00.363945",
+      "expires": "2025-06-02T07:06:00.363945",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T07:05:00.363945",
+      "unique_id": "93d80a1e-c092-45cc-bfe6-091a9b9d6573",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T07:05:02.300892"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T07:05:00.363945",
+      "expires": "2025-06-02T07:06:00.363945",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T07:05:00.363945",
+      "unique_id": "93d80a1e-c092-45cc-bfe6-091a9b9d6573",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T07:05:02.300892"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T08:00:00.933236",
+      "expires": "2025-06-02T08:01:00.933236",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T08:00:00.933236",
+      "unique_id": "ab3f87f2-500f-468d-81f9-379b790a5d3c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T08:00:02.999402"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T08:00:00.933236",
+      "expires": "2025-06-02T08:01:00.933236",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T08:00:00.933236",
+      "unique_id": "ab3f87f2-500f-468d-81f9-379b790a5d3c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T08:00:02.999402"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T09:00:02.067170",
+      "expires": "2025-06-02T09:01:02.067170",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T09:00:02.067170",
+      "unique_id": "a6f981b2-21ac-4b3b-afa5-f6a8930f0db3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T09:00:04.099827"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T09:00:02.067170",
+      "expires": "2025-06-02T09:01:02.067170",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T09:00:02.067170",
+      "unique_id": "a6f981b2-21ac-4b3b-afa5-f6a8930f0db3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T09:00:04.099827"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T09:05:00.378883",
+      "expires": "2025-06-02T09:06:00.378883",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T09:05:00.378883",
+      "unique_id": "fc327119-d2d4-4011-b74c-c22c57f69150",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T09:05:02.242786"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T09:05:00.378883",
+      "expires": "2025-06-02T09:06:00.378883",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T09:05:00.378883",
+      "unique_id": "fc327119-d2d4-4011-b74c-c22c57f69150",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T09:05:02.242786"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T10:00:00.788748",
+      "expires": "2025-06-02T10:01:00.788748",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T10:00:00.788748",
+      "unique_id": "7ad47365-6997-4632-909d-4169f5ffc5cf",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T10:00:02.826938"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T10:00:00.788748",
+      "expires": "2025-06-02T10:01:00.788748",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T10:00:00.788748",
+      "unique_id": "7ad47365-6997-4632-909d-4169f5ffc5cf",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T10:00:02.826938"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T11:00:00.072568",
+      "expires": "2025-06-02T11:01:00.072568",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T11:00:00.072568",
+      "unique_id": "72b1c6cc-5082-46c2-83b4-33d1fbcde92d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T11:00:02.115939"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T11:00:00.072568",
+      "expires": "2025-06-02T11:01:00.072568",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T11:00:00.072568",
+      "unique_id": "72b1c6cc-5082-46c2-83b4-33d1fbcde92d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T11:00:02.115939"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T11:05:00.257121",
+      "expires": "2025-06-02T11:06:00.257121",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T11:05:00.257121",
+      "unique_id": "985605b9-b9b3-4c29-9c4e-af5018067345",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T11:05:02.187036"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T11:05:00.257121",
+      "expires": "2025-06-02T11:06:00.257121",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T11:05:00.257121",
+      "unique_id": "985605b9-b9b3-4c29-9c4e-af5018067345",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T11:05:02.187036"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T12:00:00.818720",
+      "expires": "2025-06-02T12:01:00.818720",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T12:00:00.818720",
+      "unique_id": "bdb2c24e-bb08-4fac-92d4-b7788f47be82",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T12:00:02.856116"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T12:00:00.818720",
+      "expires": "2025-06-02T12:01:00.818720",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T12:00:00.818720",
+      "unique_id": "bdb2c24e-bb08-4fac-92d4-b7788f47be82",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T12:00:02.856116"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T13:00:00.008058",
+      "expires": "2025-06-02T13:01:00.008058",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T13:00:00.008058",
+      "unique_id": "22644925-0a91-4f95-beb5-201c5e132e5f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T13:00:02.041313"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T13:00:00.008058",
+      "expires": "2025-06-02T13:01:00.008058",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T13:00:00.008058",
+      "unique_id": "22644925-0a91-4f95-beb5-201c5e132e5f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T13:00:02.041313"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T13:05:00.490496",
+      "expires": "2025-06-02T13:06:00.490496",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T13:05:00.490496",
+      "unique_id": "82ce3aa1-7dc2-463e-bd55-695198fd748b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T13:05:02.412858"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T13:05:00.490496",
+      "expires": "2025-06-02T13:06:00.490496",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T13:05:00.490496",
+      "unique_id": "82ce3aa1-7dc2-463e-bd55-695198fd748b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T13:05:02.412858"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T14:00:01.701143",
+      "expires": "2025-06-02T14:01:01.701143",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T14:00:01.701143",
+      "unique_id": "b05ca066-8d4d-4f18-8d05-3ba2625b6794",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T14:00:03.765843"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T14:00:01.701143",
+      "expires": "2025-06-02T14:01:01.701143",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T14:00:01.701143",
+      "unique_id": "b05ca066-8d4d-4f18-8d05-3ba2625b6794",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T14:00:03.765843"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T15:00:00.309669",
+      "expires": "2025-06-02T15:01:00.309669",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T15:00:00.309669",
+      "unique_id": "5b983d78-3528-47c4-9f82-d9ac14627cbd",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T15:00:02.353732"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T15:00:00.309669",
+      "expires": "2025-06-02T15:01:00.309669",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T15:00:00.309669",
+      "unique_id": "5b983d78-3528-47c4-9f82-d9ac14627cbd",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T15:00:02.353732"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T15:05:02.040233",
+      "expires": "2025-06-02T15:06:02.040233",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T15:05:02.040233",
+      "unique_id": "8f3688f8-3649-4e00-8bad-a4bae4d2f127",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T15:05:03.936532"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T15:05:02.040233",
+      "expires": "2025-06-02T15:06:02.040233",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T15:05:02.040233",
+      "unique_id": "8f3688f8-3649-4e00-8bad-a4bae4d2f127",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T15:05:03.936532"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T16:00:00.844199",
+      "expires": "2025-06-02T16:01:00.844199",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T16:00:00.844199",
+      "unique_id": "8a6e4e6b-8c12-4ccd-b037-0236874b6355",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T16:00:02.866545"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T16:00:00.844199",
+      "expires": "2025-06-02T16:01:00.844199",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T16:00:00.844199",
+      "unique_id": "8a6e4e6b-8c12-4ccd-b037-0236874b6355",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T16:00:02.866545"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T17:00:01.463006",
+      "expires": "2025-06-02T17:01:01.463006",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T17:00:01.463006",
+      "unique_id": "a29b8816-562f-47f2-ba36-f46262de6de2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T17:00:03.529754"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T17:00:01.463006",
+      "expires": "2025-06-02T17:01:01.463006",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T17:00:01.463006",
+      "unique_id": "a29b8816-562f-47f2-ba36-f46262de6de2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T17:00:03.529754"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T17:05:00.293603",
+      "expires": "2025-06-02T17:06:00.293603",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T17:05:00.293603",
+      "unique_id": "6225099d-59cd-4327-8ee2-e3670266c26e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T17:05:02.167736"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T17:05:00.293603",
+      "expires": "2025-06-02T17:06:00.293603",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T17:05:00.293603",
+      "unique_id": "6225099d-59cd-4327-8ee2-e3670266c26e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T17:05:02.167736"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T18:00:00.808845",
+      "expires": "2025-06-02T18:01:00.808845",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T18:00:00.808845",
+      "unique_id": "dcc1ecb0-e57d-474d-b693-b476a38cbbf9",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T18:00:02.788638"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T18:00:00.808845",
+      "expires": "2025-06-02T18:01:00.808845",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T18:00:00.808845",
+      "unique_id": "dcc1ecb0-e57d-474d-b693-b476a38cbbf9",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T18:00:02.788638"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T19:00:01.641300",
+      "expires": "2025-06-02T19:01:01.641300",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T19:00:01.641300",
+      "unique_id": "a9831c08-dafb-4809-859b-d44478e51084",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T19:00:03.588626"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T19:00:01.641300",
+      "expires": "2025-06-02T19:01:01.641300",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T19:00:01.641300",
+      "unique_id": "a9831c08-dafb-4809-859b-d44478e51084",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T19:00:03.588626"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T19:05:01.788704",
+      "expires": "2025-06-02T19:06:01.788704",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T19:05:01.788704",
+      "unique_id": "b6f23fd5-3441-4433-8c3b-dbc075ae64a2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T19:05:03.681599"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T19:05:01.788704",
+      "expires": "2025-06-02T19:06:01.788704",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T19:05:01.788704",
+      "unique_id": "b6f23fd5-3441-4433-8c3b-dbc075ae64a2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T19:05:03.681599"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T20:00:01.382327",
+      "expires": "2025-06-02T20:01:01.382327",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T20:00:01.382327",
+      "unique_id": "3abd474c-a1db-4ec1-a8ab-8b87fc73bdaa",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T20:00:03.421412"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T20:00:01.382327",
+      "expires": "2025-06-02T20:01:01.382327",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T20:00:01.382327",
+      "unique_id": "3abd474c-a1db-4ec1-a8ab-8b87fc73bdaa",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T20:00:03.421412"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T21:00:01.411628",
+      "expires": "2025-06-02T21:01:01.411628",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T21:00:01.411628",
+      "unique_id": "edb7c172-2c7b-4132-8a11-1a878dcd9908",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T21:00:03.469544"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T21:00:01.411628",
+      "expires": "2025-06-02T21:01:01.411628",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T21:00:01.411628",
+      "unique_id": "edb7c172-2c7b-4132-8a11-1a878dcd9908",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T21:00:03.469544"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T21:05:02.118975",
+      "expires": "2025-06-02T21:06:02.118975",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T21:05:02.118975",
+      "unique_id": "89674576-dc62-4f35-b1a7-d9e7ce61f593",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T21:05:04.009448"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T21:05:02.118975",
+      "expires": "2025-06-02T21:06:02.118975",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T21:05:02.118975",
+      "unique_id": "89674576-dc62-4f35-b1a7-d9e7ce61f593",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T21:05:04.009448"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T22:00:01.087548",
+      "expires": "2025-06-02T22:01:01.087548",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T22:00:01.087548",
+      "unique_id": "22d3e0b0-8ebb-4482-955c-d95e0f946711",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T22:00:03.079723"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T22:00:01.087548",
+      "expires": "2025-06-02T22:01:01.087548",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T22:00:01.087548",
+      "unique_id": "22d3e0b0-8ebb-4482-955c-d95e0f946711",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T22:00:03.079723"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T23:00:00.417269",
+      "expires": "2025-06-02T23:01:00.417269",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:00:00.417269",
+      "unique_id": "e56bde0d-e87e-406b-900d-830f6dab94a1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T23:00:02.487486"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T23:00:00.417269",
+      "expires": "2025-06-02T23:01:00.417269",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:00:00.417269",
+      "unique_id": "e56bde0d-e87e-406b-900d-830f6dab94a1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T23:00:02.487486"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T23:05:01.429959",
+      "expires": "2025-06-02T23:06:01.429959",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:05:01.429959",
+      "unique_id": "c2b01d8f-cdaa-4819-b649-2230e8077d88",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T23:05:03.246337"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T23:05:01.429959",
+      "expires": "2025-06-02T23:06:01.429959",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:05:01.429959",
+      "unique_id": "c2b01d8f-cdaa-4819-b649-2230e8077d88",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T23:05:03.246337"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T23:40:36.765856",
+      "expires": "2025-06-02T23:41:36.765856",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:40:36.765856",
+      "unique_id": "1fc9a238-5f9f-46ab-a523-8754512a41b4",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-02T23:41:44.260667"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T23:40:36.765856",
+      "expires": "2025-06-02T23:41:36.765856",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:40:36.765856",
+      "unique_id": "1fc9a238-5f9f-46ab-a523-8754512a41b4",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-02T23:41:44.260667"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T20:00:00.951764",
+      "expires": "2025-05-31T20:01:00.951764",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T20:00:00.951764",
+      "unique_id": "35dd37ca-7cd0-41b9-8593-ac39a90d7031",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T20:00:02.972654"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T20:00:00.951764",
+      "expires": "2025-05-31T20:01:00.951764",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T20:00:00.951764",
+      "unique_id": "35dd37ca-7cd0-41b9-8593-ac39a90d7031",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T20:00:02.972654"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T21:00:01.567270",
+      "expires": "2025-05-31T21:01:01.567270",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T21:00:01.567270",
+      "unique_id": "c549ea33-8582-4e3d-8e3a-d4fdbfdaf892",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T21:00:03.561946"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T21:00:01.567270",
+      "expires": "2025-05-31T21:01:01.567270",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T21:00:01.567270",
+      "unique_id": "c549ea33-8582-4e3d-8e3a-d4fdbfdaf892",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T21:00:03.561946"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-31T21:05:00.914846",
+      "expires": "2025-05-31T21:06:00.914846",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-31T21:05:00.914846",
+      "unique_id": "7e40b28e-dda8-4187-9532-54f60d282363",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T21:05:02.698932"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-31T21:05:00.914846",
+      "expires": "2025-05-31T21:06:00.914846",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-31T21:05:00.914846",
+      "unique_id": "7e40b28e-dda8-4187-9532-54f60d282363",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T21:05:02.698932"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T22:00:00.444185",
+      "expires": "2025-05-31T22:01:00.444185",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T22:00:00.444185",
+      "unique_id": "1160e645-45f6-4c8e-872f-dde860e72c68",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T22:00:02.478382"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T22:00:00.444185",
+      "expires": "2025-05-31T22:01:00.444185",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T22:00:00.444185",
+      "unique_id": "1160e645-45f6-4c8e-872f-dde860e72c68",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T22:00:02.478382"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T23:00:01.261170",
+      "expires": "2025-05-31T23:01:01.261170",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T23:00:01.261170",
+      "unique_id": "02a3390f-2b7e-4489-a6f2-4c354ec474cf",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T23:00:03.300554"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-05-31T23:00:01.261170",
+      "expires": "2025-05-31T23:01:01.261170",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-05-31T23:00:01.261170",
+      "unique_id": "02a3390f-2b7e-4489-a6f2-4c354ec474cf",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T23:00:03.300554"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-31T23:05:00.550885",
+      "expires": "2025-05-31T23:06:00.550885",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-31T23:05:00.550885",
+      "unique_id": "e0171376-ade9-42ab-a8ad-2585c29daa89",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T23:05:02.456406"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-05-31T23:05:00.550885",
+      "expires": "2025-05-31T23:06:00.550885",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-05-31T23:05:00.550885",
+      "unique_id": "e0171376-ade9-42ab-a8ad-2585c29daa89",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-05-31T23:05:02.456406"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T00:01:11.605872",
+      "expires": "2025-06-01T00:02:11.605872",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-01T00:01:11.605872",
+      "unique_id": "a2ceb682-4679-406d-b27f-95ddc4b085d0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T00:01:12.140157"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T00:01:11.605872",
+      "expires": "2025-06-01T00:02:11.605872",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-01T00:01:11.605872",
+      "unique_id": "a2ceb682-4679-406d-b27f-95ddc4b085d0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T00:01:12.140157"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T07:00:06.658246",
+      "expires": "2025-06-01T07:01:06.658246",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T07:00:06.658246",
+      "unique_id": "1d3f371d-2a6a-46eb-9529-4941177e6ad3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T07:00:08.681067"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T07:00:06.658246",
+      "expires": "2025-06-01T07:01:06.658246",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T07:00:06.658246",
+      "unique_id": "1d3f371d-2a6a-46eb-9529-4941177e6ad3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T07:00:08.681067"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T07:05:00.816621",
+      "expires": "2025-06-01T07:06:00.816621",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T07:05:00.816621",
+      "unique_id": "c440cb94-b4c9-49f1-8960-d01fe1d46e8a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T07:05:02.648630"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T07:05:00.816621",
+      "expires": "2025-06-01T07:06:00.816621",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T07:05:00.816621",
+      "unique_id": "c440cb94-b4c9-49f1-8960-d01fe1d46e8a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T07:05:02.648630"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T08:00:01.079383",
+      "expires": "2025-06-01T08:01:01.079383",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T08:00:01.079383",
+      "unique_id": "9033baa9-eb88-4bc7-a396-c5ed6231aaef",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T08:00:03.081377"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T08:00:01.079383",
+      "expires": "2025-06-01T08:01:01.079383",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T08:00:01.079383",
+      "unique_id": "9033baa9-eb88-4bc7-a396-c5ed6231aaef",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T08:00:03.081377"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T09:00:00.428211",
+      "expires": "2025-06-01T09:01:00.428211",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T09:00:00.428211",
+      "unique_id": "564b705a-3d86-4f64-80ac-768e30e54b51",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T09:00:02.421787"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T09:00:00.428211",
+      "expires": "2025-06-01T09:01:00.428211",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T09:00:00.428211",
+      "unique_id": "564b705a-3d86-4f64-80ac-768e30e54b51",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T09:00:02.421787"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T09:05:00.546866",
+      "expires": "2025-06-01T09:06:00.546866",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T09:05:00.546866",
+      "unique_id": "80d2b6c4-aef3-4b3f-add8-1aaf099c0d98",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T09:05:02.428569"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T09:05:00.546866",
+      "expires": "2025-06-01T09:06:00.546866",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T09:05:00.546866",
+      "unique_id": "80d2b6c4-aef3-4b3f-add8-1aaf099c0d98",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T09:05:02.428569"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T10:00:01.637552",
+      "expires": "2025-06-01T10:01:01.637552",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T10:00:01.637552",
+      "unique_id": "4fdd217c-5955-4222-947a-ac42d727ebbd",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T10:00:03.681980"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T10:00:01.637552",
+      "expires": "2025-06-01T10:01:01.637552",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T10:00:01.637552",
+      "unique_id": "4fdd217c-5955-4222-947a-ac42d727ebbd",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T10:00:03.681980"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T18:51:43.787093",
+      "expires": "2025-06-01T18:52:43.787093",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T18:51:43.787093",
+      "unique_id": "4535a0c3-9c6e-469e-bc36-df7686393eae",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T18:51:44.662453"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T18:51:43.787093",
+      "expires": "2025-06-01T18:52:43.787093",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T18:51:43.787093",
+      "unique_id": "4535a0c3-9c6e-469e-bc36-df7686393eae",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T18:51:44.662453"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T19:00:01.043926",
+      "expires": "2025-06-01T19:01:01.043926",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T19:00:01.043926",
+      "unique_id": "024ed803-8b83-439e-99e6-60535752cab5",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T19:00:03.043670"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T19:00:01.043926",
+      "expires": "2025-06-01T19:01:01.043926",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T19:00:01.043926",
+      "unique_id": "024ed803-8b83-439e-99e6-60535752cab5",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T19:00:03.043670"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T19:05:01.101344",
+      "expires": "2025-06-01T19:06:01.101344",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T19:05:01.101344",
+      "unique_id": "0b9a74e8-ccd7-407b-9454-742e32f0afec",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T19:05:02.947909"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T19:05:01.101344",
+      "expires": "2025-06-01T19:06:01.101344",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T19:05:01.101344",
+      "unique_id": "0b9a74e8-ccd7-407b-9454-742e32f0afec",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T19:05:02.947909"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T20:00:01.666869",
+      "expires": "2025-06-01T20:01:01.666869",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T20:00:01.666869",
+      "unique_id": "0d938ed5-5fbf-42fd-899a-f133a13550f6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T20:00:03.666094"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T20:00:01.666869",
+      "expires": "2025-06-01T20:01:01.666869",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T20:00:01.666869",
+      "unique_id": "0d938ed5-5fbf-42fd-899a-f133a13550f6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T20:00:03.666094"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T21:00:01.941953",
+      "expires": "2025-06-01T21:01:01.941953",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T21:00:01.941953",
+      "unique_id": "c6497638-013f-488d-9e72-74b1dc3208eb",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T21:00:03.951809"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T21:00:01.941953",
+      "expires": "2025-06-01T21:01:01.941953",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T21:00:01.941953",
+      "unique_id": "c6497638-013f-488d-9e72-74b1dc3208eb",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T21:00:03.951809"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T21:05:02.065444",
+      "expires": "2025-06-01T21:06:02.065444",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T21:05:02.065444",
+      "unique_id": "bbf7e413-3705-444a-976d-6c22e3803943",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T21:05:03.945427"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T21:05:02.065444",
+      "expires": "2025-06-01T21:06:02.065444",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T21:05:02.065444",
+      "unique_id": "bbf7e413-3705-444a-976d-6c22e3803943",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T21:05:03.945427"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T22:00:00.333819",
+      "expires": "2025-06-01T22:01:00.333819",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T22:00:00.333819",
+      "unique_id": "a8ea0452-4bf8-4348-a123-5910fa7f33e1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T22:00:02.367623"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T22:00:00.333819",
+      "expires": "2025-06-01T22:01:00.333819",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T22:00:00.333819",
+      "unique_id": "a8ea0452-4bf8-4348-a123-5910fa7f33e1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T22:00:02.367623"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T23:00:01.589237",
+      "expires": "2025-06-01T23:01:01.589237",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T23:00:01.589237",
+      "unique_id": "5321cf52-560c-4801-ac49-61c38b2fafe0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T23:00:03.587455"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-01T23:00:01.589237",
+      "expires": "2025-06-01T23:01:01.589237",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-01T23:00:01.589237",
+      "unique_id": "5321cf52-560c-4801-ac49-61c38b2fafe0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T23:00:03.587455"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T23:05:01.914087",
+      "expires": "2025-06-01T23:06:01.914087",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T23:05:01.914087",
+      "unique_id": "9f4ff123-e0d5-4316-80d3-70ca5ec302ab",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T23:05:03.766595"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-01T23:05:01.914087",
+      "expires": "2025-06-01T23:06:01.914087",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-01T23:05:01.914087",
+      "unique_id": "9f4ff123-e0d5-4316-80d3-70ca5ec302ab",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-01T23:05:03.766595"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T00:01:16.890476",
+      "expires": "2025-06-02T00:02:16.890476",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-02T00:01:16.890476",
+      "unique_id": "c65e3f5a-aeb5-44e8-8388-7d007a0a4817",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T00:01:16.903556"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T00:01:16.890476",
+      "expires": "2025-06-02T00:02:16.890476",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-02T00:01:16.890476",
+      "unique_id": "c65e3f5a-aeb5-44e8-8388-7d007a0a4817",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T00:01:16.903556"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T07:00:08.050708",
+      "expires": "2025-06-02T07:01:08.050708",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T07:00:08.050708",
+      "unique_id": "50418142-ed78-4d64-8ab0-aad375ade22e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T07:00:10.090357"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T07:00:08.050708",
+      "expires": "2025-06-02T07:01:08.050708",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T07:00:08.050708",
+      "unique_id": "50418142-ed78-4d64-8ab0-aad375ade22e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T07:00:10.090357"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T07:05:00.363945",
+      "expires": "2025-06-02T07:06:00.363945",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T07:05:00.363945",
+      "unique_id": "93d80a1e-c092-45cc-bfe6-091a9b9d6573",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T07:05:02.300892"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T07:05:00.363945",
+      "expires": "2025-06-02T07:06:00.363945",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T07:05:00.363945",
+      "unique_id": "93d80a1e-c092-45cc-bfe6-091a9b9d6573",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T07:05:02.300892"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T08:00:00.933236",
+      "expires": "2025-06-02T08:01:00.933236",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T08:00:00.933236",
+      "unique_id": "ab3f87f2-500f-468d-81f9-379b790a5d3c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T08:00:02.999402"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T08:00:00.933236",
+      "expires": "2025-06-02T08:01:00.933236",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T08:00:00.933236",
+      "unique_id": "ab3f87f2-500f-468d-81f9-379b790a5d3c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T08:00:02.999402"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T09:00:02.067170",
+      "expires": "2025-06-02T09:01:02.067170",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T09:00:02.067170",
+      "unique_id": "a6f981b2-21ac-4b3b-afa5-f6a8930f0db3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T09:00:04.099827"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T09:00:02.067170",
+      "expires": "2025-06-02T09:01:02.067170",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T09:00:02.067170",
+      "unique_id": "a6f981b2-21ac-4b3b-afa5-f6a8930f0db3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T09:00:04.099827"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T09:05:00.378883",
+      "expires": "2025-06-02T09:06:00.378883",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T09:05:00.378883",
+      "unique_id": "fc327119-d2d4-4011-b74c-c22c57f69150",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T09:05:02.242786"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T09:05:00.378883",
+      "expires": "2025-06-02T09:06:00.378883",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T09:05:00.378883",
+      "unique_id": "fc327119-d2d4-4011-b74c-c22c57f69150",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T09:05:02.242786"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T10:00:00.788748",
+      "expires": "2025-06-02T10:01:00.788748",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T10:00:00.788748",
+      "unique_id": "7ad47365-6997-4632-909d-4169f5ffc5cf",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T10:00:02.826938"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T10:00:00.788748",
+      "expires": "2025-06-02T10:01:00.788748",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T10:00:00.788748",
+      "unique_id": "7ad47365-6997-4632-909d-4169f5ffc5cf",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T10:00:02.826938"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T11:00:00.072568",
+      "expires": "2025-06-02T11:01:00.072568",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T11:00:00.072568",
+      "unique_id": "72b1c6cc-5082-46c2-83b4-33d1fbcde92d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T11:00:02.115939"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T11:00:00.072568",
+      "expires": "2025-06-02T11:01:00.072568",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T11:00:00.072568",
+      "unique_id": "72b1c6cc-5082-46c2-83b4-33d1fbcde92d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T11:00:02.115939"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T11:05:00.257121",
+      "expires": "2025-06-02T11:06:00.257121",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T11:05:00.257121",
+      "unique_id": "985605b9-b9b3-4c29-9c4e-af5018067345",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T11:05:02.187036"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T11:05:00.257121",
+      "expires": "2025-06-02T11:06:00.257121",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T11:05:00.257121",
+      "unique_id": "985605b9-b9b3-4c29-9c4e-af5018067345",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T11:05:02.187036"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T12:00:00.818720",
+      "expires": "2025-06-02T12:01:00.818720",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T12:00:00.818720",
+      "unique_id": "bdb2c24e-bb08-4fac-92d4-b7788f47be82",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T12:00:02.856116"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T12:00:00.818720",
+      "expires": "2025-06-02T12:01:00.818720",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T12:00:00.818720",
+      "unique_id": "bdb2c24e-bb08-4fac-92d4-b7788f47be82",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T12:00:02.856116"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T13:00:00.008058",
+      "expires": "2025-06-02T13:01:00.008058",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T13:00:00.008058",
+      "unique_id": "22644925-0a91-4f95-beb5-201c5e132e5f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T13:00:02.041313"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T13:00:00.008058",
+      "expires": "2025-06-02T13:01:00.008058",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T13:00:00.008058",
+      "unique_id": "22644925-0a91-4f95-beb5-201c5e132e5f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T13:00:02.041313"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T13:05:00.490496",
+      "expires": "2025-06-02T13:06:00.490496",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T13:05:00.490496",
+      "unique_id": "82ce3aa1-7dc2-463e-bd55-695198fd748b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T13:05:02.412858"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T13:05:00.490496",
+      "expires": "2025-06-02T13:06:00.490496",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T13:05:00.490496",
+      "unique_id": "82ce3aa1-7dc2-463e-bd55-695198fd748b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T13:05:02.412858"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T14:00:01.701143",
+      "expires": "2025-06-02T14:01:01.701143",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T14:00:01.701143",
+      "unique_id": "b05ca066-8d4d-4f18-8d05-3ba2625b6794",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T14:00:03.765843"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T14:00:01.701143",
+      "expires": "2025-06-02T14:01:01.701143",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T14:00:01.701143",
+      "unique_id": "b05ca066-8d4d-4f18-8d05-3ba2625b6794",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T14:00:03.765843"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T15:00:00.309669",
+      "expires": "2025-06-02T15:01:00.309669",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T15:00:00.309669",
+      "unique_id": "5b983d78-3528-47c4-9f82-d9ac14627cbd",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T15:00:02.353732"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T15:00:00.309669",
+      "expires": "2025-06-02T15:01:00.309669",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T15:00:00.309669",
+      "unique_id": "5b983d78-3528-47c4-9f82-d9ac14627cbd",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T15:00:02.353732"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T15:05:02.040233",
+      "expires": "2025-06-02T15:06:02.040233",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T15:05:02.040233",
+      "unique_id": "8f3688f8-3649-4e00-8bad-a4bae4d2f127",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T15:05:03.936532"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T15:05:02.040233",
+      "expires": "2025-06-02T15:06:02.040233",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T15:05:02.040233",
+      "unique_id": "8f3688f8-3649-4e00-8bad-a4bae4d2f127",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T15:05:03.936532"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T16:00:00.844199",
+      "expires": "2025-06-02T16:01:00.844199",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T16:00:00.844199",
+      "unique_id": "8a6e4e6b-8c12-4ccd-b037-0236874b6355",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T16:00:02.866545"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T16:00:00.844199",
+      "expires": "2025-06-02T16:01:00.844199",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T16:00:00.844199",
+      "unique_id": "8a6e4e6b-8c12-4ccd-b037-0236874b6355",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T16:00:02.866545"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T17:00:01.463006",
+      "expires": "2025-06-02T17:01:01.463006",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T17:00:01.463006",
+      "unique_id": "a29b8816-562f-47f2-ba36-f46262de6de2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T17:00:03.529754"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T17:00:01.463006",
+      "expires": "2025-06-02T17:01:01.463006",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T17:00:01.463006",
+      "unique_id": "a29b8816-562f-47f2-ba36-f46262de6de2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T17:00:03.529754"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T17:05:00.293603",
+      "expires": "2025-06-02T17:06:00.293603",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T17:05:00.293603",
+      "unique_id": "6225099d-59cd-4327-8ee2-e3670266c26e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T17:05:02.167736"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T17:05:00.293603",
+      "expires": "2025-06-02T17:06:00.293603",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T17:05:00.293603",
+      "unique_id": "6225099d-59cd-4327-8ee2-e3670266c26e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T17:05:02.167736"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T18:00:00.808845",
+      "expires": "2025-06-02T18:01:00.808845",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T18:00:00.808845",
+      "unique_id": "dcc1ecb0-e57d-474d-b693-b476a38cbbf9",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T18:00:02.788638"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T18:00:00.808845",
+      "expires": "2025-06-02T18:01:00.808845",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T18:00:00.808845",
+      "unique_id": "dcc1ecb0-e57d-474d-b693-b476a38cbbf9",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T18:00:02.788638"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T19:00:01.641300",
+      "expires": "2025-06-02T19:01:01.641300",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T19:00:01.641300",
+      "unique_id": "a9831c08-dafb-4809-859b-d44478e51084",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T19:00:03.588626"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T19:00:01.641300",
+      "expires": "2025-06-02T19:01:01.641300",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T19:00:01.641300",
+      "unique_id": "a9831c08-dafb-4809-859b-d44478e51084",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T19:00:03.588626"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T19:05:01.788704",
+      "expires": "2025-06-02T19:06:01.788704",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T19:05:01.788704",
+      "unique_id": "b6f23fd5-3441-4433-8c3b-dbc075ae64a2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T19:05:03.681599"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T19:05:01.788704",
+      "expires": "2025-06-02T19:06:01.788704",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T19:05:01.788704",
+      "unique_id": "b6f23fd5-3441-4433-8c3b-dbc075ae64a2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T19:05:03.681599"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T20:00:01.382327",
+      "expires": "2025-06-02T20:01:01.382327",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T20:00:01.382327",
+      "unique_id": "3abd474c-a1db-4ec1-a8ab-8b87fc73bdaa",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T20:00:03.421412"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T20:00:01.382327",
+      "expires": "2025-06-02T20:01:01.382327",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T20:00:01.382327",
+      "unique_id": "3abd474c-a1db-4ec1-a8ab-8b87fc73bdaa",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T20:00:03.421412"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T21:00:01.411628",
+      "expires": "2025-06-02T21:01:01.411628",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T21:00:01.411628",
+      "unique_id": "edb7c172-2c7b-4132-8a11-1a878dcd9908",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T21:00:03.469544"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T21:00:01.411628",
+      "expires": "2025-06-02T21:01:01.411628",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T21:00:01.411628",
+      "unique_id": "edb7c172-2c7b-4132-8a11-1a878dcd9908",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T21:00:03.469544"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T21:05:02.118975",
+      "expires": "2025-06-02T21:06:02.118975",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T21:05:02.118975",
+      "unique_id": "89674576-dc62-4f35-b1a7-d9e7ce61f593",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T21:05:04.009448"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T21:05:02.118975",
+      "expires": "2025-06-02T21:06:02.118975",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T21:05:02.118975",
+      "unique_id": "89674576-dc62-4f35-b1a7-d9e7ce61f593",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T21:05:04.009448"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T22:00:01.087548",
+      "expires": "2025-06-02T22:01:01.087548",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T22:00:01.087548",
+      "unique_id": "22d3e0b0-8ebb-4482-955c-d95e0f946711",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T22:00:03.079723"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T22:00:01.087548",
+      "expires": "2025-06-02T22:01:01.087548",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T22:00:01.087548",
+      "unique_id": "22d3e0b0-8ebb-4482-955c-d95e0f946711",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T22:00:03.079723"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T23:00:00.417269",
+      "expires": "2025-06-02T23:01:00.417269",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:00:00.417269",
+      "unique_id": "e56bde0d-e87e-406b-900d-830f6dab94a1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T23:00:02.487486"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T23:00:00.417269",
+      "expires": "2025-06-02T23:01:00.417269",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:00:00.417269",
+      "unique_id": "e56bde0d-e87e-406b-900d-830f6dab94a1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T23:00:02.487486"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T23:05:01.429959",
+      "expires": "2025-06-02T23:06:01.429959",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:05:01.429959",
+      "unique_id": "c2b01d8f-cdaa-4819-b649-2230e8077d88",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T23:05:03.246337"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-02T23:05:01.429959",
+      "expires": "2025-06-02T23:06:01.429959",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:05:01.429959",
+      "unique_id": "c2b01d8f-cdaa-4819-b649-2230e8077d88",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-02T23:05:03.246337"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T23:40:36.765856",
+      "expires": "2025-06-02T23:41:36.765856",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:40:36.765856",
+      "unique_id": "1fc9a238-5f9f-46ab-a523-8754512a41b4",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-02T23:41:44.260667"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-02T23:40:36.765856",
+      "expires": "2025-06-02T23:41:36.765856",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-02T23:40:36.765856",
+      "unique_id": "1fc9a238-5f9f-46ab-a523-8754512a41b4",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-02T23:41:44.260667"
+    }
+  ]
+}
