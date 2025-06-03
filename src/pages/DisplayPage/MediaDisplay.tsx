@@ -20,6 +20,7 @@ interface Props {
   onFadeOutComplete?: () => void;
   fadeOut: boolean;
   shouldPlay: boolean;
+  displayMode?: 'fit' | 'fill';
 }
 
 export function MediaDisplay({
@@ -30,6 +31,7 @@ export function MediaDisplay({
   onFadeOutComplete,
   fadeOut,
   shouldPlay,
+  displayMode = 'fit',
 }: Props) {
   const isVideo = src.includes(".mp4");
 
@@ -56,6 +58,8 @@ export function MediaDisplay({
   const animationFrame = useRef<number>();
   const rafDebug = useRef<number>();
   const easeOutTimeout = useRef<NodeJS.Timeout>();
+
+  const objectFit = displayMode === 'fill' ? 'cover' : 'contain';
 
   const extractFirstFrame = async () => {
     if (!isVideo || !src) return;
@@ -279,7 +283,7 @@ export function MediaDisplay({
     left: 0,
     width: "100%",
     height: "100%",
-    objectFit: "contain",
+    objectFit,
     zIndex: 0,
   };
 
