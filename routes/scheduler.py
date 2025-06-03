@@ -551,10 +551,12 @@ async def run_scheduler(schedule: Dict[str, Any], publish_destination: str, step
         scheduler_logs[publish_destination] = []
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Starting scheduler")
 
-        # Ensure scheduler_schedule_stacks and scheduler_contexts_stacks are initialized
+        # Use the existing schedule stack, or initialize if missing
         if publish_destination not in scheduler_schedule_stacks:
             scheduler_schedule_stacks[publish_destination] = []
+        schedule_stack = scheduler_schedule_stacks[publish_destination]
         
+        # Ensure scheduler_schedule_stacks and scheduler_contexts_stacks are initialized
         if publish_destination not in scheduler_contexts_stacks:
             scheduler_contexts_stacks[publish_destination] = []
             
@@ -669,9 +671,19 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
         # Validate schedule has required structure
         if not isinstance(schedule, dict):
             raise ValueError("Schedule must be a dictionary")
-            
-        # Initialize the schedule stack - replace instead of append
-        schedule_stack = [schedule]
+
+        # ------------------------------------------------------------------
+        # HISTORIC-CORRECT STACK HANDLING
+        # ------------------------------------------------------------------
+        # We only create a new stack if none exists (fresh destination) or
+        # if the existing stack is empty.  Otherwise we leave it untouched.
+        # *NO* append, *NO* replace – just use what is there.
+        if publish_destination not in scheduler_schedule_stacks:
+            scheduler_schedule_stacks[publish_destination] = []
+        if not scheduler_schedule_stacks[publish_destination]:
+            # Fresh destination – seed stack with the provided schedule
+            scheduler_schedule_stacks[publish_destination].append(schedule)
+        schedule_stack = scheduler_schedule_stacks[publish_destination]
         
         # Get the context stack - ensure it's not empty
         context_stack = scheduler_contexts_stacks.get(publish_destination, [])
@@ -708,7 +720,7 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
         
         # Schedule the coroutine to run in the background
         future = asyncio.run_coroutine_threadsafe(
-            run_scheduler(schedule, publish_destination, *args, **kwargs),
+            run_scheduler(schedule_stack[-1], publish_destination, *args, **kwargs),
             loop
         )
         
