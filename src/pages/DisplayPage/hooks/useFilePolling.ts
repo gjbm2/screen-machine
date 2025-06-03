@@ -7,6 +7,9 @@ export default function useFilePolling(baseFileName: string | null) {
   const [currentSrc, setCurrentSrc] = useState<string | null>(null);
   const [videoKey, setVideoKey] = useState<string>("initial");
   const lastModifiedRef = useRef<number>(0);
+  const [lastModified, setLastModified] = useState<number>(0);
+  const [fileType, setFileType] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!baseFileName) return;
@@ -38,6 +41,9 @@ export default function useFilePolling(baseFileName: string | null) {
         (jpgModified > JPGModified ? "jpg" : "JPG") : "mp4";
       const latestModified = Math.max(jpgModified, JPGModified, mp4Modified);
       lastModifiedRef.current = latestModified;
+      setLastModified(latestModified);
+      setFileType(latestType);
+      setFileName(`${baseFileName}.${latestType}`);
 
       const initialUrl = `${base}.${latestType}?t=${latestModified}`;
       setCurrentSrc(initialUrl);
@@ -71,6 +77,9 @@ export default function useFilePolling(baseFileName: string | null) {
 
       if (latestModified > lastModifiedRef.current) {
         lastModifiedRef.current = latestModified;
+        setLastModified(latestModified);
+        setFileType(latestType);
+        setFileName(`${baseFileName}.${latestType}`);
         const newUrl = `${base}.${latestType}?t=${latestModified}`;
         setCurrentSrc(newUrl);
         setVideoKey(`${Date.now()}`);
@@ -82,5 +91,5 @@ export default function useFilePolling(baseFileName: string | null) {
     return () => clearInterval(interval);
   }, [baseFileName]);
 
-  return { currentSrc, videoKey };
+  return { currentSrc, videoKey, lastModified, fileType, fileName };
 }

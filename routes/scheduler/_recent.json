@@ -61,7 +61,7 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-06-03T01:07:56.693055",
+  "last_updated": "2025-06-03T03:00:02.720526",
   "last_trigger_executions": {
     "86fcab81240ed277bf13e63c5c2c9595_2025-05-23": "2025-05-23T03:00:01.813204",
     "86fcab81240ed277bf13e63c5c2c9595_2025-05-24": "2025-05-24T03:00:01.099844",
@@ -73,7 +73,8 @@
     "86fcab81240ed277bf13e63c5c2c9595_2025-05-30": "2025-05-30T03:00:00.549156",
     "86fcab81240ed277bf13e63c5c2c9595_2025-05-31": "2025-05-31T03:00:01.745817",
     "86fcab81240ed277bf13e63c5c2c9595_2025-06-01": "2025-06-01T03:00:00.944135",
-    "86fcab81240ed277bf13e63c5c2c9595_2025-06-02": "2025-06-02T03:00:01.382276"
+    "86fcab81240ed277bf13e63c5c2c9595_2025-06-02": "2025-06-02T03:00:01.382276",
+    "86fcab81240ed277bf13e63c5c2c9595_2025-06-03": "2025-06-03T03:00:00.096257"
   },
   "active_events": {
     "purge": []
@@ -1326,6 +1327,32 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler__recent",
       "consumed_at": "2025-06-02T03:00:03.432999"
+    },
+    {
+      "key": "purge",
+      "active_from": "2025-06-03T03:00:00.110236",
+      "expires": "2025-06-03T03:01:00.110236",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-03T03:00:00.110236",
+      "unique_id": "9cdcaf11-7966-4718-a078-6622b7211a4d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler__recent",
+      "consumed_at": "2025-06-03T03:00:02.125314"
+    },
+    {
+      "key": "purge",
+      "active_from": "2025-06-03T03:00:00.110236",
+      "expires": "2025-06-03T03:01:00.110236",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-03T03:00:00.110236",
+      "unique_id": "9cdcaf11-7966-4718-a078-6622b7211a4d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler__recent",
+      "consumed_at": "2025-06-03T03:00:02.125314"
     }
   ]
 }
