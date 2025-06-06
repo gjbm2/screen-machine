@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import styles from "./MediaDisplay.module.css";
 
 const EASE_IN_DURATION = 2500;
 const EASE_OUT_DURATION = 2500;
@@ -34,6 +36,8 @@ export function MediaDisplay({
   displayMode = 'fit',
 }: Props) {
   const isVideo = src.includes(".mp4");
+  const isMobile = useIsMobile();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // ❗ clear any lingering video state only when the parent has fully faded out and swapped src
   useEffect(() => {
@@ -44,8 +48,6 @@ export function MediaDisplay({
     setShowFirstFrame(false);
     setPaused(false);
   }, [src]);
-
-  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [paused, setPaused] = useState(false);
   const [firstFrame, setFirstFrame] = useState<string | null>(null);
@@ -277,61 +279,95 @@ export function MediaDisplay({
     };
   }, [shouldPlay]);
 
-  const videoStyle: React.CSSProperties = {
-    position: "absolute",
+  const containerStyle: React.CSSProperties = {
+    position: "fixed",
     top: 0,
     left: 0,
+    right: 0,
+    bottom: 0,
     width: "100%",
     height: "100%",
-    objectFit,
-    zIndex: 0,
-  };
-
-  const overlayStyle: React.CSSProperties = {
-    ...videoStyle,
-    zIndex: 1,
-    opacity: paused && showDebug ? 1 : 0,
-    transition: "opacity 1000ms ease",
+    backgroundColor: "black",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     pointerEvents: "none",
   };
 
-	const firstFrameStyle: React.CSSProperties = {
-	  ...videoStyle,
-	  zIndex: 2,
-	  opacity: showFirstFrame ? 1 : 0,
-	  transition: showFirstFrame
-		? `opacity ${CROSSFADE_DURATION}ms ${OPACITY_EASING}`     // fade in
-		: `opacity ${FIRST_FRAME_FADE_OUT_DURATION}ms ${OPACITY_EASING}`, // fade out
-	  pointerEvents: "none",
-	};
-
-  const fadeOverlayStyle: React.CSSProperties = {
-    position: "absolute",
-    top: 0,
-    left: 0,
+  const mediaStyle: React.CSSProperties = {
     width: "100%",
     height: "100%",
+    objectFit: displayMode === 'fill' ? 'cover' : 'contain',
+  };
+
+  const overlayStyle: React.CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: paused && showDebug ? 1 : 0,
+    transition: "opacity 1000ms ease",
+    zIndex: 1,
+  };
+
+  const firstFrameStyle: React.CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: showFirstFrame ? 1 : 0,
+    transition: showFirstFrame
+      ? `opacity ${CROSSFADE_DURATION}ms ${OPACITY_EASING}`
+      : `opacity ${FIRST_FRAME_FADE_OUT_DURATION}ms ${OPACITY_EASING}`,
+    zIndex: 2,
+  };
+
+  const fadeOverlayStyle: React.CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: "black",
     opacity: fadeOut ? 1 : 0,
     transition: `opacity 1000ms ease`,
     zIndex: 9998,
-    pointerEvents: "none",
   };
 
   return (
-    <>
+    <div style={containerStyle}>
       {isVideo ? (
-        <video key={videoKey} ref={videoRef} src={src} muted playsInline style={videoStyle} />
+        <video 
+          key={videoKey} 
+          ref={videoRef} 
+          src={src} 
+          muted 
+          playsInline 
+          style={mediaStyle}
+        />
       ) : (
-        <img src={src} style={videoStyle} alt="media" />
+        <img 
+          src={src} 
+          style={mediaStyle}
+          alt="media" 
+        />
       )}
 
       {firstFrame && (
-        <img src={firstFrame} alt="first frame" style={firstFrameStyle} />
+        <img 
+          src={firstFrame} 
+          alt="first frame" 
+          style={firstFrameStyle}
+        />
       )}
 
       <div style={overlayStyle}>
-        <div style={{ color: "white", textAlign: "center", fontSize: "2rem", marginTop: "50%" }}>
+        <div style={{ color: "white", textAlign: "center", fontSize: "2rem" }}>
           Paused on Final Frame
         </div>
       </div>
@@ -341,7 +377,7 @@ export function MediaDisplay({
       {showDebug && (
         <div
           style={{
-            position: "absolute",
+            position: "fixed",
             bottom: 10,
             left: 10,
             background: "rgba(0,0,0,0.6)",
@@ -358,6 +394,6 @@ export function MediaDisplay({
           <div>Duration: {debugInfo.duration}s</div>
         </div>
       )}
-    </>
+    </div>
   );
 }

@@ -1,0 +1,48 @@
+/* Base styles for all screen sizes */
+.mediaContainer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.overlay {
+  composes: mediaContainer;
+  z-index: 1;
+}
+
+.firstFrame {
+  composes: mediaContainer;
+  z-index: 2;
+}
+
+.fadeOverlay {
+  position: absolute;
+  inset: 0;
+  background-color: black;
+  z-index: 9998;
+}
+
+/* Mobile-specific styles */
+@media screen and (max-width: 768px) {
+  .mediaContainer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .overlay {
+    composes: mediaContainer;
+  }
+
+  .firstFrame {
+    composes: mediaContainer;
+  }
+
+  .fadeOverlay {
+    position: absolute;
+    inset: 0;
+  }
+} 

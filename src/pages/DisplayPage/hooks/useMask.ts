@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Api } from "@/utils/api";
 
-const POLL_MS = 10_000;
+const POLL_MS = 3_000;
 
 interface MaskState {
   brightness: number;    // 0–1

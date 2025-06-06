@@ -9,6 +9,7 @@ import { useMask } from "./hooks/useMask";
 import { Api } from "@/utils/api";
 import { extractEventTriggers } from "@/utils/scheduleUtils";
 import { Zap } from "lucide-react";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 export default function DisplayPage() {
   const { screenId } = useParams();
@@ -49,6 +50,15 @@ export default function DisplayPage() {
   const [shouldPlay, setShouldPlay] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const isMobile = useIsMobile();
+
+  // Global touch handler to show controls (ensures we catch touches even if elements overlay the container)
+  useEffect(() => {
+    const onTouch = () => handleShowControls();
+    window.addEventListener('touchstart', onTouch, { passive: true });
+    return () => window.removeEventListener('touchstart', onTouch);
+  }, []);
 
   // Poll scheduler status only when overlay is shown
   useEffect(() => {
@@ -117,7 +127,9 @@ export default function DisplayPage() {
 
   useEffect(() => {
     const existing = document.querySelector("meta[name=viewport]");
-    const metaContent = "width=1920, initial-scale=0.5, maximum-scale=1.0, user-scalable=no";
+    const metaContent = isMobile 
+      ? "width=device-width, initial-scale=1.0, user-scalable=yes"
+      : "width=1920, initial-scale=0.5, maximum-scale=1.0, user-scalable=no";
 
     if (!existing) {
       const meta = document.createElement("meta");
@@ -127,7 +139,7 @@ export default function DisplayPage() {
     } else {
       existing.setAttribute("content", metaContent);
     }
-  }, []);
+  }, [isMobile]);
 
   useEffect(() => {
     if (containerRef.current) {
@@ -161,7 +173,7 @@ export default function DisplayPage() {
   }, [currentSrc, visibleSrc, fadingOut]);
 
   // Show controls on hover (desktop) or tap (mobile)
-  const handleShowControls = () => {
+  const handleShowControls = (e?: React.SyntheticEvent | Event) => {
     setShowControls(true);
     if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
     controlsTimeout.current = setTimeout(() => setShowControls(false), 4000);
@@ -203,31 +215,30 @@ export default function DisplayPage() {
   
   const isFireTV = /AFT|FireTV|Amazon/i.test(navigator.userAgent);
 
-  const outerStyle = {
-    width: "100vw",
-    height: "100vh", 
-    background: "black",
-    position: "fixed" as const,
-    overflow: "hidden",
-    top: 0,
-    left: 0,
-  };
-
   return (
     <div
       ref={containerRef}
-      style={outerStyle}
-      onMouseMove={handleShowControls}
-      onClick={handleShowControls}
+      style={{
+        position: "fixed",
+        inset: 0,
+        width: "100vw",
+        height: "100vh",
+        backgroundColor: "black",
+      }}
+      onPointerDown={(e) => {
+        if (e.pointerType === 'touch') handleShowControls();
+      }}
+      onMouseMove={!isMobile ? handleShowControls : undefined}
+      onTouchStart={handleShowControls}
     >
       {/* Controls Overlay */}
       {showControls && (
         <div
           style={{
-            position: 'absolute',
+            position: 'fixed',
             top: 20,
             right: 20,
-            zIndex: 10001,
+            zIndex: 100000,
             background: 'rgba(0,0,0,0.7)',
             color: 'white',
             borderRadius: 12,
@@ -236,10 +247,10 @@ export default function DisplayPage() {
             display: 'flex',
             flexDirection: 'column',
             gap: '1em',
-            fontSize: 18,
+            fontSize: isMobile ? 16 : 18,
             cursor: 'pointer',
             userSelect: 'none',
-            minWidth: 260,
+            minWidth: isMobile ? 200 : 260,
             maxWidth: '90vw',
           }}
         >

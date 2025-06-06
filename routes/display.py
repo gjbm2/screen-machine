@@ -112,7 +112,8 @@ def mask(dest_id: str):
         # If adjustment is enabled, calculate the mask
         lat = float(dest["intensity_cfg"]["lat"])
         lon = float(dest["intensity_cfg"]["lon"])
-        payload = compute_mask(lat, lon, screen_cfg=dest["intensity_cfg"])
+        screen_cfg = {**dest["intensity_cfg"], "id": dest_id}  # Include screen ID in config
+        payload = compute_mask(lat, lon, screen_cfg=screen_cfg)
 
     # Build debug output with aggressively rounded values
     debug_output = f"\nMask values changed for {dest_id}:"
@@ -124,7 +125,8 @@ def mask(dest_id: str):
         debug_output += f"\n  • Power: {round(payload['_debug']['power'], 2)}"
         debug_output += f"\n  • Elev: {round(payload['_debug']['elev'], 0)}"
         debug_output += f"\n  • Solar noon: {payload['_debug']['solar_noon']}"
-        debug_output += f"\n  • Noon elev: {round(payload['_debug']['noon_elev'], 0)}"
+        if payload['_debug']['noon_elev'] is not None:
+            debug_output += f"\n  • Noon elev: {round(payload['_debug']['noon_elev'], 0)}"
         debug_output += f"\n  • Hours from noon: {round(payload['_debug']['hours_from_noon'], 1)}"
         # Round warm color to nearest 16 (one hex digit)
         r, g, b = int(payload['warm_hex'][1:3], 16), int(payload['warm_hex'][3:5], 16), int(payload['warm_hex'][5:7], 16)

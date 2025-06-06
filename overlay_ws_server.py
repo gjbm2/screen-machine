@@ -2,6 +2,8 @@ import asyncio
 import json
 import websockets
 from utils.logger import debug, warning, error, info
+import time
+from routes.lightsensor import broadcast_lux_level
 
 DEBUGGING = False
 
@@ -22,9 +24,12 @@ async def handler(ws):
             first_msg = await asyncio.wait_for(ws.recv(), timeout=0.5)
             if DEBUGGING: debug(f"📥 First message from {ws.remote_address}: {first_msg}")
 
-            # Sender — could be send_overlay or RunPod
             try:
-                data = json.loads(first_msg)                
+                data = json.loads(first_msg)
+                # Handle lux sensor data if present
+                if "lux" in data:
+                    sensor_name = data.get("sensor_name", "default")  # Use default if no name provided
+                    await broadcast_lux_level(sensor_name, data["lux"])
                 # Relay to overlay clients
                 await send_overlay_to_clients(data)
 
@@ -35,7 +40,6 @@ async def handler(ws):
                     if job_id in job_progress_listeners:
                         for queue in job_progress_listeners[job_id]:
                             await queue.put(data)
-                
                 if DEBUGGING: debug(f"✅ Broadcasted single message from {ws.remote_address}")
 
                 # Now listen for more messages (e.g. RunPod relay)
@@ -43,6 +47,10 @@ async def handler(ws):
                     if DEBUGGING: debug(f"📥 Message from {ws.remote_address}: {msg}")
                     try:
                         data = json.loads(msg)
+                        # Handle lux sensor data if present
+                        if "lux" in data:
+                            sensor_name = data.get("sensor_name", "default")  # Use default if no name provided
+                            await broadcast_lux_level(sensor_name, data["lux"])
                         job_id = data.get("job_id")
                         if job_id:
                             job_progress_listeners_latest[job_id] = data

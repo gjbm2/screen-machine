@@ -1,0 +1,25 @@
+/* Desktop styles remain completely unchanged */
+.desktop {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    background-color: var(--background-color);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Mobile-specific styles - ONLY applies to screens 768px or less */
+@media screen and (max-width: 768px) {
+    .desktop {
+        /* Mobile-specific adjustments */
+        height: 100dvh; /* Use dynamic viewport height for mobile */
+        overflow-y: auto; /* Allow vertical scrolling on mobile */
+        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+    }
+
+    .desktop-content {
+        /* Mobile-specific adjustments */
+        padding-bottom: 60px; /* Add padding for mobile navigation */
+    }
+} 

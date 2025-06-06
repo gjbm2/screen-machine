@@ -124,6 +124,7 @@ def compute_mask(
     # Force fresh load of config
     import importlib.util
     from routes.utils import _load_json_once
+    from routes.lightsensor import intensity_mapper
     
     spec = importlib.util.spec_from_file_location("config", "config.py")
     config = importlib.util.module_from_spec(spec)
@@ -134,8 +135,8 @@ def compute_mask(
         dests = {dest["id"]: dest for dest in _load_json_once("destination", "publish-destinations.json")}
         dest = dests.get(screen_cfg.get("id"))
         if dest:
-            screen_cfg = dest.get("intensity_cfg", {})
-            if not screen_cfg.get("adjust", False):
+            intensity_cfg = dest.get("intensity_cfg", {})
+            if not intensity_cfg.get("adjust", False):
                 # No adjustments - return full brightness
                 return {
                     "brightness": 1.0,
@@ -160,16 +161,78 @@ def compute_mask(
                     },
                 }
             
-            # Adjustments enabled - use all screen config values
-            for key, value in screen_cfg.items():
-                if key in config.INTENSITY_CFG:
-                    if isinstance(config.INTENSITY_CFG[key], bool):
-                        config.INTENSITY_CFG[key] = bool(value)
-                    else:
-                        config.INTENSITY_CFG[key] = float(value)
-            if "lat" in screen_cfg and "lon" in screen_cfg:
-                lat = float(screen_cfg["lat"])
-                lon = float(screen_cfg["lon"])
+            # Check if we have a light sensor mapping for this screen's group
+            sensor_matched = False
+            for sensor_name, mapping in intensity_mapper.mapping_data.get("sensor_mappings", {}).items():
+                target_group = mapping.get("target_group")
+                if target_group:
+                    # Use get_destinations_for_group to resolve the target_group
+                    from routes.utils import get_destinations_for_group
+                    target_destinations = get_destinations_for_group(target_group)
+                    if dest["id"] in target_destinations:
+                        # Get the latest lux value for this sensor
+                        from routes.lightsensor import lux_history
+                        if sensor_name in lux_history and lux_history[sensor_name]:
+                            latest_lux = lux_history[sensor_name][-1][1]
+                            target_intensity = intensity_mapper.get_intensity(sensor_name, latest_lux)
+                            if target_intensity is not None:
+                                sensor_matched = True
+                                # Calculate color temperature based on lux value
+                                # Higher lux = cooler temperature (more blue)
+                                # Lower lux = warmer temperature (more yellow)
+                                mired_night = 1e6 / config.INTENSITY_CFG["warmest_temp_K"]
+                                mired_day   = 1e6 / config.INTENSITY_CFG["coolest_temp_K"]
+                                mired_now   = mired_day + (1 - target_intensity) ** config.INTENSITY_CFG["beta_colour"] * (mired_night - mired_day)
+                                kelvin_now  = 1e6 / mired_now
+                                target_rgb  = _kelvin_to_srgb(kelvin_now)
+                                gain = tuple(min(1.0, t / w) for t, w in zip(target_rgb, _REF_WHITE))
+                                warm_alpha_max = config.INTENSITY_CFG.get("warm_alpha_max", 0.07)
+                                warm_alpha = warm_alpha_max * (1 - target_intensity) ** config.INTENSITY_CFG["beta_colour"]
+                                warm_hex = _rgb_to_hex(gain)
+
+                                # Use the sensor-based intensity
+                                return {
+                                    "brightness": target_intensity,
+                                    "warm_hex": warm_hex,
+                                    "warm_alpha": round(warm_alpha, 3),
+                                    "blend": "multiply",
+                                    "timestamp": (time or now_utc or datetime.utcnow().replace(tzinfo=timezone.utc)).isoformat(timespec="seconds").replace("+00:00", "Z"),
+                                    "source": "sensor",  # Indicate source of intensity
+                                    "sensor": {
+                                        "name": sensor_name,
+                                        "lux": latest_lux
+                                    },
+                                    "_debug": {
+                                        "idx_base": target_intensity,
+                                        "idx_skewed": target_intensity,
+                                        "kelvin_now": round(kelvin_now),
+                                        "brightness": target_intensity,
+                                        "warm_alpha": round(warm_alpha, 3),
+                                        "bias": 0.0,
+                                        "power": 1.0,
+                                        "gamma_str": 1.0,
+                                        "stretch": 0.0,
+                                        "elev": elevation(LocationInfo(latitude=lat, longitude=lon).observer, time or now_utc or datetime.utcnow().replace(tzinfo=timezone.utc)),
+                                        "solar_noon": None,
+                                        "noon_elev": None,
+                                        "hours_from_noon": 0.0,
+                                        "sensor_name": sensor_name,
+                                        "lux": latest_lux
+                                    },
+                                }
+            
+            # If no sensor match or mapping failed, fall back to astral calculations
+            if not sensor_matched:
+                # Adjustments enabled - use all screen config values
+                for key, value in intensity_cfg.items():
+                    if key in config.INTENSITY_CFG:
+                        if isinstance(config.INTENSITY_CFG[key], bool):
+                            config.INTENSITY_CFG[key] = bool(value)
+                        else:
+                            config.INTENSITY_CFG[key] = float(value)
+                if "lat" in intensity_cfg and "lon" in intensity_cfg:
+                    lat = float(intensity_cfg["lat"])
+                    lon = float(intensity_cfg["lon"])
     
     # Use provided time or current time
     now = time or now_utc or datetime.utcnow().replace(tzinfo=timezone.utc)
@@ -231,6 +294,7 @@ def compute_mask(
         "warm_alpha": round(warm_alpha, 3),
         "blend":      "multiply",
         "timestamp":  now.isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "source": "astral",  # Indicate source of intensity
         "_debug": {
             "idx_base":   round(idx_base, 3),
             "idx_skewed": round(idx, 3),
