@@ -1,0 +1,23 @@
+{
+  "sensor_mappings": {
+    "living-room": {
+      "target_group": "living-room",
+      "lux_to_intensity": [
+        {"lux": 100, "intensity": 1.0},
+        {"lux": 75, "intensity": 0.88},
+        {"lux": 60, "intensity": 0.81},
+        {"lux": 50, "intensity": 0.75},
+        {"lux": 40, "intensity": 0.68},
+        {"lux": 30, "intensity": 0.60},
+        {"lux": 22, "intensity": 0.54},
+        {"lux": 15, "intensity": 0.50},
+        {"lux": 8,  "intensity": 0.36},
+        {"lux": 5,  "intensity": 0.29},
+        {"lux": 3,  "intensity": 0.25},
+        {"lux": 2,  "intensity": 0.20},
+        {"lux": 1,  "intensity": 0.10},
+        {"lux": 0,  "intensity": 0.02}
+      ]
+    }
+  }
+} 

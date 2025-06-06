@@ -36,6 +36,7 @@ from routes.file_api import file_bp
 from routes.scheduler import initialize_schedulers_from_disk
 from routes.display import send_overlay, mask_bp
 from overlay_ws_server import start_ws_server, send_overlay_to_clients
+from routes.lightsensor import lightsensor_bp
 
 # Load environment variables
 load_dotenv()
@@ -56,6 +57,7 @@ app.register_blueprint(generate_api, url_prefix=API_PREFIX)
 app.register_blueprint(buckets_bp, url_prefix=API_PREFIX)
 app.register_blueprint(scheduler_bp, url_prefix=API_PREFIX)
 app.register_blueprint(mask_bp, url_prefix=API_PREFIX)
+app.register_blueprint(lightsensor_bp, url_prefix=API_PREFIX)
 
 # Register test blueprints (no prefix needed for test routes)
 app.register_blueprint(test_buckets_bp)

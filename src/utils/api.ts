@@ -2324,6 +2324,14 @@ export class Api {
     }
     return response.json();
   }
+
+  async getLightsense() {
+    const response = await fetch(`${this.apiUrl}/lightsense`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch lightsense data');
+    }
+    return await response.json();
+  }
 }
 
 // Create a singleton instance of the API service
