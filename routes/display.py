@@ -116,30 +116,20 @@ def mask(dest_id: str):
         payload = compute_mask(lat, lon, screen_cfg=screen_cfg)
 
     # Build debug output with aggressively rounded values
-    debug_output = f"\nMask values changed for {dest_id}:"
+    debug_output = f"Mask values for {dest_id}:"
     if "_debug" in payload:
-        debug_output += f"\n  • Solar index: {round(payload['_debug']['idx_skewed'], 2)}"
-        debug_output += f"\n  • Brightness: {round(payload['brightness'], 2)}"
-        debug_output += f"\n  • Warm alpha: {round(payload['warm_alpha'], 2)}"
-        debug_output += f"\n  • Bias: {round(payload['_debug']['bias'], 1)}"
-        debug_output += f"\n  • Power: {round(payload['_debug']['power'], 2)}"
-        debug_output += f"\n  • Elev: {round(payload['_debug']['elev'], 0)}"
-        debug_output += f"\n  • Solar noon: {payload['_debug']['solar_noon']}"
-        if payload['_debug']['noon_elev'] is not None:
-            debug_output += f"\n  • Noon elev: {round(payload['_debug']['noon_elev'], 0)}"
-        debug_output += f"\n  • Hours from noon: {round(payload['_debug']['hours_from_noon'], 1)}"
         # Round warm color to nearest 16 (one hex digit)
         r, g, b = int(payload['warm_hex'][1:3], 16), int(payload['warm_hex'][3:5], 16), int(payload['warm_hex'][5:7], 16)
         r, g, b = round(r/16)*16, round(g/16)*16, round(b/16)*16
-        debug_output += f"\n  • Warm color: #{r:02x}{g:02x}{b:02x}"
+        warm_hex = f"#{r:02x}{g:02x}{b:02x}"
+        
+        debug_output = f"Mask values for {dest_id}: idx={round(payload['_debug']['idx_skewed'], 2)} bright={round(payload['brightness'], 2)} warm={round(payload['warm_alpha'], 2)} bias={round(payload['_debug']['bias'], 1)} power={round(payload['_debug']['power'], 2)} elev={round(payload['_debug']['elev'], 0)} color={warm_hex}"
     else:
-        debug_output += f"\n  • Brightness: {round(payload['brightness'], 2)}"
-        debug_output += f"\n  • Warm alpha: {round(payload['warm_alpha'], 2)}"
-        debug_output += f"\n  • Warm color: {payload['warm_hex']}"
+        debug_output = f"Mask values for {dest_id}: bright={round(payload['brightness'], 2)} warm={round(payload['warm_alpha'], 2)} color={payload['warm_hex']}"
 
     # Only output if changed
     if debug_output != _last_debug.get(dest_id):
-        debug(debug_output + "\n")
+        debug(debug_output)
         _last_debug[dest_id] = debug_output
     
     # Remove debug info from response

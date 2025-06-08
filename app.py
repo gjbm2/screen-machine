@@ -41,6 +41,9 @@ from routes.lightsensor import lightsensor_bp
 # Load environment variables
 load_dotenv()
 
+# Configure logging
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
+
 # Initialize Flask app
 app = Flask(__name__, static_folder=STATIC_FOLDER)
 CORS(app)

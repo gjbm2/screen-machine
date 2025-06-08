@@ -12,7 +12,7 @@ import SchemaDynamicForm from './pages/SchemaDynamicForm';
 import Scheduler from './pages/scheduler.tsx';
 import { ReferenceImagesProvider } from "./contexts/ReferenceImagesContext";
 import { LoopeViewProvider } from "@/contexts/LoopeViewContext";
-import Lightsense from './pages/Lightsense';
+import LightSense from './pages/LightSense';
 
 const queryClient = new QueryClient();
 
@@ -30,7 +30,7 @@ const App = () => (
             <Route path="/schema-edit" element={<SchemaEdit />} />
             <Route path="/schema-dynamic-form" element={<SchemaDynamicForm />} />
             <Route path="/scheduler" element={<Scheduler />} />
-            <Route path="/lightsense" element={<Lightsense />} />
+            <Route path="/lightsense" element={<LightSense />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
