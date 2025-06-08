@@ -2,7 +2,7 @@ import json
 import os
 import time
 from typing import Dict, List, Optional, Tuple
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 import logging
 
 # Initialize logging
@@ -48,6 +48,19 @@ class IntensityMapper:
         except Exception as e:
             logger.error(f"Error loading intensity mapping: {e}")
             self.mapping_data = None
+
+    def save_mapping(self):
+        """Save the current mapping data back to the file."""
+        try:
+            mapping_path = os.path.join(os.path.dirname(__file__), 'data', 'intensity.json')
+            with open(mapping_path, 'w') as f:
+                json.dump(self.mapping_data, f, indent=2)
+            self.last_update = os.path.getmtime(mapping_path)
+            logger.debug(f"Saved intensity mapping to {mapping_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving intensity mapping: {e}")
+            return False
 
     def check_for_updates(self):
         mapping_path = os.path.join(os.path.dirname(__file__), 'data', 'intensity.json')
@@ -98,8 +111,58 @@ class IntensityMapper:
             return None
         return self.mapping_data["sensor_mappings"][sensor_name]["target_group"]
 
+    def update_mapping(self, sensor_name: str, points: List[Dict[str, float]], target_group: str) -> bool:
+        """Update the mapping for a specific sensor."""
+        if not self.mapping_data:
+            self.mapping_data = {"sensor_mappings": {}}
+        
+        # Validate points
+        if not points or not all("lux" in p and "intensity" in p for p in points):
+            return False
+        
+        # Sort points by lux value
+        points.sort(key=lambda x: x["lux"])
+        
+        # Update the mapping
+        self.mapping_data["sensor_mappings"][sensor_name] = {
+            "lux_to_intensity": points,
+            "target_group": target_group
+        }
+        
+        # Save to file
+        return self.save_mapping()
+
 # Initialize the intensity mapper
 intensity_mapper = IntensityMapper()
+
+@lightsensor_bp.route('/lightsensor/intensity-settings', methods=['GET'])
+def get_intensity_settings():
+    """Get current intensity settings for all sensors."""
+    intensity_mapper.check_for_updates()
+    return jsonify(intensity_mapper.mapping_data)
+
+@lightsensor_bp.route('/lightsensor/intensity-settings/<sensor_name>', methods=['PUT'])
+def update_intensity_settings(sensor_name):
+    """Update intensity settings for a specific sensor."""
+    try:
+        data = request.json
+        if not data or "points" not in data or "target_group" not in data:
+            return jsonify({"error": "Missing required fields"}), 400
+        
+        success = intensity_mapper.update_mapping(
+            sensor_name,
+            data["points"],
+            data["target_group"]
+        )
+        
+        if success:
+            return jsonify({"status": "success"})
+        else:
+            return jsonify({"error": "Failed to update settings"}), 500
+            
+    except Exception as e:
+        logger.error(f"Error updating intensity settings: {e}")
+        return jsonify({"error": str(e)}), 500
 
 async def broadcast_lux_level(sensor_name: str, lux: float):
     """Broadcast lux level to all connected clients with sensor name."""
@@ -135,7 +198,7 @@ async def broadcast_lux_level(sensor_name: str, lux: float):
     await send_overlay_to_clients(message)
     logger.debug(f"Broadcast lux level for {sensor_name}: {lux}")  # Changed to debug
 
-@lightsensor_bp.route('lightsense', methods=['GET'])
+@lightsensor_bp.route('/lightsensor/lightsense', methods=['GET'])
 def get_lightsense():
     """Get current lux levels, history, and target intensities for all sensors."""
     # Check for mapping updates

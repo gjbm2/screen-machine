@@ -2326,11 +2326,45 @@ export class Api {
   }
 
   async getLightsense() {
-    const response = await fetch(`${this.apiUrl}/lightsense`);
+    const response = await fetch(`${this.apiUrl}/lightsensor/lightsense`);
     if (!response.ok) {
       throw new Error('Failed to fetch lightsense data');
     }
     return await response.json();
+  }
+
+  // Get intensity settings
+  async getIntensitySettings(): Promise<any> {
+    try {
+      const response = await fetch(`${this.apiUrl}/lightsensor/intensity-settings`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch intensity settings');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching intensity settings:', error);
+      throw error;
+    }
+  }
+
+  // Update intensity settings for a sensor
+  async updateIntensitySettings(sensorName: string, settings: { points: Array<{ lux: number; intensity: number }>; target_group: string }): Promise<any> {
+    try {
+      const response = await fetch(`${this.apiUrl}/lightsensor/intensity-settings/${sensorName}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update intensity settings');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error updating intensity settings:', error);
+      throw error;
+    }
   }
 }
 

@@ -1,4 +1,3 @@
-
 """
 Logger utility for the AI Image Generator app.
 This module provides functions to log messages that will be visible
@@ -9,6 +8,8 @@ import time
 import sys
 import os
 import inspect
+import logging
+from logging.handlers import RotatingFileHandler
 from typing import Optional, Dict, Any
 from collections import defaultdict
 
@@ -18,6 +19,33 @@ console_logs = []
 # Track recent logs to prevent spam
 _recent_logs = defaultdict(lambda: {"timestamp": 0, "count": 0})
 _LOG_THROTTLE_TIME = 2  # seconds between identical log messages
+
+# Create logs directory if it doesn't exist
+LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+# Configure file logger
+file_logger = logging.getLogger("screen_machine")
+file_logger.setLevel(logging.DEBUG)
+
+# Create rotating file handler (10MB per file, keep 5 backup files)
+log_file = os.path.join(LOGS_DIR, "screen_machine.log")
+file_handler = RotatingFileHandler(
+    log_file,
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5
+)
+file_handler.setLevel(logging.DEBUG)
+
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+
+# Add handler to logger
+file_logger.addHandler(file_handler)
+
+# Prevent propagation to root logger to avoid double logging
+file_logger.propagate = False
 
 def log_to_console(message: str, source: Optional[str] = None, metadata: Optional[Dict[Any, Any]] = None) -> str:
     """
@@ -57,6 +85,8 @@ def log_to_console(message: str, source: Optional[str] = None, metadata: Optiona
             print(formatted_message, file=sys.stdout)
             sys.stdout.flush()
             console_logs.append(formatted_message)
+            # Log throttled messages to file with WARNING level
+            file_logger.warning(formatted_message)
         return ""  # Return empty string for throttled messages
     
     # Reset counter if outside throttle window
@@ -72,6 +102,18 @@ def log_to_console(message: str, source: Optional[str] = None, metadata: Optiona
     
     # Store for frontend retrieval (will be accessed by app.py)
     console_logs.append(formatted_message)
+    
+    # Log to file based on message level
+    if message.startswith("DEBUG:"):
+        file_logger.debug(message[6:])  # Remove "DEBUG: " prefix
+    elif message.startswith("INFO:"):
+        file_logger.info(message[5:])   # Remove "INFO: " prefix
+    elif message.startswith("WARNING:"):
+        file_logger.warning(message[8:])  # Remove "WARNING: " prefix
+    elif message.startswith("ERROR:"):
+        file_logger.error(message[6:])  # Remove "ERROR: " prefix
+    else:
+        file_logger.info(message)
     
     return formatted_message
 
