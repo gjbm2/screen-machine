@@ -32,3 +32,5 @@ __pycache__/
 output/*
 output*/
 samsungtvws/example/web_interface/images
+
+*.wav
