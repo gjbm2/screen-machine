@@ -61,7 +61,7 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-06-08T21:07:21.833650",
+  "last_updated": "2025-06-09T14:26:09.933331",
   "last_trigger_executions": {
     "86fcab81240ed277bf13e63c5c2c9595_2025-05-23": "2025-05-23T03:00:01.813204",
     "86fcab81240ed277bf13e63c5c2c9595_2025-05-24": "2025-05-24T03:00:01.099844",
@@ -79,39 +79,14 @@
     "86fcab81240ed277bf13e63c5c2c9595_2025-06-05": "2025-06-05T03:00:01.627580",
     "86fcab81240ed277bf13e63c5c2c9595_2025-06-06": "2025-06-06T03:00:00.325386",
     "86fcab81240ed277bf13e63c5c2c9595_2025-06-07": "2025-06-07T03:00:01.371990",
-    "86fcab81240ed277bf13e63c5c2c9595_2025-06-08": "2025-06-08T03:00:01.197109"
+    "86fcab81240ed277bf13e63c5c2c9595_2025-06-08": "2025-06-08T03:00:01.197109",
+    "86fcab81240ed277bf13e63c5c2c9595_2025-06-09": "2025-06-09T03:00:00.499526"
   },
   "active_events": {
     "purge": []
   },
   "event_history": [
     {
-      "key": "test",
-      "active_from": "2025-05-15T17:10:26.253827",
-      "expires": "2025-05-15T17:11:26.253827",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T17:10:26.253827",
-      "unique_id": "52eede48-24fc-433b-99d1-ff7be7b16e32",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T17:11:37.273062"
-    },
-    {
-      "key": "Next",
-      "active_from": "2025-05-15T17:47:37.465645",
-      "expires": "2025-05-15T17:48:37.465645",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-05-15T17:47:37.465645",
-      "unique_id": "bf7a4350-499a-4806-bb48-278d3974afe2",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-05-15T17:48:39.109545"
-    },
-    {
       "key": "New_theme",
       "active_from": "2025-05-16T00:01:00.855961",
       "expires": "2025-05-16T00:02:00.855961",
@@ -1384,6 +1359,32 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler__recent",
       "consumed_at": "2025-06-08T03:00:03.222704"
+    },
+    {
+      "key": "purge",
+      "active_from": "2025-06-09T03:00:00.544571",
+      "expires": "2025-06-09T03:01:00.544571",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-09T03:00:00.544571",
+      "unique_id": "ba564069-b9b6-4202-a92a-11478b144f09",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler__recent",
+      "consumed_at": "2025-06-09T03:00:02.500347"
+    },
+    {
+      "key": "purge",
+      "active_from": "2025-06-09T03:00:00.544571",
+      "expires": "2025-06-09T03:01:00.544571",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-09T03:00:00.544571",
+      "unique_id": "ba564069-b9b6-4202-a92a-11478b144f09",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler__recent",
+      "consumed_at": "2025-06-09T03:00:02.500347"
     }
   ]
 }

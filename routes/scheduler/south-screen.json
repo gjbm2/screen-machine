@@ -328,82 +328,12 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "The intricate balance of power and diplomacy in Elizabethan court life",
-        "_b_theme": "Explorations of Elizabeth I's overseas influences through portraits and courtly gifts",
-        "_style": "Tudor portraiture style with influences from artists like Nicholas Hilliard",
-        "_guidance": "Depict scenes that contrast the opulent and the diplomatic dimensions of Elizabeth's reign, embracing Tudor era aesthetics while ensuring new narratives diverge from existing image interpretations.",
-        "prompt": "Elizabethan tapestry workshop, artisans weaving intricate designs incorporating Chinese dragons and Flemish foliage, candles casting shadows on ornate looms, embodying Tudor artistry and global influence.",
+        "_a_theme": "Fantasy tea ceremonies underwater with mythical sea creatures",
+        "_b_theme": "Surreal tea parties in enchanted garden settings",
+        "_style": "Lewis Carroll-inspired whimsical illustration with fantastical elements",
+        "_guidance": "Create dreamlike and surreal tea scenes, alternating between verdant garden and underwater magical realms, in the style of Lewis Carroll's imaginative storytelling, ensuring unique character and setting designs differ from recent whimsical themes.",
+        "prompt": "Enchanted garden tea party with time-bending clocks hanging from cherry blossom trees; whimsical animal guests engaged in playful riddles, all under a luminous twilight sky.",
         "history_var": [
-          {
-            "timestamp": "2025-06-07 22:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Historic alleyway in Pentecost glow, an elder knits under streetlamp, surrounding doorways full of silent observers, reminiscent of Atget\u2019s serene urban intimacy."
-            },
-            "text_input": "'Intimate depictions of personal prayer and ref...",
-            "explanation": "To ensure uniqueness, I chose an alleyway setting, focusing on an elder practicing an everyday ac..."
-          },
-          {
-            "timestamp": "2025-06-07 23:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Rooftop gathering during Pentecost eve, silhouetted figures and prayerful solitude; city lights twinkling below, invoking Atget's sense of urban tranquility and introspection."
-            },
-            "text_input": "'Intimate depictions of personal prayer and ref...",
-            "explanation": "I chose a unique perspective by focusing on a rooftop setting and cityscape, avoiding previous th..."
-          },
-          {
-            "timestamp": "2025-06-08 06:00:14",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "A turbulent volcanic landscape bathed in ash, with engulfed ancient forests and emerging cavernous cracks, illuminated in sunset's glow, echoes drama and transformation, rendering nature's sublime power."
-            },
-            "text_input": "'Cultural and ecological impacts of the 'haze f...",
-            "explanation": "The prompt contrasts ash-covered volcanic terrain with transformative landscapes, employing the H..."
-          },
-          {
-            "timestamp": "2025-06-08 08:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Haunting volcanic wasteland with smoldering fissures, flickering golden glow beneath ash-laden sky; distant European villages obscure amidst atmospheric transformation, evoking Hudson River School's grandeur and delicate naturalism."
-            },
-            "text_input": "'Ethereal landscapes under the volcanic haze \u2014 ...",
-            "explanation": "The prompt captures the tumultuous serenity of volcanic wastelands while incorporating European v..."
-          },
-          {
-            "timestamp": "2025-06-08 09:00:02",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Vast Icelandic highlands shrouded in haze, jagged mountains silhouetted against crimson skies; ancient glaciers reflect fiery volcanic glow, depicting otherworldly beauty via Hudson River School's majestic detail."
-            },
-            "text_input": "'Ethereal landscapes under the volcanic haze \u2014 ...",
-            "explanation": "I focused on contrasting vast highland landscapes with sharp mountain silhouettes and glacial ref..."
-          },
-          {
-            "timestamp": "2025-06-08 10:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Sublime Icelandic fjord enveloped in eerie volcanic haze; cascading waterfalls into embers-lit river, spectral clouds overhead, echoing Hudson River School's majestic interplay of shadow and light."
-            },
-            "text_input": "'Ethereal landscapes under the volcanic haze \u2014 ...",
-            "explanation": "I crafted a scene focusing on a fjord with waterfalls and a river, contrasting the volcanic haze ..."
-          },
-          {
-            "timestamp": "2025-06-08 11:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Barren European landscape beneath swirling ash clouds and molten streams; scattered medieval ruins in twilight shadow, embodying Hudson River School's awe and detailed natural expanse."
-            },
-            "text_input": "'Cultural and ecological impacts of the 'haze f...",
-            "explanation": "By emphasizing ruins under the transformative forces of swirling ash clouds and molten streams, I..."
-          },
           {
             "timestamp": "2025-06-08 12:00:03",
             "type": "reason",
@@ -533,75 +463,79 @@
             },
             "text_input": "'Explorations of Elizabeth I's overseas influen...",
             "explanation": "I centered the scene within a tapestry workshop, emphasizing creative processes and global influe..."
+          },
+          {
+            "timestamp": "2025-06-08 23:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Elizabethan diplomats consulting expansive map room, rich dark paneling, candlelight reflecting from navigational tools; globe centerpiece symbolizing the global chessboard of power."
+            },
+            "text_input": "'The intricate balance of power and diplomacy i...",
+            "explanation": "To differentiate from earlier prompts that include Elizabeth I or overt cultural exchanges, I dep..."
+          },
+          {
+            "timestamp": "2025-06-09 06:00:13",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Graceful tea table set on a giant sea turtle's shell, whimsical mismatched porcelain, mermaids sip tea with narwhals, enchanting turquoise ocean backdrop, vivid Carrollian wonder."
+            },
+            "text_input": "'Fantasy tea ceremonies underwater with mythica...",
+            "explanation": "I chose to set the tea ceremony on a sea turtle's shell rather than a traditional setting, incorp..."
+          },
+          {
+            "timestamp": "2025-06-09 07:53:26",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Ethereal jellyfish chandeliers illuminate underwater tea party; whimsical jelly creatures serve delicacies from coral-topped tables, creating a surreal, Carrollian feast beneath azure waves."
+            },
+            "text_input": "'Fantasy tea ceremonies underwater with mythica...",
+            "explanation": "I avoided previous concepts such as sea turtles and narwhals by focusing on jellyfish as lighting..."
+          },
+          {
+            "timestamp": "2025-06-09 07:53:54",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Octopus tending a floating tea booth, delicate porcelain stacks balancing impossible angles, sea life waltzing around in a blue-green swirl, whimsical Lewis Carroll narrative feel."
+            },
+            "text_input": "'Fantasy tea ceremonies underwater with mythica...",
+            "explanation": "The prompt introduces an octopus managing a whimsical tea stall, focusing on unique underwater be..."
+          },
+          {
+            "timestamp": "2025-06-09 08:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A whimsical tea ceremony atop a giant seashell, attended by seahorses and playful fish, under a sunset-cast ocean surface, infused with Carrollian charm."
+            },
+            "text_input": "'Fantasy tea ceremonies underwater with mythica...",
+            "explanation": "The prompt distinguishes itself by placing the tea ceremony on a seashell with seahorses, unlike ..."
+          },
+          {
+            "timestamp": "2025-06-09 09:00:04",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Mythical underwater tea hall inside a colossal clamshell, adorned with glowing moss, with mermaids pouring tea from floating pearl teapots, Carrollian surrealism in every detail."
+            },
+            "text_input": "'Fantasy tea ceremonies underwater with mythica...",
+            "explanation": "I avoided previous themes such as sea turtles, jellyfish, and octopuses by depicting an underwate..."
+          },
+          {
+            "timestamp": "2025-06-09 14:19:09",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Enchanted garden tea party with time-bending clocks hanging from cherry blossom trees; whimsical animal guests engaged in playful riddles, all under a luminous twilight sky."
+            },
+            "text_input": "'Surreal tea parties in enchanted garden settin...",
+            "explanation": "I designed a tea party in an enchanted garden with time-bending elements, such as clocks hanging ..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2025-06-07 18:00:06",
-            "type": "generation",
-            "prompt": "Pentecostal festival at city park fountain, fam...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250607-170039-4d0498af.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-06-07 19:00:06",
-            "type": "generation",
-            "prompt": "Early morning Pentecostal mass at a riverside p...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250607-180037-cd16f4a4.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-06-07 20:00:05",
-            "type": "generation",
-            "prompt": "Pentecostal street fair around vintage carousel...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250607-190039-b79fc290.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-06-07 21:00:07",
-            "type": "generation",
-            "prompt": "Quiet corner caf\u00e9 during Pentecost, patrons in ...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250607-200059-a01f0323.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-06-07 22:00:05",
-            "type": "generation",
-            "prompt": "Historic alleyway in Pentecost glow, an elder k...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250607-210036-144edae0.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-06-07 23:00:06",
-            "type": "generation",
-            "prompt": "Rooftop gathering during Pentecost eve, silhoue...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250607-220036-2158a73f.jpg"
-            ],
-            "published": true
-          },
           {
             "timestamp": "2025-06-08 06:00:17",
             "type": "generation",
@@ -755,16 +689,96 @@
               "20250608-200039-d76118c3.jpg"
             ],
             "published": true
+          },
+          {
+            "timestamp": "2025-06-08 23:00:05",
+            "type": "generation",
+            "prompt": "Elizabethan diplomats consulting expansive map ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250608-220117-1f50a281.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-06-09 06:00:16",
+            "type": "generation",
+            "prompt": "Graceful tea table set on a giant sea turtle's ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250609-050108-c75be31f.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-06-09 07:53:29",
+            "type": "generation",
+            "prompt": "Ethereal jellyfish chandeliers illuminate under...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250609-065353-c2476205.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-06-09 07:53:57",
+            "type": "generation",
+            "prompt": "Octopus tending a floating tea booth, delicate ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250609-065419-dda46a2a.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-06-09 08:00:05",
+            "type": "generation",
+            "prompt": "A whimsical tea ceremony atop a giant seashell,...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250609-070114-ae41f43f.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-06-09 09:00:07",
+            "type": "generation",
+            "prompt": "Mythical underwater tea hall inside a colossal ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250609-080103-66e9b549.jpg"
+            ],
+            "published": true
           }
         ],
-        "animation_on": "false"
+        "animation_on": "false",
+        "_event": {
+          "key": "Generate",
+          "payload": null,
+          "unique_id": "26b89d15-d829-44d9-91b7-f22014f121de",
+          "created_at": "2025-06-09T14:27:12.508130",
+          "display_name": null
+        }
       },
-      "last_generated": "20250608-200039-d76118c3.jpg",
-      "publish_destination": "south-screen"
+      "last_generated": "20250609-080103-66e9b549.jpg",
+      "publish_destination": "south-screen",
+      "_event": {
+        "key": "Generate",
+        "payload": null,
+        "unique_id": "26b89d15-d829-44d9-91b7-f22014f121de",
+        "created_at": "2025-06-09T14:27:12.508130",
+        "display_name": null
+      }
     }
   ],
   "state": "running",
-  "last_updated": "2025-06-08T21:07:21.934015",
+  "last_updated": "2025-06-09T14:27:13.221562",
   "last_trigger_executions": {
     "f65e26b4527c95c05af4f657d9560b34_2025-06-03_2": "2025-06-03T00:52:01.472724",
     "f65e26b4527c95c05af4f657d9560b34_2025-06-03_3": "2025-06-03T01:08:05.516269",
@@ -1054,355 +1068,52 @@
     "b812f679a565a0c56311d86bfaf3ca2d_2025-06-08_6": "2025-06-08T19:05:00.782276",
     "615c22f09f03cb1b6164dab4b2980a01_2025-06-08_13": "2025-06-08T20:00:00.539906",
     "615c22f09f03cb1b6164dab4b2980a01_2025-06-08_14": "2025-06-08T21:00:01.522633",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-06-08_7": "2025-06-08T21:05:01.576192"
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-06-08_7": "2025-06-08T21:05:01.576192",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-06-08_16": "2025-06-08T23:00:00.678246",
+    "27e0dceb3734ee5d0e5e05e5462f7064_2025-06-08": "2025-06-08T23:00:00.678246",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-06-08_8": "2025-06-08T23:05:01.541613",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_0": "2025-06-09T00:22:00.576368",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_1": "2025-06-09T00:37:01.760500",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_2": "2025-06-09T00:52:01.601581",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_3": "2025-06-09T01:07:00.246089",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_4": "2025-06-09T01:22:00.561998",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_5": "2025-06-09T01:37:00.765253",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_6": "2025-06-09T01:52:00.760684",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_7": "2025-06-09T02:07:01.443645",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_8": "2025-06-09T02:22:01.537569",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_9": "2025-06-09T02:37:00.091651",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_10": "2025-06-09T02:52:01.589214",
+    "86fcab81240ed277bf13e63c5c2c9595_2025-06-09": "2025-06-09T03:00:01.899635",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_11": "2025-06-09T03:07:01.334834",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_12": "2025-06-09T03:22:01.958675",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_13": "2025-06-09T03:37:01.067697",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_14": "2025-06-09T03:52:00.438626",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_15": "2025-06-09T04:07:00.724026",
+    "158578f4060f785538defa5246c1f15b_2025-06-09": "2025-06-09T04:10:01.526313",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_16": "2025-06-09T04:22:00.654343",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_17": "2025-06-09T04:37:01.035431",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_18": "2025-06-09T04:52:01.704631",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_19": "2025-06-09T05:07:01.281661",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_20": "2025-06-09T05:22:00.821622",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_21": "2025-06-09T05:37:01.265871",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_22": "2025-06-09T05:52:01.070641",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_23": "2025-06-09T06:07:00.246255",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_24": "2025-06-09T06:22:00.402060",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_25": "2025-06-09T06:37:01.186938",
+    "f65e26b4527c95c05af4f657d9560b34_2025-06-09_26": "2025-06-09T06:52:01.327717",
+    "442611d85057ffa0800e12b27cc0ea8b_2025-06-09": "2025-06-09T07:00:00.643972",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-06-09_0": "2025-06-09T07:00:00.643972",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-06-09_0": "2025-06-09T07:05:00.128368",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-06-09_1": "2025-06-09T08:00:00.473496",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-06-09_2": "2025-06-09T09:00:01.870117",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-06-09_1": "2025-06-09T09:05:01.396730"
   },
   "active_events": {
-    "__exit_block__": []
+    "Generate": []
   },
   "event_history": [
     {
       "key": "Generate",
-      "active_from": "2025-06-07T11:00:01.713003",
-      "expires": "2025-06-07T11:01:01.713003",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T11:00:01.713003",
-      "unique_id": "dd744196-6a5d-4c96-a72f-8e052ccd5b3d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T11:00:03.759276"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T11:00:01.713003",
-      "expires": "2025-06-07T11:01:01.713003",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T11:00:01.713003",
-      "unique_id": "dd744196-6a5d-4c96-a72f-8e052ccd5b3d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T11:00:03.759276"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-07T11:05:00.518336",
-      "expires": "2025-06-07T11:06:00.518336",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-07T11:05:00.518336",
-      "unique_id": "e6321f2d-9f41-49d4-b21d-67077ece514d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T11:05:02.333342"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-07T11:05:00.518336",
-      "expires": "2025-06-07T11:06:00.518336",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-07T11:05:00.518336",
-      "unique_id": "e6321f2d-9f41-49d4-b21d-67077ece514d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T11:05:02.333342"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T12:00:01.497296",
-      "expires": "2025-06-07T12:01:01.497296",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T12:00:01.497296",
-      "unique_id": "caa01bed-402d-4594-9f7c-7a545b9cf4cc",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T12:00:03.529115"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T12:00:01.497296",
-      "expires": "2025-06-07T12:01:01.497296",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T12:00:01.497296",
-      "unique_id": "caa01bed-402d-4594-9f7c-7a545b9cf4cc",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T12:00:03.529115"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T13:00:00.380091",
-      "expires": "2025-06-07T13:01:00.380091",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T13:00:00.380091",
-      "unique_id": "cbfb81b5-7cc0-46eb-9c92-0ed0da03dce1",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T13:00:02.428176"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T13:00:00.380091",
-      "expires": "2025-06-07T13:01:00.380091",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T13:00:00.380091",
-      "unique_id": "cbfb81b5-7cc0-46eb-9c92-0ed0da03dce1",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T13:00:02.428176"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-07T13:05:01.650318",
-      "expires": "2025-06-07T13:06:01.650318",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-07T13:05:01.650318",
-      "unique_id": "e7c1f48f-ad44-48b7-b1d4-c9ee95d83cbe",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T13:05:03.468808"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-07T13:05:01.650318",
-      "expires": "2025-06-07T13:06:01.650318",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-07T13:05:01.650318",
-      "unique_id": "e7c1f48f-ad44-48b7-b1d4-c9ee95d83cbe",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T13:05:03.468808"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T14:00:01.120684",
-      "expires": "2025-06-07T14:01:01.120684",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T14:00:01.120684",
-      "unique_id": "53c17482-97b5-47b5-a7b6-ca61a5e1a77d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T14:00:03.190116"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T14:00:01.120684",
-      "expires": "2025-06-07T14:01:01.120684",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T14:00:01.120684",
-      "unique_id": "53c17482-97b5-47b5-a7b6-ca61a5e1a77d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T14:00:03.190116"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T15:00:01.882163",
-      "expires": "2025-06-07T15:01:01.882163",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T15:00:01.882163",
-      "unique_id": "9e0867f7-c0a2-4b6a-b7c2-58e7fdb4fce2",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T15:00:03.870834"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T15:00:01.882163",
-      "expires": "2025-06-07T15:01:01.882163",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T15:00:01.882163",
-      "unique_id": "9e0867f7-c0a2-4b6a-b7c2-58e7fdb4fce2",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T15:00:03.870834"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-07T15:05:00.880364",
-      "expires": "2025-06-07T15:06:00.880364",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-07T15:05:00.880364",
-      "unique_id": "bc31e48f-77b7-4551-9302-6908907494c1",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T15:05:02.821681"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-07T15:05:00.880364",
-      "expires": "2025-06-07T15:06:00.880364",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-07T15:05:00.880364",
-      "unique_id": "bc31e48f-77b7-4551-9302-6908907494c1",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T15:05:02.821681"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T16:00:01.079721",
-      "expires": "2025-06-07T16:01:01.079721",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T16:00:01.079721",
-      "unique_id": "81f2351d-052b-4a4c-b9ad-0199963f3408",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T16:00:03.116249"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T16:00:01.079721",
-      "expires": "2025-06-07T16:01:01.079721",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T16:00:01.079721",
-      "unique_id": "81f2351d-052b-4a4c-b9ad-0199963f3408",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T16:00:03.116249"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T17:00:01.435051",
-      "expires": "2025-06-07T17:01:01.435051",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T17:00:01.435051",
-      "unique_id": "bbd69e36-3448-4fd4-8121-fe27c29e4cd4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T17:00:03.520664"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T17:00:01.435051",
-      "expires": "2025-06-07T17:01:01.435051",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T17:00:01.435051",
-      "unique_id": "bbd69e36-3448-4fd4-8121-fe27c29e4cd4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T17:00:03.520664"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-07T17:05:01.792971",
-      "expires": "2025-06-07T17:06:01.792971",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-07T17:05:01.792971",
-      "unique_id": "4ebca907-264a-492e-8c81-c34434ab2e43",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T17:05:03.650840"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-07T17:05:01.792971",
-      "expires": "2025-06-07T17:06:01.792971",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-07T17:05:01.792971",
-      "unique_id": "4ebca907-264a-492e-8c81-c34434ab2e43",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T17:05:03.650840"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T18:00:00.899210",
-      "expires": "2025-06-07T18:01:00.899210",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T18:00:00.899210",
-      "unique_id": "db5711d7-3fe8-4c19-95c4-01f37ca5a04f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T18:00:02.957789"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T18:00:00.899210",
-      "expires": "2025-06-07T18:01:00.899210",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T18:00:00.899210",
-      "unique_id": "db5711d7-3fe8-4c19-95c4-01f37ca5a04f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T18:00:02.957789"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-07T19:00:01.704461",
-      "expires": "2025-06-07T19:01:01.704461",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-06-07T19:00:01.704461",
-      "unique_id": "c9997283-9a5b-44b8-9be7-31668358a87a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-07T19:00:03.748807"
-    },
-    {
-      "key": "Generate",
       "active_from": "2025-06-07T19:00:01.704461",
       "expires": "2025-06-07T19:01:01.704461",
       "display_name": null,
@@ -2431,6 +2142,343 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
       "consumed_at": "2025-06-08T21:05:03.644928"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-08T23:00:00.705473",
+      "expires": "2025-06-08T23:01:00.705473",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-08T23:00:00.705473",
+      "unique_id": "a89b7681-0d3d-480a-a654-7ae597109920",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-08T23:00:02.685328"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-08T23:00:00.705473",
+      "expires": "2025-06-08T23:01:00.705473",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-08T23:00:00.705473",
+      "unique_id": "a89b7681-0d3d-480a-a654-7ae597109920",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-08T23:00:02.685328"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-08T23:05:01.708778",
+      "expires": "2025-06-08T23:06:01.708778",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-08T23:05:01.708778",
+      "unique_id": "4da1552f-214e-4e1d-a343-1475111fc93c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-08T23:05:03.542270"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-08T23:05:01.708778",
+      "expires": "2025-06-08T23:06:01.708778",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-08T23:05:01.708778",
+      "unique_id": "4da1552f-214e-4e1d-a343-1475111fc93c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-08T23:05:03.542270"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T06:00:10.871352",
+      "expires": "2025-06-09T06:01:10.871352",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-09T06:00:10.871352",
+      "unique_id": "ec642fd3-253c-4d6a-b749-0ab59ea94536",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T06:00:12.845052"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T06:00:10.871352",
+      "expires": "2025-06-09T06:01:10.871352",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-09T06:00:10.871352",
+      "unique_id": "ec642fd3-253c-4d6a-b749-0ab59ea94536",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T06:00:12.845052"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-09T07:05:00.298044",
+      "expires": "2025-06-09T07:06:00.298044",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-09T07:05:00.298044",
+      "unique_id": "5c0c5e31-9a68-404d-af9a-9f44293361ff",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T07:05:02.129452"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-09T07:05:00.298044",
+      "expires": "2025-06-09T07:06:00.298044",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-09T07:05:00.298044",
+      "unique_id": "5c0c5e31-9a68-404d-af9a-9f44293361ff",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T07:05:02.129452"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T07:51:10.482673",
+      "expires": "2025-06-09T07:52:10.482673",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T07:51:10.482673",
+      "unique_id": "1ffdd580-9fda-4f6f-a55c-cf15d562e44a",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-09T07:52:26.603651"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T07:51:10.482673",
+      "expires": "2025-06-09T07:52:10.482673",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T07:51:10.482673",
+      "unique_id": "1ffdd580-9fda-4f6f-a55c-cf15d562e44a",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-09T07:52:26.603651"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T07:53:17.197630",
+      "expires": "2025-06-09T07:54:17.197630",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T07:53:17.197630",
+      "unique_id": "3f50051d-9e39-467d-a97d-1dc36bf64452",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T07:53:26.773600"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T07:53:29.077629",
+      "expires": "2025-06-09T07:54:29.077629",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T07:53:29.077629",
+      "unique_id": "af30b650-76ac-4597-acbe-f80c60864490",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T07:53:53.549144"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T07:53:29.077629",
+      "expires": "2025-06-09T07:54:29.077629",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T07:53:29.077629",
+      "unique_id": "af30b650-76ac-4597-acbe-f80c60864490",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T07:53:53.549144"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T08:00:00.484640",
+      "expires": "2025-06-09T08:01:00.484640",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T08:00:00.484640",
+      "unique_id": "18128a23-199e-4128-9815-0059452a1c2d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T08:00:02.562194"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T08:00:00.484640",
+      "expires": "2025-06-09T08:01:00.484640",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T08:00:00.484640",
+      "unique_id": "18128a23-199e-4128-9815-0059452a1c2d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T08:00:02.562194"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T09:00:01.892124",
+      "expires": "2025-06-09T09:01:01.892124",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T09:00:01.892124",
+      "unique_id": "fe0c919a-d554-4a50-97c9-d98ff4587410",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T09:00:03.925450"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T09:00:01.892124",
+      "expires": "2025-06-09T09:01:01.892124",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T09:00:01.892124",
+      "unique_id": "fe0c919a-d554-4a50-97c9-d98ff4587410",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T09:00:03.925450"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-09T09:05:01.537975",
+      "expires": "2025-06-09T09:06:01.537975",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-09T09:05:01.537975",
+      "unique_id": "ed13dcea-a066-4173-b56f-72bedaf35b50",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T09:05:03.462407"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-09T09:05:01.537975",
+      "expires": "2025-06-09T09:06:01.537975",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-09T09:05:01.537975",
+      "unique_id": "ed13dcea-a066-4173-b56f-72bedaf35b50",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T09:05:03.462407"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T14:06:45.616883",
+      "expires": "2025-06-09T14:07:45.616883",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T14:06:45.616883",
+      "unique_id": "3ec6f456-7030-4881-8c7e-a642bd3aae1d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T14:06:46.294256"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T14:06:45.616883",
+      "expires": "2025-06-09T14:07:45.616883",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T14:06:45.616883",
+      "unique_id": "3ec6f456-7030-4881-8c7e-a642bd3aae1d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T14:06:46.294256"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T14:19:07.770896",
+      "expires": "2025-06-09T14:20:07.770896",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T14:19:07.770896",
+      "unique_id": "c720c080-e4ef-4454-b088-c95776a39a29",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T14:19:08.689034"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T14:19:07.770896",
+      "expires": "2025-06-09T14:20:07.770896",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T14:19:07.770896",
+      "unique_id": "c720c080-e4ef-4454-b088-c95776a39a29",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T14:19:08.689034"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T14:27:12.508130",
+      "expires": "2025-06-09T14:28:12.508130",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T14:27:12.508130",
+      "unique_id": "26b89d15-d829-44d9-91b7-f22014f121de",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T14:27:12.814704"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-09T14:27:12.508130",
+      "expires": "2025-06-09T14:28:12.508130",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-09T14:27:12.508130",
+      "unique_id": "26b89d15-d829-44d9-91b7-f22014f121de",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-09T14:27:12.814704"
     }
   ]
 }
