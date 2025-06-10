@@ -3,10 +3,23 @@ import wave
 import os
 from utils.logger import debug, info, error, warning
 import assemblyai as aai
+from assemblyai.streaming.v3 import (
+    StreamingClient,
+    StreamingClientOptions,
+    StreamingParameters,
+    StreamingEvents,
+    TurnEvent,
+    BeginEvent,
+    TerminationEvent,
+    StreamingError
+)
 from datetime import datetime, timedelta
 import numpy as np
 from collections import deque
 from flask import Blueprint, request
+import asyncio
+import threading
+from typing import Optional
 
 # Create a deque to store the last 1000 words of transcription
 transcription_history: deque[str] = deque(maxlen=1000)
@@ -32,37 +45,25 @@ class AudioTranscriber:
         aai.settings.api_key = api_key
         self.is_active = False  # Transcription active
         self.recording_by_destination = {}  # Track recording state by destination
-        self.audio_buffer = bytearray()
-        self.bytes_per_chunk = SAMPLE_RATE * SAMPLE_WIDTH * CHANNELS * 5  # 5 seconds of audio
-        self.min_chunk_size = SAMPLE_RATE * SAMPLE_WIDTH * CHANNELS * 2  # 2 seconds minimum
-        self.target = "global"  # Default target
-        self.client_ids = set()  # Set of client IDs for this target
-        self.last_event_word_count = 0  # Track how many words have been sent in the last event
+        self.streaming_client: Optional[StreamingClient] = None  # Streaming client instance
+        
+        # Proper streaming state management based on AssemblyAI's immutable transcription approach
+        self.running_transcript = ""  # Accumulates final transcripts
+        self.current_turn_order = -1  # Track current turn order
+        self.last_broadcast_time = datetime.now()  # Track last broadcast time
+        self.broadcast_interval = 3  # Broadcast every 3 seconds
+        
+        self.target = "global"  # Logical scope (e.g., 'devtest')
+        self.last_event_word_count = 0
         self.last_event_time = datetime.now()
         self.event_interval = EVENT_INTERVAL_SECONDS
+        self._lock = threading.Lock()  # Thread safety
+        self._connection_retry_count = 0
+        self._max_retries = 3
+        self.last_formatted_transcript = ""  # Track last formatted transcript broadcast
+        self.last_broadcast_turn_order = -1   # Track which turn_order we last broadcasted
+        self.client_ids: list[str] = []  # Legacy compatibility for routes expecting this attribute
         info("🎙️ Audio transcriber initialized")
-    
-    def add_client(self, client_id: str, target: str = "global") -> None:
-        """Add a client to the transcriber."""
-        self.client_ids.add(client_id)
-        self.target = target
-        info(f"🎙️ Added client {client_id} to target {target}")
-    
-    def remove_client(self, client_id: str) -> None:
-        """Remove a client from the transcriber."""
-        # Store the target before removing the client
-        target = self.target
-        self.client_ids.discard(client_id)
-        
-        info(f"🎙️ Removed client {client_id}")
-        
-        # If no clients left at all, stop transcription
-        if not self.client_ids:
-            self.is_active = False
-            # Clear recording status for this target
-            if target in self.recording_by_destination:
-                self.recording_by_destination[target] = False
-            info("🎙️ No more clients connected, stopping transcription")
     
     def is_recording_for_destination(self, destination: str) -> bool:
         """Check if audio is being recorded for a specific destination."""
@@ -80,31 +81,17 @@ class AudioTranscriber:
         return self.recording_by_destination
     
     def add_audio_data(self, audio_chunk: bytes) -> None:
-        """Add audio data to the buffer."""
-        if not audio_chunk:
+        """Add audio data to streaming client."""
+        if not audio_chunk or not self.is_active:
             return
             
-        # Convert bytes to list of hex values for debugging
-        hex_values = [hex(b) for b in audio_chunk[:16]]
-        
-        # Convert to numpy array for analysis
-        audio_array = np.frombuffer(audio_chunk, dtype=np.int16)
-        
-        # Add to buffer
-        self.audio_buffer.extend(audio_chunk)
-        
-        # Check if we have enough data for transcription
-        if len(self.audio_buffer) >= self.bytes_per_chunk:
-            # Get the chunk for transcription
-            chunk = bytes(self.audio_buffer[:self.bytes_per_chunk])
-            # Remove the chunk from buffer
-            self.audio_buffer = self.audio_buffer[self.bytes_per_chunk:]
-            
-            # Process the chunk
-            self._process_audio_chunk(chunk)
-    
-    def _process_audio_chunk(self, audio_chunk: bytes) -> None:
-        """Process a chunk of audio data and send it for transcription."""
+        with self._lock:
+            if not self.streaming_client:
+                warning("⚠️ No streaming client available, attempting reconnection")
+                if not self._reconnect_streaming_client():
+                    error("❌ Could not reconnect streaming client")
+                    return
+                    
         try:
             # Normalize audio levels if they're too low
             audio_array = np.frombuffer(audio_chunk, dtype=np.int16)
@@ -114,124 +101,242 @@ class AudioTranscriber:
                 audio_array = np.clip(audio_array * gain, -32768, 32767).astype(np.int16)
                 audio_chunk = audio_array.tobytes()
             
-            # Create WAV file in memory
-            wav_buffer = io.BytesIO()
-            with wave.open(wav_buffer, 'wb') as wav_file:
-                wav_file.setnchannels(CHANNELS)
-                wav_file.setsampwidth(SAMPLE_WIDTH)
-                wav_file.setframerate(SAMPLE_RATE)
-                wav_file.writeframes(audio_chunk)
-            
-            # Save WAV file to disk for debugging
-            wav_dir = "wav"
-            os.makedirs(wav_dir, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            wav_filename = f"{wav_dir}/audio_{timestamp}_{len(audio_chunk)}bytes.wav"
-            with open(wav_filename, 'wb') as f:
-                f.write(wav_buffer.getvalue())
-            
-            wav_buffer.seek(0)
-            
-            # Create transcriber and transcribe
-            transcriber = aai.Transcriber()
-            try:
-                # Create transcription config – keep it minimal for robust output
-                config = aai.TranscriptionConfig(
-                    language_code="en"
-                )
-                
-                transcript = transcriber.transcribe(wav_buffer, config=config)
-                
-                # Only log the transcription text and add to history
-                if transcript and transcript.text:
-                    # Build a plain speaker-labelled transcript (no extra features)
-                    rich_text = []
-                    if transcript.utterances:
-                        for utt in transcript.utterances:
-                            rich_text.append(f"[{utt.speaker}] {utt.text}")
-                    
-                    # Add words to history
-                    transcription_history.extend(transcript.text.split())
+            # Send to streaming client
+            self.streaming_client.stream(audio_chunk)
+        except Exception as e:
+            error(f"❌ Error streaming audio data: {e}")
+            # Attempt reconnection on streaming error
+            if not self._reconnect_streaming_client():
+                error("❌ Failed to recover from streaming error")
+        
+    def _on_begin(self, client: StreamingClient, event: BeginEvent):
+        """Handle session start."""
+        info(f"🎙️ Streaming session started with ID: {event.id}")
+        # Reset retry count on successful connection
+        self._connection_retry_count = 0
+        
+    def _format_transcript_with_speaker(self, speaker: str, text: str) -> str:
+        """Format transcript with speaker labels."""
+        if not text:
+            return ""
+        return f"[{speaker}] {text}"
 
-                    # Prepare WebSocket message
-                    from overlay_ws_server import send_overlay_to_clients
-                    import asyncio
-                    
-                    # Use raw text if no utterances were found
-                    formatted_text = "\n".join(rich_text) if rich_text else transcript.text
-                    
-                    transcription_msg = {
-                        "type": "transcription",
-                        "text": formatted_text,  # Use formatted text or raw text
-                        "raw_text": transcript.text,  # Keep the raw text for reference
-                        "target": self.target,
-                        "client_ids": list(self.client_ids)
-                    }
-                    
-                    # Broadcast to all connected clients
-                    try:
-                        asyncio.create_task(send_overlay_to_clients(transcription_msg))
-                    except Exception as e:
-                        error(f"❌ Failed to create WebSocket broadcast task: {e}")
-                    
-                    # Decide whether to emit an event (rate-limited)
-                    now_time = datetime.now()
-                    if (now_time - self.last_event_time).total_seconds() >= self.event_interval:
-                        from routes.scheduler_utils import throw_event
-                        debug(f"🎙️ Throwing _transcription event with {len(transcription_history)} words of history")
-                        
-                        # Calculate full history and recent text
-                        full_history = ' '.join(transcription_history)
-                        recent_words = list(transcription_history)[self.last_event_word_count:]
-                        recent_text = ' '.join(recent_words)
-                        
-                        throw_event(
-                            scope=self.target,
-                            key="_transcription",
-                            ttl="60s",
-                            payload={
-                                "text": formatted_text,  # Use formatted text or raw text
-                                "raw_text": full_history,  # Keep the raw text for reference
-                                "recent_text": recent_text,
-                                "client_ids": list(self.client_ids)
-                            }
-                        )
-                        # Update tracking
-                        self.last_event_word_count = len(transcription_history)
-                        self.last_event_time = now_time
-                    
-                    return "\n".join(rich_text)
-                else:
-                    return None
-                    
-            except Exception as e:
-                print(f"\n❌ Error during AssemblyAI transcription: {str(e)}\n")
-                return None
+    def _broadcast_transcription(self, text: str, is_end_of_turn: bool = False):
+        """Broadcast transcription to WebSocket clients."""
+        if not text.strip():
+            return
+            
+        try:
+            transcription_msg = {
+                "type": "transcription",
+                "text": text,
+                "raw_text": text,
+                "target": self.target,
+                "is_end_of_turn": is_end_of_turn
+            }
+            
+            # Import here to avoid circular imports
+            from overlay_ws_server import send_overlay_to_clients
+            
+            # Send ONCE - let the overlay server handle distribution
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            if loop.is_running():
+                asyncio.create_task(send_overlay_to_clients(transcription_msg))
+            else:
+                loop.run_until_complete(send_overlay_to_clients(transcription_msg))
+                
+            debug(f"🎙️ SINGLE broadcast sent: {text[:50]}...")
                 
         except Exception as e:
-            print(f"\n❌ Error processing audio chunk: {str(e)}\n")
-            return None
+            error(f"❌ Failed to broadcast transcription: {e}")
+
+    def _on_turn(self, client: StreamingClient, event: TurnEvent):
+        try:
+            if not event.transcript:
+                return
+            
+            # Skip partials
+            if not event.end_of_turn:
+                return
+            
+            is_formatted = bool(getattr(event, "turn_is_formatted", False))
+            if not is_formatted:
+                # Wait for formatted transcript
+                return
+            
+            turn_order = getattr(event, 'turn_order', -1)
+            if turn_order == self.last_broadcast_turn_order:
+                debug("🎙️ Duplicate formatted transcript (same turn_order) – skipping broadcast")
+                return
+            self.last_broadcast_turn_order = turn_order
+            self.last_formatted_transcript = event.transcript
+            
+            speaker = getattr(event, "speaker_id", "A")
+            formatted_text = self._format_transcript_with_speaker(speaker, event.transcript)
+            
+            with self._lock:
+                transcription_history.extend(event.transcript.split())
+                if len(transcription_history) > 900:
+                    warning(f"⚠️ Transcription history approaching limit: {len(transcription_history)}/1000 words")
+            
+            self._broadcast_transcription(formatted_text, is_end_of_turn=True)
+            self.last_broadcast_time = datetime.now()
+            debug(f"🎙️ Broadcasted: {formatted_text[:50]}...")
+            
+            self._check_and_throw_event(formatted_text, event.transcript)
+        except Exception as e:
+            error(f"❌ Error in _on_turn: {e}")
+
+    def _check_and_throw_event(self, formatted_text: str, raw_text: str):
+        """Check if we should throw a transcription event."""
+        try:
+            # Local import once; avoids circular import at module level
+            from routes.scheduler_utils import throw_event
+
+            now_time = datetime.now()
+            if (now_time - self.last_event_time).total_seconds() >= self.event_interval:
+                with self._lock:
+                    # Calculate full history and recent text
+                    full_history = ' '.join(transcription_history)
+                    recent_words = list(transcription_history)[self.last_event_word_count:]
+                    recent_text = ' '.join(recent_words)
+
+                debug(f"🎙️ Throwing _transcription event with {len(transcription_history)} words of history")
+
+                throw_event(
+                    scope=self.target,
+                    key="_transcription",
+                    ttl="60s",
+                    payload={
+                        "text": formatted_text,
+                        "raw_text": full_history,
+                        "recent_text": recent_text,
+                        "history_size": len(transcription_history)
+                    }
+                )
+
+                # Update tracking
+                self.last_event_word_count = len(transcription_history)
+                self.last_event_time = now_time
+        except Exception as e:
+            error(f"❌ Error throwing transcription event: {e}")
+
+    def _on_terminated(self, client: StreamingClient, event: TerminationEvent):
+        """Handle session termination."""
+        info(f"🎙️ Streaming session ended: {event.audio_duration_seconds}s")
+        
+        # Attempt to reconnect if transcription is still active
+        if self.is_active:
+            warning("🔄 Streaming session terminated unexpectedly, attempting reconnection")
+            self._reconnect_streaming_client()
+        
+    def _on_error(self, client: StreamingClient, err: StreamingError):
+        """Handle streaming errors."""
+        error(f"❌ Streaming error: {err}")
+        
+        # Attempt reconnection on error
+        if self.is_active:
+            warning("🔄 Streaming error occurred, attempting reconnection")
+            self._reconnect_streaming_client()
+    
+    def _stop_streaming_internal(self):
+        """Internal method to stop streaming (called with lock held)."""
+        if self.streaming_client:
+            try:
+                self.streaming_client.disconnect(terminate=True)
+            except Exception as e:
+                warning(f"⚠️ Error disconnecting streaming client: {e}")
+            finally:
+                self.streaming_client = None
+                
+    def _reconnect_streaming_client(self):
+        """Attempt to reconnect the streaming client."""
+        if self._connection_retry_count >= self._max_retries:
+            error(f"❌ Max reconnection attempts ({self._max_retries}) reached")
+            return False
+            
+        try:
+            self._connection_retry_count += 1
+            warning(f"🔄 Attempting to reconnect streaming client (attempt {self._connection_retry_count})")
+            
+            # Clean up old client
+            self._stop_streaming_internal()
+            
+            # Create new client
+            self._create_streaming_client()
+            return True
+                
+        except Exception as e:
+            error(f"❌ Failed to reconnect streaming client: {e}")
+            return False
+
+    def _create_streaming_client(self):
+        """Create and configure the streaming client."""
+        self.streaming_client = StreamingClient(
+            StreamingClientOptions(
+                api_key=os.getenv('ASSEMBLY_AI_KEY'),
+                api_host="streaming.assemblyai.com",
+            )
+        )
+        
+        # Set up event handlers
+        self.streaming_client.on(StreamingEvents.Begin, self._on_begin)
+        self.streaming_client.on(StreamingEvents.Turn, self._on_turn)
+        self.streaming_client.on(StreamingEvents.Termination, self._on_terminated)
+        self.streaming_client.on(StreamingEvents.Error, self._on_error)
+        
+        # Connect with diarization enabled
+        self.streaming_client.connect(
+            StreamingParameters(
+                sample_rate=16000,
+                format_turns=True,  # Enable diarization
+            )
+        )
+        info("🎙️ Audio transcription streaming client connected")
     
     def start_transcription(self):
         """Start the transcription process."""
         self.is_active = True
-        self.audio_buffer.clear()
+        # Reset state for proper immutable transcription handling
+        self.running_transcript = ""
+        self.current_turn_order = -1
+        self.last_broadcast_time = datetime.now()
+        
         # Set recording status for current target
         if self.target:
             self.recording_by_destination[self.target] = True
+            
         # Clear transcription history when starting a new session
-        transcription_history.clear()
-        self.last_event_word_count = 0
-        self.last_event_time = datetime.now() - timedelta(seconds=self.event_interval + 1)  # Allow immediate event
-        print("🎙️ Audio transcription started - history cleared for new session")
+        with self._lock:
+            transcription_history.clear()
+            self.last_event_word_count = 0
+            self.last_event_time = datetime.now() - timedelta(seconds=self.event_interval + 1)  # Allow immediate event
+        
+        # Initialize streaming client
+        self._create_streaming_client()
+        info("🎙️ Audio transcription started")
     
     def stop_transcription(self):
         """Stop the transcription process."""
         self.is_active = False
-        self.audio_buffer.clear()
-        # Clear recording status for all destinations
-        self.recording_by_destination.clear()
-        print("🎙️ Audio transcription stopped")
+        
+        # Clear recording status for current target
+        if self.target and self.target in self.recording_by_destination:
+            self.recording_by_destination[self.target] = False
+        
+        # Stop streaming client
+        self._stop_streaming_internal()
+        
+        # Reset state
+        self.running_transcript = ""
+        self.current_turn_order = -1
+        
+        info("🎙️ Audio transcription stopped")
 
 # Global transcriber instance
 _transcriber = None

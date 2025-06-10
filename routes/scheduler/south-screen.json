@@ -382,52 +382,12 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "From words to life \u2014 imagined scenes of lovers and fools from the sonnets",
-        "_b_theme": "Shakespeare's evocative sonnet imagery \u2014 natural and metaphorical elements",
+        "_a_theme": "Shakespeare's evocative sonnet imagery \u2014 natural and metaphorical elements",
+        "_b_theme": "From words to life \u2014 imagined scenes of lovers and fools from the sonnets",
         "_style": "Pre-Raphaelite style inspired by artists like John Everett Millais",
         "_guidance": "Transform the essence of Shakespeare's sonnets into lush visual narratives using the vivid colors and intricate details reminiscent of Pre-Raphaelite paintings, ensuring each scene presents distinct interpretative imagery that hasn't been seen in recent gallery outputs.",
-        "prompt": "A mystical garden pond cradled by lush foliage where ancient tomes float on shimmering water, reflecting moonlit hieroglyphs, capturing Shakespearean and Pre-Raphaelite allure.",
+        "prompt": "Ancient library hall with towering shelves filled with unrolled sonnets, sunbeams filtering through stained glass windows, contrasting vivid tapestries and Pre-Raphaelite elegance.",
         "history_var": [
-          {
-            "timestamp": "2025-06-09 15:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Mystical whale hosts a dreamlike tea gathering atop its broad back; schools of glowing fish form constellations above, creating a whimsical, Carrollian marine spectacle."
-            },
-            "text_input": "'Fantasy tea ceremonies underwater with mythica...",
-            "explanation": "I focused on the distinct setting of a whale's back for the tea ceremony. This avoids utilizing e..."
-          },
-          {
-            "timestamp": "2025-06-09 15:27:21",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Lush enchanted garden with a levitating table set on moonbeams; rabbits and hedgehogs sip tea from floating cups amidst luminescent mushrooms, inspired by Carroll's fantasies."
-            },
-            "text_input": "'Surreal tea parties in enchanted garden settin...",
-            "explanation": "I chose a garden setting with a whimsical twist by incorporating levitating elements and luminesc..."
-          },
-          {
-            "timestamp": "2025-06-09 15:36:51",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Mermaid musicians serenade a Carroll-like tea gathering on dancing seaweed; illuminated seahorses serve elegantly floating fruit cakes in a surreal, ethereal ocean realm."
-            },
-            "text_input": "'Fantasy tea ceremonies underwater with mythica...",
-            "explanation": "To create a distinct scene, I introduced musical elements with mermaid musicians, a unique servic..."
-          },
-          {
-            "timestamp": "2025-06-09 16:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "A fantastical tea party in a sandcastle surrounded by swirling, whimsical waves; narwhals elegantly balance teacups on their horns beneath a sparkling, enchanted sea sky."
-            },
-            "text_input": "'Surreal tea parties in enchanted garden settin...",
-            "explanation": "I conceptualized a scene within a sandcastle setting, combining Carroll's whimsical style with ma..."
-          },
           {
             "timestamp": "2025-06-09 17:00:04",
             "type": "reason",
@@ -587,53 +547,49 @@
             },
             "text_input": "'Shakespeare's evocative sonnet imagery \u2014 natur...",
             "explanation": "I focused on a mystical pond setting, a distinct element from previous prompts, incorporating flo..."
+          },
+          {
+            "timestamp": "2025-06-10 19:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A serene coastal cliff at sunrise, where waves lap gently against jagged rocks, an artist paints horizons echoing Shakespeare's verses, amidst vibrant Pre-Raphaelite hues."
+            },
+            "text_input": "'Shakespeare's evocative sonnet imagery \u2014 natur...",
+            "explanation": "I selected a coastal cliff setting, a unique landscape not yet utilized. The theme of painting ho..."
+          },
+          {
+            "timestamp": "2025-06-10 20:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Golden wheat field at sunset, two figures silhouetted in embrace, timeless castle in the distance, capturing Shakespearean allegories with Pre-Raphaelite depth and warmth."
+            },
+            "text_input": "'Shakespeare's evocative sonnet imagery \u2014 natur...",
+            "explanation": "I chose a golden wheat field with a castle in the distance, which hasn't been used in previous pr..."
+          },
+          {
+            "timestamp": "2025-06-10 21:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A tranquil autumnal forest with falling leaves, a patient artist sketches the scene beside a bubbling brook, capturing Shakespearean metaphorical visions in Pre-Raphaelite detail."
+            },
+            "text_input": "'Shakespeare's evocative sonnet imagery \u2014 natur...",
+            "explanation": "I created a unique setting in an autumnal forest with an artist sketching, a depiction not previo..."
+          },
+          {
+            "timestamp": "2025-06-10 22:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Ancient library hall with towering shelves filled with unrolled sonnets, sunbeams filtering through stained glass windows, contrasting vivid tapestries and Pre-Raphaelite elegance."
+            },
+            "text_input": "'From words to life \u2014 imagined scenes of lovers...",
+            "explanation": "I avoided prior settings like gardens or forests by selecting the theme of an indoor library hall..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2025-06-09 15:00:09",
-            "type": "generation",
-            "prompt": "Mystical whale hosts a dreamlike tea gathering ...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250609-140034-f33e0369.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-06-09 15:27:25",
-            "type": "generation",
-            "prompt": "Lush enchanted garden with a levitating table s...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250609-142814-433af8a7.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-06-09 15:36:55",
-            "type": "generation",
-            "prompt": "Mermaid musicians serenade a Carroll-like tea g...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250609-143721-abda7bae.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-06-09 16:00:07",
-            "type": "generation",
-            "prompt": "A fantastical tea party in a sandcastle surroun...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250609-150034-7ae10246.jpg"
-            ],
-            "published": true
-          },
           {
             "timestamp": "2025-06-09 17:00:07",
             "type": "generation",
@@ -807,6 +763,50 @@
             "workflow": null,
             "image_paths": [
               "20250610-140038-0416a815.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-06-10 19:00:06",
+            "type": "generation",
+            "prompt": "A serene coastal cliff at sunrise, where waves ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250610-180138-e3f158cd.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-06-10 20:00:07",
+            "type": "generation",
+            "prompt": "Golden wheat field at sunset, two figures silho...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250610-190057-7760ae2e.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-06-10 21:00:06",
+            "type": "generation",
+            "prompt": "A tranquil autumnal forest with falling leaves,...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250610-200103-a46f4c43.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-06-10 22:00:10",
+            "type": "generation",
+            "prompt": "Ancient library hall with towering shelves fill...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250610-210101-100756b9.jpg"
             ],
             "published": true
           }
@@ -1026,333 +1026,25 @@
         "vis_confidence": "64%",
         "vis_rationale": "a slightly humorous and relatable image for remote communication"
       },
-      "last_generated": "20250610-155821-7f123ab0.jpg",
+      "last_generated": "20250610-210101-100756b9.jpg",
       "publish_destination": "south-screen"
     }
   ],
   "state": "running",
-  "last_updated": "2025-06-10T17:05:03.623792",
+  "last_updated": "2025-06-10T22:26:01.047892",
   "last_trigger_executions": {
     "615c22f09f03cb1b6164dab4b2980a01_2025-06-10_10": "2025-06-10T17:00:01.213115",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-06-10_5": "2025-06-10T17:05:01.567806"
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-06-10_5": "2025-06-10T17:05:01.567806",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-06-10_12": "2025-06-10T19:00:00.513398",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-06-10_6": "2025-06-10T19:05:01.664657",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-06-10_13": "2025-06-10T20:00:00.707633",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-06-10_14": "2025-06-10T21:00:00.789386",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-06-10_7": "2025-06-10T21:05:01.209782",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-06-10_15": "2025-06-10T22:00:00.582068"
   },
-  "active_events": {
-    "__exit_block__": []
-  },
+  "active_events": {},
   "event_history": [
     {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:35:02.200261",
-      "expires": "2025-06-10T16:36:02.200261",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:35:02.200261",
-      "unique_id": "92b27f70-bf71-43ef-aa8f-43a958c8037f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:35:04.225615"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:35:02.200261",
-      "expires": "2025-06-10T16:36:02.200261",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:35:02.200261",
-      "unique_id": "92b27f70-bf71-43ef-aa8f-43a958c8037f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:35:04.225615"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:35:29.820343",
-      "expires": "2025-06-10T16:36:29.820343",
-      "display_name": null,
-      "payload": {
-        "text": "And there'll be a few local conditions, but I think everyone I've spoken.",
-        "raw_text": "ended up in a similar kind of bucket. I think some of it is. They we always think. Force, sometimes the benefits team to go talk to internal comms because they're like, oh, yeah, I get that. We need to do sessions. We need to invite people. We can do that. No, you actually have to go check. You actually. You can't just tell us that you actually have to go get someone else's signature in blood that you. Can do that? Because they kind of go, yeah, we can do that. That's fine. I'm ok. We haven't really forced them to kind of check it. So I think that's the. That's the learning. And it's like, we're not going to sign this contract until you put. Until you actually put those things on a piece of paper and we agree it kind of thing. I got you these. Thinking just practically about this call on Tuesday, then. If you're off Monday, you're not going to have much price to do any pre. Rework for that is. Do we need? Does someone need to do a bunch of pre work to say, hey, do we have something? To kind of like, show Asta. Hey, here's what we're thinking. A rollout could look. Look like the types of activities that have involved. How does that sound? Said that was something that I was then thinking, oh, I'll. I'll do a bit of that on Monday. So that was why. Yeah, Let me figure out how to hand that off to you. Or someone else, probably you, to lead. Yeah, okay. Yeah, because, I mean, there's two bits. There's. Will John be around to actually do the call and will John be around to do. The pre work. The pre work obviously is like that's tied to relationship. It so easier to. Easy to hand off and. Yeah, I think there's an argument. Yeah. Okay. Just doing the real life version. The case study? Yeah, it's kind of doing that well. Well, yeah, I think, actually, probably the most productive thing would be to say to. Jacob spend half an hour making some. Conceptual things look sexy, which he would do very quickly and very well. And his. Here's two or three things or Lisa or somebody. Here's two or three things we want to. Of make look sexy on a page. Here's little diagrammatic. View of distributing a message by your teams and how it's going to drive loads of inc. Engagement or something with a big kind of full discussion in the corner. That. Okay? And you always don't want to put too much of that up because you. You're kind of going in with that in your back pocket. You're really just trying to feel the room out and just been like, hey, look. Let's get you really excited. Let's get you more excited about now than actually implementing it. It. And it's that next sort of stage of here's why this unit, that next phase kind of. Kickoff and so forth. But, yes, you also want to have something in your rack. Course. Like, hey, we can do these things. There. But you weren't thinking of actually taking any plan? No. Was. I was thinking of. I was thinking of kind of. Having a plan in mind, but talking. But sort of talk. Talking to them about it and kind of being like, well, we've done these kinds of things. What would this look like here? And. And kind of doing it verbally with them, rather than just being like, let me present at you. It, because I think that could come across a bit sort of tone deaf. No, it definitely can. It's a judgment about how? Because the other side. Of it is. And it depends a bit how you and Alex want to kind of good cop, bad cop it or tag team it, because. The other sign of it is that you want to have this. Ideally, you want this sort of. Of a little bit of. Um. Look, we know how to do this. Let us tell you how this is done. Properly. We've got a bunch of experience. This is our standard rollout. Recommendation. His sort of AAA version of it. Now, obviously, some of this won't apply. Why, but yeah. Look, Maria will eventually. Come she'll be living in this all day, every day. Yeah. Even when she is living in it all day, every day. I still think that there's an awful lot that Alex is going to have to. And Beth and you and others in the sales in the. The sort of front facing bit of the Aug are going to have to figure out the kind of the playbook of how to. To how to tease some of these project planning sessions up. How to. Make sure people are. Yeah. Yeah. And I think it's having having spoken to. I spoke to the guy who runs this stuff at Wade street, and. Obviously, we've interviewed a few people about this. I think with very, very large companies, this. My understanding is that this is something that can take. Months to get this running and rolling. And definitely you go here and you try this. This. You go over here and you try that, and then you work out that this person can actually deliver you that. And it's like a kind of. It's not a one shot game in a way that like doing a housing association. I think is making picking that as an example. There are a bunch of housing associ. With 1 to 2000 employees in the UK and if we see another one, I think we just like, try and slam the nhp. G playbook down their throats, because I think we know that that's kind of roughly what works. And there'll be a few local conditions, but I think everyone I've spoken.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:35:29.820343",
-      "unique_id": "33972f00-16b4-496c-9e0b-142b5a42907a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:35:30.365139"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:35:29.820343",
-      "expires": "2025-06-10T16:36:29.820343",
-      "display_name": null,
-      "payload": {
-        "text": "And there'll be a few local conditions, but I think everyone I've spoken.",
-        "raw_text": "ended up in a similar kind of bucket. I think some of it is. They we always think. Force, sometimes the benefits team to go talk to internal comms because they're like, oh, yeah, I get that. We need to do sessions. We need to invite people. We can do that. No, you actually have to go check. You actually. You can't just tell us that you actually have to go get someone else's signature in blood that you. Can do that? Because they kind of go, yeah, we can do that. That's fine. I'm ok. We haven't really forced them to kind of check it. So I think that's the. That's the learning. And it's like, we're not going to sign this contract until you put. Until you actually put those things on a piece of paper and we agree it kind of thing. I got you these. Thinking just practically about this call on Tuesday, then. If you're off Monday, you're not going to have much price to do any pre. Rework for that is. Do we need? Does someone need to do a bunch of pre work to say, hey, do we have something? To kind of like, show Asta. Hey, here's what we're thinking. A rollout could look. Look like the types of activities that have involved. How does that sound? Said that was something that I was then thinking, oh, I'll. I'll do a bit of that on Monday. So that was why. Yeah, Let me figure out how to hand that off to you. Or someone else, probably you, to lead. Yeah, okay. Yeah, because, I mean, there's two bits. There's. Will John be around to actually do the call and will John be around to do. The pre work. The pre work obviously is like that's tied to relationship. It so easier to. Easy to hand off and. Yeah, I think there's an argument. Yeah. Okay. Just doing the real life version. The case study? Yeah, it's kind of doing that well. Well, yeah, I think, actually, probably the most productive thing would be to say to. Jacob spend half an hour making some. Conceptual things look sexy, which he would do very quickly and very well. And his. Here's two or three things or Lisa or somebody. Here's two or three things we want to. Of make look sexy on a page. Here's little diagrammatic. View of distributing a message by your teams and how it's going to drive loads of inc. Engagement or something with a big kind of full discussion in the corner. That. Okay? And you always don't want to put too much of that up because you. You're kind of going in with that in your back pocket. You're really just trying to feel the room out and just been like, hey, look. Let's get you really excited. Let's get you more excited about now than actually implementing it. It. And it's that next sort of stage of here's why this unit, that next phase kind of. Kickoff and so forth. But, yes, you also want to have something in your rack. Course. Like, hey, we can do these things. There. But you weren't thinking of actually taking any plan? No. Was. I was thinking of. I was thinking of kind of. Having a plan in mind, but talking. But sort of talk. Talking to them about it and kind of being like, well, we've done these kinds of things. What would this look like here? And. And kind of doing it verbally with them, rather than just being like, let me present at you. It, because I think that could come across a bit sort of tone deaf. No, it definitely can. It's a judgment about how? Because the other side. Of it is. And it depends a bit how you and Alex want to kind of good cop, bad cop it or tag team it, because. The other sign of it is that you want to have this. Ideally, you want this sort of. Of a little bit of. Um. Look, we know how to do this. Let us tell you how this is done. Properly. We've got a bunch of experience. This is our standard rollout. Recommendation. His sort of AAA version of it. Now, obviously, some of this won't apply. Why, but yeah. Look, Maria will eventually. Come she'll be living in this all day, every day. Yeah. Even when she is living in it all day, every day. I still think that there's an awful lot that Alex is going to have to. And Beth and you and others in the sales in the. The sort of front facing bit of the Aug are going to have to figure out the kind of the playbook of how to. To how to tease some of these project planning sessions up. How to. Make sure people are. Yeah. Yeah. And I think it's having having spoken to. I spoke to the guy who runs this stuff at Wade street, and. Obviously, we've interviewed a few people about this. I think with very, very large companies, this. My understanding is that this is something that can take. Months to get this running and rolling. And definitely you go here and you try this. This. You go over here and you try that, and then you work out that this person can actually deliver you that. And it's like a kind of. It's not a one shot game in a way that like doing a housing association. I think is making picking that as an example. There are a bunch of housing associ. With 1 to 2000 employees in the UK and if we see another one, I think we just like, try and slam the nhp. G playbook down their throats, because I think we know that that's kind of roughly what works. And there'll be a few local conditions, but I think everyone I've spoken.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:35:29.820343",
-      "unique_id": "33972f00-16b4-496c-9e0b-142b5a42907a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:35:30.365139"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:35:32.892909",
-      "expires": "2025-06-10T16:36:32.892909",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:35:32.892909",
-      "unique_id": "c6e6f94a-c607-4fa0-959e-9c93edf3ab44",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:35:34.891077"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:35:32.892909",
-      "expires": "2025-06-10T16:36:32.892909",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:35:32.892909",
-      "unique_id": "c6e6f94a-c607-4fa0-959e-9c93edf3ab44",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:35:34.891077"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:35:59.850463",
-      "expires": "2025-06-10T16:36:59.850463",
-      "display_name": null,
-      "payload": {
-        "text": "Think was slightly what I felt. Sorry I was slow to.",
-        "raw_text": "it. So I think that's the. That's the learning. And it's like, we're not going to sign this contract until you put. Until you actually put those things on a piece of paper and we agree it kind of thing. I got you these. Thinking just practically about this call on Tuesday, then. If you're off Monday, you're not going to have much price to do any pre. Rework for that is. Do we need? Does someone need to do a bunch of pre work to say, hey, do we have something? To kind of like, show Asta. Hey, here's what we're thinking. A rollout could look. Look like the types of activities that have involved. How does that sound? Said that was something that I was then thinking, oh, I'll. I'll do a bit of that on Monday. So that was why. Yeah, Let me figure out how to hand that off to you. Or someone else, probably you, to lead. Yeah, okay. Yeah, because, I mean, there's two bits. There's. Will John be around to actually do the call and will John be around to do. The pre work. The pre work obviously is like that's tied to relationship. It so easier to. Easy to hand off and. Yeah, I think there's an argument. Yeah. Okay. Just doing the real life version. The case study? Yeah, it's kind of doing that well. Well, yeah, I think, actually, probably the most productive thing would be to say to. Jacob spend half an hour making some. Conceptual things look sexy, which he would do very quickly and very well. And his. Here's two or three things or Lisa or somebody. Here's two or three things we want to. Of make look sexy on a page. Here's little diagrammatic. View of distributing a message by your teams and how it's going to drive loads of inc. Engagement or something with a big kind of full discussion in the corner. That. Okay? And you always don't want to put too much of that up because you. You're kind of going in with that in your back pocket. You're really just trying to feel the room out and just been like, hey, look. Let's get you really excited. Let's get you more excited about now than actually implementing it. It. And it's that next sort of stage of here's why this unit, that next phase kind of. Kickoff and so forth. But, yes, you also want to have something in your rack. Course. Like, hey, we can do these things. There. But you weren't thinking of actually taking any plan? No. Was. I was thinking of. I was thinking of kind of. Having a plan in mind, but talking. But sort of talk. Talking to them about it and kind of being like, well, we've done these kinds of things. What would this look like here? And. And kind of doing it verbally with them, rather than just being like, let me present at you. It, because I think that could come across a bit sort of tone deaf. No, it definitely can. It's a judgment about how? Because the other side. Of it is. And it depends a bit how you and Alex want to kind of good cop, bad cop it or tag team it, because. The other sign of it is that you want to have this. Ideally, you want this sort of. Of a little bit of. Um. Look, we know how to do this. Let us tell you how this is done. Properly. We've got a bunch of experience. This is our standard rollout. Recommendation. His sort of AAA version of it. Now, obviously, some of this won't apply. Why, but yeah. Look, Maria will eventually. Come she'll be living in this all day, every day. Yeah. Even when she is living in it all day, every day. I still think that there's an awful lot that Alex is going to have to. And Beth and you and others in the sales in the. The sort of front facing bit of the Aug are going to have to figure out the kind of the playbook of how to. To how to tease some of these project planning sessions up. How to. Make sure people are. Yeah. Yeah. And I think it's having having spoken to. I spoke to the guy who runs this stuff at Wade street, and. Obviously, we've interviewed a few people about this. I think with very, very large companies, this. My understanding is that this is something that can take. Months to get this running and rolling. And definitely you go here and you try this. This. You go over here and you try that, and then you work out that this person can actually deliver you that. And it's like a kind of. It's not a one shot game in a way that like doing a housing association. I think is making picking that as an example. There are a bunch of housing associ. With 1 to 2000 employees in the UK and if we see another one, I think we just like, try and slam the nhp. G playbook down their throats, because I think we know that that's kind of roughly what works. And there'll be a few local conditions, but I think everyone I've spoken. Everyone I've spoken to about this puzzle has said once the company gets over. Of a certain size, and it depends on your product and what you're trying to do with them. It just becomes. An art form, and it doesn't become like the last one, and it becomes. And it becomes total. Totally dependent on a relationship you didn't know you were going to find with some random person who unlocked someone. Something or whatever. And so you totally keep on working through the organization in order to get that, which I think. Think was slightly what I felt. Sorry I was slow to.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:35:59.850463",
-      "unique_id": "20026249-e7fc-4edf-915d-ae0a587a7318",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:36:01.109377"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:35:59.850463",
-      "expires": "2025-06-10T16:36:59.850463",
-      "display_name": null,
-      "payload": {
-        "text": "Think was slightly what I felt. Sorry I was slow to.",
-        "raw_text": "it. So I think that's the. That's the learning. And it's like, we're not going to sign this contract until you put. Until you actually put those things on a piece of paper and we agree it kind of thing. I got you these. Thinking just practically about this call on Tuesday, then. If you're off Monday, you're not going to have much price to do any pre. Rework for that is. Do we need? Does someone need to do a bunch of pre work to say, hey, do we have something? To kind of like, show Asta. Hey, here's what we're thinking. A rollout could look. Look like the types of activities that have involved. How does that sound? Said that was something that I was then thinking, oh, I'll. I'll do a bit of that on Monday. So that was why. Yeah, Let me figure out how to hand that off to you. Or someone else, probably you, to lead. Yeah, okay. Yeah, because, I mean, there's two bits. There's. Will John be around to actually do the call and will John be around to do. The pre work. The pre work obviously is like that's tied to relationship. It so easier to. Easy to hand off and. Yeah, I think there's an argument. Yeah. Okay. Just doing the real life version. The case study? Yeah, it's kind of doing that well. Well, yeah, I think, actually, probably the most productive thing would be to say to. Jacob spend half an hour making some. Conceptual things look sexy, which he would do very quickly and very well. And his. Here's two or three things or Lisa or somebody. Here's two or three things we want to. Of make look sexy on a page. Here's little diagrammatic. View of distributing a message by your teams and how it's going to drive loads of inc. Engagement or something with a big kind of full discussion in the corner. That. Okay? And you always don't want to put too much of that up because you. You're kind of going in with that in your back pocket. You're really just trying to feel the room out and just been like, hey, look. Let's get you really excited. Let's get you more excited about now than actually implementing it. It. And it's that next sort of stage of here's why this unit, that next phase kind of. Kickoff and so forth. But, yes, you also want to have something in your rack. Course. Like, hey, we can do these things. There. But you weren't thinking of actually taking any plan? No. Was. I was thinking of. I was thinking of kind of. Having a plan in mind, but talking. But sort of talk. Talking to them about it and kind of being like, well, we've done these kinds of things. What would this look like here? And. And kind of doing it verbally with them, rather than just being like, let me present at you. It, because I think that could come across a bit sort of tone deaf. No, it definitely can. It's a judgment about how? Because the other side. Of it is. And it depends a bit how you and Alex want to kind of good cop, bad cop it or tag team it, because. The other sign of it is that you want to have this. Ideally, you want this sort of. Of a little bit of. Um. Look, we know how to do this. Let us tell you how this is done. Properly. We've got a bunch of experience. This is our standard rollout. Recommendation. His sort of AAA version of it. Now, obviously, some of this won't apply. Why, but yeah. Look, Maria will eventually. Come she'll be living in this all day, every day. Yeah. Even when she is living in it all day, every day. I still think that there's an awful lot that Alex is going to have to. And Beth and you and others in the sales in the. The sort of front facing bit of the Aug are going to have to figure out the kind of the playbook of how to. To how to tease some of these project planning sessions up. How to. Make sure people are. Yeah. Yeah. And I think it's having having spoken to. I spoke to the guy who runs this stuff at Wade street, and. Obviously, we've interviewed a few people about this. I think with very, very large companies, this. My understanding is that this is something that can take. Months to get this running and rolling. And definitely you go here and you try this. This. You go over here and you try that, and then you work out that this person can actually deliver you that. And it's like a kind of. It's not a one shot game in a way that like doing a housing association. I think is making picking that as an example. There are a bunch of housing associ. With 1 to 2000 employees in the UK and if we see another one, I think we just like, try and slam the nhp. G playbook down their throats, because I think we know that that's kind of roughly what works. And there'll be a few local conditions, but I think everyone I've spoken. Everyone I've spoken to about this puzzle has said once the company gets over. Of a certain size, and it depends on your product and what you're trying to do with them. It just becomes. An art form, and it doesn't become like the last one, and it becomes. And it becomes total. Totally dependent on a relationship you didn't know you were going to find with some random person who unlocked someone. Something or whatever. And so you totally keep on working through the organization in order to get that, which I think. Think was slightly what I felt. Sorry I was slow to.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:35:59.850463",
-      "unique_id": "20026249-e7fc-4edf-915d-ae0a587a7318",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:36:01.109377"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:36:34.866233",
-      "expires": "2025-06-10T16:37:34.866233",
-      "display_name": null,
-      "payload": {
-        "text": "Oh, absolutely. We've got a whole variety of ways of doing this. We've had huge success with this one. Here's one that we've recently tested.",
-        "raw_text": "of that on Monday. So that was why. Yeah, Let me figure out how to hand that off to you. Or someone else, probably you, to lead. Yeah, okay. Yeah, because, I mean, there's two bits. There's. Will John be around to actually do the call and will John be around to do. The pre work. The pre work obviously is like that's tied to relationship. It so easier to. Easy to hand off and. Yeah, I think there's an argument. Yeah. Okay. Just doing the real life version. The case study? Yeah, it's kind of doing that well. Well, yeah, I think, actually, probably the most productive thing would be to say to. Jacob spend half an hour making some. Conceptual things look sexy, which he would do very quickly and very well. And his. Here's two or three things or Lisa or somebody. Here's two or three things we want to. Of make look sexy on a page. Here's little diagrammatic. View of distributing a message by your teams and how it's going to drive loads of inc. Engagement or something with a big kind of full discussion in the corner. That. Okay? And you always don't want to put too much of that up because you. You're kind of going in with that in your back pocket. You're really just trying to feel the room out and just been like, hey, look. Let's get you really excited. Let's get you more excited about now than actually implementing it. It. And it's that next sort of stage of here's why this unit, that next phase kind of. Kickoff and so forth. But, yes, you also want to have something in your rack. Course. Like, hey, we can do these things. There. But you weren't thinking of actually taking any plan? No. Was. I was thinking of. I was thinking of kind of. Having a plan in mind, but talking. But sort of talk. Talking to them about it and kind of being like, well, we've done these kinds of things. What would this look like here? And. And kind of doing it verbally with them, rather than just being like, let me present at you. It, because I think that could come across a bit sort of tone deaf. No, it definitely can. It's a judgment about how? Because the other side. Of it is. And it depends a bit how you and Alex want to kind of good cop, bad cop it or tag team it, because. The other sign of it is that you want to have this. Ideally, you want this sort of. Of a little bit of. Um. Look, we know how to do this. Let us tell you how this is done. Properly. We've got a bunch of experience. This is our standard rollout. Recommendation. His sort of AAA version of it. Now, obviously, some of this won't apply. Why, but yeah. Look, Maria will eventually. Come she'll be living in this all day, every day. Yeah. Even when she is living in it all day, every day. I still think that there's an awful lot that Alex is going to have to. And Beth and you and others in the sales in the. The sort of front facing bit of the Aug are going to have to figure out the kind of the playbook of how to. To how to tease some of these project planning sessions up. How to. Make sure people are. Yeah. Yeah. And I think it's having having spoken to. I spoke to the guy who runs this stuff at Wade street, and. Obviously, we've interviewed a few people about this. I think with very, very large companies, this. My understanding is that this is something that can take. Months to get this running and rolling. And definitely you go here and you try this. This. You go over here and you try that, and then you work out that this person can actually deliver you that. And it's like a kind of. It's not a one shot game in a way that like doing a housing association. I think is making picking that as an example. There are a bunch of housing associ. With 1 to 2000 employees in the UK and if we see another one, I think we just like, try and slam the nhp. G playbook down their throats, because I think we know that that's kind of roughly what works. And there'll be a few local conditions, but I think everyone I've spoken. Everyone I've spoken to about this puzzle has said once the company gets over. Of a certain size, and it depends on your product and what you're trying to do with them. It just becomes. An art form, and it doesn't become like the last one, and it becomes. And it becomes total. Totally dependent on a relationship you didn't know you were going to find with some random person who unlocked someone. Something or whatever. And so you totally keep on working through the organization in order to get that, which I think. Think was slightly what I felt. Sorry I was slow to. Find a way to voice this at the time, but when Michelle kept saying, so what problem are we solving with this? Functionality slightly. I sort of want to kind of think about the way around. You sort of got to jump to. Look, we need a toolbox. We need 10 ways of doing this. They all need to have been plausibly designed, but without a specific client application content. Text in mind so that you can walk into the client and some of them actually work and. Some of them are in building, and some of them are sort of just paper. But you can go in and say, Oh, absolutely. We've got a whole variety of ways of doing this. We've had huge success with this one. Here's one that we've recently tested.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:36:34.866233",
-      "unique_id": "45bba6af-84d9-45ff-aec0-57276d38f209",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:36:41.604111"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:36:34.866233",
-      "expires": "2025-06-10T16:37:34.866233",
-      "display_name": null,
-      "payload": {
-        "text": "Oh, absolutely. We've got a whole variety of ways of doing this. We've had huge success with this one. Here's one that we've recently tested.",
-        "raw_text": "of that on Monday. So that was why. Yeah, Let me figure out how to hand that off to you. Or someone else, probably you, to lead. Yeah, okay. Yeah, because, I mean, there's two bits. There's. Will John be around to actually do the call and will John be around to do. The pre work. The pre work obviously is like that's tied to relationship. It so easier to. Easy to hand off and. Yeah, I think there's an argument. Yeah. Okay. Just doing the real life version. The case study? Yeah, it's kind of doing that well. Well, yeah, I think, actually, probably the most productive thing would be to say to. Jacob spend half an hour making some. Conceptual things look sexy, which he would do very quickly and very well. And his. Here's two or three things or Lisa or somebody. Here's two or three things we want to. Of make look sexy on a page. Here's little diagrammatic. View of distributing a message by your teams and how it's going to drive loads of inc. Engagement or something with a big kind of full discussion in the corner. That. Okay? And you always don't want to put too much of that up because you. You're kind of going in with that in your back pocket. You're really just trying to feel the room out and just been like, hey, look. Let's get you really excited. Let's get you more excited about now than actually implementing it. It. And it's that next sort of stage of here's why this unit, that next phase kind of. Kickoff and so forth. But, yes, you also want to have something in your rack. Course. Like, hey, we can do these things. There. But you weren't thinking of actually taking any plan? No. Was. I was thinking of. I was thinking of kind of. Having a plan in mind, but talking. But sort of talk. Talking to them about it and kind of being like, well, we've done these kinds of things. What would this look like here? And. And kind of doing it verbally with them, rather than just being like, let me present at you. It, because I think that could come across a bit sort of tone deaf. No, it definitely can. It's a judgment about how? Because the other side. Of it is. And it depends a bit how you and Alex want to kind of good cop, bad cop it or tag team it, because. The other sign of it is that you want to have this. Ideally, you want this sort of. Of a little bit of. Um. Look, we know how to do this. Let us tell you how this is done. Properly. We've got a bunch of experience. This is our standard rollout. Recommendation. His sort of AAA version of it. Now, obviously, some of this won't apply. Why, but yeah. Look, Maria will eventually. Come she'll be living in this all day, every day. Yeah. Even when she is living in it all day, every day. I still think that there's an awful lot that Alex is going to have to. And Beth and you and others in the sales in the. The sort of front facing bit of the Aug are going to have to figure out the kind of the playbook of how to. To how to tease some of these project planning sessions up. How to. Make sure people are. Yeah. Yeah. And I think it's having having spoken to. I spoke to the guy who runs this stuff at Wade street, and. Obviously, we've interviewed a few people about this. I think with very, very large companies, this. My understanding is that this is something that can take. Months to get this running and rolling. And definitely you go here and you try this. This. You go over here and you try that, and then you work out that this person can actually deliver you that. And it's like a kind of. It's not a one shot game in a way that like doing a housing association. I think is making picking that as an example. There are a bunch of housing associ. With 1 to 2000 employees in the UK and if we see another one, I think we just like, try and slam the nhp. G playbook down their throats, because I think we know that that's kind of roughly what works. And there'll be a few local conditions, but I think everyone I've spoken. Everyone I've spoken to about this puzzle has said once the company gets over. Of a certain size, and it depends on your product and what you're trying to do with them. It just becomes. An art form, and it doesn't become like the last one, and it becomes. And it becomes total. Totally dependent on a relationship you didn't know you were going to find with some random person who unlocked someone. Something or whatever. And so you totally keep on working through the organization in order to get that, which I think. Think was slightly what I felt. Sorry I was slow to. Find a way to voice this at the time, but when Michelle kept saying, so what problem are we solving with this? Functionality slightly. I sort of want to kind of think about the way around. You sort of got to jump to. Look, we need a toolbox. We need 10 ways of doing this. They all need to have been plausibly designed, but without a specific client application content. Text in mind so that you can walk into the client and some of them actually work and. Some of them are in building, and some of them are sort of just paper. But you can go in and say, Oh, absolutely. We've got a whole variety of ways of doing this. We've had huge success with this one. Here's one that we've recently tested.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:36:34.866233",
-      "unique_id": "45bba6af-84d9-45ff-aec0-57276d38f209",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:36:41.604111"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:37:04.883704",
-      "expires": "2025-06-10T16:38:04.883704",
-      "display_name": null,
-      "payload": {
-        "text": "You kind of. And that. That's the dance, right? Is you're sort of going in there, going, who can you.",
-        "raw_text": "doing that well. Well, yeah, I think, actually, probably the most productive thing would be to say to. Jacob spend half an hour making some. Conceptual things look sexy, which he would do very quickly and very well. And his. Here's two or three things or Lisa or somebody. Here's two or three things we want to. Of make look sexy on a page. Here's little diagrammatic. View of distributing a message by your teams and how it's going to drive loads of inc. Engagement or something with a big kind of full discussion in the corner. That. Okay? And you always don't want to put too much of that up because you. You're kind of going in with that in your back pocket. You're really just trying to feel the room out and just been like, hey, look. Let's get you really excited. Let's get you more excited about now than actually implementing it. It. And it's that next sort of stage of here's why this unit, that next phase kind of. Kickoff and so forth. But, yes, you also want to have something in your rack. Course. Like, hey, we can do these things. There. But you weren't thinking of actually taking any plan? No. Was. I was thinking of. I was thinking of kind of. Having a plan in mind, but talking. But sort of talk. Talking to them about it and kind of being like, well, we've done these kinds of things. What would this look like here? And. And kind of doing it verbally with them, rather than just being like, let me present at you. It, because I think that could come across a bit sort of tone deaf. No, it definitely can. It's a judgment about how? Because the other side. Of it is. And it depends a bit how you and Alex want to kind of good cop, bad cop it or tag team it, because. The other sign of it is that you want to have this. Ideally, you want this sort of. Of a little bit of. Um. Look, we know how to do this. Let us tell you how this is done. Properly. We've got a bunch of experience. This is our standard rollout. Recommendation. His sort of AAA version of it. Now, obviously, some of this won't apply. Why, but yeah. Look, Maria will eventually. Come she'll be living in this all day, every day. Yeah. Even when she is living in it all day, every day. I still think that there's an awful lot that Alex is going to have to. And Beth and you and others in the sales in the. The sort of front facing bit of the Aug are going to have to figure out the kind of the playbook of how to. To how to tease some of these project planning sessions up. How to. Make sure people are. Yeah. Yeah. And I think it's having having spoken to. I spoke to the guy who runs this stuff at Wade street, and. Obviously, we've interviewed a few people about this. I think with very, very large companies, this. My understanding is that this is something that can take. Months to get this running and rolling. And definitely you go here and you try this. This. You go over here and you try that, and then you work out that this person can actually deliver you that. And it's like a kind of. It's not a one shot game in a way that like doing a housing association. I think is making picking that as an example. There are a bunch of housing associ. With 1 to 2000 employees in the UK and if we see another one, I think we just like, try and slam the nhp. G playbook down their throats, because I think we know that that's kind of roughly what works. And there'll be a few local conditions, but I think everyone I've spoken. Everyone I've spoken to about this puzzle has said once the company gets over. Of a certain size, and it depends on your product and what you're trying to do with them. It just becomes. An art form, and it doesn't become like the last one, and it becomes. And it becomes total. Totally dependent on a relationship you didn't know you were going to find with some random person who unlocked someone. Something or whatever. And so you totally keep on working through the organization in order to get that, which I think. Think was slightly what I felt. Sorry I was slow to. Find a way to voice this at the time, but when Michelle kept saying, so what problem are we solving with this? Functionality slightly. I sort of want to kind of think about the way around. You sort of got to jump to. Look, we need a toolbox. We need 10 ways of doing this. They all need to have been plausibly designed, but without a specific client application content. Text in mind so that you can walk into the client and some of them actually work and. Some of them are in building, and some of them are sort of just paper. But you can go in and say, Oh, absolutely. We've got a whole variety of ways of doing this. We've had huge success with this one. Here's one that we've recently tested. Tested and just rolled out and sort of thing. And reality is like you've actually got one last. Half things that really work. But you kind of ready to go and you've got this rolling. Capability. And I think that sort of sense that it's not we. Don't really know whether WhatsApp will be a thing that works or whether people want to do it, but it might. You just got to build some stuff. Exactly. You kind of. And that. That's the dance, right? Is you're sort of going in there, going, who can you.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:37:04.883704",
-      "unique_id": "0a0e7da1-51d9-4626-bd33-de7e422b56a3",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:37:05.956601"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:37:04.883704",
-      "expires": "2025-06-10T16:38:04.883704",
-      "display_name": null,
-      "payload": {
-        "text": "You kind of. And that. That's the dance, right? Is you're sort of going in there, going, who can you.",
-        "raw_text": "doing that well. Well, yeah, I think, actually, probably the most productive thing would be to say to. Jacob spend half an hour making some. Conceptual things look sexy, which he would do very quickly and very well. And his. Here's two or three things or Lisa or somebody. Here's two or three things we want to. Of make look sexy on a page. Here's little diagrammatic. View of distributing a message by your teams and how it's going to drive loads of inc. Engagement or something with a big kind of full discussion in the corner. That. Okay? And you always don't want to put too much of that up because you. You're kind of going in with that in your back pocket. You're really just trying to feel the room out and just been like, hey, look. Let's get you really excited. Let's get you more excited about now than actually implementing it. It. And it's that next sort of stage of here's why this unit, that next phase kind of. Kickoff and so forth. But, yes, you also want to have something in your rack. Course. Like, hey, we can do these things. There. But you weren't thinking of actually taking any plan? No. Was. I was thinking of. I was thinking of kind of. Having a plan in mind, but talking. But sort of talk. Talking to them about it and kind of being like, well, we've done these kinds of things. What would this look like here? And. And kind of doing it verbally with them, rather than just being like, let me present at you. It, because I think that could come across a bit sort of tone deaf. No, it definitely can. It's a judgment about how? Because the other side. Of it is. And it depends a bit how you and Alex want to kind of good cop, bad cop it or tag team it, because. The other sign of it is that you want to have this. Ideally, you want this sort of. Of a little bit of. Um. Look, we know how to do this. Let us tell you how this is done. Properly. We've got a bunch of experience. This is our standard rollout. Recommendation. His sort of AAA version of it. Now, obviously, some of this won't apply. Why, but yeah. Look, Maria will eventually. Come she'll be living in this all day, every day. Yeah. Even when she is living in it all day, every day. I still think that there's an awful lot that Alex is going to have to. And Beth and you and others in the sales in the. The sort of front facing bit of the Aug are going to have to figure out the kind of the playbook of how to. To how to tease some of these project planning sessions up. How to. Make sure people are. Yeah. Yeah. And I think it's having having spoken to. I spoke to the guy who runs this stuff at Wade street, and. Obviously, we've interviewed a few people about this. I think with very, very large companies, this. My understanding is that this is something that can take. Months to get this running and rolling. And definitely you go here and you try this. This. You go over here and you try that, and then you work out that this person can actually deliver you that. And it's like a kind of. It's not a one shot game in a way that like doing a housing association. I think is making picking that as an example. There are a bunch of housing associ. With 1 to 2000 employees in the UK and if we see another one, I think we just like, try and slam the nhp. G playbook down their throats, because I think we know that that's kind of roughly what works. And there'll be a few local conditions, but I think everyone I've spoken. Everyone I've spoken to about this puzzle has said once the company gets over. Of a certain size, and it depends on your product and what you're trying to do with them. It just becomes. An art form, and it doesn't become like the last one, and it becomes. And it becomes total. Totally dependent on a relationship you didn't know you were going to find with some random person who unlocked someone. Something or whatever. And so you totally keep on working through the organization in order to get that, which I think. Think was slightly what I felt. Sorry I was slow to. Find a way to voice this at the time, but when Michelle kept saying, so what problem are we solving with this? Functionality slightly. I sort of want to kind of think about the way around. You sort of got to jump to. Look, we need a toolbox. We need 10 ways of doing this. They all need to have been plausibly designed, but without a specific client application content. Text in mind so that you can walk into the client and some of them actually work and. Some of them are in building, and some of them are sort of just paper. But you can go in and say, Oh, absolutely. We've got a whole variety of ways of doing this. We've had huge success with this one. Here's one that we've recently tested. Tested and just rolled out and sort of thing. And reality is like you've actually got one last. Half things that really work. But you kind of ready to go and you've got this rolling. Capability. And I think that sort of sense that it's not we. Don't really know whether WhatsApp will be a thing that works or whether people want to do it, but it might. You just got to build some stuff. Exactly. You kind of. And that. That's the dance, right? Is you're sort of going in there, going, who can you.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:37:04.883704",
-      "unique_id": "0a0e7da1-51d9-4626-bd33-de7e422b56a3",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:37:05.956601"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:37:39.891309",
-      "expires": "2025-06-10T16:38:39.891309",
-      "display_name": null,
-      "payload": {
-        "text": "I. Network rail. I don't think that's a brilliant proxy.",
-        "raw_text": "of going in with that in your back pocket. You're really just trying to feel the room out and just been like, hey, look. Let's get you really excited. Let's get you more excited about now than actually implementing it. It. And it's that next sort of stage of here's why this unit, that next phase kind of. Kickoff and so forth. But, yes, you also want to have something in your rack. Course. Like, hey, we can do these things. There. But you weren't thinking of actually taking any plan? No. Was. I was thinking of. I was thinking of kind of. Having a plan in mind, but talking. But sort of talk. Talking to them about it and kind of being like, well, we've done these kinds of things. What would this look like here? And. And kind of doing it verbally with them, rather than just being like, let me present at you. It, because I think that could come across a bit sort of tone deaf. No, it definitely can. It's a judgment about how? Because the other side. Of it is. And it depends a bit how you and Alex want to kind of good cop, bad cop it or tag team it, because. The other sign of it is that you want to have this. Ideally, you want this sort of. Of a little bit of. Um. Look, we know how to do this. Let us tell you how this is done. Properly. We've got a bunch of experience. This is our standard rollout. Recommendation. His sort of AAA version of it. Now, obviously, some of this won't apply. Why, but yeah. Look, Maria will eventually. Come she'll be living in this all day, every day. Yeah. Even when she is living in it all day, every day. I still think that there's an awful lot that Alex is going to have to. And Beth and you and others in the sales in the. The sort of front facing bit of the Aug are going to have to figure out the kind of the playbook of how to. To how to tease some of these project planning sessions up. How to. Make sure people are. Yeah. Yeah. And I think it's having having spoken to. I spoke to the guy who runs this stuff at Wade street, and. Obviously, we've interviewed a few people about this. I think with very, very large companies, this. My understanding is that this is something that can take. Months to get this running and rolling. And definitely you go here and you try this. This. You go over here and you try that, and then you work out that this person can actually deliver you that. And it's like a kind of. It's not a one shot game in a way that like doing a housing association. I think is making picking that as an example. There are a bunch of housing associ. With 1 to 2000 employees in the UK and if we see another one, I think we just like, try and slam the nhp. G playbook down their throats, because I think we know that that's kind of roughly what works. And there'll be a few local conditions, but I think everyone I've spoken. Everyone I've spoken to about this puzzle has said once the company gets over. Of a certain size, and it depends on your product and what you're trying to do with them. It just becomes. An art form, and it doesn't become like the last one, and it becomes. And it becomes total. Totally dependent on a relationship you didn't know you were going to find with some random person who unlocked someone. Something or whatever. And so you totally keep on working through the organization in order to get that, which I think. Think was slightly what I felt. Sorry I was slow to. Find a way to voice this at the time, but when Michelle kept saying, so what problem are we solving with this? Functionality slightly. I sort of want to kind of think about the way around. You sort of got to jump to. Look, we need a toolbox. We need 10 ways of doing this. They all need to have been plausibly designed, but without a specific client application content. Text in mind so that you can walk into the client and some of them actually work and. Some of them are in building, and some of them are sort of just paper. But you can go in and say, Oh, absolutely. We've got a whole variety of ways of doing this. We've had huge success with this one. Here's one that we've recently tested. Tested and just rolled out and sort of thing. And reality is like you've actually got one last. Half things that really work. But you kind of ready to go and you've got this rolling. Capability. And I think that sort of sense that it's not we. Don't really know whether WhatsApp will be a thing that works or whether people want to do it, but it might. You just got to build some stuff. Exactly. You kind of. And that. That's the dance, right? Is you're sort of going in there, going, who can you. You introduced me to. Which of these 10 things that are on my theoretical list of. Things I could do are applicable. And a lot of the game is just not quite working out on the fly because. Of just trying to match what you're hearing to what kind of is in your imaginary toolbox. Even though some of it is a known toolbox. Sessions are a known toolbox. We. Know that NHG and NHS professionals have done the two primary models of sessions and made them. Work. And I think we know how to make those work. We just have to replicate those conditions. I. Network rail. I don't think that's a brilliant proxy.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:37:39.891309",
-      "unique_id": "1ec738da-c043-4089-aa5f-1ade40e07be5",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:37:40.489812"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:37:39.891309",
-      "expires": "2025-06-10T16:38:39.891309",
-      "display_name": null,
-      "payload": {
-        "text": "I. Network rail. I don't think that's a brilliant proxy.",
-        "raw_text": "of going in with that in your back pocket. You're really just trying to feel the room out and just been like, hey, look. Let's get you really excited. Let's get you more excited about now than actually implementing it. It. And it's that next sort of stage of here's why this unit, that next phase kind of. Kickoff and so forth. But, yes, you also want to have something in your rack. Course. Like, hey, we can do these things. There. But you weren't thinking of actually taking any plan? No. Was. I was thinking of. I was thinking of kind of. Having a plan in mind, but talking. But sort of talk. Talking to them about it and kind of being like, well, we've done these kinds of things. What would this look like here? And. And kind of doing it verbally with them, rather than just being like, let me present at you. It, because I think that could come across a bit sort of tone deaf. No, it definitely can. It's a judgment about how? Because the other side. Of it is. And it depends a bit how you and Alex want to kind of good cop, bad cop it or tag team it, because. The other sign of it is that you want to have this. Ideally, you want this sort of. Of a little bit of. Um. Look, we know how to do this. Let us tell you how this is done. Properly. We've got a bunch of experience. This is our standard rollout. Recommendation. His sort of AAA version of it. Now, obviously, some of this won't apply. Why, but yeah. Look, Maria will eventually. Come she'll be living in this all day, every day. Yeah. Even when she is living in it all day, every day. I still think that there's an awful lot that Alex is going to have to. And Beth and you and others in the sales in the. The sort of front facing bit of the Aug are going to have to figure out the kind of the playbook of how to. To how to tease some of these project planning sessions up. How to. Make sure people are. Yeah. Yeah. And I think it's having having spoken to. I spoke to the guy who runs this stuff at Wade street, and. Obviously, we've interviewed a few people about this. I think with very, very large companies, this. My understanding is that this is something that can take. Months to get this running and rolling. And definitely you go here and you try this. This. You go over here and you try that, and then you work out that this person can actually deliver you that. And it's like a kind of. It's not a one shot game in a way that like doing a housing association. I think is making picking that as an example. There are a bunch of housing associ. With 1 to 2000 employees in the UK and if we see another one, I think we just like, try and slam the nhp. G playbook down their throats, because I think we know that that's kind of roughly what works. And there'll be a few local conditions, but I think everyone I've spoken. Everyone I've spoken to about this puzzle has said once the company gets over. Of a certain size, and it depends on your product and what you're trying to do with them. It just becomes. An art form, and it doesn't become like the last one, and it becomes. And it becomes total. Totally dependent on a relationship you didn't know you were going to find with some random person who unlocked someone. Something or whatever. And so you totally keep on working through the organization in order to get that, which I think. Think was slightly what I felt. Sorry I was slow to. Find a way to voice this at the time, but when Michelle kept saying, so what problem are we solving with this? Functionality slightly. I sort of want to kind of think about the way around. You sort of got to jump to. Look, we need a toolbox. We need 10 ways of doing this. They all need to have been plausibly designed, but without a specific client application content. Text in mind so that you can walk into the client and some of them actually work and. Some of them are in building, and some of them are sort of just paper. But you can go in and say, Oh, absolutely. We've got a whole variety of ways of doing this. We've had huge success with this one. Here's one that we've recently tested. Tested and just rolled out and sort of thing. And reality is like you've actually got one last. Half things that really work. But you kind of ready to go and you've got this rolling. Capability. And I think that sort of sense that it's not we. Don't really know whether WhatsApp will be a thing that works or whether people want to do it, but it might. You just got to build some stuff. Exactly. You kind of. And that. That's the dance, right? Is you're sort of going in there, going, who can you. You introduced me to. Which of these 10 things that are on my theoretical list of. Things I could do are applicable. And a lot of the game is just not quite working out on the fly because. Of just trying to match what you're hearing to what kind of is in your imaginary toolbox. Even though some of it is a known toolbox. Sessions are a known toolbox. We. Know that NHG and NHS professionals have done the two primary models of sessions and made them. Work. And I think we know how to make those work. We just have to replicate those conditions. I. Network rail. I don't think that's a brilliant proxy.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:37:39.891309",
-      "unique_id": "1ec738da-c043-4089-aa5f-1ade40e07be5",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:37:40.489812"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:38:14.968700",
-      "expires": "2025-06-10T16:39:14.968700",
-      "display_name": null,
-      "payload": {
-        "text": "Is invite my local HR team and get them to organize sessions locally.",
-        "raw_text": "these kinds of things. What would this look like here? And. And kind of doing it verbally with them, rather than just being like, let me present at you. It, because I think that could come across a bit sort of tone deaf. No, it definitely can. It's a judgment about how? Because the other side. Of it is. And it depends a bit how you and Alex want to kind of good cop, bad cop it or tag team it, because. The other sign of it is that you want to have this. Ideally, you want this sort of. Of a little bit of. Um. Look, we know how to do this. Let us tell you how this is done. Properly. We've got a bunch of experience. This is our standard rollout. Recommendation. His sort of AAA version of it. Now, obviously, some of this won't apply. Why, but yeah. Look, Maria will eventually. Come she'll be living in this all day, every day. Yeah. Even when she is living in it all day, every day. I still think that there's an awful lot that Alex is going to have to. And Beth and you and others in the sales in the. The sort of front facing bit of the Aug are going to have to figure out the kind of the playbook of how to. To how to tease some of these project planning sessions up. How to. Make sure people are. Yeah. Yeah. And I think it's having having spoken to. I spoke to the guy who runs this stuff at Wade street, and. Obviously, we've interviewed a few people about this. I think with very, very large companies, this. My understanding is that this is something that can take. Months to get this running and rolling. And definitely you go here and you try this. This. You go over here and you try that, and then you work out that this person can actually deliver you that. And it's like a kind of. It's not a one shot game in a way that like doing a housing association. I think is making picking that as an example. There are a bunch of housing associ. With 1 to 2000 employees in the UK and if we see another one, I think we just like, try and slam the nhp. G playbook down their throats, because I think we know that that's kind of roughly what works. And there'll be a few local conditions, but I think everyone I've spoken. Everyone I've spoken to about this puzzle has said once the company gets over. Of a certain size, and it depends on your product and what you're trying to do with them. It just becomes. An art form, and it doesn't become like the last one, and it becomes. And it becomes total. Totally dependent on a relationship you didn't know you were going to find with some random person who unlocked someone. Something or whatever. And so you totally keep on working through the organization in order to get that, which I think. Think was slightly what I felt. Sorry I was slow to. Find a way to voice this at the time, but when Michelle kept saying, so what problem are we solving with this? Functionality slightly. I sort of want to kind of think about the way around. You sort of got to jump to. Look, we need a toolbox. We need 10 ways of doing this. They all need to have been plausibly designed, but without a specific client application content. Text in mind so that you can walk into the client and some of them actually work and. Some of them are in building, and some of them are sort of just paper. But you can go in and say, Oh, absolutely. We've got a whole variety of ways of doing this. We've had huge success with this one. Here's one that we've recently tested. Tested and just rolled out and sort of thing. And reality is like you've actually got one last. Half things that really work. But you kind of ready to go and you've got this rolling. Capability. And I think that sort of sense that it's not we. Don't really know whether WhatsApp will be a thing that works or whether people want to do it, but it might. You just got to build some stuff. Exactly. You kind of. And that. That's the dance, right? Is you're sort of going in there, going, who can you. You introduced me to. Which of these 10 things that are on my theoretical list of. Things I could do are applicable. And a lot of the game is just not quite working out on the fly because. Of just trying to match what you're hearing to what kind of is in your imaginary toolbox. Even though some of it is a known toolbox. Sessions are a known toolbox. We. Know that NHG and NHS professionals have done the two primary models of sessions and made them. Work. And I think we know how to make those work. We just have to replicate those conditions. I. Network rail. I don't think that's a brilliant proxy. For as it's an okay proxy. We've got 800 accounts out of that organization. There are 30 something thousand people. It's. Okay. We didn't have delegation at that point. We did a bunch of stuff. I think it gives us some less. Essence. I think the bit that I think is, sorry, this is an aside, but the bit I think that's really interest. Interesting about what we did at Network Rail is which I don. Don't think we've realized how applicable it is now until we've seen it again. What we did at Network Rail. Is we had a central benefits team who said we can't organize sessions. The best I can do. Is invite my local HR team and get them to organize sessions locally.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:38:14.968700",
-      "unique_id": "4de78bb9-687b-4d04-9f1a-4dc091f7cd45",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:38:16.866843"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:38:14.968700",
-      "expires": "2025-06-10T16:39:14.968700",
-      "display_name": null,
-      "payload": {
-        "text": "Is invite my local HR team and get them to organize sessions locally.",
-        "raw_text": "these kinds of things. What would this look like here? And. And kind of doing it verbally with them, rather than just being like, let me present at you. It, because I think that could come across a bit sort of tone deaf. No, it definitely can. It's a judgment about how? Because the other side. Of it is. And it depends a bit how you and Alex want to kind of good cop, bad cop it or tag team it, because. The other sign of it is that you want to have this. Ideally, you want this sort of. Of a little bit of. Um. Look, we know how to do this. Let us tell you how this is done. Properly. We've got a bunch of experience. This is our standard rollout. Recommendation. His sort of AAA version of it. Now, obviously, some of this won't apply. Why, but yeah. Look, Maria will eventually. Come she'll be living in this all day, every day. Yeah. Even when she is living in it all day, every day. I still think that there's an awful lot that Alex is going to have to. And Beth and you and others in the sales in the. The sort of front facing bit of the Aug are going to have to figure out the kind of the playbook of how to. To how to tease some of these project planning sessions up. How to. Make sure people are. Yeah. Yeah. And I think it's having having spoken to. I spoke to the guy who runs this stuff at Wade street, and. Obviously, we've interviewed a few people about this. I think with very, very large companies, this. My understanding is that this is something that can take. Months to get this running and rolling. And definitely you go here and you try this. This. You go over here and you try that, and then you work out that this person can actually deliver you that. And it's like a kind of. It's not a one shot game in a way that like doing a housing association. I think is making picking that as an example. There are a bunch of housing associ. With 1 to 2000 employees in the UK and if we see another one, I think we just like, try and slam the nhp. G playbook down their throats, because I think we know that that's kind of roughly what works. And there'll be a few local conditions, but I think everyone I've spoken. Everyone I've spoken to about this puzzle has said once the company gets over. Of a certain size, and it depends on your product and what you're trying to do with them. It just becomes. An art form, and it doesn't become like the last one, and it becomes. And it becomes total. Totally dependent on a relationship you didn't know you were going to find with some random person who unlocked someone. Something or whatever. And so you totally keep on working through the organization in order to get that, which I think. Think was slightly what I felt. Sorry I was slow to. Find a way to voice this at the time, but when Michelle kept saying, so what problem are we solving with this? Functionality slightly. I sort of want to kind of think about the way around. You sort of got to jump to. Look, we need a toolbox. We need 10 ways of doing this. They all need to have been plausibly designed, but without a specific client application content. Text in mind so that you can walk into the client and some of them actually work and. Some of them are in building, and some of them are sort of just paper. But you can go in and say, Oh, absolutely. We've got a whole variety of ways of doing this. We've had huge success with this one. Here's one that we've recently tested. Tested and just rolled out and sort of thing. And reality is like you've actually got one last. Half things that really work. But you kind of ready to go and you've got this rolling. Capability. And I think that sort of sense that it's not we. Don't really know whether WhatsApp will be a thing that works or whether people want to do it, but it might. You just got to build some stuff. Exactly. You kind of. And that. That's the dance, right? Is you're sort of going in there, going, who can you. You introduced me to. Which of these 10 things that are on my theoretical list of. Things I could do are applicable. And a lot of the game is just not quite working out on the fly because. Of just trying to match what you're hearing to what kind of is in your imaginary toolbox. Even though some of it is a known toolbox. Sessions are a known toolbox. We. Know that NHG and NHS professionals have done the two primary models of sessions and made them. Work. And I think we know how to make those work. We just have to replicate those conditions. I. Network rail. I don't think that's a brilliant proxy. For as it's an okay proxy. We've got 800 accounts out of that organization. There are 30 something thousand people. It's. Okay. We didn't have delegation at that point. We did a bunch of stuff. I think it gives us some less. Essence. I think the bit that I think is, sorry, this is an aside, but the bit I think that's really interest. Interesting about what we did at Network Rail is which I don. Don't think we've realized how applicable it is now until we've seen it again. What we did at Network Rail. Is we had a central benefits team who said we can't organize sessions. The best I can do. Is invite my local HR team and get them to organize sessions locally.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:38:14.968700",
-      "unique_id": "4de78bb9-687b-4d04-9f1a-4dc091f7cd45",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-06-10T16:38:16.866843"
-    },
-    {
       "key": "_transcription",
       "active_from": "2025-06-10T16:38:45.078036",
       "expires": "2025-06-10T16:39:45.078036",
@@ -3091,6 +2783,242 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
       "consumed_at": "2025-06-10T17:05:03.602106"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:40:14.461196",
+      "expires": "2025-06-10T18:41:14.461196",
+      "display_name": null,
+      "payload": {
+        "text": "[A] This is a test.",
+        "raw_text": "This is a test.",
+        "recent_text": "This is a test.",
+        "history_size": 4
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:40:14.461196",
+      "unique_id": "16fc1f76-9d4a-46bd-8b54-c3ae7588276d",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-10T18:41:31.739238"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:40:30.714743",
+      "expires": "2025-06-10T18:41:30.714743",
+      "display_name": null,
+      "payload": {
+        "text": "[A] Well, something's happening.",
+        "raw_text": "Well, something's happening.",
+        "recent_text": "Well, something's happening.",
+        "history_size": 3
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:40:30.714743",
+      "unique_id": "1c3832c7-d80a-4a06-aca1-19e4e0e6ee4a",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-10T18:41:31.739238"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:40:14.461196",
+      "expires": "2025-06-10T18:41:14.461196",
+      "display_name": null,
+      "payload": {
+        "text": "[A] This is a test.",
+        "raw_text": "This is a test.",
+        "recent_text": "This is a test.",
+        "history_size": 4
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:40:14.461196",
+      "unique_id": "16fc1f76-9d4a-46bd-8b54-c3ae7588276d",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-10T18:41:31.739238"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:40:30.714743",
+      "expires": "2025-06-10T18:41:30.714743",
+      "display_name": null,
+      "payload": {
+        "text": "[A] Well, something's happening.",
+        "raw_text": "Well, something's happening.",
+        "recent_text": "Well, something's happening.",
+        "history_size": 3
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:40:30.714743",
+      "unique_id": "1c3832c7-d80a-4a06-aca1-19e4e0e6ee4a",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-10T18:41:31.739238"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T19:00:00.542674",
+      "expires": "2025-06-10T19:01:00.542674",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:00:00.542674",
+      "unique_id": "60052ee6-0256-4600-8d4a-0a0038703dea",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-10T19:00:02.533208"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T19:00:00.542674",
+      "expires": "2025-06-10T19:01:00.542674",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:00:00.542674",
+      "unique_id": "60052ee6-0256-4600-8d4a-0a0038703dea",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-10T19:00:02.533208"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-10T19:05:01.861731",
+      "expires": "2025-06-10T19:06:01.861731",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:05:01.861731",
+      "unique_id": "cecae78d-3235-4286-9362-2445e9b2fd9b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-10T19:05:03.727982"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-10T19:05:01.861731",
+      "expires": "2025-06-10T19:06:01.861731",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:05:01.861731",
+      "unique_id": "cecae78d-3235-4286-9362-2445e9b2fd9b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-10T19:05:03.727982"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T20:00:00.722678",
+      "expires": "2025-06-10T20:01:00.722678",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T20:00:00.722678",
+      "unique_id": "2aad7cf8-edd2-4ddf-ac1c-8fb04fdde4d3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-10T20:00:02.793060"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T20:00:00.722678",
+      "expires": "2025-06-10T20:01:00.722678",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T20:00:00.722678",
+      "unique_id": "2aad7cf8-edd2-4ddf-ac1c-8fb04fdde4d3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-10T20:00:02.793060"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T21:00:00.847452",
+      "expires": "2025-06-10T21:01:00.847452",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T21:00:00.847452",
+      "unique_id": "37bd3768-0563-4526-9512-9f896045779c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-10T21:00:02.802778"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T21:00:00.847452",
+      "expires": "2025-06-10T21:01:00.847452",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T21:00:00.847452",
+      "unique_id": "37bd3768-0563-4526-9512-9f896045779c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-10T21:00:02.802778"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-10T21:05:01.521334",
+      "expires": "2025-06-10T21:06:01.521334",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T21:05:01.521334",
+      "unique_id": "63e8e8fa-4cdf-44b1-8c9b-1c24cff5f6ab",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-10T21:05:03.257173"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-10T21:05:01.521334",
+      "expires": "2025-06-10T21:06:01.521334",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T21:05:01.521334",
+      "unique_id": "63e8e8fa-4cdf-44b1-8c9b-1c24cff5f6ab",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-10T21:05:03.257173"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T22:00:00.632027",
+      "expires": "2025-06-10T22:01:00.632027",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T22:00:00.632027",
+      "unique_id": "9d7ed688-6217-4f99-a731-ca66a1b439ef",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-10T22:00:02.593322"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T22:00:00.632027",
+      "expires": "2025-06-10T22:01:00.632027",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T22:00:00.632027",
+      "unique_id": "9d7ed688-6217-4f99-a731-ca66a1b439ef",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-06-10T22:00:02.593322"
     }
   ]
 }

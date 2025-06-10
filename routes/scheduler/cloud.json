@@ -718,7 +718,7 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-06-10T17:30:02.942036",
+  "last_updated": "2025-06-10T22:26:01.404659",
   "last_trigger_executions": {
     "bff3e8e7981d7694c270e89d94c0e410_2025-06-02_43": "2025-06-02T22:30:00.600854",
     "bff3e8e7981d7694c270e89d94c0e410_2025-06-02_44": "2025-06-02T23:00:00.236991",
@@ -1085,358 +1085,21 @@
     "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_30": "2025-06-10T16:00:01.932509",
     "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_31": "2025-06-10T16:30:01.736743",
     "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_32": "2025-06-10T17:00:00.038704",
-    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_33": "2025-06-10T17:30:00.187390"
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_33": "2025-06-10T17:30:00.187390",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_34": "2025-06-10T18:00:00.606080",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_35": "2025-06-10T18:30:00.242182",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_36": "2025-06-10T19:00:01.079946",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_37": "2025-06-10T19:30:00.299588",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_38": "2025-06-10T20:00:00.944994",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_39": "2025-06-10T20:30:00.396902",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_40": "2025-06-10T21:00:01.716837",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_41": "2025-06-10T21:30:00.982203",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_42": "2025-06-10T22:00:00.467541"
   },
   "active_events": {
     "Juggle_themes": []
   },
   "event_history": [
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T20:30:01.588066",
-      "expires": "2025-06-09T20:31:01.588066",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T20:30:01.588066",
-      "unique_id": "50e2dfbf-2363-4248-afc3-d5999bcc9585",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T20:30:03.593972"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T20:30:01.588066",
-      "expires": "2025-06-09T20:31:01.588066",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T20:30:01.588066",
-      "unique_id": "50e2dfbf-2363-4248-afc3-d5999bcc9585",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T20:30:03.593972"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T21:00:01.324927",
-      "expires": "2025-06-09T21:01:01.324927",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T21:00:01.324927",
-      "unique_id": "9c8da498-8d30-443b-bd15-beaa6f90f9b9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T21:00:03.378238"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T21:00:01.324927",
-      "expires": "2025-06-09T21:01:01.324927",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T21:00:01.324927",
-      "unique_id": "9c8da498-8d30-443b-bd15-beaa6f90f9b9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T21:00:03.378238"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T21:30:01.038408",
-      "expires": "2025-06-09T21:31:01.038408",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T21:30:01.038408",
-      "unique_id": "8f3e4b5c-373f-40a0-be08-2ca0eccff899",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T21:30:03.029766"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T21:30:01.038408",
-      "expires": "2025-06-09T21:31:01.038408",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T21:30:01.038408",
-      "unique_id": "8f3e4b5c-373f-40a0-be08-2ca0eccff899",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T21:30:03.029766"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T22:00:01.598067",
-      "expires": "2025-06-09T22:01:01.598067",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T22:00:01.598067",
-      "unique_id": "d1c291f9-bfb3-48d2-8864-d8349076f7f3",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T22:00:03.689863"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T22:00:01.598067",
-      "expires": "2025-06-09T22:01:01.598067",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T22:00:01.598067",
-      "unique_id": "d1c291f9-bfb3-48d2-8864-d8349076f7f3",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T22:00:03.689863"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T22:30:00.278554",
-      "expires": "2025-06-09T22:31:00.278554",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T22:30:00.278554",
-      "unique_id": "92e7a6c1-ccd3-4add-8aca-b7731437b066",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T22:30:02.358923"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T22:30:00.278554",
-      "expires": "2025-06-09T22:31:00.278554",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T22:30:00.278554",
-      "unique_id": "92e7a6c1-ccd3-4add-8aca-b7731437b066",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T22:30:02.358923"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T23:00:00.386715",
-      "expires": "2025-06-09T23:01:00.386715",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:00:00.386715",
-      "unique_id": "6e82c96d-127a-45e6-9242-48168be72cdf",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T23:00:02.434001"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T23:00:00.386715",
-      "expires": "2025-06-09T23:01:00.386715",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:00:00.386715",
-      "unique_id": "6e82c96d-127a-45e6-9242-48168be72cdf",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T23:00:02.434001"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-09T23:26:04.543563",
-      "expires": "2025-06-09T23:27:04.543563",
-      "display_name": null,
-      "payload": {
-        "text": "Workhouse. I don't think there are workhouses anymore, Charles. It's only a matter of time.",
-        "recent_text": "Workhouse. I don't think there are workhouses anymore, Charles. It's only a matter of time.",
-        "client_ids": [
-          "454dd8c1-3287-473a-884f-9d848848de3b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:26:04.543563",
-      "unique_id": "5cac9c48-2b63-4c70-8fa3-fd43745f0e0b",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-09T23:27:27.437369"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-09T23:26:39.868067",
-      "expires": "2025-06-09T23:27:39.868067",
-      "display_name": null,
-      "payload": {
-        "text": "Kenny wants me to work on my call windows.",
-        "recent_text": "Kenny wants me to work on my call windows.",
-        "client_ids": [
-          "f22e7051-7356-433a-998a-3592a359be71"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:26:39.868067",
-      "unique_id": "b7ab92d2-d783-4d4f-a82f-6ba4df608510",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-09T23:27:57.488351"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-09T23:27:14.607369",
-      "expires": "2025-06-09T23:28:14.607369",
-      "display_name": null,
-      "payload": {
-        "text": "Kenny wants me to work on my call windows. No, carry us around. Look at the way Jenny stares at him. Who? Too much. She's like a midwish Cuckoo. Tomash and Jenny were in deep contact. Slave as they wandered into the trees. Why adults dress like wizards. Harry Potter. Was Oxford tour. My tour guide friend was in full wizarding gear, surrounded. By eager Gryffindor. They want to know what we're doing. I need a coffee. You? No, I'm good. In search of my core.",
-        "recent_text": "No, carry us around. Look at the way Jenny stares at him. Who? Too much. She's like a midwish Cuckoo. Tomash and Jenny were in deep contact. Slave as they wandered into the trees. Why adults dress like wizards. Harry Potter. Was Oxford tour. My tour guide friend was in full wizarding gear, surrounded. By eager Gryffindor. They want to know what we're doing. I need a coffee. You? No, I'm good. In search of my core.",
-        "client_ids": [
-          "f22e7051-7356-433a-998a-3592a359be71"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:27:14.607369",
-      "unique_id": "9cfc35f4-be12-4e50-8789-44cc48104fa6",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-09T23:28:27.516661"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-09T23:26:04.543563",
-      "expires": "2025-06-09T23:27:04.543563",
-      "display_name": null,
-      "payload": {
-        "text": "Workhouse. I don't think there are workhouses anymore, Charles. It's only a matter of time.",
-        "recent_text": "Workhouse. I don't think there are workhouses anymore, Charles. It's only a matter of time.",
-        "client_ids": [
-          "454dd8c1-3287-473a-884f-9d848848de3b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:26:04.543563",
-      "unique_id": "5cac9c48-2b63-4c70-8fa3-fd43745f0e0b",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-09T23:27:27.437369"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-09T23:27:48.225964",
-      "expires": "2025-06-09T23:28:48.225964",
-      "display_name": null,
-      "payload": {
-        "text": "Kenny wants me to work on my call windows. No, carry us around. Look at the way Jenny stares at him. Who? Too much. She's like a midwish Cuckoo. Tomash and Jenny were in deep contact. Slave as they wandered into the trees. Why adults dress like wizards. Harry Potter. Was Oxford tour. My tour guide friend was in full wizarding gear, surrounded. By eager Gryffindor. They want to know what we're doing. I need a coffee. You? No, I'm good. In search of my core. I went for a stroll and that's when I spied Thomash and Jenny in the. Full on. Which. Hamlet. What's a hamlet? We got remote cameras everywhere. Troops on the pump, couple on the bridge.",
-        "recent_text": "I went for a stroll and that's when I spied Thomash and Jenny in the. Full on. Which. Hamlet. What's a hamlet? We got remote cameras everywhere. Troops on the pump, couple on the bridge.",
-        "client_ids": [
-          "f22e7051-7356-433a-998a-3592a359be71"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:27:48.225964",
-      "unique_id": "1e384a16-d1c0-44ac-b30d-1c1e903593a8",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-09T23:28:57.567535"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-09T23:26:39.868067",
-      "expires": "2025-06-09T23:27:39.868067",
-      "display_name": null,
-      "payload": {
-        "text": "Kenny wants me to work on my call windows.",
-        "recent_text": "Kenny wants me to work on my call windows.",
-        "client_ids": [
-          "f22e7051-7356-433a-998a-3592a359be71"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:26:39.868067",
-      "unique_id": "b7ab92d2-d783-4d4f-a82f-6ba4df608510",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-09T23:27:57.488351"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-09T23:28:18.329190",
-      "expires": "2025-06-09T23:29:18.329190",
-      "display_name": null,
-      "payload": {
-        "text": "Kenny wants me to work on my call windows. No, carry us around. Look at the way Jenny stares at him. Who? Too much. She's like a midwish Cuckoo. Tomash and Jenny were in deep contact. Slave as they wandered into the trees. Why adults dress like wizards. Harry Potter. Was Oxford tour. My tour guide friend was in full wizarding gear, surrounded. By eager Gryffindor. They want to know what we're doing. I need a coffee. You? No, I'm good. In search of my core. I went for a stroll and that's when I spied Thomash and Jenny in the. Full on. Which. Hamlet. What's a hamlet? We got remote cameras everywhere. Troops on the pump, couple on the bridge. So everything we shoot this morning I edit together to project onto 10 big screens. Performance based. So the remote cameras shoot you, but. You also shoot each other? Viewer versus viewee. Yeah, viewer versus. Viewed whatever the. Multiplicity of images is a metaphorical regional signifier that Hamlet and. Convicted states of mind.",
-        "recent_text": "So everything we shoot this morning I edit together to project onto 10 big screens. Performance based. So the remote cameras shoot you, but. You also shoot each other? Viewer versus viewee. Yeah, viewer versus. Viewed whatever the. Multiplicity of images is a metaphorical regional signifier that Hamlet and. Convicted states of mind.",
-        "client_ids": [
-          "f22e7051-7356-433a-998a-3592a359be71"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:28:18.329190",
-      "unique_id": "71569879-4e9c-41d6-b33f-311d3d62ff3d",
-      "status": "ACTIVE",
-      "consumed_by": null,
-      "consumed_at": null
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-09T23:27:14.607369",
-      "expires": "2025-06-09T23:28:14.607369",
-      "display_name": null,
-      "payload": {
-        "text": "Kenny wants me to work on my call windows. No, carry us around. Look at the way Jenny stares at him. Who? Too much. She's like a midwish Cuckoo. Tomash and Jenny were in deep contact. Slave as they wandered into the trees. Why adults dress like wizards. Harry Potter. Was Oxford tour. My tour guide friend was in full wizarding gear, surrounded. By eager Gryffindor. They want to know what we're doing. I need a coffee. You? No, I'm good. In search of my core.",
-        "recent_text": "No, carry us around. Look at the way Jenny stares at him. Who? Too much. She's like a midwish Cuckoo. Tomash and Jenny were in deep contact. Slave as they wandered into the trees. Why adults dress like wizards. Harry Potter. Was Oxford tour. My tour guide friend was in full wizarding gear, surrounded. By eager Gryffindor. They want to know what we're doing. I need a coffee. You? No, I'm good. In search of my core.",
-        "client_ids": [
-          "f22e7051-7356-433a-998a-3592a359be71"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:27:14.607369",
-      "unique_id": "9cfc35f4-be12-4e50-8789-44cc48104fa6",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-09T23:28:27.516661"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-09T23:28:53.381240",
-      "expires": "2025-06-09T23:29:53.381240",
-      "display_name": null,
-      "payload": {
-        "text": "Kenny wants me to work on my call windows. No, carry us around. Look at the way Jenny stares at him. Who? Too much. She's like a midwish Cuckoo. Tomash and Jenny were in deep contact. Slave as they wandered into the trees. Why adults dress like wizards. Harry Potter. Was Oxford tour. My tour guide friend was in full wizarding gear, surrounded. By eager Gryffindor. They want to know what we're doing. I need a coffee. You? No, I'm good. In search of my core. I went for a stroll and that's when I spied Thomash and Jenny in the. Full on. Which. Hamlet. What's a hamlet? We got remote cameras everywhere. Troops on the pump, couple on the bridge. So everything we shoot this morning I edit together to project onto 10 big screens. Performance based. So the remote cameras shoot you, but. You also shoot each other? Viewer versus viewee. Yeah, viewer versus. Viewed whatever the. Multiplicity of images is a metaphorical regional signifier that Hamlet and. Convicted states of mind. Hammer. There you go. But a feeder and a hammer. Young and narcissistic. So they're not just filming each other. They're filming themselves like selfies. I. Did a lot of R and D at the National Portrait Gallery. Those miniatures they used to carry around. Basically, they Cheetah selfies. They use Nicholas for the art. We use Instagram photos. What the hell is Johnny.",
-        "recent_text": "Hammer. There you go. But a feeder and a hammer. Young and narcissistic. So they're not just filming each other. They're filming themselves like selfies. I. Did a lot of R and D at the National Portrait Gallery. Those miniatures they used to carry around. Basically, they Cheetah selfies. They use Nicholas for the art. We use Instagram photos. What the hell is Johnny.",
-        "client_ids": [
-          "f22e7051-7356-433a-998a-3592a359be71"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:28:53.381240",
-      "unique_id": "7a9d57f0-14ba-48e4-a3ce-82ddce035a0b",
-      "status": "ACTIVE",
-      "consumed_by": null,
-      "consumed_at": null
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-09T23:27:48.225964",
-      "expires": "2025-06-09T23:28:48.225964",
-      "display_name": null,
-      "payload": {
-        "text": "Kenny wants me to work on my call windows. No, carry us around. Look at the way Jenny stares at him. Who? Too much. She's like a midwish Cuckoo. Tomash and Jenny were in deep contact. Slave as they wandered into the trees. Why adults dress like wizards. Harry Potter. Was Oxford tour. My tour guide friend was in full wizarding gear, surrounded. By eager Gryffindor. They want to know what we're doing. I need a coffee. You? No, I'm good. In search of my core. I went for a stroll and that's when I spied Thomash and Jenny in the. Full on. Which. Hamlet. What's a hamlet? We got remote cameras everywhere. Troops on the pump, couple on the bridge.",
-        "recent_text": "I went for a stroll and that's when I spied Thomash and Jenny in the. Full on. Which. Hamlet. What's a hamlet? We got remote cameras everywhere. Troops on the pump, couple on the bridge.",
-        "client_ids": [
-          "f22e7051-7356-433a-998a-3592a359be71"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:27:48.225964",
-      "unique_id": "1e384a16-d1c0-44ac-b30d-1c1e903593a8",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-09T23:28:57.567535"
-    },
     {
       "key": "_transcription",
       "active_from": "2025-06-09T23:28:18.329190",
@@ -2486,6 +2149,312 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_cloud",
       "consumed_at": "2025-06-10T17:30:02.211187"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T18:00:00.615289",
+      "expires": "2025-06-10T18:01:00.615289",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:00:00.615289",
+      "unique_id": "f1aa7c34-bae7-489c-a9a5-7a7a788f64bd",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T18:00:02.677172"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T18:00:00.615289",
+      "expires": "2025-06-10T18:01:00.615289",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:00:00.615289",
+      "unique_id": "f1aa7c34-bae7-489c-a9a5-7a7a788f64bd",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T18:00:02.677172"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T18:30:00.251687",
+      "expires": "2025-06-10T18:31:00.251687",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:30:00.251687",
+      "unique_id": "a497e4f0-c732-46f0-8b44-d1234bdc5083",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T18:30:02.309720"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T18:30:00.251687",
+      "expires": "2025-06-10T18:31:00.251687",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:30:00.251687",
+      "unique_id": "a497e4f0-c732-46f0-8b44-d1234bdc5083",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T18:30:02.309720"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:40:14.461196",
+      "expires": "2025-06-10T18:41:14.461196",
+      "display_name": null,
+      "payload": {
+        "text": "[A] This is a test.",
+        "raw_text": "This is a test.",
+        "recent_text": "This is a test.",
+        "history_size": 4
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:40:14.461196",
+      "unique_id": "29d2f506-58a2-45ea-9527-4befff911f7a",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-10T18:41:31.739238"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:40:30.714743",
+      "expires": "2025-06-10T18:41:30.714743",
+      "display_name": null,
+      "payload": {
+        "text": "[A] Well, something's happening.",
+        "raw_text": "Well, something's happening.",
+        "recent_text": "Well, something's happening.",
+        "history_size": 3
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:40:30.714743",
+      "unique_id": "1fab9312-19c9-455b-b626-7736befa9be2",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-10T18:41:31.739238"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:40:14.461196",
+      "expires": "2025-06-10T18:41:14.461196",
+      "display_name": null,
+      "payload": {
+        "text": "[A] This is a test.",
+        "raw_text": "This is a test.",
+        "recent_text": "This is a test.",
+        "history_size": 4
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:40:14.461196",
+      "unique_id": "29d2f506-58a2-45ea-9527-4befff911f7a",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-10T18:41:31.739238"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:40:30.714743",
+      "expires": "2025-06-10T18:41:30.714743",
+      "display_name": null,
+      "payload": {
+        "text": "[A] Well, something's happening.",
+        "raw_text": "Well, something's happening.",
+        "recent_text": "Well, something's happening.",
+        "history_size": 3
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:40:30.714743",
+      "unique_id": "1fab9312-19c9-455b-b626-7736befa9be2",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-06-10T18:41:31.739238"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T19:00:01.090735",
+      "expires": "2025-06-10T19:01:01.090735",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:00:01.090735",
+      "unique_id": "bce2770c-af61-4233-b234-06ec5b8b99b4",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T19:00:03.138891"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T19:00:01.090735",
+      "expires": "2025-06-10T19:01:01.090735",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:00:01.090735",
+      "unique_id": "bce2770c-af61-4233-b234-06ec5b8b99b4",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T19:00:03.138891"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T19:30:00.329710",
+      "expires": "2025-06-10T19:31:00.329710",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:30:00.329710",
+      "unique_id": "5f5b25e4-4546-4f19-9305-23caa83b41b6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T19:30:02.387175"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T19:30:00.329710",
+      "expires": "2025-06-10T19:31:00.329710",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:30:00.329710",
+      "unique_id": "5f5b25e4-4546-4f19-9305-23caa83b41b6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T19:30:02.387175"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T20:00:00.987525",
+      "expires": "2025-06-10T20:01:00.987525",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T20:00:00.987525",
+      "unique_id": "c5d67cba-b383-4b5f-aa9b-41a437b01576",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T20:00:02.953063"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T20:00:00.987525",
+      "expires": "2025-06-10T20:01:00.987525",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T20:00:00.987525",
+      "unique_id": "c5d67cba-b383-4b5f-aa9b-41a437b01576",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T20:00:02.953063"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T20:30:00.412172",
+      "expires": "2025-06-10T20:31:00.412172",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T20:30:00.412172",
+      "unique_id": "87b343be-46fc-439a-90d2-803bac3eb9f5",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T20:30:02.422171"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T20:30:00.412172",
+      "expires": "2025-06-10T20:31:00.412172",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T20:30:00.412172",
+      "unique_id": "87b343be-46fc-439a-90d2-803bac3eb9f5",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T20:30:02.422171"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T21:00:01.725390",
+      "expires": "2025-06-10T21:01:01.725390",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T21:00:01.725390",
+      "unique_id": "34a6fcfd-1883-4419-bcae-808db88a3b2f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T21:00:03.774513"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T21:00:01.725390",
+      "expires": "2025-06-10T21:01:01.725390",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T21:00:01.725390",
+      "unique_id": "34a6fcfd-1883-4419-bcae-808db88a3b2f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T21:00:03.774513"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T21:29:59.819856",
+      "expires": "2025-06-10T21:30:59.819856",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T21:29:59.819856",
+      "unique_id": "10f0677a-baed-41bf-9628-4e1e9fa3af0a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T21:30:03.023644"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T21:29:59.819856",
+      "expires": "2025-06-10T21:30:59.819856",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T21:29:59.819856",
+      "unique_id": "10f0677a-baed-41bf-9628-4e1e9fa3af0a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T21:30:03.023644"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T22:00:00.501343",
+      "expires": "2025-06-10T22:01:00.501343",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T22:00:00.501343",
+      "unique_id": "d641517f-6464-451e-97fb-f46584177d07",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T22:00:02.471756"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T22:00:00.501343",
+      "expires": "2025-06-10T22:01:00.501343",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T22:00:00.501343",
+      "unique_id": "d641517f-6464-451e-97fb-f46584177d07",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T22:00:02.471756"
     }
   ]
 }

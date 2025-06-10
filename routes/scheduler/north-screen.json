@@ -382,52 +382,12 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "From words to life \u2014 imagined scenes of lovers and fools from the sonnets",
-        "_b_theme": "Shakespeare's evocative sonnet imagery \u2014 natural and metaphorical elements",
+        "_a_theme": "Shakespeare's evocative sonnet imagery \u2014 natural and metaphorical elements",
+        "_b_theme": "From words to life \u2014 imagined scenes of lovers and fools from the sonnets",
         "_style": "Pre-Raphaelite style inspired by artists like John Everett Millais",
         "_guidance": "Transform the essence of Shakespeare's sonnets into lush visual narratives using the vivid colors and intricate details reminiscent of Pre-Raphaelite paintings, ensuring each scene presents distinct interpretative imagery that hasn't been seen in recent gallery outputs.",
-        "prompt": "A tranquil stream winding through lush spring woods; lovers inscribe sonnets on a birch tree, caught in tender embrace, amid iridescent Pre-Raphaelite palette.",
+        "prompt": "Sunlit forest glade where ethereal deer graze among ancient oaks; their gentle eyes mirror the serene beauty of Shakespeare's love, captured in rich Pre-Raphaelite detail.",
         "history_var": [
-          {
-            "timestamp": "2025-06-09 15:30:02",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "A whimsical jellyfish leads a tea party on an iridescent kelp platform, surrounded by bioluminescent fish and sea sprouts sipping bubbles, capturing Carroll's surreal charm."
-            },
-            "text_input": "'Fantasy tea ceremonies underwater with mythica...",
-            "explanation": "I chose a jellyfish as a unique host and focused on a kelp platform setting. The incorporation of..."
-          },
-          {
-            "timestamp": "2025-06-09 16:30:02",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Ethereal mermaid quartet performs on seashell violins amid a dreamlike kelp forest tea party, lantern fish glimmering, capturing Carrollian whimsy."
-            },
-            "text_input": "'Fantasy tea ceremonies underwater with mythica...",
-            "explanation": "I centered on a mermaid quartet playing seashell instruments in a kelp forest, avoiding previousl..."
-          },
-          {
-            "timestamp": "2025-06-09 17:30:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Mystical octopus conducts an underwater tea orchestra, with turtles sipping from kelp cups on clamshell seats, surrounded by luminescent coral reefs, evoking Carroll's imaginative style."
-            },
-            "text_input": "'Fantasy tea ceremonies underwater with mythica...",
-            "explanation": "I chose an octopus as the conductor to add a unique element, and included turtles as tea drinkers..."
-          },
-          {
-            "timestamp": "2025-06-09 18:30:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Sea sprite hosts tea party on floating jellyfish thrones, sipping from conch shell cups, suspended in serene underwater glade, enveloped in Carroll-inspired whimsy."
-            },
-            "text_input": "'Fantasy tea ceremonies underwater with mythica...",
-            "explanation": "I focused on a unique setting with jellyfish thrones and conch shell cups, deviating from prior p..."
-          },
           {
             "timestamp": "2025-06-09 19:30:04",
             "type": "reason",
@@ -587,53 +547,49 @@
             },
             "text_input": "'From words to life \u2014 imagined scenes of lovers...",
             "explanation": "To create a unique prompt, I selected a woodland setting in spring and emphasized inscribing poet..."
+          },
+          {
+            "timestamp": "2025-06-10 18:30:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Beneath an ancient stone bridge, lovers' reflections ripple in a moonlit stream, surrounded by night's silent embrace and rich Pre-Raphaelite textures."
+            },
+            "text_input": "'From words to life \u2014 imagined scenes of lovers...",
+            "explanation": "I chose a bridge setting, focusing on reflection and night-time ambiance to provide a unique visu..."
+          },
+          {
+            "timestamp": "2025-06-10 19:30:04",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A moonlit terrace with intricate wrought-iron railings, where a masked ball unfolds; hidden lovers, whispered sonnets, and lush Pre-Raphaelite hues echo Shakespearean intrigue."
+            },
+            "text_input": "'From words to life \u2014 imagined scenes of lovers...",
+            "explanation": "I incorporated the setting of a moonlit terrace during a masked ball, focusing on masks and hidde..."
+          },
+          {
+            "timestamp": "2025-06-10 20:30:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "A secluded garden gate at twilight, overgrown with ivy and roses. Lovers exchange clandestine letters, their silhouettes illuminated by a solitary lantern, rich in Pre-Raphaelite detail."
+            },
+            "text_input": "'From words to life \u2014 imagined scenes of lovers...",
+            "explanation": "The scene focuses on a garden gate at twilight, avoiding settings like streams, meadows, and libr..."
+          },
+          {
+            "timestamp": "2025-06-10 21:30:04",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Sunlit forest glade where ethereal deer graze among ancient oaks; their gentle eyes mirror the serene beauty of Shakespeare's love, captured in rich Pre-Raphaelite detail."
+            },
+            "text_input": "'Shakespeare's evocative sonnet imagery \u2014 natur...",
+            "explanation": "I crafted an untouched natural setting with deer and ancient trees, avoiding previous themes of h..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2025-06-09 14:30:07",
-            "type": "generation",
-            "prompt": "Chessboard pathways weaving through flower arch...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250609-133100-334864e8.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-06-09 15:30:06",
-            "type": "generation",
-            "prompt": "A whimsical jellyfish leads a tea party on an i...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250609-143032-a075c224.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-06-09 16:30:05",
-            "type": "generation",
-            "prompt": "Ethereal mermaid quartet performs on seashell v...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250609-153031-079bdd0a.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-06-09 17:30:05",
-            "type": "generation",
-            "prompt": "Mystical octopus conducts an underwater tea orc...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250609-163030-1e37d16c.jpg"
-            ],
-            "published": true
-          },
           {
             "timestamp": "2025-06-09 18:30:08",
             "type": "generation",
@@ -809,6 +765,50 @@
               "20250610-163115-fef09382.jpg"
             ],
             "published": true
+          },
+          {
+            "timestamp": "2025-06-10 18:30:07",
+            "type": "generation",
+            "prompt": "Beneath an ancient stone bridge, lovers' reflec...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250610-173035-969e78ad.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-06-10 19:30:08",
+            "type": "generation",
+            "prompt": "A moonlit terrace with intricate wrought-iron r...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250610-183047-549f931b.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-06-10 20:30:06",
+            "type": "generation",
+            "prompt": "A secluded garden gate at twilight, overgrown w...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250610-193031-df472e8f.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-06-10 21:30:07",
+            "type": "generation",
+            "prompt": "Sunlit forest glade where ethereal deer graze a...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250610-203034-96c05dae.jpg"
+            ],
+            "published": true
           }
         ],
         "animation_on": "false",
@@ -822,42 +822,11 @@
             "animation_id": "unknown"
           }
         ],
-        "transcript_text": "paid so many. Monzo sort codes. I feel like I'm just paying Monzo sort codes all the time. When I was manually doing the payment. Are all our users actually Monzo customers. Is that actually a really key demonstration? Graphic stat. Just feels that way. Love to do the analysis. 4o. Four silk codes. I just felt I was paying the whole time. That's one day. This is what you had yet. Do anything to do it, but let's try and get Kevin. Commercial answers. Yes. Go. Tree right there. John, just. I won't do anything. As the thing unless I hear from you, okay, I. Will tomorrow give you something. Things. Don't. Dave. All right, cool. Cheers. Cheers, guys. Hey. Such a shit chat app. What is it doing my face? Can you see, like, one corner of my face? Yeah. No idea. What? Just move. Up physically. See how it. Cushion slightly to the right. And this is why. Video, that's why. Well, that's. Slightly better. Now you. Now you get a view of my water bottle. Perfect. There you go. Slightly better. Now you. Now you get a view of my water bottle. Perfect. There you go.",
-        "vis_description": "a person struggling with a chat app showing only a corner of their face",
-        "vis_confidence": "79%",
-        "vis_rationale": "Captures frustration with technology in a relatable and clear way.",
+        "transcript_text": "What is that? [A] What is that?",
+        "vis_description": "a digital screen with a flashing query cursor",
+        "vis_confidence": "97%",
+        "vis_rationale": "Surreal and whimsical scene creates extraordinary visual imagery.",
         "distiller_history": [
-          {
-            "timestamp": "2025-06-10 16:45:35",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "a slick process offering 100 daily delegations effortlessly",
-              "vis_confidence": "44%",
-              "vis_rationale": "Concrete concept in abstract text but lacking imaginative visuals"
-            },
-            "text_input": "TEXT: have sort of. A growing understanding of ..."
-          },
-          {
-            "timestamp": "2025-06-10 16:46:10",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "Pete contemplating training jobs amidst swirling equations and flowcharts"
-            },
-            "text_input": "TEXT: we also have to get a bit smarter than we...",
-            "explanation": "This scene blends contemplation and complexity, highlighting Pete's focus amidst abstract elements."
-          },
-          {
-            "timestamp": "2025-06-10 16:46:46",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "Pete surrounded by charts and graphs, trying to balance trade-offs"
-            },
-            "text_input": "TEXT: to spend much time with Pete? Yes. Today....",
-            "explanation": "The process of balancing trade-offs as depicted in the text offers a visual scene with charts and..."
-          },
           {
             "timestamp": "2025-06-10 16:47:20",
             "type": "reason",
@@ -1034,540 +1003,64 @@
               "vis_rationale": "Captures frustration with technology in a relatable and clear way."
             },
             "text_input": "TEXT: paid so many. Monzo sort codes. I feel li..."
+          },
+          {
+            "timestamp": "2025-06-10 18:40:15",
+            "type": "reason",
+            "reasoner": "distiller",
+            "outputs": {
+              "vis_description": "a repeating test pattern like a digital sequence"
+            },
+            "text_input": "TEXT: This is a test. [A] This is a test.; HIST..."
+          },
+          {
+            "timestamp": "2025-06-10 18:58:13",
+            "type": "reason",
+            "reasoner": "distiller",
+            "outputs": {
+              "vis_description": "Pink elephants dancing on a big ice machine",
+              "vis_confidence": "97%",
+              "vis_rationale": "Surreal and whimsical scene creates extraordinary visual imagery."
+            },
+            "text_input": "TEXT: Pink elephants dancing on a big ice machi...",
+            "explanation": "The imagery of 'pink elephants dancing on a big ice machine' is whimsical and incredibly vivid, c..."
+          },
+          {
+            "timestamp": "2025-06-10 19:24:53",
+            "type": "reason",
+            "reasoner": "distiller",
+            "outputs": {
+              "vis_description": "a digital screen with a flashing query cursor"
+            },
+            "text_input": "TEXT: What is that? [A] What is that?; HISTORY:...",
+            "explanation": "None of the text offers concrete imagery, but a flashing query cursor provides a basic visual."
           }
         ],
-        "conf_int": 79
+        "conf_int": 97
       },
-      "last_generated": "20250610-163115-fef09382.jpg",
+      "last_generated": "20250610-203034-96c05dae.jpg",
       "publish_destination": "north-screen"
     }
   ],
   "state": "running",
-  "last_updated": "2025-06-10T17:31:15.591219",
+  "last_updated": "2025-06-10T22:26:00.977347",
   "last_trigger_executions": {
     "e5599a76599fa8b9d5d8002c1308974d_2025-06-10_9": "2025-06-10T16:30:01.867519",
-    "e5599a76599fa8b9d5d8002c1308974d_2025-06-10_10": "2025-06-10T17:30:00.576556"
+    "e5599a76599fa8b9d5d8002c1308974d_2025-06-10_10": "2025-06-10T17:30:00.576556",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-06-10_5": "2025-06-10T18:05:00.768008",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-06-10_11": "2025-06-10T18:30:00.666611",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-06-10_12": "2025-06-10T19:30:02.017941",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-06-10_6": "2025-06-10T20:05:00.049729",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-06-10_13": "2025-06-10T20:30:01.267952",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-06-10_14": "2025-06-10T21:30:01.445310",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-06-10_7": "2025-06-10T22:05:01.015330"
   },
-  "active_events": {},
+  "active_events": {
+    "__exit_block__": []
+  },
   "event_history": [
     {
       "key": "_transcription",
-      "active_from": "2025-06-10T16:43:54.935881",
-      "expires": "2025-06-10T16:44:54.935881",
-      "display_name": null,
-      "payload": {
-        "text": "And working with influencers. We are.",
-        "raw_text": "of the Network Rail success was actually, we did sessions with, like, a hundred. Something HR people, and we got, like, half a dozen of them to do it locally and. And actually that I think is a method that might work in bigger companies more. More broadly. Like you get HR champions in, but you're feeling that out because obviously, if. The company is going to give you a centrally organized session. You want to take those? You don't want to lead with that. It's like, okay, you won't give us that this can work, but you actually have to introduce us to all the. HR people. And then we're not going to convert all of them. We'll convert some of them. That will be enough to get that. Portion of the rollout moving, and then you have to go on the intranet and you have to get some better comms. The. We've got. Anyway, I agree with you these things. I think once you go. Above. I'm picking a number here. 20,000 people. 10,000 people anyway, or whatever that number is. Some. Somewhere in that region. They're all different. Or they're all different until you've done a lot of them. But, yeah, let me figure out what I want to have in my back pocket that isn't just my ability to kind of. Of like, yeah, we've done this, which is kind of what. What you sort of want to start into a certain extent. It's like, oh, you know, you almost don't want to blast them with a presentation. Because then they know all the things that are on your list, and you can't create a new one if there are some other things. Thing. You've already showed them the five things that you do. You can't create the sixth one based on what? They say? Because it's not in your presentation. Yeah. So I guess, was it. It. If it's important, it feels important. So if there is stuff that you want. Want in your back pocket, let me know and I'll try and make it happen. But don't just invest. Don't take for the sake of it. No, but I think it's those things that are on the product. List. I think it's like a little conceptual thing that's almost like a pretend case study. It's like. It's like, hit me. Hey, funny to say that this isn't quite right. Right, but this is kind of something we did, and you've got one slide. It's like, let me pull this up sort of thing. Yeah, that would be helpful. Some. Right. I think, Pop. I think. Sorry. I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:43:54.935881",
-      "unique_id": "e9fc48fa-eb03-4d67-a975-fbb2ea73cb52",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:43:55.973584"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:43:54.935881",
-      "expires": "2025-06-10T16:44:54.935881",
-      "display_name": null,
-      "payload": {
-        "text": "And working with influencers. We are.",
-        "raw_text": "of the Network Rail success was actually, we did sessions with, like, a hundred. Something HR people, and we got, like, half a dozen of them to do it locally and. And actually that I think is a method that might work in bigger companies more. More broadly. Like you get HR champions in, but you're feeling that out because obviously, if. The company is going to give you a centrally organized session. You want to take those? You don't want to lead with that. It's like, okay, you won't give us that this can work, but you actually have to introduce us to all the. HR people. And then we're not going to convert all of them. We'll convert some of them. That will be enough to get that. Portion of the rollout moving, and then you have to go on the intranet and you have to get some better comms. The. We've got. Anyway, I agree with you these things. I think once you go. Above. I'm picking a number here. 20,000 people. 10,000 people anyway, or whatever that number is. Some. Somewhere in that region. They're all different. Or they're all different until you've done a lot of them. But, yeah, let me figure out what I want to have in my back pocket that isn't just my ability to kind of. Of like, yeah, we've done this, which is kind of what. What you sort of want to start into a certain extent. It's like, oh, you know, you almost don't want to blast them with a presentation. Because then they know all the things that are on your list, and you can't create a new one if there are some other things. Thing. You've already showed them the five things that you do. You can't create the sixth one based on what? They say? Because it's not in your presentation. Yeah. So I guess, was it. It. If it's important, it feels important. So if there is stuff that you want. Want in your back pocket, let me know and I'll try and make it happen. But don't just invest. Don't take for the sake of it. No, but I think it's those things that are on the product. List. I think it's like a little conceptual thing that's almost like a pretend case study. It's like. It's like, hit me. Hey, funny to say that this isn't quite right. Right, but this is kind of something we did, and you've got one slide. It's like, let me pull this up sort of thing. Yeah, that would be helpful. Some. Right. I think, Pop. I think. Sorry. I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:43:54.935881",
-      "unique_id": "e9fc48fa-eb03-4d67-a975-fbb2ea73cb52",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:43:55.973584"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:44:29.918397",
-      "expires": "2025-06-10T16:45:29.918397",
-      "display_name": null,
-      "payload": {
-        "text": "Actually adding resource per workday.",
-        "raw_text": "company is going to give you a centrally organized session. You want to take those? You don't want to lead with that. It's like, okay, you won't give us that this can work, but you actually have to introduce us to all the. HR people. And then we're not going to convert all of them. We'll convert some of them. That will be enough to get that. Portion of the rollout moving, and then you have to go on the intranet and you have to get some better comms. The. We've got. Anyway, I agree with you these things. I think once you go. Above. I'm picking a number here. 20,000 people. 10,000 people anyway, or whatever that number is. Some. Somewhere in that region. They're all different. Or they're all different until you've done a lot of them. But, yeah, let me figure out what I want to have in my back pocket that isn't just my ability to kind of. Of like, yeah, we've done this, which is kind of what. What you sort of want to start into a certain extent. It's like, oh, you know, you almost don't want to blast them with a presentation. Because then they know all the things that are on your list, and you can't create a new one if there are some other things. Thing. You've already showed them the five things that you do. You can't create the sixth one based on what? They say? Because it's not in your presentation. Yeah. So I guess, was it. It. If it's important, it feels important. So if there is stuff that you want. Want in your back pocket, let me know and I'll try and make it happen. But don't just invest. Don't take for the sake of it. No, but I think it's those things that are on the product. List. I think it's like a little conceptual thing that's almost like a pretend case study. It's like. It's like, hit me. Hey, funny to say that this isn't quite right. Right, but this is kind of something we did, and you've got one slide. It's like, let me pull this up sort of thing. Yeah, that would be helpful. Some. Right. I think, Pop. I think. Sorry. I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:44:29.918397",
-      "unique_id": "1d2645fe-6eda-43a0-875e-81ae0c672f31",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:44:30.457211"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:44:29.918397",
-      "expires": "2025-06-10T16:45:29.918397",
-      "display_name": null,
-      "payload": {
-        "text": "Actually adding resource per workday.",
-        "raw_text": "company is going to give you a centrally organized session. You want to take those? You don't want to lead with that. It's like, okay, you won't give us that this can work, but you actually have to introduce us to all the. HR people. And then we're not going to convert all of them. We'll convert some of them. That will be enough to get that. Portion of the rollout moving, and then you have to go on the intranet and you have to get some better comms. The. We've got. Anyway, I agree with you these things. I think once you go. Above. I'm picking a number here. 20,000 people. 10,000 people anyway, or whatever that number is. Some. Somewhere in that region. They're all different. Or they're all different until you've done a lot of them. But, yeah, let me figure out what I want to have in my back pocket that isn't just my ability to kind of. Of like, yeah, we've done this, which is kind of what. What you sort of want to start into a certain extent. It's like, oh, you know, you almost don't want to blast them with a presentation. Because then they know all the things that are on your list, and you can't create a new one if there are some other things. Thing. You've already showed them the five things that you do. You can't create the sixth one based on what? They say? Because it's not in your presentation. Yeah. So I guess, was it. It. If it's important, it feels important. So if there is stuff that you want. Want in your back pocket, let me know and I'll try and make it happen. But don't just invest. Don't take for the sake of it. No, but I think it's those things that are on the product. List. I think it's like a little conceptual thing that's almost like a pretend case study. It's like. It's like, hit me. Hey, funny to say that this isn't quite right. Right, but this is kind of something we did, and you've got one slide. It's like, let me pull this up sort of thing. Yeah, that would be helpful. Some. Right. I think, Pop. I think. Sorry. I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:44:29.918397",
-      "unique_id": "1d2645fe-6eda-43a0-875e-81ae0c672f31",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:44:30.457211"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:45:00.108352",
-      "expires": "2025-06-10T16:46:00.108352",
-      "display_name": null,
-      "payload": {
-        "text": "Preliminary work that has to happen, and some of it.",
-        "raw_text": "you have to get some better comms. The. We've got. Anyway, I agree with you these things. I think once you go. Above. I'm picking a number here. 20,000 people. 10,000 people anyway, or whatever that number is. Some. Somewhere in that region. They're all different. Or they're all different until you've done a lot of them. But, yeah, let me figure out what I want to have in my back pocket that isn't just my ability to kind of. Of like, yeah, we've done this, which is kind of what. What you sort of want to start into a certain extent. It's like, oh, you know, you almost don't want to blast them with a presentation. Because then they know all the things that are on your list, and you can't create a new one if there are some other things. Thing. You've already showed them the five things that you do. You can't create the sixth one based on what? They say? Because it's not in your presentation. Yeah. So I guess, was it. It. If it's important, it feels important. So if there is stuff that you want. Want in your back pocket, let me know and I'll try and make it happen. But don't just invest. Don't take for the sake of it. No, but I think it's those things that are on the product. List. I think it's like a little conceptual thing that's almost like a pretend case study. It's like. It's like, hit me. Hey, funny to say that this isn't quite right. Right, but this is kind of something we did, and you've got one slide. It's like, let me pull this up sort of thing. Yeah, that would be helpful. Some. Right. I think, Pop. I think. Sorry. I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday. I think to achieve that, we both have to get. We have to get more insight. Than we are at the moment. And I think we also have to get a bit smarter than we are at the moment. And the process has to be slicker and more supported. But I don't think it's impossible. Completely impossible, at least. These, so. Yeah, I think there's just a lot of sort of prel. Preliminary work that has to happen, and some of it.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:45:00.108352",
-      "unique_id": "356421bb-072e-4752-92b5-b09eecdade88",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:45:00.772573"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:45:00.108352",
-      "expires": "2025-06-10T16:46:00.108352",
-      "display_name": null,
-      "payload": {
-        "text": "Preliminary work that has to happen, and some of it.",
-        "raw_text": "you have to get some better comms. The. We've got. Anyway, I agree with you these things. I think once you go. Above. I'm picking a number here. 20,000 people. 10,000 people anyway, or whatever that number is. Some. Somewhere in that region. They're all different. Or they're all different until you've done a lot of them. But, yeah, let me figure out what I want to have in my back pocket that isn't just my ability to kind of. Of like, yeah, we've done this, which is kind of what. What you sort of want to start into a certain extent. It's like, oh, you know, you almost don't want to blast them with a presentation. Because then they know all the things that are on your list, and you can't create a new one if there are some other things. Thing. You've already showed them the five things that you do. You can't create the sixth one based on what? They say? Because it's not in your presentation. Yeah. So I guess, was it. It. If it's important, it feels important. So if there is stuff that you want. Want in your back pocket, let me know and I'll try and make it happen. But don't just invest. Don't take for the sake of it. No, but I think it's those things that are on the product. List. I think it's like a little conceptual thing that's almost like a pretend case study. It's like. It's like, hit me. Hey, funny to say that this isn't quite right. Right, but this is kind of something we did, and you've got one slide. It's like, let me pull this up sort of thing. Yeah, that would be helpful. Some. Right. I think, Pop. I think. Sorry. I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday. I think to achieve that, we both have to get. We have to get more insight. Than we are at the moment. And I think we also have to get a bit smarter than we are at the moment. And the process has to be slicker and more supported. But I don't think it's impossible. Completely impossible, at least. These, so. Yeah, I think there's just a lot of sort of prel. Preliminary work that has to happen, and some of it.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:45:00.108352",
-      "unique_id": "356421bb-072e-4752-92b5-b09eecdade88",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:45:00.772573"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:45:05.270473",
-      "expires": "2025-06-10T16:46:05.270473",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:45:05.270473",
-      "unique_id": "eef3b4fc-25b4-4ea6-a41c-b792fc8a72d4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:45:07.203965"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:45:05.270473",
-      "expires": "2025-06-10T16:46:05.270473",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:45:05.270473",
-      "unique_id": "eef3b4fc-25b4-4ea6-a41c-b792fc8a72d4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:45:07.203965"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:45:34.958191",
-      "expires": "2025-06-10T16:46:34.958191",
-      "display_name": null,
-      "payload": {
-        "text": "Phase of we haven't yet got to the phase of being able to talk about training.",
-        "raw_text": "me figure out what I want to have in my back pocket that isn't just my ability to kind of. Of like, yeah, we've done this, which is kind of what. What you sort of want to start into a certain extent. It's like, oh, you know, you almost don't want to blast them with a presentation. Because then they know all the things that are on your list, and you can't create a new one if there are some other things. Thing. You've already showed them the five things that you do. You can't create the sixth one based on what? They say? Because it's not in your presentation. Yeah. So I guess, was it. It. If it's important, it feels important. So if there is stuff that you want. Want in your back pocket, let me know and I'll try and make it happen. But don't just invest. Don't take for the sake of it. No, but I think it's those things that are on the product. List. I think it's like a little conceptual thing that's almost like a pretend case study. It's like. It's like, hit me. Hey, funny to say that this isn't quite right. Right, but this is kind of something we did, and you've got one slide. It's like, let me pull this up sort of thing. Yeah, that would be helpful. Some. Right. I think, Pop. I think. Sorry. I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday. I think to achieve that, we both have to get. We have to get more insight. Than we are at the moment. And I think we also have to get a bit smarter than we are at the moment. And the process has to be slicker and more supported. But I don't think it's impossible. Completely impossible, at least. These, so. Yeah, I think there's just a lot of sort of prel. Preliminary work that has to happen, and some of it. Has happened, and some of it we're doing now. Groan. Have you had a chance to spend much time with Pete? Yes. Today. And today I have spent some time. With Pete. It's getting him going in the right direction. We're in the face. Phase of we haven't yet got to the phase of being able to talk about training.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:45:34.958191",
-      "unique_id": "92b0e1ac-b952-4e0f-9b33-f2a86ebbaa27",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:45:35.521519"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:45:34.958191",
-      "expires": "2025-06-10T16:46:34.958191",
-      "display_name": null,
-      "payload": {
-        "text": "Phase of we haven't yet got to the phase of being able to talk about training.",
-        "raw_text": "me figure out what I want to have in my back pocket that isn't just my ability to kind of. Of like, yeah, we've done this, which is kind of what. What you sort of want to start into a certain extent. It's like, oh, you know, you almost don't want to blast them with a presentation. Because then they know all the things that are on your list, and you can't create a new one if there are some other things. Thing. You've already showed them the five things that you do. You can't create the sixth one based on what? They say? Because it's not in your presentation. Yeah. So I guess, was it. It. If it's important, it feels important. So if there is stuff that you want. Want in your back pocket, let me know and I'll try and make it happen. But don't just invest. Don't take for the sake of it. No, but I think it's those things that are on the product. List. I think it's like a little conceptual thing that's almost like a pretend case study. It's like. It's like, hit me. Hey, funny to say that this isn't quite right. Right, but this is kind of something we did, and you've got one slide. It's like, let me pull this up sort of thing. Yeah, that would be helpful. Some. Right. I think, Pop. I think. Sorry. I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday. I think to achieve that, we both have to get. We have to get more insight. Than we are at the moment. And I think we also have to get a bit smarter than we are at the moment. And the process has to be slicker and more supported. But I don't think it's impossible. Completely impossible, at least. These, so. Yeah, I think there's just a lot of sort of prel. Preliminary work that has to happen, and some of it. Has happened, and some of it we're doing now. Groan. Have you had a chance to spend much time with Pete? Yes. Today. And today I have spent some time. With Pete. It's getting him going in the right direction. We're in the face. Phase of we haven't yet got to the phase of being able to talk about training.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:45:34.958191",
-      "unique_id": "92b0e1ac-b952-4e0f-9b33-f2a86ebbaa27",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:45:35.521519"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:45:38.136006",
-      "expires": "2025-06-10T16:46:38.136006",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:45:38.136006",
-      "unique_id": "5611af46-ef27-42a4-b6f0-d7cd43ab62d5",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:45:40.054466"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:45:38.136006",
-      "expires": "2025-06-10T16:46:38.136006",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:45:38.136006",
-      "unique_id": "5611af46-ef27-42a4-b6f0-d7cd43ab62d5",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:45:40.054466"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:46:10.248376",
-      "expires": "2025-06-10T16:47:10.248376",
-      "display_name": null,
-      "payload": {
-        "text": "Talk about what it says.",
-        "raw_text": "are some other things. Thing. You've already showed them the five things that you do. You can't create the sixth one based on what? They say? Because it's not in your presentation. Yeah. So I guess, was it. It. If it's important, it feels important. So if there is stuff that you want. Want in your back pocket, let me know and I'll try and make it happen. But don't just invest. Don't take for the sake of it. No, but I think it's those things that are on the product. List. I think it's like a little conceptual thing that's almost like a pretend case study. It's like. It's like, hit me. Hey, funny to say that this isn't quite right. Right, but this is kind of something we did, and you've got one slide. It's like, let me pull this up sort of thing. Yeah, that would be helpful. Some. Right. I think, Pop. I think. Sorry. I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday. I think to achieve that, we both have to get. We have to get more insight. Than we are at the moment. And I think we also have to get a bit smarter than we are at the moment. And the process has to be slicker and more supported. But I don't think it's impossible. Completely impossible, at least. These, so. Yeah, I think there's just a lot of sort of prel. Preliminary work that has to happen, and some of it. Has happened, and some of it we're doing now. Groan. Have you had a chance to spend much time with Pete? Yes. Today. And today I have spent some time. With Pete. It's getting him going in the right direction. We're in the face. Phase of we haven't yet got to the phase of being able to talk about training. Jobs. We're still in the phase of building a model and. And trade off sorry for my education. Unlike how many people? Do you have versus what top line is going to be versus how much you automate things, how. And I'm trying to make sure we get the right. Balance of moral that's useful versus. Is great. We're going to spend two weeks building a model and actually no time to actually. Talk about what it says.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:46:10.248376",
-      "unique_id": "e3af20b4-55b6-4afd-a7c4-1e6e0154aee2",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:46:10.425482"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:46:10.248376",
-      "expires": "2025-06-10T16:47:10.248376",
-      "display_name": null,
-      "payload": {
-        "text": "Talk about what it says.",
-        "raw_text": "are some other things. Thing. You've already showed them the five things that you do. You can't create the sixth one based on what? They say? Because it's not in your presentation. Yeah. So I guess, was it. It. If it's important, it feels important. So if there is stuff that you want. Want in your back pocket, let me know and I'll try and make it happen. But don't just invest. Don't take for the sake of it. No, but I think it's those things that are on the product. List. I think it's like a little conceptual thing that's almost like a pretend case study. It's like. It's like, hit me. Hey, funny to say that this isn't quite right. Right, but this is kind of something we did, and you've got one slide. It's like, let me pull this up sort of thing. Yeah, that would be helpful. Some. Right. I think, Pop. I think. Sorry. I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday. I think to achieve that, we both have to get. We have to get more insight. Than we are at the moment. And I think we also have to get a bit smarter than we are at the moment. And the process has to be slicker and more supported. But I don't think it's impossible. Completely impossible, at least. These, so. Yeah, I think there's just a lot of sort of prel. Preliminary work that has to happen, and some of it. Has happened, and some of it we're doing now. Groan. Have you had a chance to spend much time with Pete? Yes. Today. And today I have spent some time. With Pete. It's getting him going in the right direction. We're in the face. Phase of we haven't yet got to the phase of being able to talk about training. Jobs. We're still in the phase of building a model and. And trade off sorry for my education. Unlike how many people? Do you have versus what top line is going to be versus how much you automate things, how. And I'm trying to make sure we get the right. Balance of moral that's useful versus. Is great. We're going to spend two weeks building a model and actually no time to actually. Talk about what it says.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:46:10.248376",
-      "unique_id": "e3af20b4-55b6-4afd-a7c4-1e6e0154aee2",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:46:10.425482"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:46:13.980117",
-      "expires": "2025-06-10T16:47:13.980117",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:46:13.980117",
-      "unique_id": "3349a2a9-499b-43af-b5eb-58d88cda7ddc",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:46:15.928871"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:46:13.980117",
-      "expires": "2025-06-10T16:47:13.980117",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:46:13.980117",
-      "unique_id": "3349a2a9-499b-43af-b5eb-58d88cda7ddc",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:46:15.928871"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:46:44.501299",
-      "expires": "2025-06-10T16:47:44.501299",
-      "display_name": null,
-      "payload": {
-        "text": "Up and then ask.",
-        "raw_text": "take for the sake of it. No, but I think it's those things that are on the product. List. I think it's like a little conceptual thing that's almost like a pretend case study. It's like. It's like, hit me. Hey, funny to say that this isn't quite right. Right, but this is kind of something we did, and you've got one slide. It's like, let me pull this up sort of thing. Yeah, that would be helpful. Some. Right. I think, Pop. I think. Sorry. I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday. I think to achieve that, we both have to get. We have to get more insight. Than we are at the moment. And I think we also have to get a bit smarter than we are at the moment. And the process has to be slicker and more supported. But I don't think it's impossible. Completely impossible, at least. These, so. Yeah, I think there's just a lot of sort of prel. Preliminary work that has to happen, and some of it. Has happened, and some of it we're doing now. Groan. Have you had a chance to spend much time with Pete? Yes. Today. And today I have spent some time. With Pete. It's getting him going in the right direction. We're in the face. Phase of we haven't yet got to the phase of being able to talk about training. Jobs. We're still in the phase of building a model and. And trade off sorry for my education. Unlike how many people? Do you have versus what top line is going to be versus how much you automate things, how. And I'm trying to make sure we get the right. Balance of moral that's useful versus. Is great. We're going to spend two weeks building a model and actually no time to actually. Talk about what it says. I'm checking in with him again tomorrow. I'm helping, trying to get some of the assumptions. And stuff that he needs to make it work. He hopes that. By emulator. Today he's got something that we can start actually talking about. What does it say? What does it imply about that? I haven't got anything yet on Top line assumptions. I think I'm going to start by making something. Up and then ask.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:46:44.501299",
-      "unique_id": "acb6c28a-2153-4273-a80c-5f2ed800fbc2",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:46:46.450329"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:46:44.501299",
-      "expires": "2025-06-10T16:47:44.501299",
-      "display_name": null,
-      "payload": {
-        "text": "Up and then ask.",
-        "raw_text": "take for the sake of it. No, but I think it's those things that are on the product. List. I think it's like a little conceptual thing that's almost like a pretend case study. It's like. It's like, hit me. Hey, funny to say that this isn't quite right. Right, but this is kind of something we did, and you've got one slide. It's like, let me pull this up sort of thing. Yeah, that would be helpful. Some. Right. I think, Pop. I think. Sorry. I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday. I think to achieve that, we both have to get. We have to get more insight. Than we are at the moment. And I think we also have to get a bit smarter than we are at the moment. And the process has to be slicker and more supported. But I don't think it's impossible. Completely impossible, at least. These, so. Yeah, I think there's just a lot of sort of prel. Preliminary work that has to happen, and some of it. Has happened, and some of it we're doing now. Groan. Have you had a chance to spend much time with Pete? Yes. Today. And today I have spent some time. With Pete. It's getting him going in the right direction. We're in the face. Phase of we haven't yet got to the phase of being able to talk about training. Jobs. We're still in the phase of building a model and. And trade off sorry for my education. Unlike how many people? Do you have versus what top line is going to be versus how much you automate things, how. And I'm trying to make sure we get the right. Balance of moral that's useful versus. Is great. We're going to spend two weeks building a model and actually no time to actually. Talk about what it says. I'm checking in with him again tomorrow. I'm helping, trying to get some of the assumptions. And stuff that he needs to make it work. He hopes that. By emulator. Today he's got something that we can start actually talking about. What does it say? What does it imply about that? I haven't got anything yet on Top line assumptions. I think I'm going to start by making something. Up and then ask.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:46:44.501299",
-      "unique_id": "acb6c28a-2153-4273-a80c-5f2ed800fbc2",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:46:46.450329"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:46:49.837918",
-      "expires": "2025-06-10T16:47:49.837918",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:46:49.837918",
-      "unique_id": "758b1816-9100-4d55-bcdf-130bd1f716c9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:46:51.777396"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:46:49.837918",
-      "expires": "2025-06-10T16:47:49.837918",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:46:49.837918",
-      "unique_id": "758b1816-9100-4d55-bcdf-130bd1f716c9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:46:51.777396"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:47:19.649681",
-      "expires": "2025-06-10T16:48:19.649681",
-      "display_name": null,
-      "payload": {
-        "text": "What kind of timeline do they think? As in, I can even make six?",
-        "raw_text": "I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday. I think to achieve that, we both have to get. We have to get more insight. Than we are at the moment. And I think we also have to get a bit smarter than we are at the moment. And the process has to be slicker and more supported. But I don't think it's impossible. Completely impossible, at least. These, so. Yeah, I think there's just a lot of sort of prel. Preliminary work that has to happen, and some of it. Has happened, and some of it we're doing now. Groan. Have you had a chance to spend much time with Pete? Yes. Today. And today I have spent some time. With Pete. It's getting him going in the right direction. We're in the face. Phase of we haven't yet got to the phase of being able to talk about training. Jobs. We're still in the phase of building a model and. And trade off sorry for my education. Unlike how many people? Do you have versus what top line is going to be versus how much you automate things, how. And I'm trying to make sure we get the right. Balance of moral that's useful versus. Is great. We're going to spend two weeks building a model and actually no time to actually. Talk about what it says. I'm checking in with him again tomorrow. I'm helping, trying to get some of the assumptions. And stuff that he needs to make it work. He hopes that. By emulator. Today he's got something that we can start actually talking about. What does it say? What does it imply about that? I haven't got anything yet on Top line assumptions. I think I'm going to start by making something. Up and then ask. Kevin to help me fill in the gaps of. Yeah, there is a thing emerging. It starts. Honest, I don't think either them is quite forced. I think either of them has sort of been. Had a gun to their head. Say, I need something by the end of. The day today, and you would get something. You'd get something quite quickly. It might not be. It might not be very refined. What kind of timeline do they think? As in, I can even make six?",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:47:19.649681",
-      "unique_id": "815372f5-4404-4309-8975-b0ddaff6ac58",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:47:20.107811"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:47:19.649681",
-      "expires": "2025-06-10T16:48:19.649681",
-      "display_name": null,
-      "payload": {
-        "text": "What kind of timeline do they think? As in, I can even make six?",
-        "raw_text": "I think part of the reason I want. To be there on Tuesday is that I genuinely think. I genuinely think I'm the best person in the company at that, by some margin. Well, and you have. Yeah, you put. You probably are. You also have context, John. Yes. Yes. I have context on that organization. I have context and I have context. On retail organizations. I think you'll be able to push them much higher. Harder than. Because you can say, here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday. I think to achieve that, we both have to get. We have to get more insight. Than we are at the moment. And I think we also have to get a bit smarter than we are at the moment. And the process has to be slicker and more supported. But I don't think it's impossible. Completely impossible, at least. These, so. Yeah, I think there's just a lot of sort of prel. Preliminary work that has to happen, and some of it. Has happened, and some of it we're doing now. Groan. Have you had a chance to spend much time with Pete? Yes. Today. And today I have spent some time. With Pete. It's getting him going in the right direction. We're in the face. Phase of we haven't yet got to the phase of being able to talk about training. Jobs. We're still in the phase of building a model and. And trade off sorry for my education. Unlike how many people? Do you have versus what top line is going to be versus how much you automate things, how. And I'm trying to make sure we get the right. Balance of moral that's useful versus. Is great. We're going to spend two weeks building a model and actually no time to actually. Talk about what it says. I'm checking in with him again tomorrow. I'm helping, trying to get some of the assumptions. And stuff that he needs to make it work. He hopes that. By emulator. Today he's got something that we can start actually talking about. What does it say? What does it imply about that? I haven't got anything yet on Top line assumptions. I think I'm going to start by making something. Up and then ask. Kevin to help me fill in the gaps of. Yeah, there is a thing emerging. It starts. Honest, I don't think either them is quite forced. I think either of them has sort of been. Had a gun to their head. Say, I need something by the end of. The day today, and you would get something. You'd get something quite quickly. It might not be. It might not be very refined. What kind of timeline do they think? As in, I can even make six?",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:47:19.649681",
-      "unique_id": "815372f5-4404-4309-8975-b0ddaff6ac58",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:47:20.107811"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:47:23.271255",
-      "expires": "2025-06-10T16:48:23.271255",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:47:23.271255",
-      "unique_id": "34f2bed2-ee57-4a42-bf6e-1fe26db6db4d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:47:25.183140"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:47:23.271255",
-      "expires": "2025-06-10T16:48:23.271255",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:47:23.271255",
-      "unique_id": "34f2bed2-ee57-4a42-bf6e-1fe26db6db4d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:47:25.183140"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:47:54.673675",
-      "expires": "2025-06-10T16:48:54.673675",
-      "display_name": null,
-      "payload": {
-        "text": "Reforecasting, is it? Exactly. For what said's called six plus.",
-        "raw_text": "here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday. I think to achieve that, we both have to get. We have to get more insight. Than we are at the moment. And I think we also have to get a bit smarter than we are at the moment. And the process has to be slicker and more supported. But I don't think it's impossible. Completely impossible, at least. These, so. Yeah, I think there's just a lot of sort of prel. Preliminary work that has to happen, and some of it. Has happened, and some of it we're doing now. Groan. Have you had a chance to spend much time with Pete? Yes. Today. And today I have spent some time. With Pete. It's getting him going in the right direction. We're in the face. Phase of we haven't yet got to the phase of being able to talk about training. Jobs. We're still in the phase of building a model and. And trade off sorry for my education. Unlike how many people? Do you have versus what top line is going to be versus how much you automate things, how. And I'm trying to make sure we get the right. Balance of moral that's useful versus. Is great. We're going to spend two weeks building a model and actually no time to actually. Talk about what it says. I'm checking in with him again tomorrow. I'm helping, trying to get some of the assumptions. And stuff that he needs to make it work. He hopes that. By emulator. Today he's got something that we can start actually talking about. What does it say? What does it imply about that? I haven't got anything yet on Top line assumptions. I think I'm going to start by making something. Up and then ask. Kevin to help me fill in the gaps of. Yeah, there is a thing emerging. It starts. Honest, I don't think either them is quite forced. I think either of them has sort of been. Had a gun to their head. Say, I need something by the end of. The day today, and you would get something. You'd get something quite quickly. It might not be. It might not be very refined. What kind of timeline do they think? As in, I can even make six? Or 12 months out. I think he's much more focused in next two months kind of thing. I. I normally place to work. No, what Kevin's working on. Is a short to medium term thingy and he's going to be using the. He'll be using notion for that, but he's also started thinking about. Out what the sort of forecast. Machinery might need to look like as well that to feed into. Reforecasting, is it? Exactly. For what said's called six plus.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:47:54.673675",
-      "unique_id": "b637dbf4-193a-4b53-b9c3-c137aff91fe3",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:47:55.512330"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-10T16:47:54.673675",
-      "expires": "2025-06-10T16:48:54.673675",
-      "display_name": null,
-      "payload": {
-        "text": "Reforecasting, is it? Exactly. For what said's called six plus.",
-        "raw_text": "here's what worked at Sainsbury's. You can come at them a bit. It in a way that it would be very hard for anyone else to. And know how hard you can push. But I think you will have to push hard whether it's not and it's not just on. On Tuesday. Over the course of the next three to six months, it's going to be. A sort of an ongoing, you know. Yeah, I think everything that. Maria said in interviews and that the salary finance and waste stream people that. We also spoke to in that process have said, suggest that when you go to really big companies, You. You. Yeah. You're in the trenches for a while, getting whatever works in the real big company to work. That's what we had to do with network rail. It took us a while in network rail to actually figure network rail out, and. We sort of figured it out, but we didn't codify it because we thought Network Rail was the weirdest company we'd ever seen. Seen. But actually, I think more of it is more applicable to these large organizations than we really. Realized at the time. I think we put it all down to, oh, they're this weird conglomerate of companies. Where no one centrally can actually ask anybody to do anything. And I think we've just. Seen that in Live Nation. They're like lots of devolved companies that come together into one. Company, and what we should have done is pulled out the devolved company playbook, which we've actually. Built for network rep. But we didn't know that was a playbook. We just thought that was a weird thing about network rep. Being this weird multi organization organization with no central. Coordination. No central power and lots of local power, but actually, there's probably more of those than we think. Think is my guess. We've now seen another one, which is interesting. Then the question become. How do you triage those earlier so you end up in the right box? It's like. Okay, we're building an implementation plan with you. We need to sign up implementation plan what is possible. Okay, These things aren't possible. These things are possible. Here's what I. Need you to agree to do before we start. Okay. I need to almost put you down a flow diagram that ends up. With, like, can you organize sessions? No. Okay, you've got two options. You can either give us each end. Hrbp or you can fuck off kind of thing. That challenge with it, okay? Things you end up doing that you didn't think you'd end up doing, you'd asked me four years ago. You're going to be like, Doing B2B rollout planning. I would have been. No, we will be on Facebook. And working with influencers. We are. Persistent. We are, we are and. And I'm sort of, you know, as far. Too early to declare victory, but I have sort of. A growing understanding of what is realistic and. And I think. I think we. I think there is a world in which we could drive the better part of 100 delegations a day without. Actually adding resource per workday. I think to achieve that, we both have to get. We have to get more insight. Than we are at the moment. And I think we also have to get a bit smarter than we are at the moment. And the process has to be slicker and more supported. But I don't think it's impossible. Completely impossible, at least. These, so. Yeah, I think there's just a lot of sort of prel. Preliminary work that has to happen, and some of it. Has happened, and some of it we're doing now. Groan. Have you had a chance to spend much time with Pete? Yes. Today. And today I have spent some time. With Pete. It's getting him going in the right direction. We're in the face. Phase of we haven't yet got to the phase of being able to talk about training. Jobs. We're still in the phase of building a model and. And trade off sorry for my education. Unlike how many people? Do you have versus what top line is going to be versus how much you automate things, how. And I'm trying to make sure we get the right. Balance of moral that's useful versus. Is great. We're going to spend two weeks building a model and actually no time to actually. Talk about what it says. I'm checking in with him again tomorrow. I'm helping, trying to get some of the assumptions. And stuff that he needs to make it work. He hopes that. By emulator. Today he's got something that we can start actually talking about. What does it say? What does it imply about that? I haven't got anything yet on Top line assumptions. I think I'm going to start by making something. Up and then ask. Kevin to help me fill in the gaps of. Yeah, there is a thing emerging. It starts. Honest, I don't think either them is quite forced. I think either of them has sort of been. Had a gun to their head. Say, I need something by the end of. The day today, and you would get something. You'd get something quite quickly. It might not be. It might not be very refined. What kind of timeline do they think? As in, I can even make six? Or 12 months out. I think he's much more focused in next two months kind of thing. I. I normally place to work. No, what Kevin's working on. Is a short to medium term thingy and he's going to be using the. He'll be using notion for that, but he's also started thinking about. Out what the sort of forecast. Machinery might need to look like as well that to feed into. Reforecasting, is it? Exactly. For what said's called six plus.",
-        "recent_text": "",
-        "client_ids": [
-          "ed944ca8-aba3-4c14-b6fd-599531f37093",
-          "d2ba602a-5c51-403e-90ef-5e34756cde6b"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:47:54.673675",
-      "unique_id": "b637dbf4-193a-4b53-b9c3-c137aff91fe3",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:47:55.512330"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:47:59.456833",
-      "expires": "2025-06-10T16:48:59.456833",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:47:59.456833",
-      "unique_id": "e9c153d2-1b86-4926-bc12-a32502b52540",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:48:01.284469"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-10T16:47:59.456833",
-      "expires": "2025-06-10T16:48:59.456833",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-10T16:47:59.456833",
-      "unique_id": "e9c153d2-1b86-4926-bc12-a32502b52540",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-06-10T16:48:01.284469"
-    },
-    {
-      "key": "_transcription",
       "active_from": "2025-06-10T16:48:29.613886",
       "expires": "2025-06-10T16:49:29.613886",
       "display_name": null,
@@ -2917,6 +2410,452 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
       "consumed_at": "2025-06-10T17:30:02.656326"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-10T18:05:00.937083",
+      "expires": "2025-06-10T18:06:00.937083",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:05:00.937083",
+      "unique_id": "245a3eff-d210-4f38-adf3-6ec0c601fcc7",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T18:05:02.837976"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-10T18:05:00.937083",
+      "expires": "2025-06-10T18:06:00.937083",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:05:00.937083",
+      "unique_id": "245a3eff-d210-4f38-adf3-6ec0c601fcc7",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T18:05:02.837976"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T18:30:00.686843",
+      "expires": "2025-06-10T18:31:00.686843",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:30:00.686843",
+      "unique_id": "8a04bd07-1be0-4197-b076-b2ad610b37a0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T18:30:02.738555"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T18:30:00.686843",
+      "expires": "2025-06-10T18:31:00.686843",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:30:00.686843",
+      "unique_id": "8a04bd07-1be0-4197-b076-b2ad610b37a0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T18:30:02.738555"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:40:14.461196",
+      "expires": "2025-06-10T18:41:14.461196",
+      "display_name": null,
+      "payload": {
+        "text": "[A] This is a test.",
+        "raw_text": "This is a test.",
+        "recent_text": "This is a test.",
+        "history_size": 4
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:40:14.461196",
+      "unique_id": "cf1568ab-3027-4cbe-bf76-4cecfbf9f956",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T18:40:15.799197"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:40:14.461196",
+      "expires": "2025-06-10T18:41:14.461196",
+      "display_name": null,
+      "payload": {
+        "text": "[A] This is a test.",
+        "raw_text": "This is a test.",
+        "recent_text": "This is a test.",
+        "history_size": 4
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:40:14.461196",
+      "unique_id": "cf1568ab-3027-4cbe-bf76-4cecfbf9f956",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T18:40:15.799197"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:40:30.714743",
+      "expires": "2025-06-10T18:41:30.714743",
+      "display_name": null,
+      "payload": {
+        "text": "[A] Well, something's happening.",
+        "raw_text": "Well, something's happening.",
+        "recent_text": "Well, something's happening.",
+        "history_size": 3
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:40:30.714743",
+      "unique_id": "c1481f6d-10c4-4a63-95df-cd47f9c40bd4",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T18:41:12.114583"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:40:30.714743",
+      "expires": "2025-06-10T18:41:30.714743",
+      "display_name": null,
+      "payload": {
+        "text": "[A] Well, something's happening.",
+        "raw_text": "Well, something's happening.",
+        "recent_text": "Well, something's happening.",
+        "history_size": 3
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:40:30.714743",
+      "unique_id": "c1481f6d-10c4-4a63-95df-cd47f9c40bd4",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T18:41:12.114583"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:58:12.160982",
+      "expires": "2025-06-10T18:59:12.160982",
+      "display_name": null,
+      "payload": {
+        "text": "[A] Pink elephants dancing on a big ice machine.",
+        "raw_text": "Pink elephants dancing on a big ice machine.",
+        "recent_text": "Pink elephants dancing on a big ice machine.",
+        "history_size": 8
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:58:12.160982",
+      "unique_id": "efc3fc17-1be8-46fc-8889-37172a34bad3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T18:58:13.712765"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T18:58:12.160982",
+      "expires": "2025-06-10T18:59:12.160982",
+      "display_name": null,
+      "payload": {
+        "text": "[A] Pink elephants dancing on a big ice machine.",
+        "raw_text": "Pink elephants dancing on a big ice machine.",
+        "recent_text": "Pink elephants dancing on a big ice machine.",
+        "history_size": 8
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T18:58:12.160982",
+      "unique_id": "efc3fc17-1be8-46fc-8889-37172a34bad3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T18:58:13.712765"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T19:24:53.054122",
+      "expires": "2025-06-10T19:25:53.054122",
+      "display_name": null,
+      "payload": {
+        "text": "[A] What is that?",
+        "raw_text": "What is that?",
+        "recent_text": "What is that?",
+        "history_size": 3
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:24:53.054122",
+      "unique_id": "0c0bc6ef-275a-433a-ba19-26f9e8e215f5",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T19:24:53.549783"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T19:24:53.054122",
+      "expires": "2025-06-10T19:25:53.054122",
+      "display_name": null,
+      "payload": {
+        "text": "[A] What is that?",
+        "raw_text": "What is that?",
+        "recent_text": "What is that?",
+        "history_size": 3
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:24:53.054122",
+      "unique_id": "0c0bc6ef-275a-433a-ba19-26f9e8e215f5",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T19:24:53.549783"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T19:25:09.035018",
+      "expires": "2025-06-10T19:26:09.035018",
+      "display_name": null,
+      "payload": {
+        "text": "[A] Some nails.",
+        "raw_text": "Some nails.",
+        "recent_text": "Some nails.",
+        "history_size": 2
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:25:09.035018",
+      "unique_id": "e8d6698c-ee26-4419-9aa6-2e549801c211",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T19:26:02.387192"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T19:25:47.430689",
+      "expires": "2025-06-10T19:26:47.430689",
+      "display_name": null,
+      "payload": {
+        "text": "[A] So if she gets swept because she fucking with all. No.",
+        "raw_text": "So if she gets swept because she fucking with all. No.",
+        "recent_text": "So if she gets swept because she fucking with all. No.",
+        "history_size": 11
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:25:47.430689",
+      "unique_id": "d23a9002-ce40-4831-b150-40d5d5154a26",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T19:26:04.389149"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T19:25:54.956544",
+      "expires": "2025-06-10T19:26:54.956544",
+      "display_name": null,
+      "payload": {
+        "text": "[A] By the way.",
+        "raw_text": "By the way.",
+        "recent_text": "By the way.",
+        "history_size": 3
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:25:54.956544",
+      "unique_id": "9bcf0251-9bbd-47f0-aab4-8349852923ed",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T19:26:06.428237"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T19:25:09.035018",
+      "expires": "2025-06-10T19:26:09.035018",
+      "display_name": null,
+      "payload": {
+        "text": "[A] Some nails.",
+        "raw_text": "Some nails.",
+        "recent_text": "Some nails.",
+        "history_size": 2
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:25:09.035018",
+      "unique_id": "e8d6698c-ee26-4419-9aa6-2e549801c211",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T19:26:02.387192"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T19:25:47.430689",
+      "expires": "2025-06-10T19:26:47.430689",
+      "display_name": null,
+      "payload": {
+        "text": "[A] So if she gets swept because she fucking with all. No.",
+        "raw_text": "So if she gets swept because she fucking with all. No.",
+        "recent_text": "So if she gets swept because she fucking with all. No.",
+        "history_size": 11
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:25:47.430689",
+      "unique_id": "d23a9002-ce40-4831-b150-40d5d5154a26",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T19:26:04.389149"
+    },
+    {
+      "key": "_transcription",
+      "active_from": "2025-06-10T19:25:54.956544",
+      "expires": "2025-06-10T19:26:54.956544",
+      "display_name": null,
+      "payload": {
+        "text": "[A] By the way.",
+        "raw_text": "By the way.",
+        "recent_text": "By the way.",
+        "history_size": 3
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:25:54.956544",
+      "unique_id": "9bcf0251-9bbd-47f0-aab4-8349852923ed",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T19:26:06.428237"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T19:30:02.031950",
+      "expires": "2025-06-10T19:31:02.031950",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:30:02.031950",
+      "unique_id": "bc529e40-1a12-40f5-8780-567805fd42f4",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T19:30:04.107301"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T19:30:02.031950",
+      "expires": "2025-06-10T19:31:02.031950",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T19:30:02.031950",
+      "unique_id": "bc529e40-1a12-40f5-8780-567805fd42f4",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T19:30:04.107301"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-10T20:05:00.275755",
+      "expires": "2025-06-10T20:06:00.275755",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T20:05:00.275755",
+      "unique_id": "f87de366-8604-495b-b771-51221dff8ab6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T20:05:02.108388"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-10T20:05:00.275755",
+      "expires": "2025-06-10T20:06:00.275755",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T20:05:00.275755",
+      "unique_id": "f87de366-8604-495b-b771-51221dff8ab6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T20:05:02.108388"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T20:30:01.289072",
+      "expires": "2025-06-10T20:31:01.289072",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T20:30:01.289072",
+      "unique_id": "112e3f0d-6354-4b1b-873f-01130ea69205",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T20:30:03.313473"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T20:30:01.289072",
+      "expires": "2025-06-10T20:31:01.289072",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T20:30:01.289072",
+      "unique_id": "112e3f0d-6354-4b1b-873f-01130ea69205",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T20:30:03.313473"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T21:30:01.521826",
+      "expires": "2025-06-10T21:31:01.521826",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T21:30:01.521826",
+      "unique_id": "df11884f-4b81-41ac-bee2-beb37963f40e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T21:30:03.499892"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-06-10T21:30:01.521826",
+      "expires": "2025-06-10T21:31:01.521826",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-06-10T21:30:01.521826",
+      "unique_id": "df11884f-4b81-41ac-bee2-beb37963f40e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T21:30:03.499892"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-10T22:05:01.207370",
+      "expires": "2025-06-10T22:06:01.207370",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T22:05:01.207370",
+      "unique_id": "3c9b419b-9450-45fc-9395-be303e0f3b6a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T22:05:03.045200"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-06-10T22:05:01.207370",
+      "expires": "2025-06-10T22:06:01.207370",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-06-10T22:05:01.207370",
+      "unique_id": "3c9b419b-9450-45fc-9395-be303e0f3b6a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-06-10T22:05:03.045200"
     }
   ]
 }
