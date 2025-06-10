@@ -242,8 +242,8 @@
   "context_stack": [
     {
       "vars": {
-        "a_theme": "From words to life \u2014 imagined scenes of lovers and fools from the sonnets",
-        "b_theme": "Shakespeare's evocative sonnet imagery \u2014 natural and metaphorical elements",
+        "a_theme": "Shakespeare's evocative sonnet imagery \u2014 natural and metaphorical elements",
+        "b_theme": "From words to life \u2014 imagined scenes of lovers and fools from the sonnets",
         "style": "Pre-Raphaelite style inspired by artists like John Everett Millais",
         "guidance": "Transform the essence of Shakespeare's sonnets into lush visual narratives using the vivid colors and intricate details reminiscent of Pre-Raphaelite paintings, ensuring each scene presents distinct interpretative imagery that hasn't been seen in recent gallery outputs.",
         "history_var": [
@@ -718,7 +718,7 @@
     }
   ],
   "state": "running",
-  "last_updated": "2025-06-10T22:26:01.404659",
+  "last_updated": "2025-06-10T23:00:04.236082",
   "last_trigger_executions": {
     "bff3e8e7981d7694c270e89d94c0e410_2025-06-02_43": "2025-06-02T22:30:00.600854",
     "bff3e8e7981d7694c270e89d94c0e410_2025-06-02_44": "2025-06-02T23:00:00.236991",
@@ -1094,76 +1094,12 @@
     "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_39": "2025-06-10T20:30:00.396902",
     "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_40": "2025-06-10T21:00:01.716837",
     "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_41": "2025-06-10T21:30:00.982203",
-    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_42": "2025-06-10T22:00:00.467541"
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_42": "2025-06-10T22:00:00.467541",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_43": "2025-06-10T22:30:00.487095",
+    "bff3e8e7981d7694c270e89d94c0e410_2025-06-10_44": "2025-06-10T23:00:01.429492"
   },
-  "active_events": {
-    "Juggle_themes": []
-  },
+  "active_events": {},
   "event_history": [
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-09T23:28:18.329190",
-      "expires": "2025-06-09T23:29:18.329190",
-      "display_name": null,
-      "payload": {
-        "text": "Kenny wants me to work on my call windows. No, carry us around. Look at the way Jenny stares at him. Who? Too much. She's like a midwish Cuckoo. Tomash and Jenny were in deep contact. Slave as they wandered into the trees. Why adults dress like wizards. Harry Potter. Was Oxford tour. My tour guide friend was in full wizarding gear, surrounded. By eager Gryffindor. They want to know what we're doing. I need a coffee. You? No, I'm good. In search of my core. I went for a stroll and that's when I spied Thomash and Jenny in the. Full on. Which. Hamlet. What's a hamlet? We got remote cameras everywhere. Troops on the pump, couple on the bridge. So everything we shoot this morning I edit together to project onto 10 big screens. Performance based. So the remote cameras shoot you, but. You also shoot each other? Viewer versus viewee. Yeah, viewer versus. Viewed whatever the. Multiplicity of images is a metaphorical regional signifier that Hamlet and. Convicted states of mind.",
-        "recent_text": "So everything we shoot this morning I edit together to project onto 10 big screens. Performance based. So the remote cameras shoot you, but. You also shoot each other? Viewer versus viewee. Yeah, viewer versus. Viewed whatever the. Multiplicity of images is a metaphorical regional signifier that Hamlet and. Convicted states of mind.",
-        "client_ids": [
-          "f22e7051-7356-433a-998a-3592a359be71"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:28:18.329190",
-      "unique_id": "71569879-4e9c-41d6-b33f-311d3d62ff3d",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-09T23:29:41.083429"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-09T23:29:50.483004",
-      "expires": "2025-06-09T23:30:50.483004",
-      "display_name": null,
-      "payload": {
-        "text": "It never.",
-        "recent_text": "It never.",
-        "client_ids": [
-          "f22e7051-7356-433a-998a-3592a359be71"
-        ]
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:29:50.483004",
-      "unique_id": "b0a07662-cde1-4857-a688-a0ba870458fd",
-      "status": "ACTIVE",
-      "consumed_by": null,
-      "consumed_at": null
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T23:30:00.926282",
-      "expires": "2025-06-09T23:31:00.926282",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:30:00.926282",
-      "unique_id": "6c813660-8884-48c7-b73c-768bdc3643a6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T23:30:02.917443"
-    },
-    {
-      "key": "Juggle_themes",
-      "active_from": "2025-06-09T23:30:00.926282",
-      "expires": "2025-06-09T23:31:00.926282",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-09T23:30:00.926282",
-      "unique_id": "6c813660-8884-48c7-b73c-768bdc3643a6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_cloud",
-      "consumed_at": "2025-06-09T23:30:02.917443"
-    },
     {
       "key": "_transcription",
       "active_from": "2025-06-09T23:28:53.381240",
@@ -2455,6 +2391,58 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_cloud",
       "consumed_at": "2025-06-10T22:00:02.471756"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T22:30:00.496142",
+      "expires": "2025-06-10T22:31:00.496142",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T22:30:00.496142",
+      "unique_id": "70e214f8-6486-4a24-ad4d-9d41d19572e2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T22:30:02.565085"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T22:30:00.496142",
+      "expires": "2025-06-10T22:31:00.496142",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T22:30:00.496142",
+      "unique_id": "70e214f8-6486-4a24-ad4d-9d41d19572e2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T22:30:02.565085"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T23:00:01.435980",
+      "expires": "2025-06-10T23:01:01.435980",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T23:00:01.435980",
+      "unique_id": "d96ce289-ae72-4fa0-8e92-1740002ad10b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T23:00:03.500894"
+    },
+    {
+      "key": "Juggle_themes",
+      "active_from": "2025-06-10T23:00:01.435980",
+      "expires": "2025-06-10T23:01:01.435980",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-06-10T23:00:01.435980",
+      "unique_id": "d96ce289-ae72-4fa0-8e92-1740002ad10b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_cloud",
+      "consumed_at": "2025-06-10T23:00:03.500894"
     }
   ]
 }
