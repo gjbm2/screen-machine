@@ -1,12 +1,12 @@
 import asyncio
 import json
 import websockets
+from datetime import datetime, timedelta
+
 from utils.logger import debug, warning, error, info
-import time
 from routes.lightsensor import broadcast_lux_level
 from routes.audio_utils import get_audio_transcriber
-import uuid
-from datetime import datetime, timedelta
+from connection_registry import registry  # NEW central registry
 
 DEBUGGING = False  # Keep original debugging off
 
@@ -14,9 +14,9 @@ DEBUGGING = False  # Keep original debugging off
 job_progress_listeners = {}  # job_id: list of asyncio.Queue
 job_progress_listeners_latest = {}  # job_id -> most recent update
 
-# Store connected WebSocket clients
-connected_clients = set()
-audio_clients = set()  # Store audio clients separately
+# No per-client audio set needed (handled by registry)
+
+# OLD globals replaced by registry in connection_registry.py
 
 # Ping configuration
 PING_INTERVAL = 30  # seconds
@@ -24,6 +24,22 @@ PING_TIMEOUT = 10  # seconds
 
 # Add with other global variables
 last_stop_time = {}  # Track last stop time by target
+
+# Lightweight keep-alive that just sends a ping every 20 s so that
+# the event-loop touches the socket and client pings are answered.
+async def passive_keepalive(ws):
+    try:
+        while True:
+            await asyncio.sleep(20)
+            try:
+                pong_waiter = await ws.ping()
+                # wait but ignore timeout – client will decide
+                await asyncio.wait_for(pong_waiter, timeout=5)
+            except Exception:
+                # Any error means the socket is likely closed; let outer handler deal
+                break
+    except asyncio.CancelledError:
+        pass
 
 async def ping_client(websocket, client_id=None):
     """Send periodic pings to keep connection alive and detect stale connections."""
@@ -43,54 +59,15 @@ async def ping_client(websocket, client_id=None):
     except asyncio.CancelledError:
         pass  # Task was cancelled, exit gracefully
 
-async def force_clear_all_clients():
-    """Force clear ALL audio clients - no mercy for stale connections."""
-    client_count = len(audio_clients)
-    if client_count > 0:
-        info(f"🧹 Force clearing {client_count} audio clients")
-        
-        # Try to close each client gracefully first
-        for client in list(audio_clients):
-            try:
-                await client.close(code=1000, reason="Force cleanup")
-            except Exception:
-                pass  # Don't care if it fails
-        
-        # Force clear the set
-        audio_clients.clear()
-        info("🧹 All audio clients force cleared")
-    
-    # Also clear the transcriber clients
-    transcriber = get_audio_transcriber()
-    if transcriber.client_ids:
-        info(f"🧹 Force clearing {len(transcriber.client_ids)} transcriber clients")
-        transcriber.client_ids.clear()
-
-async def cleanup_stale_clients():
-    """Remove clients that are no longer connected."""
-    stale_clients = []
-    for client in list(audio_clients):
-        try:
-            # Try to ping the client to see if it's still alive
-            await client.ping()
-        except Exception:
-            # Client is disconnected, mark for removal
-            stale_clients.append(client)
-    
-    # Remove stale clients
-    for stale_client in stale_clients:
-        audio_clients.discard(stale_client)
-        info(f"🧹 Cleaned up stale client {stale_client.remote_address}")
-    
-    if stale_clients:
-        info(f"🧹 Cleaned up {len(stale_clients)} stale clients")
-
 # Handle WebSocket connections from overlay clients (receivers) and relays (senders)
 async def handler(websocket):
     is_audio_client = False
     transcriber = None
     client_id = None
     ping_task = None
+    target = "global"
+    streaming_enabled = False  # Only true between start_recording / stop_recording
+    keepalive_task = None
 
     try:
         # Start ping task
@@ -113,16 +90,21 @@ async def handler(websocket):
                         return
                         
                     is_audio_client = True
-                    audio_clients.add(websocket)
-                    info("🎵 Audio stream started")
+                    registry.attach_audio(target, websocket)
+                    info("🎵 Audio websocket connected (awaiting start_recording)")
                     
-                    # Get or generate client_id
-                    client_id = data.get("client_id", str(uuid.uuid4()))
-                    
-                    # Initialize transcriber for this audio client
-                    transcriber = get_audio_transcriber()
-                    transcriber.add_client(client_id, target)
-                    # Don't start transcription yet - wait for explicit start signal
+                    # Lazily create transcriber on first start
+                    if not transcriber:
+                        transcriber = get_audio_transcriber()
+                    transcriber.target = target
+                    transcriber.start_transcription()
+
+                    # Audio sockets send data frequently; no need for ping watchdog
+                    if ping_task:
+                        ping_task.cancel()
+
+                    # Start passive keep-alive so we respond to client pings
+                    keepalive_task = asyncio.create_task(passive_keepalive(websocket))
 
                 # Handle lux sensor data if present
                 if "lux" in data:
@@ -152,7 +134,7 @@ async def handler(websocket):
         except asyncio.TimeoutError:
             # No message received within timeout - this is a persistent overlay listener
             if DEBUGGING: debug(f"🖥️ Registered overlay client: {websocket.remote_address}")
-            connected_clients.add(websocket)
+            registry.add_overlay(websocket)
             try:
                 await websocket.wait_closed()
             except websockets.exceptions.ConnectionClosed:
@@ -170,28 +152,30 @@ async def handler(websocket):
                             command = cmd.get("command")
                             if command == "start_recording":
                                 info("🎙️ Start recording command received")
+                                streaming_enabled = True
                                 if transcriber:
+                                    transcriber.target = target  # ensure up to date
                                     transcriber.start_transcription()
                             elif command == "stop_recording":
                                 info("🎙️ Stop recording command received")
-                                # FORCE CLEAR ALL CLIENTS - no mercy for stale connections
-                                await force_clear_all_clients()
+                                streaming_enabled = False
+
+                                # Gracefully stop transcription for THIS client/target only
                                 if transcriber:
-                                    # Stop ALL transcription
                                     transcriber.stop_transcription()
-                                    # Clear recording status
-                                    transcriber.recording_by_destination.clear()
-                                    info("🎙️ Recording completely stopped and all clients cleared")
-                                    # Close this connection too
-                                    await websocket.close(code=1000, reason="Stop recording requested")
-                                    return
+                                    info("🎙️ Transcription stopped (client keeps connection open)")
+
+                                # Record stop time to enforce short cooldown against instant reconnect
+                                last_stop_time[target] = datetime.now()
+
+                                # Socket remains open; client may start again without reconnecting
                     except json.JSONDecodeError:
                         # If not JSON, treat as audio data
-                        if transcriber and isinstance(msg, bytes):
+                        if streaming_enabled and transcriber and isinstance(msg, bytes):
                             transcriber.add_audio_data(msg)
                 else:
-                    # Binary message - treat as audio data
-                    if transcriber:
+                    # Binary message - treat as audio data only if streaming enabled
+                    if streaming_enabled and transcriber and isinstance(msg, bytes):
                         transcriber.add_audio_data(msg)
             else:
                 if DEBUGGING: debug(f"📥 Message from {websocket.remote_address}: {msg}")
@@ -211,8 +195,8 @@ async def handler(websocket):
                 except json.JSONDecodeError:
                     debug(f"⚠️ Invalid JSON from {websocket.remote_address}: {msg}")
 
-    except websockets.exceptions.ConnectionClosed:
-        debug("🔌 Connection closed normally")
+    except websockets.exceptions.ConnectionClosed as e:
+        info(f"🔌 Connection closed (code={e.code} reason={e.reason})")
     except Exception as e:
         error(f"❌ Error in WebSocket handler: {e}")
     finally:
@@ -221,19 +205,14 @@ async def handler(websocket):
             ping_task.cancel()
         
         if is_audio_client:
-            audio_clients.discard(websocket)
-            info(f"🎵 Audio stream ended for client {client_id}")
-            
-            if transcriber and client_id:
-                transcriber.remove_client(client_id)
-                remaining_clients = len(audio_clients)
-                info(f"🎙️ {remaining_clients} audio clients still connected")
+            registry.detach_audio(target, websocket)
+            info("🎵 Audio stream ended for audio websocket")
+            if transcriber:
+                transcriber.stop_transcription()
         
-        # Clean up any other stale clients while we're at it
-        try:
-            await cleanup_stale_clients()
-        except Exception as cleanup_error:
-            error(f"❌ Error during stale client cleanup: {cleanup_error}")
+        # No stale-audio cleanup needed; registry tracks live sockets automatically
+        if keepalive_task:
+            keepalive_task.cancel()
 
 # Send overlay message to all connected clients
 async def send_overlay_to_clients(data: dict):
@@ -243,8 +222,8 @@ async def send_overlay_to_clients(data: dict):
     if data.get("type") == "transcription":
         info(f"🎙️ Broadcasting transcription: target='{data.get('target')}'")
 
-    if not connected_clients:
-        debug("⚠️ No connected clients to send to.")
+    if not registry.overlays:
+        debug("⚠️ No connected overlay clients.")
         return
 
     msg = json.dumps(data)
@@ -254,7 +233,7 @@ async def send_overlay_to_clients(data: dict):
     disconnected_clients = []
     successful_sends = 0
     
-    for ws in list(connected_clients):  # Use list() to avoid modifying set during iteration
+    for ws in list(registry.overlays):  # Iterate over a snapshot
         try:
             await ws.send(msg)
             successful_sends += 1
@@ -269,7 +248,7 @@ async def send_overlay_to_clients(data: dict):
     
     # Remove disconnected clients
     for ws in disconnected_clients:
-        connected_clients.discard(ws)
+        registry.remove_overlay(ws)
     
     # Log results
     if data.get("type") == "transcription":
