@@ -2669,28 +2669,39 @@ def process_jinja_template(value: Any, context: Dict[str, Any], publish_destinat
             # Add _event if it exists in the context (crucial for event-triggered actions)
             if "_event" in context:
                 template_vars["_event"] = context["_event"]
+                # Also make it available as 'event' (without underscore) for convenience
+                template_vars["event"] = context["_event"]
             
             # Also check if there's a current event being processed
             if "current_event" in context:
                 # If _event isn't already set, use current_event as _event
                 if "_event" not in template_vars:
                     template_vars["_event"] = context["current_event"]
+                    template_vars["event"] = context["current_event"]
                 # Also make it available as current_event
                 template_vars["current_event"] = context["current_event"]
             
             # Render the template with our variables
             result = template.render(**template_vars)
+            
             return result
         except Exception as e:
             error(f"Error processing Jinja template: {str(e)}")
             # Return original if there's an error
             return value
     
-    # For dictionaries, process each value
+    # For dictionaries, process both keys and values
     elif isinstance(value, dict):
         result = {}
         for k, v in value.items():
-            result[k] = process_jinja_template(v, context, publish_destination)
+            # Process the key if it's a string
+            if isinstance(k, str):
+                processed_key = process_jinja_template(k, context, publish_destination)
+            else:
+                processed_key = k
+            # Process the value
+            processed_value = process_jinja_template(v, context, publish_destination)
+            result[processed_key] = processed_value
         return result
     
     # For lists, process each item
@@ -2714,6 +2725,13 @@ def process_instruction_jinja(instruction: Dict[str, Any], context: Dict[str, An
     Returns:
         A new instruction object with all Jinja templates processed
     """
+    # DEBUG: Log for terminate instructions
+    if instruction.get("action") == "terminate" and "test" in instruction:
+        from utils.logger import info
+        info(f"DEBUG PROCESS_JINJA: Processing terminate instruction with test='{instruction['test']}', conf_int={context.get('vars', {}).get('conf_int', 'NOT_FOUND')}")
+        info(f"DEBUG PROCESS_JINJA: Full instruction before processing: {instruction}")
+        info(f"DEBUG PROCESS_JINJA: Full context: {context}")
+    
     # Add rate-limiting for debug logging
     if not hasattr(process_instruction_jinja, '_last_debug_log_time'):
         process_instruction_jinja._last_debug_log_time = {}
@@ -2727,6 +2745,14 @@ def process_instruction_jinja(instruction: Dict[str, Any], context: Dict[str, An
     
     # Process the entire instruction recursively
     processed_instruction = process_jinja_template(instruction, context, publish_destination)
+    
+    # DEBUG: Log for terminate instructions after processing
+    if instruction.get("action") == "terminate" and "test" in instruction:
+        # DEBUG: Check if this is a terminate instruction with test field
+        if isinstance(processed_instruction, dict) and processed_instruction.get("action") == "terminate":
+            from utils.logger import info
+            info(f"DEBUG INSTRUCTION: Processed terminate instruction, test field = '{processed_instruction.get('test', 'NO_TEST_FIELD')}'")
+            info(f"DEBUG INSTRUCTION: Full processed instruction: {processed_instruction}")
     
     # Special handling for specific actions
     if isinstance(processed_instruction, dict) and "action" in processed_instruction:

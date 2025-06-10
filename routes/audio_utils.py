@@ -3,10 +3,13 @@ import wave
 import os
 from utils.logger import debug, info, error, warning
 import assemblyai as aai
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
-from routes.audio_api import transcription_history
+from collections import deque
 from flask import Blueprint, request
+
+# Create a deque to store the last 1000 words of transcription
+transcription_history: deque[str] = deque(maxlen=1000)
 
 # Create blueprint
 audio_bp = Blueprint('audio', __name__)
@@ -16,6 +19,7 @@ SAMPLE_RATE = 16000
 CHANNELS = 1
 SAMPLE_WIDTH = 2
 CHUNK_DURATION = 5  # seconds per chunk for AssemblyAI
+EVENT_INTERVAL_SECONDS = 30  # Minimum seconds between transcription events
 
 class AudioTranscriber:
     def __init__(self):
@@ -26,11 +30,54 @@ class AudioTranscriber:
             raise ValueError("ASSEMBLY_AI_KEY environment variable not set")
         
         aai.settings.api_key = api_key
-        self.is_active = False
+        self.is_active = False  # Transcription active
+        self.recording_by_destination = {}  # Track recording state by destination
         self.audio_buffer = bytearray()
         self.bytes_per_chunk = SAMPLE_RATE * SAMPLE_WIDTH * CHANNELS * 5  # 5 seconds of audio
         self.min_chunk_size = SAMPLE_RATE * SAMPLE_WIDTH * CHANNELS * 2  # 2 seconds minimum
+        self.target = "global"  # Default target
+        self.client_ids = set()  # Set of client IDs for this target
+        self.last_event_word_count = 0  # Track how many words have been sent in the last event
+        self.last_event_time = datetime.now()
+        self.event_interval = EVENT_INTERVAL_SECONDS
         info("🎙️ Audio transcriber initialized")
+    
+    def add_client(self, client_id: str, target: str = "global") -> None:
+        """Add a client to the transcriber."""
+        self.client_ids.add(client_id)
+        self.target = target
+        info(f"🎙️ Added client {client_id} to target {target}")
+    
+    def remove_client(self, client_id: str) -> None:
+        """Remove a client from the transcriber."""
+        # Store the target before removing the client
+        target = self.target
+        self.client_ids.discard(client_id)
+        
+        info(f"🎙️ Removed client {client_id}")
+        
+        # If no clients left at all, stop transcription
+        if not self.client_ids:
+            self.is_active = False
+            # Clear recording status for this target
+            if target in self.recording_by_destination:
+                self.recording_by_destination[target] = False
+            info("🎙️ No more clients connected, stopping transcription")
+    
+    def is_recording_for_destination(self, destination: str) -> bool:
+        """Check if audio is being recorded for a specific destination."""
+        return self.recording_by_destination.get(destination, False)
+    
+    def get_recording_status(self) -> dict:
+        """Get the recording status for all destinations based on active clients."""
+        # Clear any stale recording status
+        self.recording_by_destination.clear()
+        
+        # Only set recording status if transcription is active
+        if self.is_active and self.target:
+            self.recording_by_destination[self.target] = True
+        
+        return self.recording_by_destination
     
     def add_audio_data(self, audio_chunk: bytes) -> None:
         """Add audio data to the buffer."""
@@ -88,7 +135,7 @@ class AudioTranscriber:
             # Create transcriber and transcribe
             transcriber = aai.Transcriber()
             try:
-                # Create transcription config with correct parameters
+                # Create transcription config – keep it minimal for robust output
                 config = aai.TranscriptionConfig(
                     language_code="en"
                 )
@@ -97,12 +144,64 @@ class AudioTranscriber:
                 
                 # Only log the transcription text and add to history
                 if transcript and transcript.text:
-                    print(f"\n🎙️ Transcription: {transcript.text}\n")
+                    # Build a plain speaker-labelled transcript (no extra features)
+                    rich_text = []
+                    if transcript.utterances:
+                        for utt in transcript.utterances:
+                            rich_text.append(f"[{utt.speaker}] {utt.text}")
+                    
                     # Add words to history
                     transcription_history.extend(transcript.text.split())
-                    return transcript.text
+
+                    # Prepare WebSocket message
+                    from overlay_ws_server import send_overlay_to_clients
+                    import asyncio
+                    
+                    # Use raw text if no utterances were found
+                    formatted_text = "\n".join(rich_text) if rich_text else transcript.text
+                    
+                    transcription_msg = {
+                        "type": "transcription",
+                        "text": formatted_text,  # Use formatted text or raw text
+                        "raw_text": transcript.text,  # Keep the raw text for reference
+                        "target": self.target,
+                        "client_ids": list(self.client_ids)
+                    }
+                    
+                    # Broadcast to all connected clients
+                    try:
+                        asyncio.create_task(send_overlay_to_clients(transcription_msg))
+                    except Exception as e:
+                        error(f"❌ Failed to create WebSocket broadcast task: {e}")
+                    
+                    # Decide whether to emit an event (rate-limited)
+                    now_time = datetime.now()
+                    if (now_time - self.last_event_time).total_seconds() >= self.event_interval:
+                        from routes.scheduler_utils import throw_event
+                        debug(f"🎙️ Throwing _transcription event with {len(transcription_history)} words of history")
+                        
+                        # Calculate full history and recent text
+                        full_history = ' '.join(transcription_history)
+                        recent_words = list(transcription_history)[self.last_event_word_count:]
+                        recent_text = ' '.join(recent_words)
+                        
+                        throw_event(
+                            scope=self.target,
+                            key="_transcription",
+                            ttl="60s",
+                            payload={
+                                "text": formatted_text,  # Use formatted text or raw text
+                                "raw_text": full_history,  # Keep the raw text for reference
+                                "recent_text": recent_text,
+                                "client_ids": list(self.client_ids)
+                            }
+                        )
+                        # Update tracking
+                        self.last_event_word_count = len(transcription_history)
+                        self.last_event_time = now_time
+                    
+                    return "\n".join(rich_text)
                 else:
-                    print("\n🎙️ No transcription text received\n")
                     return None
                     
             except Exception as e:
@@ -117,12 +216,21 @@ class AudioTranscriber:
         """Start the transcription process."""
         self.is_active = True
         self.audio_buffer.clear()
-        print("🎙️ Audio transcription started")
+        # Set recording status for current target
+        if self.target:
+            self.recording_by_destination[self.target] = True
+        # Clear transcription history when starting a new session
+        transcription_history.clear()
+        self.last_event_word_count = 0
+        self.last_event_time = datetime.now() - timedelta(seconds=self.event_interval + 1)  # Allow immediate event
+        print("🎙️ Audio transcription started - history cleared for new session")
     
     def stop_transcription(self):
         """Stop the transcription process."""
         self.is_active = False
         self.audio_buffer.clear()
+        # Clear recording status for all destinations
+        self.recording_by_destination.clear()
         print("🎙️ Audio transcription stopped")
 
 # Global transcriber instance
@@ -138,13 +246,13 @@ def get_audio_transcriber():
 @audio_bp.route('/start-transcription', methods=['POST'])
 def start_transcription():
     """Start the audio transcription process."""
-    transcriber.start_transcription()
+    get_audio_transcriber().start_transcription()
     return {'status': 'started'}
 
 @audio_bp.route('/stop-transcription', methods=['POST'])
 def stop_transcription():
     """Stop the audio transcription process."""
-    transcriber.stop_transcription()
+    get_audio_transcriber().stop_transcription()
     return {'status': 'stopped'}
 
 @audio_bp.route('/audio', methods=['POST'])
@@ -152,5 +260,5 @@ def handle_audio():
     """Handle incoming audio data."""
     audio_data = request.get_data()
     if audio_data:
-        transcriber.add_audio_data(audio_data)
+        get_audio_transcriber().add_audio_data(audio_data)
     return {'status': 'received'} 

@@ -661,8 +661,12 @@ def handle_device_standby(instruction, context, now, output, publish_destination
         error(traceback.format_exc())
 
 def handle_set_var(instruction, context, now, output, publish_destination):
-    # Get var_name - already processed with Jinja at instruction level
-    var_name = instruction["var"]
+    # Process Jinja templates in the instruction at execution time
+    from routes.scheduler_utils import process_jinja_template
+    processed_instruction = process_jinja_template(instruction, context, publish_destination)
+    
+    # Get var_name - now processed with Jinja at execution time
+    var_name = processed_instruction.get("var")
     
     # Special case: if var_name is null, reset all variables in the context
     if var_name is None:
@@ -683,26 +687,26 @@ def handle_set_var(instruction, context, now, output, publish_destination):
     # Regular set_var behavior for named variables
     # Support both direct value and nested input.value format
     value = None
-    if "value" in instruction:
-        value = instruction["value"]
-    elif "input" in instruction and isinstance(instruction["input"], dict):
-        if "value" in instruction["input"]:
-            value = instruction["input"]["value"]
-        elif "var_ref" in instruction["input"]:
-            ref_var = instruction["input"]["var_ref"]
+    if "value" in processed_instruction:
+        value = processed_instruction["value"]
+    elif "input" in processed_instruction and isinstance(processed_instruction["input"], dict):
+        if "value" in processed_instruction["input"]:
+            value = processed_instruction["input"]["value"]
+        elif "var_ref" in processed_instruction["input"]:
+            ref_var = processed_instruction["input"]["var_ref"]
             if "vars" in context and ref_var in context["vars"]:
                 value = context["vars"][ref_var]
-            elif "default" in instruction:
-                value = instruction["default"]
-        elif len(instruction["input"]) == 0:
+            elif "default" in processed_instruction:
+                value = processed_instruction["default"]
+        elif len(processed_instruction["input"]) == 0:
             # If input is an empty object {}, interpret as explicitly setting to null
             value = None
     
     # Fix: Check for top-level default if no value was found through other methods
-    if value is None and "default" in instruction:
-        value = instruction["default"]
+    if value is None and "default" in processed_instruction:
+        value = processed_instruction["default"]
     
-    if value is None and not ("input" in instruction and isinstance(instruction["input"], dict) and len(instruction["input"]) == 0):
+    if value is None and not ("input" in processed_instruction and isinstance(processed_instruction["input"], dict) and len(processed_instruction["input"]) == 0):
         error_msg = f"Error in set_var: could not determine value"
         log_schedule(error_msg, publish_destination, now, output)
         return False
@@ -713,6 +717,28 @@ def handle_set_var(instruction, context, now, output, publish_destination):
         msg = f"Removed variable {var_name}."
         log_schedule(msg, publish_destination, now, output)
     else:
+        # Attempt to convert string values to appropriate types
+        if isinstance(value, str):
+            # Try to convert to number (int or float) if it looks like one
+            try:
+                # Check if it's an integer
+                if value.isdigit() or (value.startswith('-') and value[1:].isdigit()):
+                    value = int(value)
+                # Check if it's a float
+                elif '.' in value and value.replace('.', '').replace('-', '').isdigit():
+                    float_val = float(value)
+                    # Keep as int if it's a whole number
+                    if float_val == int(float_val):
+                        value = int(float_val)
+                    else:
+                        value = float_val
+                # Check if it's a boolean
+                elif value.lower() in ['true', 'false']:
+                    value = value.lower() == 'true'
+            except (ValueError, AttributeError):
+                # If conversion fails, keep as string
+                pass
+        
         context["vars"][var_name] = value
         msg = f"Set {var_name} to {value}."
         log_schedule(msg, publish_destination, now, output)
@@ -750,24 +776,85 @@ def handle_terminate(instruction, context, now, output, publish_destination):
     from routes.scheduler_utils import process_jinja_template
     from routes.scheduler_utils import throw_event, scheduler_schedule_stacks
     
+    def jinja_string_to_bool(value):
+        """
+        Convert a Jinja template result (often a string) to a boolean in a robust way.
+        Rules:
+        1. If value is already bool -> return it.
+        2. If value is int/float -> return value != 0
+        3. If value is a string:
+           - Strip whitespace, lower-case for comparison.
+           - Explicit **false** strings: '', 'false', 'no', 'n', '0', 'off', 'none', 'null'.
+           - Explicit **true** strings: 'true', 'yes', 'y', '1', 'on', 't'.
+           - If string is numeric (e.g. '23', '0.0') -> convert and evaluate != 0
+           - Anything else (non-empty) is treated as True.
+        """
+        # Case 1: Already boolean
+        if isinstance(value, bool):
+            return value
+        
+        # Case 2: Numeric types
+        if isinstance(value, (int, float)):
+            return value != 0
+        
+        # Case 3: Everything else – treat as string
+        if value is None:
+            return False
+        
+        if not isinstance(value, str):
+            # Fallback to truthiness of the object
+            return bool(value)
+        
+        v = value.strip()
+        if not v:
+            return False
+        
+        v_lower = v.lower()
+        
+        false_strings = {'false', 'no', 'n', '0', 'off', 'none', 'null'}
+        true_strings = {'true', 'yes', 'y', '1', 'on', 't'}
+        
+        if v_lower in false_strings:
+            return False
+        if v_lower in true_strings:
+            return True
+        
+        # Try numeric conversion
+        try:
+            num = float(v)
+            return num != 0
+        except ValueError:
+            pass
+        
+        # Default: any other non-empty string is True
+        return True
+    
     # Get the terminate mode - 'normal' (default), 'immediate', or 'block'
     terminate_mode = instruction.get("mode", "normal")
     
     # Check test condition if provided
     test_expr = instruction.get("test")
     if test_expr:
-        try:
-            # Process the test expression with Jinja
-            test_result = process_jinja_template(test_expr, context)
-            # Convert to boolean - empty string, 0, false, none are all False
-            if not test_result or test_result.lower() in ('false', '0', 'none', ''):
-                msg = f"Terminate instruction test condition evaluated to false: '{test_expr}'"
-                log_schedule(msg, publish_destination, now, output)
-                return False  # Don't terminate if test is false
-        except Exception as e:
-            error_msg = f"Error evaluating terminate test condition: {str(e)}"
-            log_schedule(error_msg, publish_destination, now, output)
-            return False  # Don't terminate if test evaluation fails
+        # DEBUG: Show exactly what we received after Jinja processing
+        msg = f"DEBUG TERMINATE: test_expr = '{test_expr}', conf_int in context = {context.get('vars', {}).get('conf_int', 'NOT_FOUND')}"
+        log_schedule(msg, publish_destination, now, output)
+        
+        # The test expression is already processed by process_instruction_jinja at runtime
+        # Convert to boolean using our robust function
+        test_result = jinja_string_to_bool(test_expr)
+        
+        # DEBUG: Show boolean conversion result
+        msg = f"DEBUG TERMINATE: Boolean result = {test_result}"
+        log_schedule(msg, publish_destination, now, output)
+            
+        if not test_result:
+            msg = f"Terminate instruction test condition evaluated to false: '{test_expr}'"
+            log_schedule(msg, publish_destination, now, output)
+            return False  # Don't terminate if test is false
+    else:
+        # DEBUG: Show when no test condition
+        msg = f"DEBUG TERMINATE: NO test condition found in instruction"
+        log_schedule(msg, publish_destination, now, output)
     
     # Get current schedule to check prevent_unload
     prevent_unload = False
@@ -1101,6 +1188,9 @@ def handle_reason(instruction, context, now, output, publish_destination):
     reasoner_id = instruction.get("reasoner", "default")
     output_vars = instruction.get("output_vars", [])
 
+    # text_input should already be processed with Jinja at instruction level
+    # No need for additional processing here
+
     # If image_inputs is a string, it could be either a variable name or a string representation of a list
     if isinstance(image_inputs, str):
         # First check if it looks like a string representation of a list
@@ -1206,6 +1296,7 @@ def handle_reason(instruction, context, now, output, publish_destination):
             images=image_inputs if image_inputs else None
         )
         
+        # If the reasoner failed to produce valid outputs, create a fallback structure
         if not result or "outputs" not in result or not isinstance(result["outputs"], list):
             error_msg = f"Reasoning with '{reasoner_id}' failed to return valid outputs array."
             log_schedule(error_msg, publish_destination, now, output)
