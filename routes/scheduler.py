@@ -441,7 +441,8 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
     elif "_event" in context and should_log_debug:
         debug(f"Context already has _event at root level: {context['_event']}")
     
-    # Process the entire instruction with Jinja templating first
+    # Process the instruction with Jinja templating at RUNTIME (just before execution)
+    # This ensures variables set by previous instructions are available
     processed_instruction = process_instruction_jinja(instruction, context, publish_destination)
     
     action = processed_instruction.get("action")

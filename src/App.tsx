@@ -13,6 +13,7 @@ import Scheduler from './pages/scheduler.tsx';
 import { ReferenceImagesProvider } from "./contexts/ReferenceImagesContext";
 import { LoopeViewProvider } from "@/contexts/LoopeViewContext";
 import LightSense from './pages/LightSense';
+import AndroidApp from './pages/AndroidApp';
 
 const queryClient = new QueryClient();
 
@@ -31,6 +32,8 @@ const App = () => (
             <Route path="/schema-dynamic-form" element={<SchemaDynamicForm />} />
             <Route path="/scheduler" element={<Scheduler />} />
             <Route path="/lightsense" element={<LightSense />} />
+            <Route path="/androidapp" element={<AndroidApp />} />
+            <Route path="/app" element={<AndroidApp />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

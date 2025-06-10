@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format, formatDistance } from 'date-fns';
@@ -6,7 +6,7 @@ import apiService from '@/utils/api';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { BucketItem as ApiBucketItem, Bucket as ApiBucket } from '@/utils/api';
-import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, Settings, ExternalLink, Send, Trash2, Copy, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop, Maximize2, ArrowUp, ArrowDown, Pause, Square, ChevronUp, ChevronDown, Play, X } from 'lucide-react';
+import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, Settings, ExternalLink, Send, Trash2, Copy, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop, Maximize2, ArrowUp, ArrowDown, Pause, Square, ChevronUp, ChevronDown, Play, X, Mic, Moon } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -51,8 +51,9 @@ import { isVideoFile } from '@/utils/image-utils';
 // Import the new useLoopeView context
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import { Switch } from "@/components/ui/switch";
-import { Moon } from "lucide-react";
 import { Api } from "@/utils/api";
+import { Download } from 'lucide-react';
+import { getTranscriptionStatus } from '../../api';
 
 // Define the expected types based on the API response
 interface BucketItem extends ApiBucketItem {
@@ -355,6 +356,10 @@ export const BucketGridView = ({
   const api = new Api();
   
   const hasCamera = 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices;
+  const [showAppDownloadModal, setShowAppDownloadModal] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isNewVersion, setIsNewVersion] = useState(false);
 
   const debouncedFetchBucketDetails = useCallback(() => {
     if (refreshTimeout) {
@@ -394,6 +399,12 @@ export const BucketGridView = ({
     
     fetchMaskState();
   }, [destination]);
+
+  useEffect(() => {
+    // Detect iOS
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    setIsIOS(/iphone|ipad|ipod/.test(userAgent));
+  }, []);
 
   const fetchDestinations = async () => {
     try {
@@ -2009,6 +2020,140 @@ export const BucketGridView = ({
     }
   };
 
+  const checkAppVersion = async () => {
+    const APK_PATH = '/build/sdk/app-release.apk';
+    const STORAGE_KEY = 'screenmachine_app_version';
+    
+    try {
+      // Get the current version info from localStorage
+      const storedVersion = localStorage.getItem(STORAGE_KEY);
+      const currentVersion = storedVersion ? JSON.parse(storedVersion) : null;
+      
+      // If no stored version exists, we should show download modal
+      if (!currentVersion) {
+        setIsNewVersion(false);
+        return true;
+      }
+      
+      // Get the server's file info
+      const response = await fetch(APK_PATH, { method: 'HEAD' });
+      const lastModified = response.headers.get('last-modified');
+      
+      if (!lastModified) {
+        console.error('Could not get last modified date for APK');
+        setIsNewVersion(false);
+        return true; // Default to showing download if we can't check
+      }
+      
+      const serverTimestamp = new Date(lastModified).getTime();
+      
+      // If we have a stored version and it's older than the server version
+      if (currentVersion.timestamp < serverTimestamp) {
+        setIsNewVersion(true);
+        return true; // New version available
+      }
+      
+      setIsNewVersion(false);
+      return false; // No new version needed
+    } catch (error) {
+      console.error('Error checking app version:', error);
+      setIsNewVersion(false);
+      return true; // Default to showing download on error
+    }
+  };
+
+  const handleRecordClick = async () => {
+    if (isIOS) {
+      toast.error('iOS support coming soon');
+      return;
+    }
+
+    // First check if we need to update
+    const needsUpdate = await checkAppVersion();
+    if (needsUpdate) {
+      setShowAppDownloadModal(true);
+      return;
+    }
+
+    // If no update needed, try to deeplink
+    const appUrl = `${import.meta.env.VITE_URL}/app?target=${destination}&recording=${isTranscribing ? 'stop' : 'start'}`;
+    
+    // Create a fallback URL that will trigger the download modal
+    const fallbackUrl = `${window.location.origin}${window.location.pathname}?show_download=true`;
+    
+    // Try to open the app using Android Intent URL scheme with fallback
+    const intentUrl = `intent://${appUrl.replace('http://', '')}#Intent;scheme=http;package=com.screenmachine.audio;S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`;
+    
+    // Try to open the app
+    window.location.href = intentUrl;
+  };
+
+  // Check URL parameters on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('show_download') === 'true') {
+      setShowAppDownloadModal(true);
+      // Clean up the URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  // Poll transcription status instead of using WebSocket
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout | null = null;
+
+    const pollTranscriptionStatus = async () => {
+      try {
+        const status = await getTranscriptionStatus();
+        console.log('Transcription status:', status); // Debug log
+        // Update recording state based on API response
+        const isRecording = status.is_recording[destination] || false;
+        console.log('Is recording:', isRecording, 'destination:', destination); // Debug log
+        setIsTranscribing(isRecording);
+      } catch (error) {
+        console.error('Error polling transcription status:', error);
+      }
+    };
+
+    // Initial poll
+    pollTranscriptionStatus();
+
+    // Set up polling interval
+    pollInterval = setInterval(pollTranscriptionStatus, 10000); // Poll every 10 seconds
+    
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [destination]);
+
+  // Get the base URL from VITE_API_URL, strip trailing /api if present
+  const apiUrl = import.meta.env.VITE_API_URL;
+  const baseUrl = apiUrl.endsWith('/api') ? apiUrl.slice(0, -4) : apiUrl;
+  const sdkUrl = `${baseUrl}/sdk/app-release.apk`;
+
+  const storeVersionInfo = async () => {
+    const APK_PATH = '/build/sdk/app-release.apk';
+    const STORAGE_KEY = 'screenmachine_app_version';
+    
+    try {
+      // Get the server's file info
+      const response = await fetch(APK_PATH, { method: 'HEAD' });
+      const lastModified = response.headers.get('last-modified');
+      
+      if (lastModified) {
+        const timestamp = new Date(lastModified).getTime();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          timestamp,
+          path: APK_PATH
+        }));
+      }
+    } catch (error) {
+      console.error('Error storing version info:', error);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* DnD interactions handled by global context; monitor via hooks */}
@@ -2080,14 +2225,43 @@ export const BucketGridView = ({
                     )}
                   </div>
 
-                  {/* Add mask toggle */}
+                  {/* Add mask toggle and record button */}
                   <div className="flex items-center gap-2">
-                    <Moon className="h-4 w-4 text-muted-foreground" />
-                    <Switch
-                      checked={maskEnabled}
-                      onCheckedChange={handleMaskToggle}
-                      className="data-[state=checked]:bg-primary"
-                    />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant={maskEnabled ? "default" : "outline"}
+                          onClick={() => handleMaskToggle(!maskEnabled)}
+                          className="h-8 px-2 sm:px-3"
+                        >
+                          <Moon className="h-4 w-4" />
+                          <span className="ml-1 hidden sm:inline">Mask</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        {maskEnabled ? "Disable mask" : "Enable mask"}
+                      </TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant={isTranscribing ? "default" : "outline"}
+                          onClick={handleRecordClick}
+                          className="h-8 px-2 sm:px-3"
+                        >
+                          <Mic className={`h-4 w-4 ${isTranscribing ? 'animate-pulse' : ''}`} />
+                          <span className="ml-1 hidden sm:inline">
+                            {isTranscribing ? "Stop Recording" : "Start Recording"}
+                          </span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        {isTranscribing ? "Stop recording" : "Start recording"}
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
                 
@@ -2314,6 +2488,53 @@ export const BucketGridView = ({
         description={`Are you sure you want to delete ${deleteImagesCount} images? This cannot be undone.`}
         confirmLabel="Delete"
       />
+
+      {/* App Download Modal */}
+      <Dialog open={showAppDownloadModal} onOpenChange={setShowAppDownloadModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{isNewVersion ? "New Version Available" : "Install Screen Machine"}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-4">
+            <p className="text-center text-muted-foreground">
+              {isNewVersion 
+                ? "A new version of Screen Machine is available. Please download and install the latest version to continue."
+                : "To use the recording feature, please install the Screen Machine app."
+              }
+            </p>
+            <div className="flex flex-col items-center gap-4">
+              <Button 
+                onClick={() => {
+                  window.location.href = sdkUrl;
+                  // Store version info after successful download
+                  storeVersionInfo();
+                }}
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Download SDK
+              </Button>
+              {isNewVersion && (
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    setShowAppDownloadModal(false);
+                    // Try to open the app with current version
+                    const appUrl = `${import.meta.env.VITE_URL}/app?target=${destination}&recording=${isTranscribing ? 'stop' : 'start'}`;
+                    const intentUrl = `intent://${appUrl.replace('http://', '')}#Intent;scheme=http;package=com.screenmachine.audio;S.browser_fallback_url=${encodeURIComponent(appUrl)};end`;
+                    window.location.href = intentUrl;
+                  }}
+                >
+                  Continue with current version
+                </Button>
+              )}
+              <p className="text-sm text-muted-foreground">
+                Play Store availability coming soon
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }; 
