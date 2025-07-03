@@ -115,17 +115,14 @@ def process_generate_image_request(data, uploaded_images=None):
     is_frontend_initiated = 'batch_id' in data  # Check if batch_id was provided in request
     
     prompt = data.get('prompt', '')
-    workflow = data.get('workflow', 'text-to-image')
+    workflow = data.get('workflow')  # Don't set default here
     params = data.get('params', {})
     global_params = data.get('global_params', {})
 
-    # Only use refiner if this is the first image in this batch
-    # We'll determine this by checking if there are any files in the _recent bucket
-    refiner = "None"
-    refiner_params = None
-    if not is_frontend_initiated:
-        refiner = data.get('refiner', 'none')
-        refiner_params = data.get('refiner_params', {})
+    # Respect user preferences for refiner and workflow
+    # User-specified values always take priority
+    refiner = data.get('refiner')  # Don't set default here
+    refiner_params = data.get('refiner_params', {})
 
     batch_size = data.get('batch_size', 1)
     has_reference_image = data.get('has_reference_image', False)
@@ -133,7 +130,7 @@ def process_generate_image_request(data, uploaded_images=None):
     
     info(f"========================================================")
     info(f"Generating images with prompt: {prompt}")
-    info(f"DEBUG: Workflow {workflow}, Params {params}")
+    info(f"DEBUG: Workflow {workflow}, Refiner {refiner}, Params {params}")
     
     # Throw user_interacting event when generating from frontend
     if publish_destination:
@@ -147,8 +144,8 @@ def process_generate_image_request(data, uploaded_images=None):
         "data": {
             "prompt": prompt,
             "images": images,
-            "workflow": workflow,
-            "refiner": refiner,
+            "workflow": workflow,  # Pass through as-is, let handler resolve defaults
+            "refiner": refiner,    # Pass through as-is, let handler resolve defaults
             "targets": publish_destination,
             "batch_id": batch_id
         }

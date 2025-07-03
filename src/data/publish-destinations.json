@@ -24,7 +24,7 @@
     "alexaclosest": "amzn1.ask.device.AMAXHLYHNARJP4G7H236AEHKW67YSWPHFGUIBKY2U6VP3OMPYZXCLKB3VNS2X5WYCOC4Z2ZL6IPANL25MHOBHAC5JX3QW2L2RJ5RYRGWBACRXET2CC4ZGCOGXRJZIC4YJA7WTQK5Y57MUYAMGWZ7F7FMKFDEED3IKVDZ2ZYALPJZNZ3GZD5Q5ZQZOUWIWSC65WKOZICRQ4NXE6F6",
     "groups": ["living-room", "home"],
     "samsung-token": "north-screen-token.txt",
-    "ip-address": "192.168.2.60",
+    "ip-address": "192.168.1.150",
     "mac": "04:E4:B6:33:B6:36",
     "intensity_cfg": {
       "lat": 51.5074,
@@ -47,7 +47,7 @@
     "alexaclosest": "amzn1.ask.device.AMAZUTGGYC5NVOOX2BOEVWIJ2QEUXQEPVHNODMGQK62XELJQHCHIWLYHF73HCM5RFDZTDJ6IR75HPDXKADUFP6ZOPUUS7FSTCX2QINRM5MWFWMO2DOGYCCPG2VIIALCS25YIWVB35ULFC3GWZTRZVFMXCFIGIP5VRXRDNAMEZ3CTE6Q5Y3T4FSXQDN5ENLWB5BXEVW4XKQ7I36JX",
     "groups": ["living-room", "home"],
     "samsung-token": "south-screen-token.txt",
-    "ip-address": "192.168.2.61",
+    "ip-address": "192.168.1.151",
     "mac": "04:E4:B6:34:00:28",
     "intensity_cfg": {
       "lat": 51.5074,

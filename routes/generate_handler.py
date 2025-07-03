@@ -352,13 +352,46 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
 
     data = input_obj.get("data", {})
     prompt = data.get("prompt", None)
-    refiner = data.get("refiner", "none")  
-    workflow = data.get("workflow", None)
+    user_refiner = data.get("refiner")  # User-specified refiner (may be None)
+    user_workflow = data.get("workflow")  # User-specified workflow (may be None)
     images = data.get("images", [])
     batch_id = data.get("batch_id") or str(uuid.uuid4())  # Generate a batch_id if not provided
 
-    # NOTE: **Do NOT** apply a default workflow here.  We want the refiner to be
-    # free to suggest an appropriate workflow first.  A default will be added
+    # ------------------------------------------------------------------
+    # Implement proper default resolution hierarchy:
+    # 1. User preferences always take priority
+    # 2. If user specifies refiner but no workflow, use refiner's default-workflow
+    # 3. If user specifies workflow but no refiner, use workflow's default-refiner
+    # 4. If user specifies neither, use system defaults at the last moment
+    # ------------------------------------------------------------------
+    
+    refiner = user_refiner
+    workflow = user_workflow
+    
+    # If user specified a refiner but no workflow, try to get the refiner's default workflow
+    if user_refiner and not user_workflow:
+        try:
+            refiners_data = _load_json_once("refiner", "refiners.json")
+            refiner_config = next((r for r in refiners_data if r.get("id") == user_refiner), None)
+            if refiner_config and refiner_config.get("default-workflow"):
+                workflow = refiner_config["default-workflow"]
+                utils.logger.info(f"Using refiner's default workflow: {workflow}")
+        except Exception as e:
+            utils.logger.warning(f"Failed to load refiner default workflow: {e}")
+    
+    # If user specified a workflow but no refiner, try to get the workflow's default refiner
+    if user_workflow and not user_refiner:
+        try:
+            workflows_data = _load_json_once("workflow", "workflows.json")
+            workflow_config = next((w for w in workflows_data if w.get("id") == user_workflow), None)
+            if workflow_config and workflow_config.get("default-refiner"):
+                refiner = workflow_config["default-refiner"]
+                utils.logger.info(f"Using workflow's default refiner: {refiner}")
+        except Exception as e:
+            utils.logger.warning(f"Failed to load workflow default refiner: {e}")
+
+    # NOTE: We still don't apply system defaults here. We want the refiner to be
+    # free to suggest an appropriate workflow first. System defaults will be added
     # only after the refiner stage if none has been chosen.
 
     # Get "targets" from input data
@@ -385,11 +418,54 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         input_dict["workflow"] = workflow
 
     utils.logger.debug(f"****input_dict {input_dict}")
+    utils.logger.info(f"Resolved refiner: {refiner}, workflow: {workflow}")
     
-    corrected_refiner = resolve_runtime_value("refiner", refiner, return_key="system_prompt")
+    # AUTO-REFINER RESOLUTION: If no refiner specified, apply intelligent auto-selection
+    if not refiner:
+        try:
+            refiners_data = _load_json_once("refiner", "refiners.json")
+            
+            # Check if we have images to determine auto-selection strategy
+            has_images = images and len(images) > 0
+            
+            if has_images:
+                # Images provided: look for image-capable refiners (with uploadimages > 0)
+                image_refiners = [r for r in refiners_data if r.get("uploadimages", 0) > 0 and r.get("alexavisible", False)]
+                if image_refiners:
+                    # Prefer 'adapt' refiner for image editing if available
+                    adapt_refiner = next((r for r in image_refiners if r.get("id") == "adapt"), None)
+                    if adapt_refiner:
+                        refiner = adapt_refiner["id"]
+                        utils.logger.info(f"Auto-selected 'adapt' refiner for image editing: {refiner}")
+                    else:
+                        # Otherwise use first available image refiner
+                        refiner = image_refiners[0]["id"]
+                        utils.logger.info(f"Auto-selected image-capable refiner: {refiner}")
+                else:
+                    # No image refiners found, use default refiner
+                    default_refiner = next((r for r in refiners_data if r.get("default", False)), None)
+                    if default_refiner:
+                        refiner = default_refiner["id"]
+                        utils.logger.info(f"Auto-selected default refiner (no image refiners available): {refiner}")
+            else:
+                # No images: use default text refiner
+                default_refiner = next((r for r in refiners_data if r.get("default", False)), None)
+                if default_refiner:
+                    refiner = default_refiner["id"]
+                    utils.logger.info(f"Auto-selected default refiner (no images): {refiner}")
+                    
+        except Exception as e:
+            utils.logger.warning(f"Failed to auto-select refiner: {e}")
+
+    # Resolve the refiner to its system prompt (if any)
+    corrected_refiner = None
+    if refiner:
+        corrected_refiner = resolve_runtime_value("refiner", refiner, return_key="system_prompt")
     
-    # TODO: should be done with a proper lookup NOT runtimevalue -- which should ONLY be used to resolve informal strings
-    images_required = resolve_runtime_value("refiner", refiner, return_key="uploadimages") or 0
+    # Get images required by the refiner
+    images_required = 0
+    if refiner:
+        images_required = resolve_runtime_value("refiner", refiner, return_key="uploadimages") or 0
     
     # Normalize input images list
     images = images or []
@@ -430,29 +506,64 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         refined_output = {}
         refined_prompt = prompt
         
-    corrected_workflow = resolve_runtime_value(
-        category="workflow", 
-        input_value=refined_output.get("workflow", workflow),
-        return_key="id", 
-        match_key="id"
-    )
+    # Determine final workflow
+    if corrected_refiner is not None:
+        # Refiner was used - check if it suggested a workflow
+        corrected_workflow = resolve_runtime_value(
+            category="workflow", 
+            input_value=refined_output.get("workflow", workflow),
+            return_key="id", 
+            match_key="id"
+        )
+    else:
+        # No refiner used - use the workflow we determined earlier
+        corrected_workflow = resolve_runtime_value(
+            category="workflow", 
+            input_value=workflow,
+            return_key="id", 
+            match_key="id"
+        )
     
-    # FINAL FALLBACK: If everything above still left us without a workflow,
-    # select the default *now* ("last moment") so that the downstream
-    # generation call always has a valid workflow to load.
+    # SOPHISTICATED AUTO-RESOLUTION: If everything above still left us without a workflow,
+    # apply intelligent auto-selection based on whether images are provided
     if not corrected_workflow:
         try:
             workflows = _load_json_once("workflow", "workflows.json")
-            default_workflow = next((w for w in workflows if w.get("default", False)), None)
-            if default_workflow:
-                corrected_workflow = default_workflow["id"]
-                utils.logger.debug(
-                    f"No workflow specified/chosen by refiner – using default workflow: {corrected_workflow}"
-                )
+            
+            # Check if we have images to determine auto-selection strategy
+            has_images = images and len(images) > 0
+            
+            if has_images:
+                # Images provided: select first workflow that supports image input
+                image_workflow = next((w for w in workflows if w.get("input") and "image" in w.get("input", [])), None)
+                if image_workflow:
+                    corrected_workflow = image_workflow["id"]
+                    utils.logger.info(
+                        f"Auto-selected image-capable workflow (images provided): {corrected_workflow}"
+                    )
+                else:
+                    # Fallback to default if no image workflows found
+                    default_workflow = next((w for w in workflows if w.get("default", False)), None)
+                    if default_workflow:
+                        corrected_workflow = default_workflow["id"]
+                        utils.logger.warning(
+                            f"No image-capable workflows found – falling back to default: {corrected_workflow}"
+                        )
             else:
-                utils.logger.error("No default workflow found in workflows.json – generation may fail.")
+                # No images: use default text-to-image workflow
+                default_workflow = next((w for w in workflows if w.get("default", False)), None)
+                if default_workflow:
+                    corrected_workflow = default_workflow["id"]
+                    utils.logger.info(
+                        f"Auto-selected default workflow (no images): {corrected_workflow}"
+                    )
+            
+            # Final safety check
+            if not corrected_workflow:
+                utils.logger.error("No suitable workflow found for auto-selection – generation may fail.")
+                
         except Exception as e:
-            utils.logger.error(f"Failed to load default workflow list: {e}")
+            utils.logger.error(f"Failed to load workflows for auto-selection: {e}")
 
     # Translate prompt into Chinese if required (for WAN)
     translate = data.get("translate") if "data" in locals() else False

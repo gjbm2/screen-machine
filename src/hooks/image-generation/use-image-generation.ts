@@ -56,19 +56,10 @@ export interface UseImageGenerationResult {
 export const useImageGeneration = (
   addConsoleLog: (log: ConsoleMessage) => void
 ): UseImageGenerationResult => {
-  // Get the default workflow ID
+  // Use "auto" as the default workflow to let the backend resolve the best workflow
   const getDefaultWorkflowId = (): string => {
-    // First try to find a workflow with default=true
-    const defaultWorkflow = typedWorkflows.find(w => w.default === true);
-    if (defaultWorkflow) {
-      console.log("useImageGeneration: Using default workflow:", defaultWorkflow.id, defaultWorkflow.name);
-      return defaultWorkflow.id;
-    }
-    
-    // Fall back to the first workflow or 'text-to-image' if no workflows exist
-    const fallbackId = typedWorkflows.length > 0 ? typedWorkflows[0].id : 'text-to-image';
-    console.log("useImageGeneration: Using fallback workflow:", fallbackId);
-    return fallbackId;
+    console.log("useImageGeneration: Using auto workflow for backend resolution");
+    return 'auto';
   };
 
   // State for current prompts and workflows using the default workflow ID

@@ -211,6 +211,9 @@ def start(
     if not args_namespace.prompt and not args_namespace.images: 
         raise ValueError("A prompt or image must be provided.")
     
+    # Initialize publish_destinations variable to avoid scope issues
+    publish_destinations = []
+    
     # Get destinations data and see if we have a size constraint
     if publish_destination:
         info(f"publish_destination: {publish_destination}")

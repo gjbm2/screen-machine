@@ -4,62 +4,62 @@
     "name": "Text to Image (flux1)",
     "input": ["text"],
     "description": "Image from text using Flux1",
-	"runpod_id": "k98wg36ip597n0",
-	"icon": "Camera",
-	"processing_stages": [
-		{"name": "Rendering", "weight": 90},
-		{"name": "Upscaling", "weight": 10}
-	],	
-	"alexavisible": true,
-	"style_guidance": "Use for photography, lifelike imagery, cinematic lighting, or physical objects such as sculpture, carved relief, or material artifacts.",
-	"style_descriptor": "photo-realistic, soft cinematic lighting, medium format lens, glossy textures",
-	"params": [
-	{ 
-	"id": "steps",
-	"name": "Steps",
-	"type": "number",
-	"default": 30
-	},
-	{
-	"id": "width",
-	"name": "Width",
-	"type": "select",
-	"options": ["256", "512", "720", "768", "920", "1024", "1280"],
-	"default": "1280"
-	},
-	  {
-	"id": "height",
-	"name": "Height",
-	"type": "select",
-	"options": ["256", "512", "720", "768", "920", "1024", "1280"],
-	"default": "720"
-	},
-	   {
-	"id": "lora",
-	"name": "Lora",
-	"type": "select",
-		"options": ["sldr_flux_nsfw_v2-studio.safetensors"],
-	"default": "sldr_flux_nsfw_v2-studio.safetensors"
-	},
-	  {
-	"id": "lora_strength",
-	"name": "Lora strength",
-	"type": "number",
-	"default": 0.2
-	},
-	  {
-	"id": "seed",
-	"name": "Random seed",
-	"type": "number"
-	},
-	{
-	"id": "upscaler",
-	"name": "Upscaler model",
-	"type": "select",
-	"options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
-		"default": "RealESRGAN_x2plus.pth"
-	}
-	]
+    "runpod_id": "k98wg36ip597n0",
+    "icon": "Camera",
+    "processing_stages": [
+      {"name": "Rendering", "weight": 90},
+      {"name": "Upscaling", "weight": 10}
+    ],	
+    "alexavisible": true,
+    "style_guidance": "Use for photography, lifelike imagery, cinematic lighting, or physical objects such as sculpture, carved relief, or material artifacts.",
+    "style_descriptor": "photo-realistic, soft cinematic lighting, medium format lens, glossy textures",
+    "params": [
+      { 
+      "id": "steps",
+      "name": "Steps",
+      "type": "number",
+      "default": 30
+      },
+      {
+      "id": "width",
+      "name": "Width",
+      "type": "select",
+      "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+      "default": "1280"
+      },
+        {
+      "id": "height",
+      "name": "Height",
+      "type": "select",
+      "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+      "default": "720"
+      },
+        {
+      "id": "lora",
+      "name": "Lora",
+      "type": "select",
+        "options": ["sldr_flux_nsfw_v2-studio.safetensors"],
+      "default": "sldr_flux_nsfw_v2-studio.safetensors"
+      },
+        {
+      "id": "lora_strength",
+      "name": "Lora strength",
+      "type": "number",
+      "default": 0.2
+      },
+        {
+      "id": "seed",
+      "name": "Random seed",
+      "type": "number"
+      },
+      {
+      "id": "upscaler",
+      "name": "Upscaler model",
+      "type": "select",
+      "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
+        "default": "RealESRGAN_x2plus.pth"
+      }
+    ]
   },
   {
     "id": "sdxl-scale.json",
@@ -218,6 +218,56 @@
     ]
   },
   {
+    "id": "flux_1_kontext_dev_1pic-l.json",
+    "name": "Adapt an image",
+    "runpod_id": "oh422aycpybd5u",
+    "description": "Intelligently adapt an image based on a prompt",
+    "default-refiner": "adapt",
+    "icon": "PaintBucket",
+    "input": ["image", "text"],
+    "processing_stages": [
+      {"name": "Rendering", "weight": 90},
+      {"name": "Upscaling", "weight": 10}
+    ],	
+    "alexavisible": true,
+    "style_guidance": "Use to adapt an image to a new style, or to add a new element to an image.",
+    "style_descriptor": "photo-realistic, soft cinematic lighting, medium format lens, glossy textures",
+    "params": [
+      { 
+        "id": "steps",
+        "name": "Steps",
+        "type": "number",
+        "default": 30
+      },
+      {
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+        "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+        "default": "1280"
+      },
+      {
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+        "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+        "default": "720"
+      },
+      {
+        "id": "seed",
+        "name": "Random seed",
+        "type": "number"
+      },
+      {
+        "id": "upscaler",
+        "name": "Upscaler model",
+        "type": "select",
+        "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
+        "default": "RealESRGAN_x2plus.pth"
+      }
+    ]
+  },
+  {
     "id": "upscale.json",
     "name": "Image to Image",
     "description": "Transform an uploaded image based on a text prompt",
@@ -250,6 +300,7 @@
     "id": "wan_image_to_video_upscale_slow.json",
     "name": "Image to Video",
     "description": "Animate an image based on a text prompt",
+    "default-refiner": "animator",
 	"runpod_id": "wxd8n6sak3urv5",
     "input": ["image", "text"],	
     "async": true,
@@ -379,28 +430,6 @@
         "name": "Frame multipliier",
         "type": "number",
         "default": 8
-      }
-    ]
-  },
-  {
-    "id": "artistic-style-transfer",
-    "name": "Artistic Style Transfer",
-    "description": "Apply artistic styles to your image",
-    "icon": "PaintBucket",
-    "input": ["image", "text"],
-    "params": [
-      {
-        "id": "style_preset",
-        "name": "Style Preset",
-        "type": "select",
-        "options": ["Impressionist", "Cubist", "Pop Art", "Watercolor", "Oil Painting"],
-        "default": "Impressionist"
-      },
-      {
-        "id": "style_fidelity",
-        "name": "Style Fidelity",
-        "type": "range",
-        "default": 80
       }
     ]
   }
