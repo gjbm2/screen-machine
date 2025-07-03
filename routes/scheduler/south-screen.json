@@ -1004,8 +1004,8 @@
             "wait": "10m",
             "action": "generate"
           },
-          "unique_id": "0b637e91-b801-4ad6-b44a-440a7d227b7d",
-          "created_at": "2025-07-04T00:10:53.927515",
+          "unique_id": "0048b8f2-4c83-4513-8761-812b1fa02eaa",
+          "created_at": "2025-07-04T00:15:09.535885",
           "display_name": "User Interaction"
         }
       },
@@ -1017,16 +1017,14 @@
           "wait": "10m",
           "action": "generate"
         },
-        "unique_id": "0b637e91-b801-4ad6-b44a-440a7d227b7d",
-        "created_at": "2025-07-04T00:10:53.927515",
+        "unique_id": "0048b8f2-4c83-4513-8761-812b1fa02eaa",
+        "created_at": "2025-07-04T00:15:09.535885",
         "display_name": "User Interaction"
-      },
-      "wait_until": "2025-07-04 00:20:55.642324",
-      "last_wait_log": "2025-07-04 00:12:55.691478"
+      }
     }
   ],
   "state": "running",
-  "last_updated": "2025-07-04T00:13:00.629309",
+  "last_updated": "2025-07-04T00:25:11.994569",
   "last_trigger_executions": {
     "f65e26b4527c95c05af4f657d9560b34_2025-06-11_0": "2025-06-11T00:22:00.072999",
     "f65e26b4527c95c05af4f657d9560b34_2025-06-11_1": "2025-06-11T00:37:00.053960",
@@ -2280,41 +2278,12 @@
     "615c22f09f03cb1b6164dab4b2980a01_2025-07-03_13": "2025-07-03T20:00:00.898373",
     "615c22f09f03cb1b6164dab4b2980a01_2025-07-03_14": "2025-07-03T21:00:01.970965",
     "b812f679a565a0c56311d86bfaf3ca2d_2025-07-03_7": "2025-07-03T21:05:01.391991",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-07-03_8": "2025-07-03T23:08:46.640394"
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-07-03_8": "2025-07-03T23:08:46.640394",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-04_0": "2025-07-04T00:22:00.542312"
   },
   "active_events": {},
   "event_history": [
     {
-      "key": "__exit_block__",
-      "active_from": "2025-07-02T09:05:01.912051",
-      "expires": "2025-07-02T09:06:01.912051",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-02T09:05:01.912051",
-      "unique_id": "c27842c7-19ed-4c42-b213-871508ca8611",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-02T09:05:03.699626"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-02T09:05:01.912051",
-      "expires": "2025-07-02T09:06:01.912051",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-02T09:05:01.912051",
-      "unique_id": "c27842c7-19ed-4c42-b213-871508ca8611",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-02T09:05:03.699626"
-    },
-    {
       "key": "Generate",
       "active_from": "2025-07-02T10:00:00.429008",
       "expires": "2025-07-02T10:01:00.429008",
@@ -3663,6 +3632,38 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
       "consumed_at": "2025-07-04T00:10:55.464724"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-04T00:15:09.535885",
+      "expires": "2025-07-04T03:15:09.535885",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "10m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-04T00:15:09.535885",
+      "unique_id": "0048b8f2-4c83-4513-8761-812b1fa02eaa",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-04T00:15:11.794489"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-04T00:15:09.535885",
+      "expires": "2025-07-04T03:15:09.535885",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "10m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-04T00:15:09.535885",
+      "unique_id": "0048b8f2-4c83-4513-8761-812b1fa02eaa",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-04T00:15:11.794489"
     }
   ]
 }

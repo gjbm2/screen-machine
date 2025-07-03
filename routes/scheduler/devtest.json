@@ -443,11 +443,11 @@
         "_event": {
           "key": "_user_interacting",
           "payload": {
-            "wait": "10m",
-            "action": "generate"
+            "wait": "90s",
+            "action": "info"
           },
-          "unique_id": "a244bd86-b617-4f0a-93ac-38a6cee0b80c",
-          "created_at": "2025-07-04T00:10:53.957158",
+          "unique_id": "2d82d693-c027-4c8d-bf46-b1592d91cd41",
+          "created_at": "2025-07-04T00:24:59.393504",
           "display_name": "User Interaction"
         }
       },
@@ -456,19 +456,19 @@
       "_event": {
         "key": "_user_interacting",
         "payload": {
-          "wait": "10m",
-          "action": "generate"
+          "wait": "90s",
+          "action": "info"
         },
-        "unique_id": "a244bd86-b617-4f0a-93ac-38a6cee0b80c",
-        "created_at": "2025-07-04T00:10:53.957158",
+        "unique_id": "2d82d693-c027-4c8d-bf46-b1592d91cd41",
+        "created_at": "2025-07-04T00:24:59.393504",
         "display_name": "User Interaction"
       },
-      "wait_until": "2025-07-04 00:20:54.719276",
-      "last_wait_log": "2025-07-04 00:12:55.047443"
+      "wait_until": "2025-07-04 00:26:32.867154",
+      "last_wait_log": "2025-07-04 00:25:02.867154"
     }
   ],
   "state": "running",
-  "last_updated": "2025-07-04T00:13:00.617780",
+  "last_updated": "2025-07-04T00:25:14.679981",
   "last_trigger_executions": {
     "7bc512d74b13f60c705deb7e1061e1c0_2025-06-10_24": "2025-06-10T12:01:00.103358",
     "7bc512d74b13f60c705deb7e1061e1c0_2025-06-10_25": "2025-06-10T12:31:00.738562",
@@ -1593,154 +1593,6 @@
   "active_events": {},
   "event_history": [
     {
-      "key": "__exit_block__",
-      "active_from": "2025-06-17T17:48:39.030377",
-      "expires": "2025-06-17T17:49:39.030377",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-17T17:48:39.030377",
-      "unique_id": "e6a527e0-fb27-46af-84a6-e511a934a5fd",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-06-17T17:48:40.986626"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-17T17:48:39.030377",
-      "expires": "2025-06-17T17:49:39.030377",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-17T17:48:39.030377",
-      "unique_id": "e6a527e0-fb27-46af-84a6-e511a934a5fd",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-06-17T17:48:40.986626"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-18T06:00:12.908660",
-      "expires": "2025-06-18T06:01:12.908660",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-18T06:00:12.908660",
-      "unique_id": "19dc598a-dce0-4d05-9291-ca038c3d92fe",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-18T06:01:14.099227"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-18T06:00:12.908660",
-      "expires": "2025-06-18T06:01:12.908660",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-18T06:00:12.908660",
-      "unique_id": "19dc598a-dce0-4d05-9291-ca038c3d92fe",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-18T06:01:14.099227"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-19T06:00:14.171867",
-      "expires": "2025-06-19T06:01:14.171867",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-19T06:00:14.171867",
-      "unique_id": "d876fdbd-89db-4be5-a875-de4dcb011949",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-19T06:01:14.571633"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-06-19T06:00:14.171867",
-      "expires": "2025-06-19T06:01:14.171867",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-06-19T06:00:14.171867",
-      "unique_id": "d876fdbd-89db-4be5-a875-de4dcb011949",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-06-19T06:01:14.571633"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-19T16:47:48.848617",
-      "expires": "2025-06-19T16:48:48.848617",
-      "display_name": null,
-      "payload": {
-        "text": "[A] So that app will just run background.",
-        "raw_text": "So that app will just run background.",
-        "recent_text": "So that app will just run background.",
-        "history_size": 7
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-19T16:47:48.848617",
-      "unique_id": "8821c71a-9523-490c-bd4c-ffeb4a374ea3",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-06-19T16:47:48.914082"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-19T16:47:48.848617",
-      "expires": "2025-06-19T16:48:48.848617",
-      "display_name": null,
-      "payload": {
-        "text": "[A] So that app will just run background.",
-        "raw_text": "So that app will just run background.",
-        "recent_text": "So that app will just run background.",
-        "history_size": 7
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-19T16:47:48.848617",
-      "unique_id": "8821c71a-9523-490c-bd4c-ffeb4a374ea3",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-06-19T16:47:48.914082"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-19T16:47:52.184401",
-      "expires": "2025-06-19T16:48:52.184401",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-19T16:47:52.184401",
-      "unique_id": "27116fa9-9a12-4af5-a101-73cefc3a1cdc",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-06-19T16:47:54.060355"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-06-19T16:47:52.184401",
-      "expires": "2025-06-19T16:48:52.184401",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-19T16:47:52.184401",
-      "unique_id": "27116fa9-9a12-4af5-a101-73cefc3a1cdc",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-06-19T16:47:54.060355"
-    },
-    {
       "key": "_transcription",
       "active_from": "2025-06-19T16:48:21.843377",
       "expires": "2025-06-19T16:49:21.843377",
@@ -3093,6 +2945,166 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_devtest",
       "consumed_at": "2025-07-04T00:10:54.564738"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-04T00:15:09.563635",
+      "expires": "2025-07-04T03:15:09.563635",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "10m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-04T00:15:09.563635",
+      "unique_id": "5ea9667f-e417-4ef9-ab40-ac4aa4c5ca9d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-04T00:15:10.578016"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-04T00:15:09.563635",
+      "expires": "2025-07-04T03:15:09.563635",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "10m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-04T00:15:09.563635",
+      "unique_id": "5ea9667f-e417-4ef9-ab40-ac4aa4c5ca9d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-04T00:15:10.578016"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-04T00:20:50.279514",
+      "expires": "2025-07-04T03:20:50.279514",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-04T00:20:50.279514",
+      "unique_id": "811d4a3f-2d0d-4f3e-93dd-6c6acb765dba",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-04T00:20:50.395197"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-04T00:20:50.279514",
+      "expires": "2025-07-04T03:20:50.279514",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-04T00:20:50.279514",
+      "unique_id": "811d4a3f-2d0d-4f3e-93dd-6c6acb765dba",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-04T00:20:50.395197"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-04T00:22:38.771491",
+      "expires": "2025-07-04T03:22:38.771491",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-04T00:22:38.771491",
+      "unique_id": "db4cba94-762b-41b6-89a7-79cb56fb170c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-04T00:22:42.208881"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-04T00:22:38.771491",
+      "expires": "2025-07-04T03:22:38.771491",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-04T00:22:38.771491",
+      "unique_id": "db4cba94-762b-41b6-89a7-79cb56fb170c",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-04T00:22:42.208881"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-04T00:23:32.333980",
+      "expires": "2025-07-04T03:23:32.333980",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-04T00:23:32.333980",
+      "unique_id": "6d10a7fd-4f87-4df1-b881-c02053b289f5",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-04T00:23:33.105940"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-04T00:23:32.333980",
+      "expires": "2025-07-04T03:23:32.333980",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-04T00:23:32.333980",
+      "unique_id": "6d10a7fd-4f87-4df1-b881-c02053b289f5",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-04T00:23:33.105940"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-04T00:24:59.393504",
+      "expires": "2025-07-04T03:24:59.393504",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-04T00:24:59.393504",
+      "unique_id": "2d82d693-c027-4c8d-bf46-b1592d91cd41",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-04T00:25:02.678771"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-04T00:24:59.393504",
+      "expires": "2025-07-04T03:24:59.393504",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-04T00:24:59.393504",
+      "unique_id": "2d82d693-c027-4c8d-bf46-b1592d91cd41",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-04T00:25:02.678771"
     }
   ]
 }
