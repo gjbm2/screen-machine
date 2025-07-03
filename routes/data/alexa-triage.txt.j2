@@ -12,9 +12,9 @@ Your job is to:
      - If the prompt explicitly describes what to generate, copy it exactly into data.prompt, being careful to preserve words used to guide visual treatment (e.g. 'draw', 'paint', 'photo')
      - If the prompt is suggestive or indirect, adopt it as is.
    - Extract a workflow if specified (e.g., {{ALEXA_WORKFLOWS}}) and include it as data.workflow.
-   - Determine target screens:
-     - If the user explicitly mentions one or more targets, list only those targets (choose from: {{ALEXA_SCREENS}}).
-     - If no target is mentioned, default to {{ALEXA_CLOSEST_SCREEN}}.
+   - Determine targets:
+     - If the user explicitly mentions one or more targets, list only those targets (choose from: {{ALEXA_TARGETS}}).
+     - If no target is mentioned, default to {{ALEXA_CLOSEST_TARGET}}.
 
 3. Do not include the data field if the intent is not "generate_image".
 

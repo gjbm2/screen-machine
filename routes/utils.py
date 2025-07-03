@@ -495,6 +495,7 @@ def build_schema_subs():
         
         subs["DEST_GROUPS"] = sorted(list(all_groups))
         
+        # Individual screens (legacy compatibility)
         subs["ALEXA_SCREENS"] = [d["id"] for d in visible_screens]
         subs["ALEXA_SCREENS_DESCRIPTIONS"] = [d.get("description", "") for d in visible_screens]
         subs["ALEXA_SCREENS_LABELLED"] = [
@@ -507,6 +508,56 @@ def build_schema_subs():
         ]
 
         subs["ALEXA_DEFAULT_SCREENS"] = [d["id"] for d in default_screens]
+        
+        # Consistent target terminology
+        subs["ALEXA_CLOSEST_TARGET"] = subs["ALEXA_DEFAULT_SCREENS"][0] if subs["ALEXA_DEFAULT_SCREENS"] else None
+        
+        # --- ALEXA TARGETS (COMPREHENSIVE) ---
+        # Build comprehensive list of targets that includes both individual screens and groups
+        alexa_targets = []
+        alexa_targets_labelled = []
+        
+        # Add individual visible screens
+        for d in visible_screens:
+            alexa_targets.append(d["id"])
+            alexa_targets_labelled.append({
+                "id": d["id"],
+                "label": d.get("name", d["id"].replace("-", " ").title()),
+                "description": d.get("description", ""),
+                "type": "screen"
+            })
+        
+        # Add groups that contain at least one Alexa-visible screen
+        visible_screen_ids = {d["id"] for d in visible_screens}
+        alexa_groups = set()
+        
+        for group in all_groups:
+            # Check if this group contains any Alexa-visible screens
+            group_destinations = [
+                d["id"] for d in destinations
+                if group in d.get("groups", [])
+            ]
+            
+            if any(dest_id in visible_screen_ids for dest_id in group_destinations):
+                alexa_groups.add(group)
+                alexa_targets.append(group)
+                
+                # Create a friendly description for the group
+                group_screens = [
+                    d.get("name", d["id"]) for d in destinations
+                    if group in d.get("groups", []) and d.get("alexavisible")
+                ]
+                
+                alexa_targets_labelled.append({
+                    "id": group,
+                    "label": group.replace("-", " ").title(),
+                    "description": f"Group containing: {', '.join(group_screens)}",
+                    "type": "group"
+                })
+        
+        subs["ALEXA_TARGETS"] = alexa_targets
+        subs["ALEXA_TARGETS_LABELLED"] = alexa_targets_labelled
+        subs["ALEXA_GROUPS"] = sorted(list(alexa_groups))
 
         # Default voice
         subs["ALEXA_VOICE"] = "Brian"

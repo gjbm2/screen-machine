@@ -644,6 +644,7 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
 def async_amimate(targets, obj = {}):
     """
     Process animation for the specified targets.
+    For animation, each target needs its own image retrieved from that specific target.
     
     Args:
         targets: List of target IDs or single target ID
@@ -657,44 +658,117 @@ def async_amimate(targets, obj = {}):
     from routes.utils import get_image_from_target, resolve_runtime_value
     import threading
     
-    # TODO: make this smarter; handle multiple targets, accept input prompts, refiners, etc.
-
     result = obj
     result.setdefault("data", {}).setdefault(
         "targets",
         targets if isinstance(targets, list) else []
     )
 
-    # Get target ID directly (no need for resolve_runtime_value to fuzzy match)
-    target_image_file = targets[0] if targets and len(targets) > 0 else None
-
-    # Create a result dictionary
-    if target_image_file:
-        # Inject base64 image into result["data"]["images"]
-        image_payload = get_image_from_target(target_image_file)
-        
-        if image_payload:
-            result.setdefault("data", {})["images"] = [image_payload]
-            
-            info(
-                f"Will address: {target_image_file}, "
-                f"image present: True, "
-                f"image length: {len(image_payload.get('image'))}"
-            )
-        else:
-            warning(f"No image found at ./output/{target_image_file}.jpg or ./output/{target_image_file}.mp4")
-    else:
-        warning("No target specified for animation")
-    
-    # Ensure we're using the currently selected refiner
+    # Set the animation refiner
     result.setdefault("data", {})["refiner"] = resolve_runtime_value("refiner", "animate")
     
-    # Run the refinement + generation flow in background
-    threading.Thread(
-        target=handle_image_generation,
-        kwargs={
-            "input_obj": result
-        }
-    ).start()
+    # Handle multiple targets - each needs its own image
+    if targets:
+        info(f"Animate: processing {len(targets)} targets: {targets}")
+        
+        # Process each target separately with its own image retrieval and generation
+        for target_destination in targets:
+            info(f"Animate: retrieving current image from {target_destination}")
+            image_payload = get_image_from_target(target_destination)
+            
+            # Create a separate request for each target
+            target_result = {
+                "intent": "animate",
+                "data": {
+                    "prompt": result.get("data", {}).get("prompt", ""),
+                    "refiner": resolve_runtime_value("refiner", "animate"),
+                    "targets": [target_destination],  # Single target for this request
+                    "workflow": result.get("data", {}).get("workflow")
+                }
+            }
+            
+            if image_payload:
+                # Include the current published image as input for animation
+                target_result["data"]["images"] = [image_payload]
+                info(f"Animate: found image for {target_destination}, length: {len(image_payload.get('image', ''))}")
+            else:
+                warning(f"Animate: no current image found for {target_destination}")
+                # Continue anyway - the animator refiner can handle this case
+            
+            # Run the refinement + generation flow in background for this target
+            threading.Thread(
+                target=handle_image_generation,
+                kwargs={
+                    "input_obj": target_result
+                }
+            ).start()
+    else:
+        warning("Animate: no targets specified")
+    
+    return None
+
+def async_adapt(targets, obj = {}):
+    """
+    Process adaptation for the specified targets.
+    For adapt, each target needs its own image retrieved from that specific target.
+    
+    Args:
+        targets: List of target IDs or single target ID
+        obj: Optional dictionary with additional configuration
+        
+    Returns:
+        None
+    """
+    # Import necessary modules
+    from utils.logger import info, error, warning, debug
+    from routes.utils import get_image_from_target, resolve_runtime_value
+    import threading
+    
+    result = obj
+    result.setdefault("data", {}).setdefault(
+        "targets",
+        targets if isinstance(targets, list) else []
+    )
+
+    # Set the adapt refiner
+    result.setdefault("data", {})["refiner"] = "adapt"
+    
+    # Handle multiple targets - each needs its own image
+    if targets:
+        info(f"Adapt: processing {len(targets)} targets: {targets}")
+        
+        # Process each target separately with its own image retrieval and generation
+        for target_destination in targets:
+            info(f"Adapt: retrieving current image from {target_destination}")
+            image_payload = get_image_from_target(target_destination)
+            
+            # Create a separate request for each target
+            target_result = {
+                "intent": "adapt",
+                "data": {
+                    "prompt": result.get("data", {}).get("prompt", ""),
+                    "refiner": "adapt",
+                    "targets": [target_destination],  # Single target for this request
+                    "workflow": result.get("data", {}).get("workflow")
+                }
+            }
+            
+            if image_payload:
+                # Include the current published image as input for adaptation
+                target_result["data"]["images"] = [image_payload]
+                info(f"Adapt: found image for {target_destination}, length: {len(image_payload.get('image', ''))}")
+            else:
+                warning(f"Adapt: no current image found for {target_destination}")
+                # Continue anyway - the adapt refiner can handle this case
+            
+            # Run the refinement + generation flow in background for this target
+            threading.Thread(
+                target=handle_image_generation,
+                kwargs={
+                    "input_obj": target_result
+                }
+            ).start()
+    else:
+        warning("Adapt: no targets specified")
     
     return None 

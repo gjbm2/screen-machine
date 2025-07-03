@@ -37,7 +37,7 @@ import utils.logger
 from routes.manage_jobs import cancel_all_jobs
 from typing import Dict, Any
 import uuid
-from routes.generate_handler import throw_user_interacting_event, handle_image_generation, async_amimate
+from routes.generate_handler import throw_user_interacting_event, handle_image_generation, async_amimate, async_adapt
 from routes.samsung_utils import device_wake, device_sleep, device_sync
 
 def Brianize(text: str) -> str:
@@ -204,6 +204,34 @@ def get_all_destinations_for_group(scope: str) -> list:
         if scope in d.get("groups", [])
     ]
 
+def expand_alexa_targets_to_destinations(targets: list) -> list:
+    """
+    Expand a list of Alexa targets (which can include groups) into individual destination IDs.
+    
+    Args:
+        targets: List of target IDs that can include both individual screens and group names
+        
+    Returns:
+        List of individual destination IDs
+    """
+    expanded_destinations = []
+    
+    for target in targets:
+        # Use existing get_all_destinations_for_group function which handles
+        # individual destinations, groups, and global scope
+        target_destinations = get_all_destinations_for_group(target)
+        expanded_destinations.extend(target_destinations)
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    result = []
+    for dest in expanded_destinations:
+        if dest not in seen:
+            seen.add(dest)
+            result.append(dest)
+    
+    return result
+
 def get_event_triggers_for_scope(target_screen: str) -> dict:
     """Get all available event triggers for a target screen and its related scopes."""
     triggers_by_scope = {}
@@ -327,8 +355,8 @@ def process(data):
         
         # Build the subs dictionary
         subs = build_schema_subs()
-        subs["ALEXA_CLOSEST_SCREEN"] = (
-            [closest_screen] if closest_screen else subs["ALEXA_DEFAULT_SCREENS"]
+        subs["ALEXA_CLOSEST_TARGET"] = (
+            closest_screen if closest_screen else (subs["ALEXA_DEFAULT_SCREENS"][0] if subs["ALEXA_DEFAULT_SCREENS"] else None)
         )
         
         # Add exported variable friendly names for this screen's scope
@@ -433,7 +461,7 @@ def process(data):
                     response_message += f" {details}"
                 response_ssml = Brianize(response_message)
             case "select_refiner":
-                use_system_prompt="alexa-refiner.txt"
+                use_system_prompt="alexa-refiner.txt.j2"
             case "cancel":
                 total_cancelled = cancel_all_jobs()
                 if total_cancelled:
@@ -444,15 +472,17 @@ def process(data):
                 # Setting global or group vars (e.g. theme, style, etc.)
                 use_system_prompt="alexa-setvars.txt.j2"
             case "animate":
-                use_system_prompt="alexa-animate.txt"
+                use_system_prompt="alexa-animate.txt.j2"
             case "trigger":
                 use_system_prompt="alexa-trigger-events.txt.j2"
+            case "adapt":
+                use_system_prompt="alexa-adapt.txt.j2"
             case "sleep":
                 response_ssml = Brianize("Goodnight.")
                 # Set result to include sleep intent
                 result = {"intent": "sleep"}
             case _:
-                use_system_prompt="alexa-triage.txt"
+                use_system_prompt="alexa-triage.txt.j2"
 
         # == Use OpenAI to triage ==
         if use_system_prompt:   
@@ -572,13 +602,28 @@ def process(data):
             case "animate": 
                 # Fetch relevant image inputs
                 targets = result.get("data", {}).get("targets", []) if isinstance(result.get("data", {}).get("targets"), list) else []
-                async_amimate(targets = targets, obj = result)
+                # Expand groups to individual destinations
+                expanded_targets = expand_alexa_targets_to_destinations(targets) if targets else []
+                async_amimate(targets = expanded_targets, obj = result)
             
                 # Throw a user_interacting event for animation with 30m wait
-                target_destinations = result.get("data", {}).get("targets", [])
-                for dest in target_destinations:
+                for dest in expanded_targets:
                     throw_user_interacting_event(dest, action_type="animate")
                 
+            # User wants to adapt/modify an existing image
+            case "adapt":
+                # Fetch relevant image inputs and process adaptation
+                targets = result.get("data", {}).get("targets", []) if isinstance(result.get("data", {}).get("targets"), list) else []
+                if not targets:
+                    # Default to closest screen if no targets specified
+                    targets = [closest_screen] if closest_screen else []
+                # Expand groups to individual destinations
+                expanded_targets = expand_alexa_targets_to_destinations(targets) if targets else []
+                async_adapt(targets=expanded_targets, obj=result)
+                
+                # Throw user_interacting event for adaptation on all targets
+                for target in expanded_targets:
+                    throw_user_interacting_event(target, action_type="generate")
     
             case "generate_image":
                 # Ensure we're using the currently selected refiner
@@ -588,8 +633,12 @@ def process(data):
 
                 # Throw user_interacting event if we have targets
                 targets = result.get("data", {}).get("targets", [])
-                if isinstance(targets, list):
-                    for target in targets:
+                if isinstance(targets, list) and targets:
+                    # Expand groups to individual destinations
+                    expanded_targets = expand_alexa_targets_to_destinations(targets)
+                    # Update the result with expanded targets
+                    result["data"]["targets"] = expanded_targets
+                    for target in expanded_targets:
                         throw_user_interacting_event(target, action_type="generate")
                 elif closest_screen:
                     # Use closest screen if no targets specified
