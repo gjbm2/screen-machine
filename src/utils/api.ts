@@ -127,7 +127,8 @@ export class Api {
 
 		const jsonData: any = {
 		  prompt,
-		  workflow,
+		  // Convert "auto" to null so backend can apply default resolution logic
+		  workflow: workflow === 'auto' ? null : workflow,
 		  params: workflowParams || {},
 		  global_params: global_params || { batch_size: 1 },
 		  batch_id,
@@ -162,13 +163,19 @@ export class Api {
 		  console.log(`[api] Publishing to destination:`, workflowParams.publish_destination);
 		}
 
-		if (refiner && refiner !== 'none') {
+		// Handle refiner - convert "auto" to null, and don't send "none"
+		if (refiner && refiner !== 'none' && refiner !== 'auto') {
 		  console.log(`[api] Using refiner:`, refiner);
 		  jsonData.refiner = refiner;
 		  if (refiner_params) {
 			console.log(`[api] With refiner params:`, refiner_params);
 			jsonData.refiner_params = refiner_params;
 		  }
+		} else if (refiner === 'auto') {
+		  console.log(`[api] Using auto refiner - letting backend decide`);
+		  // Don't set refiner field, let backend apply default resolution
+		} else {
+		  console.log(`[api] No refiner specified or using none`);
 		}
 
 		console.log("[api] Full API payload:", jsonData);

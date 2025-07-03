@@ -41,9 +41,6 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
 		<ImageUploader
 		  isLoading={isLoading}
 		  onImageUpload={onImageUpload}
-		  onWorkflowChange={onWorkflowChange}
-		  availableWorkflows={workflows}
-		  selectedWorkflowId={selectedWorkflow}
 		  hideLabel={isMobile}
 		/>
         

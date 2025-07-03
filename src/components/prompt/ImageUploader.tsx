@@ -10,34 +10,20 @@ import {
   DropdownMenuTrigger,
   DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
-import type { Workflow } from '@/components/prompt-form/types';
+
 
 interface ImageUploaderProps {
   isLoading: boolean;
   onImageUpload: (files: File[]) => void;
-  onWorkflowChange: (workflowId: string) => void;
-  availableWorkflows: Workflow[];
   hideLabel?: boolean;
-  selectedWorkflowId?: string;
 }
 
-function findNextImageWorkflow(workflows: Workflow[], currentWorkflowId?: string): string | null {
-  const current = workflows.find(wf => wf.id === currentWorkflowId);
-  if (current?.input?.includes('image')) return null; // already supports image
 
-  for (const wf of workflows) {
-    if (wf.input?.includes('image')) return wf.id;
-  }
-  return null;
-}
 
 const ImageUploader: React.FC<ImageUploaderProps> = ({
   isLoading,
   onImageUpload,
-  onWorkflowChange,
-  availableWorkflows,
-  hideLabel = false,
-  selectedWorkflowId
+  hideLabel = false
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -50,11 +36,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     const handleImageSelected = (event: CustomEvent) => {
       if (event.detail && event.detail.files) {
         onImageUpload(event.detail.files);
-        const nextWorkflow = findNextImageWorkflow(availableWorkflows, selectedWorkflowId);
-        if (nextWorkflow) {
-          onWorkflowChange(nextWorkflow);
-          toast.info(`Switched to "${nextWorkflow}" workflow to support image input`);
-        }
+        // Let the backend handle workflow selection
       }
     };
 
@@ -62,7 +44,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     return () => {
       document.removeEventListener('image-selected', handleImageSelected as EventListener);
     };
-  }, [onImageUpload, onWorkflowChange, availableWorkflows, selectedWorkflowId]);
+  }, [onImageUpload]);
 
   const processFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -82,11 +64,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
     if (validFiles.length > 0) {
       onImageUpload(validFiles);
-      const nextWorkflow = findNextImageWorkflow(availableWorkflows, selectedWorkflowId);
-      if (nextWorkflow) {
-        onWorkflowChange(nextWorkflow);
-        toast.info(`Switched to "${nextWorkflow}" workflow to support image input`);
-      }
+      // Let the backend handle workflow selection
     }
   };
 
@@ -123,11 +101,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       
       onImageUpload([file]);
       
-      const nextWorkflow = findNextImageWorkflow(availableWorkflows, selectedWorkflowId);
-      if (nextWorkflow) {
-        onWorkflowChange(nextWorkflow);
-        toast.info(`Switched to "${nextWorkflow}" workflow to support image input`);
-      }
+      // Let the backend handle workflow selection
     } catch (error) {
       console.error('Error processing URL:', error);
       toast.error("Failed to process image URL");

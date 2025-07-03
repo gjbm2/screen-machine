@@ -60,6 +60,7 @@
     "name": "Animate an image",
 	"system_prompt": "refiner-image-to-video.txt",
     "description": "Create a short video from an image",
+    "default-workflow": "flux1-dev-scale-l.json",
     "icon": "MessageCircleHeart",
 	"uploadimages": 1,
 	"alexavisible": true
@@ -80,15 +81,13 @@
     "icon": "Expand"
   },
   {
-    "id": "beautify",
-    "name": "Beautify",
-    "description": "Apply beauty enhancement",
-    "icon": "Pipette"
-  },
-  {
-    "id": "stylize",
-    "name": "Stylize",
-    "description": "Apply artistic styling",
-    "icon": "Paintbrush"
+    "id": "adapt",
+    "name": "Adapt an image",
+    "description": "Change an image based on a prompt",
+    "system_prompt": "refiner-adapt.txt.j2",
+    "default-workflow": "flux_1_kontext_dev_1pic-l.json",
+    "icon": "Paintbrush",
+	  "uploadimages": 1,
+	  "alexavisible": true
   }
 ]

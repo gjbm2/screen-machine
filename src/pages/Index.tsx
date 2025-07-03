@@ -96,7 +96,7 @@ const Index = () => {
     addLog: addConsoleLog 
   } = useConsoleManagement();
   
-  const [selectedRefiner, setSelectedRefiner] = useState('none');
+  const [selectedRefiner, setSelectedRefiner] = useState('auto');
   const [refinerParams, setRefinerParams] = useState<Record<string, any>>({});
   const [selectedPublish, setSelectedPublish] = useState('none');
 

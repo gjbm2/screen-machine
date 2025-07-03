@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as LucideIcons from 'lucide-react';
-import { Image } from 'lucide-react';
+import { Image, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   HoverCard,
@@ -37,10 +37,22 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   const [maxContentHeight, setMaxContentHeight] = useState<number | undefined>(undefined);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const selectedWorkflowObj = workflows.find(w => w.id === selectedWorkflow);
+  // Create auto option
+  const autoOption = {
+    id: 'auto',
+    name: 'Auto',
+    description: 'Automatically select the best workflow based on your prompt and refiner',
+    icon: 'Zap'
+  };
+
+  // Find selected workflow or auto option
+  const selectedWorkflowObj = selectedWorkflow === 'auto' 
+    ? autoOption 
+    : workflows.find(w => w.id === selectedWorkflow);
 
   const getWorkflowIcon = (iconName?: string) => {
     if (!iconName) return <Image className="h-5 w-5" />;
+    if (iconName === 'Zap') return <Zap className="h-5 w-5" />;
     const IconComponent = (LucideIcons as any)[iconName];
     return IconComponent ? <IconComponent className="h-5 w-5" /> : <Image className="h-5 w-5" />;
   };
@@ -57,6 +69,28 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
     <div className="space-y-2">
       <h4 className="text-sm font-semibold">Workflows</h4>
       <div className="grid grid-cols-1 gap-1">
+        {/* Auto option first */}
+        <Button
+          key="auto"
+          variant={selectedWorkflow === 'auto' ? "secondary" : "ghost"}
+          size="sm"
+          className="justify-start text-sm h-auto py-2"
+          onClick={() => handleSelectWorkflow('auto')}
+          type="button"
+        >
+          <div className="mr-2 flex-shrink-0">
+            <Zap className="h-5 w-5" />
+          </div>
+          <div className="flex flex-col items-start overflow-hidden">
+            <span className="truncate w-full text-left text-sm font-medium">Auto</span>
+            <span className="text-xs text-muted-foreground w-full text-left whitespace-normal">Automatically select the best workflow based on your prompt and refiner</span>
+          </div>
+        </Button>
+        
+        {/* Separator */}
+        <div className="border-t border-border my-1" />
+        
+        {/* Regular workflows */}
         {workflows.map((workflow) => (
           <Button
             key={workflow.id}

@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import * as LucideIcons from 'lucide-react';
-import { XCircle } from 'lucide-react';
+import { XCircle, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   HoverCard,
@@ -33,10 +33,22 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
 
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const selectedRefinerObj = refinersData.find(r => r.id === selectedRefiner);
+  // Create auto option
+  const autoOption = {
+    id: 'auto',
+    name: 'Auto',
+    description: 'Automatically select the best refiner based on your workflow and prompt',
+    icon: 'Zap'
+  };
+
+  // Find selected refiner or auto option
+  const selectedRefinerObj = selectedRefiner === 'auto' 
+    ? autoOption 
+    : refinersData.find(r => r.id === selectedRefiner);
 
   const getRefinerIcon = (iconName?: string) => {
     if (!iconName) return <XCircle className="h-5 w-5" />;
+    if (iconName === 'Zap') return <Zap className="h-5 w-5" />;
     const IconComponent = (LucideIcons as any)[iconName];
     return IconComponent ? <IconComponent className="h-5 w-5" /> : <XCircle className="h-5 w-5" />;
   };
@@ -50,6 +62,28 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
     <div className="space-y-2">
       <h4 className="text-sm font-semibold">Refiners</h4>
       <div className="grid grid-cols-1 gap-1">
+        {/* Auto option first */}
+        <Button
+          key="auto"
+          variant={selectedRefiner === 'auto' ? "secondary" : "ghost"}
+          size="sm"
+          className="justify-start text-sm h-auto py-2"
+          onClick={() => handleSelectRefiner('auto')}
+          type="button"
+        >
+          <div className="mr-2 flex-shrink-0">
+            <Zap className="h-5 w-5" />
+          </div>
+          <div className="flex flex-col items-start overflow-hidden">
+            <span className="truncate w-full text-left text-sm font-medium">Auto</span>
+            <span className="text-xs text-muted-foreground w-full text-left whitespace-normal">Automatically select the best refiner based on your workflow and prompt</span>
+          </div>
+        </Button>
+        
+        {/* Separator */}
+        <div className="border-t border-border my-1" />
+        
+        {/* Regular refiners */}
         {refinersData.map((refiner) => (
           <Button
             key={refiner.id}
