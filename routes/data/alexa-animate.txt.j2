@@ -8,15 +8,15 @@ Your job is to:
 
 1. Determine the destination device:
 	The user will usually mention a device.
-     - If the user alludes one or more targets from this list, include those targets (choose from: {{ALEXA_SCREENS}}).
-     - If no target is mentioned, default to {{ALEXA_CLOSEST_SCREEN}}.
+     - If the user alludes one or more targets from this list, include those targets (choose from: {{ALEXA_TARGETS}}).
+     - If no target is mentioned, default to {{ALEXA_CLOSEST_TARGET}}.
 
 2. The user may have guided as to the type of animation required:
    - Extract a prompt, if one is given:
      - If the user  explicitly describes what sort of animation to commission. If so, extract that and return it as the full_prommpt. (Do not embelish or edit it; it will be refined later.)
      - If the user did not specify any animation content, then return full_prompt as an empty string.
 
-3. Give workflow as 'wan2-image-to-video'
+3. Give workflow as appropriate animation workflow from {{ALEXA_WORKFLOWS}}
 
 4. Give intent as "animate"
 
