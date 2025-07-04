@@ -478,7 +478,10 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         if len(images) >= 2:
             prepared_images = [images[0], images[1]]
         elif len(images) == 1:
-            prepared_images = [images[0], images[0]]  # reuse first image
+            # Don't duplicate the same image - treat as single image case
+            prepared_images = [images[0]]
+            # Override images_required to reflect actual usage
+            images_required = 1
     else:
         prepared_images = []  # none required
        
@@ -640,6 +643,109 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         return [r for r in results if r is not None]
     else:
         return None 
+
+def async_combine(targets, obj = {}):
+    """
+    Process combination for exactly two targets.
+    This function combines images from two targets by:
+    1. Taking the first two targets (A and B)
+    2. Combining A+B -> publish to A
+    3. Combining B+A -> publish to B
+    
+    Args:
+        targets: List of target IDs (should contain exactly 2 targets)
+        obj: Optional dictionary with additional configuration
+        
+    Returns:
+        None
+    """
+    # Import necessary modules
+    from utils.logger import info, error, warning, debug
+    from routes.utils import get_image_from_target, resolve_runtime_value
+    import threading
+    
+    result = obj
+    result.setdefault("data", {}).setdefault(
+        "targets",
+        targets if isinstance(targets, list) else []
+    )
+
+    # Ensure we have exactly 2 targets
+    if not targets or len(targets) < 2:
+        warning("Combine: requires exactly 2 targets, insufficient targets provided")
+        return None
+    
+    # Take only the first two targets
+    target_a = targets[0]
+    target_b = targets[1]
+    
+    info(f"Combine: processing targets {target_a} and {target_b}")
+    
+    # Get images from both targets
+    image_a = get_image_from_target(target_a)
+    image_b = get_image_from_target(target_b)
+    
+    if not image_a:
+        warning(f"Combine: no current image found for target A ({target_a})")
+    if not image_b:
+        warning(f"Combine: no current image found for target B ({target_b})")
+        
+    # If we don't have both images, we can't combine
+    if not image_a or not image_b:
+        missing_targets = []
+        if not image_a:
+            missing_targets.append(target_a)
+        if not image_b:
+            missing_targets.append(target_b)
+        warning(f"Combine: cannot proceed without images from both targets. Missing images from: {', '.join(missing_targets)}")
+        return None
+    
+    # Prepare the combination prompt
+    combination_prompt = result.get("data", {}).get("prompt", "")
+    
+    # Create combination A+B -> publish to A
+    info(f"Combine: creating A+B combination for target {target_a}")
+    target_a_result = {
+        "intent": "combine",
+        "data": {
+            "prompt": combination_prompt,
+            "refiner": "adapt",  # Use adapt refiner for combination
+            "targets": [target_a],  # Publish to target A
+            "workflow": result.get("data", {}).get("workflow"),
+            "images": [image_a, image_b]  # A first, then B
+        }
+    }
+    
+    # Create combination B+A -> publish to B  
+    info(f"Combine: creating B+A combination for target {target_b}")
+    target_b_result = {
+        "intent": "combine", 
+        "data": {
+            "prompt": combination_prompt,
+            "refiner": "adapt",  # Use adapt refiner for combination
+            "targets": [target_b],  # Publish to target B
+            "workflow": result.get("data", {}).get("workflow"),
+            "images": [image_b, image_a]  # B first, then A
+        }
+    }
+    
+    # Run both combinations in parallel
+    threading.Thread(
+        target=handle_image_generation,
+        kwargs={
+            "input_obj": target_a_result
+        }
+    ).start()
+    
+    threading.Thread(
+        target=handle_image_generation,
+        kwargs={
+            "input_obj": target_b_result
+        }
+    ).start()
+    
+    info(f"Combine: started parallel combination threads for {target_a} and {target_b}")
+    return None
 
 def async_amimate(targets, obj = {}):
     """

@@ -439,36 +439,14 @@
             "text_input": "TEXT: app version of Now Sinner in a. It's a sh..."
           }
         ],
-        "conf_int": 85,
-        "_event": {
-          "key": "_user_interacting",
-          "payload": {
-            "wait": "90s",
-            "action": "info"
-          },
-          "unique_id": "2d82d693-c027-4c8d-bf46-b1592d91cd41",
-          "created_at": "2025-07-04T00:24:59.393504",
-          "display_name": "User Interaction"
-        }
+        "conf_int": 85
       },
       "last_generated": "20250619-160439-643a2590.mp4",
-      "publish_destination": "devtest",
-      "_event": {
-        "key": "_user_interacting",
-        "payload": {
-          "wait": "90s",
-          "action": "info"
-        },
-        "unique_id": "2d82d693-c027-4c8d-bf46-b1592d91cd41",
-        "created_at": "2025-07-04T00:24:59.393504",
-        "display_name": "User Interaction"
-      },
-      "wait_until": "2025-07-04 00:26:32.867154",
-      "last_wait_log": "2025-07-04 00:25:02.867154"
+      "publish_destination": "devtest"
     }
   ],
   "state": "running",
-  "last_updated": "2025-07-04T00:25:14.679981",
+  "last_updated": "2025-07-04T20:39:22.517702",
   "last_trigger_executions": {
     "7bc512d74b13f60c705deb7e1061e1c0_2025-06-10_24": "2025-06-10T12:01:00.103358",
     "7bc512d74b13f60c705deb7e1061e1c0_2025-06-10_25": "2025-06-10T12:31:00.738562",
@@ -1588,47 +1566,52 @@
     "7bc512d74b13f60c705deb7e1061e1c0_2025-07-03_45": "2025-07-03T22:31:00.614204",
     "7bc512d74b13f60c705deb7e1061e1c0_2025-07-03_46": "2025-07-03T23:01:00.422634",
     "7bc512d74b13f60c705deb7e1061e1c0_2025-07-03_47": "2025-07-03T23:31:00.291201",
-    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_0": "2025-07-04T00:01:00.343235"
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_0": "2025-07-04T00:01:00.343235",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_1": "2025-07-04T00:31:00.901208",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_2": "2025-07-04T01:01:01.336265",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_3": "2025-07-04T01:31:00.506778",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_4": "2025-07-04T02:01:01.127697",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_5": "2025-07-04T02:31:01.063913",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_6": "2025-07-04T03:01:00.045279",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_7": "2025-07-04T03:31:00.190307",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_8": "2025-07-04T04:01:00.981967",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_9": "2025-07-04T04:31:00.308845",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_10": "2025-07-04T05:01:00.673861",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_11": "2025-07-04T05:31:00.412892",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_12": "2025-07-04T06:01:00.461553",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_13": "2025-07-04T06:31:00.946190",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_14": "2025-07-04T07:01:01.942258",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_15": "2025-07-04T07:31:01.517029",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_16": "2025-07-04T08:01:01.709359",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_17": "2025-07-04T08:31:01.180382",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_18": "2025-07-04T09:01:00.047676",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_19": "2025-07-04T09:31:01.483419",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_20": "2025-07-04T10:01:01.465117",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_21": "2025-07-04T10:31:00.130109",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_22": "2025-07-04T11:01:00.267172",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_23": "2025-07-04T11:31:00.447651",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_24": "2025-07-04T12:01:01.585440",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_25": "2025-07-04T12:31:00.964868",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_26": "2025-07-04T13:01:01.694431",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_27": "2025-07-04T13:31:00.641140",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_28": "2025-07-04T14:01:00.514245",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_29": "2025-07-04T14:31:01.897732",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_30": "2025-07-04T15:01:00.030945",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_31": "2025-07-04T15:31:00.429065",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_32": "2025-07-04T16:01:00.719735",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_33": "2025-07-04T16:31:00.168321",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_34": "2025-07-04T17:01:00.866545",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_35": "2025-07-04T17:31:00.666710",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_36": "2025-07-04T18:01:00.752018",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_37": "2025-07-04T18:31:01.160906",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_38": "2025-07-04T19:01:01.662106",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_39": "2025-07-04T19:31:00.081220",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_40": "2025-07-04T20:01:01.935639",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-04_41": "2025-07-04T20:31:00.933564"
   },
   "active_events": {},
   "event_history": [
     {
-      "key": "_transcription",
-      "active_from": "2025-06-19T16:48:21.843377",
-      "expires": "2025-06-19T16:49:21.843377",
-      "display_name": null,
-      "payload": {
-        "text": "[A] Then when every 30 seconds or 20 seconds, it will see if there's any visually arresting imagery in what I've just said.",
-        "raw_text": "So that app will just run background. And then while we're talking, It will take that. It transcribes it as a seminar for the transcription. And then every few seconds, it will take this block of text, the last 500 words of narrative. It's meant to do diarization. Doesn't do diarization very well yet. Because I haven't got the tharization thing working. But if I said pink elephants dancing on the moon. Surrounded by jetpacks and exploding while dogs and cats speak to each other. Through microphones. So if I do something like that. Then when every 30 seconds or 20 seconds, it will see if there's any visually arresting imagery in what I've just said.",
-        "recent_text": "And then while we're talking, It will take that. It transcribes it as a seminar for the transcription. And then every few seconds, it will take this block of text, the last 500 words of narrative. It's meant to do diarization. Doesn't do diarization very well yet. Because I haven't got the tharization thing working. But if I said pink elephants dancing on the moon. Surrounded by jetpacks and exploding while dogs and cats speak to each other. Through microphones. So if I do something like that. Then when every 30 seconds or 20 seconds, it will see if there's any visually arresting imagery in what I've just said.",
-        "history_size": 116
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-19T16:48:21.843377",
-      "unique_id": "aae587d0-9ab9-4846-9071-0214203ff98d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-06-19T16:48:23.025307"
-    },
-    {
-      "key": "_transcription",
-      "active_from": "2025-06-19T16:48:21.843377",
-      "expires": "2025-06-19T16:49:21.843377",
-      "display_name": null,
-      "payload": {
-        "text": "[A] Then when every 30 seconds or 20 seconds, it will see if there's any visually arresting imagery in what I've just said.",
-        "raw_text": "So that app will just run background. And then while we're talking, It will take that. It transcribes it as a seminar for the transcription. And then every few seconds, it will take this block of text, the last 500 words of narrative. It's meant to do diarization. Doesn't do diarization very well yet. Because I haven't got the tharization thing working. But if I said pink elephants dancing on the moon. Surrounded by jetpacks and exploding while dogs and cats speak to each other. Through microphones. So if I do something like that. Then when every 30 seconds or 20 seconds, it will see if there's any visually arresting imagery in what I've just said.",
-        "recent_text": "And then while we're talking, It will take that. It transcribes it as a seminar for the transcription. And then every few seconds, it will take this block of text, the last 500 words of narrative. It's meant to do diarization. Doesn't do diarization very well yet. Because I haven't got the tharization thing working. But if I said pink elephants dancing on the moon. Surrounded by jetpacks and exploding while dogs and cats speak to each other. Through microphones. So if I do something like that. Then when every 30 seconds or 20 seconds, it will see if there's any visually arresting imagery in what I've just said.",
-        "history_size": 116
-      },
-      "single_consumer": false,
-      "created_at": "2025-06-19T16:48:21.843377",
-      "unique_id": "aae587d0-9ab9-4846-9071-0214203ff98d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-06-19T16:48:23.025307"
-    },
-    {
       "key": "__exit_block__",
       "active_from": "2025-06-19T16:48:26.296332",
       "expires": "2025-06-19T16:49:26.296332",
@@ -3105,6 +3088,32 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_devtest",
       "consumed_at": "2025-07-04T00:25:02.678771"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-04T06:00:16.549404",
+      "expires": "2025-07-04T06:01:16.549404",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-04T06:00:16.549404",
+      "unique_id": "b8d375f2-1ad7-4000-b848-3cf4b4fa6f8b",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-04T06:01:28.240224"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-04T06:00:16.549404",
+      "expires": "2025-07-04T06:01:16.549404",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-04T06:00:16.549404",
+      "unique_id": "b8d375f2-1ad7-4000-b848-3cf4b4fa6f8b",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-04T06:01:28.240224"
     }
   ]
 }

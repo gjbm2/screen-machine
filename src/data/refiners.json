@@ -83,11 +83,11 @@
   {
     "id": "adapt",
     "name": "Adapt an image",
-    "description": "Change an image based on a prompt",
+    "description": "Change an image based on a prompt, or combine two images",
     "system_prompt": "refiner-adapt.txt.j2",
     "default-workflow": "flux_1_kontext_dev_1pic-l.json",
     "icon": "Paintbrush",
-	  "uploadimages": 1,
+	  "uploadimages": 2,
 	  "alexavisible": true
   }
 ]
