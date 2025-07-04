@@ -37,7 +37,7 @@ import utils.logger
 from routes.manage_jobs import cancel_all_jobs
 from typing import Dict, Any
 import uuid
-from routes.generate_handler import throw_user_interacting_event, handle_image_generation, async_amimate, async_adapt
+from routes.generate_handler import throw_user_interacting_event, handle_image_generation, async_amimate, async_adapt, async_combine
 from routes.samsung_utils import device_wake, device_sleep, device_sync
 
 def Brianize(text: str) -> str:
@@ -477,6 +477,8 @@ def process(data):
                 use_system_prompt="alexa-trigger-events.txt.j2"
             case "adapt":
                 use_system_prompt="alexa-adapt.txt.j2"
+            case "combine":
+                use_system_prompt="alexa-combine.txt.j2"
             case "sleep":
                 response_ssml = Brianize("Goodnight.")
                 # Set result to include sleep intent
@@ -624,6 +626,39 @@ def process(data):
                 # Throw user_interacting event for adaptation on all targets
                 for target in expanded_targets:
                     throw_user_interacting_event(target, action_type="generate")
+    
+            # User wants to combine images from two targets
+            case "combine":
+                # Fetch relevant image inputs and process combination
+                targets = result.get("data", {}).get("targets", []) if isinstance(result.get("data", {}).get("targets"), list) else []
+                if not targets:
+                    # Default to closest screen if no targets specified
+                    targets = [closest_screen] if closest_screen else []
+                
+                # Expand groups to individual destinations
+                expanded_targets = expand_alexa_targets_to_destinations(targets) if targets else []
+                
+                # For combine, we need exactly 2 targets
+                if len(expanded_targets) < 2:
+                    # Fill in with closest screen if needed
+                    if closest_screen and closest_screen not in expanded_targets:
+                        expanded_targets.append(closest_screen)
+                
+                # Limit to first 2 targets for combination
+                combine_targets = expanded_targets[:2]
+                
+                # Validate we have exactly 2 targets
+                if len(combine_targets) >= 2:
+                    async_combine(targets=combine_targets, obj=result)
+                    
+                    # Throw user_interacting event for combination on both targets
+                    for target in combine_targets:
+                        throw_user_interacting_event(target, action_type="generate")
+                else:
+                    # Graceful failure - override response_ssml with helpful guidance
+                    utils.logger.warning(f"Combine: insufficient targets ({len(combine_targets)}) for combination")
+                    available_targets = ", ".join(subs.get("ALEXA_TARGETS", []))
+                    response_ssml = Brianize(f"I need exactly two targets to combine images. Try something like 'combine north screen and south screen' or specify a group with at least two screens. Available targets: {available_targets}.")
     
             case "generate_image":
                 # Ensure we're using the currently selected refiner

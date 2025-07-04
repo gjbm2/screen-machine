@@ -268,6 +268,57 @@
     ]
   },
   {
+    "id": "flux_1_kontext_dev_2pic-l.json",
+    "name": "Combine two images",
+    "runpod_id": "oh422aycpybd5u",
+    "description": "Intelligently combine two images based on a prompt",
+    "default-refiner": "adapt",
+    "icon": "Merge",
+    "input": ["image", "image", "text"],
+    "uses_images": 2,
+    "processing_stages": [
+      {"name": "Rendering", "weight": 90},
+      {"name": "Upscaling", "weight": 10}
+    ],	
+    "alexavisible": true,
+    "style_guidance": "Use to combine two images together, blend subjects, or create interactions between elements from different images.",
+    "style_descriptor": "seamless blend, harmonious composition, balanced integration, natural interaction",
+    "params": [
+      { 
+        "id": "steps",
+        "name": "Steps",
+        "type": "number",
+        "default": 30
+      },
+      {
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+        "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+        "default": "1280"
+      },
+      {
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+        "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+        "default": "720"
+      },
+      {
+        "id": "seed",
+        "name": "Random seed",
+        "type": "number"
+      },
+      {
+        "id": "upscaler",
+        "name": "Upscaler model",
+        "type": "select",
+        "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
+        "default": "RealESRGAN_x2plus.pth"
+      }
+    ]
+  },
+  {
     "id": "upscale.json",
     "name": "Image to Image",
     "description": "Transform an uploaded image based on a text prompt",
