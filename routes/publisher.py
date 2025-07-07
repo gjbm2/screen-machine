@@ -100,6 +100,7 @@ def publish_to_destination(
     cross_bucket_mode: bool = False,
     batch_id: str | None = None,
     update_published: bool = True,
+    is_history_navigation: bool = False,
 ) -> dict:
     """
     Publish an image to a destination, optionally saving to a bucket.
@@ -144,7 +145,8 @@ def publish_to_destination(
                 silent=True,
                 cross_bucket_mode=False,
                 batch_id=batch_id,
-                update_published=update_published
+                update_published=update_published,
+                is_history_navigation=is_history_navigation
             )
             if result["success"]:
                 _update_published_info(publish_destination_id, None, None)
@@ -230,16 +232,17 @@ def publish_to_destination(
                         
                         if local_path.exists():
                             # Use the local file directly instead of downloading
-                            return publish_to_destination(
-                                source=local_path,
-                                publish_destination_id=publish_destination_id,
-                                metadata=metadata or {},
-                                skip_bucket=skip_bucket,
-                                silent=silent,
-                                cross_bucket_mode=cross_bucket_mode or True,  # URL sources are like cross-bucket
-                                batch_id=batch_id,
-                                update_published=update_published
-                            )
+                                                    return publish_to_destination(
+                            source=local_path,
+                            publish_destination_id=publish_destination_id,
+                            metadata=metadata or {},
+                            skip_bucket=skip_bucket,
+                            silent=silent,
+                            cross_bucket_mode=cross_bucket_mode or True,  # URL sources are like cross-bucket
+                            batch_id=batch_id,
+                            update_published=update_published,
+                            is_history_navigation=is_history_navigation
+                        )
                 
                 # If source comes from a full URL that contains buckets/raw/
                 # it could be an absolute URL to our own API
@@ -261,7 +264,8 @@ def publish_to_destination(
                             silent=silent,
                             cross_bucket_mode=cross_bucket_mode or True,  # URL sources are like cross-bucket
                             batch_id=batch_id,
-                            update_published=update_published
+                            update_published=update_published,
+                            is_history_navigation=is_history_navigation
                         )
 
                 # If we get here, we need to download the remote URL
@@ -335,7 +339,8 @@ def publish_to_destination(
                     silent=silent,
                     cross_bucket_mode=cross_bucket_mode or True,  # URL sources are like cross-bucket
                     batch_id=batch_id,
-                    update_published=update_published
+                    update_published=update_published,
+                    is_history_navigation=is_history_navigation
                 )
                 
                 # Clean up the temporary file
@@ -360,7 +365,8 @@ def publish_to_destination(
                 silent=silent,
                 cross_bucket_mode=cross_bucket_mode,
                 batch_id=batch_id,
-                update_published=update_published
+                update_published=update_published,
+                is_history_navigation=is_history_navigation
             )
             
             return result
@@ -402,11 +408,12 @@ def _send_overlay_prompt(screen_id: str, metadata: dict[str, Any]) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Internal helper – bucket append
 # ─────────────────────────────────────────────────────────────────────────────
-def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict = None, cross_bucket_mode: bool = False, file_extension: str = None) -> None:
+def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict = None, cross_bucket_mode: bool = False, file_extension: str = None, is_history_navigation: bool = False) -> None:
     """
     Persist publish information in multiple locations to maintain consistency:
     1. Update the bucket's bucket.json with published_meta
     2. Create/update the published info in a separate file at /output/<id>.<ext>.json
+    3. Record in history stack if this is a new publish (not undo/redo)
     
     Args:
         bucket: The bucket ID
@@ -415,6 +422,7 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
         source_metadata: Complete metadata for the published file
         cross_bucket_mode: If True, use cross-bucket URL format with /output/<id>.<ext>
         file_extension: Explicit file extension to use (including the dot, e.g. '.mp4')
+        is_history_navigation: True if this is an undo/redo operation, False for new publishes
     """
     # Get API URL from environment
     VITE_API_URL = os.environ.get("VITE_API_URL", "http://185.254.136.253:5000/api").rstrip("/")
@@ -455,16 +463,44 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
     
     info(f"Generated URLs: raw_url={raw_url}, thumbnail_url={thumbnail_url}")
     
+    # Handle history tracking
+    if not is_history_navigation:
+        # This is a new publish - record in history stack
+        from routes.publish_utils import record_new_publish
+        try:
+            history_result = record_new_publish(
+                destination_id=bucket,
+                filename=filename,
+                published_at=when,
+                raw_url=raw_url,
+                thumbnail_url=thumbnail_url,
+                metadata=source_metadata
+            )
+            info(f"[history] Recorded new publish in history: {history_result.get('success', False)}")
+        except Exception as e:
+            warning(f"[history] Failed to record new publish in history: {e}")
+    
+    # Always update the legacy published_meta for backward compatibility
     meta = load_meta(bucket)
-    meta["published_meta"] = {
-        "filename": filename, 
-        "published_at": when,
-        "raw_url": raw_url,
-        "thumbnail_url": thumbnail_url
-    }
+    
+    # Merge with existing published_meta instead of overwriting
+    if "published_meta" not in meta:
+        meta["published_meta"] = {}
+    
+    # Update the current published image info without destroying history
+    meta["published_meta"]["filename"] = filename
+    meta["published_meta"]["published_at"] = when
+    meta["published_meta"]["raw_url"] = raw_url
+    meta["published_meta"]["thumbnail_url"] = thumbnail_url
     
     if source_metadata:
         meta["published_meta"]["metadata"] = source_metadata
+    
+    # When this is history navigation, don't touch the history fields
+    # (they were already updated by the history manager)
+    if not is_history_navigation:
+        # This is a regular publish, so the history fields should be updated by record_new_publish above
+        pass
         
     save_meta(bucket, meta)
     
@@ -521,6 +557,7 @@ def _publish_to_destination(
     cross_bucket_mode: bool = False,
     batch_id: str | None = None,
     update_published: bool = True,
+    is_history_navigation: bool = False,
 ) -> dict:
     """Internal helper for publish_to_destination."""
     try:
@@ -626,7 +663,8 @@ def _publish_to_destination(
                 when=publish_time,
                 source_metadata=effective_metadata,
                 cross_bucket_mode=cross_bucket_mode,
-                file_extension=file_extension
+                file_extension=file_extension,
+                is_history_navigation=is_history_navigation
             )
 
             if not silent and effective_metadata:

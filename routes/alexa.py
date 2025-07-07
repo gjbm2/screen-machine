@@ -468,6 +468,10 @@ def process(data):
                     response_ssml = Brianize(f"{total_cancelled} jobs cancelled.")
                 else:
                     response_ssml = Brianize(f"No running jobs.")
+            case "undo":
+                use_system_prompt="alexa-undo-redo.txt.j2"
+            case "redo":
+                use_system_prompt="alexa-undo-redo.txt.j2"
             case "set":
                 # Setting global or group vars (e.g. theme, style, etc.)
                 use_system_prompt="alexa-setvars.txt.j2"
@@ -710,6 +714,82 @@ def process(data):
                     
                     # Run sleep commands in background
                     threading.Thread(target=sleep_screens).start()
+            # User wants to undo previous image(s)
+            case "undo":
+                from routes.publish_utils import undo_for_targets
+                
+                targets = result.get("data", {}).get("targets", []) if isinstance(result.get("data", {}).get("targets"), list) else []
+                if not targets:
+                    # Default to closest screen if no targets specified
+                    targets = [closest_screen] if closest_screen else []
+                
+                # Expand groups to individual destinations
+                expanded_targets = expand_alexa_targets_to_destinations(targets) if targets else []
+                
+                if expanded_targets:
+                    undo_result = undo_for_targets(expanded_targets)
+                    
+                    if undo_result.get("overall_success"):
+                        success_count = undo_result.get("success_count", 0)
+                        error_count = undo_result.get("error_count", 0)
+                        
+                        if error_count == 0:
+                            if success_count == 1:
+                                response_ssml = Brianize("Reverted to the previous image.")
+                            else:
+                                response_ssml = Brianize(f"Reverted {success_count} screens to their previous images.")
+                        else:
+                            response_ssml = Brianize(f"Reverted {success_count} screens, but {error_count} failed.")
+                    else:
+                        # Check for common error patterns
+                        results = undo_result.get("results", {})
+                        if results and all("No history available" in r.get("error", "") for r in results.values()):
+                            response_ssml = Brianize("No previous images to revert to.")
+                        elif results and all("Already at oldest image" in r.get("error", "") for r in results.values()):
+                            response_ssml = Brianize("Already showing the oldest images.")
+                        else:
+                            response_ssml = Brianize("Cannot undo at this time.")
+                else:
+                    response_ssml = Brianize("No screens available for undo.")
+            
+            # User wants to redo previously undone image(s)
+            case "redo":
+                from routes.publish_utils import redo_for_targets
+                
+                targets = result.get("data", {}).get("targets", []) if isinstance(result.get("data", {}).get("targets"), list) else []
+                if not targets:
+                    # Default to closest screen if no targets specified
+                    targets = [closest_screen] if closest_screen else []
+                
+                # Expand groups to individual destinations
+                expanded_targets = expand_alexa_targets_to_destinations(targets) if targets else []
+                
+                if expanded_targets:
+                    redo_result = redo_for_targets(expanded_targets)
+                    
+                    if redo_result.get("overall_success"):
+                        success_count = redo_result.get("success_count", 0)
+                        error_count = redo_result.get("error_count", 0)
+                        
+                        if error_count == 0:
+                            if success_count == 1:
+                                response_ssml = Brianize("Moved forward to the next image.")
+                            else:
+                                response_ssml = Brianize(f"Moved {success_count} screens forward to their next images.")
+                        else:
+                            response_ssml = Brianize(f"Moved {success_count} screens forward, but {error_count} failed.")
+                    else:
+                        # Check for common error patterns
+                        results = redo_result.get("results", {})
+                        if results and all("No history available" in r.get("error", "") for r in results.values()):
+                            response_ssml = Brianize("No images to redo.")
+                        elif results and all("Already at newest image" in r.get("error", "") for r in results.values()):
+                            response_ssml = Brianize("Already showing the newest images.")
+                        else:
+                            response_ssml = Brianize("Cannot redo at this time.")
+                else:
+                    response_ssml = Brianize("No screens available for redo.")
+            
             # User wants to change the refiner
             case "change_refiner":
                 # Just switch to a new refiner
