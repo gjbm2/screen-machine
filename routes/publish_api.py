@@ -300,4 +300,207 @@ def display_from_bucket_api(publish_destination_id: str):
         return jsonify({"error": f"Unknown publish destination: {str(e)}"}), 404
     except Exception as e:
         error(f"Error in display_from_bucket: {str(e)}")
-        return jsonify({"error": str(e)}), 500 
+        return jsonify({"error": str(e)}), 500
+
+
+@publish_api.route('/undo/<publish_destination_id>', methods=['POST'])
+def undo_publish_endpoint(publish_destination_id: str):
+    """
+    Undo the last publish operation for a destination.
+    
+    This moves the pointer back in the history stack and republishes
+    the previous image without adding it as a new entry.
+    
+    Returns:
+        JSON response with operation result and current state
+    """
+    from routes.publish_utils import undo_publish, get_publish_history_info
+    from routes.publisher import publish_to_destination, _record_publish
+    from routes.bucketer import bucket_path
+    from pathlib import Path
+    
+    info(f"[undo] Undo request for destination: {publish_destination_id}")
+    
+    try:
+        # Attempt to undo in history stack
+        undo_result = undo_publish(publish_destination_id)
+        
+        if not undo_result.get("success"):
+            info(f"[undo] Cannot undo for {publish_destination_id}: {undo_result.get('error')}")
+            return jsonify({
+                "success": False,
+                "error": undo_result.get("error", "Cannot undo"),
+                "can_undo": undo_result.get("can_undo", False),
+                "can_redo": undo_result.get("can_redo", False)
+            }), 400
+        
+        # Get the image we need to display
+        current_image = undo_result.get("current_image")
+        if not current_image:
+            error(f"[undo] No current image returned from undo operation")
+            return jsonify({"success": False, "error": "No image to display"}), 500
+        
+        filename = current_image.get("filename")
+        if not filename:
+            error(f"[undo] No filename in current image data")
+            return jsonify({"success": False, "error": "Invalid image data"}), 500
+        
+        # Find the image file in the bucket
+        bucket_dir = bucket_path(publish_destination_id)
+        image_path = bucket_dir / filename
+        
+        if not image_path.exists():
+            error(f"[undo] Image file not found: {image_path}")
+            return jsonify({"success": False, "error": f"Image file {filename} not found"}), 404
+        
+        # Publish the image (this will display it but not add to history)
+        info(f"[undo] Publishing previous image: {filename}")
+        publish_result = publish_to_destination(
+            source=image_path,
+            publish_destination_id=publish_destination_id,
+            skip_bucket=True,  # Don't add to bucket again
+            silent=False,  # Show overlay
+            metadata=current_image.get("metadata", {}),
+            is_history_navigation=True  # Don't overwrite history pointer, but do update published_meta
+        )
+        
+        if not publish_result.get("success"):
+            error(f"[undo] Failed to publish previous image: {publish_result.get('error')}")
+            return jsonify({"success": False, "error": "Failed to display previous image"}), 500
+        
+        # Note: We don't call _record_publish here because the history manager
+        # already updated the pointer, and _record_publish would overwrite it
+        
+        info(f"[undo] Successfully undid to image: {filename}")
+        return jsonify({
+            "success": True,
+            "current_image": {
+                "filename": filename,
+                "published_at": current_image.get("published_at"),
+                "raw_url": current_image.get("raw_url"),
+                "thumbnail_url": current_image.get("thumbnail_url")
+            },
+            "pointer_position": undo_result.get("pointer_position"),
+            "stack_size": undo_result.get("stack_size"),
+            "can_undo": undo_result.get("can_undo"),
+            "can_redo": undo_result.get("can_redo")
+        })
+        
+    except Exception as e:
+        error(f"[undo] Error during undo operation for {publish_destination_id}: {e}")
+        return jsonify({"success": False, "error": f"Undo operation failed: {str(e)}"}), 500
+
+
+@publish_api.route('/redo/<publish_destination_id>', methods=['POST'])
+def redo_publish_endpoint(publish_destination_id: str):
+    """
+    Redo a previously undone publish operation for a destination.
+    
+    This moves the pointer forward in the history stack and republishes
+    the next image without adding it as a new entry.
+    
+    Returns:
+        JSON response with operation result and current state
+    """
+    from routes.publish_utils import redo_publish, get_publish_history_info
+    from routes.publisher import publish_to_destination, _record_publish
+    from routes.bucketer import bucket_path
+    from pathlib import Path
+    
+    info(f"[redo] Redo request for destination: {publish_destination_id}")
+    
+    try:
+        # Attempt to redo in history stack
+        redo_result = redo_publish(publish_destination_id)
+        
+        if not redo_result.get("success"):
+            info(f"[redo] Cannot redo for {publish_destination_id}: {redo_result.get('error')}")
+            return jsonify({
+                "success": False,
+                "error": redo_result.get("error", "Cannot redo"),
+                "can_undo": redo_result.get("can_undo", False),
+                "can_redo": redo_result.get("can_redo", False)
+            }), 400
+        
+        # Get the image we need to display
+        current_image = redo_result.get("current_image")
+        if not current_image:
+            error(f"[redo] No current image returned from redo operation")
+            return jsonify({"success": False, "error": "No image to display"}), 500
+        
+        filename = current_image.get("filename")
+        if not filename:
+            error(f"[redo] No filename in current image data")
+            return jsonify({"success": False, "error": "Invalid image data"}), 500
+        
+        # Find the image file in the bucket
+        bucket_dir = bucket_path(publish_destination_id)
+        image_path = bucket_dir / filename
+        
+        if not image_path.exists():
+            error(f"[redo] Image file not found: {image_path}")
+            return jsonify({"success": False, "error": f"Image file {filename} not found"}), 404
+        
+        # Publish the image (this will display it but not add to history)
+        info(f"[redo] Publishing next image: {filename}")
+        publish_result = publish_to_destination(
+            source=image_path,
+            publish_destination_id=publish_destination_id,
+            skip_bucket=True,  # Don't add to bucket again
+            silent=False,  # Show overlay
+            metadata=current_image.get("metadata", {}),
+            is_history_navigation=True  # Don't overwrite history pointer, but do update published_meta
+        )
+        
+        if not publish_result.get("success"):
+            error(f"[redo] Failed to publish next image: {publish_result.get('error')}")
+            return jsonify({"success": False, "error": "Failed to display next image"}), 500
+        
+        # Note: We don't call _record_publish here because the history manager
+        # already updated the pointer, and _record_publish would overwrite it
+        
+        info(f"[redo] Successfully redid to image: {filename}")
+        return jsonify({
+            "success": True,
+            "current_image": {
+                "filename": filename,
+                "published_at": current_image.get("published_at"),
+                "raw_url": current_image.get("raw_url"),
+                "thumbnail_url": current_image.get("thumbnail_url")
+            },
+            "pointer_position": redo_result.get("pointer_position"),
+            "stack_size": redo_result.get("stack_size"),
+            "can_undo": redo_result.get("can_undo"),
+            "can_redo": redo_result.get("can_redo")
+        })
+        
+    except Exception as e:
+        error(f"[redo] Error during redo operation for {publish_destination_id}: {e}")
+        return jsonify({"success": False, "error": f"Redo operation failed: {str(e)}"}), 500
+
+
+@publish_api.route('/history/<publish_destination_id>', methods=['GET'])
+def get_publish_history_endpoint(publish_destination_id: str):
+    """
+    Get the current publish history information for a destination.
+    
+    Returns:
+        JSON response with history stack status and navigation info
+    """
+    from routes.publish_utils import get_publish_history_info
+    
+    try:
+        history_info = get_publish_history_info(publish_destination_id)
+        
+        return jsonify({
+            "success": True,
+            "current_pointer": history_info.get("current_pointer", 0),
+            "stack_size": history_info.get("stack_size", 0),
+            "can_undo": history_info.get("can_undo", False),
+            "can_redo": history_info.get("can_redo", False),
+            "current_image": history_info.get("current_image")
+        })
+        
+    except Exception as e:
+        error(f"[history] Error getting history info for {publish_destination_id}: {e}")
+        return jsonify({"success": False, "error": f"Failed to get history info: {str(e)}"}), 500 
