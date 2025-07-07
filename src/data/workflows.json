@@ -226,8 +226,8 @@
     "icon": "PaintBucket",
     "input": ["image", "text"],
     "processing_stages": [
-      {"name": "Rendering", "weight": 90},
-      {"name": "Upscaling", "weight": 10}
+      {"name": "Rendering", "weight": 80},
+      {"name": "Upscaling", "weight": 20}
     ],	
     "alexavisible": true,
     "style_guidance": "Use to adapt an image to a new style, or to add a new element to an image.",
