@@ -315,6 +315,13 @@
         "type": "select",
         "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
         "default": "RealESRGAN_x2plus.pth"
+      },
+      {
+        "id": "upscale-flag",
+        "node_skip": true,
+        "name": "Perform upscale?",
+        "type": "bool",
+        "default": true
       }
     ]
   },
@@ -322,28 +329,16 @@
     "id": "upscale.json",
     "name": "Image to Image",
     "description": "Transform an uploaded image based on a text prompt",
-    "runpod_id": "k98wg36ip597n0",
+    "runpod_id": "oh422aycpybd5u",
     "icon": "Images",
     "input": ["image"],	  
     "params": [
       {
-        "id": "strength",
-        "name": "Transformation Strength",
+        "id": "upscaler",
+        "name": "Upscaler model",
         "type": "select",
-        "options": ["Light", "Medium", "Strong"],
-        "default": "Medium"
-      },
-      {
-        "id": "preserve_color",
-        "name": "Preserve Colors",
-        "type": "checkbox",
-        "default": true
-      },
-      {
-        "id": "denoise_strength",
-        "name": "Denoise Strength",
-        "type": "range",
-        "default": 60
+        "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
+        "default": "RealESRGAN_x2plus.pth"
       }
     ]
   },

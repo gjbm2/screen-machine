@@ -1,6 +1,0 @@
-https://huggingface.co/Comfy-Org has instructions
-
-need to upload models 
-also workflow (in this dir)
-
-Already made changes to runpod -- need to publish & ensure working correctly

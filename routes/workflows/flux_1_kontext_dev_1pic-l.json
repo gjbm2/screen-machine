@@ -31,7 +31,7 @@
   "31": {
     "inputs": {
       "seed": 469366467564800,
-      "steps": 30,
+      "steps": 20,
       "cfg": 1,
       "sampler_name": "euler",
       "scheduler": "simple",
@@ -213,7 +213,7 @@
     },
     "class_type": "UpscaleModelLoader",
     "_meta": {
-      "title": "Load Upscale Model {{UPSCALER}}"
+      "title": "Load Upscale Model {{UPSCALER}} {{uspcale-flag}}"
     }
   },
   "190": {
@@ -229,7 +229,7 @@
     },
     "class_type": "ImageUpscaleWithModel",
     "_meta": {
-      "title": "Upscale Image (using Model)"
+      "title": "Upscale Image (using Model) {{uspcale-flag}}"
     }
   },
   "191": {
@@ -247,7 +247,7 @@
     },
     "class_type": "ImageResize+",
     "_meta": {
-      "title": "🔧 Image Resize {{DOWNSCALER}}"
+      "title": "🔧 Image Resize {{DOWNSCALER}} {{uspcale-flag}}"
     }
   }
 }
