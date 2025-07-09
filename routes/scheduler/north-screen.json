@@ -359,431 +359,431 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "Hidden corners of secret gardens revealed in moonlight",
-        "_b_theme": "Sunlight filtering through bluebell woods",
-        "_style": "Pictorialist photography style reminiscent of Saroja Selvan",
-        "_guidance": "Capture the serene interplay of natural light in wooded and garden scenes, ensuring distinctive settings that diverge from recent botanical and natural imagery.",
-        "prompt": "Moonlit rose arbor, delicate petals scattered over mossy stones, shadows of weeping willows cast intricate patterns on ancient brick walls; Pictorialist photography reveals hidden elegance.",
+        "_a_theme": "Community gardens thriving on rooftops",
+        "_b_theme": "Solitary gardeners cultivating in small plots between buildings",
+        "_style": "Martin Parr-inspired vibrant urban documentary photography",
+        "_guidance": "Capture the contrast between communal and individual gardening efforts in the heart of the city, using Parr\u2019s distinctive style to accentuate the color and detail while ensuring diverse subjects from recent garden imagery are avoided.",
+        "prompt": "Rooftop apiary surrounded by lush, colorful garden beds, diverse gardeners in candid moments, Parr-inspired vibrancy emphasizing bees at work amidst urban skyline backdrop.",
         "history_var": [
           {
-            "timestamp": "2025-07-06 13:30:03",
+            "timestamp": "2025-07-08 21:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Post-Great Fire London evening vista, candlelit community gathering by the Thames, storytelling under restored arches, Davies-inspired reflection lights blend past resilience with hopeful future."
+              "prompt": "Half-submerged urban fountain overtaken by aquatic plants; birds nest among statues, moody urban palette with dynamic light interplay reminiscent of Smith's photographic storytelling."
             },
-            "text_input": "'Social resilience \u2014 Communities rebuilding the...",
-            "explanation": "I chose to focus on a communal gathering by the Thames during the evening, avoiding previous urba..."
+            "text_input": "'Urban infrastructure being corrupted by nature...",
+            "explanation": "I selected a unique urban setting\u2014a fountain partially submerged and reclaimed by nature, steerin..."
           },
           {
-            "timestamp": "2025-07-06 14:30:03",
+            "timestamp": "2025-07-08 22:30:02",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "London's recovery post-Great Fire, juxtaposed rooftop gardens sprouting on rebuilt structures, Davies-style capturing urban life rebirth amidst historic remains under soft, diffused evening light."
+              "prompt": "Abandoned urban playground engulfed by native flora, swings twisted by sprawling roots under dappled sunlight; evocative, Smith-inspired photography capturing nature's unyielding embrace among urban relics."
             },
-            "text_input": "'Architectural recovery \u2014 Rebuilding city struc...",
-            "explanation": "I chose to depict rooftop gardens on rebuilt structures, avoiding previously mentioned street mar..."
+            "text_input": "'Urban infrastructure being corrupted by nature...",
+            "explanation": "I depicted an urban playground overtaken by native plants, a setting not previously used in the l..."
           },
           {
-            "timestamp": "2025-07-06 15:30:04",
+            "timestamp": "2025-07-08 23:30:02",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "London post-Great Fire alleyway, artists sketching urban landscape, children playing around iconic street lamps, Davies-style chiaroscuro capturing community spirit and artistic renewal."
+              "prompt": "Forgotten city pier breaking into sea, tide pools teeming with life among splintered wood; Smith-like monochrome captures nature\u2019s resilience against looming urban desolation."
             },
-            "text_input": "'Architectural recovery \u2014 Rebuilding city struc...",
-            "explanation": "I focused on a quiet alleyway scene involving artistic activities and children, avoiding previous..."
+            "text_input": "'Nature adapting to urban interference' in the ...",
+            "explanation": "I focused on a city pier\u2014a setting not used in previous prompts. The pier's interaction with the ..."
           },
           {
-            "timestamp": "2025-07-06 16:30:03",
+            "timestamp": "2025-07-09 06:00:14",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "London's skyline post-Great Fire; mixed-renewal sculptures amidst hatch lanes and fresh-paved roads, John Davies-inspired interplay of resilient dawn light and emerging cityscape."
+              "prompt": "Rooftop community gardens bustling with diverse people tending vibrant plots; Martin Parr style capturing vivid contrasts of personal versus collective effort against urban skyline backdrop."
             },
-            "text_input": "'Architectural recovery \u2014 Rebuilding city struc...",
-            "explanation": "I focused on sculptural installations in rebuilt city spaces\u2014not previously covered. The Davies-i..."
+            "text_input": "'Community gardens thriving on rooftops' in the...",
+            "explanation": "The prompt revolves around a rooftop community garden, distinct from previous urban nature scenar..."
           },
           {
-            "timestamp": "2025-07-06 17:30:03",
+            "timestamp": "2025-07-09 07:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Children planting flowers in post-Great Fire London parks, laughing amidst transformed landscapes; Davies-inspired perspective emphasizing playful rejuvenation and social recovery under soft morning light."
+              "prompt": "A single gardener tending a vibrant patch of sunflowers amidst towering urban buildings, vivid Martin Parr-style emphasizing contrast between solitude and city vibrancy, colors popping against concrete."
             },
-            "text_input": "'Social resilience \u2014 Communities rebuilding the...",
-            "explanation": "To ensure originality, I focused on children engaging with nature in rejuvenated parks rather tha..."
+            "text_input": "'Solitary gardeners cultivating in small plots ...",
+            "explanation": "The focus is on a solitary gardener within an urban landscape, distinct from communal gardening s..."
           },
           {
-            "timestamp": "2025-07-06 18:30:03",
+            "timestamp": "2025-07-09 08:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Reclaimed London bridge arches post-Great Fire, bustling pop-up community workshops, craftspeople and apprentices collaborating; John Davies-style natural lighting highlights interwoven narratives of renewal and kinship."
+              "prompt": "Two neighbors chatting across fences of their small urban garden plots; Martin Parr-inspired style highlights colorful blooms and cityscape, emphasizing contrast between personal spaces and bustling metropolis."
             },
-            "text_input": "'Social resilience \u2014 Communities rebuilding the...",
-            "explanation": "I chose to focus on the often-overlooked architectural feature of bridge arches, used for pop-up ..."
+            "text_input": "'Solitary gardeners cultivating in small plots ...",
+            "explanation": "I concentrated on the interaction between gardeners across their plots, highlighting the contrast..."
           },
           {
-            "timestamp": "2025-07-06 19:30:04",
+            "timestamp": "2025-07-09 09:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Rebuilt cathedral facade in post-Great Fire London, sunlight illuminating ornate stonework, people lingering in reflective solitude; Davies-inspired portrayal of architectural resilience and historic reverence."
+              "prompt": "Solitary gardener with red wheelbarrow beside city wall, vibrant tulips in bloom, Parr-style documenting city life coexistence with individual cultivation, bustling street scene beyond the garden."
             },
-            "text_input": "'Architectural recovery \u2014 Rebuilding city struc...",
-            "explanation": "I centered the image around a post-Great Fire cathedral facade, focusing on architectural details..."
+            "text_input": "'Solitary gardeners cultivating in small plots ...",
+            "explanation": "To avoid duplicating previous prompts focusing on rooftops or distinct interactions, I centered o..."
           },
           {
-            "timestamp": "2025-07-06 20:30:02",
+            "timestamp": "2025-07-09 10:30:02",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Post-Great Fire London street, tavern sign swaying above lively street musicians, contrasting repaired cobblestones; John Davies' style highlights the vibrant rebirth amidst historical shadows."
+              "prompt": "Rooftop deck transformed into vibrant community space, urban high-rise backdrop, gardeners of different ages and ethnicities collaborating, colorful Parr-style focus on unity and individual expression."
             },
-            "text_input": "'Architectural recovery \u2014 Rebuilding city struc...",
-            "explanation": "I focused on a street scene with tavern culture and musicians, which hasn't been addressed before..."
+            "text_input": "'Community gardens thriving on rooftops' in the...",
+            "explanation": "This prompt focuses on a rooftop deck explicitly as a communal space, a fresh angle compared to p..."
           },
           {
-            "timestamp": "2025-07-06 21:30:03",
+            "timestamp": "2025-07-09 11:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Post-Great Fire London marketplace, temporary fabric stalls amidst charred ruins, merchants exchanging vibrant wares; John Davies style captures resilience dynamics and revival energy under moody skies."
+              "prompt": "Solitary gardener in floral apron tending an eclectic herb patch beside busy sidewalk cafe, contrasting personal tranquility with urban camaraderie, vibrant Parr-inspired colors popping against concrete jungle background."
             },
-            "text_input": "'Architectural recovery \u2014 Rebuilding city struc...",
-            "explanation": "I chose a post-disaster marketplace, imbuing it with a sense of resiliency as merchants reestabli..."
+            "text_input": "'Solitary gardeners cultivating in small plots ...",
+            "explanation": "I depicted a solitary gardener near a bustling caf\u00e9 rather than residential plots or rooftops, ma..."
           },
           {
-            "timestamp": "2025-07-06 22:30:04",
+            "timestamp": "2025-07-09 12:30:02",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Post-Great Fire London rooftop celebrations, diverse communities sharing meals by new chimney stacks; Davies-inspired skyline contrast of historic rooftops and blossoming social bonds."
+              "prompt": "Vibrant urban community rooftop with diverse people tending shared and personal garden plots, colorful blooms juxtaposed against glass skyscrapers, Parr-inspired detail capturing city life's dynamic contrasts."
             },
-            "text_input": "'Social resilience \u2014 Communities rebuilding the...",
-            "explanation": "I focused on communal activities on rooftops, which hasn't been covered before. The prompt highli..."
+            "text_input": "'Community gardens thriving on rooftops' in the...",
+            "explanation": "I avoided duplication by highlighting both shared and personal plots simultaneously, contrasting ..."
           },
           {
-            "timestamp": "2025-07-06 23:30:03",
+            "timestamp": "2025-07-09 13:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Reborn London street cafes post-Great Fire, soft light accentuating conversations at restored cafe tables, Davies-style contrast highlights urban revival amidst lingering historic shadows."
+              "prompt": "Urban mini-gardens nestled between hip food stalls, a lone gardener harvesting herbs, vivid contrasts of fresh greens against vibrant signage, Parr-inspired photography capturing urban gardening's understated beauty."
             },
-            "text_input": "'Social resilience \u2014 Communities rebuilding the...",
-            "explanation": "I focused on street cafes, a new and unique aspect relating to community life post-Great Fire, av..."
+            "text_input": "'Solitary gardeners cultivating in small plots ...",
+            "explanation": "The scene of urban mini-gardens among food stalls is distinct and avoids previous settings such a..."
           },
           {
-            "timestamp": "2025-07-07 06:00:10",
+            "timestamp": "2025-07-09 14:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Soft morning light dapples through ancient bluebell woods, a dreamy Pictorialist lens softens shadows into impressionistic whispers of nature's grace, capturing quiet woodland serenity."
+              "prompt": "Solitary gardeners at peaceful work between tall graffiti-adorned city buildings, vivid hues in Martin Parr style highlight isolated serenity contrasting urban chaos, individual plant love shines."
             },
-            "text_input": "'Sunlight filtering through bluebell woods' in ...",
-            "explanation": "To avoid duplication, I focused on capturing morning light in a woodland setting rather than gard..."
+            "text_input": "'Solitary gardeners cultivating in small plots ...",
+            "explanation": "I focused on the graffiti-adorned city buildings framing the solitary gardeners to differentiate ..."
           },
           {
-            "timestamp": "2025-07-07 07:30:02",
+            "timestamp": "2025-07-09 15:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Sunlit clearing within bluebell woods, cast in gentle shadows, featuring delicate bluebells swaying softly; Pictorialist focus blending natural details with ethereal glow."
+              "prompt": "Urban alleyway garden oasis, solitary gardener trimming bonsai next to lively mural, vivid Martin Parr photography highlighting contrasting urban vibrancy with individual serenity, art merges with nature."
             },
-            "text_input": "'Sunlight filtering through bluebell woods' in ...",
-            "explanation": "The focus is shifted to a sunlit clearing inside the bluebell woods, highlighting the subtle move..."
+            "text_input": "'Solitary gardeners cultivating in small plots ...",
+            "explanation": "I chose an urban alleyway with a bonsai, a setting that previously hasn't been used. The vibrant ..."
           },
           {
-            "timestamp": "2025-07-07 08:30:04",
+            "timestamp": "2025-07-09 16:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Soft, misty morning scene in bluebell woods, sunlight creating dreamlike halos around blossoms, trees form ethereal silhouettes; Saroja Selvan-inspired Pictorialist aesthetic emphasizing tranquil beauty."
+              "prompt": "A lone gardener arranging pots on colorful stacked pallets in a narrow city alley, vibrant Parr-like colors highlighting contrasts between personal activity and bustling pedestrian traffic."
             },
-            "text_input": "'Sunlight filtering through bluebell woods' in ...",
-            "explanation": "I emphasized a misty morning setting with sunlight creating halos, avoiding any previously descri..."
+            "text_input": "'Solitary gardeners cultivating in small plots ...",
+            "explanation": "I avoided previous rooftop, caf\u00e9, and residential plot scenes by choosing a narrow alley setting...."
           },
           {
-            "timestamp": "2025-07-07 09:30:04",
+            "timestamp": "2025-07-09 17:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Dappled light through ancient bluebells, thick foliage creating cathedral-like arches, Saroja Selvan-inspired Pictorialist focus rendering celestial tranquility amidst woodland depth."
+              "prompt": "Rooftop greenhouse bustling with diverse groups tending varied plant beds, juxtaposed skyscraper reflections, vibrant Martin Parr style spotlighting collective creativity in urban gardening."
             },
-            "text_input": "'Sunlight filtering through bluebell woods' in ...",
-            "explanation": "I avoided recent prompts by centering on the unique aspect of cathedral-like tree arches, a diffe..."
+            "text_input": "'Community gardens thriving on rooftops' in the...",
+            "explanation": "I depicted a rooftop greenhouse, a fresh angle distinct from open-air gardens or individual garde..."
           },
           {
-            "timestamp": "2025-07-07 10:30:02",
+            "timestamp": "2025-07-09 18:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Moonlit secret garden nook, ivy-clad stone bench beneath towering cypress, silver birch shadows dance over cobblestone paths; Saroja Selvan-inspired Pictorialist depth cultivates hidden serenity."
+              "prompt": "Diverse small garden patches scattered across an urban parking lot, solitary figures tending to their plots, Parr-inspired vibrant colors emphasize personal dedication amidst concrete backdrop."
             },
-            "text_input": "'Hidden corners of secret gardens revealed in m...",
-            "explanation": "I focused on a moonlit setting with unique features like an ivy-covered stone bench and towering ..."
+            "text_input": "'Solitary gardeners cultivating in small plots ...",
+            "explanation": "The focus on an urban parking lot setting introduces a new environment compared to alleyways, roo..."
           },
           {
-            "timestamp": "2025-07-07 11:30:03",
+            "timestamp": "2025-07-09 19:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Golden hour envelops a sylvan glade, sunlight weaving through bluebell carpets, forming a tapestry of shadows and light; Pictorialist techniques evoke timeless woodland enchantment."
+              "prompt": "Solitary gardener on bustling city balcony with eclectic potted plants, gaze over vibrant streetscape below, Parr-inspired color pops capturing urban gardening's intimate escape amidst movement."
             },
-            "text_input": "'Sunlight filtering through bluebell woods' in ...",
-            "explanation": "I crafted an image centered around the magical hour of sunset, highlighting a glade within a blue..."
+            "text_input": "'Solitary gardeners cultivating in small plots ...",
+            "explanation": "I set the scene on a city balcony, distinct from previous prompts focused on alleys, rooftops, or..."
           },
           {
-            "timestamp": "2025-07-07 12:30:02",
+            "timestamp": "2025-07-09 20:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Moonlit pergola amidst wild poppies, soft mist reflecting silver light, vines entwining wooden beams; Selvan-style Pictorialist lens evokes serene sanctuary, revealing hidden tranquility."
+              "prompt": "Architectural juxtaposition of balconies featuring small green plots with solitary gardeners, vibrant Parr-inspired colors highlight the balance of solitary nurture against urban bustle below."
             },
-            "text_input": "'Hidden corners of secret gardens revealed in m...",
-            "explanation": "I focused on a moonlit garden pergola surrounded by poppies, distinct from previous botanical sce..."
+            "text_input": "'Solitary gardeners cultivating in small plots ...",
+            "explanation": "I chose balconies as the setting to avoid previously explored locations like alleys, rooftops, or..."
           },
           {
-            "timestamp": "2025-07-07 13:30:03",
+            "timestamp": "2025-07-09 21:30:04",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Moonlit fountain with delicate water ripples, surrounded by old oaks casting intricate shadows; Pictorialist elegance captures secret garden's mystical charm, reflecting serene night atmosphere."
+              "prompt": "Vibrant urban rooftop with contrasting hues; shared vegetable patch beside commuter rail, morning light catching both commuters and dedicated gardeners, lively Parr-inspired dynamic between movement and cultivation."
             },
-            "text_input": "'Hidden corners of secret gardens revealed in m...",
-            "explanation": "I centered on a unique element\u2014moonlit fountain water ripples\u2014to differentiate it from previous p..."
+            "text_input": "'Community gardens thriving on rooftops' in the...",
+            "explanation": "To avoid previously used subjects, I focused on a rooftop setting adjacent to a commuter rail rat..."
           },
           {
-            "timestamp": "2025-07-07 14:30:03",
+            "timestamp": "2025-07-09 22:30:03",
             "type": "reason",
             "reasoner": "devise_prompt",
             "outputs": {
-              "prompt": "Moonlit rose arbor, delicate petals scattered over mossy stones, shadows of weeping willows cast intricate patterns on ancient brick walls; Pictorialist photography reveals hidden elegance."
+              "prompt": "Rooftop apiary surrounded by lush, colorful garden beds, diverse gardeners in candid moments, Parr-inspired vibrancy emphasizing bees at work amidst urban skyline backdrop."
             },
-            "text_input": "'Hidden corners of secret gardens revealed in m...",
-            "explanation": "I focused on a rose arbor\u2014an element not previously depicted\u2014and emphasized the beauty of moonlit..."
+            "text_input": "'Community gardens thriving on rooftops' in the...",
+            "explanation": "I selected a rooftop apiary setting, incorporating an urban gardening motif with bees, which hasn..."
           }
         ],
         "prompt_history": [
           {
-            "timestamp": "2025-07-06 13:30:06",
+            "timestamp": "2025-07-08 21:30:08",
             "type": "generation",
-            "prompt": "Post-Great Fire London evening vista, candlelit...",
+            "prompt": "Half-submerged urban fountain overtaken by aqua...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250706-123053-3d0a2a47.jpg"
+              "20250708-203135-bbb805ed.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-06 14:30:06",
+            "timestamp": "2025-07-08 22:30:07",
             "type": "generation",
-            "prompt": "London's recovery post-Great Fire, juxtaposed r...",
+            "prompt": "Abandoned urban playground engulfed by native f...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250706-133053-d4eff47d.jpg"
+              "20250708-213052-60a40f00.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-06 15:30:07",
+            "timestamp": "2025-07-08 23:30:06",
             "type": "generation",
-            "prompt": "London post-Great Fire alleyway, artists sketch...",
+            "prompt": "Forgotten city pier breaking into sea, tide poo...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250706-143101-7129d687.jpg"
+              "20250708-223055-847ff741.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-06 16:30:06",
+            "timestamp": "2025-07-09 06:00:17",
             "type": "generation",
-            "prompt": "London's skyline post-Great Fire; mixed-renewal...",
+            "prompt": "Rooftop community gardens bustling with diverse...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250706-153051-34662850.jpg"
+              "20250709-050209-8f93cc91.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-06 17:30:05",
+            "timestamp": "2025-07-09 07:30:08",
             "type": "generation",
-            "prompt": "Children planting flowers in post-Great Fire Lo...",
+            "prompt": "A single gardener tending a vibrant patch of su...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250706-163031-2a7b9d00.jpg"
+              "20250709-063103-23c64349.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-06 18:30:06",
+            "timestamp": "2025-07-09 08:30:08",
             "type": "generation",
-            "prompt": "Reclaimed London bridge arches post-Great Fire,...",
+            "prompt": "Two neighbors chatting across fences of their s...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250706-173943-e1934aa4.jpg"
+              "20250709-073052-a3bc8662.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-06 19:30:06",
+            "timestamp": "2025-07-09 09:30:07",
             "type": "generation",
-            "prompt": "Rebuilt cathedral facade in post-Great Fire Lon...",
+            "prompt": "Solitary gardener with red wheelbarrow beside c...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250706-183053-95471258.jpg"
+              "20250709-083055-4031e4c1.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-06 20:30:06",
+            "timestamp": "2025-07-09 10:30:07",
             "type": "generation",
-            "prompt": "Post-Great Fire London street, tavern sign sway...",
+            "prompt": "Rooftop deck transformed into vibrant community...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250706-193032-11b19fea.jpg"
+              "20250709-093059-812a25f8.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-06 21:30:06",
+            "timestamp": "2025-07-09 11:30:08",
             "type": "generation",
-            "prompt": "Post-Great Fire London marketplace, temporary f...",
+            "prompt": "Solitary gardener in floral apron tending an ec...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250706-203057-2ef68650.jpg"
+              "20250709-103058-71b23815.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-06 22:30:06",
+            "timestamp": "2025-07-09 12:30:07",
             "type": "generation",
-            "prompt": "Post-Great Fire London rooftop celebrations, di...",
+            "prompt": "Vibrant urban community rooftop with diverse pe...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250706-213132-f1fa4a13.jpg"
+              "20250709-113056-4ed6b3df.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-06 23:30:05",
+            "timestamp": "2025-07-09 13:30:10",
             "type": "generation",
-            "prompt": "Reborn London street cafes post-Great Fire, sof...",
+            "prompt": "Urban mini-gardens nestled between hip food sta...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250706-223144-df63aeaa.jpg"
+              "20250709-123056-4e5c0774.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-07 06:00:13",
+            "timestamp": "2025-07-09 14:30:09",
             "type": "generation",
-            "prompt": "Soft morning light dapples through ancient blue...",
+            "prompt": "Solitary gardeners at peaceful work between tal...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250707-050130-aafe93a8.jpg"
+              "20250709-133058-d285af93.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-07 07:30:03",
+            "timestamp": "2025-07-09 15:30:09",
             "type": "generation",
-            "prompt": "Sunlit clearing within bluebell woods, cast in ...",
+            "prompt": "Urban alleyway garden oasis, solitary gardener ...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250707-063046-884e77fb.jpg"
+              "20250709-143058-6f2aab90.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-07 08:30:07",
+            "timestamp": "2025-07-09 16:30:07",
             "type": "generation",
-            "prompt": "Soft, misty morning scene in bluebell woods, su...",
+            "prompt": "A lone gardener arranging pots on colorful stac...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250707-073033-91e8bded.jpg"
+              "20250709-153055-745fb5ac.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-07 09:30:07",
+            "timestamp": "2025-07-09 17:30:07",
             "type": "generation",
-            "prompt": "Dappled light through ancient bluebells, thick ...",
+            "prompt": "Rooftop greenhouse bustling with diverse groups...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250707-083051-ad737008.jpg"
+              "20250709-163056-6af00c4d.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-07 10:30:07",
+            "timestamp": "2025-07-09 18:30:07",
             "type": "generation",
-            "prompt": "Moonlit secret garden nook, ivy-clad stone benc...",
+            "prompt": "Diverse small garden patches scattered across a...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250707-093056-5423f07c.jpg"
+              "20250709-173056-53b67b29.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-07 11:30:07",
+            "timestamp": "2025-07-09 19:30:07",
             "type": "generation",
-            "prompt": "Golden hour envelops a sylvan glade, sunlight w...",
+            "prompt": "Solitary gardener on bustling city balcony with...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250707-103056-2376465a.jpg"
+              "20250709-183148-fd291da1.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-07 12:30:05",
+            "timestamp": "2025-07-09 20:30:07",
             "type": "generation",
-            "prompt": "Moonlit pergola amidst wild poppies, soft mist ...",
+            "prompt": "Architectural juxtaposition of balconies featur...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250707-113056-74fdc7c5.jpg"
+              "20250709-193054-b3aa69d0.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-07 13:30:07",
+            "timestamp": "2025-07-09 21:30:08",
             "type": "generation",
-            "prompt": "Moonlit fountain with delicate water ripples, s...",
+            "prompt": "Vibrant urban rooftop with contrasting hues; sh...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250707-123054-80ea6b85.jpg"
+              "20250709-203056-2e9f8f31.jpg"
             ],
             "published": true
           },
           {
-            "timestamp": "2025-07-07 14:30:05",
+            "timestamp": "2025-07-09 22:30:08",
             "type": "generation",
-            "prompt": "Moonlit rose arbor, delicate petals scattered o...",
+            "prompt": "Rooftop apiary surrounded by lush, colorful gar...",
             "refiner": "enrich",
             "workflow": null,
             "image_paths": [
-              "20250707-133051-005b06c1.jpg"
+              "20250709-213101-07774187.jpg"
             ],
             "published": true
           }
@@ -1013,12 +1013,12 @@
         ],
         "conf_int": 97
       },
-      "last_generated": "20250707-133051-005b06c1.jpg",
+      "last_generated": "20250709-213101-07774187.jpg",
       "publish_destination": "north-screen"
     }
   ],
-  "state": "paused",
-  "last_updated": "2025-07-07T22:30:03.141022",
+  "state": "running",
+  "last_updated": "2025-07-09T22:31:02.502469",
   "last_trigger_executions": {
     "e5599a76599fa8b9d5d8002c1308974d_2025-06-10_16": "2025-06-10T23:30:00.357118",
     "62f2a3630480757a87877f58eafcf4bf_2025-06-11_0": "2025-06-11T00:15:01.053554",
@@ -2403,1405 +2403,1477 @@
     "e5599a76599fa8b9d5d8002c1308974d_2025-07-07_5": "2025-07-07T12:30:00.353556",
     "e5599a76599fa8b9d5d8002c1308974d_2025-07-07_6": "2025-07-07T13:30:01.264027",
     "0361cac9cb18b707d6ba32ef7b28196f_2025-07-07_3": "2025-07-07T14:05:01.887115",
-    "e5599a76599fa8b9d5d8002c1308974d_2025-07-07_7": "2025-07-07T14:30:00.464153"
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-07_7": "2025-07-07T14:30:00.464153",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-07_16": "2025-07-07T23:30:01.134972",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_0": "2025-07-08T00:15:00.643908",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_1": "2025-07-08T00:30:01.538125",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_2": "2025-07-08T00:45:02.074360",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_3": "2025-07-08T01:00:00.259792",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_4": "2025-07-08T01:15:00.965859",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_5": "2025-07-08T01:30:00.713103",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_6": "2025-07-08T01:45:00.051235",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_7": "2025-07-08T02:00:00.387705",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_8": "2025-07-08T02:15:00.104911",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_9": "2025-07-08T02:30:00.804890",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_10": "2025-07-08T02:45:00.856675",
+    "86fcab81240ed277bf13e63c5c2c9595_2025-07-08": "2025-07-08T03:00:01.246513",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_11": "2025-07-08T03:00:01.246513",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_12": "2025-07-08T03:15:00.431642",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_13": "2025-07-08T03:30:00.214952",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_14": "2025-07-08T03:45:01.541973",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_15": "2025-07-08T04:00:01.426739",
+    "158578f4060f785538defa5246c1f15b_2025-07-08": "2025-07-08T04:10:00.577206",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_16": "2025-07-08T04:15:00.180198",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_17": "2025-07-08T04:30:00.701267",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_18": "2025-07-08T04:45:01.770008",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_19": "2025-07-08T05:00:00.521262",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_20": "2025-07-08T05:15:01.480150",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_21": "2025-07-08T05:30:00.771400",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_22": "2025-07-08T05:45:00.926023",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_23": "2025-07-08T06:00:00.207464",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_24": "2025-07-08T06:15:00.180967",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_25": "2025-07-08T06:30:01.074506",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-08_26": "2025-07-08T06:45:01.010657",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_0": "2025-07-08T07:30:01.422214",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-08_0": "2025-07-08T08:05:00.184816",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_1": "2025-07-08T08:30:00.880082",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_2": "2025-07-08T09:30:01.562951",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-08_1": "2025-07-08T10:05:01.099699",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_3": "2025-07-08T10:30:00.099765",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_4": "2025-07-08T11:30:00.380759",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-08_2": "2025-07-08T12:05:00.529946",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_5": "2025-07-08T12:30:01.454603",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_6": "2025-07-08T13:30:01.178106",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-08_3": "2025-07-08T14:05:00.226330",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_7": "2025-07-08T14:30:00.185693",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_8": "2025-07-08T15:30:01.314588",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-08_4": "2025-07-08T16:05:00.225010",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_9": "2025-07-08T16:30:01.315326",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_10": "2025-07-08T17:30:00.069652",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-08_5": "2025-07-08T18:05:00.147219",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_11": "2025-07-08T18:30:01.513823",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_12": "2025-07-08T19:30:01.216025",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-08_6": "2025-07-08T20:05:01.602872",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_13": "2025-07-08T20:30:00.456146",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_14": "2025-07-08T21:30:01.439204",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-08_7": "2025-07-08T22:05:01.612162",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_15": "2025-07-08T22:30:00.322163",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-08_16": "2025-07-08T23:30:00.207753",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_0": "2025-07-09T00:15:00.943267",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_1": "2025-07-09T00:30:01.529854",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_2": "2025-07-09T00:45:00.866316",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_3": "2025-07-09T01:00:00.124674",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_4": "2025-07-09T01:15:01.907784",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_5": "2025-07-09T01:30:00.592679",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_6": "2025-07-09T01:45:00.184904",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_7": "2025-07-09T02:00:00.372248",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_8": "2025-07-09T02:15:01.903181",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_9": "2025-07-09T02:30:01.265567",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_10": "2025-07-09T02:45:01.202907",
+    "86fcab81240ed277bf13e63c5c2c9595_2025-07-09": "2025-07-09T03:00:00.821702",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_11": "2025-07-09T03:00:00.821702",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_12": "2025-07-09T03:15:01.538580",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_13": "2025-07-09T03:30:01.993418",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_14": "2025-07-09T03:45:01.222907",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_15": "2025-07-09T04:00:02.070782",
+    "158578f4060f785538defa5246c1f15b_2025-07-09": "2025-07-09T04:10:01.032858",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_16": "2025-07-09T04:15:00.350832",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_17": "2025-07-09T04:30:00.854705",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_18": "2025-07-09T04:45:00.461739",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_19": "2025-07-09T05:00:00.355154",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_20": "2025-07-09T05:15:00.737332",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_21": "2025-07-09T05:30:01.630024",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_22": "2025-07-09T05:45:01.438958",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_23": "2025-07-09T06:00:01.723081",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_24": "2025-07-09T06:15:00.890918",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_25": "2025-07-09T06:30:00.249076",
+    "62f2a3630480757a87877f58eafcf4bf_2025-07-09_26": "2025-07-09T06:45:00.409884",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_0": "2025-07-09T07:30:01.538192",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-09_0": "2025-07-09T08:05:00.834394",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_1": "2025-07-09T08:30:01.448323",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_2": "2025-07-09T09:30:01.183313",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-09_1": "2025-07-09T10:05:00.873824",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_3": "2025-07-09T10:30:00.305906",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_4": "2025-07-09T11:30:01.817988",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-09_2": "2025-07-09T12:05:00.430019",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_5": "2025-07-09T12:30:00.290323",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_6": "2025-07-09T13:30:01.253581",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-09_3": "2025-07-09T14:05:00.727104",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_7": "2025-07-09T14:30:01.786465",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_8": "2025-07-09T15:30:01.719522",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-09_4": "2025-07-09T16:05:00.314075",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_9": "2025-07-09T16:30:01.021653",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_10": "2025-07-09T17:30:00.713184",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-09_5": "2025-07-09T18:05:00.103780",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_11": "2025-07-09T18:30:00.529282",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_12": "2025-07-09T19:30:01.578347",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-09_6": "2025-07-09T20:05:00.934672",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_13": "2025-07-09T20:30:01.002022",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_14": "2025-07-09T21:30:01.645423",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-09_7": "2025-07-09T22:05:02.050099",
+    "e5599a76599fa8b9d5d8002c1308974d_2025-07-09_15": "2025-07-09T22:30:01.217530"
   },
   "active_events": {},
   "event_history": [
     {
       "key": "Generate",
-      "active_from": "2025-07-05T21:30:01.957518",
-      "expires": "2025-07-05T21:31:01.957518",
+      "active_from": "2025-07-08T09:30:01.571014",
+      "expires": "2025-07-08T09:31:01.571014",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-05T21:30:01.957518",
-      "unique_id": "b1c49fcf-85d7-4869-81b7-5f3fb7a68e87",
+      "created_at": "2025-07-08T09:30:01.571014",
+      "unique_id": "0cfaea2a-8944-4298-9fd7-3dc68110baa5",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-05T21:30:03.960145"
+      "consumed_at": "2025-07-08T09:30:03.577537"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-05T21:30:01.957518",
-      "expires": "2025-07-05T21:31:01.957518",
+      "active_from": "2025-07-08T09:30:01.571014",
+      "expires": "2025-07-08T09:31:01.571014",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-05T21:30:01.957518",
-      "unique_id": "b1c49fcf-85d7-4869-81b7-5f3fb7a68e87",
+      "created_at": "2025-07-08T09:30:01.571014",
+      "unique_id": "0cfaea2a-8944-4298-9fd7-3dc68110baa5",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-05T21:30:03.960145"
+      "consumed_at": "2025-07-08T09:30:03.577537"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2025-07-05T22:05:01.405450",
-      "expires": "2025-07-05T22:06:01.405450",
+      "active_from": "2025-07-08T10:05:01.283225",
+      "expires": "2025-07-08T10:06:01.283225",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2025-07-05T22:05:01.405450",
-      "unique_id": "61b3ab4f-a4ea-4b8a-952d-bbaa6c3af455",
+      "created_at": "2025-07-08T10:05:01.283225",
+      "unique_id": "a0eaccec-1a8f-4b98-9625-afae5ea2cf91",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-05T22:05:03.244421"
+      "consumed_at": "2025-07-08T10:05:03.121460"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2025-07-05T22:05:01.405450",
-      "expires": "2025-07-05T22:06:01.405450",
+      "active_from": "2025-07-08T10:05:01.283225",
+      "expires": "2025-07-08T10:06:01.283225",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2025-07-05T22:05:01.405450",
-      "unique_id": "61b3ab4f-a4ea-4b8a-952d-bbaa6c3af455",
+      "created_at": "2025-07-08T10:05:01.283225",
+      "unique_id": "a0eaccec-1a8f-4b98-9625-afae5ea2cf91",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-05T22:05:03.244421"
+      "consumed_at": "2025-07-08T10:05:03.121460"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-05T22:30:01.651122",
-      "expires": "2025-07-05T22:31:01.651122",
+      "active_from": "2025-07-08T10:30:00.118792",
+      "expires": "2025-07-08T10:31:00.118792",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-05T22:30:01.651122",
-      "unique_id": "f24c2fbd-9b5a-45ab-8712-3acc97141c50",
+      "created_at": "2025-07-08T10:30:00.118792",
+      "unique_id": "a76e7195-07e9-4a70-8ac7-db3d0d48862e",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-05T22:30:03.653885"
+      "consumed_at": "2025-07-08T10:30:02.167003"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-05T22:30:01.651122",
-      "expires": "2025-07-05T22:31:01.651122",
+      "active_from": "2025-07-08T10:30:00.118792",
+      "expires": "2025-07-08T10:31:00.118792",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-05T22:30:01.651122",
-      "unique_id": "f24c2fbd-9b5a-45ab-8712-3acc97141c50",
+      "created_at": "2025-07-08T10:30:00.118792",
+      "unique_id": "a76e7195-07e9-4a70-8ac7-db3d0d48862e",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-05T22:30:03.653885"
+      "consumed_at": "2025-07-08T10:30:02.167003"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-05T23:30:00.910035",
-      "expires": "2025-07-05T23:31:00.910035",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-05T23:30:00.910035",
-      "unique_id": "b8ed1f6d-573e-490b-bf34-220986094a3e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-05T23:30:02.909160"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-05T23:30:00.910035",
-      "expires": "2025-07-05T23:31:00.910035",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-05T23:30:00.910035",
-      "unique_id": "b8ed1f6d-573e-490b-bf34-220986094a3e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-05T23:30:02.909160"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T06:00:15.118412",
-      "expires": "2025-07-06T06:01:15.118412",
+      "active_from": "2025-07-08T11:08:15.113006",
+      "expires": "2025-07-08T11:09:15.113006",
       "display_name": null,
       "payload": {},
       "single_consumer": false,
-      "created_at": "2025-07-06T06:00:15.118412",
-      "unique_id": "cc00f2c0-e68d-4093-8998-17971166938b",
+      "created_at": "2025-07-08T11:08:15.113006",
+      "unique_id": "e1e8c7c7-089b-4d65-8bb8-3aa3ae1b46b6",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T06:00:15.137933"
+      "consumed_at": "2025-07-08T11:08:16.496484"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-06T06:00:15.118412",
-      "expires": "2025-07-06T06:01:15.118412",
+      "active_from": "2025-07-08T11:08:15.113006",
+      "expires": "2025-07-08T11:09:15.113006",
       "display_name": null,
       "payload": {},
       "single_consumer": false,
-      "created_at": "2025-07-06T06:00:15.118412",
-      "unique_id": "cc00f2c0-e68d-4093-8998-17971166938b",
+      "created_at": "2025-07-08T11:08:15.113006",
+      "unique_id": "e1e8c7c7-089b-4d65-8bb8-3aa3ae1b46b6",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T06:00:15.137933"
+      "consumed_at": "2025-07-08T11:08:16.496484"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-06T07:30:00.501057",
-      "expires": "2025-07-06T07:31:00.501057",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T07:30:00.501057",
-      "unique_id": "34c6cf5b-165d-4746-9ee9-8cc9aec91a07",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T07:30:02.596935"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T07:30:00.501057",
-      "expires": "2025-07-06T07:31:00.501057",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T07:30:00.501057",
-      "unique_id": "34c6cf5b-165d-4746-9ee9-8cc9aec91a07",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T07:30:02.596935"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T08:05:01.844155",
-      "expires": "2025-07-06T08:06:01.844155",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T08:05:01.844155",
-      "unique_id": "c5b208b7-183a-47e6-9798-303d7a81560a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T08:05:03.694952"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T08:05:01.844155",
-      "expires": "2025-07-06T08:06:01.844155",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T08:05:01.844155",
-      "unique_id": "c5b208b7-183a-47e6-9798-303d7a81560a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T08:05:03.694952"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T08:30:00.027835",
-      "expires": "2025-07-06T08:31:00.027835",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T08:30:00.027835",
-      "unique_id": "7ae0004c-6667-42f5-8efe-93242775a363",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T08:30:02.044346"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T08:30:00.027835",
-      "expires": "2025-07-06T08:31:00.027835",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T08:30:00.027835",
-      "unique_id": "7ae0004c-6667-42f5-8efe-93242775a363",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T08:30:02.044346"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T09:30:01.571246",
-      "expires": "2025-07-06T09:31:01.571246",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T09:30:01.571246",
-      "unique_id": "f53d1e61-f5e8-4ee5-a269-3bbc28b07424",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T09:30:03.589089"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T09:30:01.571246",
-      "expires": "2025-07-06T09:31:01.571246",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T09:30:01.571246",
-      "unique_id": "f53d1e61-f5e8-4ee5-a269-3bbc28b07424",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T09:30:03.589089"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T10:05:00.683648",
-      "expires": "2025-07-06T10:06:00.683648",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T10:05:00.683648",
-      "unique_id": "64eead57-e77d-4b61-a760-c91d6836ed54",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T10:05:02.598363"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T10:05:00.683648",
-      "expires": "2025-07-06T10:06:00.683648",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T10:05:00.683648",
-      "unique_id": "64eead57-e77d-4b61-a760-c91d6836ed54",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T10:05:02.598363"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T10:30:01.443863",
-      "expires": "2025-07-06T10:31:01.443863",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T10:30:01.443863",
-      "unique_id": "00ed429e-bb55-4942-97c3-2be7bce3859f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T10:30:03.476711"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T10:30:01.443863",
-      "expires": "2025-07-06T10:31:01.443863",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T10:30:01.443863",
-      "unique_id": "00ed429e-bb55-4942-97c3-2be7bce3859f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T10:30:03.476711"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T11:30:00.784247",
-      "expires": "2025-07-06T11:31:00.784247",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T11:30:00.784247",
-      "unique_id": "7ba6277e-1a7a-468a-a118-c85bcb474595",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T11:30:02.847595"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T11:30:00.784247",
-      "expires": "2025-07-06T11:31:00.784247",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T11:30:00.784247",
-      "unique_id": "7ba6277e-1a7a-468a-a118-c85bcb474595",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T11:30:02.847595"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T12:05:00.251955",
-      "expires": "2025-07-06T12:06:00.251955",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T12:05:00.251955",
-      "unique_id": "3100b3fd-8a4b-4388-952a-da14ef10479b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T12:05:02.171547"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T12:05:00.251955",
-      "expires": "2025-07-06T12:06:00.251955",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T12:05:00.251955",
-      "unique_id": "3100b3fd-8a4b-4388-952a-da14ef10479b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T12:05:02.171547"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T12:30:01.920239",
-      "expires": "2025-07-06T12:31:01.920239",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T12:30:01.920239",
-      "unique_id": "e1712f1d-05be-40c2-a41e-f412994a2974",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T12:30:03.974432"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T12:30:01.920239",
-      "expires": "2025-07-06T12:31:01.920239",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T12:30:01.920239",
-      "unique_id": "e1712f1d-05be-40c2-a41e-f412994a2974",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T12:30:03.974432"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T13:30:01.316438",
-      "expires": "2025-07-06T13:31:01.316438",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T13:30:01.316438",
-      "unique_id": "d9c3c142-ca81-4a5a-896d-2aca209989e7",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T13:30:03.343664"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T13:30:01.316438",
-      "expires": "2025-07-06T13:31:01.316438",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T13:30:01.316438",
-      "unique_id": "d9c3c142-ca81-4a5a-896d-2aca209989e7",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T13:30:03.343664"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T14:05:01.792585",
-      "expires": "2025-07-06T14:06:01.792585",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T14:05:01.792585",
-      "unique_id": "0eb707f0-3859-4a3f-b39f-7738406b2a91",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T14:05:03.612455"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T14:05:01.792585",
-      "expires": "2025-07-06T14:06:01.792585",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T14:05:01.792585",
-      "unique_id": "0eb707f0-3859-4a3f-b39f-7738406b2a91",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T14:05:03.612455"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T14:30:01.195396",
-      "expires": "2025-07-06T14:31:01.195396",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T14:30:01.195396",
-      "unique_id": "a55270f4-c41b-485c-b1d0-42c908124f06",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T14:30:03.286431"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T14:30:01.195396",
-      "expires": "2025-07-06T14:31:01.195396",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T14:30:01.195396",
-      "unique_id": "a55270f4-c41b-485c-b1d0-42c908124f06",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T14:30:03.286431"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T15:30:01.566957",
-      "expires": "2025-07-06T15:31:01.566957",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T15:30:01.566957",
-      "unique_id": "87a77fbe-f6e2-4f86-be9f-880a5f6a518c",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T15:30:03.621318"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T15:30:01.566957",
-      "expires": "2025-07-06T15:31:01.566957",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T15:30:01.566957",
-      "unique_id": "87a77fbe-f6e2-4f86-be9f-880a5f6a518c",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T15:30:03.621318"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T16:05:01.414655",
-      "expires": "2025-07-06T16:06:01.414655",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T16:05:01.414655",
-      "unique_id": "82ffb026-89c3-4665-ba75-2009c797d051",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T16:05:03.267835"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T16:05:01.414655",
-      "expires": "2025-07-06T16:06:01.414655",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T16:05:01.414655",
-      "unique_id": "82ffb026-89c3-4665-ba75-2009c797d051",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T16:05:03.267835"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T16:30:00.889284",
-      "expires": "2025-07-06T16:31:00.889284",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T16:30:00.889284",
-      "unique_id": "96f175cf-1f9e-4d9e-b5c6-664613a9ca49",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T16:30:02.930242"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T16:30:00.889284",
-      "expires": "2025-07-06T16:31:00.889284",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T16:30:00.889284",
-      "unique_id": "96f175cf-1f9e-4d9e-b5c6-664613a9ca49",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T16:30:02.930242"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T17:30:00.685817",
-      "expires": "2025-07-06T17:31:00.685817",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T17:30:00.685817",
-      "unique_id": "953222e8-3974-4f3f-95d7-c2c21ffa14c4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T17:30:02.660641"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T17:30:00.685817",
-      "expires": "2025-07-06T17:31:00.685817",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T17:30:00.685817",
-      "unique_id": "953222e8-3974-4f3f-95d7-c2c21ffa14c4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T17:30:02.660641"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T18:05:01.424407",
-      "expires": "2025-07-06T18:06:01.424407",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:05:01.424407",
-      "unique_id": "3931dff7-7c2d-46d6-98e8-86cd1393d1ec",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:05:03.275429"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T18:05:01.424407",
-      "expires": "2025-07-06T18:06:01.424407",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:05:01.424407",
-      "unique_id": "3931dff7-7c2d-46d6-98e8-86cd1393d1ec",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:05:03.275429"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T18:30:00.956888",
-      "expires": "2025-07-06T18:31:00.956888",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:30:00.956888",
-      "unique_id": "b1903eb7-ccf2-4601-a131-a28d8f754949",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:30:02.927988"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T18:30:00.956888",
-      "expires": "2025-07-06T18:31:00.956888",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:30:00.956888",
-      "unique_id": "b1903eb7-ccf2-4601-a131-a28d8f754949",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:30:02.927988"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T18:49:45.086413",
-      "expires": "2025-07-06T21:49:45.086413",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:49:45.086413",
-      "unique_id": "ebda68bc-b336-4be3-abcc-4cf4c56b2e46",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:49:46.504342"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T18:49:45.086413",
-      "expires": "2025-07-06T21:49:45.086413",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:49:45.086413",
-      "unique_id": "ebda68bc-b336-4be3-abcc-4cf4c56b2e46",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:49:46.504342"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T18:51:27.512278",
-      "expires": "2025-07-06T21:51:27.512278",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:51:27.512278",
-      "unique_id": "2bd501d1-ba42-43db-ad26-5b13fcbaaf98",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:51:28.051971"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T18:51:27.512278",
-      "expires": "2025-07-06T21:51:27.512278",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:51:27.512278",
-      "unique_id": "2bd501d1-ba42-43db-ad26-5b13fcbaaf98",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:51:28.051971"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T18:52:25.109794",
-      "expires": "2025-07-06T21:52:25.109794",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:52:25.109794",
-      "unique_id": "cc6350c2-18ec-49f9-86f3-2f36f3275eb1",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:52:27.024581"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T18:52:25.109794",
-      "expires": "2025-07-06T21:52:25.109794",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:52:25.109794",
-      "unique_id": "cc6350c2-18ec-49f9-86f3-2f36f3275eb1",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:52:27.024581"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T18:54:06.787694",
-      "expires": "2025-07-06T21:54:06.787694",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:54:06.787694",
-      "unique_id": "290b385a-e23f-459e-9b4d-1285012207d4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:54:08.765691"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T18:54:06.787694",
-      "expires": "2025-07-06T21:54:06.787694",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:54:06.787694",
-      "unique_id": "290b385a-e23f-459e-9b4d-1285012207d4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:54:08.765691"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T18:55:35.556117",
-      "expires": "2025-07-06T21:55:35.556117",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:55:35.556117",
-      "unique_id": "dcf60951-ed6d-40b9-837d-6d7a7be1e0c6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:55:36.078592"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T18:55:35.556117",
-      "expires": "2025-07-06T21:55:35.556117",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T18:55:35.556117",
-      "unique_id": "dcf60951-ed6d-40b9-837d-6d7a7be1e0c6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T18:55:36.078592"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T19:30:01.587955",
-      "expires": "2025-07-06T19:31:01.587955",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T19:30:01.587955",
-      "unique_id": "9484422c-fc09-42d2-aeff-aaf202745288",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T19:30:03.655568"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T19:30:01.587955",
-      "expires": "2025-07-06T19:31:01.587955",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T19:30:01.587955",
-      "unique_id": "9484422c-fc09-42d2-aeff-aaf202745288",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T19:30:03.655568"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T20:05:01.781812",
-      "expires": "2025-07-06T20:06:01.781812",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T20:05:01.781812",
-      "unique_id": "8237d91d-2e6f-4c08-a6f2-20237bcba5f3",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T20:05:03.618358"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T20:05:01.781812",
-      "expires": "2025-07-06T20:06:01.781812",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T20:05:01.781812",
-      "unique_id": "8237d91d-2e6f-4c08-a6f2-20237bcba5f3",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T20:05:03.618358"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T20:30:00.483357",
-      "expires": "2025-07-06T20:31:00.483357",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T20:30:00.483357",
-      "unique_id": "7f3420c0-b331-44e8-8116-a2e7ee88f0c8",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T20:30:02.454695"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T20:30:00.483357",
-      "expires": "2025-07-06T20:31:00.483357",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T20:30:00.483357",
-      "unique_id": "7f3420c0-b331-44e8-8116-a2e7ee88f0c8",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T20:30:02.454695"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T21:30:00.723334",
-      "expires": "2025-07-06T21:31:00.723334",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T21:30:00.723334",
-      "unique_id": "d1cf6929-6646-404f-af0e-4da5db9628e6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T21:30:02.772694"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T21:30:00.723334",
-      "expires": "2025-07-06T21:31:00.723334",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T21:30:00.723334",
-      "unique_id": "d1cf6929-6646-404f-af0e-4da5db9628e6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T21:30:02.772694"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T21:51:57.246536",
-      "expires": "2025-07-07T00:51:57.246536",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T21:51:57.246536",
-      "unique_id": "ffa3e261-d9d8-437e-8897-d72f5ecc7012",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T21:51:57.653556"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T21:51:57.246536",
-      "expires": "2025-07-07T00:51:57.246536",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T21:51:57.246536",
-      "unique_id": "ffa3e261-d9d8-437e-8897-d72f5ecc7012",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T21:51:57.653556"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T21:52:33.064340",
-      "expires": "2025-07-07T00:52:33.064340",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T21:52:33.064340",
-      "unique_id": "894ec06f-f032-46db-b1c9-84a2ef31a537",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T21:52:34.294390"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-06T21:52:33.064340",
-      "expires": "2025-07-07T00:52:33.064340",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T21:52:33.064340",
-      "unique_id": "894ec06f-f032-46db-b1c9-84a2ef31a537",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T21:52:34.294390"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T22:05:01.907843",
-      "expires": "2025-07-06T22:06:01.907843",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T22:05:01.907843",
-      "unique_id": "177921e5-8b17-4bd0-9f47-03f36ff5db0a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T22:05:03.704290"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-06T22:05:01.907843",
-      "expires": "2025-07-06T22:06:01.907843",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-06T22:05:01.907843",
-      "unique_id": "177921e5-8b17-4bd0-9f47-03f36ff5db0a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T22:05:03.704290"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T22:30:01.576199",
-      "expires": "2025-07-06T22:31:01.576199",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T22:30:01.576199",
-      "unique_id": "cd0f8eb5-8109-46c0-bc36-ca50c14b9be9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T22:30:03.560853"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T22:30:01.576199",
-      "expires": "2025-07-06T22:31:01.576199",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T22:30:01.576199",
-      "unique_id": "cd0f8eb5-8109-46c0-bc36-ca50c14b9be9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T22:30:03.560853"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T23:30:00.512323",
-      "expires": "2025-07-06T23:31:00.512323",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T23:30:00.512323",
-      "unique_id": "7695f7f9-610a-41c2-a391-b6ddf9fee888",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T23:30:02.559800"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-06T23:30:00.512323",
-      "expires": "2025-07-06T23:31:00.512323",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-06T23:30:00.512323",
-      "unique_id": "7695f7f9-610a-41c2-a391-b6ddf9fee888",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-06T23:30:02.559800"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-07T06:00:08.787607",
-      "expires": "2025-07-07T06:01:08.787607",
+      "active_from": "2025-07-08T11:08:58.045839",
+      "expires": "2025-07-08T11:09:58.045839",
       "display_name": null,
       "payload": {},
       "single_consumer": false,
-      "created_at": "2025-07-07T06:00:08.787607",
-      "unique_id": "d61bde25-73b7-4282-9f7d-7bf622aef56f",
+      "created_at": "2025-07-08T11:08:58.045839",
+      "unique_id": "342d45c4-b796-46f7-b8a9-823bebae97bb",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T06:00:10.409767"
+      "consumed_at": "2025-07-08T11:09:10.745769"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T06:00:08.787607",
-      "expires": "2025-07-07T06:01:08.787607",
+      "active_from": "2025-07-08T11:08:58.045839",
+      "expires": "2025-07-08T11:09:58.045839",
       "display_name": null,
       "payload": {},
       "single_consumer": false,
-      "created_at": "2025-07-07T06:00:08.787607",
-      "unique_id": "d61bde25-73b7-4282-9f7d-7bf622aef56f",
+      "created_at": "2025-07-08T11:08:58.045839",
+      "unique_id": "342d45c4-b796-46f7-b8a9-823bebae97bb",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T06:00:10.409767"
+      "consumed_at": "2025-07-08T11:09:10.745769"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T07:30:00.481286",
-      "expires": "2025-07-07T07:31:00.481286",
+      "active_from": "2025-07-08T11:30:00.391925",
+      "expires": "2025-07-08T11:31:00.391925",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-07T07:30:00.481286",
-      "unique_id": "1091813c-4c10-4f2e-8f39-ede2f820f1e9",
+      "created_at": "2025-07-08T11:30:00.391925",
+      "unique_id": "b6b09c50-29e9-43b4-990d-cb27e8fa2aa5",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T07:30:02.418292"
+      "consumed_at": "2025-07-08T11:30:02.432846"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T07:30:00.481286",
-      "expires": "2025-07-07T07:31:00.481286",
+      "active_from": "2025-07-08T11:30:00.391925",
+      "expires": "2025-07-08T11:31:00.391925",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-07T07:30:00.481286",
-      "unique_id": "1091813c-4c10-4f2e-8f39-ede2f820f1e9",
+      "created_at": "2025-07-08T11:30:00.391925",
+      "unique_id": "b6b09c50-29e9-43b4-990d-cb27e8fa2aa5",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T07:30:02.418292"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-07T07:56:54.241356",
-      "expires": "2025-07-07T10:56:54.241356",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-07T07:56:54.241356",
-      "unique_id": "721ce8a3-8af3-4329-a11e-089b5bc00f7f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T07:56:56.209234"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-07T07:56:54.241356",
-      "expires": "2025-07-07T10:56:54.241356",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-07T07:56:54.241356",
-      "unique_id": "721ce8a3-8af3-4329-a11e-089b5bc00f7f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T07:56:56.209234"
+      "consumed_at": "2025-07-08T11:30:02.432846"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T08:30:01.603594",
-      "expires": "2025-07-07T08:31:01.603594",
+      "active_from": "2025-07-08T11:51:06.683872",
+      "expires": "2025-07-08T11:52:06.683872",
       "display_name": null,
-      "payload": null,
+      "payload": {},
       "single_consumer": false,
-      "created_at": "2025-07-07T08:30:01.603594",
-      "unique_id": "fc12b531-7a7e-4bc9-a933-a138da322c42",
+      "created_at": "2025-07-08T11:51:06.683872",
+      "unique_id": "37a078c7-ebf1-4185-9a24-d0163047946a",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T08:30:03.588597"
+      "consumed_at": "2025-07-08T11:51:07.092239"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T08:30:01.603594",
-      "expires": "2025-07-07T08:31:01.603594",
+      "active_from": "2025-07-08T11:51:06.683872",
+      "expires": "2025-07-08T11:52:06.683872",
       "display_name": null,
-      "payload": null,
+      "payload": {},
       "single_consumer": false,
-      "created_at": "2025-07-07T08:30:01.603594",
-      "unique_id": "fc12b531-7a7e-4bc9-a933-a138da322c42",
+      "created_at": "2025-07-08T11:51:06.683872",
+      "unique_id": "37a078c7-ebf1-4185-9a24-d0163047946a",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T08:30:03.588597"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-07T09:30:01.613725",
-      "expires": "2025-07-07T09:31:01.613725",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-07T09:30:01.613725",
-      "unique_id": "fd72b9f4-1200-426a-95df-1f54b8d78d14",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T09:30:03.662685"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-07T09:30:01.613725",
-      "expires": "2025-07-07T09:31:01.613725",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-07T09:30:01.613725",
-      "unique_id": "fd72b9f4-1200-426a-95df-1f54b8d78d14",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T09:30:03.662685"
+      "consumed_at": "2025-07-08T11:51:07.092239"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2025-07-07T10:05:00.238905",
-      "expires": "2025-07-07T10:06:00.238905",
+      "active_from": "2025-07-08T12:05:00.716749",
+      "expires": "2025-07-08T12:06:00.716749",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2025-07-07T10:05:00.238905",
-      "unique_id": "7ed01519-962c-45d4-b635-13c0c6e80a84",
+      "created_at": "2025-07-08T12:05:00.716749",
+      "unique_id": "5ddcc393-54fa-466f-b076-f4c30ef71364",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T10:05:02.155909"
+      "consumed_at": "2025-07-08T12:05:02.565169"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2025-07-07T10:05:00.238905",
-      "expires": "2025-07-07T10:06:00.238905",
+      "active_from": "2025-07-08T12:05:00.716749",
+      "expires": "2025-07-08T12:06:00.716749",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2025-07-07T10:05:00.238905",
-      "unique_id": "7ed01519-962c-45d4-b635-13c0c6e80a84",
+      "created_at": "2025-07-08T12:05:00.716749",
+      "unique_id": "5ddcc393-54fa-466f-b076-f4c30ef71364",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T10:05:02.155909"
+      "consumed_at": "2025-07-08T12:05:02.565169"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T10:30:00.055730",
-      "expires": "2025-07-07T10:31:00.055730",
+      "active_from": "2025-07-08T12:30:01.465772",
+      "expires": "2025-07-08T12:31:01.465772",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-07T10:30:00.055730",
-      "unique_id": "f9957943-36b9-4732-9e7a-f9b6f2ae1bb0",
+      "created_at": "2025-07-08T12:30:01.465772",
+      "unique_id": "5cce5b4a-3185-4d73-a46d-85fe444d61f5",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T10:30:02.094154"
+      "consumed_at": "2025-07-08T12:30:03.461638"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T10:30:00.055730",
-      "expires": "2025-07-07T10:31:00.055730",
+      "active_from": "2025-07-08T12:30:01.465772",
+      "expires": "2025-07-08T12:31:01.465772",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-07T10:30:00.055730",
-      "unique_id": "f9957943-36b9-4732-9e7a-f9b6f2ae1bb0",
+      "created_at": "2025-07-08T12:30:01.465772",
+      "unique_id": "5cce5b4a-3185-4d73-a46d-85fe444d61f5",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T10:30:02.094154"
+      "consumed_at": "2025-07-08T12:30:03.461638"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T11:30:01.411798",
-      "expires": "2025-07-07T11:31:01.411798",
+      "active_from": "2025-07-08T13:30:01.191392",
+      "expires": "2025-07-08T13:31:01.191392",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-07T11:30:01.411798",
-      "unique_id": "61613e7d-4386-4b45-b875-d6bea9584e18",
+      "created_at": "2025-07-08T13:30:01.191392",
+      "unique_id": "f96a989d-3a9f-41dd-97d7-92b98113e8fa",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T11:30:03.478834"
+      "consumed_at": "2025-07-08T13:30:03.239779"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T11:30:01.411798",
-      "expires": "2025-07-07T11:31:01.411798",
+      "active_from": "2025-07-08T13:30:01.191392",
+      "expires": "2025-07-08T13:31:01.191392",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-07T11:30:01.411798",
-      "unique_id": "61613e7d-4386-4b45-b875-d6bea9584e18",
+      "created_at": "2025-07-08T13:30:01.191392",
+      "unique_id": "f96a989d-3a9f-41dd-97d7-92b98113e8fa",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T11:30:03.478834"
+      "consumed_at": "2025-07-08T13:30:03.239779"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2025-07-07T12:05:00.828185",
-      "expires": "2025-07-07T12:06:00.828185",
+      "active_from": "2025-07-08T14:05:00.410330",
+      "expires": "2025-07-08T14:06:00.410330",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2025-07-07T12:05:00.828185",
-      "unique_id": "a046c747-d78d-41d2-a0e2-554dc40669c8",
+      "created_at": "2025-07-08T14:05:00.410330",
+      "unique_id": "83df8adf-71de-43b2-87f1-9732e868fe33",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T12:05:02.751666"
+      "consumed_at": "2025-07-08T14:05:02.286553"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2025-07-07T12:05:00.828185",
-      "expires": "2025-07-07T12:06:00.828185",
+      "active_from": "2025-07-08T14:05:00.410330",
+      "expires": "2025-07-08T14:06:00.410330",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2025-07-07T12:05:00.828185",
-      "unique_id": "a046c747-d78d-41d2-a0e2-554dc40669c8",
+      "created_at": "2025-07-08T14:05:00.410330",
+      "unique_id": "83df8adf-71de-43b2-87f1-9732e868fe33",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T12:05:02.751666"
+      "consumed_at": "2025-07-08T14:05:02.286553"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T12:30:00.371744",
-      "expires": "2025-07-07T12:31:00.371744",
+      "active_from": "2025-07-08T14:30:00.215259",
+      "expires": "2025-07-08T14:31:00.215259",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-07T12:30:00.371744",
-      "unique_id": "3ee847f8-f7e0-47e4-b2ef-5bc02de60325",
+      "created_at": "2025-07-08T14:30:00.215259",
+      "unique_id": "2dba4eda-9fa9-4dbb-91fc-5ead31a65a78",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T12:30:02.436348"
+      "consumed_at": "2025-07-08T14:30:02.202220"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T12:30:00.371744",
-      "expires": "2025-07-07T12:31:00.371744",
+      "active_from": "2025-07-08T14:30:00.215259",
+      "expires": "2025-07-08T14:31:00.215259",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-07T12:30:00.371744",
-      "unique_id": "3ee847f8-f7e0-47e4-b2ef-5bc02de60325",
+      "created_at": "2025-07-08T14:30:00.215259",
+      "unique_id": "2dba4eda-9fa9-4dbb-91fc-5ead31a65a78",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T12:30:02.436348"
+      "consumed_at": "2025-07-08T14:30:02.202220"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T13:30:01.300845",
-      "expires": "2025-07-07T13:31:01.300845",
+      "active_from": "2025-07-08T15:30:01.337541",
+      "expires": "2025-07-08T15:31:01.337541",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-07T13:30:01.300845",
-      "unique_id": "c58673a0-0b54-4402-ad3c-9d76fe53ab2d",
+      "created_at": "2025-07-08T15:30:01.337541",
+      "unique_id": "3da2ade1-8b30-4f0d-a85f-38cd06c90193",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T13:30:03.276792"
+      "consumed_at": "2025-07-08T15:30:03.327016"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T13:30:01.300845",
-      "expires": "2025-07-07T13:31:01.300845",
+      "active_from": "2025-07-08T15:30:01.337541",
+      "expires": "2025-07-08T15:31:01.337541",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-07T13:30:01.300845",
-      "unique_id": "c58673a0-0b54-4402-ad3c-9d76fe53ab2d",
+      "created_at": "2025-07-08T15:30:01.337541",
+      "unique_id": "3da2ade1-8b30-4f0d-a85f-38cd06c90193",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T13:30:03.276792"
+      "consumed_at": "2025-07-08T15:30:03.327016"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2025-07-07T14:05:02.095139",
-      "expires": "2025-07-07T14:06:02.095139",
+      "active_from": "2025-07-08T16:05:00.436885",
+      "expires": "2025-07-08T16:06:00.436885",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2025-07-07T14:05:02.095139",
-      "unique_id": "3de1e7f5-f5ed-4d32-9ef7-f23c1f41d164",
+      "created_at": "2025-07-08T16:05:00.436885",
+      "unique_id": "dde4800a-780d-466c-a94b-7c261724de9d",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T14:05:03.932064"
+      "consumed_at": "2025-07-08T16:05:02.268247"
     },
     {
       "key": "__exit_block__",
-      "active_from": "2025-07-07T14:05:02.095139",
-      "expires": "2025-07-07T14:06:02.095139",
+      "active_from": "2025-07-08T16:05:00.436885",
+      "expires": "2025-07-08T16:06:00.436885",
       "display_name": null,
       "payload": {
         "mode": "block"
       },
       "single_consumer": false,
-      "created_at": "2025-07-07T14:05:02.095139",
-      "unique_id": "3de1e7f5-f5ed-4d32-9ef7-f23c1f41d164",
+      "created_at": "2025-07-08T16:05:00.436885",
+      "unique_id": "dde4800a-780d-466c-a94b-7c261724de9d",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T14:05:03.932064"
+      "consumed_at": "2025-07-08T16:05:02.268247"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T14:30:00.520854",
-      "expires": "2025-07-07T14:31:00.520854",
+      "active_from": "2025-07-08T16:30:01.324160",
+      "expires": "2025-07-08T16:31:01.324160",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-07T14:30:00.520854",
-      "unique_id": "0c5cd3b8-b273-4998-bbf9-57233b89bc26",
+      "created_at": "2025-07-08T16:30:01.324160",
+      "unique_id": "2c16fc64-70aa-4dd2-94f0-2711db003904",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T14:30:02.475497"
+      "consumed_at": "2025-07-08T16:30:03.379008"
     },
     {
       "key": "Generate",
-      "active_from": "2025-07-07T14:30:00.520854",
-      "expires": "2025-07-07T14:31:00.520854",
+      "active_from": "2025-07-08T16:30:01.324160",
+      "expires": "2025-07-08T16:31:01.324160",
       "display_name": null,
       "payload": null,
       "single_consumer": false,
-      "created_at": "2025-07-07T14:30:00.520854",
-      "unique_id": "0c5cd3b8-b273-4998-bbf9-57233b89bc26",
+      "created_at": "2025-07-08T16:30:01.324160",
+      "unique_id": "2c16fc64-70aa-4dd2-94f0-2711db003904",
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2025-07-07T14:30:02.475497"
+      "consumed_at": "2025-07-08T16:30:03.379008"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T17:30:00.094119",
+      "expires": "2025-07-08T17:31:00.094119",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T17:30:00.094119",
+      "unique_id": "de7e8c6f-999d-4258-9c31-68acd4d6350f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T17:30:02.163952"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T17:30:00.094119",
+      "expires": "2025-07-08T17:31:00.094119",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T17:30:00.094119",
+      "unique_id": "de7e8c6f-999d-4258-9c31-68acd4d6350f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T17:30:02.163952"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-08T18:05:00.361281",
+      "expires": "2025-07-08T18:06:00.361281",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-08T18:05:00.361281",
+      "unique_id": "726f8cca-3e6c-45d2-8375-fd77cc75b0d6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T18:05:02.217144"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-08T18:05:00.361281",
+      "expires": "2025-07-08T18:06:00.361281",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-08T18:05:00.361281",
+      "unique_id": "726f8cca-3e6c-45d2-8375-fd77cc75b0d6",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T18:05:02.217144"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T18:30:01.524291",
+      "expires": "2025-07-08T18:31:01.524291",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T18:30:01.524291",
+      "unique_id": "ccd362d5-ccc2-4eee-b469-3a43046bb257",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T18:30:03.607813"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T18:30:01.524291",
+      "expires": "2025-07-08T18:31:01.524291",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T18:30:01.524291",
+      "unique_id": "ccd362d5-ccc2-4eee-b469-3a43046bb257",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T18:30:03.607813"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T19:30:01.230501",
+      "expires": "2025-07-08T19:31:01.230501",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T19:30:01.230501",
+      "unique_id": "8cb51304-86ef-48da-b62f-885397b54b8b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T19:30:03.244570"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T19:30:01.230501",
+      "expires": "2025-07-08T19:31:01.230501",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T19:30:01.230501",
+      "unique_id": "8cb51304-86ef-48da-b62f-885397b54b8b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T19:30:03.244570"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-08T20:05:01.765624",
+      "expires": "2025-07-08T20:06:01.765624",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-08T20:05:01.765624",
+      "unique_id": "5b650160-bce3-4992-9ea6-1f48453c75e1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T20:05:03.619987"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-08T20:05:01.765624",
+      "expires": "2025-07-08T20:06:01.765624",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-08T20:05:01.765624",
+      "unique_id": "5b650160-bce3-4992-9ea6-1f48453c75e1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T20:05:03.619987"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T20:30:00.465321",
+      "expires": "2025-07-08T20:31:00.465321",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T20:30:00.465321",
+      "unique_id": "c3693989-6526-498d-a01c-5467c60c3ad7",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T20:30:02.536018"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T20:30:00.465321",
+      "expires": "2025-07-08T20:31:00.465321",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T20:30:00.465321",
+      "unique_id": "c3693989-6526-498d-a01c-5467c60c3ad7",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T20:30:02.536018"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T21:30:01.460864",
+      "expires": "2025-07-08T21:31:01.460864",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T21:30:01.460864",
+      "unique_id": "f0e87607-52f7-403e-9758-662504759972",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T21:30:03.473235"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T21:30:01.460864",
+      "expires": "2025-07-08T21:31:01.460864",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T21:30:01.460864",
+      "unique_id": "f0e87607-52f7-403e-9758-662504759972",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T21:30:03.473235"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-08T22:05:01.821284",
+      "expires": "2025-07-08T22:06:01.821284",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-08T22:05:01.821284",
+      "unique_id": "295d4a52-81be-47cf-bb52-349139d03916",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T22:05:03.668629"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-08T22:05:01.821284",
+      "expires": "2025-07-08T22:06:01.821284",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-08T22:05:01.821284",
+      "unique_id": "295d4a52-81be-47cf-bb52-349139d03916",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T22:05:03.668629"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T22:30:00.332388",
+      "expires": "2025-07-08T22:31:00.332388",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T22:30:00.332388",
+      "unique_id": "8b79b5e1-b926-4033-b613-39f7669ddb78",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T22:30:02.393310"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T22:30:00.332388",
+      "expires": "2025-07-08T22:31:00.332388",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T22:30:00.332388",
+      "unique_id": "8b79b5e1-b926-4033-b613-39f7669ddb78",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T22:30:02.393310"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T23:30:00.218385",
+      "expires": "2025-07-08T23:31:00.218385",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T23:30:00.218385",
+      "unique_id": "0ba1eeda-164c-42be-881d-41904df16778",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T23:30:02.226925"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-08T23:30:00.218385",
+      "expires": "2025-07-08T23:31:00.218385",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-08T23:30:00.218385",
+      "unique_id": "0ba1eeda-164c-42be-881d-41904df16778",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-08T23:30:02.226925"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T06:00:13.761174",
+      "expires": "2025-07-09T06:01:13.761174",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-09T06:00:13.761174",
+      "unique_id": "ee0945e5-f784-49ca-993c-2a8a81fa3ec3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T06:00:13.962456"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T06:00:13.761174",
+      "expires": "2025-07-09T06:01:13.761174",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-09T06:00:13.761174",
+      "unique_id": "ee0945e5-f784-49ca-993c-2a8a81fa3ec3",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T06:00:13.962456"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T07:30:01.554085",
+      "expires": "2025-07-09T07:31:01.554085",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T07:30:01.554085",
+      "unique_id": "a3bd9a7a-bee2-4e74-8d5e-af3b83ad5a1d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T07:30:03.546053"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T07:30:01.554085",
+      "expires": "2025-07-09T07:31:01.554085",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T07:30:01.554085",
+      "unique_id": "a3bd9a7a-bee2-4e74-8d5e-af3b83ad5a1d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T07:30:03.546053"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T08:05:01.043499",
+      "expires": "2025-07-09T08:06:01.043499",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T08:05:01.043499",
+      "unique_id": "54f85139-3e2c-4733-8697-1cf12dedd0be",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T08:05:02.895284"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T08:05:01.043499",
+      "expires": "2025-07-09T08:06:01.043499",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T08:05:01.043499",
+      "unique_id": "54f85139-3e2c-4733-8697-1cf12dedd0be",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T08:05:02.895284"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T08:30:01.480894",
+      "expires": "2025-07-09T08:31:01.480894",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T08:30:01.480894",
+      "unique_id": "6b18f1e1-d8b8-4ee5-8ace-914210a344a1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T08:30:03.473710"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T08:30:01.480894",
+      "expires": "2025-07-09T08:31:01.480894",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T08:30:01.480894",
+      "unique_id": "6b18f1e1-d8b8-4ee5-8ace-914210a344a1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T08:30:03.473710"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T09:30:01.217837",
+      "expires": "2025-07-09T09:31:01.217837",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T09:30:01.217837",
+      "unique_id": "8a79d854-4a33-4127-8a8f-0f5e58d5739a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T09:30:03.285882"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T09:30:01.217837",
+      "expires": "2025-07-09T09:31:01.217837",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T09:30:01.217837",
+      "unique_id": "8a79d854-4a33-4127-8a8f-0f5e58d5739a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T09:30:03.285882"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T10:05:01.050242",
+      "expires": "2025-07-09T10:06:01.050242",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T10:05:01.050242",
+      "unique_id": "da8ae8a8-bf7e-496b-9411-3e4851103f51",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T10:05:02.967722"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T10:05:01.050242",
+      "expires": "2025-07-09T10:06:01.050242",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T10:05:01.050242",
+      "unique_id": "da8ae8a8-bf7e-496b-9411-3e4851103f51",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T10:05:02.967722"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T10:30:00.323375",
+      "expires": "2025-07-09T10:31:00.323375",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T10:30:00.323375",
+      "unique_id": "7ac6657e-dcd0-4ada-9cf7-3d0c8092172e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T10:30:02.379536"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T10:30:00.323375",
+      "expires": "2025-07-09T10:31:00.323375",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T10:30:00.323375",
+      "unique_id": "7ac6657e-dcd0-4ada-9cf7-3d0c8092172e",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T10:30:02.379536"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T11:30:01.826965",
+      "expires": "2025-07-09T11:31:01.826965",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T11:30:01.826965",
+      "unique_id": "1620e61c-4579-4bd7-a553-61209fd692a2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T11:30:03.899547"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T11:30:01.826965",
+      "expires": "2025-07-09T11:31:01.826965",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T11:30:01.826965",
+      "unique_id": "1620e61c-4579-4bd7-a553-61209fd692a2",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T11:30:03.899547"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T12:05:00.616792",
+      "expires": "2025-07-09T12:06:00.616792",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T12:05:00.616792",
+      "unique_id": "e072d1ea-03b8-4e91-88f7-1d11e409ebf7",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T12:05:02.433890"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T12:05:00.616792",
+      "expires": "2025-07-09T12:06:00.616792",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T12:05:00.616792",
+      "unique_id": "e072d1ea-03b8-4e91-88f7-1d11e409ebf7",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T12:05:02.433890"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T12:30:00.317772",
+      "expires": "2025-07-09T12:31:00.317772",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T12:30:00.317772",
+      "unique_id": "79882813-7df0-418e-bb29-1d93284edefc",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T12:30:02.384608"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T12:30:00.317772",
+      "expires": "2025-07-09T12:31:00.317772",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T12:30:00.317772",
+      "unique_id": "79882813-7df0-418e-bb29-1d93284edefc",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T12:30:02.384608"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T13:30:01.133157",
+      "expires": "2025-07-09T13:31:01.133157",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T13:30:01.133157",
+      "unique_id": "3e64d9fb-5520-49c6-afba-26132949b158",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T13:30:03.288522"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T13:30:01.133157",
+      "expires": "2025-07-09T13:31:01.133157",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T13:30:01.133157",
+      "unique_id": "3e64d9fb-5520-49c6-afba-26132949b158",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T13:30:03.288522"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T14:05:00.910735",
+      "expires": "2025-07-09T14:06:00.910735",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T14:05:00.910735",
+      "unique_id": "2cb9cb8d-ddec-4a09-86e7-eb9e718b3e94",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T14:05:02.747458"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T14:05:00.910735",
+      "expires": "2025-07-09T14:06:00.910735",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T14:05:00.910735",
+      "unique_id": "2cb9cb8d-ddec-4a09-86e7-eb9e718b3e94",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T14:05:02.747458"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T14:30:01.796100",
+      "expires": "2025-07-09T14:31:01.796100",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T14:30:01.796100",
+      "unique_id": "5ff72bf9-099d-415d-849c-02f470c4d18b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T14:30:03.843397"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T14:30:01.796100",
+      "expires": "2025-07-09T14:31:01.796100",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T14:30:01.796100",
+      "unique_id": "5ff72bf9-099d-415d-849c-02f470c4d18b",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T14:30:03.843397"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T15:30:01.734765",
+      "expires": "2025-07-09T15:31:01.734765",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T15:30:01.734765",
+      "unique_id": "a53e3b06-1622-4712-971f-2f719b578508",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T15:30:03.797162"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T15:30:01.734765",
+      "expires": "2025-07-09T15:31:01.734765",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T15:30:01.734765",
+      "unique_id": "a53e3b06-1622-4712-971f-2f719b578508",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T15:30:03.797162"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T16:05:00.579517",
+      "expires": "2025-07-09T16:06:00.579517",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T16:05:00.579517",
+      "unique_id": "c3b9d019-00c4-42f5-95b9-772e0d06f0ba",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T16:05:02.324041"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T16:05:00.579517",
+      "expires": "2025-07-09T16:06:00.579517",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T16:05:00.579517",
+      "unique_id": "c3b9d019-00c4-42f5-95b9-772e0d06f0ba",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T16:05:02.324041"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T16:30:01.037916",
+      "expires": "2025-07-09T16:31:01.037916",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T16:30:01.037916",
+      "unique_id": "ff815724-be3c-4fd3-85d5-2299b74605e8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T16:30:03.098526"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T16:30:01.037916",
+      "expires": "2025-07-09T16:31:01.037916",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T16:30:01.037916",
+      "unique_id": "ff815724-be3c-4fd3-85d5-2299b74605e8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T16:30:03.098526"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T17:30:00.729597",
+      "expires": "2025-07-09T17:31:00.729597",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T17:30:00.729597",
+      "unique_id": "cd877a19-62bf-471f-aef8-1dbbbe22ed9f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T17:30:02.799143"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T17:30:00.729597",
+      "expires": "2025-07-09T17:31:00.729597",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T17:30:00.729597",
+      "unique_id": "cd877a19-62bf-471f-aef8-1dbbbe22ed9f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T17:30:02.799143"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T18:05:00.293498",
+      "expires": "2025-07-09T18:06:00.293498",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T18:05:00.293498",
+      "unique_id": "d94283bf-5cd5-4b01-9996-5004509b0014",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T18:05:02.131382"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T18:05:00.293498",
+      "expires": "2025-07-09T18:06:00.293498",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T18:05:00.293498",
+      "unique_id": "d94283bf-5cd5-4b01-9996-5004509b0014",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T18:05:02.131382"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T18:30:00.559306",
+      "expires": "2025-07-09T18:31:00.559306",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T18:30:00.559306",
+      "unique_id": "1824c947-ff03-4d19-8aeb-dfd6fad69757",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T18:30:02.541013"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T18:30:00.559306",
+      "expires": "2025-07-09T18:31:00.559306",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T18:30:00.559306",
+      "unique_id": "1824c947-ff03-4d19-8aeb-dfd6fad69757",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T18:30:02.541013"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T19:30:01.586373",
+      "expires": "2025-07-09T19:31:01.586373",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T19:30:01.586373",
+      "unique_id": "a1a5b662-3a06-4e8f-9f60-cc2399356f04",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T19:30:03.661847"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T19:30:01.586373",
+      "expires": "2025-07-09T19:31:01.586373",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T19:30:01.586373",
+      "unique_id": "a1a5b662-3a06-4e8f-9f60-cc2399356f04",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T19:30:03.661847"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T20:05:01.110502",
+      "expires": "2025-07-09T20:06:01.110502",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T20:05:01.110502",
+      "unique_id": "b0ccca2c-3659-4d08-b9d6-915089fa1a17",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T20:05:02.952651"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T20:05:01.110502",
+      "expires": "2025-07-09T20:06:01.110502",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T20:05:01.110502",
+      "unique_id": "b0ccca2c-3659-4d08-b9d6-915089fa1a17",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T20:05:02.952651"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T20:30:01.016470",
+      "expires": "2025-07-09T20:31:01.016470",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T20:30:01.016470",
+      "unique_id": "fab472a7-7202-4ebd-b6e3-2267f4c062e0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T20:30:03.045808"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T20:30:01.016470",
+      "expires": "2025-07-09T20:31:01.016470",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T20:30:01.016470",
+      "unique_id": "fab472a7-7202-4ebd-b6e3-2267f4c062e0",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T20:30:03.045808"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T21:30:01.662044",
+      "expires": "2025-07-09T21:31:01.662044",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T21:30:01.662044",
+      "unique_id": "d7df2a9f-8c9a-4025-ac19-c9c5ab56a687",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T21:30:03.745737"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T21:30:01.662044",
+      "expires": "2025-07-09T21:31:01.662044",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T21:30:01.662044",
+      "unique_id": "d7df2a9f-8c9a-4025-ac19-c9c5ab56a687",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T21:30:03.745737"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T22:05:02.281462",
+      "expires": "2025-07-09T22:06:02.281462",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T22:05:02.281462",
+      "unique_id": "231138c4-83f3-4ec8-9b7e-3cd48824093f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T22:05:04.116290"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-09T22:05:02.281462",
+      "expires": "2025-07-09T22:06:02.281462",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-09T22:05:02.281462",
+      "unique_id": "231138c4-83f3-4ec8-9b7e-3cd48824093f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T22:05:04.116290"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T22:30:01.248724",
+      "expires": "2025-07-09T22:31:01.248724",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T22:30:01.248724",
+      "unique_id": "46bed29a-48dd-416a-89ab-56c10a408473",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T22:30:03.314278"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-09T22:30:01.248724",
+      "expires": "2025-07-09T22:31:01.248724",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-09T22:30:01.248724",
+      "unique_id": "46bed29a-48dd-416a-89ab-56c10a408473",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2025-07-09T22:30:03.314278"
     }
   ]
 }
