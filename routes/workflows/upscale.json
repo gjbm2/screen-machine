@@ -39,8 +39,8 @@
   },
   "57": {
     "inputs": {
-      "width": 6400,
-      "height": 6400,
+      "width": 3840,
+      "height": 2160,
       "interpolation": "lanczos",
       "method": "keep proportion",
       "condition": "downscale if bigger",
@@ -57,11 +57,11 @@
   },
   "60": {
     "inputs": {
-      "image": "test.jpg"
+      "image": "example.png"
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "Load Image {{LOAD_IMAGE}}"
+      "title": "Load Image {{LOAD-IMAGE}}"
     }
   }
 }

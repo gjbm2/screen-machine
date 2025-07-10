@@ -30,10 +30,13 @@ def throw_user_interacting_event(publish_destination, action_type="generate", wa
         warning("Cannot throw user_interacting event: no destination specified")
         return
 
+    # Import configuration
+    from config import USER_INTERACTION_WAIT_TIME
+    
     # Define default wait times for different action types
     wait_times = {
         "info": "90s",
-        "generate": "10m",
+        "generate": USER_INTERACTION_WAIT_TIME,  # Use configurable wait time
         "animate": "30m",
         "default": "15m"
     }

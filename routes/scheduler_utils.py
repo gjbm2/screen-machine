@@ -2681,6 +2681,46 @@ def process_jinja_template(value: Any, context: Dict[str, Any], publish_destinat
                 # Also make it available as current_event
                 template_vars["current_event"] = context["current_event"]
             
+            # Add _current_image special variable - dynamically resolved
+            if publish_destination:
+                try:
+                    from routes.publisher import get_published_info
+                    from routes.bucketer import bucket_path
+                    from pathlib import Path
+                    
+                    # Get the published info to determine the actual image location
+                    published_info = get_published_info(publish_destination)
+                    if published_info and published_info.get("published"):
+                        # Use the raw_url if available, as this is the correct path for the current image
+                        raw_url = published_info.get("raw_url")
+                        if raw_url:
+                            # raw_url is the proper path to the current image (e.g., "/output/north-screen/image_001.jpg")
+                            # Convert to local file path by removing leading slash
+                            current_image_path = raw_url.lstrip("/")
+                            template_vars["_current_image"] = current_image_path
+                            template_vars["current_image"] = current_image_path
+                        else:
+                            # Fallback: construct the path from bucket info  
+                            published_filename = published_info["published"]
+                            bucket_dir = bucket_path(publish_destination)
+                            current_image_path = str(bucket_dir / published_filename)
+                            template_vars["_current_image"] = current_image_path
+                            template_vars["current_image"] = current_image_path
+                    else:
+                        # Fallback to get_image_from_target if no published info
+                        from routes.utils import get_image_from_target
+                        current_image = get_image_from_target(publish_destination)
+                        if current_image:
+                            template_vars["_current_image"] = current_image.get("local_path", current_image.get("name", ""))
+                            template_vars["current_image"] = current_image.get("local_path", current_image.get("name", ""))
+                        else:
+                            template_vars["_current_image"] = ""
+                            template_vars["current_image"] = ""
+                except Exception as e:
+                    # If we can't get the current image, just set it to empty string
+                    template_vars["_current_image"] = ""
+                    template_vars["current_image"] = ""
+            
             # Render the template with our variables
             result = template.render(**template_vars)
             
