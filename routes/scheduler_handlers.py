@@ -239,7 +239,14 @@ def handle_generate(instruction, context, now, output, publish_destination):
         # Get the generation service from our factory
         generation_service = get_generation_service()
         
-        debug(f"Sending generation request: {json.dumps(send_obj)}")
+        # Log request summary without base64 image data
+        request_summary = {
+            "prompt": send_obj.get("data", {}).get("prompt", ""),
+            "workflow": send_obj.get("data", {}).get("workflow", ""),
+            "refiner": send_obj.get("data", {}).get("refiner", ""),
+            "image_count": len(send_obj.get("data", {}).get("images", []))
+        }
+        debug(f"Sending generation request: {json.dumps(request_summary)}")
         
         # Call the service
         if hasattr(generation_service, 'handle_image_generation'):
@@ -660,20 +667,29 @@ def handle_wait(instruction, context, now, output, publish_destination):
     return False  # Don't unload while still waiting
 
 def handle_unload(instruction, context, now, output, publish_destination):
-    # First check if this schedule has prevent_unload=true
-    from routes.scheduler_utils import scheduler_schedule_stacks
+    """
+    Handle the unload instruction using proper stack management.
+    This will pop the current schedule from the stack and restore the previous one.
+    """
+    from routes.scheduler_utils import unload_schedule_from_stack
     
-    # Get the current schedule (top of stack)
-    if publish_destination in scheduler_schedule_stacks and scheduler_schedule_stacks[publish_destination]:
-        current_schedule = scheduler_schedule_stacks[publish_destination][-1]
-        if current_schedule.get("prevent_unload", False):
-            msg = "Unload instruction ignored: schedule has 'prevent_unload' flag set to true"
-            log_schedule(msg, publish_destination, now, output)
-            return False  # Don't unload
-    
-    msg = "Unloading temporary schedule."
+    msg = "Processing unload instruction with proper stack management."
     log_schedule(msg, publish_destination, now, output)
-    return True  # Signal that we should unload the temporary schedule
+    
+    # Use the proper stack-based unload function
+    result = unload_schedule_from_stack(publish_destination)
+    
+    if result["status"] == "success":
+        if result.get("scheduler_stopped", False):
+            success_msg = "Unloaded last schedule and stopped scheduler."
+        else:
+            success_msg = f"Unloaded schedule from stack. {result['stack_size']} schedule(s) remaining."
+        log_schedule(success_msg, publish_destination, now, output)
+        return True  # Signal successful unload
+    else:
+        error_msg = f"Failed to unload schedule: {result['message']}"
+        log_schedule(error_msg, publish_destination, now, output)
+        return False  # Signal failed unload
 
 def handle_device_media_sync(instruction, context, now, output, publish_destination):
     """Handle device media sync instruction."""
@@ -1524,6 +1540,10 @@ def handle_throw_event(instruction, context, now, output, publish_destination):
         bool: False (don't unload the schedule)
     """
     from routes.scheduler_utils import throw_event
+    from utils.logger import debug
+
+    debug(f"handle_throw_event: Called with instruction: {instruction}")
+    debug(f"handle_throw_event: Context publish_destination: {context.get('publish_destination', 'NOT_FOUND')}")
 
     # Get parameters from the instruction
     event_key = instruction["event"]
@@ -1534,6 +1554,8 @@ def handle_throw_event(instruction, context, now, output, publish_destination):
     future_time = instruction.get("future_time")
     single_consumer = instruction.get("single_consumer", False)
     payload = instruction.get("payload")
+    
+    debug(f"handle_throw_event: event_key={event_key}, scope={scope}, publish_destination={publish_destination}")
 
     # Throw the event (let throw_event handle all scope logic)
     result = throw_event(

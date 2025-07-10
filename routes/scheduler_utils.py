@@ -2656,6 +2656,8 @@ def process_jinja_template(value: Any, context: Dict[str, Any], publish_destinat
             
             # Add now() function to Jinja environment
             env.globals['now'] = datetime.now
+            # Add timedelta for date/time calculations
+            env.globals['timedelta'] = timedelta
             
             template = env.from_string(value)
             
@@ -2665,6 +2667,10 @@ def process_jinja_template(value: Any, context: Dict[str, Any], publish_destinat
             # Add all variables from context
             if "vars" in context:
                 template_vars.update(context["vars"])
+            
+            # Add _current_destination as a special variable (always available when publish_destination is provided)
+            if publish_destination:
+                template_vars["_current_destination"] = publish_destination
             
             # Add _event if it exists in the context (crucial for event-triggered actions)
             if "_event" in context:
@@ -2687,37 +2693,86 @@ def process_jinja_template(value: Any, context: Dict[str, Any], publish_destinat
                     from routes.publisher import get_published_info
                     from routes.bucketer import bucket_path
                     from pathlib import Path
+                    import os
+                    import shutil
+                    import uuid
                     
                     # Get the published info to determine the actual image location
                     published_info = get_published_info(publish_destination)
                     if published_info and published_info.get("published"):
-                        # Use the raw_url if available, as this is the correct path for the current image
-                        raw_url = published_info.get("raw_url")
-                        if raw_url:
-                            # raw_url is the proper path to the current image (e.g., "/output/north-screen/image_001.jpg")
-                            # Convert to local file path by removing leading slash
-                            current_image_path = raw_url.lstrip("/")
-                            template_vars["_current_image"] = current_image_path
-                            template_vars["current_image"] = current_image_path
+                        published_filename = published_info["published"]
+                        
+                        # CRITICAL: Always prefer the bucket path over raw_url to get the immutable file
+                        # The raw_url might point to output/destination.jpg which gets overwritten
+                        bucket_dir = bucket_path(publish_destination)
+                        bucket_image_path = bucket_dir / published_filename
+                        
+                        if bucket_image_path.exists():
+                            # Use the bucket path - this is the immutable file
+                            template_vars["_current_image"] = str(bucket_image_path)
+                            template_vars["current_image"] = str(bucket_image_path)
+                            debug(f"_current_image resolved to bucket path: {bucket_image_path}")
                         else:
-                            # Fallback: construct the path from bucket info  
-                            published_filename = published_info["published"]
-                            bucket_dir = bucket_path(publish_destination)
-                            current_image_path = str(bucket_dir / published_filename)
-                            template_vars["_current_image"] = current_image_path
-                            template_vars["current_image"] = current_image_path
+                            # Bucket file doesn't exist - need to create an immutable copy
+                            raw_url = published_info.get("raw_url")
+                            if raw_url:
+                                current_image_path = raw_url.lstrip("/")
+                                
+                                # Check if the current image file exists
+                                if os.path.exists(current_image_path):
+                                    try:
+                                        # Create an immutable copy in a temp location within the bucket directory
+                                        bucket_dir.mkdir(parents=True, exist_ok=True)
+                                        
+                                        # Generate a unique filename for the immutable copy
+                                        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                                        unique_id = str(uuid.uuid4())[:8]
+                                        source_path = Path(current_image_path)
+                                        immutable_filename = f"{timestamp}-{unique_id}{source_path.suffix}"
+                                        immutable_path = bucket_dir / immutable_filename
+                                        
+                                        # Copy the current image to create an immutable version
+                                        shutil.copy2(current_image_path, immutable_path)
+                                        
+                                        # Use the immutable copy
+                                        template_vars["_current_image"] = str(immutable_path)
+                                        template_vars["current_image"] = str(immutable_path)
+                                        
+                                        # Log this action for debugging
+                                        debug(f"Created immutable copy for _current_image: {current_image_path} -> {immutable_path}")
+                                    except Exception as copy_error:
+                                        # If copying fails, fall back to the original path
+                                        error(f"Failed to create immutable copy of {current_image_path}: {copy_error}")
+                                        template_vars["_current_image"] = current_image_path
+                                        template_vars["current_image"] = current_image_path
+                                else:
+                                    # Current image file doesn't exist, fallback to raw path
+                                    template_vars["_current_image"] = current_image_path
+                                    template_vars["current_image"] = current_image_path
+                            else:
+                                template_vars["_current_image"] = ""
+                                template_vars["current_image"] = ""
                     else:
                         # Fallback to get_image_from_target if no published info
                         from routes.utils import get_image_from_target
                         current_image = get_image_from_target(publish_destination)
                         if current_image:
-                            template_vars["_current_image"] = current_image.get("local_path", current_image.get("name", ""))
-                            template_vars["current_image"] = current_image.get("local_path", current_image.get("name", ""))
+                            image_path = current_image.get("local_path", current_image.get("name", ""))
+                            
+                            # If this is a symlink or copy, try to resolve it
+                            if image_path and os.path.islink(image_path):
+                                resolved_path = os.path.realpath(image_path)
+                                template_vars["_current_image"] = resolved_path
+                                template_vars["current_image"] = resolved_path
+                            else:
+                                template_vars["_current_image"] = image_path
+                                template_vars["current_image"] = image_path
                         else:
                             template_vars["_current_image"] = ""
                             template_vars["current_image"] = ""
                 except Exception as e:
                     # If we can't get the current image, just set it to empty string
+                    error(f"Error resolving _current_image for {publish_destination}: {str(e)}")
                     template_vars["_current_image"] = ""
                     template_vars["current_image"] = ""
             
@@ -3021,4 +3076,330 @@ def log_schedule_diff(old_schedule: Dict[str, Any], new_schedule: Dict[str, Any]
 LATE_EXECUTION_GRACE_PERIOD_SECONDS = 5 * 60
 
 # === Event Persistence Functions ===
+    
+# === Schedule Stack Management ===
+
+def push_schedule(publish_destination: str, new_schedule: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Push a new schedule onto the schedule stack and create a corresponding context.
+    This preserves the existing schedule and context by pushing them onto their stacks,
+    then creates a new context that inherits variables from the previous context.
+    
+    Args:
+        publish_destination: The destination ID
+        new_schedule: The new schedule to load on top of existing
+        
+    Returns:
+        Dictionary with operation status and details
+    """
+    from routes.scheduler import start_scheduler
+    
+    debug(f"push_schedule: Starting for {publish_destination}")
+    
+    # Initialize stacks if they don't exist
+    if publish_destination not in scheduler_schedule_stacks:
+        scheduler_schedule_stacks[publish_destination] = []
+    if publish_destination not in scheduler_contexts_stacks:
+        scheduler_contexts_stacks[publish_destination] = []
+    
+    # Get current schedule and context (if any)
+    current_schedule = None
+    current_context = None
+    
+    if scheduler_schedule_stacks[publish_destination]:
+        current_schedule = scheduler_schedule_stacks[publish_destination][-1]
+        debug(f"push_schedule: Found existing schedule on stack")
+    
+    if scheduler_contexts_stacks[publish_destination]:
+        current_context = scheduler_contexts_stacks[publish_destination][-1]
+        debug(f"push_schedule: Found existing context with {len(current_context.get('vars', {}))} variables")
+    
+    # If we have an existing schedule and context, push them onto the stacks
+    # (This makes them available to return to when the new schedule unloads)
+    if current_schedule is not None:
+        # The current schedule is already at the top of the stack, we just need to add the new one
+        scheduler_schedule_stacks[publish_destination].append(new_schedule)
+        debug(f"push_schedule: Pushed new schedule onto stack (stack size now: {len(scheduler_schedule_stacks[publish_destination])})")
+    else:
+        # No existing schedule, this is the first one
+        scheduler_schedule_stacks[publish_destination] = [new_schedule]
+        debug(f"push_schedule: Set first schedule on stack")
+    
+    # Create new context for the new schedule
+    if current_context is not None:
+        # Copy variables from current context to new context
+        new_context = copy_context(current_context)
+        debug(f"push_schedule: Created new context inheriting {len(new_context.get('vars', {}))} variables from current context")
+    else:
+        # No existing context, create default
+        new_context = default_context()
+        debug(f"push_schedule: Created new default context")
+    
+    # If we have an existing context, push it onto the context stack
+    if current_context is not None:
+        # Push the current context onto the stack before adding the new one
+        scheduler_contexts_stacks[publish_destination].append(new_context)
+        debug(f"push_schedule: Pushed new context onto stack (stack size now: {len(scheduler_contexts_stacks[publish_destination])})")
+    else:
+        # No existing context, this is the first one
+        scheduler_contexts_stacks[publish_destination] = [new_context]
+        debug(f"push_schedule: Set first context on stack")
+    
+    # Update scheduler state to persist the stacks
+    update_scheduler_state(
+        publish_destination,
+        schedule_stack=scheduler_schedule_stacks[publish_destination],
+        context_stack=scheduler_contexts_stacks[publish_destination],
+        force_save=True
+    )
+    
+    # Execute initial actions for the new schedule if it has any
+    from routes.scheduler import resolve_schedule, run_instruction
+    initial_instructions = resolve_schedule(new_schedule, datetime.now(), publish_destination, include_initial_actions=True, context=new_context)
+    if initial_instructions:
+        info(f"Executing initial actions for pushed schedule on {publish_destination}")
+        # Get the current logs for this destination
+        if publish_destination not in scheduler_logs:
+            scheduler_logs[publish_destination] = []
+        
+        # Process all instruction blocks from initial actions
+        for trigger_data in initial_instructions:
+            block = trigger_data.get("block", [])
+            is_urgent = trigger_data.get("urgent", False)
+            is_important = trigger_data.get("important", False)
+            source = trigger_data.get("source", "unknown")
+            
+            # Log what we're processing
+            if is_urgent or is_important:
+                flags = []
+                if is_urgent:
+                    flags.append("urgent")
+                if is_important:
+                    flags.append("important")
+                flags_str = f" ({', '.join(flags)})" if flags else ""
+                debug(f"Processing initial instruction block from {source}{flags_str}")
+                
+            for instr in block:
+                try:
+                    debug(f"push_schedule: About to execute initial instruction: {instr.get('action', 'unknown')}")
+                    should_unload = run_instruction(instr, new_context, datetime.now(), scheduler_logs[publish_destination], publish_destination)
+                    debug(f"push_schedule: Initial instruction {instr.get('action', 'unknown')} completed, should_unload={should_unload}")
+                    if should_unload == "EXIT_BLOCK":
+                        debug(f"EXIT_BLOCK signal received, breaking out of instruction block early")
+                        break  # Exit the current instruction block
+                    elif should_unload:
+                        debug(f"Unload signal received during initial actions - this should not happen")
+                        break
+                except Exception as e:
+                    error_msg = f"Error running initial instruction {instr.get('action', 'unknown')}: {str(e)}"
+                    error(error_msg)
+                    import traceback
+                    error(f"Traceback: {traceback.format_exc()}")
+                    scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
+        
+        # Save context changes after running initial actions
+        update_scheduler_state(
+            publish_destination,
+            schedule_stack=scheduler_schedule_stacks[publish_destination],
+            context_stack=scheduler_contexts_stacks[publish_destination],
+            force_save=True
+        )
+    
+    # Log the operation
+    now = datetime.now()
+    if publish_destination in scheduler_logs:
+        scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] Pushed new schedule onto stack (stack size: {len(scheduler_schedule_stacks[publish_destination])})")
+    
+    debug(f"push_schedule: Successfully pushed schedule, final stack size: {len(scheduler_schedule_stacks[publish_destination])}")
+    
+    return {
+        "status": "success",
+        "message": "Schedule pushed onto stack",
+        "stack_size": len(scheduler_schedule_stacks[publish_destination]),
+        "context_inherited_vars": len(new_context.get('vars', {}))
+    }
+
+def pop_schedule(publish_destination: str) -> Dict[str, Any]:
+    """
+    Pop the top schedule from the schedule stack and restore the previous context.
+    This removes the current schedule and restores the previous schedule and context.
+    
+    Args:
+        publish_destination: The destination ID
+        
+    Returns:
+        Dictionary with operation status and details
+    """
+    debug(f"pop_schedule: Starting for {publish_destination}")
+    
+    # Check if we have schedules to pop
+    if (publish_destination not in scheduler_schedule_stacks or 
+        not scheduler_schedule_stacks[publish_destination]):
+        return {
+            "status": "error",
+            "message": "No schedules on stack to pop"
+        }
+    
+    # Check if the current schedule has prevent_unload=true
+    # BUT: If this is a self-unload (schedule unloading itself), allow it even if previous schedule is protected
+    current_schedule = scheduler_schedule_stacks[publish_destination][-1]
+    if current_schedule.get("prevent_unload", False):
+        return {
+            "status": "error", 
+            "message": "Current schedule cannot be unloaded (prevent_unload=true)"
+        }
+    
+    # Pop the current schedule
+    popped_schedule = scheduler_schedule_stacks[publish_destination].pop()
+    debug(f"pop_schedule: Popped schedule from stack (stack size now: {len(scheduler_schedule_stacks[publish_destination])})")
+    
+    # Pop the current context 
+    if (publish_destination in scheduler_contexts_stacks and 
+        scheduler_contexts_stacks[publish_destination]):
+        popped_context = scheduler_contexts_stacks[publish_destination].pop()
+        debug(f"pop_schedule: Popped context from stack (stack size now: {len(scheduler_contexts_stacks[publish_destination])})")
+    else:
+        debug(f"pop_schedule: Warning - no context stack found to pop")
+    
+    # Update scheduler state to persist the stacks
+    update_scheduler_state(
+        publish_destination,
+        schedule_stack=scheduler_schedule_stacks[publish_destination],
+        context_stack=scheduler_contexts_stacks[publish_destination],
+        force_save=True
+    )
+    
+    # Log the operation
+    now = datetime.now()
+    if publish_destination in scheduler_logs:
+        scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] Popped schedule from stack (stack size: {len(scheduler_schedule_stacks[publish_destination])})")
+    
+    # If no more schedules, stop the scheduler
+    if not scheduler_schedule_stacks[publish_destination]:
+        from routes.scheduler import stop_scheduler
+        stop_scheduler(publish_destination)
+        debug(f"pop_schedule: No more schedules, stopped scheduler")
+        if publish_destination in scheduler_logs:
+            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M')}] No schedules remaining, stopped scheduler")
+        
+        return {
+            "status": "success",
+            "message": "Popped last schedule and stopped scheduler",
+            "stack_size": 0,
+            "scheduler_stopped": True
+        }
+    
+    debug(f"pop_schedule: Successfully popped schedule, remaining stack size: {len(scheduler_schedule_stacks[publish_destination])}")
+    
+    return {
+        "status": "success", 
+        "message": "Schedule popped from stack",
+        "stack_size": len(scheduler_schedule_stacks[publish_destination]),
+        "scheduler_stopped": False
+    }
+
+def load_schedule_on_stack(publish_destination: str, schedule: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Load a new schedule on top of any existing schedule using proper stack management.
+    This is the main entry point for loading schedules that should stack properly.
+    
+    Args:
+        publish_destination: The destination ID
+        schedule: The schedule to load
+        
+    Returns:
+        Dictionary with operation status and details
+    """
+    from routes.scheduler import start_scheduler, scheduler_states, running_schedulers
+    
+    info(f"load_schedule_on_stack: Loading schedule for {publish_destination}")
+    
+    try:
+        # Initialize scheduler logs if needed
+        if publish_destination not in scheduler_logs:
+            scheduler_logs[publish_destination] = []
+        
+        # Validate the schedule structure
+        if not isinstance(schedule, dict):
+            return {
+                "status": "error",
+                "message": "Schedule must be a dictionary"
+            }
+        
+        # Push the new schedule onto the stack
+        push_result = push_schedule(publish_destination, schedule)
+        if push_result["status"] != "success":
+            return push_result
+        
+        # Check if scheduler is already running
+        scheduler_was_running = (publish_destination in running_schedulers and 
+                               publish_destination in scheduler_states and
+                               scheduler_states[publish_destination] == "running")
+        
+        if scheduler_was_running:
+            info(f"load_schedule_on_stack: Scheduler already running for {publish_destination}, new schedule will execute on existing scheduler")
+            # The running scheduler will automatically pick up the new schedule from the top of the stack
+        else:
+            info(f"load_schedule_on_stack: Starting new scheduler for {publish_destination}")
+            # Start the scheduler with the new schedule (top of stack)
+            start_scheduler(publish_destination, schedule)
+        
+        return {
+            "status": "success",
+            "message": "Schedule loaded on stack successfully",
+            "stack_size": push_result["stack_size"],
+            "scheduler_was_running": scheduler_was_running,
+            "inherited_vars": push_result["context_inherited_vars"]
+        }
+        
+    except Exception as e:
+        error_msg = f"Error loading schedule on stack: {str(e)}"
+        error(error_msg)
+        import traceback
+        error(f"Error traceback: {traceback.format_exc()}")
+        
+        if publish_destination in scheduler_logs:
+            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
+        
+        return {
+            "status": "error",
+            "message": error_msg
+        }
+
+def unload_schedule_from_stack(publish_destination: str) -> Dict[str, Any]:
+    """
+    Unload the current schedule from the stack and restore the previous one.
+    This is the main entry point for unloading schedules with proper stack management.
+    
+    Args:
+        publish_destination: The destination ID
+        
+    Returns:
+        Dictionary with operation status and details
+    """
+    info(f"unload_schedule_from_stack: Unloading schedule for {publish_destination}")
+    
+    try:
+        # Initialize scheduler logs if needed
+        if publish_destination not in scheduler_logs:
+            scheduler_logs[publish_destination] = []
+        
+        # Pop the schedule from the stack
+        pop_result = pop_schedule(publish_destination)
+        
+        return pop_result
+        
+    except Exception as e:
+        error_msg = f"Error unloading schedule from stack: {str(e)}"
+        error(error_msg)
+        import traceback
+        error(f"Error traceback: {traceback.format_exc()}")
+        
+        if publish_destination in scheduler_logs:
+            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {error_msg}")
+        
+        return {
+            "status": "error", 
+            "message": error_msg
+        }
     

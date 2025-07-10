@@ -3,7 +3,7 @@
     "instructions_block": [
       {
         "action": "unload",
-        "message": "Schedule complete"
+        "message": "Art rotation complete"
       }
     ]
   },
@@ -11,13 +11,13 @@
     "instructions_block": [
       {
         "action": "set_var",
-        "var": "counter",
-        "value": 0
+        "var": "art_piece",
+        "value": 1
       },
       {
         "action": "set_var",
         "var": "end_time",
-                    "value": "{{ (now() + timedelta(minutes=60)).strftime('%H:%M') }}"
+                    "value": "{{ (now() + timedelta(hours=2)).strftime('%H:%M') }}"
       },
       {
         "action": "display",
@@ -39,7 +39,7 @@
       "scheduled_actions": [
         {
           "repeat_schedule": {
-            "every": "2",
+            "every": "10",
             "until": "{{ end_time }}"
           },
           "time": "{{ now().strftime('%H:%M') }}",
@@ -47,8 +47,8 @@
             "instructions_block": [
               {
                 "action": "set_var",
-                "var": "counter",
-                "value": "{{ counter + 1 }}"
+                "var": "art_piece",
+                "value": "{{ art_piece + 1 }}"
               },
               {
                 "action": "display",

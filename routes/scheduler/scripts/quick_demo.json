@@ -3,7 +3,7 @@
     "instructions_block": [
       {
         "action": "unload",
-        "message": "Schedule complete"
+        "message": "Quick demo complete"
       }
     ]
   },
@@ -11,13 +11,13 @@
     "instructions_block": [
       {
         "action": "set_var",
-        "var": "counter",
+        "var": "demo_counter",
         "value": 0
       },
       {
         "action": "set_var",
         "var": "end_time",
-                    "value": "{{ (now() + timedelta(minutes=60)).strftime('%H:%M') }}"
+                    "value": "{{ (now() + timedelta(minutes=10)).strftime('%H:%M') }}"
       },
       {
         "action": "display",
@@ -39,7 +39,7 @@
       "scheduled_actions": [
         {
           "repeat_schedule": {
-            "every": "2",
+            "every": "1",
             "until": "{{ end_time }}"
           },
           "time": "{{ now().strftime('%H:%M') }}",
@@ -47,8 +47,8 @@
             "instructions_block": [
               {
                 "action": "set_var",
-                "var": "counter",
-                "value": "{{ counter + 1 }}"
+                "var": "demo_counter",
+                "value": "{{ demo_counter + 1 }}"
               },
               {
                 "action": "display",

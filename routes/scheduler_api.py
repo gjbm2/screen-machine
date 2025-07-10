@@ -454,37 +454,18 @@ def api_load_schedule(publish_destination):
         other_scheduler_states = {dest: state for dest, state in scheduler_states.items() if dest != publish_destination}
         debug(f"Other scheduler states BEFORE update: {other_scheduler_states}")
         
-        # Initialize stacks if they don't exist
-        if publish_destination not in scheduler_schedule_stacks:
-            debug(f"First time initialization for {publish_destination}")
-            scheduler_schedule_stacks[publish_destination] = []
-            scheduler_contexts_stacks[publish_destination] = []
-            scheduler_states[publish_destination] = "stopped"
-            debug(f"Initializing scheduler state to 'stopped' for first-time {publish_destination}")
-            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Initialized new scheduler")
-            
-            # For first-time initialization, create a new context
-            new_context = default_context()
-            new_context["publish_destination"] = publish_destination
-            scheduler_contexts_stacks[publish_destination] = [new_context]
-            debug(f"Created new default context for first-time initialization")
+        # Use the new stack-based loading system
+        from routes.scheduler_utils import load_schedule_on_stack
         
-        # Get the current context stack to preserve it
-        context_stack = scheduler_contexts_stacks.get(publish_destination, [])
-        debug(f"Preserving context stack with {len(context_stack)} contexts and keys: {[list(ctx.get('vars', {}).keys()) for ctx in context_stack]}")
+        result = load_schedule_on_stack(publish_destination, schedule)
         
-        # Replace the schedule but PRESERVE the existing context stack
-        debug(f"Setting new schedule for {publish_destination}, preserving context stack")
-        scheduler_schedule_stacks[publish_destination] = [schedule]
-        debug(f"Context stack size: {len(context_stack)}")
+        if result["status"] != "success":
+            return jsonify({"error": result["message"]}), 500
         
-        # CRITICAL SECTION: Update state WITH context to ensure it's properly persisted
-        debug(f"⚠️ UPDATING SCHEDULER STATE for {publish_destination}")
-        update_scheduler_state(
-            publish_destination,
-            schedule_stack=scheduler_schedule_stacks[publish_destination],
-            context_stack=context_stack  # Explicitly pass context to ensure it's persisted
-        )
+        debug(f"✅ Successfully loaded schedule on stack for {publish_destination}")
+        debug(f"   Stack size: {result['stack_size']}")
+        debug(f"   Scheduler was running: {result['scheduler_was_running']}")
+        debug(f"   Inherited variables: {result['inherited_vars']}")
         
         # Verify we didn't affect other destinations
         changed_states = []
@@ -535,48 +516,26 @@ def api_unload_schedule(publish_destination):
         if publish_destination not in scheduler_logs:
             scheduler_logs[publish_destination] = []
             
-        if publish_destination in scheduler_schedule_stacks:
-            if scheduler_schedule_stacks[publish_destination]:  # If stack is not empty
-                # Check if the current schedule has prevent_unload flag set
-                current_schedule = scheduler_schedule_stacks[publish_destination][-1]
-                if current_schedule.get("prevent_unload", False):
-                    log_msg = f"Unload prevented: schedule has 'prevent_unload' flag set to true"
-                    scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] {log_msg}")
-                    info(log_msg)
-                    return jsonify({
-                        "error": "Cannot unload this schedule as it has prevent_unload=true",
-                        "message": "Schedule is protected from unloading"
-                    }), 403
-                
-                # Pop both the schedule and its context
-                scheduler_schedule_stacks[publish_destination].pop()
-                if scheduler_contexts_stacks.get(publish_destination):
-                    scheduler_contexts_stacks[publish_destination].pop()
-                
-                # Update persisted state
-                update_scheduler_state(
-                    publish_destination,
-                    schedule_stack=scheduler_schedule_stacks[publish_destination],
-                    context_stack=get_context_stack(publish_destination)
-                )
-                
-                stack_size = len(scheduler_schedule_stacks[publish_destination])
-                scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Unloaded top schedule (stack size: {stack_size})")
-                
-                # If this was the last schedule, stop the scheduler
-                if stack_size == 0:
-                    stop_scheduler(publish_destination)
-                    scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] Stopped scheduler - no schedules remaining")
-                
-                return jsonify({
-                    "status": "unloaded", 
-                    "destination": publish_destination,
-                    "stack_size": stack_size
-                })
-            scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] No schedules to unload")
-            return jsonify({"error": "No schedules to unload"}), 400
-        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M')}] No schedules found")
-        return jsonify({"error": "No schedules found"}), 404
+        # Use the new stack-based unloading system
+        from routes.scheduler_utils import unload_schedule_from_stack
+        
+        result = unload_schedule_from_stack(publish_destination)
+        
+        if result["status"] == "success":
+            return jsonify({
+                "status": "unloaded",
+                "destination": publish_destination,
+                "stack_size": result["stack_size"],
+                "scheduler_stopped": result.get("scheduler_stopped", False),
+                "message": result["message"]
+            })
+        elif "cannot be unloaded" in result["message"].lower() or "prevent_unload" in result["message"]:
+            return jsonify({
+                "error": result["message"],
+                "message": "Schedule is protected from unloading"
+            }), 403
+        else:
+            return jsonify({"error": result["message"]}), 400
     except Exception as e:
         error_msg = f"Error unloading schedule: {str(e)}"
         # Ensure scheduler_logs dictionary has an entry for this destination
