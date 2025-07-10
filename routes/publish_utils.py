@@ -105,7 +105,8 @@ class PublishHistoryManager:
             pointer = history_data["current_pointer"]
             
             # Remove all entries above current pointer (truncate future history)
-            if pointer < len(stack) - 1:
+            # Only truncate if we're not at the newest image (pointer > 0)
+            if pointer > 0:
                 stack = stack[:pointer + 1]
                 debug(f"[history] Truncated future history for {self.destination_id}, new stack size: {len(stack)}")
             

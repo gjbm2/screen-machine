@@ -719,17 +719,22 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
             error(f"Failed to get event loop for {publish_destination}: {str(e)}")
             raise
         
+        # CRITICAL: Set placeholder in running_schedulers BEFORE starting coroutine
+        # This prevents the race condition where run_scheduler_loop() checks running_schedulers
+        # before the entry exists, causing immediate exit
+        running_schedulers[publish_destination] = {
+            "future": None,  # Will be updated below
+            "loop": loop
+        }
+        
         # Schedule the coroutine to run in the background
         future = asyncio.run_coroutine_threadsafe(
             run_scheduler(schedule_stack[-1], publish_destination, *args, **kwargs),
             loop
         )
         
-        # Store the future and loop so we can cancel/clean up later
-        running_schedulers[publish_destination] = {
-            "future": future,
-            "loop": loop
-        }
+        # Update the placeholder with the actual future
+        running_schedulers[publish_destination]["future"] = future
         
         info(f"Scheduler for {publish_destination} started successfully")
     except Exception as e:
@@ -895,17 +900,22 @@ def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None
                 import traceback
                 error(traceback.format_exc())
         
+        # CRITICAL: Set placeholder in running_schedulers BEFORE starting coroutine
+        # This prevents the race condition where run_scheduler_loop() checks running_schedulers
+        # before the entry exists, causing immediate exit
+        running_schedulers[publish_destination] = {
+            "future": None,  # Will be updated below
+            "loop": loop
+        }
+        
         # Schedule the coroutine to run in the background
         future = asyncio.run_coroutine_threadsafe(
             resume_scheduler_without_initial(),
             loop
         )
         
-        # Store the future and loop so we can cancel/clean up later
-        running_schedulers[publish_destination] = {
-            "future": future,
-            "loop": loop
-        }
+        # Update the placeholder with the actual future
+        running_schedulers[publish_destination]["future"] = future
         
         info(f"Scheduler for {publish_destination} resumed successfully")
     except Exception as e:
