@@ -439,14 +439,34 @@
             "text_input": "TEXT: app version of Now Sinner in a. It's a sh..."
           }
         ],
-        "conf_int": 85
+        "conf_int": 85,
+        "_event": {
+          "key": "_user_interacting",
+          "payload": {
+            "wait": "90s",
+            "action": "info"
+          },
+          "unique_id": "e87cc5f5-3185-49aa-86d4-24b0cf006e1a",
+          "created_at": "2025-07-10T23:31:38.647312",
+          "display_name": "User Interaction"
+        }
       },
       "last_generated": "20250619-160439-643a2590.mp4",
-      "publish_destination": "devtest"
+      "publish_destination": "devtest",
+      "_event": {
+        "key": "_user_interacting",
+        "payload": {
+          "wait": "90s",
+          "action": "info"
+        },
+        "unique_id": "e87cc5f5-3185-49aa-86d4-24b0cf006e1a",
+        "created_at": "2025-07-10T23:31:38.647312",
+        "display_name": "User Interaction"
+      }
     }
   ],
   "state": "running",
-  "last_updated": "2025-07-10T20:09:07.881584",
+  "last_updated": "2025-07-10T23:33:10.677368",
   "last_trigger_executions": {
     "7bc512d74b13f60c705deb7e1061e1c0_2025-06-10_24": "2025-06-10T12:01:00.103358",
     "7bc512d74b13f60c705deb7e1061e1c0_2025-06-10_25": "2025-06-10T12:31:00.738562",
@@ -1894,108 +1914,19 @@
     "7bc512d74b13f60c705deb7e1061e1c0_2025-07-10_37": "2025-07-10T18:31:01.418816",
     "7bc512d74b13f60c705deb7e1061e1c0_2025-07-10_38": "2025-07-10T19:01:00.032892",
     "7bc512d74b13f60c705deb7e1061e1c0_2025-07-10_39": "2025-07-10T19:31:01.692026",
-    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-10_40": "2025-07-10T20:01:00.000743"
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-10_40": "2025-07-10T20:01:00.000743",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-10_41": "2025-07-10T20:31:01.521982",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-10_42": "2025-07-10T21:01:01.533264",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-10_43": "2025-07-10T21:31:00.571041",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-10_44": "2025-07-10T22:01:01.830183",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-10_45": "2025-07-10T22:31:01.344498",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-10_46": "2025-07-10T23:01:00.349436",
+    "7bc512d74b13f60c705deb7e1061e1c0_2025-07-10_47": "2025-07-10T23:31:01.928555"
   },
   "active_events": {},
   "event_history": [
     {
       "key": "_user_interacting",
-      "active_from": "2025-07-03T22:23:14.128208",
-      "expires": "2025-07-04T01:23:14.128208",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:23:14.128208",
-      "unique_id": "d6d9afe3-9678-4873-93a5-b9744e4e4df0",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:23:15.708034"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:23:14.128208",
-      "expires": "2025-07-04T01:23:14.128208",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:23:14.128208",
-      "unique_id": "d6d9afe3-9678-4873-93a5-b9744e4e4df0",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:23:15.708034"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:24:30.387944",
-      "expires": "2025-07-04T01:24:30.387944",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:24:30.387944",
-      "unique_id": "33c69b8a-5064-433f-9b62-6a606ce8c3c5",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:24:30.847995"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:24:30.387944",
-      "expires": "2025-07-04T01:24:30.387944",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:24:30.387944",
-      "unique_id": "33c69b8a-5064-433f-9b62-6a606ce8c3c5",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:24:30.847995"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:26:36.142955",
-      "expires": "2025-07-04T01:26:36.142955",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:26:36.142955",
-      "unique_id": "92f25191-8662-4c34-8f94-666a2822d845",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:26:36.625005"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:26:36.142955",
-      "expires": "2025-07-04T01:26:36.142955",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:26:36.142955",
-      "unique_id": "92f25191-8662-4c34-8f94-666a2822d845",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:26:36.625005"
-    },
-    {
-      "key": "_user_interacting",
       "active_from": "2025-07-03T22:27:30.667554",
       "expires": "2025-07-04T01:27:30.667554",
       "display_name": "User Interaction",
@@ -3431,6 +3362,102 @@
       "status": "EXPIRED",
       "consumed_by": "expiration",
       "consumed_at": "2025-07-10T10:19:44.583824"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-10T20:37:19.032690",
+      "expires": "2025-07-10T23:37:19.032690",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-10T20:37:19.032690",
+      "unique_id": "ffe13279-0f2e-4eac-bb09-38c36f7377f8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-10T20:37:19.136087"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-10T20:37:19.032690",
+      "expires": "2025-07-10T23:37:19.032690",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-10T20:37:19.032690",
+      "unique_id": "ffe13279-0f2e-4eac-bb09-38c36f7377f8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-10T20:37:19.136087"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-10T22:19:56.905217",
+      "expires": "2025-07-11T01:19:56.905217",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-10T22:19:56.905217",
+      "unique_id": "e17ed8dd-a463-4279-840d-8ccabe01374a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-10T22:19:58.439886"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-10T22:19:56.905217",
+      "expires": "2025-07-11T01:19:56.905217",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-10T22:19:56.905217",
+      "unique_id": "e17ed8dd-a463-4279-840d-8ccabe01374a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-10T22:19:58.439886"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-10T23:31:38.647312",
+      "expires": "2025-07-11T02:31:38.647312",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-10T23:31:38.647312",
+      "unique_id": "e87cc5f5-3185-49aa-86d4-24b0cf006e1a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-10T23:31:40.432889"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-10T23:31:38.647312",
+      "expires": "2025-07-11T02:31:38.647312",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "90s",
+        "action": "info"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-10T23:31:38.647312",
+      "unique_id": "e87cc5f5-3185-49aa-86d4-24b0cf006e1a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_devtest",
+      "consumed_at": "2025-07-10T23:31:40.432889"
     }
   ]
 }

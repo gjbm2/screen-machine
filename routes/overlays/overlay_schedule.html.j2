@@ -142,6 +142,32 @@
         computer, use AI to <span style="font-weight: 700;">trigger next</span> <span style="font-weight: 400;">on {{ SCREEN_NAME }}</span>
       {% endif %}
     </div>
+
+    <!-- Available Scheduler Scripts Section -->
+    {% if AVAILABLE_SCHEDULER_SCRIPTS and AVAILABLE_SCHEDULER_SCRIPTS|length > 0 %}
+      <div style="font-style: italic; font-size: 1em; margin-top: 36px; animation: fadeIn 1.6s ease 2.2s forwards; opacity: 0;">
+        Load scheduler scripts:
+      </div>
+      <div style="margin-left: 24px; animation: fadeIn 1.6s ease 2.4s forwards; opacity: 0;">
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">
+          {% for script in AVAILABLE_SCHEDULER_SCRIPTS %}
+            <span style="background-color: rgba(255, 255, 255, 0.1); padding: 4px 8px; border-radius: 4px; font-weight: 700; font-size: 0.9em;">{{ script.replace('_', ' ') }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      
+      <!-- How to Load Scheduler Scripts Section -->
+      <div style="font-style: italic; font-size: 1em; margin-top: 24px; animation: fadeIn 1.6s ease 2.6s forwards; opacity: 0;">
+        How to load scheduler scripts:
+      </div>
+      <div style="margin-left: 24px; letter-spacing: -0.25px; animation: fadeIn 1.6s ease 2.8s forwards; opacity: 0;">
+        {% if AVAILABLE_SCHEDULER_SCRIPTS and AVAILABLE_SCHEDULER_SCRIPTS|length > 0 %}
+          computer, use AI to <span style="font-weight: 700;">load {{ AVAILABLE_SCHEDULER_SCRIPTS[0].replace('_', ' ') }}</span> <span style="font-weight: 400;">on {{ SCREEN_NAME }}</span>
+        {% else %}
+          computer, use AI to <span style="font-weight: 700;">load showcase</span> <span style="font-weight: 400;">on {{ SCREEN_NAME }}</span>
+        {% endif %}
+      </div>
+    {% endif %}
   </div>
 
   {% include "overlay_spinner.html.j2" %}

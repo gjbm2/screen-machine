@@ -1,0 +1,29 @@
+{
+  "schedule_stack": [
+    {
+      "initial_actions": {
+        "instructions_block": [
+          {
+            "action": "log",
+            "message": "Protected schedule"
+          }
+        ]
+      },
+      "triggers": [],
+      "final_actions": {
+        "instructions_block": []
+      },
+      "prevent_unload": true
+    }
+  ],
+  "context_stack": [
+    {
+      "vars": {},
+      "last_generated": null,
+      "publish_destination": "test-protected"
+    }
+  ],
+  "state": "stopped",
+  "last_updated": "2025-07-10T21:08:44.882430",
+  "last_trigger_executions": {}
+}

@@ -149,6 +149,13 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
         info("Executing initial actions")
         log_schedule("Executing initial actions", publish_destination, now)
         all_instructions.extend(initial_instructions)
+        # When explicitly requesting initial actions, return them immediately without processing triggers
+        return [{
+            "block": initial_instructions,
+            "urgent": False,
+            "important": False,
+            "source": "initial_actions"
+        }]
         
     # If there are no triggers, return just the initial actions
     if "triggers" not in schedule or not schedule["triggers"]:
@@ -674,16 +681,21 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
             raise ValueError("Schedule must be a dictionary")
 
         # ------------------------------------------------------------------
-        # HISTORIC-CORRECT STACK HANDLING
+        # UPDATED STACK HANDLING - Works with stack-based loading
         # ------------------------------------------------------------------
-        # We only create a new stack if none exists (fresh destination) or
-        # if the existing stack is empty.  Otherwise we leave it untouched.
-        # *NO* append, *NO* replace – just use what is there.
+        # Initialize stacks if they don't exist
         if publish_destination not in scheduler_schedule_stacks:
             scheduler_schedule_stacks[publish_destination] = []
+        if publish_destination not in scheduler_contexts_stacks:
+            scheduler_contexts_stacks[publish_destination] = []
+            
+        # If no schedules exist, add the provided schedule
+        # If schedules exist, use the top of the stack (most recent schedule)
         if not scheduler_schedule_stacks[publish_destination]:
             # Fresh destination – seed stack with the provided schedule
             scheduler_schedule_stacks[publish_destination].append(schedule)
+        # If there are existing schedules, we use the current top of stack
+        # (This allows the stack-based loading to work properly)
         schedule_stack = scheduler_schedule_stacks[publish_destination]
         
         # Get the context stack - ensure it's not empty
@@ -1190,23 +1202,19 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
                         debug(f"EXIT_BLOCK signal received, breaking out of current instruction block")
                         instruction_queue.remove_non_important()
                     elif should_unload:
-                        # For unload, clear the queue and pop the schedule
-                        debug(f"Unload signal received, clearing queue and popping schedule")
+                        # The unload instruction already handled the stack management
+                        # We should NOT call pop_schedule again here as that would cause a double-unload
+                        debug(f"Unload signal received - unload instruction already handled stack management")
                         clear_instruction_queue(publish_destination)
-                        scheduler_schedule_stacks[publish_destination].pop()
-                        pop_context(publish_destination)  # Pop the context too
-                        scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] Unloaded schedule")
                         
-                        # Sync state after unload
-                        update_scheduler_state(
-                            publish_destination,
-                            schedule_stack=scheduler_schedule_stacks[publish_destination],
-                            context_stack=scheduler_contexts_stacks[publish_destination]
-                        )
-                        
-                        if not scheduler_schedule_stacks[publish_destination]:
-                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] No schedules left in stack, stopping scheduler")
+                        # Check if the scheduler should stop (no more schedules on stack)
+                        if (publish_destination not in scheduler_schedule_stacks or 
+                            not scheduler_schedule_stacks[publish_destination]):
+                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] No more schedules on stack, stopping scheduler")
                             return
+                        else:
+                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] Schedule unloaded, continuing with remaining schedules")
+                            # Continue running with the remaining schedules on the stack
                 except Exception as e:
                     error_msg = f"Error running instruction: {str(e)}"
                     scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")

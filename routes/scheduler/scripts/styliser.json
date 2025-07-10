@@ -1,0 +1,119 @@
+{
+  "final_actions": {
+    "instructions_block": [
+      {
+        "action": "log",
+        "message": "Styliser session complete - 20 minutes of stylistic exploration finished"
+      }
+    ]
+  },
+  "initial_actions": {
+    "instructions_block": [
+      {
+        "action": "log",
+        "message": "** Starting Styliser Session **"
+      },
+      {
+        "action": "set_var",
+        "var": "source_image",
+        "input": {
+          "value": "{{ _current_image }}"
+        }
+      },
+      {
+        "action": "set_var",
+        "var": "style_history",
+        "input": {
+          "value": []
+        }
+      },
+      {
+        "action": "set_var",
+        "var": "session_count",
+        "input": {
+          "value": 0
+        }
+      },
+      {
+        "action": "log",
+        "message": "Captured source image: {{ source_image }}"
+      },
+      {
+        "action": "log",
+        "message": "Session will run for 12 iterations"
+      },
+            {
+        "action": "throw_event",
+        "scope": "{{ _current_destination }}",
+        "event": "styliser_start"
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "type": "event",
+      "value": "styliser_start",
+      "trigger_actions": {
+        "instructions_block": [
+          {
+            "action": "set_var",
+            "var": "session_count",
+            "input": {
+              "value": "{{ session_count + 1 }}"
+            }
+          },
+          {
+            "action": "log",
+            "message": "** Styliser Iteration {{ session_count }} **"
+          },
+          {
+            "action": "reason",
+            "text_input": "Create a detailed style prompt for transforming this image. Describe a specific artistic style (like watercolor, oil painting, cyberpunk, art nouveau, etc.) and provide clear instructions for how to apply it to this particular image. Be creative and avoid these recent styles: {{ style_history[-5:] | map(attribute='outputs.style_prompt') | list if style_history else [] }}. Return only the style prompt that can be used directly for image generation.",
+            "image_inputs": "source_image",
+            "reasoner": "general_reasoner",
+            "output_vars": [
+              "style_prompt"
+            ],
+            "history_var": "style_history"
+          },
+          {
+            "action": "log",
+            "message": "Style prompt: {{ style_prompt }}"
+          },
+          {
+            "action": "terminate",
+            "mode": "normal",
+            "test": "{{ session_count >= 12 }}"
+          },
+          {
+            "action": "generate",
+            "images": [
+              "{{ source_image }}"
+            ],
+            "input": {
+              "prompt": "{{ style_prompt }}"
+            },
+            "workflow": "flux_1_kontext_dev_1pic-l.json",
+            "publish": true,
+            "reasoner": "adapt",
+            "output_var": "styled_image",
+            "history_var": "generation_history"
+          },
+          {
+            "action": "log",
+            "message": "Applied style transformation - iteration {{ session_count }} complete"
+          },
+          {
+            "action": "wait",
+            "duration": "1m"
+          },
+          {
+            "action": "throw_event",
+            "scope": "{{ _current_destination }}",
+            "event": "styliser_start"
+          }
+        ]
+      }
+    }
+  ]
+} 

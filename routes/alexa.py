@@ -167,6 +167,18 @@ def display_variables_overlay(subs, closest_screen=None):
         if events_info:
             substitutions['AVAILABLE_EVENTS'] = events_info
             utils.logger.info(f"Added event triggers to substitutions: {events_info}")
+        
+        # Add available scheduler scripts
+        import os
+        script_dir = os.path.join("routes", "scheduler", "scripts")
+        available_scripts = []
+        if os.path.exists(script_dir):
+            for filename in os.listdir(script_dir):
+                if filename.endswith(".json") and not filename.startswith("_"):
+                    script_name = filename[:-5]  # Remove .json extension
+                    available_scripts.append(script_name)
+        substitutions['AVAILABLE_SCHEDULER_SCRIPTS'] = available_scripts
+        utils.logger.info(f"Added {len(available_scripts)} available scheduler scripts to overlay: {available_scripts}")
                     
         routes.display.send_overlay(
             html="overlay_schedule.html.j2",
@@ -440,6 +452,18 @@ def process(data):
             subs["EXPORTED_VARS"] = {}
             subs["FRIENDLY_TO_VAR_NAMES"] = {}
         
+        # Add available scheduler scripts for load_schedule intent
+        import os
+        script_dir = os.path.join("routes", "scheduler", "scripts")
+        available_scripts = []
+        if os.path.exists(script_dir):
+            for filename in os.listdir(script_dir):
+                if filename.endswith(".json") and not filename.startswith("_"):
+                    script_name = filename[:-5]  # Remove .json extension
+                    available_scripts.append(script_name)
+        subs["AVAILABLE_SCHEDULER_SCRIPTS"] = available_scripts
+        utils.logger.debug(f"Added {len(available_scripts)} available scheduler scripts to subs: {available_scripts}")
+        
         # Fall back to a default response
         result = None
         response_ssml = "<speak><voice name='Brian'><prosody rate='slow'>I would respond, if I had the will to live.</prosody></voice></speak>"
@@ -483,6 +507,10 @@ def process(data):
                 use_system_prompt="alexa-adapt.txt.j2"
             case "combine":
                 use_system_prompt="alexa-combine.txt.j2"
+            case "load_schedule":
+                use_system_prompt="alexa-load-schedule.txt.j2"
+            case "unload_schedule":
+                use_system_prompt="alexa-unload-schedule.txt.j2"
             case "sleep":
                 response_ssml = Brianize("Goodnight.")
                 # Set result to include sleep intent
@@ -604,6 +632,115 @@ def process(data):
                     throw_event(scope=scope, key=event_key)
                 else:
                     response_ssml = Brianize("I couldn't understand which event to trigger.")
+            # User wants to load a scheduler script
+            case "load_schedule":
+                import os
+                from routes.scheduler_utils import load_schedule_on_stack
+                
+                script_data = result.get("data", {})
+                script_name = script_data.get("script_name")
+                targets = script_data.get("targets", [])
+                
+                utils.logger.debug(f"Load schedule intent data: script_name={script_name}, targets={targets}")
+                
+                if script_name and targets:
+                    # Expand groups to individual destinations
+                    expanded_targets = expand_alexa_targets_to_destinations(targets) if targets else []
+                    
+                    # Try to load the schedule for each target
+                    script_path = os.path.join("routes", "scheduler", "scripts", f"{script_name}.json")
+                    
+                    if os.path.exists(script_path):
+                        # Load the schedule JSON
+                        with open(script_path, 'r') as f:
+                            schedule_data = json.load(f)
+                        
+                        success_count = 0
+                        error_count = 0
+                        
+                        for target in expanded_targets:
+                            try:
+                                # Use proper stack-based loading
+                                result = load_schedule_on_stack(target, schedule_data)
+                                if result["status"] == "success":
+                                    success_count += 1
+                                    utils.logger.info(f"Successfully loaded schedule '{script_name}' on {target} (stack size: {result['stack_size']}, inherited vars: {result['inherited_vars']})")
+                                else:
+                                    error_count += 1
+                                    utils.logger.error(f"Error loading schedule on {target}: {result['message']}")
+                            except Exception as e:
+                                error_count += 1
+                                utils.logger.error(f"Exception loading schedule on {target}: {str(e)}")
+                        
+                        # Generate response based on results
+                        if success_count > 0 and error_count == 0:
+                            if success_count == 1:
+                                response_ssml = Brianize(f"Loaded {script_name} schedule successfully.")
+                            else:
+                                response_ssml = Brianize(f"Loaded {script_name} schedule on {success_count} screens.")
+                        elif success_count > 0:
+                            response_ssml = Brianize(f"Loaded {script_name} on {success_count} screens, but {error_count} failed.")
+                        else:
+                            response_ssml = Brianize(f"Failed to load {script_name} schedule.")
+                    else:
+                        response_ssml = Brianize(f"Could not find schedule script {script_name}.")
+                else:
+                    response_ssml = Brianize("I couldn't understand which schedule to load.")
+            # User wants to unload a scheduler script
+            case "unload_schedule":
+                from routes.scheduler_utils import unload_schedule_from_stack
+                
+                unload_data = result.get("data", {})
+                targets = unload_data.get("targets", [])
+                
+                utils.logger.debug(f"Unload schedule intent data: targets={targets}")
+                
+                if targets:
+                    # Expand groups to individual destinations
+                    expanded_targets = expand_alexa_targets_to_destinations(targets) if targets else []
+                    
+                    success_count = 0
+                    error_count = 0
+                    protected_count = 0
+                    
+                    for target in expanded_targets:
+                        try:
+                            # Use proper stack-based unloading
+                            result = unload_schedule_from_stack(target)
+                            
+                            if result["status"] == "success":
+                                success_count += 1
+                                if result.get("scheduler_stopped", False):
+                                    utils.logger.info(f"Successfully unloaded last schedule from {target} and stopped scheduler")
+                                else:
+                                    utils.logger.info(f"Successfully unloaded schedule from {target} (stack size: {result['stack_size']})")
+                            elif "cannot be unloaded" in result["message"].lower() or "prevent_unload" in result["message"]:
+                                protected_count += 1
+                                utils.logger.info(f"Schedule on {target} is protected from unloading: {result['message']}")
+                            else:
+                                error_count += 1
+                                utils.logger.error(f"Error unloading schedule from {target}: {result['message']}")
+                        except Exception as e:
+                            error_count += 1
+                            utils.logger.error(f"Exception unloading schedule from {target}: {str(e)}")
+                    
+                    # Generate response based on results
+                    if success_count > 0 and error_count == 0 and protected_count == 0:
+                        if success_count == 1:
+                            response_ssml = Brianize("Schedule unloaded successfully.")
+                        else:
+                            response_ssml = Brianize(f"Unloaded schedules from {success_count} screens.")
+                    elif protected_count > 0:
+                        if protected_count == len(expanded_targets):
+                            response_ssml = Brianize("Current schedules are protected and cannot be unloaded.")
+                        else:
+                            response_ssml = Brianize(f"Unloaded {success_count} schedules, but {protected_count} are protected.")
+                    elif success_count > 0:
+                        response_ssml = Brianize(f"Unloaded {success_count} schedules, but {error_count} failed.")
+                    else:
+                        response_ssml = Brianize("Failed to unload schedules.")
+                else:
+                    response_ssml = Brianize("I couldn't determine which screens to unload from.")
             # User wants to animate a screen
             case "animate": 
                 # Fetch relevant image inputs

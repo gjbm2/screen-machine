@@ -241,14 +241,14 @@
         "safety_confidence": "99%",
         "animation_candidate": "REJECT",
         "animation_confidence": "85%",
-        "animation_explanation": "static composition lacks dynamic elements; little benefit from video conversion"
+        "animation_explanation": "static scene with no dynamic elements for video adaptation"
       },
       "last_generated": "/home/gjbm2/dev/screen-machine/output/the-beast/20250710-170526-7454c441.jpg_batch-batch_20250710_170525_b2bef338.jpg",
       "publish_destination": "the-beast"
     }
   ],
   "state": "running",
-  "last_updated": "2025-07-10T20:09:24.977245",
+  "last_updated": "2025-07-10T23:29:27.599346",
   "last_trigger_executions": {
     "079570ca92555f499bd5738772bc4a1b_2025-06-11_4": "2025-06-11T16:00:01.290736",
     "0361cac9cb18b707d6ba32ef7b28196f_2025-06-11_4": "2025-06-11T16:05:01.360539",
@@ -630,43 +630,14 @@
     "079570ca92555f499bd5738772bc4a1b_2025-07-10_4": "2025-07-10T16:00:01.576385",
     "0361cac9cb18b707d6ba32ef7b28196f_2025-07-10_4": "2025-07-10T16:05:00.036072",
     "079570ca92555f499bd5738772bc4a1b_2025-07-10_5": "2025-07-10T18:00:01.565910",
-    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-10_6": "2025-07-10T20:09:13.606246"
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-10_6": "2025-07-10T20:09:13.606246",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-10_7": "2025-07-10T22:05:01.093897"
   },
   "active_events": {
     "evaluate_animate": []
   },
   "event_history": [
     {
-      "key": "__exit_block__",
-      "active_from": "2025-07-08T14:03:54.911990",
-      "expires": "2025-07-08T14:04:54.911990",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-08T14:03:54.911990",
-      "unique_id": "f7439385-632f-4d11-bb91-6e81ccc966c2",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_the-beast",
-      "consumed_at": "2025-07-08T14:03:56.564356"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-08T14:03:54.911990",
-      "expires": "2025-07-08T14:04:54.911990",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-08T14:03:54.911990",
-      "unique_id": "f7439385-632f-4d11-bb91-6e81ccc966c2",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_the-beast",
-      "consumed_at": "2025-07-08T14:03:56.564356"
-    },
-    {
       "key": "evaluate_animate",
       "active_from": "2025-07-08T14:05:01.869490",
       "expires": "2025-07-08T14:06:01.869490",
@@ -1995,6 +1966,32 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_the-beast",
       "consumed_at": "2025-07-10T20:09:13.664133"
+    },
+    {
+      "key": "evaluate_animate",
+      "active_from": "2025-07-10T22:05:01.107878",
+      "expires": "2025-07-10T22:06:01.107878",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-10T22:05:01.107878",
+      "unique_id": "1ae04824-f030-4f8d-b312-2bc9e7077408",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-10T22:05:03.102836"
+    },
+    {
+      "key": "evaluate_animate",
+      "active_from": "2025-07-10T22:05:01.107878",
+      "expires": "2025-07-10T22:06:01.107878",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-10T22:05:01.107878",
+      "unique_id": "1ae04824-f030-4f8d-b312-2bc9e7077408",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-10T22:05:03.102836"
     }
   ]
 }

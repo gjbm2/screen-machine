@@ -17,7 +17,7 @@
       {
         "action": "set_var",
         "var": "end_time",
-        "value": "{{ (now + timedelta(minutes=60)).strftime('%H:%M') }}"
+                    "value": "{{ (now() + timedelta(minutes=60)).strftime('%H:%M') }}"
       },
       {
         "action": "display",
@@ -42,7 +42,7 @@
             "every": "2",
             "until": "{{ end_time }}"
           },
-          "time": "{{ now.strftime('%H:%M') }}",
+          "time": "{{ now().strftime('%H:%M') }}",
           "trigger_actions": {
             "instructions_block": [
               {
