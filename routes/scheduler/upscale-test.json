@@ -1,0 +1,90 @@
+{
+  "schedule_stack": [
+    {
+      "initial_actions": {
+        "instructions_block": []
+      },
+      "triggers": [
+        {
+          "type": "event",
+          "value": "test_upscale",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "generate",
+                "input": {
+                  "prompt": "a beautiful sunset"
+                },
+                "output_var": "low_res_images",
+                "publish": false,
+                "additionalProperties": "batch=4&skip-upscaling=true"
+              },
+              {
+                "action": "reason",
+                "text_input": "Select a visually compelling image",
+                "reasoner": "image_batch_selector",
+                "output_vars": [
+                  "selected_index",
+                  "confidence",
+                  "rationale"
+                ],
+                "image_inputs": "low_res_images"
+              },
+              {
+                "action": "log",
+                "message": "Selected image {{ selected_index }} with confidence {{ confidence }}"
+              },
+              {
+                "action": "publish",
+                "source": "{{ low_res_images[selected_index | int] if selected_index != 'NONE' else '' }}",
+                "targets": ["devtest"],
+                "silent": false
+              },
+              {
+                "action": "throw_event",
+                "event": "_auto_upscale",
+                "scope": "devtest",
+                "delay": "2m",
+                "ttl": "5m",
+                "single_consumer": true,
+                "display_name": "Auto-upscale after fast adapt",
+                "payload": {
+                  "trigger_type": "auto_upscale",
+                  "original_prompt": "a beautiful sunset"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "event",
+          "value": "_auto_upscale",
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "generate",
+                "images": [
+                  "{{ _current_image }}"
+                ],
+                "input": {
+                  "prompt": ""
+                },
+                "publish": true,
+                "workflow": "upscale.json",
+                "upscaler": "RealESRGAN_x4plus.pth"
+              }
+            ],
+            "important": true
+          }
+        }
+      ]
+    }
+  ],
+  "context_stack": [
+    {
+      "vars": {},
+      "publish_destination": "devtest"
+    }
+  ],
+  "state": "running"
+} 

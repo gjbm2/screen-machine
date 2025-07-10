@@ -213,7 +213,7 @@
     },
     "class_type": "UpscaleModelLoader",
     "_meta": {
-      "title": "Load Upscale Model {{UPSCALER}} {{uspcale-flag}}"
+      "title": "Load Upscale Model {{UPSCALER}} {{UPSCALE_FLAG}}"
     }
   },
   "190": {
@@ -229,7 +229,7 @@
     },
     "class_type": "ImageUpscaleWithModel",
     "_meta": {
-      "title": "Upscale Image (using Model) {{uspcale-flag}}"
+      "title": "Upscale Image (using Model) {{UPSCALE_FLAG}}"
     }
   },
   "191": {
@@ -247,7 +247,7 @@
     },
     "class_type": "ImageResize+",
     "_meta": {
-      "title": "🔧 Image Resize {{DOWNSCALER}} {{uspcale-flag}}"
+      "title": "🔧 Image Resize {{DOWNSCALER}} {{UPSCALE_FLAG}}"
     }
   }
 }

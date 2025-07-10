@@ -264,6 +264,14 @@
         "type": "select",
         "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
         "default": "RealESRGAN_x2plus.pth"
+      },
+      {
+        "id": "skip-upscaling",
+        "mutate": "skip_nodes",
+        "pattern": "UPSCALE_FLAG",
+        "name": "Skip upscale step?",
+        "type": "bool",
+        "default": false
       }
     ]
   },
@@ -327,9 +335,14 @@
   },
   {
     "id": "upscale.json",
-    "name": "Image to Image",
-    "description": "Transform an uploaded image based on a text prompt",
+    "name": "Upscale Image",
+    "description": "Upscale an image to 4K",
     "runpod_id": "oh422aycpybd5u",
+    "default-refiner": "none",
+    "uses_images": 1,
+    "processing_stages": [
+      {"name": "Upscaling", "weight": 100}
+    ],	
     "icon": "Images",
     "input": ["image"],	  
     "params": [
@@ -338,7 +351,7 @@
         "name": "Upscaler model",
         "type": "select",
         "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
-        "default": "RealESRGAN_x2plus.pth"
+        "default": "RealESRGAN_x4plus.pth"
       }
     ]
   },

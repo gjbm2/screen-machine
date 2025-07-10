@@ -15,6 +15,7 @@ from time import time
 import os
 from routes.publisher import publish_to_destination
 import uuid
+import traceback
 
 # Maximum number of items to keep in history variables
 MAX_HISTORY_SIZE = 20
@@ -37,15 +38,65 @@ def handle_generate(instruction, context, now, output, publish_destination):
             if "prompt" in instruction["input"]:
                 prompt = instruction["input"]["prompt"]
     
-    # If no prompt found, log an error
-    if not prompt:
-        error_msg = "No prompt provided for generate instruction."
-        log_schedule(error_msg, publish_destination, now, output)
-        return
-
     # Get fields - no need to process Jinja again since it was done at instruction level
     refiner = instruction.get("refiner")
     workflow = instruction.get("workflow")
+    
+    # Process images parameter if provided
+    images = instruction.get("images", [])
+    
+    # If no prompt found and no images provided, log an error
+    # For image-to-image generation (like upscaling), a prompt is not required
+    if not prompt and not images:
+        error_msg = "No prompt provided for generate instruction."
+        log_schedule(error_msg, publish_destination, now, output)
+        return
+    if images:
+        # Convert images to the expected format for the generation service
+        # Each image should be a dict with both "name" and "image" keys
+        formatted_images = []
+        for img in images:
+            if isinstance(img, str):
+                # If it's a string path, load and encode the image
+                try:
+                    from PIL import Image
+                    import base64
+                    from io import BytesIO
+                    import os
+                    
+                    # Load the image file
+                    image_path = img
+                    if not os.path.isabs(image_path):
+                        # If relative path, make it absolute
+                        image_path = os.path.abspath(image_path)
+                    
+                    if os.path.exists(image_path):
+                        image = Image.open(image_path)
+                        # Convert to RGB if needed for JPEG compatibility
+                        if image.mode in ("RGBA", "P", "LA"):
+                            image = image.convert("RGB")
+                        
+                        # Encode as base64 JPEG
+                        buf = BytesIO()
+                        image.save(buf, format="JPEG", quality=95)
+                        base64_str = base64.b64encode(buf.getvalue()).decode("ascii")
+                        
+                        # Create the properly formatted object
+                        formatted_images.append({
+                            "name": os.path.basename(image_path),
+                            "image": base64_str
+                        })
+                    else:
+                        warning(f"Image file not found: {image_path}")
+                except Exception as e:
+                    warning(f"Failed to load image {img}: {e}")
+            elif isinstance(img, dict) and "name" in img and "image" in img:
+                # If it's already in the correct format, use it as is
+                formatted_images.append(img)
+            else:
+                # Skip invalid formats
+                warning(f"Invalid image format in scheduler instruction: {img}")
+        images = formatted_images
     
     # Get new publish parameter (default True for backward compatibility)
     publish = instruction.get("publish", True)
@@ -91,7 +142,7 @@ def handle_generate(instruction, context, now, output, publish_destination):
     log_schedule(log_msg, publish_destination, now, output)
     
     try:
-        if not prompt or prompt.strip() == "":
+        if (not prompt or prompt.strip() == "") and not images:
             error_msg = "No prompt supplied for generation."
             log_schedule(error_msg, publish_destination, now, output)
             return 
@@ -102,14 +153,39 @@ def handle_generate(instruction, context, now, output, publish_destination):
         # If publish is False, we send empty targets list to prevent display
         targets = [publish_destination] if publish else []
         
+        # Load target config to get maxwidth/maxheight for downscaler (same as frontend)
+        target_config = {}
+        if publish_destination:
+            try:
+                from routes.utils import findfile
+                from routes.generate import loosely_matches
+                import json
+                filepath = findfile("publish-destinations.json")
+                if filepath:
+                    with open(filepath, "r") as file:
+                        publish_destinations = json.load(file)
+                    
+                    # Find the target config (same matching logic as frontend)
+                    target_config = next(
+                        (item for item in publish_destinations if
+                         loosely_matches(item.get("id", ""), publish_destination) or
+                         loosely_matches(item.get("name", ""), publish_destination)),
+                        {}
+                    )
+            except Exception as e:
+                debug(f"Failed to load target config: {e}")
+        
         # Create base send object with required fields
         send_obj = {
             "data": {
                 "prompt": prompt,
-                "images": [],  # Add empty images array
+                "images": images,  # Use processed images from instruction
                 "refiner": refiner,
                 "workflow": workflow,
-                "targets": targets
+                "targets": targets,
+                # Add target dimensions for downscaler (same as frontend)
+                "maxwidth": target_config.get("maxwidth"),
+                "maxheight": target_config.get("maxheight")
             }
         }
 

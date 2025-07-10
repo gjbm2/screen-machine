@@ -500,7 +500,19 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
             utils.logger.debug(f"[handle_image_generation] {len(prepared_images)} image(s) prepared for OpenAI prompt.")
 
         utils.logger.debug(f"[handle_image_generation] Calling openai_prompt with args:")
-        utils.logger.debug(json.dumps(openai_args, indent=2)[:1000])  # print first 1000 chars to avoid base64 overflow
+        
+        # Create a sanitized version of openai_args for logging (remove base64 image data)
+        log_args = openai_args.copy()
+        if "images" in log_args:
+            log_args["images"] = [
+                {
+                    "name": img.get("name", "unknown"),
+                    "image": f"<base64_data_{len(img.get('image', ''))}chars>" if isinstance(img, dict) and "image" in img else "<image_data>"
+                }
+                for img in log_args["images"]
+            ]
+        
+        utils.logger.debug(json.dumps(log_args, indent=2)[:1000])  # Now safe to log without base64 overflow
 
         
         refined_output = routes.openai.openai_prompt(**openai_args)
@@ -584,12 +596,30 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     no_targets = publish_targets == [None]
 
     # ------------------------------------------------------------------
+    # Extract workflow-specific parameters from data and add to base_kwargs
+    # ------------------------------------------------------------------
+    # Extract skip-upscaling parameter if present
+    skip_upscaling = data.get("skip-upscaling")
+    if skip_upscaling is not None:
+        utils.logger.info(f"Found skip-upscaling parameter: {skip_upscaling}")
+
+    # ------------------------------------------------------------------
     # Prepare common kwargs that will be sent to each generator invocation
     # ------------------------------------------------------------------
     base_kwargs = kwargs.copy()
     base_kwargs.pop("publish_destination", None)  # Do not allow callers to override this here
     base_kwargs["images"] = images                    # ensure images list is passed downstream
     base_kwargs.pop("batch_id", None)                 # Already handled higher up
+    
+    # Add workflow-specific parameters
+    if skip_upscaling is not None:
+        base_kwargs["skip-upscaling"] = skip_upscaling
+
+    # Add maxwidth/maxheight from data if present (for DOWNSCALER template replacement)
+    if "maxwidth" in data:
+        base_kwargs["maxwidth"] = data["maxwidth"]
+    if "maxheight" in data:
+        base_kwargs["maxheight"] = data["maxheight"]
 
     # ✨ Remove the seed if batch_size > 1 so that each run gets its own
     #     random seed (generate.start will assign a random default).
@@ -855,7 +885,8 @@ def async_adapt(targets, obj = {}):
                     "prompt": result.get("data", {}).get("prompt", ""),
                     "refiner": "adapt",
                     "targets": [target_destination],  # Single target for this request
-                    "workflow": result.get("data", {}).get("workflow")
+                    "workflow": result.get("data", {}).get("workflow"),
+                    "skip-upscaling": True  # Fast adapt - skip upscale initially
                 }
             }
             
@@ -874,6 +905,32 @@ def async_adapt(targets, obj = {}):
                     "input_obj": target_result
                 }
             ).start()
+            
+            # Check if an auto-upscale event already exists - only throw a new one if none exists
+            from routes.scheduler_utils import get_events_for_destination, throw_event
+            existing_events = get_events_for_destination(target_destination)
+            
+            # Check if there's already an _auto_upscale event in the queue
+            has_auto_upscale = any(event["key"] == "_auto_upscale" for event in existing_events["queue"])
+            
+            if not has_auto_upscale:
+                # Throw auto-upscale event with 5s delay to ensure _user_interacting is consumed first
+                throw_event(
+                    scope=target_destination,
+                    key="_auto_upscale",
+                    delay="5s",
+                    ttl="5m",
+                    display_name="Auto-upscale after fast adapt",
+                    payload={
+                        "trigger_type": "auto_upscale",
+                        "original_prompt": result.get("data", {}).get("prompt", ""),
+                        "workflow": result.get("data", {}).get("workflow")
+                    },
+                    single_consumer=True
+                )
+                info(f"Adapt: Threw auto-upscale event for {target_destination} (delayed by 5s)")
+            else:
+                info(f"Adapt: Auto-upscale event already exists for {target_destination}, skipping")
     else:
         warning("Adapt: no targets specified")
     

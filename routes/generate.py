@@ -125,6 +125,169 @@ def update_workflow(json_data, replacements):
 
     return json_data
 
+def mutate_workflow_for_node_skip(workflow_data, workflow_config, args_namespace):
+    """
+    Mutate workflow at runtime to skip nodes based on mutate parameters.
+    
+    Args:
+        workflow_data: Loaded workflow JSON
+        workflow_config: Workflow configuration from workflows.json
+        args_namespace: Parsed arguments containing parameter values
+    
+    Returns:
+        Modified workflow_data with mutations applied
+    """
+    from copy import deepcopy
+    
+    # Get parameters from workflow config
+    parameters = workflow_config.get("params", {})
+    
+    # Find parameters that should trigger node skipping
+    nodes_to_skip = []
+    inputs_to_remove = []
+    
+    for param in parameters:
+        if param.get("mutate") == "skip_nodes":
+            param_id = param.get("id")
+            param_pattern = param.get("pattern")
+            
+            # Get parameter value from args_namespace
+            # Python argparse converts hyphens to underscores, so check both versions
+            param_value = None
+            if hasattr(args_namespace, param_id):
+                param_value = getattr(args_namespace, param_id)
+            elif hasattr(args_namespace, param_id.replace("-", "_")):
+                param_value = getattr(args_namespace, param_id.replace("-", "_"))
+            
+            info(f"Checking parameter '{param_id}' (pattern: {param_pattern}): {param_value}")
+            
+            # Only skip nodes if parameter is True
+            if param_value is True:
+                info(f"Parameter '{param_id}' is True - will skip nodes with pattern '{param_pattern}'")
+                
+                # Find all nodes with this pattern in their titles
+                for node_id, node_data in workflow_data.items():
+                    if isinstance(node_data, dict) and "_meta" in node_data:
+                        title = node_data["_meta"].get("title", "")
+                        if f"{{{{{param_pattern}}}}}" in title:
+                            info(f"Found node to skip: {node_id} - {title}")
+                            nodes_to_skip.append(node_id)
+            else:
+                info(f"Parameter '{param_id}' is {param_value} - keeping nodes with pattern '{param_pattern}'")
+    
+    # Apply node removals
+    if nodes_to_skip:
+        info(f"Will remove {len(nodes_to_skip)} nodes: {nodes_to_skip}")
+        
+        # Build complete dependency graph
+        dependencies = {}  # {node_id: {input_name: (source_node_id, source_output_index)}}
+        dependents = {}    # {node_id: [(dependent_node_id, input_name)]}
+        
+        for node_id in workflow_data:
+            dependencies[node_id] = {}
+            dependents[node_id] = []
+        
+        # Map all connections
+        for node_id, node_def in workflow_data.items():
+            inputs = node_def.get("inputs", {})
+            for input_name, input_value in inputs.items():
+                if isinstance(input_value, list) and len(input_value) >= 2:
+                    source_node_id = str(input_value[0])
+                    source_output_idx = input_value[1]
+                    if source_node_id in workflow_data:
+                        dependencies[node_id][input_name] = (source_node_id, source_output_idx)
+                        dependents[source_node_id].append((node_id, input_name))
+        
+        # For each node being removed, find replacement sources
+        replacement_map = {}  # {removed_node_id: replacement_node_id}
+        
+        for skip_node_id in nodes_to_skip:
+            if skip_node_id not in workflow_data:
+                continue
+                
+            # Find the best replacement by tracing back through dependencies
+            # Look for the first non-removed node in the dependency chain
+            replacement = None
+            
+            # Check direct inputs first
+            for input_name, (source_node_id, source_output_idx) in dependencies[skip_node_id].items():
+                if source_node_id not in nodes_to_skip:
+                    # Found a direct input that's not being removed
+                    replacement = source_node_id
+                    break
+            
+            # If no direct replacement, trace back through the chain
+            if not replacement:
+                # BFS to find the nearest non-removed node
+                visited = set()
+                queue = [skip_node_id]
+                
+                while queue and not replacement:
+                    current = queue.pop(0)
+                    if current in visited:
+                        continue
+                    visited.add(current)
+                    
+                    for input_name, (source_node_id, source_output_idx) in dependencies.get(current, {}).items():
+                        if source_node_id not in nodes_to_skip:
+                            replacement = source_node_id
+                            break
+                        else:
+                            queue.append(source_node_id)
+            
+            if replacement:
+                replacement_map[skip_node_id] = replacement
+                info(f"Node {skip_node_id} will be replaced by {replacement}")
+            else:
+                info(f"No replacement found for node {skip_node_id}")
+        
+        # Apply rerouting before removing nodes
+        for skip_node_id in nodes_to_skip:
+            if skip_node_id not in workflow_data:
+                continue
+                
+            replacement_node_id = replacement_map.get(skip_node_id)
+            if not replacement_node_id:
+                continue
+                
+            # Reroute all dependents of this node to the replacement
+            for dependent_node_id, input_name in dependents[skip_node_id]:
+                if dependent_node_id in workflow_data and dependent_node_id not in nodes_to_skip:
+                    inputs = workflow_data[dependent_node_id].get("inputs", {})
+                    if input_name in inputs:
+                        old_connection = inputs[input_name]
+                        if isinstance(old_connection, list) and len(old_connection) >= 2:
+                            # Keep the same output index, just change the source node
+                            inputs[input_name][0] = replacement_node_id
+                            info(f"Rerouted {dependent_node_id}.{input_name} from {skip_node_id} to {replacement_node_id}")
+        
+        # Remove the nodes
+        for skip_node_id in nodes_to_skip:
+            if skip_node_id in workflow_data:
+                del workflow_data[skip_node_id]
+                info(f"Removed node {skip_node_id} from workflow")
+    
+    return workflow_data
+
+def apply_workflow_mutations(workflow_data, workflow_config, args_namespace):
+    """
+    Apply all workflow mutations based on parameters.
+    
+    Args:
+        workflow_data: Loaded workflow JSON
+        workflow_config: Workflow configuration from workflows.json  
+        args_namespace: Parsed arguments containing parameter values
+    
+    Returns:
+        Modified workflow_data with all mutations applied
+    """
+    # Apply node skip mutations
+    workflow_data = mutate_workflow_for_node_skip(workflow_data, workflow_config, args_namespace)
+    
+    # Future: Add other mutation types here
+    
+    return workflow_data
+
 def start(
         prompt: str | None = None, 
         width: int | None = None,
@@ -327,6 +490,19 @@ def start(
             }
 
 
+    # Use the right runpod container id and get workflow config
+    with open(findfile("workflows.json")) as f:
+        workflow_config_list = json.load(f)
+    
+    # Find the specific workflow configuration
+    workflow_config = next(
+        (item for item in workflow_config_list if item["id"] == args_namespace.workflow),
+        {}
+    )
+    
+    # Apply runtime mutations based on parameters
+    workflow_data = apply_workflow_mutations(workflow_data, workflow_config, args_namespace)
+    
     # Compile the final object to submit
     input_payload = {
       "input": {
@@ -335,13 +511,9 @@ def start(
     }
     if args_namespace.images:
         input_payload["input"]["images"] = args_namespace.images
-    
-    # Use the right runpod container id
-    with open(findfile("workflows.json")) as f:
-        workflow_config = json.load(f)
 
     runpod_id = next(
-        (item.get("runpod_id") for item in workflow_config if item["id"] == args_namespace.workflow and item.get("runpod_id")),
+        (item.get("runpod_id") for item in workflow_config_list if item["id"] == args_namespace.workflow and item.get("runpod_id")),
         getattr(args_namespace, "pod", None) or os.getenv("RUNPOD_ID")
     )
 
@@ -369,7 +541,7 @@ def start(
         start_time = time()
 
         try:
-            workflow_entry = next(item for item in workflow_config if item["id"] == args_namespace.workflow)
+            workflow_entry = next(item for item in workflow_config_list if item["id"] == args_namespace.workflow)
             raw_stages = workflow_entry.get("processing_stages", [{"name": "Rendering", "weight": 100}])
             if isinstance(raw_stages[0], str):
                 stage_weight = 100 // len(raw_stages)
