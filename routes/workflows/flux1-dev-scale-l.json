@@ -203,9 +203,9 @@
   },
   "59": {
     "inputs": {
-      "lora_name": "sldr_flux_nsfw_v2-studio.safetensors",
-      "strength_model": 0.2,
-      "strength_clip": 0.2,
+      "lora_name": "lora.safetensors",
+      "strength_model": 0.5,
+      "strength_clip": 0.5,
       "model": [
         "12",
         0

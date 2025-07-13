@@ -38,8 +38,8 @@
       "id": "lora",
       "name": "Lora",
       "type": "select",
-        "options": ["sldr_flux_nsfw_v2-studio.safetensors"],
-      "default": "sldr_flux_nsfw_v2-studio.safetensors"
+        "options": ["lora.safetensors"],
+      "default": "lora.safetensors"
       },
         {
       "id": "lora_strength",
@@ -272,7 +272,20 @@
         "name": "Skip upscale step?",
         "type": "bool",
         "default": false
-      }
+      },
+      {
+        "id": "lora",
+        "name": "Lora",
+        "type": "select",
+          "options": ["lora.safetensors"],
+        "default": "lora.safetensors"
+        },
+          {
+        "id": "lora_strength",
+        "name": "Lora strength",
+        "type": "number",
+        "default": 0.8
+        }      
     ]
   },
   {

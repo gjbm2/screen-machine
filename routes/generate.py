@@ -314,6 +314,7 @@ def start(
         cli_args=None,
         publish_destination: str | None = None,
         batch_id: str | None = None,
+        silent: bool | None = None,
         **kwargs
         ):
 
@@ -650,7 +651,8 @@ def start(
                         substitutions={'ALERT_TEXT': error_text, 'TYPE': 'alert'},
                         duration=5000,
                         position="top-left",
-                        clear=True
+                        clear=True,
+                        job_id=job_id
                     )
                 raise RuntimeError(error_text)
 
@@ -688,7 +690,8 @@ def start(
                         },
                         position="top-left",
                         fadein=0,
-                        clear=True
+                        clear=True,
+                        job_id=job_id
                     )
                 last_update_message = new_message
                 last_update_percentage = new_percentage
@@ -754,12 +757,23 @@ def start(
                 vars(args_namespace)["batch_id"] = batch_id
         
             if publish_destination:
+                # Clear any "Finalising..." overlay before publishing
+                routes.display.send_overlay(
+                    html="overlay_generating.html.j2",
+                    screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
+                    duration=2000,
+                    substitutions={'MESSAGE': 'Published'},
+                    clear=True,
+                    job_id=job_id
+                )
+                
                 # Actually publish into your screen's bucket
                 pub_res = publish_to_destination(
                     source = output["message"],
                     publish_destination_id = publish_destination,
                     metadata = vars(args_namespace),
                     batch_id = batch_id,
+                    silent = silent,
                 )
                 if not pub_res["success"]:
                     raise RuntimeError(f"Publish failed: {pub_res.get('error')}")
@@ -777,20 +791,7 @@ def start(
                     output["published_meta"] = {}
                     output["destination"] = {}
            
-                routes.display.send_overlay(
-                    html="overlay_prompt.html.j2",
-                    screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
-                    substitutions={
-                        'PROMPT_TEXT': prompt,
-                        'WORKFLOW_TEXT': workflow,
-                        'GENERATION_TIME_SECONDS': generation_time_seconds,
-                        'GENERATION_COST_GBP': generation_cost,
-                        'DURATION': 30,
-                        'SEED': args_namespace.seed
-                    },
-                    duration=30000,
-                    clear=True
-                )
+
 
             display_final_file = f'<a href="{output["message"]}" target="_blank">Done</a>'
             routes.display.send_overlay(
@@ -815,7 +816,8 @@ def start(
                     substitutions = {'ALERT_TEXT': '❌ Generation failed.', 'TYPE': 'alert'},
                     duration = 5000,
                     position = "top-left",
-                    clear = True
+                    clear = True,
+                    job_id = job_id
                 )
             routes.display.send_overlay(
                 html = "overlay_generating.html.j2",

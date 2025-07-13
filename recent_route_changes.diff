@@ -1,0 +1,71 @@
+diff --git a/routes/generate.py b/routes/generate.py
+index 64efff68..9598ec75 100644
+--- a/routes/generate.py
++++ b/routes/generate.py
+@@ -314,6 +314,7 @@ def start(
+         cli_args=None,
+         publish_destination: str | None = None,
+         batch_id: str | None = None,
++        silent: bool | None = None,
+         **kwargs
+         ):
+ 
+@@ -754,12 +755,21 @@ def start(
+                 vars(args_namespace)["batch_id"] = batch_id
+         
+             if publish_destination:
++                # Clear any "Finalising..." overlay before publishing
++                routes.display.send_overlay(
++                    html="",
++                    screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
++                    duration=0,
++                    clear=True
++                )
++                
+                 # Actually publish into your screen's bucket
+                 pub_res = publish_to_destination(
+                     source = output["message"],
+                     publish_destination_id = publish_destination,
+                     metadata = vars(args_namespace),
+                     batch_id = batch_id,
++                    silent = silent,
+                 )
+                 if not pub_res["success"]:
+                     raise RuntimeError(f"Publish failed: {pub_res.get('error')}")
+@@ -777,20 +787,7 @@ def start(
+                     output["published_meta"] = {}
+                     output["destination"] = {}
+            
+-                routes.display.send_overlay(
+-                    html="overlay_prompt.html.j2",
+-                    screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
+-                    substitutions={
+-                        'PROMPT_TEXT': prompt,
+-                        'WORKFLOW_TEXT': workflow,
+-                        'GENERATION_TIME_SECONDS': generation_time_seconds,
+-                        'GENERATION_COST_GBP': generation_cost,
+-                        'DURATION': 30,
+-                        'SEED': args_namespace.seed
+-                    },
+-                    duration=30000,
+-                    clear=True
+-                )
++
+ 
+             display_final_file = f'<a href="{output["message"]}" target="_blank">Done</a>'
+             routes.display.send_overlay(
+diff --git a/routes/generate_handler.py b/routes/generate_handler.py
+index 5e966937..98030b43 100644
+--- a/routes/generate_handler.py
++++ b/routes/generate_handler.py
+@@ -621,6 +621,10 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
+     if "maxheight" in data:
+         base_kwargs["maxheight"] = data["maxheight"]
+ 
++    # Add silent parameter from data if present
++    if "silent" in data:
++        base_kwargs["silent"] = data["silent"]
++
+     # ✨ Remove the seed if batch_size > 1 so that each run gets its own
+     #     random seed (generate.start will assign a random default).
+     if batch_size > 1:

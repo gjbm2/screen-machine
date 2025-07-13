@@ -56,14 +56,57 @@ interface JobStatusMessage {
   clear?: boolean;
   fadein?: number;
   job_id: string;
+  substitutions?: Record<string, any>;
 }
 
+// Enhanced JobStatus interface to track parsed message details
 interface JobStatus {
   id: string;
   html: string;
   visible: boolean;
   messageHash: string;
   timeoutId?: ReturnType<typeof setTimeout>;
+  destination?: string;
+  progress?: number;
+  message?: string;
+  startTime: number;
+}
+
+// Parse the backend message format: "destination: progress% - message"
+function parseJobMessage(html: string): { destination?: string; progress?: number; message?: string } {
+  if (!html || typeof html !== 'string') {
+    return { message: html || '' };
+  }
+  
+  console.log('🔍 Parsing job message:', html);
+  
+  // Try to match the format: "destination: progress% - message"
+  const progressMatch = html.match(/^([^:]+):\s*(\d+)%\s*-\s*(.+)$/);
+  if (progressMatch) {
+    const result = {
+      destination: progressMatch[1].trim(),
+      progress: parseInt(progressMatch[2]),
+      message: progressMatch[3].trim()
+    };
+    console.log('✅ Progress format matched:', result);
+    return result;
+  }
+  
+  // Try to match just "destination: message" (no progress)
+  const destinationMatch = html.match(/^([^:]+):\s*(.+)$/);
+  if (destinationMatch) {
+    const result = {
+      destination: destinationMatch[1].trim(),
+      message: destinationMatch[2].trim()
+    };
+    console.log('✅ Destination format matched:', result);
+    return result;
+  }
+  
+  // If no pattern matches, return the raw message
+  const result = { message: html };
+  console.log('❌ No pattern matched, using raw message:', result);
+  return result;
 }
 
 function generateId(): string {
@@ -84,6 +127,7 @@ const Index = () => {
   const [overlays, setOverlays] = useState<Overlay[]>([]);
   const [jobStatuses, setJobStatuses] = useState<Record<string, JobStatus>>({});
   const [wsConnected, setWsConnected] = useState(false);
+  const [statusPanelExpanded, setStatusPanelExpanded] = useState(true);
   const [publishDestinations, setPublishDestinations] = useState<PublishDestination[]>([]);
   const wsRef = React.useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,6 +179,13 @@ const Index = () => {
   const { addReferenceUrl, referenceUrls } = useReferenceImages();
   
   const handleJobStatusMessage = useCallback((message: JobStatusMessage) => {
+    console.log('🔍 handleJobStatusMessage called with:', message);
+    
+    if (!message || !message.job_id) {
+      console.log('❌ Invalid message: missing job_id');
+      return;
+    }
+    
     const screens = message.screens || "";
     const isForThisScreen = 
       !message.screens || 
@@ -142,49 +193,76 @@ const Index = () => {
       (Array.isArray(message.screens) && 
        (message.screens.includes('index') || message.screens.includes('*')));
 
+    console.log('🎯 Screen check:', { screens, isForThisScreen });
+
     if (!isForThisScreen) {
+      console.log('❌ Message not for this screen, ignoring');
       return;
     }
 
-    const messageHash = hashMessage(message);
     const jobId = message.job_id;
+    
+    // Extract the actual message from the HTML template
+    let messageText = 'Processing...';
+    let progressPercent = null;
+    
+    if (message.html) {
+      // If it's a simple string (not HTML template), use it directly
+      if (!message.html.includes('{{MESSAGE}}') && !message.html.includes('<div')) {
+        messageText = message.html;
+      } else {
+        // Extract message from substitutions if available
+        if (message.substitutions && message.substitutions.MESSAGE) {
+          messageText = message.substitutions.MESSAGE;
+        }
+        
+        // Extract progress from substitutions if available
+        if (message.substitutions && message.substitutions.PROGRESS_PERCENT) {
+          progressPercent = parseInt(message.substitutions.PROGRESS_PERCENT);
+        }
+      }
+    }
+    
+    console.log('📝 Job message:', { jobId, messageText, progressPercent });
 
     setJobStatuses(prev => {
+      // Clear any existing timeout for this job
       if (prev[jobId]?.timeoutId) {
         clearTimeout(prev[jobId].timeoutId);
       }
       
-      const updatedStatus = {
+      // Create new status
+      const updatedStatus: JobStatus = {
         id: jobId,
-        html: message.html,
+        html: messageText,
         visible: true,
-        messageHash,
-        timeoutId: undefined as ReturnType<typeof setTimeout> | undefined
+        messageHash: hashMessage(message),
+        timeoutId: undefined as ReturnType<typeof setTimeout> | undefined,
+        destination: undefined,
+        progress: progressPercent,
+        message: messageText,
+        startTime: prev[jobId]?.startTime || Date.now()
       };
       
-      if (message.duration) {
-        updatedStatus.timeoutId = setTimeout(() => {
-          setJobStatuses(currentState => {
-            if (!currentState[jobId]) return currentState;
-            
-            return {
-              ...currentState,
-              [jobId]: {
-                ...currentState[jobId],
-                visible: false,
-                timeoutId: undefined
-              }
-            };
-          });
-        }, message.duration);
-      }
+      // Set timeout to hide this message after 10 seconds
+      updatedStatus.timeoutId = setTimeout(() => {
+        console.log('⏰ Hiding job message:', jobId);
+        setJobStatuses(currentState => {
+          const newState = { ...currentState };
+          delete newState[jobId];
+          return newState;
+        });
+      }, 10000); // Show for 10 seconds
       
-      return {
+      const newState = {
         ...prev,
         [jobId]: updatedStatus
       };
+      
+      console.log('📊 Updated job status:', updatedStatus);
+      return newState;
     });
-  }, [addConsoleLog]);
+  }, []);
 
   const handleCloseJobStatus = useCallback((jobId: string) => {
     setJobStatuses(prev => {
@@ -228,8 +306,27 @@ const Index = () => {
     try {
       const msg = JSON.parse(event.data);
       
-      if (msg.job_id && typeof msg.html === 'string') {
+      // Filter out light sensor messages from debug logging to reduce noise
+      if (!msg.sensor_name) {
+        console.log('📬 Raw WebSocket message received:', event.data);
+        console.log('📬 Parsed WebSocket message:', msg);
+      }
+      
+      // Skip light sensor messages entirely
+      if (msg.sensor_name) {
+        return;
+      }
+      
+      // Check if this is a job status message (has job_id) - but NOT ComfyUI progress messages
+      if (msg.job_id && !msg.comfy) {
+        console.log('🔍 Processing job status message with job_id:', msg.job_id);
         handleJobStatusMessage(msg);
+        return;
+      }
+      
+      // Skip ComfyUI progress messages - these come from the remote serverless unit
+      if (msg.comfy) {
+        console.log('⏭️ Skipping ComfyUI progress message:', msg.comfy.type);
         return;
       }
       
@@ -238,7 +335,8 @@ const Index = () => {
         return;
       }
       
-      if (msg.html) {
+      // Handle regular overlay messages - check if it's a generation progress message
+      if (msg.html && msg.substitutions) {
         const screens = msg.screens || null;
         const isForThisScreen = 
           !screens || 
@@ -247,6 +345,26 @@ const Index = () => {
            (screens.includes('index') || screens.includes('*')));
         
         if (isForThisScreen) {
+          // Check if this is a generation progress message (has PROGRESS_PERCENT)
+          if (msg.substitutions.PROGRESS_PERCENT !== undefined) {
+            const progressPercent = msg.substitutions.PROGRESS_PERCENT;
+            const messageText = msg.substitutions.MESSAGE || 'Processing...';
+            const pubDest = Array.isArray(msg.screens) ? msg.screens[0] : msg.screens;
+            
+            // Use pub-dest as the key for deduplication
+            const fakeJobMessage = {
+              job_id: pubDest, // Use pub-dest as the key for deduplication
+              html: `${pubDest}: ${progressPercent}% - ${messageText}`,
+              screens: 'index',
+              duration: msg.duration || 10000
+            };
+            
+            console.log('🔍 Converting overlay to job status (keyed by pub-dest):', fakeJobMessage);
+            handleJobStatusMessage(fakeJobMessage);
+            return;
+          }
+          
+          // Regular overlay message - use old system
           const overlay: Overlay = {
             id: generateId(),
             html: msg.html,
@@ -268,7 +386,7 @@ const Index = () => {
     } catch (error) {
       console.error("Error parsing WebSocket message:", error);
     }
-  }, [handleJobStatusMessage, handleGenerationUpdate, addConsoleLog]);
+  }, [handleJobStatusMessage, handleGenerationUpdate]);
   
   useEffect(() => {
     const connect = () => {
@@ -726,28 +844,74 @@ const Index = () => {
     handleJobStatusMessage(mockMessage);
   };
 
-  const overlayElements = overlays.map((o) => (
-    <div
-      key={o.id}
-      style={{
-        position: "absolute",
-        zIndex: 10000,
-        fontSize: "10px",
-        opacity: o.visible ? 1 : 0,
-        transition: o.fadein === 0 ? "none" : `opacity ${o.fadein || 2000}ms ease`,
-        pointerEvents: "none",
-        ...(o.position === "top-left" && { top: "20px", left: "20px" }),
-        ...(o.position === "top-center" && { top: "20px", left: "50%", transform: "translateX(-50%)" }),
-        ...(o.position === "top-right" && { top: "20px", right: "20px" }),
-        ...(o.position === "bottom-left" && { bottom: "20px", left: "20px" }),
-        ...(o.position === "bottom-center" && { bottom: "20px", left: "50%", transform: "translateX(-50%)" }),
-        ...(o.position === "bottom-right" && { bottom: "20px", right: "20px" }),
-        ...(!o.position && { top: 0, left: 0, width: "100vw", height: "100vh" })
-      }}
-      dangerouslySetInnerHTML={{ __html: o.html }}
-    />
-  ));
+  // Test function to simulate progress updates
+  const simulateProgressUpdate = () => {
+    const isLovableEnvironment = 
+      typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || 
+       window.location.hostname.includes('lovable'));
+    
+    if (!isLovableEnvironment) {
+      console.warn('Progress simulation only works in Lovable/localhost');
+      return;
+    }
 
+    const testJobId = nanoid();
+    const destinations = ['north-screen', 'south-screen', 'lobby-tv'];
+    const testDestination = destinations[Math.floor(Math.random() * destinations.length)];
+    
+    // Simulate progress from 0 to 100%
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += Math.floor(Math.random() * 15) + 5; // Random increment between 5-20%
+      
+      if (progress >= 100) {
+        progress = 100;
+        clearInterval(interval);
+      }
+      
+      const stages = ['Initialising', 'Render', 'Interpolate', 'Upscale', 'Finalising'];
+      const currentStage = stages[Math.floor((progress / 100) * (stages.length - 1))];
+      
+      const mockMessage: JobStatusMessage = {
+        screens: 'index',
+        html: `${testDestination}: ${progress}% - ${currentStage}...`,
+        duration: 30000,
+        job_id: testJobId
+      };
+      
+      console.log('Simulating progress update:', mockMessage);
+      handleJobStatusMessage(mockMessage);
+    }, 1000);
+  };
+
+  // Test function to directly test the progress indicator
+  const testProgressIndicator = () => {
+    const isLovableEnvironment = 
+      typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || 
+       window.location.hostname.includes('lovable'));
+    
+    if (!isLovableEnvironment) {
+      console.warn('Test only works in Lovable/localhost');
+      return;
+    }
+
+    console.log('🧪 Testing progress indicator directly...');
+    
+    // Test message with proper format
+    const testMessage: JobStatusMessage = {
+      screens: 'index',
+      html: 'test-screen: 75% - Rendering amazing content...',
+      duration: 10000,
+      job_id: 'test-job-' + nanoid()
+    };
+    
+    console.log('🧪 Calling handleJobStatusMessage with test message:', testMessage);
+    handleJobStatusMessage(testMessage);
+  };
+
+  // Cleanup effect for job statuses
   useEffect(() => {
     return () => {
       Object.values(jobStatuses).forEach(status => {
@@ -758,38 +922,80 @@ const Index = () => {
     };
   }, [jobStatuses]);
 
-  const jobStatusElements = Object.values(jobStatuses)
-    .filter(status => status.visible)
-    .map((status, index) => (
-      <div
-        key={status.id}
-        className="fixed left-4 bg-black/75 text-white rounded-md p-2 shadow-lg z-50 max-w-md animate-in fade-in slide-in-from-bottom-4"
-        style={{
-          bottom: `${4 + index * 44}px`,
-          position: "fixed",
-          zIndex: 9999,
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          backdropFilter: "blur(4px)",
-          gap: "6px",
-          maxWidth: "350px",
-          fontSize: "0.875rem"
-        }}
-      >
-        <div 
-          className="flex-1 pr-2 text-sm"
-          dangerouslySetInnerHTML={{ __html: status.html }} 
-        />
-        <button
-          onClick={() => handleCloseJobStatus(status.id)}
-          className="text-white/75 hover:text-white transition-colors flex-shrink-0"
-          aria-label="Close notification"
-        >
-          <X size={16} />
-        </button>
+  // Progress indicator - show active job messages
+  const activeJobs = Object.values(jobStatuses).filter(status => status.visible);
+  const progressIndicator = activeJobs.length > 0 ? (
+    <div className="fixed bottom-4 left-4 z-50">
+      <div className="bg-gray-900/90 text-white rounded-lg p-3 max-w-md">
+        {/* Header with expand/collapse control */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Active Jobs ({activeJobs.length})</span>
+            <button
+              onClick={() => setStatusPanelExpanded(!statusPanelExpanded)}
+              className="text-gray-400 hover:text-white text-xs p-1"
+              title={statusPanelExpanded ? "Collapse" : "Expand"}
+            >
+              {statusPanelExpanded ? "−" : "+"}
+            </button>
+          </div>
+        </div>
+        
+        {/* Job list - only show if expanded */}
+        {statusPanelExpanded && (
+          <div className="space-y-2">
+            {activeJobs.map((job, index) => {
+              // Extract pub_dest from message format: "pub_dest: message"
+              const pubDestMatch = job.message.match(/^([^:]+):/);
+              const pubDest = pubDestMatch ? pubDestMatch[1].trim() : null;
+              
+              // Extract progress percentage from message
+              const progressMatch = job.message.match(/(\d+)%/);
+              const progressPercent = progressMatch ? parseInt(progressMatch[1]) : null;
+              
+              // Strip HTML and get clean status text
+              const tempDiv = document.createElement('div');
+              tempDiv.innerHTML = job.message;
+              const cleanText = tempDiv.textContent || tempDiv.innerText || job.message;
+              
+              // Remove pub_dest prefix and percentage from status text
+              let statusText = cleanText;
+              if (pubDest) {
+                statusText = statusText.replace(new RegExp(`^${pubDest}:\\s*`), '');
+              }
+              if (progressPercent !== null) {
+                statusText = statusText.replace(/^\d+%\s*-\s*/, '');
+              }
+              
+              return (
+                <div key={job.id} className="text-sm border-l-2 border-gray-700 pl-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-yellow-300 font-mono text-xs">Job {index + 1}</span>
+                      {pubDest && (
+                        <span className="text-blue-300 text-xs">{pubDest}</span>
+                      )}
+                      {progressPercent !== null && (
+                        <span className="text-green-300 text-xs font-mono">{progressPercent}%</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleCloseJobStatus(job.id)}
+                      className="text-gray-400 hover:text-red-400 text-xs p-1"
+                      title="Remove job"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="text-gray-200 text-xs">{statusText}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
-    ));
+    </div>
+  ) : null;
 
   useEffect(() => {
     const fetchDestinations = async () => {
@@ -958,9 +1164,15 @@ const Index = () => {
         </div>
       )}
       
-      {overlayElements}
+      {/* OLD OVERLAY SYSTEM REMOVED - this was the red blob */}
       
-      {jobStatusElements}
+      {/* Debug panel - shows job status info */}
+      {/* Debug panel to show job statuses (always visible in development) */}
+      {/* Debug mode: always show progress indicator with fake data in development */}
+      {/* Debug jobs are now handled by the new progress indicator */}
+      
+      {/* New progress indicator */}
+      {progressIndicator}
       
       {(window.location.hostname === 'localhost' || window.location.hostname.includes('lovable')) && (
         <div className="fixed bottom-0 left-0 right-0 bg-gray-100 p-4 border-t flex items-center space-x-2 z-50">
@@ -983,6 +1195,18 @@ const Index = () => {
             className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
           >
             Simulate WS Message
+          </button>
+          <button 
+            onClick={simulateProgressUpdate}
+            className="bg-purple-500 text-white p-2 rounded hover:bg-purple-600"
+          >
+            Simulate Progress Update
+          </button>
+          <button 
+            onClick={testProgressIndicator}
+            className="bg-red-500 text-white p-2 rounded hover:bg-red-600"
+          >
+            Test Progress Indicator
           </button>
         </div>
       )}

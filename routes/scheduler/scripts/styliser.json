@@ -14,12 +14,17 @@
         "message": "** Starting Styliser Session **"
       },
       {
-        "action": "set_var",
-        "var": "source_image",
-        "input": {
-          "value": "{{ _current_image }}"
-        }
+        "action": "overlay",
+        "text": "Stylising will begin in 2 minutes using the current image displayed. You have time to create or upload a different image.",
+        "duration": "2m"
       },
+      {
+        "action": "throw_event",
+        "scope": "{{ _current_destination }}",
+        "event": "get_started",
+        "delay": "2m"
+      },
+
       {
         "action": "set_var",
         "var": "style_history",
@@ -33,23 +38,38 @@
         "input": {
           "value": 0
         }
-      },
-      {
-        "action": "log",
-        "message": "Captured source image: {{ source_image }}"
-      },
-      {
-        "action": "log",
-        "message": "Session will run for 12 iterations"
-      },
-            {
-        "action": "throw_event",
-        "scope": "{{ _current_destination }}",
-        "event": "styliser_start"
       }
     ]
   },
   "triggers": [
+    {
+      "type": "event",
+      "value": "get_started",
+      "trigger_actions": {
+        "instructions_block": [
+          {
+            "action": "log",
+            "message": "** Starting Styliser Process **"
+          },
+          {
+            "action": "set_var",
+            "var": "source_image",
+            "input": {
+              "value": "{{ _current_image }}"
+            }
+          },
+          {
+            "action": "log",
+            "message": "Captured source image: {{ source_image }}"
+          },
+          {
+            "action": "throw_event",
+            "scope": "{{ _current_destination }}",
+            "event": "styliser_start"
+          }
+        ]
+      }
+    },
     {
       "type": "event",
       "value": "styliser_start",

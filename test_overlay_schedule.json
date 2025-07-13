@@ -1,0 +1,19 @@
+{
+  "initial_actions": {
+    "instructions_block": [
+      {
+        "action": "log",
+        "message": "** Testing Overlay Instruction **"
+      },
+      {
+        "action": "overlay",
+        "text": "This is a test of the new overlay instruction type. It should display for 10 seconds.",
+        "duration": "10s"
+      },
+      {
+        "action": "log",
+        "message": "Overlay instruction executed"
+      }
+    ]
+  }
+} 

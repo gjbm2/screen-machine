@@ -3,8 +3,8 @@
     "inputs": {
       "text": "Using this elegant style, create a portrait of a swan wearing a pearl tiara and lace collar, maintaining the same refined quality and soft color tones.",
       "clip": [
-        "38",
-        0
+        "194",
+        1
       ]
     },
     "class_type": "CLIPTextEncode",
@@ -37,7 +37,7 @@
       "scheduler": "simple",
       "denoise": 1,
       "model": [
-        "37",
+        "194",
         0
       ],
       "positive": [
@@ -83,8 +83,8 @@
   },
   "38": {
     "inputs": {
-      "clip_name1": "clip_l.safetensors",
-                  "clip_name2": "t5xxl_fp8_e4m3fn.safetensors",
+      "clip_name1": "t5xxl_fp8_e4m3fn.safetensors",
+      "clip_name2": "clip_l.safetensors",
       "type": "flux",
       "device": "default"
     },
@@ -142,7 +142,7 @@
       "title": "ConditioningZeroOut"
     }
   },
-        "9": {
+  "9": {
     "inputs": {
       "filename_prefix": "ComfyUI",
       "images": [
@@ -248,6 +248,25 @@
     "class_type": "ImageResize+",
     "_meta": {
       "title": "🔧 Image Resize {{DOWNSCALER}} {{UPSCALE_FLAG}}"
+    }
+  },
+  "194": {
+    "inputs": {
+      "lora_name": "sldr_flux_nsfw_v2-studio.safetensors",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "37",
+        0
+      ],
+      "clip": [
+        "38",
+        0
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "Load LoRA {{LORA}}"
     }
   }
 }
