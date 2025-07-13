@@ -1,0 +1,82 @@
+{
+  "initial_actions": {
+    "instructions_block": [
+      {
+        "action": "log",
+        "message": "Hold script started - will terminate in 2 hours"
+      },
+      {
+        "action": "overlay",
+        "text": "Scheduling will be suspended for 2 hours. The system will resume normal operation automatically.",
+        "duration": "20s"
+      },
+      {
+        "action": "throw_event",
+        "event": "hold_terminate",
+        "delay": "2h",
+        "scope": "{{ _current_destination }}"
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "type": "event",
+      "value": "hold_terminate",
+      "trigger_actions": {
+        "instructions_block": [
+          {
+            "action": "log",
+            "message": "Hold script terminating after 2 hours"
+          },
+          {
+            "action": "unload"
+          }
+        ]
+      },
+      "important": true
+    },
+    {
+      "type": "event",
+      "value": "_user_interacting",
+      "trigger_actions": {
+        "instructions_block": [
+          {
+            "action": "log",
+            "message": "User interaction detected: {{ _event.payload.action | default('unknown') }} - waiting for {{ _event.payload.wait | default('2m') }}"
+          },
+          {
+            "action": "wait",
+            "duration": "{{ _event.payload.wait | default('2m') }}"
+          }
+        ],
+        "important": false,
+        "urgent": true
+      }
+    },
+    {
+      "type": "event",
+      "value": "_auto_upscale",
+      "trigger_actions": {
+        "instructions_block": [
+          {
+            "action": "generate",
+            "input": {
+              "prompt": ""
+            },
+            "workflow": "upscale.json",
+            "publish": true,
+            "silent": true,
+            "images": [
+              "{{ _current_image }}"
+            ],
+            "upscaler": "RealESRGAN_x4plus.pth"
+          }
+        ],
+        "important": true
+      }
+    }
+  ],
+  "final_actions": {
+    "instructions_block": []
+  }
+} 

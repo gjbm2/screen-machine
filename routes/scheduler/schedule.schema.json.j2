@@ -334,6 +334,12 @@
               "description": "Whether to display the generated image on the output device. If false, the image is saved to the bucket but not shown.",
               "default": true
             },
+            "silent": {
+              "type": "boolean",
+              "title": "Silent Mode",
+              "description": "If true, suppress the final prompt overlay when publishing the generated image.",
+              "default": false
+            },
             "output_var": {
               "type": "string",
               "title": "Output Variable",
@@ -854,6 +860,38 @@
           "required": [
             "action",
             "source"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Display Overlay",
+          "description": "Display guidance text to the user via an overlay.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "overlay",
+              "default": "overlay",
+              "description": "Fixed to 'overlay' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "text": {
+              "type": "string",
+              "title": "Text",
+              "description": "The text to display in the overlay. Supports Jinja expressions like {{ variable_name }}."
+            },
+            "duration": {
+              "type": "string",
+              "title": "Duration",
+              "description": "How long to display the overlay. Defaults to '1m'. Supports time units (s, m, h) and Jinja expressions like {{ variable_name }}.",
+              "default": "1m"
+            }
+          },
+          "required": [
+            "action",
+            "text"
           ],
           "additionalProperties": false
         }

@@ -100,6 +100,7 @@ def handle_generate(instruction, context, now, output, publish_destination):
     
     # Get new publish parameter (default True for backward compatibility)
     publish = instruction.get("publish", True)
+    silent = instruction.get("silent", False)
     output_var = instruction.get("output_var")
     
     # ------------------------------------------------------------------
@@ -138,6 +139,8 @@ def handle_generate(instruction, context, now, output, publish_destination):
         log_msg += f" (using workflow: {workflow})"
     if not publish:
         log_msg += " (not publishing to display)"
+    if silent:
+        log_msg += " (silent mode)"
     
     log_schedule(log_msg, publish_destination, now, output)
     
@@ -183,6 +186,7 @@ def handle_generate(instruction, context, now, output, publish_destination):
                 "refiner": refiner,
                 "workflow": workflow,
                 "targets": targets,
+                "silent": silent,
                 # Add target dimensions for downscaler (same as frontend)
                 "maxwidth": target_config.get("maxwidth"),
                 "maxheight": target_config.get("maxheight")
@@ -1725,3 +1729,68 @@ def handle_publish(instruction, context, now, output, publish_destination):
     return False  # Don't unload the schedule
 
 # Delete the duplicate process_time_schedules function that was copied here 
+
+def handle_overlay(instruction, context, now, output, publish_destination):
+    """
+    Handle the overlay instruction to display guidance text to the user.
+    
+    Args:
+        instruction: The overlay instruction containing:
+            - text: The text to display (supports Jinja expressions)
+            - duration: How long to display the overlay in milliseconds (default: 5000)
+        context: The current context
+        now: Current datetime
+        output: List to append log messages to
+        publish_destination: The current scheduler's publish destination ID
+        
+    Returns:
+        bool: False (don't unload the schedule)
+    """
+    from routes.display import send_overlay
+    
+    # Get parameters from the instruction
+    text = instruction.get("text", "")
+    duration_raw = instruction.get("duration", "1m")
+    
+    # Parse duration using the same utility as wait instruction
+    from routes.scheduler_utils import parse_duration
+    try:
+        seconds = parse_duration(duration_raw, default_seconds=60)
+        duration = seconds * 1000  # Convert to milliseconds for send_overlay
+    except (ValueError, TypeError):
+        duration = 60000  # Default fallback (1 minute in milliseconds)
+    
+    # Check for required text parameter
+    if not text or text.strip() == "":
+        error_msg = "No 'text' specified for overlay instruction"
+        log_schedule(error_msg, publish_destination, now, output)
+        return False
+    
+    # Log what we're about to do
+    msg = f"Displaying overlay: '{text[:50]}{'...' if len(text) > 50 else ''}' for {duration}ms"
+    log_schedule(msg, publish_destination, now, output)
+    
+    try:
+        # Send the overlay using the guidance template
+        send_overlay(
+            html="overlay_guidance.html.j2",
+            screens=[publish_destination],
+            duration=duration,
+            position="bottom-center",
+            substitutions={
+                'TEXT': text
+            },
+            clear=True
+        )
+        
+        success_msg = f"Successfully displayed overlay for {duration}ms"
+        log_schedule(success_msg, publish_destination, now, output)
+        
+        return False  # Don't unload the schedule
+        
+    except Exception as e:
+        error_msg = f"Error displaying overlay: {str(e)}"
+        log_schedule(error_msg, publish_destination, now, output)
+        import traceback
+        error(traceback.format_exc())
+        return False 

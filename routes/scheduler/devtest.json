@@ -1,472 +1,8 @@
 {
-  "schedule_stack": [
-    {
-      "final_actions": {
-        "instructions_block": []
-      },
-      "initial_actions": {
-        "instructions_block": []
-      },
-      "prevent_unload": false,
-      "triggers": [
-        {
-          "trigger_actions": {
-            "important": false,
-            "instructions_block": [
-              {
-                "action": "display",
-                "show": "Previous"
-              }
-            ]
-          },
-          "type": "event",
-          "value": "Previous"
-        },
-        {
-          "trigger_actions": {
-            "instructions_block": [
-              {
-                "action": "display",
-                "show": "Next"
-              }
-            ],
-            "urgent": false
-          },
-          "type": "event",
-          "value": "Next"
-        },
-        {
-          "trigger_actions": {
-            "important": false,
-            "instructions_block": [
-              {
-                "action": "log",
-                "message": "User interaction detected: {{ _event.payload.action | default('unknown') }} - waiting for {{ _event.payload.wait | default('2m') }}"
-              },
-              {
-                "action": "wait",
-                "duration": "{{ _event.payload.wait | default('2m') }}"
-              }
-            ],
-            "urgent": true
-          },
-          "type": "event",
-          "value": "_user_interacting"
-        },
-        {
-          "days": [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday"
-          ],
-          "scheduled_actions": [
-            {
-              "repeat_schedule": {
-                "every": "30"
-              },
-              "time": "00:01",
-              "trigger_actions": {
-                "instructions_block": [
-                  {
-                    "action": "display",
-                    "show": "Next"
-                  }
-                ]
-              }
-            }
-          ],
-          "type": "day_of_week"
-        },
-        {
-          "trigger_actions": {
-            "instructions_block": [
-              {
-                "action": "purge",
-                "days": 7,
-                "include_favorites": false
-              }
-            ]
-          },
-          "type": "event",
-          "value": "purge"
-        },
-        {
-          "trigger_actions": {
-            "instructions_block": [
-              {
-                "action": "set_var",
-                "input": {
-                  "value": ""
-                },
-                "var": "safety_reason"
-              },
-              {
-                "action": "generate",
-                "additionalProperties": "batch=4",
-                "input": {
-                  "prompt": "a sunbathing woman"
-                },
-                "output_var": "set_of_images",
-                "publish": false
-              },
-              {
-                "action": "reason",
-                "image_inputs": "set_of_images",
-                "output_vars": [
-                  "selected_index",
-                  "confidence",
-                  "rationale"
-                ],
-                "reasoner": "image_batch_selector",
-                "text_input": "pick the most demure image"
-              },
-              {
-                "action": "reason",
-                "image_inputs": "{{ [set_of_images[selected_index | int]] if selected_index != 'NONE' else [] }}",
-                "output_vars": [
-                  "is_safe",
-                  "safety_confidence",
-                  "safety_reason"
-                ],
-                "reasoner": "image_criteria_evaluator",
-                "text_input": "Approve only if image is suitable for display in an office context (no nudity or overtly sexual content)"
-              },
-              {
-                "action": "log",
-                "message": "Safety check result: {{ is_safe }} ({{ safety_confidence }}) - {{ safety_reason }}"
-              },
-              {
-                "action": "publish",
-                "silent": false,
-                "source": "{{ set_of_images[selected_index | int] if is_safe == 'APPROVE' else '' }}",
-                "targets": [
-                  "devtest"
-                ]
-              },
-              {
-                "action": "terminate",
-                "mode": "block",
-                "test": "{{ is_safe == 'APPROVE' }}"
-              },
-              {
-                "action": "throw_event",
-                "delay": "10s",
-                "display_name": "Retry - previous image was not safe",
-                "event": "generate_batch",
-                "scope": "devtest",
-                "single_consumer": false,
-                "ttl": "60s"
-              }
-            ]
-          },
-          "type": "event",
-          "value": "generate_batch"
-        },
-        {
-          "trigger_actions": {
-            "instructions_block": [
-              {
-                "action": "set_var",
-                "input": {
-                  "value": "{{ ( _event.payload.raw_text ~ ' ' ~ _event.payload.text ).split()[-200:] | join(' ') }}"
-                },
-                "var": "transcript_text"
-              },
-              {
-                "action": "reason",
-                "history_var": "distiller_history",
-                "output_vars": [
-                  "vis_description",
-                  "vis_confidence",
-                  "vis_rationale"
-                ],
-                "reasoner": "distiller",
-                "text_input": "TEXT: {{ transcript_text }}; HISTORY: {{ distiller_history }}"
-              },
-              {
-                "action": "set_var",
-                "input": {
-                  "value": "{{ vis_confidence | replace('%','') | int }}"
-                },
-                "var": "conf_int"
-              },
-              {
-                "action": "terminate",
-                "mode": "block",
-                "test": "{{ conf_int < 75 }}"
-              },
-              {
-                "action": "log",
-                "message": "\ud83c\udfaf New visual idea: {{ vis_description }} ({{ vis_confidence }})"
-              },
-              {
-                "action": "generate",
-                "input": {
-                  "prompt": "{{ vis_description }}"
-                },
-                "publish": true,
-                "refiner": "enrich"
-              },
-              {
-                "action": "wait",
-                "duration": "2m"
-              }
-            ]
-          },
-          "type": "event",
-          "value": "_transcription"
-        }
-      ]
-    }
-  ],
-  "context_stack": [
-    {
-      "vars": {
-        "transcript_text": "app version of Now Sinner in a. It's a shame that hasn't rendered. I wonder if the render is up. Test me. Used to do it. Write the images. What do you use to generate images? What? Are you sharing the image? Did I use that? Done. No. When portal you show me the images? It's my own backend in Python. The stable diffusion flux one. Okay. You do a couple other models. And then the moving images are cool. These ones are wan 2.1. It's called. Flipping amazing. You can do text to video, you can do image to video. And I went around the house. And I took like. This is really funny. I took some photos of. This is like a photo of my wife's mother's cousins. From, like, 100 years ago. And I just took this picture and I had it. I had it submitted and I just turned it into a video. It's kind of like, really cool. It's like an old family photo, important to life. I know. And then I did the same with. This is a picture of my grandmother and my grandfather. From, like, the 1930s. [A] From, like, the 1930s.",
-        "vis_description": "a digital rendering of a 1930s family photo coming to life as a video",
-        "vis_confidence": "85%",
-        "vis_rationale": "transforming historical photos into moving images offers rich visual storytelling potential",
-        "distiller_history": [
-          {
-            "timestamp": "2025-06-10 22:56:17",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "two people facing each other in silent anticipation"
-            },
-            "text_input": "TEXT: Hello. [A] Hello.; HISTORY: [{'timestamp'..."
-          },
-          {
-            "timestamp": "2025-06-10 23:13:13",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "two parallel greetings echoing in an empty corridor",
-              "vis_confidence": "45%",
-              "vis_rationale": "The repetition of greetings suggests an echo effect in an otherwise empty space."
-            },
-            "text_input": "TEXT: Hello. [A] Hello.; HISTORY: [{'timestamp'...",
-            "explanation": "Due to the simplicity and brevity of the text, only a limited echoing concept can be drawn."
-          },
-          {
-            "timestamp": "2025-06-11 13:34:09",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "a voice assistant's interface with a blinking red record light",
-              "vis_confidence": "44%",
-              "vis_rationale": "Moderate interest from simplistic imagery depicting a recording indication."
-            },
-            "text_input": "TEXT: Start recording. [A] Start recording.; HI...",
-            "explanation": "The text is very limited, focusing on the act of starting a recording, which visually connects to..."
-          },
-          {
-            "timestamp": "2025-06-11 13:34:41",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "a network of digital connections transmitting across the globe, connecting voices and servers",
-              "vis_confidence": "78%",
-              "vis_rationale": "dynamic imagery of digital transmission and connectivity"
-            },
-            "text_input": "TEXT: Start recording. So now what's happening ..."
-          },
-          {
-            "timestamp": "2025-06-11 16:56:20",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "an empty room with echoing words 'I'm going to turn on like that.'"
-            },
-            "text_input": "TEXT: I'm going to turn on like that. So now. [...",
-            "explanation": "Limited visual possibilities. Repetition implies an echo in a sparse space."
-          },
-          {
-            "timestamp": "2025-06-11 17:02:06",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "stopped recording icon fading on a screen",
-              "vis_confidence": "55%",
-              "vis_rationale": "simple yet clear representation of an ended recording session"
-            },
-            "text_input": "TEXT: Recording stopped. [A] Recording stopped...."
-          },
-          {
-            "timestamp": "2025-06-11 17:05:19",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "a silver lining on a stormy sky",
-              "vis_confidence": "92%",
-              "vis_rationale": "conveys a strong metaphorical image contrasting storm and brightness"
-            },
-            "text_input": "TEXT: Raining cats and dogs. [A] Raining cats a..."
-          },
-          {
-            "timestamp": "2025-06-11 22:59:25",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "an empty auditorium with a single microphone capturing the slightest sound"
-            },
-            "text_input": "TEXT: And so now it's like the microphone's on....",
-            "explanation": "The repetition of 'microphone's on' suggests an empty space emphasizing the act of listening."
-          },
-          {
-            "timestamp": "2025-06-12 21:48:16",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "a sunrise illuminating the tops of leafless trees with golden light",
-              "vis_confidence": "76%",
-              "vis_rationale": "evokes a subtle yet beautiful scene of morning transformation"
-            },
-            "text_input": "TEXT: Morning. [A] Morning.; HISTORY: [{'timest...",
-            "explanation": "The image of morning light transforming a forest landscape is currently unused and offers a refre..."
-          },
-          {
-            "timestamp": "2025-06-12 23:38:44",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "a computer screen displaying a pulsating red recording button"
-            },
-            "text_input": "TEXT: I can say. Start recording. [A] I can say...",
-            "explanation": "The text focuses on 'start recording,' visually represented by a recording button on a computer s..."
-          },
-          {
-            "timestamp": "2025-06-13 18:23:34",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "people gathered together on a vibrant picnic mat, sharing laughter and music",
-              "vis_confidence": "65%",
-              "vis_rationale": "captures a social scene with potential for colorful, joyful imagery"
-            },
-            "text_input": "TEXT: Together on Sunday afternoon for Android ..."
-          },
-          {
-            "timestamp": "2025-06-13 18:24:07",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "a smartphone screen displaying live transcriptions in real-time"
-            },
-            "text_input": "TEXT: Together on Sunday afternoon for Android ..."
-          },
-          {
-            "timestamp": "2025-06-17 17:48:28",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "a red circle icon with a flashing light on a screen"
-            },
-            "text_input": "TEXT: Start recording. [A] Start recording.; HI...",
-            "explanation": "Simplistic imagery with moderate visual interest, depicting a typical recording signal."
-          },
-          {
-            "timestamp": "2025-06-17 17:48:36",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "a slapping image splintering into fragments"
-            },
-            "text_input": "TEXT: This is. Imagine this is just a slapping ...",
-            "explanation": "Creates a dramatic metaphor for something being powerfully or disruptively affected."
-          },
-          {
-            "timestamp": "2025-06-19 16:47:49",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "clusters of apps arranged like constellations on a night sky background"
-            },
-            "text_input": "TEXT: So that app will just run background. [A]...",
-            "explanation": "No compelling visuals in the text. Chose an imaginary app-related theme with a 48% score."
-          },
-          {
-            "timestamp": "2025-06-19 16:48:23",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "pink elephants dancing on the moon surrounded by jetpacks"
-            },
-            "text_input": "TEXT: So that app will just run background. And..."
-          },
-          {
-            "timestamp": "2025-06-19 16:48:57",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "dogs and cats speaking into microphones on the moon"
-            },
-            "text_input": "TEXT: if I said pink elephants dancing on the m..."
-          },
-          {
-            "timestamp": "2025-06-19 16:49:30",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "a person using Android Studio on a dual-screen setup, with code on one monitor and diagrams on the other"
-            },
-            "text_input": "TEXT: go and produce, like, a live. A live imag...",
-            "explanation": "The text describes coding in Android Studio with a dual-screen setup, creating a moderate visual ..."
-          },
-          {
-            "timestamp": "2025-06-19 16:50:02",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "a dual-screen computer setup running Android Studio, with code and diagrams displayed"
-            },
-            "text_input": "TEXT: know. If it does. And you'll start seeing...",
-            "explanation": "The text describes a dual-screen development setup, which is moderately visualisable."
-          },
-          {
-            "timestamp": "2025-06-19 16:50:31",
-            "type": "reason",
-            "reasoner": "distiller",
-            "outputs": {
-              "vis_description": "a digital rendering of a 1930s family photo coming to life as a video",
-              "vis_confidence": "85%",
-              "vis_rationale": "transforming historical photos into moving images offers rich visual storytelling potential"
-            },
-            "text_input": "TEXT: app version of Now Sinner in a. It's a sh..."
-          }
-        ],
-        "conf_int": 85,
-        "_event": {
-          "key": "_user_interacting",
-          "payload": {
-            "wait": "90s",
-            "action": "info"
-          },
-          "unique_id": "e87cc5f5-3185-49aa-86d4-24b0cf006e1a",
-          "created_at": "2025-07-10T23:31:38.647312",
-          "display_name": "User Interaction"
-        }
-      },
-      "last_generated": "20250619-160439-643a2590.mp4",
-      "publish_destination": "devtest",
-      "_event": {
-        "key": "_user_interacting",
-        "payload": {
-          "wait": "90s",
-          "action": "info"
-        },
-        "unique_id": "e87cc5f5-3185-49aa-86d4-24b0cf006e1a",
-        "created_at": "2025-07-10T23:31:38.647312",
-        "display_name": "User Interaction"
-      }
-    }
-  ],
-  "state": "running",
-  "last_updated": "2025-07-10T23:33:10.677368",
+  "schedule_stack": [],
+  "context_stack": [],
+  "state": "stopped",
+  "last_updated": "2025-07-13T18:47:26.652046",
   "last_trigger_executions": {
     "7bc512d74b13f60c705deb7e1061e1c0_2025-06-10_24": "2025-06-10T12:01:00.103358",
     "7bc512d74b13f60c705deb7e1061e1c0_2025-06-10_25": "2025-06-10T12:31:00.738562",
@@ -1927,294 +1463,6 @@
   "event_history": [
     {
       "key": "_user_interacting",
-      "active_from": "2025-07-03T22:27:30.667554",
-      "expires": "2025-07-04T01:27:30.667554",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:27:30.667554",
-      "unique_id": "dd17af21-8539-472c-acb8-2b7ade488c8d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:27:31.486985"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:27:30.667554",
-      "expires": "2025-07-04T01:27:30.667554",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:27:30.667554",
-      "unique_id": "dd17af21-8539-472c-acb8-2b7ade488c8d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:27:31.486985"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:29:08.697073",
-      "expires": "2025-07-04T01:29:08.697073",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:29:08.697073",
-      "unique_id": "4d4c633b-158d-4319-ba48-3961c2d4210d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:29:09.048370"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:29:08.697073",
-      "expires": "2025-07-04T01:29:08.697073",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:29:08.697073",
-      "unique_id": "4d4c633b-158d-4319-ba48-3961c2d4210d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:29:09.048370"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:30:17.723244",
-      "expires": "2025-07-04T01:30:17.723244",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:30:17.723244",
-      "unique_id": "263639b4-88f7-47ac-84b8-13a6cfecf12a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:30:17.966326"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:30:17.723244",
-      "expires": "2025-07-04T01:30:17.723244",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:30:17.723244",
-      "unique_id": "263639b4-88f7-47ac-84b8-13a6cfecf12a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:30:17.966326"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:31:52.472441",
-      "expires": "2025-07-04T01:31:52.472441",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:31:52.472441",
-      "unique_id": "1d5f2537-c9f8-4a4d-ad66-ba721aafe108",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:31:53.384990"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:31:52.472441",
-      "expires": "2025-07-04T01:31:52.472441",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:31:52.472441",
-      "unique_id": "1d5f2537-c9f8-4a4d-ad66-ba721aafe108",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:31:53.384990"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:34:36.919913",
-      "expires": "2025-07-04T01:34:36.919913",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:34:36.919913",
-      "unique_id": "3db192c4-b92b-4912-8d96-76262172b13a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:34:38.059620"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:34:36.919913",
-      "expires": "2025-07-04T01:34:36.919913",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:34:36.919913",
-      "unique_id": "3db192c4-b92b-4912-8d96-76262172b13a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:34:38.059620"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:35:53.806582",
-      "expires": "2025-07-04T01:35:53.806582",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:35:53.806582",
-      "unique_id": "1564c8d9-1210-4fa2-a91d-0341d765adb5",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:35:55.093465"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:35:53.806582",
-      "expires": "2025-07-04T01:35:53.806582",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:35:53.806582",
-      "unique_id": "1564c8d9-1210-4fa2-a91d-0341d765adb5",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:35:55.093465"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:36:46.174369",
-      "expires": "2025-07-04T01:36:46.174369",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:36:46.174369",
-      "unique_id": "a70d42b5-3e1f-43b2-bcfb-f5e7b43b166b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:36:48.054618"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:36:46.174369",
-      "expires": "2025-07-04T01:36:46.174369",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:36:46.174369",
-      "unique_id": "a70d42b5-3e1f-43b2-bcfb-f5e7b43b166b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:36:48.054618"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:39:35.523979",
-      "expires": "2025-07-04T01:39:35.523979",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:39:35.523979",
-      "unique_id": "99abfc13-cfe2-4fb3-ada0-6c966bc3783e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:39:36.529951"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:39:35.523979",
-      "expires": "2025-07-04T01:39:35.523979",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:39:35.523979",
-      "unique_id": "99abfc13-cfe2-4fb3-ada0-6c966bc3783e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:39:36.529951"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:41:50.184170",
-      "expires": "2025-07-04T01:41:50.184170",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:41:50.184170",
-      "unique_id": "02598598-d9b9-4f39-b307-7c0a8c83538b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:41:50.293818"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-03T22:41:50.184170",
-      "expires": "2025-07-04T01:41:50.184170",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-03T22:41:50.184170",
-      "unique_id": "02598598-d9b9-4f39-b307-7c0a8c83538b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-03T22:41:50.293818"
-    },
-    {
-      "key": "_user_interacting",
       "active_from": "2025-07-03T22:43:28.446865",
       "expires": "2025-07-04T01:43:28.446865",
       "display_name": "User Interaction",
@@ -3458,6 +2706,280 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_devtest",
       "consumed_at": "2025-07-10T23:31:40.432889"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-11T06:00:15.450416",
+      "expires": "2025-07-11T06:01:15.450416",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-11T06:00:15.450416",
+      "unique_id": "3ae3d396-096a-4228-b0dc-cfed470cee0c",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-11T06:01:32.345642"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-11T06:00:15.450416",
+      "expires": "2025-07-11T06:01:15.450416",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-11T06:00:15.450416",
+      "unique_id": "3ae3d396-096a-4228-b0dc-cfed470cee0c",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-11T06:01:32.345642"
+    },
+    {
+      "key": "_auto_upscale",
+      "active_from": "2025-07-11T07:48:31.934165",
+      "expires": "2025-07-11T07:53:31.934165",
+      "display_name": "Auto-upscale after fast adapt",
+      "payload": {
+        "trigger_type": "auto_upscale",
+        "original_prompt": "make everything out of",
+        "workflow": null
+      },
+      "single_consumer": true,
+      "created_at": "2025-07-11T07:48:26.934165",
+      "unique_id": "3c2f7975-1acb-401f-be99-e182b3056c3c",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-11T07:53:44.292594"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-11T07:48:27.005039",
+      "expires": "2025-07-11T10:48:27.005039",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-11T07:48:27.005039",
+      "unique_id": "cf2bb6ec-8265-43de-a2d6-4e617523374b",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-11T10:48:32.351201"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-11T07:51:20.181081",
+      "expires": "2025-07-11T10:51:20.181081",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-11T07:51:20.181081",
+      "unique_id": "3deb72f6-48b7-4d79-9e4c-5bae8147117c",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-11T10:51:26.289125"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-11T07:52:59.899181",
+      "expires": "2025-07-11T10:52:59.899181",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-11T07:52:59.899181",
+      "unique_id": "62ca1647-eb0c-4c47-a757-a65bfa03c348",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-11T10:53:02.751541"
+    },
+    {
+      "key": "_auto_upscale",
+      "active_from": "2025-07-11T07:48:31.934165",
+      "expires": "2025-07-11T07:53:31.934165",
+      "display_name": "Auto-upscale after fast adapt",
+      "payload": {
+        "trigger_type": "auto_upscale",
+        "original_prompt": "make everything out of",
+        "workflow": null
+      },
+      "single_consumer": true,
+      "created_at": "2025-07-11T07:48:26.934165",
+      "unique_id": "3c2f7975-1acb-401f-be99-e182b3056c3c",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-11T07:53:44.292594"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-11T07:48:27.005039",
+      "expires": "2025-07-11T10:48:27.005039",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-11T07:48:27.005039",
+      "unique_id": "cf2bb6ec-8265-43de-a2d6-4e617523374b",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-11T10:48:32.351201"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-11T07:51:20.181081",
+      "expires": "2025-07-11T10:51:20.181081",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-11T07:51:20.181081",
+      "unique_id": "3deb72f6-48b7-4d79-9e4c-5bae8147117c",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-11T10:51:26.289125"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-11T07:52:59.899181",
+      "expires": "2025-07-11T10:52:59.899181",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-11T07:52:59.899181",
+      "unique_id": "62ca1647-eb0c-4c47-a757-a65bfa03c348",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-11T10:53:02.751541"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-12T06:00:14.923493",
+      "expires": "2025-07-12T06:01:14.923493",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-12T06:00:14.923493",
+      "unique_id": "732106bc-2820-44c9-b46f-786394bc3a49",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-12T06:01:31.439614"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-12T06:00:14.923493",
+      "expires": "2025-07-12T06:01:14.923493",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-12T06:00:14.923493",
+      "unique_id": "732106bc-2820-44c9-b46f-786394bc3a49",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-12T06:01:31.439614"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-13T06:00:14.732268",
+      "expires": "2025-07-13T06:01:14.732268",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-13T06:00:14.732268",
+      "unique_id": "aa7f586d-481d-47ec-b2a9-f473bf70d5e0",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-13T06:01:26.991066"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-13T06:00:14.732268",
+      "expires": "2025-07-13T06:01:14.732268",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-13T06:00:14.732268",
+      "unique_id": "aa7f586d-481d-47ec-b2a9-f473bf70d5e0",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-13T06:01:26.991066"
+    },
+    {
+      "key": "_auto_upscale",
+      "active_from": "2025-07-13T15:47:19.848903",
+      "expires": "2025-07-13T15:52:19.848903",
+      "display_name": "Auto-upscale after fast adapt",
+      "payload": {
+        "trigger_type": "auto_upscale",
+        "original_prompt": "remove the clothing",
+        "workflow": null
+      },
+      "single_consumer": true,
+      "created_at": "2025-07-13T15:47:14.848903",
+      "unique_id": "3beffb3e-eff9-4ba7-8d53-e0f28c3c1528",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-13T15:52:25.760569"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-13T15:47:14.860303",
+      "expires": "2025-07-13T18:47:14.860303",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-13T15:47:14.860303",
+      "unique_id": "0170dca9-3edc-4e29-a75e-2973a6d4a70f",
+      "status": "ACTIVE",
+      "consumed_by": null,
+      "consumed_at": null
+    },
+    {
+      "key": "_auto_upscale",
+      "active_from": "2025-07-13T15:47:19.848903",
+      "expires": "2025-07-13T15:52:19.848903",
+      "display_name": "Auto-upscale after fast adapt",
+      "payload": {
+        "trigger_type": "auto_upscale",
+        "original_prompt": "remove the clothing",
+        "workflow": null
+      },
+      "single_consumer": true,
+      "created_at": "2025-07-13T15:47:14.848903",
+      "unique_id": "3beffb3e-eff9-4ba7-8d53-e0f28c3c1528",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-13T15:52:25.760569"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-13T15:47:14.860303",
+      "expires": "2025-07-13T18:47:14.860303",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-13T15:47:14.860303",
+      "unique_id": "0170dca9-3edc-4e29-a75e-2973a6d4a70f",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-13T18:47:26.627435"
     }
   ]
 }

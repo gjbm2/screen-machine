@@ -177,7 +177,8 @@ def send_overlay(
         "position": position,
         "substitutions": substitutions,
         "clear": clear,
-        "fadein": fadein
+        "fadein": fadein,
+        "job_id": job_id  # Add job_id to the WebSocket message
     }
 
     if not job_id and not final_html:

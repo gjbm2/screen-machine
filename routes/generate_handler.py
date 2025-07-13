@@ -621,6 +621,10 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     if "maxheight" in data:
         base_kwargs["maxheight"] = data["maxheight"]
 
+    # Add silent parameter from data if present
+    if "silent" in data:
+        base_kwargs["silent"] = data["silent"]
+
     # ✨ Remove the seed if batch_size > 1 so that each run gets its own
     #     random seed (generate.start will assign a random default).
     if batch_size > 1:

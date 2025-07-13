@@ -707,7 +707,7 @@ def get_published_info(publish_destination_id: str) -> dict:
             try:
                 with open(bucket_meta_path, 'r') as f:
                     bucket_meta = json.load(f)
-                    debug(f"Bucket meta content: {bucket_meta}")
+                    debug(f"Bucket meta loaded successfully")
                     
                     if "published_meta" in bucket_meta and bucket_meta["published_meta"]:
                         published_meta = bucket_meta["published_meta"]
@@ -768,7 +768,7 @@ def get_published_info(publish_destination_id: str) -> dict:
         
         debug(f"Using get_image_from_target as fallback")
         image_info = get_image_from_target(publish_destination_id, thumbnail=False)
-        debug(f"get_image_from_target returned: {image_info}")
+        debug(f"get_image_from_target returned {'success' if image_info else 'None'}")
         
         if image_info and "local_path" in image_info:
             file_path = Path(image_info["local_path"])
@@ -931,5 +931,5 @@ def display_from_bucket(
         silent=silent
     )
     
-    debug(f"publish_to_destination result: {result}")
+    debug(f"publish_to_destination result: {'success' if result.get('success') else 'failed'}")
     return result
