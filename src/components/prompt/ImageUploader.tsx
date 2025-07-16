@@ -47,28 +47,42 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   }, [onImageUpload]);
 
   const processFiles = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+    try {
+      if (!files || files.length === 0) return;
 
-    const validFiles: File[] = [];
-    Array.from(files).forEach(file => {
-      if (!file.type.startsWith('image/')) {
-        toast.error(`${file.name} is not an image file`);
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error(`${file.name} exceeds the 5MB size limit`);
-        return;
-      }
-      validFiles.push(file);
-    });
+      const validFiles: File[] = [];
+      Array.from(files).forEach(file => {
+        if (!file.type.startsWith('image/')) {
+          toast.error(`${file.name} is not an image file`);
+          return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          toast.error(`${file.name} exceeds the 5MB size limit`);
+          return;
+        }
+        validFiles.push(file);
+      });
 
-    if (validFiles.length > 0) {
-      onImageUpload(validFiles);
-      // Let the backend handle workflow selection
+      if (validFiles.length > 0) {
+        // Add a small delay on mobile to prevent race conditions
+        if (isMobile) {
+          setTimeout(() => {
+            onImageUpload(validFiles);
+          }, 50);
+        } else {
+          onImageUpload(validFiles);
+        }
+        // Let the backend handle workflow selection
+      }
+    } catch (error) {
+      console.error('Error processing files:', error);
+      toast.error('Error processing uploaded files');
     }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
     processFiles(e.target.files);
     e.target.value = '';
   };
@@ -150,7 +164,23 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   };
 
   const triggerFileInput = () => fileInputRef.current?.click();
-  const triggerCameraInput = () => cameraInputRef.current?.click();
+  const triggerCameraInput = () => {
+    try {
+      if (cameraInputRef.current) {
+        // On mobile, add a small delay to prevent immediate navigation issues
+        if (isMobile) {
+          setTimeout(() => {
+            cameraInputRef.current?.click();
+          }, 100);
+        } else {
+          cameraInputRef.current.click();
+        }
+      }
+    } catch (error) {
+      console.error('Error triggering camera input:', error);
+      toast.error('Error opening camera');
+    }
+  };
 
   const dragButtonClass = `${isDragging ? 'bg-purple-100 border-purple-500' : 'border border-input'} transition-colors`;
 
@@ -174,6 +204,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
           onChange={handleImageUpload}
           disabled={isLoading}
           capture="environment"
+          onClick={(e) => e.stopPropagation()}
+          onFocus={(e) => e.stopPropagation()}
         />
 
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
@@ -199,11 +231,19 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
           <DropdownMenuPortal>
             <DropdownMenuContent align="start" className="w-64 p-2">
               <div className="text-sm font-semibold mb-1 px-2">Upload options</div>
-              <DropdownMenuItem onClick={triggerFileInput} className="px-4 py-1.5 text-sm">
+              <DropdownMenuItem onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                triggerFileInput();
+              }} className="px-4 py-1.5 text-sm">
                 <Upload className="h-4 w-4 mr-2" />
                 From Gallery
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={triggerCameraInput} className="px-4 py-1.5 text-sm">
+              <DropdownMenuItem onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                triggerCameraInput();
+              }} className="px-4 py-1.5 text-sm">
                 <Camera className="h-4 w-4 mr-2" />
                 From Camera
               </DropdownMenuItem>

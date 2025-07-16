@@ -62,7 +62,6 @@ def handle_generate(instruction, context, now, output, publish_destination):
                     from PIL import Image
                     import base64
                     from io import BytesIO
-                    import os
                     
                     # Load the image file
                     image_path = img
@@ -268,14 +267,14 @@ def handle_generate(instruction, context, now, output, publish_destination):
 
         debug(f"Response from image generation: '{response}'")
         
+        # Extract the image paths from the response
+        image_paths = []
+        
         if not response:
             error_msg = "Image generation returned no results."
             log_schedule(error_msg, publish_destination, now, output)
-            return    
-
-        # Extract the image paths from the response
-        image_paths = []
-        if isinstance(response, list):
+            # Continue with empty image_paths instead of returning early
+        elif isinstance(response, list):
             for result in response:
                 if isinstance(result, dict):
                     # Get the image path - prefer published_path, fallback to message
@@ -383,8 +382,11 @@ def handle_generate(instruction, context, now, output, publish_destination):
             success_msg += " (saved to bucket only, not displayed)"
                 
         # Log each generated image individually for better visibility
-        for i, pth in enumerate(image_paths, start=1):
-            log_schedule(f" → Image {i}/{len(image_paths)}: {os.path.basename(pth)}", publish_destination, now, output)
+        if image_paths:
+            for i, pth in enumerate(image_paths, start=1):
+                log_schedule(f" → Image {i}/{len(image_paths)}: {os.path.basename(pth)}", publish_destination, now, output)
+        else:
+            log_schedule(" → No images were generated", publish_destination, now, output)
         
         log_schedule(f"GENERATE SUCCESS: {success_msg}", publish_destination, now, output)
         

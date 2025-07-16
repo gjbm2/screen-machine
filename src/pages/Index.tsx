@@ -69,6 +69,8 @@ interface JobStatus {
   destination?: string;
   progress?: number;
   message?: string;
+  currentStage?: string;
+  allStages?: string[];
   startTime: number;
 }
 
@@ -107,6 +109,88 @@ function parseJobMessage(html: string): { destination?: string; progress?: numbe
   const result = { message: html };
   console.log('❌ No pattern matched, using raw message:', result);
   return result;
+}
+
+// Parse stages from HTML message to identify current stage and all stages
+function parseStagesFromMessage(messageHtml: string): { currentStage?: string; allStages?: string[] } {
+  if (!messageHtml || typeof messageHtml !== 'string') {
+    return {};
+  }
+  
+  try {
+    // Create a temporary DOM element to parse the HTML
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = messageHtml;
+    
+    // Look for the pulsing-stage class which indicates the current stage
+    const pulsingStageElement = tempDiv.querySelector('.pulsing-stage');
+    let currentStage: string | undefined;
+    
+    if (pulsingStageElement) {
+      currentStage = pulsingStageElement.textContent?.trim();
+    }
+    
+    // Extract all stages from the message text
+    // The format is typically: "Stage1 › Stage2 › Stage3" or similar
+    const messageText = tempDiv.textContent || tempDiv.innerText || messageHtml;
+    
+    // Split by common separators and clean up
+    const stageSeparators = ['›', '>', '→', '->', '-', '|'];
+    let allStages: string[] = [];
+    
+    for (const separator of stageSeparators) {
+      if (messageText.includes(separator)) {
+        allStages = messageText
+          .split(separator)
+          .map(stage => stage.trim())
+          .filter(stage => stage.length > 0);
+        break;
+      }
+    }
+    
+    // If no separators found, try to extract stages from the HTML structure
+    if (allStages.length === 0) {
+      // Look for any text that might be stages
+      const textNodes = Array.from(tempDiv.childNodes)
+        .filter(node => node.nodeType === Node.TEXT_NODE)
+        .map(node => node.textContent?.trim())
+        .filter(text => text && text.length > 0);
+      
+      if (textNodes.length > 0) {
+        allStages = textNodes;
+      }
+    }
+    
+    // Special handling for the specific format from the WebSocket message
+    // The message contains: "Rendering › Interpolating › Scaling"
+    // We need to extract the stages and identify which one is current
+    if (messageHtml.includes('pulsing-stage')) {
+      // Extract the full stage text from the HTML
+      const stageTextMatch = messageHtml.match(/<div id="message_text">([^<]+)<\/div>/);
+      if (stageTextMatch) {
+        const stageText = stageTextMatch[1];
+        // Split by the › separator
+        const stages = stageText.split('›').map(s => s.trim()).filter(s => s.length > 0);
+        if (stages.length > 0) {
+          allStages = stages;
+          // The current stage is the one with the pulsing-stage class
+          if (currentStage && allStages.includes(currentStage)) {
+            // currentStage is already set from the pulsing-stage element
+          } else if (allStages.length > 0) {
+            // If we can't find the current stage, assume it's the first one
+            currentStage = allStages[0];
+          }
+        }
+      }
+    }
+    
+    console.log('🎭 Parsed stages:', { currentStage, allStages, messageText });
+    return { currentStage, allStages };
+    
+  } catch (error) {
+    console.error('Error parsing stages from message:', error);
+    return {};
+  }
 }
 
 function generateId(): string {
@@ -223,7 +307,18 @@ const Index = () => {
       }
     }
     
-    console.log('📝 Job message:', { jobId, messageText, progressPercent });
+    // Parse stages from the message to identify current stage and all stages
+    const { currentStage, allStages } = parseStagesFromMessage(messageText);
+    
+    // Check if this is a completion message (contains "Done" link)
+    const isCompletionMessage = messageText.includes('<a href=') && messageText.includes('>Done</a>');
+    
+    // For completion messages, extract just the "Done" text
+    if (isCompletionMessage) {
+      messageText = 'Done';
+    }
+    
+    console.log('📝 Job message:', { jobId, messageText, progressPercent, currentStage, allStages, isCompletionMessage });
 
     setJobStatuses(prev => {
       // Clear any existing timeout for this job
@@ -241,10 +336,16 @@ const Index = () => {
         destination: undefined,
         progress: progressPercent,
         message: messageText,
+        currentStage,
+        allStages,
         startTime: prev[jobId]?.startTime || Date.now()
       };
       
-      // Set timeout to hide this message after 10 seconds
+      // Set timeout to hide this message - use shorter duration for completion messages
+      let displayDuration = message.duration || 60000;
+      if (isCompletionMessage) {
+        displayDuration = 10000; // Show completion messages for only 10 seconds
+      }
       updatedStatus.timeoutId = setTimeout(() => {
         console.log('⏰ Hiding job message:', jobId);
         setJobStatuses(currentState => {
@@ -252,7 +353,7 @@ const Index = () => {
           delete newState[jobId];
           return newState;
         });
-      }, 10000); // Show for 10 seconds
+      }, displayDuration); // Use message duration or show for 1 minute
       
       const newState = {
         ...prev,
@@ -817,6 +918,23 @@ const Index = () => {
         delete (window as any).originalHandleSubmitPrompt;
       }
     };
+  }, [currentWorkflow, typedWorkflows, handleSubmitPrompt]);
+
+  // Expose test functions to window for debugging
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).testProgressIndicator = testProgressIndicator;
+      (window as any).testWebSocketStageMessage = testWebSocketStageMessage;
+      (window as any).simulateProgressUpdate = simulateProgressUpdate;
+    }
+    
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete (window as any).testProgressIndicator;
+        delete (window as any).testWebSocketStageMessage;
+        delete (window as any).simulateProgressUpdate;
+      }
+    };
   }, [handleSubmitPrompt, handleJobStatusMessage, currentWorkflow]);
 
   const [devJobId, setDevJobId] = useState('');
@@ -899,16 +1017,53 @@ const Index = () => {
 
     console.log('🧪 Testing progress indicator directly...');
     
-    // Test message with proper format
+    // Test message with stage information (similar to real WebSocket message)
     const testMessage: JobStatusMessage = {
       screens: 'index',
-      html: 'test-screen: 75% - Rendering amazing content...',
+      html: '<span class="pulsing-stage">Rendering</span> › Interpolating › Scaling',
       duration: 10000,
-      job_id: 'test-job-' + nanoid()
+      job_id: 'test-job-' + nanoid(),
+      substitutions: {
+        MESSAGE: '<span class="pulsing-stage">Rendering</span> › Interpolating › Scaling',
+        PROGRESS_PERCENT: 60
+      }
     };
     
     console.log('🧪 Calling handleJobStatusMessage with test message:', testMessage);
     handleJobStatusMessage(testMessage);
+  };
+
+  // Test function to simulate the exact WebSocket message format
+  const testWebSocketStageMessage = () => {
+    const isLovableEnvironment = 
+      typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || 
+       window.location.hostname.includes('lovable'));
+    
+    if (!isLovableEnvironment) {
+      console.warn('Test only works in Lovable/localhost');
+      return;
+    }
+
+    console.log('🧪 Testing WebSocket stage message format...');
+    
+    // Simulate the exact message format from the WebSocket
+    const mockWebSocketMessage = {
+      screens: ["devtest"],
+      html: "\n<div style=\"\n  display: inline-flex;\n  align-items: center;\n  gap: 12px;\n  font-size: clamp(12px, 1.5vw, 16px);\n  padding: 12px 14px;\n  background: rgba(0, 0, 0, 0.3);\n  color: rgba(255, 255, 255, 0.5);\n  font-weight: 400;\n  backdrop-filter: blur(6px);\n  -webkit-backdrop-filter: blur(5apx);\n  border-radius: 12px;\n  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);  \n  text-align: center;\n\">\n\n\n  <!-- Pulsing blob fallback -->\n  <div id=\"progress_blob\" style=\"\n    width: 14px;\n    height: 14px;\n    border-radius: 50%;\n    background: red;\n    animation: pulse 2s infinite ease-in-out;\n  \"></div>\n\n  <!-- Progress ring -->\n  <svg id=\"progress_ring\" width=\"24\" height=\"24\" viewBox=\"0 0 36 36\" style=\"display: none;\">\n    <circle\n      cx=\"18\" cy=\"18\" r=\"16\"\n      fill=\"none\"\n      stroke=\"rgba(255, 255, 255, 0.3)\"\n      stroke-width=\"4\"\n    />\n    <circle\n      id=\"progress_foreground\"\n      cx=\"18\" cy=\"18\" r=\"16\"\n      fill=\"none\"\n      stroke=\"white\"\n      stroke-width=\"4\"\n      stroke-dasharray=\"100\"\n      stroke-dashoffset=\"100\"\n      stroke-linecap=\"round\"\n      transform=\"rotate(-90 18 18)\"\n    />\n  </svg>\n\n  <!-- Message always shown -->\n  <div id=\"message_text\"><span class='pulsing-stage'>Rendering</span> › Interpolating › Scaling</div>\n</div>",
+      duration: 120000,
+      position: "top-left",
+      substitutions: {
+        MESSAGE: "<span class='pulsing-stage'>Rendering</span> › Interpolating › Scaling",
+        PROGRESS_PERCENT: 60
+      },
+      clear: true,
+      fadein: 0,
+      job_id: "test-websocket-" + nanoid()
+    };
+    
+    console.log('🧪 Simulating WebSocket message:', mockWebSocketMessage);
+    handleJobStatusMessage(mockWebSocketMessage);
   };
 
   // Cleanup effect for job statuses
@@ -949,9 +1104,12 @@ const Index = () => {
               const pubDestMatch = job.message.match(/^([^:]+):/);
               const pubDest = pubDestMatch ? pubDestMatch[1].trim() : null;
               
-              // Extract progress percentage from message
-              const progressMatch = job.message.match(/(\d+)%/);
-              const progressPercent = progressMatch ? parseInt(progressMatch[1]) : null;
+              // Extract progress percentage from message (skip for completion messages)
+              let progressPercent = null;
+              if (job.message !== 'Done') {
+                const progressMatch = job.message.match(/(\d+)%/);
+                progressPercent = progressMatch ? parseInt(progressMatch[1]) : null;
+              }
               
               // Strip HTML and get clean status text
               const tempDiv = document.createElement('div');
@@ -967,12 +1125,24 @@ const Index = () => {
                 statusText = statusText.replace(/^\d+%\s*-\s*/, '');
               }
               
+              // For completion messages, just show "Done"
+              if (job.message === 'Done') {
+                statusText = 'Done';
+              } else {
+                // Underline the current stage if available
+                if (job.currentStage && job.allStages && job.allStages.length > 0) {
+                  // Replace the current stage with an underlined version
+                  const stageRegex = new RegExp(`\\b${job.currentStage}\\b`, 'g');
+                  statusText = statusText.replace(stageRegex, `<u>${job.currentStage}</u>`);
+                }
+              }
+              
               return (
                 <div key={job.id} className="text-sm border-l-2 border-gray-700 pl-2">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span className="text-yellow-300 font-mono text-xs">Job {index + 1}</span>
-                      {pubDest && (
+                                            {pubDest && (
                         <span className="text-blue-300 text-xs">{pubDest}</span>
                       )}
                       {progressPercent !== null && (
@@ -987,7 +1157,10 @@ const Index = () => {
                       ×
                     </button>
                   </div>
-                  <div className="text-gray-200 text-xs">{statusText}</div>
+                  
+
+                  
+                  <div className="text-gray-200 text-xs" dangerouslySetInnerHTML={{ __html: statusText }} />
                 </div>
               );
             })}
