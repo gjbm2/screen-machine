@@ -138,6 +138,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
         className={`${minHeight} resize-none border-0 bg-transparent p-4 text-base placeholder:text-muted-foreground/50 focus-visible:ring-0 overflow-hidden`}
         value={prompt}
         onChange={(e) => {
+          e.stopPropagation();
           onPromptChange(e);
           autoResize();
         }}

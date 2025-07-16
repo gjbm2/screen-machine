@@ -78,12 +78,16 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
 
       <div className="ml-auto">
         <Button 
-          type="submit" 
+          type="button" 
           className={`h-12 w-12 rounded-full transition-all hover:shadow-md flex items-center justify-center btn-shine ${
             shouldDisableButton && isCompact ? 'bg-gray-300 text-gray-600' : 'bg-primary text-primary-foreground'
           }`}
           disabled={shouldDisableButton}
-          onClick={handleSubmit}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleSubmit(e);
+          }}
         >
           <ArrowUp className="h-6 w-6" />
         </Button>

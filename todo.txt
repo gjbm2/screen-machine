@@ -1,24 +1,23 @@
-1. Slack triggers
-2. Jinju for workflows (clear up generator.py) -- or similar re-think of workflow mutation logics
-3. Tags for more elaborate inspiration scheduling (e.g. taking image input 'Ursula' plus text prompt 'birthday')
-5. Alexa, use AI to load schedule... (so we can load fun schedulers dynamically)
-6. Repeat commands don't really work (don't cache image inputs)
+1. mobile upload link often breaks...
+2. Slack triggers
+3. Jinju for workflows (clear up generator.py) -- or similar re-think of workflow mutation logics
+4. Tags for more elaborate inspiration scheduling (e.g. taking image input 'Ursula' plus text prompt 'birthday')
+5. Repeat commands don't really work (don't cache image inputs)
+6. Proper jobs tracking & handling
 
 UI fixes:
+0. Not published is defaulting to last selectred?
 1. Control schedule from bucket
 3. tags for images (e.g. 'Ursula' or 'Vermeer') so we can refer to them in instructions...
 4. better css for schemaedit on desktop & less non-performant...
 5. when publishing to a currently displayed bucket, we want to avoid a full page refresh -- it's distracting and unnecessary. we only need to refresh the dispaly of the currently published relement. this is triggered from dnd onto own tab OR onto 'currently pbulished' OR using 'publish to' and then choosing own tab. I hope all three go through same code path.. In each case the front end should only update currently published display NOT 
 6. few small bugs (favourites, copy to, etc. on recent view)
 7. show 'cloud' in 'copy to...' context menu
-8. mobile upload link often breaks...
-9. WS jobs list from index
 
 
 1. split scheduler_utils for performance reasons...
 2. Allow edit of alexa scripts, refiners, etc. through schemaedit
 3. allow generation, animation, with arbitrary list of params (e.g. length=xxx) in instruction
-
 
 
 2. on first page load, soft link to manage images, then unfurl generator section

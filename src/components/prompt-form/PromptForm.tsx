@@ -7,6 +7,7 @@ import PromptFormToolbar from './PromptFormToolbar';
 import { PromptFormProps, WorkflowProps } from './types';
 import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
 import { Workflow } from '@/types/workflows';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
@@ -30,6 +31,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
   const [localLoading, setLocalLoading] = useState(false);
   const lastReceivedPrompt = useRef(currentPrompt);
   const isInitialMount = useRef(true);
+  const isMobile = useIsMobile();
 
   // Use our new ReferenceImages context
   const { referenceUrls, addReferenceUrl, removeReferenceUrl, clearReferenceUrls } = useReferenceImages();
@@ -111,20 +113,67 @@ const PromptForm: React.FC<PromptFormProps> = ({
     updateFromAdvancedPanel
   ]);
 
-  const handleImageUpload = async (files: Array<File | string>) => {
-    console.log('handleImageUpload called with:', files);
-    setImageFiles(files);
+  // Enhanced blob URL management for mobile
+  const blobUrlsRef = useRef<Map<File, string>>(new Map());
+  const cleanupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Mobile-specific: Delay blob URL cleanup to prevent premature revocation
+  const scheduleCleanup = React.useCallback(() => {
+    if (cleanupTimeoutRef.current) {
+      clearTimeout(cleanupTimeoutRef.current);
+    }
     
-    // Process each file - but DON'T convert File objects to blob URLs for reference
-    for (const file of files) {
-      if (typeof file === 'string') {
-        console.log('Processing string URL:', file);
-        addReferenceUrl(file, true);
-      } else {
-        console.log('Processing File object:', file);
-        // Don't create blob URLs for File objects - they need to be uploaded as files
-        // The imageFiles state already contains the File objects
+    // On mobile, wait longer before cleaning up to ensure images have loaded
+    const delay = isMobile ? 5000 : 1000;
+    
+    cleanupTimeoutRef.current = setTimeout(() => {
+      const currentFiles = new Set(imageFiles.filter(f => f instanceof File));
+      
+      // Revoke blob URLs for files that are no longer in the array
+      blobUrlsRef.current.forEach((url, file) => {
+        if (!currentFiles.has(file)) {
+          try {
+            URL.revokeObjectURL(url);
+            blobUrlsRef.current.delete(file);
+            console.log('[PromptForm] Cleaned up blob URL:', url);
+          } catch (error) {
+            console.warn('[PromptForm] Error revoking blob URL:', error);
+          }
+        }
+      });
+    }, delay);
+  }, [imageFiles, isMobile]);
+
+  const handleImageUpload = async (files: Array<File | string>) => {
+    try {
+      console.log('handleImageUpload called with:', files);
+      
+      // Prevent any potential form submission during upload
+      if (isMobile) {
+        // Add a small delay on mobile to ensure the file input has fully processed
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
+      
+      setImageFiles(prev => [...prev, ...files]);
+      
+      // Process each file - but DON'T convert File objects to blob URLs for reference
+      for (const file of files) {
+        if (typeof file === 'string') {
+          console.log('Processing string URL:', file);
+          addReferenceUrl(file, true);
+        } else {
+          console.log('Processing File object:', file);
+          // Don't create blob URLs for File objects - they need to be uploaded as files
+          // The imageFiles state already contains the File objects
+        }
+      }
+      
+      // Schedule cleanup after processing
+      scheduleCleanup();
+      
+    } catch (error) {
+      console.error('Error in handleImageUpload:', error);
+      toast.error('Error processing uploaded image');
     }
   };
 
@@ -139,29 +188,33 @@ const PromptForm: React.FC<PromptFormProps> = ({
       source?: string;
       append?: boolean;
     }>) => {
-      console.log('====== USE IMAGE AS PROMPT EVENT RECEIVED ======');
-      console.log('Event detail:', event.detail);
-      console.log('Event source:', event.detail.source);
-      console.log('=================================================');
-      
-      const { url, preserveFavorites, useReferenceUrl, source, append } = event.detail;
-      console.log('Using image as prompt:', { url, preserveFavorites, useReferenceUrl, source, append });
-      
-      // Instead of modifying local state, use the context methods
-      if (append) {
-        console.log('Appending image to existing reference images:', url);
-        addReferenceUrl(url, true);
-      } else {
-        console.log('Replacing all reference images with:', url);
-        clearReferenceUrls();
-        addReferenceUrl(url, false);
-      }
-      
-      // Also update the imageFiles array for backward compatibility
-      if (append) {
-        setImageFiles(prev => [...prev, url]);
-      } else {
-        setImageFiles([url]);
+      try {
+        console.log('====== USE IMAGE AS PROMPT EVENT RECEIVED ======');
+        console.log('Event detail:', event.detail);
+        console.log('Event source:', event.detail.source);
+        console.log('=================================================');
+        
+        const { url, preserveFavorites, useReferenceUrl, source, append } = event.detail;
+        console.log('Using image as prompt:', { url, preserveFavorites, useReferenceUrl, source, append });
+        
+        // Instead of modifying local state, use the context methods
+        if (append) {
+          console.log('Appending image to existing reference images:', url);
+          addReferenceUrl(url, true);
+        } else {
+          console.log('Replacing all reference images with:', url);
+          clearReferenceUrls();
+          addReferenceUrl(url, false);
+        }
+        
+        // Also update the imageFiles array for backward compatibility
+        if (append) {
+          setImageFiles(prev => [...prev, url]);
+        } else {
+          setImageFiles([url]);
+        }
+      } catch (error) {
+        console.error('Error in useImageAsPrompt handler:', error);
       }
     };
 
@@ -187,95 +240,153 @@ const PromptForm: React.FC<PromptFormProps> = ({
     if (externalPublishChange) externalPublishChange(publishId);
   };
 
-	  const handleSubmit = () => {
-    if (prompt.trim() === '' && referenceUrls.length === 0 && imageFiles.length === 0) {
-		toast.error('Please enter a prompt or upload an image');
-		return;
-	  }
+  const handleSubmit = (e?: React.MouseEvent | React.FormEvent) => {
+    try {
+      // Comprehensive event prevention
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        // Type-safe stopImmediatePropagation
+        if ('stopImmediatePropagation' in e) {
+          (e as any).stopImmediatePropagation();
+        }
+      }
+      
+      // Additional mobile-specific prevention
+      if (isMobile && e) {
+        // Prevent any potential touch events from triggering navigation
+        if ('touches' in e) {
+          e.preventDefault();
+        }
+      }
+      
+      if (prompt.trim() === '' && referenceUrls.length === 0 && imageFiles.length === 0) {
+        toast.error('Please enter a prompt or upload an image');
+        return;
+      }
 
-	  if (!selectedWorkflow) {
-		toast.error('Please select a workflow');
-		return;
-	  }
+      if (!selectedWorkflow) {
+        toast.error('Please select a workflow');
+        return;
+      }
 
-	  setLocalLoading(true);
+      setLocalLoading(true);
 
-    // Combine File objects from imageFiles with string URLs from referenceUrls
-    const allImages: (File | string)[] = [
-      ...imageFiles.filter(f => f instanceof File), // File objects
-      ...referenceUrls // String URLs
-    ];
+      // Combine File objects from imageFiles with string URLs from referenceUrls
+      const allImages: (File | string)[] = [
+        ...imageFiles.filter(f => f instanceof File), // File objects
+        ...referenceUrls // String URLs
+      ];
 
-	  const refinerToUse = selectedRefiner === 'none' ? undefined : selectedRefiner;
-	  const publishToUse = selectedPublish === 'none' ? undefined : selectedPublish;
-	  const currentGlobalParams = { ...globalParams };
+      const refinerToUse = selectedRefiner === 'none' ? undefined : selectedRefiner;
+      const publishToUse = selectedPublish === 'none' ? undefined : selectedPublish;
+      const currentGlobalParams = { ...globalParams };
 
-	  onSubmit(
-		prompt,
-		allImages.length > 0 ? allImages : undefined,
-		selectedWorkflow,
-		workflowParams,
-		currentGlobalParams,
-		refinerToUse,
-		refinerParams,
-		publishToUse
-	  );
+      onSubmit(
+        prompt,
+        allImages.length > 0 ? allImages : undefined,
+        selectedWorkflow,
+        workflowParams,
+        currentGlobalParams,
+        refinerToUse,
+        refinerParams,
+        publishToUse
+      );
 
-	  setTimeout(() => {
-		setLocalLoading(false);
-	  }, 1000);
-	};
+      setTimeout(() => {
+        setLocalLoading(false);
+      }, 1000);
+    } catch (error) {
+      console.error('Error in handleSubmit:', error);
+      toast.error('Error submitting form');
+      setLocalLoading(false);
+    }
+  };
 
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setPrompt(e.target.value);
-    lastReceivedPrompt.current = e.target.value;
+    try {
+      setPrompt(e.target.value);
+      lastReceivedPrompt.current = e.target.value;
+    } catch (error) {
+      console.error('Error in handlePromptChange:', error);
+    }
   };
 
   const handleClearPrompt = () => {
-    setPrompt('');
-    lastReceivedPrompt.current = '';
+    try {
+      setPrompt('');
+      lastReceivedPrompt.current = '';
+    } catch (error) {
+      console.error('Error in handleClearPrompt:', error);
+    }
   };
 
   const handleRemoveImage = (index: number) => {
-    // Determine if this is a File object or a reference URL based on index
-    const fileCount = imageFiles.filter(f => f instanceof File).length;
-    
-    if (index < fileCount) {
-      // It's a File object
-      const fileIndex = imageFiles.findIndex((f, i) => f instanceof File && i === index);
-      if (fileIndex !== -1) {
-        setImageFiles(prev => prev.filter((_, i) => i !== fileIndex));
+    try {
+      // Determine if this is a File object or a reference URL based on index
+      const fileCount = imageFiles.filter(f => f instanceof File).length;
+      
+      if (index < fileCount) {
+        // It's a File object
+        const fileIndex = imageFiles.findIndex((f, i) => f instanceof File && i === index);
+        if (fileIndex !== -1) {
+          const fileToRemove = imageFiles[fileIndex] as File;
+          // Revoke the blob URL for this file
+          const blobUrl = blobUrlsRef.current.get(fileToRemove);
+          if (blobUrl) {
+            try {
+              URL.revokeObjectURL(blobUrl);
+              blobUrlsRef.current.delete(fileToRemove);
+            } catch (error) {
+              console.warn('Error revoking blob URL:', error);
+            }
+          }
+          setImageFiles(prev => prev.filter((_, i) => i !== fileIndex));
+        }
+      } else {
+        // It's a reference URL
+        const urlIndex = index - fileCount;
+        const url = referenceUrls[urlIndex];
+        if (url) {
+          removeReferenceUrl(url);
+        }
       }
-    } else {
-      // It's a reference URL
-      const urlIndex = index - fileCount;
-      const url = referenceUrls[urlIndex];
-      if (url) {
-        removeReferenceUrl(url);
-      }
+    } catch (error) {
+      console.error('Error in handleRemoveImage:', error);
     }
   };
 
   const clearAllImages = () => {
-    // Revoke any blob URLs that might have been created
-    referenceUrls.forEach(url => {
-      if (url.startsWith('blob:')) {
-        URL.revokeObjectURL(url);
-      }
-    });
-    
-    // Clear from context
-    clearReferenceUrls();
-    
-    // Clear imageFiles
-    setImageFiles([]);
+    try {
+      // Revoke any blob URLs that might have been created
+      blobUrlsRef.current.forEach(url => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (error) {
+          console.warn('Error revoking blob URL:', error);
+        }
+      });
+      blobUrlsRef.current.clear();
+      
+      // Clear from context
+      clearReferenceUrls();
+      
+      // Clear imageFiles
+      setImageFiles([]);
+    } catch (error) {
+      console.error('Error in clearAllImages:', error);
+    }
   };
 
   const toggleAdvancedOptions = () => {
-    if (onOpenAdvancedOptions) {
-      onOpenAdvancedOptions();
-    } else {
-      setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
+    try {
+      if (onOpenAdvancedOptions) {
+        onOpenAdvancedOptions();
+      } else {
+        setIsAdvancedOptionsOpen(!isAdvancedOptionsOpen);
+      }
+    } catch (error) {
+      console.error('Error in toggleAdvancedOptions:', error);
     }
   };
 
@@ -285,34 +396,73 @@ const PromptForm: React.FC<PromptFormProps> = ({
   const displayUrls = React.useMemo(() => {
     const urls: string[] = [];
     
-    // Add blob URLs for File objects (for display only)
-    imageFiles.forEach(file => {
-      if (file instanceof File) {
-        const blobUrl = URL.createObjectURL(file);
-        urls.push(blobUrl);
-      }
-    });
-    
-    // Add reference URLs
-    urls.push(...referenceUrls);
+    try {
+      // Add blob URLs for File objects (for display only)
+      imageFiles.forEach(file => {
+        if (file instanceof File) {
+          // Check if we already have a blob URL for this file
+          let blobUrl = blobUrlsRef.current.get(file);
+          if (!blobUrl) {
+            blobUrl = URL.createObjectURL(file);
+            blobUrlsRef.current.set(file, blobUrl);
+          }
+          urls.push(blobUrl);
+        }
+      });
+      
+      // Add reference URLs
+      urls.push(...referenceUrls);
+    } catch (error) {
+      console.error('Error creating display URLs:', error);
+    }
     
     return urls;
   }, [imageFiles, referenceUrls]);
 
-  // Clean up blob URLs when component unmounts or imageFiles change
+  // Clean up blob URLs when component unmounts
   React.useEffect(() => {
     return () => {
+      if (cleanupTimeoutRef.current) {
+        clearTimeout(cleanupTimeoutRef.current);
+      }
+      
       // Clean up any blob URLs we created for display
-      displayUrls.forEach(url => {
-        if (url.startsWith('blob:')) {
+      blobUrlsRef.current.forEach(url => {
+        try {
           URL.revokeObjectURL(url);
+        } catch (error) {
+          console.warn('Error revoking blob URL on unmount:', error);
         }
       });
+      blobUrlsRef.current.clear();
     };
-  }, [displayUrls]);
+  }, []);
+
+  // Schedule cleanup when imageFiles change
+  React.useEffect(() => {
+    scheduleCleanup();
+  }, [scheduleCleanup]);
+
+  // Prevent any form submission at the container level
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Type-safe stopImmediatePropagation
+    if ('stopImmediatePropagation' in e) {
+      (e as any).stopImmediatePropagation();
+    }
+    
+    // Call our submit handler instead
+    handleSubmit(e);
+  };
 
   return (
-    <div className="w-full mb-8">
+    <div 
+      className="w-full mb-8"
+      onSubmit={handleFormSubmit}
+      // Add additional mobile-specific event prevention
+      onTouchStart={isMobile ? (e) => e.stopPropagation() : undefined}
+    >
       <Card className="p-4 relative">
         <PromptInput 
           prompt={prompt} 
