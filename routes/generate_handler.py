@@ -655,6 +655,14 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
                         publish_destination=destination,
                         **base_kwargs
                     )
+                    
+                    # Add the resolved refiner information to the result
+                    if result and isinstance(result, dict):
+                        result["actual_refiner"] = refiner  # Original refiner request
+                        result["actual_corrected_refiner"] = corrected_refiner  # Resolved refiner
+                        result["actual_refined_prompt"] = refined_prompt  # The refined prompt
+                        result["actual_final_prompt"] = final_prompt  # The final prompt used
+                    
                     results[index] = result  # Store result in shared list
                 except Exception as e:
                     utils.logger.error(f"Generation job failed: {e}")
