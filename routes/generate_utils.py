@@ -218,21 +218,41 @@ def process_generate_image_request(data, uploaded_images=None):
         image_id = str(uuid.uuid4())
         
         # Store the image metadata in our dictionary
+        # Extract the actual workflow that was used from the response
         used_workflow = r["input"]["workflow"]
+        
+        # Extract actual parameters that were used during generation
+        # The response now contains the actual resolved parameters
+        actual_workflow_id = r.get("actual_workflow_id", workflow)
+        actual_params = r.get("actual_params", params)
+        actual_global_params = r.get("actual_global_params", global_params)
+        actual_refiner = r.get("actual_refiner", refiner)  # Original refiner request
+        actual_corrected_refiner = r.get("actual_corrected_refiner")  # Resolved refiner
+        actual_refined_prompt = r.get("actual_refined_prompt", r.get("prompt", prompt))  # Refined prompt
+        actual_final_prompt = r.get("actual_final_prompt", r.get("prompt", prompt))  # Final prompt used
         
         image_data = {
             "id": image_id,
             "url": r.get("message", None),
             "seed": r["seed"],
             "original_prompt": prompt,
-            "prompt": r["prompt"],
+            "prompt": r["prompt"],  # This is the refined prompt
             "negative_prompt": r["negative_prompt"],
-            "workflow": workflow,
-            "full_workflow": r["input"],
+            "workflow": actual_workflow_id,  # Store the actual workflow ID that was used
+            "full_workflow": r["input"],  # Keep the full workflow data
             "timestamp": int(time.time() * 1000),
-            "params": params,
-            "global_params": global_params,
-            "refiner_params": refiner_params,
+            # Store both original and actual parameters for complete information
+            "original_params": params,  # Original parameters from request
+            "params": actual_params,  # Actual parameters used during generation
+            "original_global_params": global_params,  # Original global parameters from request
+            "global_params": actual_global_params,  # Actual global parameters used during generation
+            "original_refiner": refiner,  # Original refiner from request
+            "refiner": actual_refiner,  # Actual refiner used during generation
+            "corrected_refiner": actual_corrected_refiner,  # Resolved refiner system prompt
+            "refined_prompt": actual_refined_prompt,  # Prompt after refinement
+            "final_prompt": actual_final_prompt,  # Final prompt used for generation
+            "original_refiner_params": refiner_params,  # Original refiner parameters from request
+            "refiner_params": refiner_params,  # Refiner parameters (not modified during generation)
             "used_reference_image": has_reference_image,
             "batch_id": batch_id,
             "batch_index": i  # Use the response index as batch index

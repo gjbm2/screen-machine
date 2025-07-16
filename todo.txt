@@ -1,3 +1,4 @@
+1. reference images aren't being brought through properly until bucket roundtrip (so 'start again' only works after bucket roundtrip)
 2. Slack triggers
 3. Jinju for workflows (clear up generator.py) -- or similar re-think of workflow mutation logics
 4. Tags for more elaborate inspiration scheduling (e.g. taking image input 'Ursula' plus text prompt 'birthday')

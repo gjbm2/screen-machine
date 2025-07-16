@@ -717,6 +717,26 @@ def start(
             output["prompt"] = args_namespace.prompt
             output["negative_prompt"] = vars(args_namespace).get("negativeprompt", None)
             
+            # Store the actual resolved parameters that were used during generation
+            output["actual_workflow_id"] = args_namespace.workflow
+            output["actual_params"] = {
+                "width": args_namespace.width,
+                "height": args_namespace.height,
+                "steps": args_namespace.steps,
+                "cfg": getattr(args_namespace, 'cfg', None),
+                "scale": args_namespace.scale,
+                "upscaler": getattr(args_namespace, 'upscaler', None),
+                "lora": getattr(args_namespace, 'lora', None),
+                "lora_strength": getattr(args_namespace, 'lora_strength', None),
+                "negativeprompt": getattr(args_namespace, 'negativeprompt', None),
+                "interpolate_frames": getattr(args_namespace, 'interpolate_frames', None),
+                "video_length": getattr(args_namespace, 'video_length', None),
+                "publish_destination": publish_destination,
+            }
+            output["actual_global_params"] = {
+                "batch_size": args_namespace.batch or 1,
+            }
+            
             # Calculate generation time and cost
             generation_end_time = time()
             generation_time_seconds = round(generation_end_time - generation_start_time, 2)

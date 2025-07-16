@@ -758,6 +758,7 @@ export const BucketGridView = ({
       prompt?: string;
       workflow?: string;
       params?: Record<string, any>;
+      global_params?: Record<string, any>;
       reference_images?: any[];
     } | undefined;
 
@@ -780,17 +781,23 @@ export const BucketGridView = ({
     // Create parameters for generation
     // For "Generate Again", we want to use the exact same refined prompt and settings
     // without re-running the refiner
+    // Use the actual resolved parameters that were used during the original generation
+    // This ensures that "Generate Again" uses the exact same parameters, not just the original request
+    const actualParams = imageMetadata?.params || {};
+    const actualGlobalParams = imageMetadata?.global_params || {};
+    const actualWorkflow = imageMetadata?.workflow || '';
+    
     const params: any = {
-      prompt: image.prompt || imageMetadata?.prompt || '',
+      prompt: image.prompt || imageMetadata?.prompt || '',  // Use the refined prompt
       batch_id: batchId,
-      workflow: imageMetadata?.workflow || '',
+      workflow: actualWorkflow,  // Use the actual workflow that was resolved
       params: {
-        ...imageMetadata?.params || {},
+        ...actualParams,  // Use the actual parameters that were used
         publish_destination: destination, // Add publish_destination for reference image resolution
       },
       global_params: {
-        batch_size: 1, // Default batch size for Generate Again
-        ...imageMetadata?.global_params || {},
+        ...actualGlobalParams,  // Use the actual global parameters that were used
+        batch_size: 1, // Override batch size for Generate Again
       },
       placeholders: [], // Required by the API type
       referenceUrls,
