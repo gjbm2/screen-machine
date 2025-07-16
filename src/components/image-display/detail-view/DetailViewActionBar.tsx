@@ -26,6 +26,7 @@ interface DetailViewActionBarProps {
     prompt?: string;
     workflow?: string;
     params?: Record<string, any>;
+    referenceImageUrl?: string;
   };
 }
 
@@ -39,6 +40,79 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
   onClose,
   generationInfo
 }) => {
+  // Handler for "Start Again" - reuses reference images and prompt
+  const handleStartAgain = () => {
+    if (!generationInfo) {
+      toast.error('No generation info available');
+      return;
+    }
+
+    // Check if we have reference images
+    const hasReferenceImages = Boolean(generationInfo.referenceImageUrl);
+    
+    if (!hasReferenceImages) {
+      toast.error('No reference images available for this generation');
+      return;
+    }
+
+    try {
+      // Set the prompt text
+      if (generationInfo.prompt) {
+        window.dispatchEvent(new CustomEvent('setPromptText', {
+          detail: {
+            prompt: generationInfo.prompt,
+            append: false // Replace the current prompt
+          }
+        }));
+      }
+
+      // Add reference images
+      if (generationInfo.referenceImageUrl) {
+        // Parse reference image URLs (they might be comma-separated)
+        const referenceUrls = generationInfo.referenceImageUrl
+          .split(',')
+          .map(url => url.trim())
+          .filter(url => url !== '');
+
+        // Clear existing reference images first
+        window.dispatchEvent(new CustomEvent('useImageAsPrompt', {
+          detail: {
+            url: referenceUrls[0], // Use first image to clear and set
+            append: false,
+            source: 'start-again'
+          }
+        }));
+
+        // Add remaining reference images
+        for (let i = 1; i < referenceUrls.length; i++) {
+          window.dispatchEvent(new CustomEvent('useImageAsPrompt', {
+            detail: {
+              url: referenceUrls[i],
+              append: true,
+              source: 'start-again'
+            }
+          }));
+        }
+      }
+
+      console.log('Start Again completed with:', {
+        prompt: generationInfo.prompt,
+        referenceImageUrl: generationInfo.referenceImageUrl,
+        workflow: generationInfo.workflow,
+        params: generationInfo.params
+      });
+      
+      toast.success('Reference images and prompt loaded - ready to generate!');
+      
+      // Close the fullscreen view if provided
+      if (onClose) {
+        onClose();
+      }
+    } catch (error) {
+      console.error('Error in handleStartAgain:', error);
+      toast.error('Failed to load reference images and prompt');
+    }
+  };
   const isMobile = useIsMobile();
   const { destinations, loading } = usePublishDestinations();
   
@@ -198,6 +272,34 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
         <div className="h-8 flex items-center mx-1">
           <div className="h-full w-px bg-gray-300"></div>
         </div>
+        
+        {/* More options dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button 
+              type="button" 
+              variant="outline" 
+              className={`${actionButtonClass} p-2 text-xs flex items-center gap-1.5`}
+            >
+              <span className="text-lg">⋯</span>
+              {!isMobile && <span>More</span>}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {/* Start Again option - only show if we have reference images */}
+            {generationInfo?.referenceImageUrl && (
+              <DropdownMenuItem 
+                onClick={handleStartAgain}
+                className="flex items-center"
+              >
+                <CopyPlus className="h-4 w-4 mr-2" />
+                <span>Start Again</span>
+              </DropdownMenuItem>
+            )}
+            
+            {/* Add other options here in the future */}
+          </DropdownMenuContent>
+        </DropdownMenu>
         
         {onDeleteImage && (
           <Button 

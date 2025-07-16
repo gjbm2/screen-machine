@@ -271,9 +271,10 @@ def encode_image_uploads(image_files, max_file_size_mb=5):
     return result
 
 
-def encode_reference_urls(reference_urls, max_file_size_mb=5):
+def encode_reference_urls(reference_urls, max_file_size_mb=5, bucket_id=None):
     """
     Downloads, compresses, and base64-encodes images from external URLs.
+    Also handles bucket-relative paths when bucket_id is provided.
     Returns a list of dicts: {name, image}
     """
     result = []
@@ -309,8 +310,24 @@ def encode_reference_urls(reference_urls, max_file_size_mb=5):
         try:
             info(f"[encode_reference_urls] Fetching: {url}")
             
+            # Handle bucket-relative paths (when bucket_id is provided and URL doesn't start with / or http)
+            if bucket_id and not url.startswith('/') and not url.startswith('http'):
+                info(f"[encode_reference_urls] Detected bucket-relative path, resolving for bucket: {bucket_id}")
+                from routes.bucket_utils import bucket_path
+                bucket_dir = bucket_path(bucket_id)
+                file_path = bucket_dir / url
+                
+                if file_path.exists():
+                    info(f"[encode_reference_urls] Found bucket-relative file: {file_path}")
+                    with open(file_path, 'rb') as f:
+                        image_data = f.read()
+                    image = Image.open(BytesIO(image_data)).convert("RGB")
+                else:
+                    error(f"[encode_reference_urls] Bucket-relative file not found: {file_path}")
+                    continue
+            
             # Handle local file paths (starting with /)
-            if url.startswith('/'):
+            elif url.startswith('/'):
                 info(f"[encode_reference_urls] Detected local file path")
                 try:
                     # Remove leading slash if it's a path relative to site root

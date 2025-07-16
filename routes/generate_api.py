@@ -175,7 +175,16 @@ def generate_image_route():
     # Process reference URLs
     reference_urls = data.get('referenceUrls', [])
     info(f"[generate_image_route] Calling encode_reference_urls with {len(reference_urls)} URLs")
-    images = encode_reference_urls(reference_urls, max_file_size_mb=5)
+    
+    # Check if we have a publish_destination to resolve bucket-relative paths
+    publish_destination = data.get('params', {}).get('publish_destination')
+    info(f"[generate_image_route] publish_destination: {publish_destination}")
+    if publish_destination:
+        info(f"[generate_image_route] Using publish_destination '{publish_destination}' to resolve reference paths")
+        images = encode_reference_urls(reference_urls, max_file_size_mb=5, bucket_id=publish_destination)
+    else:
+        info(f"[generate_image_route] No publish_destination found, using encode_reference_urls without bucket_id")
+        images = encode_reference_urls(reference_urls, max_file_size_mb=5)
     info(f"[generate_image_route] Finished encode_reference_urls, got {len(images)} images")
 
     # Process uploaded files

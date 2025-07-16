@@ -342,6 +342,16 @@ def delete_file(bucket_id: str, filename: str):
     fp = bucket_path(bucket_id) / filename
     if not fp.exists():
         abort(404, "file missing")
+    
+    # Clean up reference images before deleting main file
+    try:
+        from routes.bucket_utils import ReferenceImageStorage
+        ref_storage = ReferenceImageStorage()
+        base_filename = Path(filename).stem
+        ref_storage.cleanup_reference_images(base_filename, bucket_id)
+    except Exception as e:
+        error(f"Failed to cleanup reference images for {filename}: {e}")
+    
     fp.unlink()
 
     # remove side-car
@@ -664,6 +674,17 @@ def get_bucket_complete(bucket_id: str):
             or file_stats.st_mtime
         )
 
+        # Get reference images for this file
+        reference_images = []
+        try:
+            from routes.bucket_utils import ReferenceImageStorage
+            ref_storage = ReferenceImageStorage()
+            base_filename = file_path.stem
+            ref_images = ref_storage.get_reference_images(base_filename, bucket_id)
+            reference_images = [ref.to_dict(bucket_id) for ref in ref_images]  # Pass bucket_id for URL conversion
+        except Exception as e:
+            error(f"Failed to get reference images for {file_path.name}: {e}")
+        
         files.append({
             "filename": file_path.name,
             "size": file_stats.st_size,
@@ -677,7 +698,8 @@ def get_bucket_complete(bucket_id: str):
             "favorite": file_path.name in meta.get("favorites", []),
             "sequence_index": filenames_only.index(file_path.name),
             "thumbnail_url": f"/output/{bucket_id}/thumbnails/{file_path.stem}{file_path.suffix}.jpg",
-            "raw_url": f"/output/{bucket_id}/{file_path.name}"
+            "raw_url": f"/output/{bucket_id}/{file_path.name}",
+            "reference_images": reference_images
         })
     
     # Sort files by sequence (using our normalised list)

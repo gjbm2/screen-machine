@@ -5,6 +5,16 @@ import { toast } from 'sonner';
 const DEFAULT_API_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Types for buckets
+export interface ReferenceImageInfo {
+  index: number;
+  original_filename: string;
+  stored_path: string;
+  thumbnail_path: string;
+  content_type: string;
+  size: number;
+  source_type: string;
+}
+
 export interface BucketItem {
   filename: string;
   url?: string;
@@ -13,6 +23,7 @@ export interface BucketItem {
   favorite: boolean;
   metadata?: Record<string, any>;
   created_at?: number;
+  reference_images?: ReferenceImageInfo[];
 }
 
 export interface Bucket {
@@ -67,6 +78,7 @@ interface BucketDetails {
     favorite: boolean;
     metadata: Record<string, any>;
     created_at: number;
+    reference_images?: ReferenceImageInfo[];
   }>;
   published: string | null;
   publishedAt: string | null;
@@ -141,7 +153,13 @@ export class Api {
 		  
 		  // Ensure all URLs have proper formatting
 		  const normalizedUrls = referenceUrls.map(url => {
-			// If it's a relative path starting with /output, make it an absolute URL
+			// If it's already an absolute URL (starts with http), don't convert it
+			if (url.startsWith('http://') || url.startsWith('https://')) {
+			  console.log(`[api] URL is already absolute: ${url}`);
+			  return url;
+			}
+			
+			// If it's a relative path starting with /output or /api, make it an absolute URL
 			if (url.startsWith('/output/') || url.startsWith('/api/')) {
 			  // Get the current origin (protocol + hostname + port)
 			  const origin = window.location.origin;
@@ -163,8 +181,8 @@ export class Api {
 		  console.log(`[api] Publishing to destination:`, workflowParams.publish_destination);
 		}
 
-		// Handle refiner - convert "auto" to null, and don't send "none"
-		if (refiner && refiner !== 'none' && refiner !== 'auto') {
+		// Handle refiner - convert "auto" to null, send "none" explicitly
+		if (refiner && refiner !== 'auto') {
 		  console.log(`[api] Using refiner:`, refiner);
 		  jsonData.refiner = refiner;
 		  if (refiner_params) {
@@ -175,7 +193,7 @@ export class Api {
 		  console.log(`[api] Using auto refiner - letting backend decide`);
 		  // Don't set refiner field, let backend apply default resolution
 		} else {
-		  console.log(`[api] No refiner specified or using none`);
+		  console.log(`[api] No refiner specified`);
 		}
 
 		console.log("[api] Full API payload:", jsonData);
@@ -1928,6 +1946,8 @@ export class Api {
             timestamp: createdTs,
           },
           created_at: createdTs, // Add created_at to the item directly
+          // Include reference images array if provided by the API
+          reference_images: Array.isArray(file.reference_images) ? file.reference_images : [],
         };
       }) : [];
       

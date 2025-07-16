@@ -35,6 +35,8 @@ interface SortableImageGridProps {
   onPublish?: (img: ImageItem, destId: string) => void;
   /** Called when image should be used as a prompt reference */
   onUseAsPrompt?: (img: ImageItem) => void;
+  /** Called when image should be used to generate again */
+  onGenerateAgain?: (img: ImageItem) => void;
   /** List of publishable destinations */
   publishDestinations?: Array<{id: string, name: string, headless: boolean}>;
   /** The bucket ID of the current bucket (for raw URL construction) */
@@ -57,6 +59,7 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
   onCopyTo,
   onPublish,
   onUseAsPrompt,
+  onGenerateAgain,
   publishDestinations,
   bucketId = '',
   sectionVariant,
@@ -107,6 +110,7 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
             onCopyTo={onCopyTo} 
             onPublish={onPublish}
             onUseAsPrompt={onUseAsPrompt}
+            onGenerateAgain={onGenerateAgain}
             publishDestinations={publishDestinations} 
             bucketId={bucketId}
             sectionVariant={sectionVariant}
@@ -124,6 +128,7 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
             onCopyTo={onCopyTo} 
             onPublish={onPublish}
             onUseAsPrompt={onUseAsPrompt}
+            onGenerateAgain={onGenerateAgain}
             publishDestinations={publishDestinations} 
             bucketId={bucketId}
             sectionVariant={sectionVariant}
@@ -153,6 +158,7 @@ interface ImageProps {
   onCopyTo?: (img: ImageItem, destId: string) => void;
   onPublish?: (img: ImageItem, destId: string) => void;
   onUseAsPrompt?: (img: ImageItem) => void;
+  onGenerateAgain?: (img: ImageItem) => void;
   publishDestinations?: Array<{id: string, name: string, headless: boolean}>;
   bucketId?: string;
   sectionVariant?: 'favourites' | 'dated';
@@ -169,6 +175,7 @@ const SortableImage: React.FC<ImageProps> = ({
   onCopyTo, 
   onPublish,
   onUseAsPrompt,
+  onGenerateAgain,
   publishDestinations,
   bucketId,
   sectionVariant,
@@ -236,6 +243,7 @@ const SortableImage: React.FC<ImageProps> = ({
         onCopyTo={onCopyTo}
         onPublish={onPublish}
         onUseAsPrompt={onUseAsPrompt}
+        onGenerateAgain={onGenerateAgain}
         publishDestinations={publishDestinations}
         bucketId={bucketId}
         sectionVariant={sectionVariant}
@@ -256,6 +264,7 @@ const DraggableImage: React.FC<ImageProps> = ({
   onCopyTo, 
   onPublish, 
   onUseAsPrompt,
+  onGenerateAgain,
   publishDestinations,
   bucketId,
   sectionVariant,
@@ -331,6 +340,7 @@ const DraggableImage: React.FC<ImageProps> = ({
         onCopyTo={onCopyTo}
         onPublish={onPublish}
         onUseAsPrompt={onUseAsPrompt}
+        onGenerateAgain={onGenerateAgain}
         publishDestinations={publishDestinations}
         bucketId={bucketId}
         sectionVariant={sectionVariant}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Maximize2, Star, Film, MoreVertical, Copy, Share, Trash, ExternalLink, Sparkles } from 'lucide-react';
+import { Maximize2, Star, Film, MoreVertical, Copy, Share, Trash, ExternalLink, Sparkles, RefreshCw } from 'lucide-react';
 import { ImageItem } from '@/types/image-types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +31,8 @@ export interface ImageCardProps {
   onPublish?: (img: ImageItem, destId: string) => void;
   /** Called when image should be used as a prompt reference */
   onUseAsPrompt?: (img: ImageItem) => void;
+  /** Called when image should be used to generate again */
+  onGenerateAgain?: (img: ImageItem) => void;
   /** List of publishable destinations */
   publishDestinations?: Array<{id: string, name: string, headless: boolean}>;
   /** Additional class names */
@@ -53,6 +55,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
   onCopyTo,
   onPublish,
   onUseAsPrompt,
+  onGenerateAgain,
   publishDestinations,
   className = '',
   index = 0,
@@ -239,6 +242,21 @@ const ImageCard: React.FC<ImageCardProps> = ({
               >
                 <Sparkles className="h-4 w-4 mr-2" />
                 Use as prompt
+              </DropdownMenuItem>
+            )}
+            
+            {/* Start Again - only show for images with reference images */}
+            {onGenerateAgain && image.reference_images && image.reference_images.length > 0 && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onGenerateAgain(image);
+                }}
+                className="flex items-center"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Start Again
               </DropdownMenuItem>
             )}
             

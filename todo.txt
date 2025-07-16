@@ -1,8 +1,6 @@
-1. mobile upload link often breaks...
 2. Slack triggers
 3. Jinju for workflows (clear up generator.py) -- or similar re-think of workflow mutation logics
 4. Tags for more elaborate inspiration scheduling (e.g. taking image input 'Ursula' plus text prompt 'birthday')
-5. Repeat commands don't really work (don't cache image inputs)
 6. Proper jobs tracking & handling
 
 UI fixes:

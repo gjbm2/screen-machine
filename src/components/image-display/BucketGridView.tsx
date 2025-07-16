@@ -54,6 +54,7 @@ import { Switch } from "@/components/ui/switch";
 import { Api } from "@/utils/api";
 import { Download } from 'lucide-react';
 import { getTranscriptionStatus } from '../../api';
+import { ReferenceImageService } from '@/services/reference-image-service';
 
 // Define the expected types based on the API response
 interface BucketItem extends ApiBucketItem {
@@ -71,6 +72,8 @@ interface BucketImage {
   metadata?: Record<string, any>;
   created_at?: number;
   raw_url?: string;
+  reference_images?: any[]; // Add reference images support
+  bucketId?: string; // Add bucket ID support
 }
 
 // Define BucketDetails interface for this component (extended from the API type)
@@ -738,12 +741,76 @@ export const BucketGridView = ({
       const success = await apiService.performBucketMaintenance(destination, 'extract');
       if (success) {
         toast.success('JSON extracted successfully');
-        debouncedFetchBucketDetails();
+        refreshBucket(destination);
+      } else {
+        toast.error('Failed to extract JSON');
       }
     } catch (error) {
       console.error('Error extracting JSON:', error);
       toast.error('Failed to extract JSON');
     }
+  };
+
+  // Handle "Generate Again" from an image with reference images
+  const handleGenerateAgain = (image: BucketImage) => {
+    // Extract the prompt and settings from the image
+    const imageMetadata = image.metadata as {
+      prompt?: string;
+      workflow?: string;
+      params?: Record<string, any>;
+      reference_images?: any[];
+    } | undefined;
+
+    // Extract reference images from the API response (top-level field) first,
+    // as it contains properly formatted URLs. Fall back to metadata if needed.
+    const referenceImages = image.reference_images || imageMetadata?.reference_images || [];
+    
+    // Convert to accessible URLs - use actual bucket ID, fallback to destination for backward compatibility
+    const bucketId = image.bucketId || destination;
+    const referenceUrls = ReferenceImageService.getReferenceImageUrls(bucketId, referenceImages);
+    
+    // Debug logging to understand what reference URLs are being generated
+    console.log('[handleGenerateAgain] Reference images:', referenceImages);
+    console.log('[handleGenerateAgain] Bucket ID:', bucketId);
+    console.log('[handleGenerateAgain] Generated reference URLs:', referenceUrls);
+
+    // Reuse the original batch ID for "Generate Again" to maintain consistency
+    const batchId = image.batchId || `batch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Create parameters for generation
+    // For "Generate Again", we want to use the exact same refined prompt and settings
+    // without re-running the refiner
+    const params: any = {
+      prompt: image.prompt || imageMetadata?.prompt || '',
+      batch_id: batchId,
+      workflow: imageMetadata?.workflow || '',
+      params: {
+        ...imageMetadata?.params || {},
+        publish_destination: destination, // Add publish_destination for reference image resolution
+      },
+      global_params: {
+        batch_size: 1, // Default batch size for Generate Again
+        ...imageMetadata?.global_params || {},
+      },
+      placeholders: [], // Required by the API type
+      referenceUrls,
+      refiner: "none", // Explicitly disable refiner - we want to use the already-refined prompt
+    };
+    params.__skipPlaceholder = true;
+    
+    toast.loading('Generating image...', { id: 'generate-toast' });
+    apiService.generateImage(params)
+      .then(() => {
+        toast.dismiss('generate-toast');
+        toast.success('Image generated');
+        // Refresh the bucket to show the new image
+        refreshBucket(destination);
+      })
+      .catch((error: any) => {
+        toast.dismiss('generate-toast');
+        toast.error('Failed to generate image');
+        console.error('Error generating image:', error);
+      });
   };
 
   // Keep this function as it's used by the dropdown menu
@@ -1680,6 +1747,13 @@ export const BucketGridView = ({
                   window.dispatchEvent(event);
                 }
               }}
+              onGenerateAgain={(img) => {
+                const originalId = getOriginalId(img.id);
+                const originalImage = bucketImages.find(i => i.id === originalId);
+                if (originalImage) {
+                  handleGenerateAgain(originalImage);
+                }
+              }}
               publishDestinations={destinations
                 .filter(d => !d.headless) // Filter out headless destinations
                 .map(d => ({
@@ -2153,6 +2227,39 @@ export const BucketGridView = ({
       console.error('Error storing version info:', error);
     }
   };
+
+  // Listen for new images event to automatically refresh when images are generated
+  useEffect(() => {
+    const handleRecentAdd = (e: any) => {
+      try {
+        const { batchId, files, imagesWithMetadata } = e.detail || {};
+        if (!files || files.length === 0) return;
+        
+        // Only refresh if this bucket is the destination for the generated images
+        // Check if any of the generated images have this bucket as their destination
+        if (imagesWithMetadata && imagesWithMetadata.length > 0) {
+          const hasImagesForThisBucket = imagesWithMetadata.some((img: any) => {
+            // Check if the image metadata indicates it was published to this bucket
+            return img.metadata?.publish_destination === destination || 
+                   img.metadata?.bucket_id === destination;
+          });
+          
+          if (hasImagesForThisBucket) {
+            console.log(`[BucketGridView] Detected new images for bucket ${destination}, refreshing...`);
+            // Refresh the bucket to show the new images with reference image info
+            refreshBucket(destination);
+          }
+        }
+      } catch (err) {
+        console.warn('BucketGridView:recent:add handler error', err);
+      }
+    };
+    
+    window.addEventListener('recent:add', handleRecentAdd as EventListener);
+    console.log(`[BucketGridView] Added listener for recent:add events for bucket ${destination}`);
+    
+    return () => window.removeEventListener('recent:add', handleRecentAdd as EventListener);
+  }, [destination, refreshBucket]);
 
   return (
     <div className="h-full flex flex-col">
