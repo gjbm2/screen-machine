@@ -225,6 +225,43 @@ const PromptForm: React.FC<PromptFormProps> = ({
     };
   }, [addReferenceUrl, clearReferenceUrls]);
 
+  // Add event listener for setting prompt text
+  useEffect(() => {
+    console.log('Setting up setPromptText event listener');
+    
+    const handleSetPromptText = (event: CustomEvent<{ 
+      prompt: string;
+      append?: boolean;
+    }>) => {
+      try {
+        console.log('====== SET PROMPT TEXT EVENT RECEIVED ======');
+        console.log('Event detail:', event.detail);
+        console.log('=============================================');
+        
+        const { prompt: newPrompt, append } = event.detail;
+        console.log('Setting prompt text:', { newPrompt, append });
+        
+        if (append) {
+          console.log('Appending to existing prompt:', newPrompt);
+          setPrompt(prev => prev.trim() ? `${prev.trim()}, ${newPrompt}` : newPrompt);
+        } else {
+          console.log('Replacing prompt with:', newPrompt);
+          setPrompt(newPrompt);
+        }
+        
+        lastReceivedPrompt.current = newPrompt;
+      } catch (error) {
+        console.error('Error in setPromptText handler:', error);
+      }
+    };
+
+    window.addEventListener('setPromptText', handleSetPromptText as EventListener);
+    return () => {
+      console.log('Removing setPromptText event listener');
+      window.removeEventListener('setPromptText', handleSetPromptText as EventListener);
+    };
+  }, []);
+
   const handleLocalWorkflowChange = (workflowId: string) => {
     handleWorkflowChange(workflowId);
     if (externalWorkflowChange) externalWorkflowChange(workflowId);

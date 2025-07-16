@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import useEmblaCarousel from 'embla-carousel-react';
-import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Trash2, Share, Clipboard, MoreHorizontal, ExternalLink, Move, Copy, RefreshCcw, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Trash2, Share, Clipboard, MoreHorizontal, ExternalLink, Move, Copy, RefreshCcw, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import {
@@ -19,6 +19,7 @@ import {
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
+import { ReferenceImageService } from '@/services/reference-image-service';
 
 interface LoopeModalProps {
   title?: string;
@@ -509,6 +510,53 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
       } catch (error) {
         console.error('Error deleting image:', error);
         toast.error('Failed to delete image');
+      }
+    };
+
+    const handleStartAgain = (img: any) => {
+      if (!img) return;
+      
+      try {
+        // Get the prompt text and reference images from the image metadata
+        const promptText = img.prompt || img.metadata?.prompt || '';
+        const referenceImages = img.reference_images || img.metadata?.reference_images || [];
+        
+        // Dispatch custom events to set the prompt form
+        if (promptText) {
+          window.dispatchEvent(new CustomEvent('setPromptText', { 
+            detail: { prompt: promptText } 
+          }));
+        }
+        
+        if (referenceImages && referenceImages.length > 0) {
+          // Get the bucket ID from the image
+          const bucketId = img.bucketId || '_recent';
+          
+          // Convert reference images to accessible URLs
+          const referenceUrls = ReferenceImageService.getReferenceImageUrls(bucketId, referenceImages);
+          
+          if (referenceUrls.length > 0) {
+            // Clear existing reference images first
+            window.dispatchEvent(new CustomEvent('useImageAsPrompt', { 
+              detail: { url: referenceUrls[0], append: false } 
+            }));
+            
+            // Add remaining images
+            for (let i = 1; i < referenceUrls.length; i++) {
+              window.dispatchEvent(new CustomEvent('useImageAsPrompt', { 
+                detail: { url: referenceUrls[i], append: true } 
+              }));
+            }
+          }
+        }
+        
+        // Close the modal
+        close();
+        
+        toast.success('Loaded prompt and reference images for editing');
+      } catch (error) {
+        console.error('Error starting again:', error);
+        toast.error('Failed to load prompt and reference images');
       }
     };
 
@@ -1156,6 +1204,87 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                         </div>
                       </div>
                       
+                      {/* Reference Images section */}
+                      {(() => {
+                        // Debug the current image data
+                        console.log('=== LoopeModal Reference Images Debug ===');
+                        console.log('currentImage:', currentImage);
+                        console.log('currentImage.reference_images:', currentImage?.reference_images);
+                        console.log('currentImage.metadata:', currentImage?.metadata);
+                        console.log('currentImage.metadata.reference_images:', (currentImage?.metadata as any)?.reference_images);
+                        
+                        // Check all possible locations for reference images
+                        const directRefImages = currentImage?.reference_images;
+                        const metadataRefImages = (currentImage?.metadata as any)?.reference_images;
+                        
+                        console.log('directRefImages:', directRefImages);
+                        console.log('metadataRefImages:', metadataRefImages);
+                        
+                        // Use the first available reference images array
+                        const refImages = directRefImages || metadataRefImages || [];
+                        
+                        console.log('Final refImages to render:', refImages);
+                        console.log('refImages.length:', refImages.length);
+                        console.log('refImages is array:', Array.isArray(refImages));
+                        
+                        // Additional debug info
+                        console.log('currentImage keys:', currentImage ? Object.keys(currentImage) : 'none');
+                        console.log('currentImage.bucketId:', currentImage?.bucketId);
+                        console.log('==========================================');
+                        
+                        if (!Array.isArray(refImages) || refImages.length === 0) {
+                          console.log('No reference images found - not rendering section');
+                          return null;
+                        }
+                        
+                        return (
+                          <div>
+                            <h4 className="font-medium text-xs text-neutral-400 mb-2">Reference Images ({refImages.length})</h4>
+                            <div className="flex gap-2 flex-wrap">
+                              {refImages.map((ref: any, idx: number) => {
+                              console.log(`Processing reference image ${idx}:`, ref);
+                              // Get the bucket ID from the image data, fallback to _recent for backward compatibility
+                              const bucketId = currentImage.bucketId || '_recent';
+                              const refUrl = ReferenceImageService.getReferenceImageUrls(bucketId, [ref])[0];
+                              const thumbnailUrl = ReferenceImageService.getReferenceImageThumbnailUrls(bucketId, [ref])[0] || 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+                              console.log('Using bucketId:', bucketId);
+                              console.log('Generated refUrl:', refUrl);
+                              console.log('Generated thumbnailUrl:', thumbnailUrl);
+
+                              
+                              return (
+                                <button
+                                  key={ref.stored_path}
+                                  onClick={() => {
+                                    console.log('Clicking reference image, opening:', refUrl);
+                                    // Open the reference image in a new tab
+                                    window.open(refUrl, '_blank', 'noopener,noreferrer');
+                                  }}
+                                  className="relative group cursor-pointer"
+                                  title={`Click to view original: ${ref.original_filename}`}
+                                >
+                                  <img
+                                    src={thumbnailUrl}
+                                    alt={`Reference ${idx + 1}`}
+                                    className="w-16 h-16 object-cover rounded border border-neutral-600 hover:border-neutral-400 transition-colors"
+                                    onError={e => {
+                                      console.error('Reference image thumbnail failed to load:', thumbnailUrl);
+                                      e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+                                    }}
+                                  />
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors rounded flex items-center justify-center">
+                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-medium">
+                                      View
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        );
+                      })()}
+                      
                       {/* Prompt section */}
                       {currentImage.promptKey && (
                         <div>
@@ -1434,6 +1563,12 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                   )}
                   
                   <DropdownMenuSeparator />
+                  
+                  {/* Start Again option */}
+                  <DropdownMenuItem onClick={() => handleStartAgain(currentImage)}>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    <span>Start Again</span>
+                  </DropdownMenuItem>
                   
                   {/* Delete option */}
                   <DropdownMenuItem onClick={() => handleDelete(currentImage)}>

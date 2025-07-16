@@ -226,29 +226,28 @@
   "context_stack": [
     {
       "vars": {
-        "inspiration": "be good company",
-        "safety_reason": "image suitably modest; no office content concerns",
+        "inspiration": "solve for people",
+        "safety_reason": "image is office-suitable with no inappropriate content",
         "set_of_images": [
-          "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-130417-cf0e3ed7.jpg_batch-batch_20250716_130416_5354c983.jpg",
-          "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-130418-b8ed2091.jpg_batch-batch_20250716_130416_5354c983.jpg",
-          "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-130419-c4a77751.jpg_batch-batch_20250716_130416_5354c983.jpg",
-          "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-130421-7c2b0d80.jpg_batch-batch_20250716_130416_5354c983.jpg"
+          "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-150108-7bb03f08.jpg_batch-batch_20250716_150107_e645b462.jpg",
+          "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-150109-a2658de8.jpg_batch-batch_20250716_150107_e645b462.jpg",
+          "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-150111-5f6d4381.jpg_batch-batch_20250716_150107_e645b462.jpg"
         ],
-        "selected_index": "1",
+        "selected_index": "0",
         "confidence": "95%",
-        "rationale": "Text 'Be good company' is clear and faces appear well depicted.",
+        "rationale": "Image 0 contains clear 'solve for people' text with properly depicted faces.",
         "is_safe": "APPROVE",
-        "safety_confidence": "97%",
+        "safety_confidence": "95%",
         "animation_candidate": "APPROVE",
         "animation_confidence": "92%",
-        "animation_explanation": "dynamic elements like people and sunset suggest video potential"
+        "animation_explanation": "image has dynamic elements like people and market suitable for video"
       },
-      "last_generated": "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-130417-cf0e3ed7.jpg_batch-batch_20250716_130416_5354c983.jpg",
+      "last_generated": "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-150108-7bb03f08.jpg_batch-batch_20250716_150107_e645b462.jpg",
       "publish_destination": "the-beast"
     }
   ],
   "state": "running",
-  "last_updated": "2025-07-16T14:08:52.592334",
+  "last_updated": "2025-07-16T16:23:32.495369",
   "last_trigger_executions": {
     "079570ca92555f499bd5738772bc4a1b_2025-06-11_4": "2025-06-11T16:00:01.290736",
     "0361cac9cb18b707d6ba32ef7b28196f_2025-06-11_4": "2025-06-11T16:05:01.360539",
@@ -694,90 +693,16 @@
     "079570ca92555f499bd5738772bc4a1b_2025-07-16_2": "2025-07-16T12:00:00.362271",
     "0361cac9cb18b707d6ba32ef7b28196f_2025-07-16_2": "2025-07-16T12:05:01.359588",
     "079570ca92555f499bd5738772bc4a1b_2025-07-16_3": "2025-07-16T14:00:00.351703",
-    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-16_3": "2025-07-16T14:05:00.336316"
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-16_3": "2025-07-16T14:05:00.336316",
+    "079570ca92555f499bd5738772bc4a1b_2025-07-16_4": "2025-07-16T16:00:00.471684",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-16_4": "2025-07-16T16:05:01.330531"
   },
-  "active_events": {},
+  "active_events": {
+    "evaluate_animate": []
+  },
   "event_history": [
     {
       "key": "generate",
-      "active_from": "2025-07-14T11:59:20.902322",
-      "expires": "2025-07-14T12:00:20.902322",
-      "display_name": "Retry - previous image was not safe",
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T11:59:10.902322",
-      "unique_id": "03bb3892-38f3-4a11-9ec0-0813b66fe2fd",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_the-beast",
-      "consumed_at": "2025-07-14T11:59:22.655132"
-    },
-    {
-      "key": "generate",
-      "active_from": "2025-07-14T11:59:20.902322",
-      "expires": "2025-07-14T12:00:20.902322",
-      "display_name": "Retry - previous image was not safe",
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T11:59:10.902322",
-      "unique_id": "03bb3892-38f3-4a11-9ec0-0813b66fe2fd",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_the-beast",
-      "consumed_at": "2025-07-14T11:59:22.655132"
-    },
-    {
-      "key": "generate",
-      "active_from": "2025-07-14T20:24:55.632373",
-      "expires": "2025-07-14T20:25:55.632373",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T20:24:55.632373",
-      "unique_id": "a5c77c37-5497-4c67-8032-1abcf5a48dbd",
-      "status": "ACTIVE",
-      "consumed_by": null,
-      "consumed_at": null
-    },
-    {
-      "key": "generate",
-      "active_from": "2025-07-14T20:25:46.630498",
-      "expires": "2025-07-14T20:26:46.630498",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T20:25:46.630498",
-      "unique_id": "593554b6-aacb-4b8b-9a32-cf555e1085a8",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-07-14T20:27:05.106190"
-    },
-    {
-      "key": "generate",
-      "active_from": "2025-07-14T20:24:55.632373",
-      "expires": "2025-07-14T20:25:55.632373",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T20:24:55.632373",
-      "unique_id": "a5c77c37-5497-4c67-8032-1abcf5a48dbd",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-07-14T20:26:05.044128"
-    },
-    {
-      "key": "generate",
-      "active_from": "2025-07-14T20:25:46.630498",
-      "expires": "2025-07-14T20:26:46.630498",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T20:25:46.630498",
-      "unique_id": "593554b6-aacb-4b8b-9a32-cf555e1085a8",
-      "status": "EXPIRED",
-      "consumed_by": "expiration",
-      "consumed_at": "2025-07-14T20:27:05.106190"
-    },
-    {
-      "key": "generate",
       "active_from": "2025-07-14T20:36:50.979370",
       "expires": "2025-07-14T20:37:50.979370",
       "display_name": null,
@@ -2045,6 +1970,88 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_the-beast",
       "consumed_at": "2025-07-16T14:05:02.412666"
+    },
+    {
+      "key": "generate",
+      "active_from": "2025-07-16T16:00:00.489964",
+      "expires": "2025-07-16T16:01:00.489964",
+      "display_name": "Generate",
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-16T16:00:00.489964",
+      "unique_id": "4776c195-f884-4f43-8c44-5ee51a267cd8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-16T16:00:02.562742"
+    },
+    {
+      "key": "generate",
+      "active_from": "2025-07-16T16:00:00.489964",
+      "expires": "2025-07-16T16:01:00.489964",
+      "display_name": "Generate",
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-16T16:00:00.489964",
+      "unique_id": "4776c195-f884-4f43-8c44-5ee51a267cd8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-16T16:00:02.562742"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-16T16:01:46.563615",
+      "expires": "2025-07-16T16:02:46.563615",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-16T16:01:46.563615",
+      "unique_id": "2814f94b-18d2-4876-b80f-23e4700ff121",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-16T16:01:48.212942"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-16T16:01:46.563615",
+      "expires": "2025-07-16T16:02:46.563615",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-16T16:01:46.563615",
+      "unique_id": "2814f94b-18d2-4876-b80f-23e4700ff121",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-16T16:01:48.212942"
+    },
+    {
+      "key": "evaluate_animate",
+      "active_from": "2025-07-16T16:05:01.351665",
+      "expires": "2025-07-16T16:06:01.351665",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-16T16:05:01.351665",
+      "unique_id": "01e63e13-a1fd-4c0c-a3e7-fae811a5673a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-16T16:05:03.419057"
+    },
+    {
+      "key": "evaluate_animate",
+      "active_from": "2025-07-16T16:05:01.351665",
+      "expires": "2025-07-16T16:06:01.351665",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-16T16:05:01.351665",
+      "unique_id": "01e63e13-a1fd-4c0c-a3e7-fae811a5673a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-16T16:05:03.419057"
     }
   ]
 }

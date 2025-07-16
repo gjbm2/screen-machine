@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Button } from '@/components/ui/button';
 import { Sparkles } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import { ReferenceImageService } from '@/services/reference-image-service';
 
 // Add type declaration for window.generateImage
 declare global {
@@ -272,7 +273,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
       raw_url: selectedImage?.raw_url || selectedImage?.urlFull,
       thumbnail_url: selectedImage?.urlThumb,
       image: selectedImage,
-      bucketId: '_recent'
+      bucketId: selectedImage?.bucketId || '_recent'
     },
   });
 
@@ -404,7 +405,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
       contextMenuItems={contextMenuItems}
       className={styles.batchPanel}
     >
-      <div className={styles.batchContent}>
+      <div className={styles.selectedImageWrapper}>
         {/* Main selected image display */}
         {selectedImage && (
           <>
@@ -576,7 +577,9 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation();
-                      window.open(`/output/_recent/${selectedImage.id}`, '_blank');
+                      // Use the actual bucket ID from the image data, fallback to _recent for backward compatibility
+                      const bucketId = selectedImage.bucketId || '_recent';
+                      window.open(`/output/${bucketId}/${selectedImage.id}`, '_blank');
                     }}
                   >
                     <ExternalLink className="h-4 w-4 mr-2" />
@@ -616,6 +619,33 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
           </>
         )}
         
+        {/* Reference image preview bar */}
+        {selectedImage?.reference_images && selectedImage.reference_images.length > 0 && (
+          <div className={styles.referenceImageBar} style={{ margin: '8px 0', display: 'flex', gap: 8 }}>
+            {selectedImage.reference_images.map((ref: any, idx: number) => {
+              // Use the actual bucket ID from the image data, fallback to _recent for backward compatibility
+              const bucketId = selectedImage.bucketId || '_recent';
+              return (
+                <a
+                  key={ref.stored_path}
+                  href={ReferenceImageService.getReferenceImageUrls(bucketId, [ref])[0]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={ref.original_filename}
+                  style={{ display: 'inline-block', border: '1px solid #ccc', borderRadius: 4 }}
+                >
+                  <img
+                    src={ReferenceImageService.getReferenceImageThumbnailUrls(bucketId, [ref])[0] || 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='}
+                    alt={`Reference ${idx + 1}`}
+                    style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4 }}
+                    onError={e => (e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=')}
+                  />
+                </a>
+              );
+            })}
+          </div>
+        )}
+
         {/* Thumbnail strip */}
         <div 
           className={styles.thumbnailStripWrapper}

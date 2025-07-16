@@ -9,6 +9,7 @@ import { useLoopeView } from '@/contexts/LoopeViewContext';
 import styles from './recent.module.css';
 import React from 'react';
 import RecentBatchPanel from './RecentBatchPanel';
+import { ReferenceImageService } from '@/services/reference-image-service';
 
 // Add type declarations for window functions
 declare global {
@@ -34,6 +35,8 @@ interface BucketImage {
   created_at?: number;
   raw_url?: string;
   batchId?: string; // Added for grouping
+  reference_images?: any[]; // Added for reference images
+  bucketId?: string; // Bucket where this image is stored
 }
 
 interface RecentViewProps {
@@ -246,21 +249,31 @@ export const RecentView: React.FC<RecentViewProps> = ({
       }
       
       // Map bucket items to our internal format
-      const images = details.items.map((item: any) => ({
-        id: item.filename,
-        url: item.url || '',
-        thumbnail_url: item.thumbnail_url,
-        thumbnail_embedded: item.thumbnail_embedded,
-        prompt: item.metadata?.prompt,
-        metadata: {
-          ...item.metadata,
-          favorite: item.favorite
-        },
-        created_at: item.created_at || item.metadata?.timestamp || 0,
-        raw_url: item.raw_url,
-        // Extract batchId from filename (e.g., "2024-05-14T12-30-00_batch-42_0.png")
-        batchId: extractBatchId(item.filename)
-      }));
+      const images = details.items.map((item: any) => {
+        console.log('Processing API item:', item.filename);
+        console.log('  - item.reference_images:', item.reference_images);
+        console.log('  - reference_images length:', item.reference_images?.length || 0);
+        
+        return {
+          id: item.filename,
+          url: item.url || '',
+          thumbnail_url: item.thumbnail_url,
+          thumbnail_embedded: item.thumbnail_embedded,
+          prompt: item.metadata?.prompt,
+          metadata: {
+            ...item.metadata,
+            favorite: item.favorite
+          },
+          created_at: item.created_at || item.metadata?.timestamp || 0,
+          raw_url: item.raw_url,
+          // Extract batchId from filename (e.g., "2024-05-14T12-30-00_batch-42_0.png")
+          batchId: extractBatchId(item.filename),
+          // Set bucketId to _recent since this function specifically fetches from _recent
+          bucketId: '_recent',
+          // Copy reference images from API response
+          reference_images: item.reference_images || []
+        };
+      });
       
       // Get active placeholders from localStorage to ensure they survive polling
       const activePlaceholders = loadActivePlaceholdersFromStorage();
@@ -322,10 +335,10 @@ export const RecentView: React.FC<RecentViewProps> = ({
   
   // Helper to extract batchId from filename
   const extractBatchId = (filename: string): string => {
-    // Extract "batch-XYZ" pattern from the filename
-    const batchMatch = filename.match(/batch-([^_\.]+)/);
+    // Extract "batch-XYZ" pattern from the filename - capture everything after "batch-" until the next file extension
+    const batchMatch = filename.match(/batch-([^\.]+)/);
     if (batchMatch && batchMatch[1]) {
-      return batchMatch[1]; // Return just the batch ID value
+      return batchMatch[1]; // Return the full batch ID value including underscores
     }
     
     // Fallback if pattern not found: use filename hash
@@ -425,21 +438,34 @@ export const RecentView: React.FC<RecentViewProps> = ({
   };
   
   // Convert BucketImage to ImageItem for components
-  const toImageItem = (img: BucketImage): ImageItem => ({
-    id: img.id,
-    // Ensure the key for this item is truly unique by using both id and batchId
-    uniqueKey: `${img.id}_${img.batchId || 'unknown'}`,
-    urlThumb: img.thumbnail_url || img.thumbnail_embedded || '',
-    urlFull: img.url || '',
-    promptKey: img.prompt || '',
-    seed: 0,
-    createdAt: img.created_at ? new Date(img.created_at * 1000).toISOString() : new Date().toISOString(),
-    isFavourite: false, // Always false in Recent
-    mediaType: isVideoFile(img.id) ? 'video' : 'image',
-    raw_url: img.raw_url || img.url || '',
-    metadata: img.metadata || {},
-    bucketId: '_recent',
-  });
+  const toImageItem = (img: BucketImage): ImageItem => {
+    console.log('Converting BucketImage to ImageItem:', img.id);
+    console.log('  - img.reference_images:', img.reference_images);
+    console.log('  - img.reference_images length:', img.reference_images?.length || 0);
+    
+    const imageItem = {
+      id: img.id,
+      // Ensure the key for this item is truly unique by using both id and batchId
+      uniqueKey: `${img.id}_${img.batchId || 'unknown'}`,
+      urlThumb: img.thumbnail_url || img.thumbnail_embedded || '',
+      urlFull: img.url || '',
+      promptKey: img.prompt || '',
+      seed: 0,
+      createdAt: img.created_at ? new Date(img.created_at * 1000).toISOString() : new Date().toISOString(),
+      isFavourite: false, // Always false in Recent
+      mediaType: isVideoFile(img.id) ? 'video' : 'image',
+      raw_url: img.raw_url || img.url || '',
+      metadata: img.metadata || {},
+      bucketId: img.bucketId || '_recent', // Use actual bucket ID, fallback to _recent for backward compatibility
+      // Copy reference images to ImageItem
+      reference_images: img.reference_images || []
+    };
+    
+    console.log('  - Created ImageItem with reference_images:', imageItem.reference_images);
+    console.log('  - ImageItem reference_images length:', imageItem.reference_images?.length || 0);
+    
+    return imageItem;
+  };
   
   // Helper to check if a file is video
   const isVideoFile = (filename: string): boolean => {
@@ -463,7 +489,8 @@ export const RecentView: React.FC<RecentViewProps> = ({
   // Handle deleting an image
   const handleDeleteImage = async (image: ImageItem) => {
     try {
-      await apiService.deleteImage('_recent', image.id);
+      const bucketId = image.bucketId || '_recent';
+      await apiService.deleteImage(bucketId, image.id);
       toast.success('Image deleted');
       
       // Optimistically update UI
@@ -490,9 +517,10 @@ export const RecentView: React.FC<RecentViewProps> = ({
       if (!batch) return;
       
       // Delete each image
-      const deletePromises = batch.images.map(img => 
-        apiService.deleteImage('_recent', img.id)
-      );
+      const deletePromises = batch.images.map(img => {
+        const bucketId = img.bucketId || '_recent';
+        return apiService.deleteImage(bucketId, img.id);
+      });
       
       await Promise.all(deletePromises);
       
@@ -512,7 +540,8 @@ export const RecentView: React.FC<RecentViewProps> = ({
   const handleCopyTo = async (img: ImageItem, targetBucketId: string) => {
     try {
       toast.loading(`Copying to ${targetBucketId}...`, { id: 'copy-toast' });
-      await apiService.copyImageToBucket('_recent', targetBucketId, img.id, true);
+      const bucketId = img.bucketId || '_recent';
+      await apiService.copyImageToBucket(bucketId, targetBucketId, img.id, true);
       toast.dismiss('copy-toast');
       toast.success(`Image copied to ${targetBucketId}`);
     } catch (error) {
@@ -526,9 +555,10 @@ export const RecentView: React.FC<RecentViewProps> = ({
   const handlePublish = async (img: ImageItem, targetBucketId: string) => {
     try {
       toast.loading(`Publishing to ${targetBucketId}...`, { id: 'publish-toast' });
+      const bucketId = img.bucketId || '_recent';
       await apiService.publishImageUnified({
         dest_bucket_id: targetBucketId,
-        src_bucket_id: '_recent',
+        src_bucket_id: bucketId,
         filename: img.id
       });
       toast.dismiss('publish-toast');
@@ -544,7 +574,8 @@ export const RecentView: React.FC<RecentViewProps> = ({
   const handleUseAsPrompt = (img: ImageItem) => {
     if (window.addImageReferenceToPrompt) {
       const sourceUrl = img.raw_url || img.urlFull;
-      window.addImageReferenceToPrompt(sourceUrl, '_recent', img.id);
+      const bucketId = img.bucketId || '_recent';
+      window.addImageReferenceToPrompt(sourceUrl, bucketId, img.id);
       toast.success('Added to prompt');
     } else {
       console.error('addImageReferenceToPrompt not available');
@@ -562,15 +593,37 @@ export const RecentView: React.FC<RecentViewProps> = ({
   
   // Handle image click (open in Loope)
   const handleImageClick = (img: ImageItem) => {
+    console.log('=== RecentView handleImageClick Debug ===');
+    console.log('Clicked image:', img);
+    console.log('Clicked image.reference_images:', img.reference_images);
+    console.log('Clicked image.metadata.reference_images:', (img.metadata as any)?.reference_images);
+    
     // Find batch that contains this image
     const batch = batchGroups.find(b => b.images.some(i => i.id === img.id));
     if (!batch || !openLoope) return;
     
+    console.log('Found batch:', batch);
+    console.log('Batch images count:', batch.images.length);
+    
+    // Log reference images for all images in the batch
+    batch.images.forEach((batchImg, index) => {
+      console.log(`Batch image ${index}:`, {
+        id: batchImg.id,
+        reference_images: batchImg.reference_images,
+        reference_images_count: batchImg.reference_images?.length || 0
+      });
+    });
+    
     // Find index of clicked image
     const clickedIdx = batch.images.findIndex(i => i.id === img.id);
+    console.log('Clicked image index:', clickedIdx);
     
     // Get the prompt text for the title
     const prompt = batch.images[0]?.promptKey || 'No prompt';
+    console.log('Using prompt for title:', prompt);
+    
+    console.log('About to open loope with batch.images:', batch.images);
+    console.log('=============================================');
     
     // Open Loope with just this batch's images
     openLoope(
@@ -595,13 +648,19 @@ export const RecentView: React.FC<RecentViewProps> = ({
     
     // Extract the prompt and settings from the first image
     const firstImage = batch.images[0];
-    
     const imageMetadata = firstImage.metadata as {
       prompt?: string;
       workflow?: string;
       params?: Record<string, any>;
+      reference_images?: any[];
     } | undefined;
-    
+
+    // Extract reference images from metadata or from the top-level field
+    const referenceImages = imageMetadata?.reference_images || firstImage.reference_images || [];
+    // Convert to accessible URLs - use actual bucket ID, fallback to _recent for backward compatibility
+    const bucketId = firstImage.bucketId || '_recent';
+    const referenceUrls = ReferenceImageService.getReferenceImageUrls(bucketId, referenceImages);
+
     // Create a single placeholder for this batch
     const placeholderThumb = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='; 
     const placeholderId = `placeholder-${batchId}-${Date.now()}`;
@@ -616,42 +675,42 @@ export const RecentView: React.FC<RecentViewProps> = ({
         aspectRatio: 16/9
       }
     };
-    
-    // Add a single placeholder to the image list
     setBucketImages(prev => [placeholder, ...prev]);
-    
-    // Track this placeholder for automatic expiration
     setPlaceholders(prev => [...prev, {
       id: placeholderId,
       timestamp: Date.now()
     }]);
-    
+
     // Create parameters for generation
+    // For "Generate Again", we want to use the exact same refined prompt and settings
+    // without re-running the refiner
     const params: any = {
       prompt: firstImage.promptKey || imageMetadata?.prompt || '',
       batch_id: batchId, // reuse original batch ID
       workflow: imageMetadata?.workflow || '',
-      params: imageMetadata?.params || {},
-      global_params: {},
-      placeholders: [] // Required by the API type
+      params: {
+        ...imageMetadata?.params || {},
+        publish_destination: '_recent', // Add publish_destination for reference image resolution
+      },
+      global_params: {
+        batch_size: 1, // Default batch size for Generate Again
+        ...imageMetadata?.global_params || {},
+      },
+      placeholders: [], // Required by the API type
+      referenceUrls,
+      refiner: "none", // Explicitly disable refiner - we want to use the already-refined prompt
     };
-    
-    // Indicate placeholder already created
     params.__skipPlaceholder = true;
-    
-    // Call generate using the API service
     toast.loading('Generating image...', { id: 'generate-toast' });
     apiService.generateImage(params)
       .then(() => {
         toast.dismiss('generate-toast');
         toast.success('Image generated');
-        // The recent:add event handler will take care of removing the placeholder
       })
       .catch((error: any) => {
         toast.dismiss('generate-toast');
         toast.error('Failed to generate image');
         console.error('Error generating image:', error);
-        // Don't remove the placeholder on error - let it expire naturally
       });
   };
   
@@ -837,7 +896,8 @@ export const RecentView: React.FC<RecentViewProps> = ({
               ? fileMetadata.metadata.timestamp / 1000  // Convert from ms to seconds
               : Date.now() / 1000,
             metadata: fileMetadata?.metadata || {},
-            prompt: fileMetadata?.metadata?.prompt || ""
+            prompt: fileMetadata?.metadata?.prompt || "",
+            bucketId: '_recent' // This function specifically handles _recent bucket additions
           };
         });
         

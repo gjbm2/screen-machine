@@ -28,6 +28,10 @@ export interface ImageItem extends ImageMeta {
   raw_url?: string;
   /** Optional custom component to render instead of the image */
   customComponent?: React.ReactNode;
+  /** Bucket ID where this image is stored (e.g., '_recent', 'my_bucket') */
+  bucketId?: string;
+  /** Reference images used for this generation */
+  reference_images?: any[];
 }
 
 export interface ImageGroup {

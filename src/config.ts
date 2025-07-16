@@ -1,10 +1,8 @@
 
 // Configuration for the application
 const config = {
-  // API URL for the backend
-  apiUrl: process.env.NODE_ENV === 'production' 
-    ? '/api' 
-    : 'http://localhost:5000/api',
+  // API URL for the backend - use environment variable
+  apiUrl: import.meta.env.VITE_API_URL || '/api',
   
   // Version information
   version: '1.0.0',

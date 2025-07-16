@@ -65,10 +65,11 @@ def throw_user_interacting_event(publish_destination, action_type="generate", wa
         error(f"Error throwing user_interacting event: {str(e)}")
 
 
-def save_to_recent(img_url, batch_id, metadata=None):
+def save_to_recent(img_url, batch_id, metadata=None, reference_sources=None):
     """
     Downloads the image from img_url, converts it to JPEG, and appends it to the _recent bucket.
     If *metadata* is provided, it is written to the side-car so that generation params are preserved.
+    If *reference_sources* is provided, stores reference images alongside the generated image.
     Returns the target path if successful, None otherwise.
     """
     try:
@@ -87,6 +88,31 @@ def save_to_recent(img_url, batch_id, metadata=None):
         temp_path.unlink()
         if target_path:
             info(f"[save_to_recent] Successfully saved to _recent: {target_path}")
+            
+            # Store reference images if provided
+            if reference_sources:
+                try:
+                    from routes.bucket_utils import ReferenceImageStorage
+                    ref_storage = ReferenceImageStorage()
+                    base_filename = target_path.stem
+                    stored_refs = ref_storage.store_reference_images(base_filename, "_recent", reference_sources)
+                    
+                    # Update metadata with reference image information
+                    if stored_refs and metadata:
+                        metadata["reference_images"] = [ref.to_dict() for ref in stored_refs]
+                        # Update the sidecar file with reference image info
+                        from routes.utils import sidecar_path
+                        sidecar_file = sidecar_path(target_path)
+                        if sidecar_file.exists():
+                            with open(sidecar_file, 'w', encoding='utf-8') as f:
+                                json.dump(metadata, f, indent=2, ensure_ascii=False, default=str)
+                    
+                    info(f"[save_to_recent] Stored {len(stored_refs)} reference images for {target_path.name}")
+                except Exception as e:
+                    error(f"[save_to_recent] Failed to store reference images: {e}")
+                    import traceback
+                    error(f"[save_to_recent] Reference image traceback: {traceback.format_exc()}")
+            
             return target_path
         else:
             error(f"[save_to_recent] _append_to_bucket returned None for {img_url}")
@@ -217,7 +243,27 @@ def process_generate_image_request(data, uploaded_images=None):
         # ------------------------------------------------------------------
         if is_frontend_initiated:
             try:
-                target_path = save_to_recent(r.get("message"), batch_id, metadata=image_data)
+                # Create reference sources from uploaded images if available
+                reference_sources = None
+                if uploaded_images:
+                    try:
+                        from routes.bucket_utils import ReferenceSource
+                        import base64
+                        reference_sources = []
+                        for img_data in uploaded_images:
+                            # Decode base64 image data
+                            img_bytes = base64.b64decode(img_data['image'])
+                            ref_source = ReferenceSource(
+                                content=img_bytes,
+                                original_filename=img_data.get('name', 'unknown.jpg'),
+                                content_type='image/jpeg',
+                                source_type='file_upload'
+                            )
+                            reference_sources.append(ref_source)
+                    except Exception as e:
+                        error(f"[generate_image] Failed to create reference sources: {e}")
+                
+                target_path = save_to_recent(r.get("message"), batch_id, metadata=image_data, reference_sources=reference_sources)
                 if target_path:
                     recent_files.append(target_path.name)
             except Exception as e:
