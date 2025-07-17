@@ -59,6 +59,10 @@ export interface ToolbarProps {
   workflows: WorkflowProps[];
   isCompact: boolean;
   hasUploadedImages?: boolean;
+  workflowParams?: Record<string, any>;
+  refinerParams?: Record<string, any>;
+  globalParams?: Record<string, any>;
+  onRestoreFormState?: (formState: any) => void;
 }
 
 export interface AdvancedOptionsPanelProps {

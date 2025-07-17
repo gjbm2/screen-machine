@@ -153,13 +153,12 @@ export class Api {
 		  
 		  // Ensure all URLs have proper formatting
 		  const normalizedUrls = referenceUrls.map(url => {
-			// If it's already an absolute URL (starts with http), don't convert it
-			if (url.startsWith('http://') || url.startsWith('https://')) {
-			  console.log(`[api] URL is already absolute: ${url}`);
-			  return url;
+			// Check if it's a data URI (from camera on mobile)
+			if (url.startsWith('data:')) {
+			  console.log(`[api] Found data URI (from camera): ${url.substring(0, 50)}...`);
+			  return url; // Keep data URIs as-is
 			}
-			
-			// If it's a relative path starting with /output or /api, make it an absolute URL
+			// If it's a relative path starting with /output, make it an absolute URL
 			if (url.startsWith('/output/') || url.startsWith('/api/')) {
 			  // Get the current origin (protocol + hostname + port)
 			  const origin = window.location.origin;
@@ -171,6 +170,7 @@ export class Api {
 		  });
 		  
 		  jsonData.referenceUrls = normalizedUrls;
+		  console.log(`[api] Final referenceUrls being sent to backend:`, normalizedUrls.length, 'URLs');
 		}
 
 		if (placeholders && placeholders.length > 0) {
@@ -196,7 +196,11 @@ export class Api {
 		  console.log(`[api] No refiner specified`);
 		}
 
-		console.log("[api] Full API payload:", jsonData);
+		// Enhanced logging to debug mobile issues
+		console.log("[api] Sending API payload:", jsonData);
+		console.log("[api] Mobile debug - imageFiles:", imageFiles?.length, imageFiles?.map(f => f.name));
+		console.log("[api] Mobile debug - referenceUrls:", referenceUrls?.length, referenceUrls?.map(url => url.substring(0, 50) + '...'));
+		
 		formData.append('data', JSON.stringify(jsonData));
 
 		if (imageFiles && imageFiles.length > 0) {

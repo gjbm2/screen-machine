@@ -70,6 +70,8 @@ export const generateImage = async (
   console.log('- publish destination:', params.publish_destination);
   console.log('- batchId:', batchId);
   console.log('- isAsync:', isAsync);
+  console.log('- imageFiles:', imageFiles?.length, imageFiles?.map(f => typeof f === 'string' ? `string(${f.substring(0, 50)}...)` : `file(${f.name})`));
+  console.log('- referenceUrls:', referenceUrls?.length, referenceUrls?.map(url => url.substring(0, 50) + '...'));
 
   // Create or use the provided batch ID
   const currentBatchId = batchId || nanoid();
@@ -372,8 +374,9 @@ export const generateImage = async (
         // Remove from active generations
         setActiveGenerations(prev => prev.filter(id => id !== currentBatchId));
         
-        // Show error toast
-        toast.error('Failed to generate image. Check console for details.');
+        // Show error toast with actual error message
+        const errorMessage = error instanceof Error ? error.message : 'Failed to generate image';
+        toast.error(errorMessage);
         
         return null;
       }

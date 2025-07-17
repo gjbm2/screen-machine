@@ -53,6 +53,8 @@ export const usePromptSubmission = ({
       const effectiveGlobalParams = globalParams || currentGlobalParams;
 
       console.log("usePromptSubmission: Starting new prompt submission with publishDestination:", publishDestination);
+      console.log("usePromptSubmission: uploadedFiles:", uploadedFiles.length, uploadedFiles.map(f => f.name));
+      console.log("usePromptSubmission: referenceUrls:", referenceUrls.length, referenceUrls.map(url => url.substring(0, 50) + '...'));
 
       // Skip async check for "auto" workflow since we don't know which workflow will be selected
       let isAsync = false;
