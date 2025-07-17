@@ -25,9 +25,25 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   isButtonDisabled,
   workflows,
   isCompact,
-  hasUploadedImages = false
+  hasUploadedImages = false,
+  workflowParams,
+  refinerParams,
+  globalParams,
+  onRestoreFormState
 }) => {
   const isMobile = useIsMobile();
+  
+  // Prepare current form state for session restoration
+  const currentFormState = {
+    prompt,
+    selectedWorkflow,
+    selectedRefiner,
+    selectedPublish,
+    workflowParams: workflowParams || {},
+    refinerParams: refinerParams || {},
+    globalParams: globalParams || {},
+    referenceUrls: [] // This will be populated by the ImageUploader
+  };
   
   // The button should be enabled if there's a prompt OR uploaded images
   const shouldDisableButton = isLoading || (!prompt.trim() && !hasUploadedImages);
@@ -42,6 +58,8 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
 		  isLoading={isLoading}
 		  onImageUpload={onImageUpload}
 		  hideLabel={isMobile}
+		  currentFormState={currentFormState}
+		  onRestoreFormState={onRestoreFormState}
 		/>
         
         <WorkflowIconSelector

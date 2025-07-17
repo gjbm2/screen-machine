@@ -1,0 +1,121 @@
+[33mcommit 307d5bad0bcd8741de324c3f0fd1a42d87bdb0b1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Thu Jul 17 23:11:06 2025 +0100
+
+    May have fixed mobile cmaera upload...maybe
+
+ delete mode 100644 routes/bucket_utils.py
+ delete mode 100644 test_reference_image_persistence.py
+
+[33mcommit 46251c628ba49e323fbace1eef457a75b0e8caff[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Wed Jul 9 22:49:08 2025 +0100
+
+    Before fast adapt changes
+
+ delete mode 100644 routes/workflows/flux_1_kontext_dev_1pic-l.json:Zone.Identifier
+ delete mode 100644 routes/workflows/flux_1_kontext_dev_1pic.json:Zone.Identifier
+ delete mode 100644 routes/workflows/flux_1_kontext_dev_2pic.json:Zone.Identifier
+ delete mode 100644 routes/workflows/image-to-video-api.json:Zone.Identifier
+ delete mode 100644 routes/workflows/image-to-video.txt
+ delete mode 100644 routes/workflows/temp.json:Zone.Identifier
+ delete mode 100644 routes/workflows/wan_f2l_image_to_video_upscale_slow.json:Zone.Identifier
+ delete mode 100644 routes/workflows/wan_image_to_video.json:Zone.Identifier
+ delete mode 100644 routes/workflows/wan_image_to_video_upscale_slow.json:Zone.Identifier
+ delete mode 100644 routes/workflows/wan_image_to_video_upscale_slow_dev.json:Zone.Identifier
+
+[33mcommit ed2e53e402094f683a5841acb36c972bf6d187bc[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Fri Jul 4 00:13:14 2025 +0100
+
+    Kontext working with Alexa now -- neat
+
+ delete mode 100644 routes/sysprompts/alexa-openai.txt
+ delete mode 100644 routes/sysprompts/alexa-preprocess - Copy.txt:Zone.Identifier
+ delete mode 100644 routes/sysprompts/alexa-preprocess.txt
+
+[33mcommit de52dabf698bd772f891adec00a4c42dc7904628[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Wed May 21 22:57:00 2025 +0100
+
+    Adding _recent scheduler
+
+ delete mode 100644 alexa.py
+
+[33mcommit 9f53c37d4f3493ed85da69e5baa6395bbba2b729[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Tue May 20 00:38:38 2025 +0100
+
+    Vendor samsungtvws as ordinary dir
+
+ delete mode 160000 samsungtvws
+
+[33mcommit e8d9383345046ee9c70c5598594360a43594ff29[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Tue May 20 00:36:11 2025 +0100
+
+    samsungtvws nightmare mode...
+
+ delete mode 100644 images/devtest.jpg
+ delete mode 100644 images/devtest.jpg:Zone.Identifier
+
+[33mcommit f76f02b11cb5c878c75d176eabe603d03027327d[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Sat May 17 03:47:31 2025 +0100
+
+    Alexa scheduler displays working; just need load now...
+
+ delete mode 100644 routes/overlays/overlay_variables.html.j2
+
+[33mcommit 34c750c967bd24763fb6a9185a512ae4546f0bef[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Thu May 8 00:09:52 2025 +0100
+
+    scheduler debugging marathon...
+
+ delete mode 100644 src/components/scheduler/SchedulerCard.tsx
+
+[33mcommit d69649856316111e5da5ec5b9501a09cc55de55f[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Wed May 7 22:58:46 2025 +0100
+
+    fucking hell
+
+ delete mode 100644 scheduler/north-screen.json
+
+[33mcommit 1ad33c9b72b40d0de64a836f7165d82b5cdc95d9[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Mon May 5 23:47:46 2025 +0100
+
+    Reasoner built; not yet tested...
+
+ delete mode 100644 routes/data/deviser_standard.schema.json.j2
+
+[33mcommit 90619488676313492f43987a01fdc49dce0829a1[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Fri May 2 00:14:40 2025 +0100
+
+    two steps forward, two steps back, really
+
+ delete mode 100644 src/api/publish-endpoint.ts
+ delete mode 100644 src/services/PublishService.ts
+
+[33mcommit 26d7f95a5b2705cdf9f74052f47b3d85667debe5[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Tue Apr 29 01:23:27 2025 +0100
+
+    scheduler front end
+
+ delete mode 100644 routes/scheduler/north-screen.json
+ delete mode 100644 routes/scheduler/schedule_schema.json
+ delete mode 100644 routes/scheduler/test.json
+ delete mode 100644 src/pages/SchemaEditor.tsx
+ delete mode 100644 src/types/jsonforms.d.ts
+
+[33mcommit c55c2d3a469ecb1a39454561a946a607895a4799[m
+Author: gjbm2 <gregmarsh@github.com>
+Date:   Sun Apr 27 15:26:49 2025 +0100
+
+    Scheduler working!
+
+ delete mode 100644 routes/animate.py

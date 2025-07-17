@@ -786,6 +786,7 @@ const Index = () => {
     try {
       console.log('Index: handlePromptSubmit called with:');
       console.log('- prompt:', prompt);
+      console.log('- imageFiles:', imageFiles?.length, imageFiles?.map(f => typeof f === 'string' ? `string(${f.substring(0, 50)}...)` : `file(${f.name})`));
       console.log('- workflow:', workflow);
       console.log('- params:', params);
       console.log('- globalParams:', globalParams);

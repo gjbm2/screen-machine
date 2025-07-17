@@ -8,6 +8,7 @@ import { PromptFormProps, WorkflowProps } from './types';
 import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
 import { Workflow } from '@/types/workflows';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { dataURItoFile, isDataURI } from '@/utils/imageUtils';
 
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
@@ -29,6 +30,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
   const [prompt, setPrompt] = useState(currentPrompt || '');
   const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
+  const [hasTriedRestoration, setHasTriedRestoration] = useState(false);
   const lastReceivedPrompt = useRef(currentPrompt);
   const isInitialMount = useRef(true);
   const isMobile = useIsMobile();
@@ -277,65 +279,155 @@ const PromptForm: React.FC<PromptFormProps> = ({
     if (externalPublishChange) externalPublishChange(publishId);
   };
 
-  const handleSubmit = (e?: React.MouseEvent | React.FormEvent) => {
+  // Form state restoration handler
+  const handleRestoreFormState = (formState: any) => {
     try {
-      // Comprehensive event prevention
-      if (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        // Type-safe stopImmediatePropagation
-        if ('stopImmediatePropagation' in e) {
-          (e as any).stopImmediatePropagation();
+      console.log('PromptForm: Starting form state restoration:', formState);
+      
+      // Add guard to prevent restoration if already attempted
+      if (hasTriedRestoration) {
+        console.log('PromptForm: Skipping restoration - already attempted');
+        return;
+      }
+      
+      // Mark that we've attempted restoration
+      setHasTriedRestoration(true);
+      
+      // Restore prompt
+      if (formState.prompt && formState.prompt !== prompt) {
+        console.log('PromptForm: Restoring prompt');
+        setPrompt(formState.prompt);
+      }
+      
+      // Restore workflow selection
+      if (formState.selectedWorkflow && formState.selectedWorkflow !== selectedWorkflow) {
+        console.log('PromptForm: Restoring workflow:', formState.selectedWorkflow);
+        setSelectedWorkflow(formState.selectedWorkflow);
+        if (externalWorkflowChange) {
+          externalWorkflowChange(formState.selectedWorkflow);
         }
       }
       
-      // Additional mobile-specific prevention
-      if (isMobile && e) {
-        // Prevent any potential touch events from triggering navigation
-        if ('touches' in e) {
-          e.preventDefault();
+      // Restore refiner selection
+      if (formState.selectedRefiner && formState.selectedRefiner !== selectedRefiner) {
+        console.log('PromptForm: Restoring refiner:', formState.selectedRefiner);
+        setSelectedRefiner(formState.selectedRefiner);
+        if (externalRefinerChange) {
+          externalRefinerChange(formState.selectedRefiner);
         }
       }
       
-      if (prompt.trim() === '' && referenceUrls.length === 0 && imageFiles.length === 0) {
-        toast.error('Please enter a prompt or upload an image');
-        return;
+      // Restore publish selection
+      if (formState.selectedPublish && formState.selectedPublish !== selectedPublish) {
+        console.log('PromptForm: Restoring publish:', formState.selectedPublish);
+        setSelectedPublish(formState.selectedPublish);
+        if (externalPublishChange) {
+          externalPublishChange(formState.selectedPublish);
+        }
       }
-
-      if (!selectedWorkflow) {
-        toast.error('Please select a workflow');
-        return;
+      
+      // Restore parameters
+      if (formState.workflowParams && JSON.stringify(formState.workflowParams) !== JSON.stringify(workflowParams)) {
+        console.log('PromptForm: Restoring workflow params');
+        updateFromAdvancedPanel({ workflowParams: formState.workflowParams });
       }
+      
+      if (formState.refinerParams && JSON.stringify(formState.refinerParams) !== JSON.stringify(refinerParams)) {
+        console.log('PromptForm: Restoring refiner params');
+        updateFromAdvancedPanel({ refinerParams: formState.refinerParams });
+      }
+      
+      if (formState.globalParams && JSON.stringify(formState.globalParams) !== JSON.stringify(globalParams)) {
+        console.log('PromptForm: Restoring global params');
+        updateFromAdvancedPanel({ globalParams: formState.globalParams });
+      }
+      
+      // Restore reference URLs
+      if (formState.referenceUrls && formState.referenceUrls.length > 0) {
+        const currentUrls = referenceUrls || [];
+        const newUrls = formState.referenceUrls || [];
+        
+        if (JSON.stringify(currentUrls) !== JSON.stringify(newUrls)) {
+          console.log('PromptForm: Restoring reference URLs');
+          clearReferenceUrls();
+          newUrls.forEach((url: string) => {
+            addReferenceUrl(url, false);
+          });
+        }
+      }
+      
+      console.log('PromptForm: Form state restored successfully');
+      
+    } catch (error) {
+      console.error('PromptForm: Error restoring form state:', error);
+      setHasTriedRestoration(true);
+    }
+  };
 
+  const handleSubmit = (e?: React.MouseEvent | React.FormEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    // Don't submit if loading or if there's no content
+    if (localLoading || (prompt.trim() === '' && referenceUrls.length === 0 && imageFiles.length === 0)) {
+      return;
+    }
+    
+    try {
       setLocalLoading(true);
-
-      // Combine File objects from imageFiles with string URLs from referenceUrls
-      const allImages: (File | string)[] = [
-        ...imageFiles.filter(f => f instanceof File), // File objects
-        ...referenceUrls // String URLs
-      ];
-
-      const refinerToUse = selectedRefiner === 'none' ? undefined : selectedRefiner;
-      const publishToUse = selectedPublish === 'none' ? undefined : selectedPublish;
-      const currentGlobalParams = { ...globalParams };
-
+      
+      // Debug mobile image submission
+      console.log('PromptForm: handleSubmit - Mobile debug info:');
+      console.log('- imageFiles:', imageFiles.length, imageFiles);
+      console.log('- referenceUrls:', referenceUrls.length, referenceUrls);
+      console.log('- prompt:', prompt);
+      console.log('- selectedWorkflow:', selectedWorkflow);
+      
+      // Separate data URIs (from camera) from regular URLs
+      const dataURIs: string[] = [];
+      const regularUrls: string[] = [];
+      
+      referenceUrls.forEach(url => {
+        if (isDataURI(url)) {
+          dataURIs.push(url);
+        } else {
+          regularUrls.push(url);
+        }
+      });
+      
+      console.log('PromptForm: Found', dataURIs.length, 'data URIs and', regularUrls.length, 'regular URLs');
+      
+      // Convert data URIs to File objects
+      const filesFromDataURIs = dataURIs.map((dataURI, index) => {
+        const filename = `camera-photo-${index + 1}.jpg`;
+        console.log('PromptForm: Converting data URI to File:', filename);
+        return dataURItoFile(dataURI, filename);
+      });
+      
+      // Combine all files and URLs
+      const allFiles = [...imageFiles, ...filesFromDataURIs];
+      const allImages: (File | string)[] = [...allFiles, ...regularUrls];
+      
+      console.log('PromptForm: Final submission data:');
+      console.log('- Files:', allFiles.length, allFiles.map(f => typeof f === 'string' ? f : f.name));
+      console.log('- URLs:', regularUrls.length, regularUrls);
+      console.log('- Total images:', allImages.length);
+      
+      // Call the onSubmit prop with all the necessary data
       onSubmit(
         prompt,
-        allImages.length > 0 ? allImages : undefined,
+        allImages,
         selectedWorkflow,
         workflowParams,
-        currentGlobalParams,
-        refinerToUse,
+        globalParams,
+        selectedRefiner,
         refinerParams,
-        publishToUse
+        selectedPublish
       );
-
-      setTimeout(() => {
-        setLocalLoading(false);
-      }, 1000);
     } catch (error) {
       console.error('Error in handleSubmit:', error);
-      toast.error('Error submitting form');
       setLocalLoading(false);
     }
   };
@@ -528,6 +620,10 @@ const PromptForm: React.FC<PromptFormProps> = ({
           workflows={workflows as unknown as WorkflowProps[]}
           isCompact={false}
           hasUploadedImages={referenceUrls.length > 0 || imageFiles.length > 0}
+          workflowParams={workflowParams}
+          refinerParams={refinerParams}
+          globalParams={globalParams}
+          onRestoreFormState={handleRestoreFormState}
         />
       </Card>
     </div>
