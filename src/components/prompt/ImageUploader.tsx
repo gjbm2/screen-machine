@@ -19,6 +19,9 @@ import {
   DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
 
+// Debug flag - set to true to enable on-screen debug messages
+const DEBUG_MODE = false;
+
 
 interface ImageUploaderProps {
   isLoading: boolean;
@@ -326,6 +329,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   // TEMPORARY: Debug message display function
   const showDebugMessage = (message: string) => {
+    if (!DEBUG_MODE) return; // Only show debug messages if DEBUG_MODE is true
+    
     // Create or update debug element
     let debugEl = document.getElementById('debug-messages');
     if (!debugEl) {

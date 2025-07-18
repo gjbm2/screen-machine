@@ -11,6 +11,9 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { dataURItoFile, isDataURI } from '@/utils/imageUtils';
 import { clearAll } from '@/utils/photoCache';
 
+// Debug flag - set to true to enable on-screen debug messages
+const DEBUG_MODE = false;
+
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
   isLoading = false,
@@ -66,6 +69,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
   // TEMPORARY: Debug message display function
   const showDebugMessage = (message: string) => {
+    if (!DEBUG_MODE) return; // Only show debug messages if DEBUG_MODE is true
+    
     // Create or update debug element
     let debugEl = document.getElementById('debug-messages');
     if (!debugEl) {
