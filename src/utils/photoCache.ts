@@ -4,6 +4,9 @@ const DB_NAME = 'camera-cache';
 const STORE = 'photos';
 const KEY = 'pendingPhoto';
 
+// Debug flag - set to true to enable on-screen debug messages
+const DEBUG_MODE = false;
+
 export interface UiSnapshot {
   prompt?: string;
   selectedWorkflow?: string;
@@ -169,6 +172,8 @@ export async function clearAll(): Promise<void> {
 
 // TEMPORARY: Debug message display function
 const showDebugMessage = (message: string) => {
+  if (!DEBUG_MODE) return; // Skip if debug mode is disabled
+  
   // Create or update debug element
   let debugEl = document.getElementById('debug-messages');
   if (!debugEl) {
