@@ -226,28 +226,29 @@
   "context_stack": [
     {
       "vars": {
-        "inspiration": "solve for people",
-        "safety_reason": "image is office-suitable with no inappropriate content",
+        "inspiration": "action this day",
+        "safety_reason": "image is appropriate for office; no nudity or sexual content",
         "set_of_images": [
-          "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-150108-7bb03f08.jpg_batch-batch_20250716_150107_e645b462.jpg",
-          "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-150109-a2658de8.jpg_batch-batch_20250716_150107_e645b462.jpg",
-          "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-150111-5f6d4381.jpg_batch-batch_20250716_150107_e645b462.jpg"
+          "/home/gjbm2/dev/screen-machine/output/the-beast/20250718-070117-6ae68c43.jpg_batch-batch_20250718_070116_b52260f7.jpg",
+          "/home/gjbm2/dev/screen-machine/output/the-beast/20250718-070118-9b2ddd5d.jpg_batch-batch_20250718_070116_b52260f7.jpg",
+          "/home/gjbm2/dev/screen-machine/output/the-beast/20250718-070120-e5a97d66.jpg_batch-batch_20250718_070116_b52260f7.jpg",
+          "/home/gjbm2/dev/screen-machine/output/the-beast/20250718-070121-b4e2fca4.jpg_batch-batch_20250718_070116_b52260f7.jpg"
         ],
         "selected_index": "0",
-        "confidence": "95%",
-        "rationale": "Image 0 contains clear 'solve for people' text with properly depicted faces.",
+        "confidence": "98%",
+        "rationale": "Image 0 clearly shows 'Action This Day' with correct letterforms and well-depicted faces.",
         "is_safe": "APPROVE",
         "safety_confidence": "95%",
         "animation_candidate": "APPROVE",
-        "animation_confidence": "92%",
-        "animation_explanation": "image has dynamic elements like people and market suitable for video"
+        "animation_confidence": "85%",
+        "animation_explanation": "image has dynamic elements that suggest motion opportunity"
       },
-      "last_generated": "/home/gjbm2/dev/screen-machine/output/the-beast/20250716-150108-7bb03f08.jpg_batch-batch_20250716_150107_e645b462.jpg",
+      "last_generated": "/home/gjbm2/dev/screen-machine/output/the-beast/20250718-070117-6ae68c43.jpg_batch-batch_20250718_070116_b52260f7.jpg",
       "publish_destination": "the-beast"
     }
   ],
   "state": "running",
-  "last_updated": "2025-07-18T00:09:52.947190",
+  "last_updated": "2025-07-18T08:05:12.579552",
   "last_trigger_executions": {
     "079570ca92555f499bd5738772bc4a1b_2025-06-11_4": "2025-06-11T16:00:01.290736",
     "0361cac9cb18b707d6ba32ef7b28196f_2025-06-11_4": "2025-06-11T16:05:01.360539",
@@ -695,92 +696,15 @@
     "079570ca92555f499bd5738772bc4a1b_2025-07-16_3": "2025-07-16T14:00:00.351703",
     "0361cac9cb18b707d6ba32ef7b28196f_2025-07-16_3": "2025-07-16T14:05:00.336316",
     "079570ca92555f499bd5738772bc4a1b_2025-07-16_4": "2025-07-16T16:00:00.471684",
-    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-16_4": "2025-07-16T16:05:01.330531"
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-16_4": "2025-07-16T16:05:01.330531",
+    "86fcab81240ed277bf13e63c5c2c9595_2025-07-18": "2025-07-18T03:00:01.542127",
+    "079570ca92555f499bd5738772bc4a1b_2025-07-18_0": "2025-07-18T08:00:01.637176",
+    "0361cac9cb18b707d6ba32ef7b28196f_2025-07-18_0": "2025-07-18T08:05:01.256599"
   },
-  "active_events": {
-    "evaluate_animate": []
-  },
+  "active_events": {},
   "event_history": [
     {
       "key": "generate",
-      "active_from": "2025-07-14T20:36:50.979370",
-      "expires": "2025-07-14T20:37:50.979370",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T20:36:50.979370",
-      "unique_id": "fdfab792-9367-4893-bb1e-07041c45b5ff",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_the-beast",
-      "consumed_at": "2025-07-14T20:36:51.495256"
-    },
-    {
-      "key": "generate",
-      "active_from": "2025-07-14T20:36:50.979370",
-      "expires": "2025-07-14T20:37:50.979370",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T20:36:50.979370",
-      "unique_id": "fdfab792-9367-4893-bb1e-07041c45b5ff",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_the-beast",
-      "consumed_at": "2025-07-14T20:36:51.495256"
-    },
-    {
-      "key": "generate",
-      "active_from": "2025-07-14T20:37:38.088194",
-      "expires": "2025-07-14T20:38:38.088194",
-      "display_name": "Retry - previous image was not safe",
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T20:37:28.088194",
-      "unique_id": "b60645c0-d7ba-40d1-84e7-adf57a47234c",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_the-beast",
-      "consumed_at": "2025-07-14T20:37:38.174729"
-    },
-    {
-      "key": "generate",
-      "active_from": "2025-07-14T20:37:38.088194",
-      "expires": "2025-07-14T20:38:38.088194",
-      "display_name": "Retry - previous image was not safe",
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T20:37:28.088194",
-      "unique_id": "b60645c0-d7ba-40d1-84e7-adf57a47234c",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_the-beast",
-      "consumed_at": "2025-07-14T20:37:38.174729"
-    },
-    {
-      "key": "generate",
-      "active_from": "2025-07-14T20:38:11.451884",
-      "expires": "2025-07-14T20:39:11.451884",
-      "display_name": "Retry - previous image was not safe",
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T20:38:01.451884",
-      "unique_id": "7cb3cb29-b151-4435-916c-1c42a6025a8b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_the-beast",
-      "consumed_at": "2025-07-14T20:38:13.295478"
-    },
-    {
-      "key": "generate",
-      "active_from": "2025-07-14T20:38:11.451884",
-      "expires": "2025-07-14T20:39:11.451884",
-      "display_name": "Retry - previous image was not safe",
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T20:38:01.451884",
-      "unique_id": "7cb3cb29-b151-4435-916c-1c42a6025a8b",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_the-beast",
-      "consumed_at": "2025-07-14T20:38:13.295478"
-    },
-    {
-      "key": "generate",
       "active_from": "2025-07-14T20:38:44.118945",
       "expires": "2025-07-14T20:39:44.118945",
       "display_name": "Retry - previous image was not safe",
@@ -2052,6 +1976,88 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_the-beast",
       "consumed_at": "2025-07-16T16:05:03.419057"
+    },
+    {
+      "key": "generate",
+      "active_from": "2025-07-18T08:00:01.689595",
+      "expires": "2025-07-18T08:01:01.689595",
+      "display_name": "Generate",
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-18T08:00:01.689595",
+      "unique_id": "e445b820-374f-42c3-9efb-41a913f709c4",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-18T08:00:03.718904"
+    },
+    {
+      "key": "generate",
+      "active_from": "2025-07-18T08:00:01.689595",
+      "expires": "2025-07-18T08:01:01.689595",
+      "display_name": "Generate",
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-18T08:00:01.689595",
+      "unique_id": "e445b820-374f-42c3-9efb-41a913f709c4",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-18T08:00:03.718904"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-18T08:01:46.039251",
+      "expires": "2025-07-18T08:02:46.039251",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T08:01:46.039251",
+      "unique_id": "aad64f67-da7e-43df-8754-2359e1669aa1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-18T08:01:47.673151"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-18T08:01:46.039251",
+      "expires": "2025-07-18T08:02:46.039251",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T08:01:46.039251",
+      "unique_id": "aad64f67-da7e-43df-8754-2359e1669aa1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-18T08:01:47.673151"
+    },
+    {
+      "key": "evaluate_animate",
+      "active_from": "2025-07-18T08:05:01.288167",
+      "expires": "2025-07-18T08:06:01.288167",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-18T08:05:01.288167",
+      "unique_id": "df146e64-ab44-4114-bd66-a3bd6a264066",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-18T08:05:03.272593"
+    },
+    {
+      "key": "evaluate_animate",
+      "active_from": "2025-07-18T08:05:01.288167",
+      "expires": "2025-07-18T08:06:01.288167",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-18T08:05:01.288167",
+      "unique_id": "df146e64-ab44-4114-bd66-a3bd6a264066",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_the-beast",
+      "consumed_at": "2025-07-18T08:05:03.272593"
     }
   ]
 }

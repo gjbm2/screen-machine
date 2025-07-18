@@ -6,16 +6,10 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
 import { 
   putPhoto, 
-  takePhotoFromCache, 
-  saveCompleteFormState, 
-  saveCameraWaitingState,
+  restorePhotoIfValid,
+  saveFormState,
   restoreFormState,
-  loadUiSnapshot, 
-  clearUiSnapshot,
-  clearPhotoCache,
-  hasAlreadyRestored,
-  markAsRestored,
-  clearRestorationState
+  clearAll
 } from '@/utils/photoCache';
 import {
   DropdownMenu,
@@ -59,15 +53,13 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [isWaitingForCamera, setIsWaitingForCamera] = useState(false);
   
-  const { addReferenceUrl } = useReferenceImages();
+  const { addReferenceUrl, clearReferenceUrls } = useReferenceImages();
 
   useEffect(() => {
     const handleImageSelected = (event: CustomEvent) => {
       if (event.detail && event.detail.files) {
         onImageUpload(event.detail.files);
-        // Let the backend handle workflow selection
       }
     };
 
@@ -77,112 +69,73 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     };
   }, [onImageUpload]);
 
-  // Check for cached photos on component mount
+  // Check for cached photo on mount (only once)
+  const hasCheckedCache = useRef(false);
   useEffect(() => {
+    if (hasCheckedCache.current) {
+      return; // Already checked, don't check again
+    }
+    
     const restoreFromCache = async () => {
-      try {
-        console.log('ImageUploader: Starting cache restoration...');
-        console.log('ImageUploader: isMobile:', isMobile);
-        console.log('ImageUploader: sessionStorage contents:', {
-          hasRestored: sessionStorage.getItem('hasRestored'),
-          photoKey: sessionStorage.getItem('photoKey'),
-          uiSnapshot: sessionStorage.getItem('uiSnapshot')
-        });
+      const startTime = performance.now();
+      console.log('ImageUploader: Checking for cached photo on mount');
+      showDebugMessage('📸 Checking for cached photo');
+      
+      // IMPORTANT: Get form state BEFORE calling restorePhotoIfValid which clears the cache
+      const formStateStartTime = performance.now();
+      const formState = restoreFormState();
+      const formStateTime = performance.now() - formStateStartTime;
+      console.log(`ImageUploader: restoreFormState took ${formStateTime.toFixed(2)}ms`);
+      
+      const cachedPhoto = await restorePhotoIfValid();
+      
+      if (cachedPhoto) {
+        console.log('ImageUploader: Found cached photo, restoring');
+        showDebugMessage('📸 Found cached photo, converting to data URI...');
         
-        // Clear the restoration flag on page load to allow restoration to happen
-        // This way restoration can happen on every page load until user completes their action
-        console.log('ImageUploader: Clearing hasRestored flag to allow restoration');
-        sessionStorage.removeItem('hasRestored');
+        // Convert to data URI and display
+        const readerStartTime = performance.now();
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const readerTime = performance.now() - readerStartTime;
+          const dataUri = e.target?.result as string;
+          console.log('ImageUploader: Adding cached photo to display');
+          console.log(`ImageUploader: FileReader conversion took ${readerTime.toFixed(2)}ms`);
+          showDebugMessage(`📸 Cached photo displayed (conversion: ${readerTime.toFixed(0)}ms)`);
+          
+          // Add timing for addReferenceUrl
+          const addRefStartTime = performance.now();
+          addReferenceUrl(dataUri, false);
+          const addRefTime = performance.now() - addRefStartTime;
+          console.log(`ImageUploader: addReferenceUrl took ${addRefTime.toFixed(2)}ms`);
+          showDebugMessage(`📸 Reference URL added in ${addRefTime.toFixed(0)}ms`);
+        };
+        reader.readAsDataURL(cachedPhoto);
         
-        console.log('ImageUploader: Calling takePhotoFromCache()...');
-        const cachedPhoto = await takePhotoFromCache();
-        console.log('ImageUploader: takePhotoFromCache result:', !!cachedPhoto);
-        
-        console.log('ImageUploader: Calling restoreFormState()...');
-        const formState = restoreFormState();
-        console.log('ImageUploader: restoreFormState result:', !!formState, formState);
-
-        console.log('ImageUploader: Cache check results:', {
-          hasCachedPhoto: !!cachedPhoto,
-          hasFormState: !!formState,
-          onRestoreFormState: !!onRestoreFormState
-        });
-
-        if (cachedPhoto) {
-          console.log('ImageUploader: Found cached photo, processing...');
-          // Photo exists - add to reference images automatically
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            try {
-              const dataUri = e.target?.result as string;
-              console.log('ImageUploader: FileReader completed, data URI length:', dataUri.length);
-              console.log('ImageUploader: Adding cached photo to reference images');
-              addReferenceUrl(dataUri, false);
-              
-              // Restore form state if available
-              if (formState && onRestoreFormState) {
-                console.log('ImageUploader: Calling onRestoreFormState with:', formState);
-                onRestoreFormState(formState);
-              }
-              
-              // Mark as restored and clean up
-              markAsRestored();
-              clearUiSnapshot();
-              console.log('ImageUploader: Cache restoration completed');
-            } catch (error) {
-              console.error('ImageUploader: Error in FileReader onload:', error);
-              markAsRestored();
-              clearUiSnapshot();
-            }
-          };
+        // Restore form state if available (already retrieved above)
+        if (formState && onRestoreFormState) {
+          console.log('ImageUploader: Restoring form state');
+          showDebugMessage('📸 Form state restored');
           
-          reader.onerror = (error) => {
-            console.error('ImageUploader: FileReader error during restoration:', error);
-            markAsRestored();
-            clearUiSnapshot();
-          };
-          
-          reader.readAsDataURL(cachedPhoto);
-        } else if (formState) {
-          console.log('ImageUploader: Found form state but no photo');
-          
-          // Check if this was a camera waiting state
-          if (formState.isWaitingForCamera) {
-            console.log('ImageUploader: User was waiting for camera - setting waiting state');
-            setIsWaitingForCamera(true);
-            
-            // Set a timeout to clear the waiting state if camera is not used within 30 seconds
-            setTimeout(() => {
-              console.log('ImageUploader: Camera waiting timeout - clearing waiting state');
-              setIsWaitingForCamera(false);
-              clearUiSnapshot();
-            }, 30000);
-          } else {
-            console.log('ImageUploader: Regular form state - not setting waiting state');
-          }
-          
-          // Restore form state
-          if (onRestoreFormState) {
-            console.log('ImageUploader: Calling onRestoreFormState (no photo) with:', formState);
-            onRestoreFormState(formState);
-          }
-          
-          // Mark as restored
-          markAsRestored();
-        } else {
-          console.log('ImageUploader: No cached data found');
-          // No cached data - mark as checked to prevent future checks
-          markAsRestored();
+          const onRestoreStartTime = performance.now();
+          onRestoreFormState(formState);
+          const onRestoreTime = performance.now() - onRestoreStartTime;
+          console.log(`ImageUploader: onRestoreFormState callback took ${onRestoreTime.toFixed(2)}ms`);
+          showDebugMessage(`📸 Form state callback: ${onRestoreTime.toFixed(0)}ms`);
         }
-      } catch (error) {
-        console.error('ImageUploader: Error during cache restoration:', error);
-        markAsRestored();
-        clearUiSnapshot();
+        
+        const totalTime = performance.now() - startTime;
+        console.log(`ImageUploader: Total cache restoration took ${totalTime.toFixed(2)}ms`);
+        showDebugMessage(`📸 Total cache restoration: ${totalTime.toFixed(0)}ms`);
+      } else {
+        console.log('ImageUploader: No cached photo found');
+        showDebugMessage('📸 No cached photo found');
       }
     };
 
+    hasCheckedCache.current = true;
     restoreFromCache();
-  }, [addReferenceUrl, onRestoreFormState, isMobile]);
+  }, []); // Empty dependency array - only run once on mount
 
   const processFiles = (files: FileList | null) => {
     try {
@@ -202,18 +155,25 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       });
 
       if (validFiles.length > 0) {
+        // TEMPORARY: Debug message
+        console.log('📸 UPLOADER: Processing files', validFiles.length);
+        showDebugMessage(`📸 Processing ${validFiles.length} files`);
+        
         // Add a small delay on mobile to prevent race conditions
         if (isMobile) {
           setTimeout(() => {
             onImageUpload(validFiles);
+            showDebugMessage('📸 Files uploaded (mobile)');
           }, 50);
         } else {
           onImageUpload(validFiles);
+          showDebugMessage('📸 Files uploaded');
         }
         // Let the backend handle workflow selection
       }
     } catch (error) {
       console.error('Error processing files:', error);
+      showDebugMessage('❌ File processing failed');
       toast.error('Error processing uploaded files');
     }
   };
@@ -304,22 +264,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const triggerFileInput = () => fileInputRef.current?.click();
   
   const triggerCameraInput = () => {
-    // Save camera waiting state before opening camera
-    if (currentFormState) {
-      console.log('ImageUploader: Saving camera waiting state before camera...');
-      saveCameraWaitingState(currentFormState);
-    } else {
-      console.log('ImageUploader: No currentFormState provided!');
-    }
-    
-    // Close dropdown menu if open
     setMenuOpen(false);
-    
-    setIsWaitingForCamera(true);
-    
-    // Small delay to ensure menu closes before triggering camera
     setTimeout(() => {
-      console.log('ImageUploader: Triggering camera input click...');
       cameraInputRef.current?.click();
     }, 100);
   };
@@ -328,59 +274,96 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     console.log('ImageUploader: handleCameraInput called');
     const file = e.target.files?.[0];
     if (!file) {
-      console.log('ImageUploader: No file selected from camera input');
-      setIsWaitingForCamera(false);
-      clearUiSnapshot();
+      console.log('ImageUploader: No file selected');
       return;
     }
 
-    console.log('ImageUploader: Camera input received file:', file.name, file.size, file.type);
+    // TEMPORARY: Debug message
+    console.log('📸 UPLOADER: Camera input received', file.name, file.size);
+    showDebugMessage('📸 Camera photo received');
+
+    console.log('ImageUploader: Processing camera photo');
 
     try {
-      // 1. IMMEDIATELY save to IndexedDB FIRST (before any other operations)
-      console.log('ImageUploader: Saving to IndexedDB...');
+      // 1. Store photo to cache
       await putPhoto(file);
-      console.log('ImageUploader: Saved to IndexedDB successfully');
+      console.log('ImageUploader: Photo stored to cache');
+      showDebugMessage('📸 Photo cached');
 
-      // 2. Convert to data URI and add to reference images
-      console.log('ImageUploader: Converting file to data URI...');
+      // 2. Save current form state
+      if (currentFormState) {
+        console.log('ImageUploader: currentFormState provided:', currentFormState);
+        showDebugMessage('📸 Form state provided, saving...');
+        saveFormState(currentFormState);
+        console.log('ImageUploader: Form state saved');
+        showDebugMessage('📸 Form state saved');
+      } else {
+        console.log('ImageUploader: No currentFormState provided!');
+        showDebugMessage('❌ No form state provided');
+      }
+
+      // 3. Convert to data URI and display
       const reader = new FileReader();
       reader.onload = (e) => {
         const dataUri = e.target?.result as string;
-        console.log('ImageUploader: FileReader completed, data URI length:', dataUri.length);
-        console.log('ImageUploader: Adding to reference images...');
-        
+        console.log('ImageUploader: Adding photo to display');
+        showDebugMessage('📸 Photo displayed');
         addReferenceUrl(dataUri, false);
-        
-        console.log('ImageUploader: Photo added to reference images successfully');
-        setIsWaitingForCamera(false);
-        // Clear the waiting state from sessionStorage to prevent it from persisting across refreshes
-        clearUiSnapshot();
-        // Also clear the restoration flag to prevent conflicts
-        sessionStorage.removeItem('hasRestored');
       };
-      
-      reader.onerror = (error) => {
-        console.error('ImageUploader: FileReader error:', error);
-        setIsWaitingForCamera(false);
-        clearUiSnapshot();
-        toast.error('Failed to process photo');
-      };
-      
       reader.readAsDataURL(file);
 
-      // 3. Clear the input
+      // Clear input
       e.target.value = '';
 
     } catch (error) {
       console.error('ImageUploader: Error processing camera input:', error);
-      setIsWaitingForCamera(false);
-      clearUiSnapshot();
+      showDebugMessage('❌ Camera input failed');
       toast.error('Failed to process photo');
     }
   };
 
   const dragButtonClass = `${isDragging ? 'bg-purple-100 border-purple-500' : 'border border-input'} transition-colors`;
+
+  // TEMPORARY: Debug message display function
+  const showDebugMessage = (message: string) => {
+    // Create or update debug element
+    let debugEl = document.getElementById('debug-messages');
+    if (!debugEl) {
+      debugEl = document.createElement('div');
+      debugEl.id = 'debug-messages';
+      debugEl.style.cssText = `
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 10px;
+        border-radius: 5px;
+        font-family: monospace;
+        font-size: 12px;
+        z-index: 10000;
+        max-width: 300px;
+        word-wrap: break-word;
+      `;
+      document.body.appendChild(debugEl);
+    }
+    
+    const timestamp = new Date().toLocaleTimeString();
+    debugEl.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+    
+    // Keep only last 10 messages
+    const messages = debugEl.children;
+    if (messages.length > 10) {
+      debugEl.removeChild(messages[0]);
+    }
+    
+    // Auto-clear after 15 seconds (3x longer)
+    setTimeout(() => {
+      if (debugEl && debugEl.children.length > 0) {
+        debugEl.removeChild(debugEl.children[0]);
+      }
+    }, 15000);
+  };
 
   if (isMobile) {
     return (
