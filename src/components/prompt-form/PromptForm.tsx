@@ -533,6 +533,9 @@ const PromptForm: React.FC<PromptFormProps> = ({
         console.log('PromptForm: Error clearing photo cache:', error);
         showDebugMessage('❌ Cache clear failed');
       }
+      
+      // Reset local loading state after successful submission
+      setLocalLoading(false);
     } catch (error) {
       console.error('Error in handleSubmit:', error);
       showDebugMessage('❌ Form submission failed');
@@ -626,6 +629,13 @@ const PromptForm: React.FC<PromptFormProps> = ({
       console.error('Error in toggleAdvancedOptions:', error);
     }
   };
+
+  // Reset local loading state when external loading completes
+  useEffect(() => {
+    if (!isLoading && localLoading) {
+      setLocalLoading(false);
+    }
+  }, [isLoading, localLoading]);
 
   const isButtonDisabled = localLoading || (prompt.trim() === '' && referenceUrls.length === 0 && imageFiles.length === 0);
 

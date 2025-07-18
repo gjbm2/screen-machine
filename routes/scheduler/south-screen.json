@@ -387,68 +387,8 @@
         "_b_theme": "Busy piers \u2014 people enjoying fairground rides and ice cream stalls",
         "_style": "Saturated color photography inspired by Martin Parr",
         "_guidance": "Capture the essence of summer leisure depicted in lush British parks and vibrant seaside piers; include unique compositions and freshly explored subjects not echoed in recent image history.",
-        "prompt": "Busy seaside pier bustling with ice cream stalls, cheerful families enjoying mini-golf, vibrant retro arcade games, in rich hues reflecting Martin Parr's keen eye for joyful spontaneity.",
+        "prompt": "Lively beach huts with families in colorful swimwear, children building sandcastles, vibrant umbrellas casting playful shadows, captured in Martin Parr's vivid color photography style.",
         "history_var": [
-          {
-            "timestamp": "2025-07-15 20:00:02",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Bustling Berlin train station, international commuters share travel tales in eclectic mix of languages, art deco murals and modern ads form a vivid backdrop, Cartier-Bresson freeze-frames the cosmopolitan tapestry."
-            },
-            "text_input": "'Modern cultural intersections in bustling capi...",
-            "explanation": "I selected Berlin, known for its rich historical and contemporary blend, focusing on a train stat..."
-          },
-          {
-            "timestamp": "2025-07-15 21:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Diverse group of faith leaders debating architectural heritage by Dome of the Rock; Cartier-Bresson's lens capturing animated expressions merging historic and spiritual textures."
-            },
-            "text_input": "'Historical convergence of the Christian, Islam...",
-            "explanation": "I chose an interaction near a prominent religious site, emphasizing the blend of architecture and..."
-          },
-          {
-            "timestamp": "2025-07-15 22:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Midday Marrakesh souk, diverse artisans exchanging traditional and modern crafts, vivid textiles and intricate ceramics displayed, Cartier-Bresson masterfully capturing lively bartering and cultural synergy."
-            },
-            "text_input": "'Modern cultural intersections in bustling capi...",
-            "explanation": "I selected Marrakesh's souk market, providing a fresh setting distinct from previous prompts and ..."
-          },
-          {
-            "timestamp": "2025-07-15 23:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Porto's bustling riverside with Portuguese fado singers harmonizing with African drummers; Cartier-Bresson's lens capturing the fluid dance of cultural rhythms and architectural juxtapositions."
-            },
-            "text_input": "'Modern cultural intersections in bustling capi...",
-            "explanation": "I chose Porto, a distinct city not previously used, focusing on its riverside. The interaction be..."
-          },
-          {
-            "timestamp": "2025-07-16 06:00:16",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Vibrant seaside scene at twilight: a family builds intricate sandcastles, vibrant kites soar against watercolor skies, Monet\u2019s impressionistic brushwork capturing serene and joyful moments."
-            },
-            "text_input": "'Late afternoon by the seaside \u2014 calm waters an...",
-            "explanation": "I focused on twilight lighting rather than late afternoon, ensuring a fresh perspective. A family..."
-          },
-          {
-            "timestamp": "2025-07-16 07:00:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "A serene afternoon picnic by a lush meadow stream, wildflowers bloom, families savoring cucumber sandwiches and tea. Light dances on leaves, Monet's brushstrokes capture gentle laughter."
-            },
-            "text_input": "'A quintessential British countryside lunch und...",
-            "explanation": "The prompt focuses on a countryside picnic by a stream with families, distinct from previous seas..."
-          },
           {
             "timestamp": "2025-07-16 08:00:03",
             "type": "reason",
@@ -588,75 +528,69 @@
             },
             "text_input": "'Busy piers \u2014 people enjoying fairground rides ...",
             "explanation": "I focused on mini-golf and retro arcade games, which haven't been previously mentioned, shifting ..."
+          },
+          {
+            "timestamp": "2025-07-18 10:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Family playing board games under a sunlit gazebo, vibrant kites flying over neighboring field, saturated with Martin Parr's trademark vividness capturing summer bliss in lush British parks."
+            },
+            "text_input": "'Quiet park days \u2014 families and friends picnick...",
+            "explanation": "I crafted a scene featuring a gazebo and board games, which has not been represented before, ensu..."
+          },
+          {
+            "timestamp": "2025-07-18 11:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Picnic under ancient oak canopy, multicolored tartan blankets, lemonade pitchers gleam amid golden shafts of light filtering through summer leaves, captured in Martin Parr's saturated hues."
+            },
+            "text_input": "'Quiet park days \u2014 families and friends picnick...",
+            "explanation": "I focused on an intimate picnic scene under a distinctive oak tree, with specific attention to th..."
+          },
+          {
+            "timestamp": "2025-07-18 12:00:04",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Sunny park with people reading on blankets, vibrant ice cream cart nearby, sunflowers around, Martin Parr's vivid, nostalgic style capturing serene leisure moments."
+            },
+            "text_input": "'Quiet park days \u2014 families and friends picnick...",
+            "explanation": "I chose to depict a park scene centered on reading, with the unique addition of an ice cream cart..."
+          },
+          {
+            "timestamp": "2025-07-18 13:00:04",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Colorful badminton game in a lush park, families cheering around in vivid outfits, joyous atmosphere accentuated with Martin Parr's characteristic bright colors and intimate, everyday interactions."
+            },
+            "text_input": "'Quiet park days \u2014 families and friends picnick...",
+            "explanation": "I chose a dynamic badminton game in a park, focusing on vibrant clothing and family interaction, ..."
+          },
+          {
+            "timestamp": "2025-07-18 14:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Lively docks with people enjoying gourmet food trucks, flying kites overhead, children engaged in chalk art on the pavement, in Martin Parr's vibrant, candid photography style."
+            },
+            "text_input": "'Busy piers \u2014 people enjoying fairground rides ...",
+            "explanation": "I shifted focus to docks rather than piers, emphasizing food trucks, kites, and chalk art\u2014element..."
+          },
+          {
+            "timestamp": "2025-07-18 15:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Lively beach huts with families in colorful swimwear, children building sandcastles, vibrant umbrellas casting playful shadows, captured in Martin Parr's vivid color photography style."
+            },
+            "text_input": "'Busy piers \u2014 people enjoying fairground rides ...",
+            "explanation": "I focused on an iconic British seaside element\u2014beach huts\u2014rather than piers or docks. The scene h..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2025-07-15 19:00:08",
-            "type": "generation",
-            "prompt": "Children of different faiths playing football i...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250715-180042-93c44778.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-07-15 20:00:05",
-            "type": "generation",
-            "prompt": "Bustling Berlin train station, international co...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250715-190103-cb79d2f4.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-07-15 21:00:07",
-            "type": "generation",
-            "prompt": "Diverse group of faith leaders debating archite...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250715-200117-faa9e0f4.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-07-15 22:00:07",
-            "type": "generation",
-            "prompt": "Midday Marrakesh souk, diverse artisans exchang...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250715-210040-9f1e9b50.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-07-15 23:00:06",
-            "type": "generation",
-            "prompt": "Porto's bustling riverside with Portuguese fado...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250715-220103-88dc902b.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-07-16 06:00:20",
-            "type": "generation",
-            "prompt": "Vibrant seaside scene at twilight: a family bui...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250716-050115-9be626fc.jpg"
-            ],
-            "published": true
-          },
           {
             "timestamp": "2025-07-16 07:00:07",
             "type": "generation",
@@ -808,6 +742,72 @@
             "workflow": null,
             "image_paths": [
               "20250718-080042-74b8963a.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-07-18 10:00:07",
+            "type": "generation",
+            "prompt": "Family playing board games under a sunlit gazeb...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250718-090040-d17f7a6e.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-07-18 11:00:08",
+            "type": "generation",
+            "prompt": "Picnic under ancient oak canopy, multicolored t...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250718-100042-22038b67.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-07-18 12:00:07",
+            "type": "generation",
+            "prompt": "Sunny park with people reading on blankets, vib...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250718-110041-47d90c30.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-07-18 13:00:08",
+            "type": "generation",
+            "prompt": "Colorful badminton game in a lush park, familie...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250718-120041-34279529.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-07-18 14:00:06",
+            "type": "generation",
+            "prompt": "Lively docks with people enjoying gourmet food ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250718-130137-b7ea3577.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-07-18 15:00:07",
+            "type": "generation",
+            "prompt": "Lively beach huts with families in colorful swi...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250718-140041-6793e5f8.jpg"
             ],
             "published": true
           }
@@ -1023,12 +1023,12 @@
         "vis_confidence": "82%",
         "vis_rationale": "Evokes a vivid scene with masked figures and chaos in a community setting."
       },
-      "last_generated": "20250718-080042-74b8963a.jpg",
+      "last_generated": "20250718-140041-6793e5f8.jpg",
       "publish_destination": "south-screen"
     }
   ],
   "state": "running",
-  "last_updated": "2025-07-18T09:05:02.922367",
+  "last_updated": "2025-07-18T15:05:03.657398",
   "last_trigger_executions": {
     "615c22f09f03cb1b6164dab4b2980a01_2025-07-13_10": "2025-07-13T17:00:00.084373",
     "b812f679a565a0c56311d86bfaf3ca2d_2025-07-13_5": "2025-07-13T17:05:01.385862",
@@ -1228,7 +1228,16 @@
     "b812f679a565a0c56311d86bfaf3ca2d_2025-07-18_0": "2025-07-18T07:05:01.883731",
     "615c22f09f03cb1b6164dab4b2980a01_2025-07-18_1": "2025-07-18T08:00:00.426401",
     "615c22f09f03cb1b6164dab4b2980a01_2025-07-18_2": "2025-07-18T09:00:00.565796",
-    "b812f679a565a0c56311d86bfaf3ca2d_2025-07-18_1": "2025-07-18T09:05:00.902375"
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-07-18_1": "2025-07-18T09:05:00.902375",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-07-18_3": "2025-07-18T10:00:00.830683",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-07-18_4": "2025-07-18T11:00:00.807759",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-07-18_2": "2025-07-18T11:05:00.048103",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-07-18_5": "2025-07-18T12:00:01.568290",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-07-18_6": "2025-07-18T13:00:01.824994",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-07-18_3": "2025-07-18T13:05:00.302372",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-07-18_7": "2025-07-18T14:00:00.845382",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-07-18_8": "2025-07-18T15:00:00.248231",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-07-18_4": "2025-07-18T15:05:01.599274"
   },
   "active_events": {
     "__exit_block__": []
@@ -1236,308 +1245,6 @@
   "event_history": [
     {
       "key": "Generate",
-      "active_from": "2025-07-15T09:00:00.708067",
-      "expires": "2025-07-15T09:01:00.708067",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T09:00:00.708067",
-      "unique_id": "c0869a95-bdca-4d32-b021-ac2945d48d6d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T09:00:02.794095"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T09:00:00.708067",
-      "expires": "2025-07-15T09:01:00.708067",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T09:00:00.708067",
-      "unique_id": "c0869a95-bdca-4d32-b021-ac2945d48d6d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T09:00:02.794095"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-15T09:05:02.239142",
-      "expires": "2025-07-15T09:06:02.239142",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-15T09:05:02.239142",
-      "unique_id": "9aa799d0-0d9d-4d38-bb05-e27ee64a8a44",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T09:05:04.064270"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-15T09:05:02.239142",
-      "expires": "2025-07-15T09:06:02.239142",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-15T09:05:02.239142",
-      "unique_id": "9aa799d0-0d9d-4d38-bb05-e27ee64a8a44",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T09:05:04.064270"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T10:00:00.361366",
-      "expires": "2025-07-15T10:01:00.361366",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T10:00:00.361366",
-      "unique_id": "e93339ad-360e-41cf-a032-8c006b02f79d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T10:00:02.401660"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T10:00:00.361366",
-      "expires": "2025-07-15T10:01:00.361366",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T10:00:00.361366",
-      "unique_id": "e93339ad-360e-41cf-a032-8c006b02f79d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T10:00:02.401660"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T11:00:00.390267",
-      "expires": "2025-07-15T11:01:00.390267",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T11:00:00.390267",
-      "unique_id": "07b52d80-7864-4254-82b1-efec7a8a0846",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T11:00:02.385505"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T11:00:00.390267",
-      "expires": "2025-07-15T11:01:00.390267",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T11:00:00.390267",
-      "unique_id": "07b52d80-7864-4254-82b1-efec7a8a0846",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T11:00:02.385505"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-15T11:05:01.883825",
-      "expires": "2025-07-15T11:06:01.883825",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-15T11:05:01.883825",
-      "unique_id": "2e2c0ee8-4bff-4c1e-a322-45b0d5d43f83",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T11:05:03.745244"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-15T11:05:01.883825",
-      "expires": "2025-07-15T11:06:01.883825",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-15T11:05:01.883825",
-      "unique_id": "2e2c0ee8-4bff-4c1e-a322-45b0d5d43f83",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T11:05:03.745244"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T12:00:01.387036",
-      "expires": "2025-07-15T12:01:01.387036",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T12:00:01.387036",
-      "unique_id": "331e1a7a-c394-4791-811c-d5194f11e18f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T12:00:03.449111"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T12:00:01.387036",
-      "expires": "2025-07-15T12:01:01.387036",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T12:00:01.387036",
-      "unique_id": "331e1a7a-c394-4791-811c-d5194f11e18f",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T12:00:03.449111"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T13:00:01.861540",
-      "expires": "2025-07-15T13:01:01.861540",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T13:00:01.861540",
-      "unique_id": "08f40ecf-6cce-463b-83f9-c432436791dc",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T13:00:03.851918"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T13:00:01.861540",
-      "expires": "2025-07-15T13:01:01.861540",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T13:00:01.861540",
-      "unique_id": "08f40ecf-6cce-463b-83f9-c432436791dc",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T13:00:03.851918"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-15T13:05:01.626087",
-      "expires": "2025-07-15T13:06:01.626087",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-15T13:05:01.626087",
-      "unique_id": "f61dbffe-30c9-4f41-9ccf-d263723a473e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T13:05:03.393432"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-15T13:05:01.626087",
-      "expires": "2025-07-15T13:06:01.626087",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-15T13:05:01.626087",
-      "unique_id": "f61dbffe-30c9-4f41-9ccf-d263723a473e",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T13:05:03.393432"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T14:00:01.610878",
-      "expires": "2025-07-15T14:01:01.610878",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T14:00:01.610878",
-      "unique_id": "1d2d15cc-025e-4f7a-814c-6148da67df99",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T14:00:03.647580"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T14:00:01.610878",
-      "expires": "2025-07-15T14:01:01.610878",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T14:00:01.610878",
-      "unique_id": "1d2d15cc-025e-4f7a-814c-6148da67df99",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T14:00:03.647580"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T15:00:00.896721",
-      "expires": "2025-07-15T15:01:00.896721",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T15:00:00.896721",
-      "unique_id": "a0380e08-581b-41b7-a744-ed0b6904a562",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T15:00:02.936572"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T15:00:00.896721",
-      "expires": "2025-07-15T15:01:00.896721",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T15:00:00.896721",
-      "unique_id": "a0380e08-581b-41b7-a744-ed0b6904a562",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T15:00:02.936572"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-15T15:05:00.440544",
-      "expires": "2025-07-15T15:06:00.440544",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-15T15:05:00.440544",
-      "unique_id": "236452d4-b1f6-404a-9ba8-522ad12d1066",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T15:05:02.272761"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-15T15:05:00.440544",
-      "expires": "2025-07-15T15:06:00.440544",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-15T15:05:00.440544",
-      "unique_id": "236452d4-b1f6-404a-9ba8-522ad12d1066",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T15:05:02.272761"
-    },
-    {
-      "key": "Generate",
       "active_from": "2025-07-15T16:00:00.015449",
       "expires": "2025-07-15T16:01:00.015449",
       "display_name": null,
@@ -2621,6 +2328,318 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
       "consumed_at": "2025-07-18T09:05:02.904166"
+    },
+    {
+      "key": "_auto_upscale",
+      "active_from": "2025-07-18T09:16:01.003180",
+      "expires": "2025-07-18T09:21:01.003180",
+      "display_name": "Auto-upscale after fast adapt",
+      "payload": {
+        "trigger_type": "auto_upscale",
+        "original_prompt": "rainy days",
+        "workflow": null
+      },
+      "single_consumer": true,
+      "created_at": "2025-07-18T09:15:56.003180",
+      "unique_id": "0620661c-c5cb-4a9f-9782-4e9d1945cacd",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T09:16:02.331958"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-18T09:15:56.124133",
+      "expires": "2025-07-18T12:15:56.124133",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T09:15:56.124133",
+      "unique_id": "d28c353d-73e5-4428-b499-469ca557be3f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T09:15:56.273894"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-18T09:15:56.124133",
+      "expires": "2025-07-18T12:15:56.124133",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T09:15:56.124133",
+      "unique_id": "d28c353d-73e5-4428-b499-469ca557be3f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T09:15:56.273894"
+    },
+    {
+      "key": "_auto_upscale",
+      "active_from": "2025-07-18T09:16:01.003180",
+      "expires": "2025-07-18T09:21:01.003180",
+      "display_name": "Auto-upscale after fast adapt",
+      "payload": {
+        "trigger_type": "auto_upscale",
+        "original_prompt": "rainy days",
+        "workflow": null
+      },
+      "single_consumer": true,
+      "created_at": "2025-07-18T09:15:56.003180",
+      "unique_id": "0620661c-c5cb-4a9f-9782-4e9d1945cacd",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T09:16:02.331958"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T10:00:00.846206",
+      "expires": "2025-07-18T10:01:00.846206",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T10:00:00.846206",
+      "unique_id": "87bbe3f2-bb18-47b0-9f44-c18cdb8c9a35",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T10:00:02.903959"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T10:00:00.846206",
+      "expires": "2025-07-18T10:01:00.846206",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T10:00:00.846206",
+      "unique_id": "87bbe3f2-bb18-47b0-9f44-c18cdb8c9a35",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T10:00:02.903959"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T11:00:00.836029",
+      "expires": "2025-07-18T11:01:00.836029",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T11:00:00.836029",
+      "unique_id": "7840dcc8-c91b-4f49-ba7a-dac5997f0837",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T11:00:02.896132"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T11:00:00.836029",
+      "expires": "2025-07-18T11:01:00.836029",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T11:00:00.836029",
+      "unique_id": "7840dcc8-c91b-4f49-ba7a-dac5997f0837",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T11:00:02.896132"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-18T11:05:00.221910",
+      "expires": "2025-07-18T11:06:00.221910",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T11:05:00.221910",
+      "unique_id": "524d6104-9348-493f-b04a-e2ffe5c62eac",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T11:05:02.138376"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-18T11:05:00.221910",
+      "expires": "2025-07-18T11:06:00.221910",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T11:05:00.221910",
+      "unique_id": "524d6104-9348-493f-b04a-e2ffe5c62eac",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T11:05:02.138376"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T12:00:01.683440",
+      "expires": "2025-07-18T12:01:01.683440",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T12:00:01.683440",
+      "unique_id": "06f3c9fa-22d4-47f2-b24b-9fb4adad6b34",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T12:00:03.639662"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T12:00:01.683440",
+      "expires": "2025-07-18T12:01:01.683440",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T12:00:01.683440",
+      "unique_id": "06f3c9fa-22d4-47f2-b24b-9fb4adad6b34",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T12:00:03.639662"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T13:00:01.879243",
+      "expires": "2025-07-18T13:01:01.879243",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T13:00:01.879243",
+      "unique_id": "2e059639-96bf-4d12-9f1a-0277d6622834",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T13:00:03.828564"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T13:00:01.879243",
+      "expires": "2025-07-18T13:01:01.879243",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T13:00:01.879243",
+      "unique_id": "2e059639-96bf-4d12-9f1a-0277d6622834",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T13:00:03.828564"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-18T13:05:00.541542",
+      "expires": "2025-07-18T13:06:00.541542",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T13:05:00.541542",
+      "unique_id": "538cb74e-0c23-4e7d-9f4f-0ba85f433711",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T13:05:02.366126"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-18T13:05:00.541542",
+      "expires": "2025-07-18T13:06:00.541542",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T13:05:00.541542",
+      "unique_id": "538cb74e-0c23-4e7d-9f4f-0ba85f433711",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T13:05:02.366126"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T14:00:00.881637",
+      "expires": "2025-07-18T14:01:00.881637",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T14:00:00.881637",
+      "unique_id": "9e546d54-8fb1-4017-812f-80497c446858",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T14:00:02.932815"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T14:00:00.881637",
+      "expires": "2025-07-18T14:01:00.881637",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T14:00:00.881637",
+      "unique_id": "9e546d54-8fb1-4017-812f-80497c446858",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T14:00:02.932815"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T15:00:00.260777",
+      "expires": "2025-07-18T15:01:00.260777",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T15:00:00.260777",
+      "unique_id": "da40d384-1d38-4b26-8d1c-8484df1c7e21",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T15:00:02.329231"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T15:00:00.260777",
+      "expires": "2025-07-18T15:01:00.260777",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T15:00:00.260777",
+      "unique_id": "da40d384-1d38-4b26-8d1c-8484df1c7e21",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T15:00:02.329231"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-18T15:05:01.812135",
+      "expires": "2025-07-18T15:06:01.812135",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T15:05:01.812135",
+      "unique_id": "ac23ffa2-4400-496e-91df-0e46da44493f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T15:05:03.633736"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-18T15:05:01.812135",
+      "expires": "2025-07-18T15:06:01.812135",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T15:05:01.812135",
+      "unique_id": "ac23ffa2-4400-496e-91df-0e46da44493f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T15:05:03.633736"
     }
   ]
 }
