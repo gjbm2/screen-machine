@@ -9,6 +9,7 @@ import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
 import { Workflow } from '@/types/workflows';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { dataURItoFile, isDataURI } from '@/utils/imageUtils';
+import { clearAll } from '@/utils/photoCache';
 
 const PromptForm: React.FC<PromptFormProps> = ({
   onSubmit,
@@ -62,6 +63,47 @@ const PromptForm: React.FC<PromptFormProps> = ({
     setSelectedRefiner,
     setSelectedPublish,
   } = usePromptForm();
+
+  // TEMPORARY: Debug message display function
+  const showDebugMessage = (message: string) => {
+    // Create or update debug element
+    let debugEl = document.getElementById('debug-messages');
+    if (!debugEl) {
+      debugEl = document.createElement('div');
+      debugEl.id = 'debug-messages';
+      debugEl.style.cssText = `
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 10px;
+        border-radius: 5px;
+        font-family: monospace;
+        font-size: 12px;
+        z-index: 10000;
+        max-width: 300px;
+        word-wrap: break-word;
+      `;
+      document.body.appendChild(debugEl);
+    }
+    
+    const timestamp = new Date().toLocaleTimeString();
+    debugEl.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+    
+    // Keep only last 10 messages
+    const messages = debugEl.children;
+    if (messages.length > 10) {
+      debugEl.removeChild(messages[0]);
+    }
+    
+    // Auto-clear after 15 seconds (3x longer)
+    setTimeout(() => {
+      if (debugEl && debugEl.children.length > 0) {
+        debugEl.removeChild(debugEl.children[0]);
+      }
+    }, 15000);
+  };
 
   useEffect(() => {
     if (currentPrompt && currentPrompt !== lastReceivedPrompt.current) {
@@ -150,6 +192,10 @@ const PromptForm: React.FC<PromptFormProps> = ({
     try {
       console.log('handleImageUpload called with:', files);
       
+      // TEMPORARY: Debug message
+      console.log('📸 FORM: Image upload received', files.length);
+      showDebugMessage(`📸 Form received ${files.length} files`);
+      
       // Prevent any potential form submission during upload
       if (isMobile) {
         // Add a small delay on mobile to ensure the file input has fully processed
@@ -157,6 +203,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
       }
       
       setImageFiles(prev => [...prev, ...files]);
+      showDebugMessage('📸 Files added to form state');
       
       // Process each file - but DON'T convert File objects to blob URLs for reference
       for (const file of files) {
@@ -170,11 +217,14 @@ const PromptForm: React.FC<PromptFormProps> = ({
         }
       }
       
+      showDebugMessage('📸 Files processed');
+      
       // Schedule cleanup after processing
       scheduleCleanup();
       
     } catch (error) {
       console.error('Error in handleImageUpload:', error);
+      showDebugMessage('❌ Form upload failed');
       toast.error('Error processing uploaded image');
     }
   };
@@ -283,10 +333,12 @@ const PromptForm: React.FC<PromptFormProps> = ({
   const handleRestoreFormState = (formState: any) => {
     try {
       console.log('PromptForm: Starting form state restoration:', formState);
+      showDebugMessage('📸 Form: Starting state restoration');
       
       // Add guard to prevent restoration if already attempted
       if (hasTriedRestoration) {
         console.log('PromptForm: Skipping restoration - already attempted');
+        showDebugMessage('📸 Form: Skipping - already attempted');
         return;
       }
       
@@ -295,51 +347,79 @@ const PromptForm: React.FC<PromptFormProps> = ({
       
       // Restore prompt
       if (formState.prompt && formState.prompt !== prompt) {
-        console.log('PromptForm: Restoring prompt');
+        console.log('PromptForm: Restoring prompt:', formState.prompt);
+        showDebugMessage('📸 Form: Restoring prompt');
         setPrompt(formState.prompt);
+      } else {
+        console.log('PromptForm: No prompt to restore or already matches');
+        showDebugMessage('📸 Form: No prompt to restore');
       }
       
       // Restore workflow selection
       if (formState.selectedWorkflow && formState.selectedWorkflow !== selectedWorkflow) {
         console.log('PromptForm: Restoring workflow:', formState.selectedWorkflow);
+        showDebugMessage('📸 Form: Restoring workflow');
         setSelectedWorkflow(formState.selectedWorkflow);
         if (externalWorkflowChange) {
           externalWorkflowChange(formState.selectedWorkflow);
         }
+      } else {
+        console.log('PromptForm: No workflow to restore or already matches');
+        showDebugMessage('📸 Form: No workflow to restore');
       }
       
       // Restore refiner selection
       if (formState.selectedRefiner && formState.selectedRefiner !== selectedRefiner) {
         console.log('PromptForm: Restoring refiner:', formState.selectedRefiner);
+        showDebugMessage('📸 Form: Restoring refiner');
         setSelectedRefiner(formState.selectedRefiner);
         if (externalRefinerChange) {
           externalRefinerChange(formState.selectedRefiner);
         }
+      } else {
+        console.log('PromptForm: No refiner to restore or already matches');
+        showDebugMessage('📸 Form: No refiner to restore');
       }
       
       // Restore publish selection
       if (formState.selectedPublish && formState.selectedPublish !== selectedPublish) {
         console.log('PromptForm: Restoring publish:', formState.selectedPublish);
+        showDebugMessage('📸 Form: Restoring publish');
         setSelectedPublish(formState.selectedPublish);
         if (externalPublishChange) {
           externalPublishChange(formState.selectedPublish);
         }
+      } else {
+        console.log('PromptForm: No publish to restore or already matches');
+        showDebugMessage('📸 Form: No publish to restore');
       }
       
       // Restore parameters
       if (formState.workflowParams && JSON.stringify(formState.workflowParams) !== JSON.stringify(workflowParams)) {
-        console.log('PromptForm: Restoring workflow params');
+        console.log('PromptForm: Restoring workflow params:', formState.workflowParams);
+        showDebugMessage('📸 Form: Restoring workflow params');
         updateFromAdvancedPanel({ workflowParams: formState.workflowParams });
+      } else {
+        console.log('PromptForm: No workflow params to restore or already matches');
+        showDebugMessage('📸 Form: No workflow params to restore');
       }
       
       if (formState.refinerParams && JSON.stringify(formState.refinerParams) !== JSON.stringify(refinerParams)) {
-        console.log('PromptForm: Restoring refiner params');
+        console.log('PromptForm: Restoring refiner params:', formState.refinerParams);
+        showDebugMessage('📸 Form: Restoring refiner params');
         updateFromAdvancedPanel({ refinerParams: formState.refinerParams });
+      } else {
+        console.log('PromptForm: No refiner params to restore or already matches');
+        showDebugMessage('📸 Form: No refiner params to restore');
       }
       
       if (formState.globalParams && JSON.stringify(formState.globalParams) !== JSON.stringify(globalParams)) {
-        console.log('PromptForm: Restoring global params');
+        console.log('PromptForm: Restoring global params:', formState.globalParams);
+        showDebugMessage('📸 Form: Restoring global params');
         updateFromAdvancedPanel({ globalParams: formState.globalParams });
+      } else {
+        console.log('PromptForm: No global params to restore or already matches');
+        showDebugMessage('📸 Form: No global params to restore');
       }
       
       // Restore reference URLs
@@ -349,6 +429,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
         
         if (JSON.stringify(currentUrls) !== JSON.stringify(newUrls)) {
           console.log('PromptForm: Restoring reference URLs');
+          showDebugMessage('📸 Form: Restoring reference URLs');
           clearReferenceUrls();
           newUrls.forEach((url: string) => {
             addReferenceUrl(url, false);
@@ -357,14 +438,16 @@ const PromptForm: React.FC<PromptFormProps> = ({
       }
       
       console.log('PromptForm: Form state restored successfully');
+      showDebugMessage('📸 Form: State restoration completed');
       
     } catch (error) {
       console.error('PromptForm: Error restoring form state:', error);
+      showDebugMessage('❌ Form: Error restoring state');
       setHasTriedRestoration(true);
     }
   };
 
-  const handleSubmit = (e?: React.MouseEvent | React.FormEvent) => {
+  const handleSubmit = async (e?: React.MouseEvent | React.FormEvent) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -377,6 +460,10 @@ const PromptForm: React.FC<PromptFormProps> = ({
     
     try {
       setLocalLoading(true);
+      
+      // TEMPORARY: Debug message
+      console.log('📸 FORM: Submit started');
+      showDebugMessage('📸 Form submission started');
       
       // Debug mobile image submission
       console.log('PromptForm: handleSubmit - Mobile debug info:');
@@ -398,6 +485,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
       });
       
       console.log('PromptForm: Found', dataURIs.length, 'data URIs and', regularUrls.length, 'regular URLs');
+      showDebugMessage(`📸 Found ${dataURIs.length} data URIs, ${regularUrls.length} URLs`);
       
       // Convert data URIs to File objects
       const filesFromDataURIs = dataURIs.map((dataURI, index) => {
@@ -415,6 +503,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
       console.log('- URLs:', regularUrls.length, regularUrls);
       console.log('- Total images:', allImages.length);
       
+      showDebugMessage(`📸 Submitting ${allImages.length} total images`);
+      
       // Call the onSubmit prop with all the necessary data
       onSubmit(
         prompt,
@@ -426,8 +516,21 @@ const PromptForm: React.FC<PromptFormProps> = ({
         refinerParams,
         selectedPublish
       );
+      
+      showDebugMessage('📸 Form submitted successfully');
+      
+      // Clear photo cache after successful submission
+      try {
+        await clearAll();
+        console.log('PromptForm: Photo cache cleared after successful submission');
+        showDebugMessage('📸 Cache cleared after submit');
+      } catch (error) {
+        console.log('PromptForm: Error clearing photo cache:', error);
+        showDebugMessage('❌ Cache clear failed');
+      }
     } catch (error) {
       console.error('Error in handleSubmit:', error);
+      showDebugMessage('❌ Form submission failed');
       setLocalLoading(false);
     }
   };
@@ -631,3 +734,4 @@ const PromptForm: React.FC<PromptFormProps> = ({
 };
 
 export default PromptForm;
+

@@ -383,52 +383,12 @@
   "context_stack": [
     {
       "vars": {
-        "_a_theme": "Late afternoon by the seaside \u2014 calm waters and sandcastles",
-        "_b_theme": "A quintessential British countryside lunch under the summer sun",
-        "_style": "Claude Monet-inspired Impressionism",
-        "_guidance": "Illustrate the vivid colors and light of a classic summer\u2019s day, alternating between quiet picnic scenes and lively beach moments, with Monet\u2019s brushstroke techniques; avoid repeating any specific picnic or seaside scene depicted in recent gallery history.",
-        "prompt": "A tranquil riverbank scene with a lone fisherman casting rippling reflections, old oak trees lining the river, and Monet's exquisite play of light across shimmering water.",
+        "_a_theme": "Quiet park days \u2014 families and friends picnicking on grassy fields",
+        "_b_theme": "Busy piers \u2014 people enjoying fairground rides and ice cream stalls",
+        "_style": "Saturated color photography inspired by Martin Parr",
+        "_guidance": "Capture the essence of summer leisure depicted in lush British parks and vibrant seaside piers; include unique compositions and freshly explored subjects not echoed in recent image history.",
+        "prompt": "Busy seaside pier bustling with ice cream stalls, cheerful families enjoying mini-golf, vibrant retro arcade games, in rich hues reflecting Martin Parr's keen eye for joyful spontaneity.",
         "history_var": [
-          {
-            "timestamp": "2025-07-15 16:00:02",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Old stone courtyard in Jerusalem, three faith leaders in deep exchange by ancient olive tree, Cartier-Bresson captures their gestures against timeworn stones, revealing silent historical symphony."
-            },
-            "text_input": "'Historical convergence of the Christian, Islam...",
-            "explanation": "I avoided previous prompts by selecting an intimate setting in a Jerusalem courtyard with an anci..."
-          },
-          {
-            "timestamp": "2025-07-15 17:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Early morning in Jerusalem's labyrinthine lanes, a trio of elderly men from different faiths enjoy a quiet game of chess, Cartier-Bresson's lens immortalizes their serene unity amidst flowing garments."
-            },
-            "text_input": "'Historical convergence of the Christian, Islam...",
-            "explanation": "I emphasized a quiet, less communal interaction\u2014in this case, a chess game\u2014between men of differe..."
-          },
-          {
-            "timestamp": "2025-07-15 18:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Sunset in New Delhi's bustling market street, sari-clad locals and suit-wearing tourists haggling over spices and textiles, Cartier-Bresson's spontaneous lens capturing cultural mosaic."
-            },
-            "text_input": "'Modern cultural intersections in bustling capi...",
-            "explanation": "I chose a scene in New Delhi's busy market, a fresh location for this theme. The cultural interse..."
-          },
-          {
-            "timestamp": "2025-07-15 19:00:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Children of different faiths playing football in front of Jerusalem's old walls, their laughter and camaraderie captured by Cartier-Bresson's eye, illustrating youthful blending of cultures."
-            },
-            "text_input": "'Historical convergence of the Christian, Islam...",
-            "explanation": "I focused on children playing football, which signifies the vibrant mix of cultures without delvi..."
-          },
           {
             "timestamp": "2025-07-15 20:00:02",
             "type": "reason",
@@ -588,53 +548,49 @@
             },
             "text_input": "'A quintessential British countryside lunch und...",
             "explanation": "I chose a fishing scene by a riverbank to differ from previously mentioned picnic, cafe, or beach..."
+          },
+          {
+            "timestamp": "2025-07-18 06:00:15",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Vibrant pier scene featuring bustling arcade lights, toddlers enjoying seaside punch and Judy show, lively seagulls overhead, in Martin Parr's bold, joyful photographic style."
+            },
+            "text_input": "'Busy piers \u2014 people enjoying fairground rides ...",
+            "explanation": "I selected a busy pier with arcade lighting and a traditional punch and Judy show, which is disti..."
+          },
+          {
+            "timestamp": "2025-07-18 07:00:02",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Lush park scene with vividly dressed families playing frisbee, picnic hampers under sprawling willow trees, hot air balloons overhead, in Martin Parr's bold storytelling style."
+            },
+            "text_input": "'Quiet park days \u2014 families and friends picnick...",
+            "explanation": "I opted for a park setting with families engaged in frisbee, avoiding typical picnic scenarios. T..."
+          },
+          {
+            "timestamp": "2025-07-18 08:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Crowded pier lined with candy-striped awnings, people riding colorful Ferris wheel, children enjoy cotton candy, captured in Martin Parr\u2019s vivid yet authentic style emphasizing vibrant interactions."
+            },
+            "text_input": "'Busy piers \u2014 people enjoying fairground rides ...",
+            "explanation": "To craft a unique prompt, I focused on a busy pier scene featuring a Ferris wheel and candy-strip..."
+          },
+          {
+            "timestamp": "2025-07-18 09:00:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Busy seaside pier bustling with ice cream stalls, cheerful families enjoying mini-golf, vibrant retro arcade games, in rich hues reflecting Martin Parr's keen eye for joyful spontaneity."
+            },
+            "text_input": "'Busy piers \u2014 people enjoying fairground rides ...",
+            "explanation": "I focused on mini-golf and retro arcade games, which haven't been previously mentioned, shifting ..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2025-07-15 15:00:07",
-            "type": "generation",
-            "prompt": "London evening, diverse musicians jamming under...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250715-140039-7d35031d.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-07-15 16:00:09",
-            "type": "generation",
-            "prompt": "Old stone courtyard in Jerusalem, three faith l...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250715-150109-801628fd.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-07-15 17:00:06",
-            "type": "generation",
-            "prompt": "Early morning in Jerusalem's labyrinthine lanes...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250715-160101-5e4e69ac.jpg"
-            ],
-            "published": true
-          },
-          {
-            "timestamp": "2025-07-15 18:00:07",
-            "type": "generation",
-            "prompt": "Sunset in New Delhi's bustling market street, s...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20250715-170122-cced09ca.jpg"
-            ],
-            "published": true
-          },
           {
             "timestamp": "2025-07-15 19:00:08",
             "type": "generation",
@@ -808,6 +764,50 @@
             "workflow": null,
             "image_paths": [
               "20250716-150127-34786bac.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-07-18 06:00:20",
+            "type": "generation",
+            "prompt": "Vibrant pier scene featuring bustling arcade li...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250718-050054-1525cdfb.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-07-18 07:00:05",
+            "type": "generation",
+            "prompt": "Lush park scene with vividly dressed families p...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250718-060037-fddea3d5.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-07-18 08:00:09",
+            "type": "generation",
+            "prompt": "Crowded pier lined with candy-striped awnings, ...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250718-070046-4bc3049c.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2025-07-18 09:00:08",
+            "type": "generation",
+            "prompt": "Busy seaside pier bustling with ice cream stall...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20250718-080042-74b8963a.jpg"
             ],
             "published": true
           }
@@ -1021,28 +1021,14 @@
         ],
         "conf_int": 82,
         "vis_confidence": "82%",
-        "vis_rationale": "Evokes a vivid scene with masked figures and chaos in a community setting.",
-        "_event": {
-          "key": "Generate",
-          "payload": null,
-          "unique_id": "a3e1fc5a-15f7-4be8-b5da-aa2a57c1b9ee",
-          "created_at": "2025-07-16T17:00:01.069713",
-          "display_name": null
-        }
+        "vis_rationale": "Evokes a vivid scene with masked figures and chaos in a community setting."
       },
-      "last_generated": "20250716-150127-34786bac.jpg",
-      "publish_destination": "south-screen",
-      "_event": {
-        "key": "Generate",
-        "payload": null,
-        "unique_id": "a3e1fc5a-15f7-4be8-b5da-aa2a57c1b9ee",
-        "created_at": "2025-07-16T17:00:01.069713",
-        "display_name": null
-      }
+      "last_generated": "20250718-080042-74b8963a.jpg",
+      "publish_destination": "south-screen"
     }
   ],
   "state": "running",
-  "last_updated": "2025-07-18T00:09:52.839729",
+  "last_updated": "2025-07-18T09:05:02.922367",
   "last_trigger_executions": {
     "615c22f09f03cb1b6164dab4b2980a01_2025-07-13_10": "2025-07-13T17:00:00.084373",
     "b812f679a565a0c56311d86bfaf3ca2d_2025-07-13_5": "2025-07-13T17:05:01.385862",
@@ -1208,174 +1194,48 @@
     "615c22f09f03cb1b6164dab4b2980a01_2025-07-16_8": "2025-07-16T15:00:01.789339",
     "b812f679a565a0c56311d86bfaf3ca2d_2025-07-16_4": "2025-07-16T15:05:01.136748",
     "615c22f09f03cb1b6164dab4b2980a01_2025-07-16_9": "2025-07-16T16:00:00.978880",
-    "615c22f09f03cb1b6164dab4b2980a01_2025-07-16_10": "2025-07-16T17:00:01.055920"
+    "615c22f09f03cb1b6164dab4b2980a01_2025-07-16_10": "2025-07-16T17:00:01.055920",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_0": "2025-07-18T00:22:00.881172",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_1": "2025-07-18T00:37:01.443882",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_2": "2025-07-18T00:52:01.550014",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_3": "2025-07-18T01:07:00.907107",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_4": "2025-07-18T01:22:00.553007",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_5": "2025-07-18T01:37:00.657637",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_6": "2025-07-18T01:52:00.849904",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_7": "2025-07-18T02:07:00.715511",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_8": "2025-07-18T02:22:00.082971",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_9": "2025-07-18T02:37:01.347473",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_10": "2025-07-18T02:52:01.438714",
+    "86fcab81240ed277bf13e63c5c2c9595_2025-07-18": "2025-07-18T03:00:00.641608",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_11": "2025-07-18T03:07:00.725809",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_12": "2025-07-18T03:22:00.996715",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_13": "2025-07-18T03:37:01.158542",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_14": "2025-07-18T03:52:01.889268",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_15": "2025-07-18T04:07:00.876495",
+    "158578f4060f785538defa5246c1f15b_2025-07-18": "2025-07-18T04:10:01.330643",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_16": "2025-07-18T04:22:01.966533",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_17": "2025-07-18T04:37:00.975311",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_18": "2025-07-18T04:52:02.005670",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_19": "2025-07-18T05:07:01.922587",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_20": "2025-07-18T05:22:00.541174",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_21": "2025-07-18T05:37:01.762628",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_22": "2025-07-18T05:52:00.994814",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_23": "2025-07-18T06:07:01.704653",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_24": "2025-07-18T06:22:01.875160",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_25": "2025-07-18T06:37:01.317402",
+    "f65e26b4527c95c05af4f657d9560b34_2025-07-18_26": "2025-07-18T06:52:00.967897",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-07-18_0": "2025-07-18T07:00:00.033310",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-07-18_0": "2025-07-18T07:05:01.883731",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-07-18_1": "2025-07-18T08:00:00.426401",
+    "615c22f09f03cb1b6164dab4b2980a01_2025-07-18_2": "2025-07-18T09:00:00.565796",
+    "b812f679a565a0c56311d86bfaf3ca2d_2025-07-18_1": "2025-07-18T09:05:00.902375"
   },
   "active_events": {
-    "Generate": []
+    "__exit_block__": []
   },
   "event_history": [
     {
       "key": "Generate",
-      "active_from": "2025-07-14T22:00:01.268757",
-      "expires": "2025-07-14T22:01:01.268757",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T22:00:01.268757",
-      "unique_id": "63d62dd2-859f-4799-bbb9-fa039e93a894",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-14T22:00:03.325706"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-14T22:00:01.268757",
-      "expires": "2025-07-14T22:01:01.268757",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T22:00:01.268757",
-      "unique_id": "63d62dd2-859f-4799-bbb9-fa039e93a894",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-14T22:00:03.325706"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-14T23:00:01.248065",
-      "expires": "2025-07-14T23:01:01.248065",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T23:00:01.248065",
-      "unique_id": "29330d2b-aeb2-4d21-a5c5-546202987abc",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-14T23:00:03.318154"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-14T23:00:01.248065",
-      "expires": "2025-07-14T23:01:01.248065",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-14T23:00:01.248065",
-      "unique_id": "29330d2b-aeb2-4d21-a5c5-546202987abc",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-14T23:00:03.318154"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T06:00:17.279930",
-      "expires": "2025-07-15T06:01:17.279930",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-07-15T06:00:17.279930",
-      "unique_id": "4cbef318-7ecb-433d-842d-f477513d03f5",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T06:00:18.907461"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T06:00:17.279930",
-      "expires": "2025-07-15T06:01:17.279930",
-      "display_name": null,
-      "payload": {},
-      "single_consumer": false,
-      "created_at": "2025-07-15T06:00:17.279930",
-      "unique_id": "4cbef318-7ecb-433d-842d-f477513d03f5",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T06:00:18.907461"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T07:00:01.113958",
-      "expires": "2025-07-15T07:01:01.113958",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T07:00:01.113958",
-      "unique_id": "346b30ef-ad02-4a88-919c-56113a877275",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T07:00:03.131667"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T07:00:01.113958",
-      "expires": "2025-07-15T07:01:01.113958",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T07:00:01.113958",
-      "unique_id": "346b30ef-ad02-4a88-919c-56113a877275",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T07:00:03.131667"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-15T07:05:00.790485",
-      "expires": "2025-07-15T07:06:00.790485",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-15T07:05:00.790485",
-      "unique_id": "52f599ec-46b9-46d5-aee8-94f1d221296a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T07:05:02.664587"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2025-07-15T07:05:00.790485",
-      "expires": "2025-07-15T07:06:00.790485",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-15T07:05:00.790485",
-      "unique_id": "52f599ec-46b9-46d5-aee8-94f1d221296a",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T07:05:02.664587"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T08:00:00.625173",
-      "expires": "2025-07-15T08:01:00.625173",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T08:00:00.625173",
-      "unique_id": "12fc4acf-8374-4281-afaa-e16bb5fd64a6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T08:00:02.635532"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2025-07-15T08:00:00.625173",
-      "expires": "2025-07-15T08:01:00.625173",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2025-07-15T08:00:00.625173",
-      "unique_id": "12fc4acf-8374-4281-afaa-e16bb5fd64a6",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_south-screen",
-      "consumed_at": "2025-07-15T08:00:02.635532"
-    },
-    {
-      "key": "Generate",
       "active_from": "2025-07-15T09:00:00.708067",
       "expires": "2025-07-15T09:01:00.708067",
       "display_name": null,
@@ -2597,6 +2457,170 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_south-screen",
       "consumed_at": "2025-07-16T17:00:03.067798"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T06:00:14.527914",
+      "expires": "2025-07-18T06:01:14.527914",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-18T06:00:14.527914",
+      "unique_id": "bef4b336-7642-4617-b842-5cca1b2cee35",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T06:00:14.702489"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T06:00:14.527914",
+      "expires": "2025-07-18T06:01:14.527914",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-18T06:00:14.527914",
+      "unique_id": "bef4b336-7642-4617-b842-5cca1b2cee35",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T06:00:14.702489"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T07:00:00.087691",
+      "expires": "2025-07-18T07:01:00.087691",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T07:00:00.087691",
+      "unique_id": "410fb8ab-3a52-481f-bfdd-831a748f685d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T07:00:02.060827"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T07:00:00.087691",
+      "expires": "2025-07-18T07:01:00.087691",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T07:00:00.087691",
+      "unique_id": "410fb8ab-3a52-481f-bfdd-831a748f685d",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T07:00:02.060827"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-18T07:05:02.058653",
+      "expires": "2025-07-18T07:06:02.058653",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T07:05:02.058653",
+      "unique_id": "fa1fa018-b04c-41c3-aa60-a8fa486c56c1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T07:05:03.930896"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-18T07:05:02.058653",
+      "expires": "2025-07-18T07:06:02.058653",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T07:05:02.058653",
+      "unique_id": "fa1fa018-b04c-41c3-aa60-a8fa486c56c1",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T07:05:03.930896"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T08:00:00.500634",
+      "expires": "2025-07-18T08:01:00.500634",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T08:00:00.500634",
+      "unique_id": "47298703-760d-4c46-8291-cc71ca90e24f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T08:00:02.507895"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T08:00:00.500634",
+      "expires": "2025-07-18T08:01:00.500634",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T08:00:00.500634",
+      "unique_id": "47298703-760d-4c46-8291-cc71ca90e24f",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T08:00:02.507895"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T09:00:00.575729",
+      "expires": "2025-07-18T09:01:00.575729",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T09:00:00.575729",
+      "unique_id": "07e43d0d-d7d2-4f67-b984-fd6717c60a44",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T09:00:02.604929"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-18T09:00:00.575729",
+      "expires": "2025-07-18T09:01:00.575729",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2025-07-18T09:00:00.575729",
+      "unique_id": "07e43d0d-d7d2-4f67-b984-fd6717c60a44",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T09:00:02.604929"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-18T09:05:01.087715",
+      "expires": "2025-07-18T09:06:01.087715",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T09:05:01.087715",
+      "unique_id": "ee531b26-c30f-45f6-bef8-4eedfb5ada21",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T09:05:02.904166"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2025-07-18T09:05:01.087715",
+      "expires": "2025-07-18T09:06:01.087715",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T09:05:01.087715",
+      "unique_id": "ee531b26-c30f-45f6-bef8-4eedfb5ada21",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_south-screen",
+      "consumed_at": "2025-07-18T09:05:02.904166"
     }
   ]
 }

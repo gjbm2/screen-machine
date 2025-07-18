@@ -5,11 +5,6 @@ const STORE = 'photos';
 const KEY = 'pendingPhoto';
 
 export interface UiSnapshot {
-  showCamera?: boolean;
-  facingMode?: 'user' | 'environment';
-  timestamp?: number;
-  sessionId?: string;
-  // Complete form state
   prompt?: string;
   selectedWorkflow?: string;
   selectedRefiner?: string;
@@ -18,239 +13,197 @@ export interface UiSnapshot {
   refinerParams?: Record<string, any>;
   globalParams?: Record<string, any>;
   referenceUrls?: string[];
-  isWaitingForCamera?: boolean;
+  timestamp?: number;
 }
 
+// 1. Store photo to IndexedDB and set sessionStorage flag
 export async function putPhoto(blob: Blob): Promise<void> {
-  console.log('photoCache: putPhoto called with blob size:', blob.size);
+  console.log('photoCache: Storing photo to IndexedDB');
   try {
-    console.log('photoCache: Opening IndexedDB for write...');
     const db = await openDB(DB_NAME, 1, {
-      upgrade(db, oldVersion, newVersion) { 
-        console.log('photoCache: Upgrading IndexedDB from', oldVersion, 'to', newVersion);
-        if (oldVersion < 1) {
-          console.log('photoCache: Creating object store');
-          db.createObjectStore(STORE); 
-        }
+      upgrade(db) { 
+        db.createObjectStore(STORE); 
       }
     });
-    console.log('photoCache: IndexedDB opened for write');
     
     await db.put(STORE, blob, KEY);
-    console.log('photoCache: Blob stored in IndexedDB');
     
+    // Set flag with timestamp
     sessionStorage.setItem('photoKey', KEY);
-    console.log('photoCache: photoKey set in sessionStorage');
+    sessionStorage.setItem('photoTimestamp', Date.now().toString());
+    console.log('photoCache: Photo stored successfully');
   } catch (error) {
-    console.error('photoCache: Error in putPhoto:', error);
-    // Auto-reset and retry on error
-    try {
-      console.log('photoCache: Attempting auto-reset and retry...');
-      await resetDatabase();
-      const db = await openDB(DB_NAME, 1, {
-        upgrade(db, oldVersion, newVersion) { 
-          if (oldVersion < 1) {
-            db.createObjectStore(STORE); 
-          }
-        }
-      });
-      await db.put(STORE, blob, KEY);
-      sessionStorage.setItem('photoKey', KEY);
-      console.log('photoCache: Photo stored after retry');
-    } catch (retryError) {
-      console.error('photoCache: Retry failed:', retryError);
-      // If retry fails, just continue without IndexedDB
-    }
+    console.error('photoCache: Error storing photo:', error);
   }
 }
 
-export async function takePhotoFromCache(): Promise<Blob | null> {
-  console.log('photoCache: takePhotoFromCache called');
-  const flag = sessionStorage.getItem('photoKey');
-  console.log('photoCache: photoKey from sessionStorage:', flag);
+// 2. On refresh: restore photo if < 1 minute old
+export async function restorePhotoIfValid(): Promise<Blob | null> {
+  const startTime = performance.now();
+  console.log('photoCache: Checking for cached photo');
+  showDebugMessage('📸 Cache: Starting photo check');
   
-  if (!flag) {
-    console.log('photoCache: No photoKey found, returning null');
+  const photoKey = sessionStorage.getItem('photoKey');
+  const timestampStr = sessionStorage.getItem('photoTimestamp');
+  
+  if (!photoKey || !timestampStr) {
+    console.log('photoCache: No cached photo found');
+    showDebugMessage('📸 Cache: No cached photo found');
     return null;
   }
-
+  
+  // Check if < 15 seconds old
+  const timestamp = parseInt(timestampStr);
+  const age = Date.now() - timestamp;
+  const FIFTEEN_SECONDS = 15000;
+  
+  if (age > FIFTEEN_SECONDS) {
+    console.log('photoCache: Cached photo too old, clearing');
+    showDebugMessage('📸 Cache: Photo too old, clearing');
+    await clearAll();
+    return null;
+  }
+  
+  console.log('photoCache: Cached photo is valid, restoring');
+  showDebugMessage('📸 Cache: Photo valid, opening IndexedDB...');
+  
   try {
-    console.log('photoCache: Opening IndexedDB...');
+    const dbStartTime = performance.now();
     const db = await openDB(DB_NAME, 1);
-    console.log('photoCache: IndexedDB opened successfully');
+    const dbTime = performance.now() - dbStartTime;
+    console.log(`photoCache: IndexedDB opened in ${dbTime.toFixed(2)}ms`);
+    showDebugMessage(`📸 Cache: DB opened in ${dbTime.toFixed(0)}ms`);
     
-    const blob = await db.get(STORE, flag);
-    console.log('photoCache: Retrieved blob from IndexedDB:', !!blob);
+    const getStartTime = performance.now();
+    const blob = await db.get(STORE, KEY);
+    const getTime = performance.now() - getStartTime;
+    console.log(`photoCache: Photo retrieved in ${getTime.toFixed(2)}ms`);
+    showDebugMessage(`📸 Cache: Photo retrieved in ${getTime.toFixed(0)}ms`);
     
     if (blob) {
-      console.log('photoCache: Blob found, cleaning up...');
-      await db.delete(STORE, flag);
-      sessionStorage.removeItem('photoKey');
-      console.log('photoCache: Cleanup completed, returning blob');
+      const totalTime = performance.now() - startTime;
+      console.log(`photoCache: Total restore time: ${totalTime.toFixed(2)}ms`);
+      showDebugMessage(`📸 Cache: Total restore time: ${totalTime.toFixed(0)}ms`);
+      
+      // Clear cache after successful restore
+      await clearAll();
       return blob as Blob;
-    } else {
-      console.log('photoCache: No blob found in IndexedDB');
     }
   } catch (error) {
-    console.error('photoCache: Error retrieving from cache:', error);
-    // Clean up corrupted state
-    try {
-      await resetDatabase();
-    } catch (cleanupError) {
-      console.error('photoCache: Error during cleanup:', cleanupError);
-    }
+    console.error('photoCache: Error restoring photo:', error);
+    showDebugMessage('❌ Cache: Error restoring photo');
+    await clearAll();
   }
+  
   return null;
 }
 
-export function saveUiSnapshot(snapshot: UiSnapshot): void {
-  console.log('photoCache: saveUiSnapshot called with:', snapshot);
+// Save form state
+export function saveFormState(formState: UiSnapshot): void {
+  console.log('photoCache: Saving form state');
+  console.log('photoCache: Form state to save:', formState);
+  showDebugMessage('📸 Cache: Saving form state');
   
-  const snapshotWithTimestamp = {
-    ...snapshot,
-    timestamp: Date.now()
-  };
-  
-  console.log('photoCache: Storing in sessionStorage:', snapshotWithTimestamp);
-  sessionStorage.setItem('uiSnapshot', JSON.stringify(snapshotWithTimestamp));
-  console.log('photoCache: uiSnapshot stored in sessionStorage');
-}
-
-export function saveCompleteFormState(formState: {
-  prompt: string;
-  selectedWorkflow: string;
-  selectedRefiner: string;
-  selectedPublish: string;
-  workflowParams: Record<string, any>;
-  refinerParams: Record<string, any>;
-  globalParams: Record<string, any>;
-  referenceUrls: string[];
-}): void {
-  console.log('photoCache: saveCompleteFormState called with:', formState);
-  
-  const snapshot: UiSnapshot = {
+  const stateWithTimestamp = {
     ...formState,
-    // Don't save isWaitingForCamera as it's transient UI state - only save for photo restoration
-    facingMode: 'environment',
     timestamp: Date.now()
   };
-  
-  console.log('photoCache: Saving snapshot:', snapshot);
-  saveUiSnapshot(snapshot);
+  sessionStorage.setItem('formState', JSON.stringify(stateWithTimestamp));
+  console.log('photoCache: Form state saved to sessionStorage');
+  showDebugMessage('📸 Cache: Form state saved to sessionStorage');
 }
 
-export function saveCameraWaitingState(formState: {
-  prompt: string;
-  selectedWorkflow: string;
-  selectedRefiner: string;
-  selectedPublish: string;
-  workflowParams: Record<string, any>;
-  refinerParams: Record<string, any>;
-  globalParams: Record<string, any>;
-  referenceUrls: string[];
-}): void {
-  console.log('photoCache: saveCameraWaitingState called with:', formState);
-  
-  const snapshot: UiSnapshot = {
-    ...formState,
-    isWaitingForCamera: true,
-    facingMode: 'environment',
-    timestamp: Date.now()
-  };
-  
-  console.log('photoCache: Saving camera waiting state:', snapshot);
-  saveUiSnapshot(snapshot);
-}
-
+// Restore form state if valid
 export function restoreFormState(): UiSnapshot | null {
-  console.log('photoCache: restoreFormState called');
-  const snapshot = loadUiSnapshot();
-  console.log('photoCache: loadUiSnapshot result:', !!snapshot);
+  console.log('photoCache: Checking for cached form state');
+  showDebugMessage('📸 Cache: Checking for form state');
   
-  if (snapshot) {
-    console.log('photoCache: Snapshot found:', snapshot);
-    console.log('photoCache: isWaitingForCamera:', snapshot.isWaitingForCamera);
-    
-    // Only return snapshots that are for camera waiting or have form data
-    if (snapshot.isWaitingForCamera || snapshot.prompt || snapshot.selectedWorkflow) {
-      console.log('photoCache: Returning snapshot for restoration');
-      return snapshot;
-    } else {
-      console.log('photoCache: Snapshot exists but has no useful data');
-    }
-  }
-  
-  console.log('photoCache: No valid snapshot found for restoration');
-  return null;
-}
-
-export function loadUiSnapshot(): UiSnapshot | null {
-  console.log('photoCache: loadUiSnapshot called');
-  const stored = sessionStorage.getItem('uiSnapshot');
-  console.log('photoCache: uiSnapshot from sessionStorage:', stored);
-  
+  const stored = sessionStorage.getItem('formState');
   if (!stored) {
-    console.log('photoCache: No uiSnapshot found');
+    console.log('photoCache: No form state found in sessionStorage');
+    showDebugMessage('📸 Cache: No form state found');
     return null;
   }
   
   try {
-    const snapshot = JSON.parse(stored) as UiSnapshot;
-    console.log('photoCache: Parsed snapshot:', snapshot);
+    const state = JSON.parse(stored) as UiSnapshot;
+    console.log('photoCache: Parsed form state from sessionStorage:', state);
+    showDebugMessage('📸 Cache: Form state parsed from sessionStorage');
     
-    // Only restore if timestamp is less than 5 minutes old
-    if (snapshot.timestamp && (Date.now() - snapshot.timestamp) < 5 * 60 * 1000) {
-      console.log('photoCache: Snapshot is valid (timestamp check passed)');
-      return snapshot;
+    // Check if < 15 seconds old
+    if (state.timestamp && (Date.now() - state.timestamp) < 15000) {
+      console.log('photoCache: Form state is valid, restoring');
+      showDebugMessage('📸 Cache: Form state is valid, restoring');
+      return state;
     } else {
-      console.log('photoCache: Snapshot is too old, clearing...');
+      console.log('photoCache: Form state too old, clearing');
+      showDebugMessage('📸 Cache: Form state too old, clearing');
+      sessionStorage.removeItem('formState');
     }
   } catch (error) {
-    console.error('photoCache: Error parsing snapshot:', error);
+    console.error('photoCache: Error parsing form state:', error);
+    showDebugMessage('❌ Cache: Error parsing form state');
+    sessionStorage.removeItem('formState');
   }
   
-  clearUiSnapshot();
   return null;
 }
 
-export function clearUiSnapshot(): void {
-  sessionStorage.removeItem('uiSnapshot');
+// 3. Clear everything
+export async function clearAll(): Promise<void> {
+  console.log('photoCache: Clearing all cached data');
+  
+  // Clear sessionStorage
   sessionStorage.removeItem('photoKey');
-}
-
-export function clearRestorationState(): void {
-  sessionStorage.removeItem('hasRestored');
-  clearUiSnapshot();
-}
-
-export function hasAlreadyRestored(): boolean {
-  const result = sessionStorage.getItem('hasRestored') === 'true';
-  console.log('photoCache: hasAlreadyRestored result:', result);
-  return result;
-}
-
-export function markAsRestored(): void {
-  console.log('photoCache: markAsRestored called');
-  sessionStorage.setItem('hasRestored', 'true');
-}
-
-export async function clearPhotoCache(): Promise<void> {
+  sessionStorage.removeItem('photoTimestamp');
+  sessionStorage.removeItem('formState');
+  
+  // Clear IndexedDB
   try {
     const db = await openDB(DB_NAME, 1);
     await db.delete(STORE, KEY);
   } catch (error) {
     // Continue silently
   }
-  clearUiSnapshot();
-}
-
-export async function resetDatabase(): Promise<void> {
-  try {
-    const db = await openDB(DB_NAME, 1);
-    db.close();
-    await deleteDB(DB_NAME);
-  } catch (error) {
-    // Continue silently
-  }
-  clearUiSnapshot();
 } 
+
+// TEMPORARY: Debug message display function
+const showDebugMessage = (message: string) => {
+  // Create or update debug element
+  let debugEl = document.getElementById('debug-messages');
+  if (!debugEl) {
+    debugEl = document.createElement('div');
+    debugEl.id = 'debug-messages';
+    debugEl.style.cssText = `
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 12px;
+      z-index: 10000;
+      max-width: 300px;
+      word-wrap: break-word;
+    `;
+    document.body.appendChild(debugEl);
+  }
+  
+  const timestamp = new Date().toLocaleTimeString();
+  debugEl.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+  
+  // Keep only last 10 messages
+  const messages = debugEl.children;
+  if (messages.length > 10) {
+    debugEl.removeChild(messages[0]);
+  }
+  
+  // Auto-clear after 15 seconds (3x longer)
+  setTimeout(() => {
+    if (debugEl && debugEl.children.length > 0) {
+      debugEl.removeChild(debugEl.children[0]);
+    }
+  }, 15000);
+}; 
