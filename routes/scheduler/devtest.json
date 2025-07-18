@@ -2,7 +2,7 @@
   "schedule_stack": [],
   "context_stack": [],
   "state": "stopped",
-  "last_updated": "2025-07-18T06:01:17.010560",
+  "last_updated": "2025-07-18T12:16:05.728808",
   "last_trigger_executions": {
     "7bc512d74b13f60c705deb7e1061e1c0_2025-06-10_24": "2025-06-10T12:01:00.103358",
     "7bc512d74b13f60c705deb7e1061e1c0_2025-06-10_25": "2025-06-10T12:31:00.738562",
@@ -1461,70 +1461,6 @@
   },
   "active_events": {},
   "event_history": [
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:36:05.108663",
-      "expires": "2025-07-10T00:36:05.108663",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:36:05.108663",
-      "unique_id": "80d73783-fe56-44a0-8a06-b62b0c4bb473",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:36:06.606102"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:36:05.108663",
-      "expires": "2025-07-10T00:36:05.108663",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:36:05.108663",
-      "unique_id": "80d73783-fe56-44a0-8a06-b62b0c4bb473",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:36:06.606102"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:37:13.285918",
-      "expires": "2025-07-10T00:37:13.285918",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:37:13.285918",
-      "unique_id": "adb48e14-fe65-4293-b070-ce9ef64ece04",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:37:13.711856"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:37:13.285918",
-      "expires": "2025-07-10T00:37:13.285918",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:37:13.285918",
-      "unique_id": "adb48e14-fe65-4293-b070-ce9ef64ece04",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:37:13.711856"
-    },
     {
       "key": "_user_interacting",
       "active_from": "2025-07-09T21:44:38.888070",
@@ -3010,6 +2946,72 @@
       "status": "EXPIRED",
       "consumed_by": "expiration",
       "consumed_at": "2025-07-18T06:01:16.985186"
+    },
+    {
+      "key": "_auto_upscale",
+      "active_from": "2025-07-18T09:16:01.084859",
+      "expires": "2025-07-18T09:21:01.084859",
+      "display_name": "Auto-upscale after fast adapt",
+      "payload": {
+        "trigger_type": "auto_upscale",
+        "original_prompt": "rainy days",
+        "workflow": null
+      },
+      "single_consumer": true,
+      "created_at": "2025-07-18T09:15:56.084859",
+      "unique_id": "0dfc1ad1-55b6-484a-9a6c-41779c6d58de",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-18T09:21:19.065208"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-18T09:15:56.128603",
+      "expires": "2025-07-18T12:15:56.128603",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T09:15:56.128603",
+      "unique_id": "9fd02eb3-b2c4-4846-aebc-f0af79b68624",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-18T12:16:05.715716"
+    },
+    {
+      "key": "_auto_upscale",
+      "active_from": "2025-07-18T09:16:01.084859",
+      "expires": "2025-07-18T09:21:01.084859",
+      "display_name": "Auto-upscale after fast adapt",
+      "payload": {
+        "trigger_type": "auto_upscale",
+        "original_prompt": "rainy days",
+        "workflow": null
+      },
+      "single_consumer": true,
+      "created_at": "2025-07-18T09:15:56.084859",
+      "unique_id": "0dfc1ad1-55b6-484a-9a6c-41779c6d58de",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-18T09:21:19.065208"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-18T09:15:56.128603",
+      "expires": "2025-07-18T12:15:56.128603",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T09:15:56.128603",
+      "unique_id": "9fd02eb3-b2c4-4846-aebc-f0af79b68624",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-18T12:16:05.715716"
     }
   ]
 }
