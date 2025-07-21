@@ -202,7 +202,10 @@ export const processGenerationResults = (
         refinerParams: responseImage.refiner_params || existingRefinerParams,
         containerId: containerId,
         // Add uniqueKey for React rendering
-        uniqueKey: `${existingImage.id}_${batchId}`
+        uniqueKey: `${existingImage.id}_${batchId}`,
+        // Preserve generation time and cost data
+        generation_time_seconds: responseImage.generation_time_seconds,
+        generation_cost_gbp: responseImage.generation_cost_gbp
       };
       
       // Log what we're preserving for debugging
@@ -243,7 +246,10 @@ export const processGenerationResults = (
         refinerParams: responseImage.refiner_params || {},
         containerId: containerId,
         // Add uniqueKey for React rendering
-        uniqueKey: `${nanoid()}_${batchId}`
+        uniqueKey: `${nanoid()}_${batchId}`,
+        // Preserve generation time and cost data
+        generation_time_seconds: responseImage.generation_time_seconds,
+        generation_cost_gbp: responseImage.generation_cost_gbp
       };
       
       console.log(`Adding new image with batchIndex ${batchIndex}`);

@@ -6,6 +6,7 @@ import apiService from '@/utils/api';
 import { PublishDestination } from '@/utils/api';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ChevronDown } from 'lucide-react';
+import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
 interface PublishDestinationsProps {
   selectedDestination: string | null;
@@ -13,40 +14,26 @@ interface PublishDestinationsProps {
 }
 
 export function PublishDestinations({ selectedDestination, onSelectDestination }: PublishDestinationsProps) {
-  const [destinations, setDestinations] = useState<PublishDestination[]>([]);
+  const { destinations } = usePublishDestinations();
   const [buckets, setBuckets] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   
-  // Load publish destinations
+  // Filter to only destinations with has_bucket=true
+  const bucketDests = destinations.filter(d => d.has_bucket);
+  
+  // Select first destination by default if none is selected
   useEffect(() => {
-    const fetchDestinations = async () => {
-      try {
-        console.log('Loading publish destinations');
-        const dests = await apiService.getPublishDestinations();
-        // Filter to only destinations with has_bucket=true
-        const bucketDests = dests.filter(d => d.has_bucket);
-        setDestinations(bucketDests);
-        
-        // Select first destination by default if none is selected
-        if (!selectedDestination && bucketDests.length > 0) {
-          onSelectDestination(bucketDests[0].id);
-        }
-      } catch (error) {
-        console.error('Error fetching destinations:', error);
-      }
-    };
-    
-    fetchDestinations();
-  }, [selectedDestination, onSelectDestination]);
+    if (!selectedDestination && bucketDests.length > 0) {
+      onSelectDestination(bucketDests[0].id);
+    }
+  }, [selectedDestination, bucketDests, onSelectDestination]);
   
   // Load buckets to verify which ones exist
   useEffect(() => {
     const loadBuckets = async () => {
       setLoading(true);
       try {
-        console.log('Fetching bucket list');
         const bucketList = await apiService.fetchAllBuckets();
-        console.log('Available buckets:', bucketList);
         setBuckets(bucketList);
       } catch (error) {
         console.error('Error fetching buckets:', error);

@@ -255,7 +255,10 @@ def process_generate_image_request(data, uploaded_images=None):
             "refiner_params": refiner_params,  # Refiner parameters (not modified during generation)
             "used_reference_image": has_reference_image,
             "batch_id": batch_id,
-            "batch_index": i  # Use the response index as batch index
+            "batch_index": i,  # Use the response index as batch index
+            # Add generation time and cost data
+            "generation_time_seconds": r.get("generation_time_seconds"),
+            "generation_cost_gbp": r.get("generation_cost_gbp")
         }
         
         # ------------------------------------------------------------------

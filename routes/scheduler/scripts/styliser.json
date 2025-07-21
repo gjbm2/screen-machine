@@ -4,6 +4,23 @@
       {
         "action": "log",
         "message": "Styliser session complete - 20 minutes of stylistic exploration finished"
+      },
+      {
+        "action": "wait",
+        "duration": "1m"
+      },
+      {
+        "action": "log",
+        "message": "Restoring original image: {{ original_image }}"
+      },
+      {
+        "action": "publish",
+        "source": "{{ original_image }}",
+        "silent": true
+      },
+      {
+        "action": "log",
+        "message": "Original image restored - system returned to ex ante state"
       }
     ]
   },
@@ -14,17 +31,27 @@
         "message": "** Starting Styliser Session **"
       },
       {
+        "action": "set_var",
+        "var": "original_image",
+        "input": {
+          "value": "{{ _current_image }}"
+        }
+      },
+      {
+        "action": "log",
+        "message": "Stored original image for restoration: {{ original_image }}"
+      },
+      {
         "action": "overlay",
         "text": "Stylising will begin in 2 minutes using the current image displayed. You have time to create or upload a different image.",
         "duration": "2m"
       },
       {
         "action": "throw_event",
-        "scope": "{{ _current_destination }}",
+        "scope": "current",
         "event": "get_started",
         "delay": "2m"
       },
-
       {
         "action": "set_var",
         "var": "style_history",
@@ -64,10 +91,11 @@
           },
           {
             "action": "throw_event",
-            "scope": "{{ _current_destination }}",
+            "scope": "current",
             "event": "styliser_start"
           }
-        ]
+        ],
+        "important": true
       }
     },
     {
@@ -83,27 +111,22 @@
             }
           },
           {
-            "action": "log",
-            "message": "** Styliser Iteration {{ session_count }} **"
+            "action": "set_var",
+            "var": "source_image",
+            "input": {
+              "value": "{{ _current_image }}"
+            }
           },
           {
             "action": "reason",
-            "text_input": "Create a detailed style prompt for transforming this image. Describe a specific artistic style (like watercolor, oil painting, cyberpunk, art nouveau, etc.) and provide clear instructions for how to apply it to this particular image. Be creative and avoid these recent styles: {{ style_history[-5:] | map(attribute='outputs.style_prompt') | list if style_history else [] }}. Return only the style prompt that can be used directly for image generation.",
-            "image_inputs": "source_image",
-            "reasoner": "general_reasoner",
+            "text_input": "First, analyze the image to determine if the subject appears to be male or female. Then create a detailed style transformation prompt that's appropriate for their gender. Be BOLD, WHIMSICAL, and AMUSING! For MALE subjects, focus on masculine styles like: 'sporting a handlebar mustache that could hold a teacup', 'bald as a bowling ball with a beard that would make a lumberjack jealous', 'a beard braided like a Viking warrior', 'a mustache so twirly it could open wine bottles', 'a beard that looks like it was sculpted by Michelangelo', 'rocking a gravity-defying mohawk with rainbow streaks', 'hair styled like a 1980s rock star on steroids', 'hair so spiky it could puncture a tire', 'a beard so long it could be used as a scarf', 'sideburns that could double as ear warmers', 'a goatee that's been waxed to a mirror shine', 'hair in a man bun so perfect it belongs in a shampoo commercial'. For FEMALE subjects, focus on feminine styles like: 'hair so big it has its own weather system', 'twin braids that could be used as jump ropes', 'hair styled like a 1980s rock star on steroids', 'a beehive hairdo that could house actual bees', 'curls so bouncy they could power a trampoline', 'hair extensions so long they could be used as a rope ladder', 'a ponytail so high it's practically a satellite dish', 'braids so intricate they look like they were woven by fairies', 'hair so straight it could be used as a ruler', 'a pixie cut so cute it could make puppies jealous', 'hair dyed in rainbow colors that would make a unicorn envious', 'a crown braid that would make any princess proud'. Avoid these recent styles: {{ style_history[-5:] | map(attribute='outputs.style_prompt') | list if style_history else [] }}. Return only the style transformation prompt that can be used directly for image generation.",
+            "reasoner": "adapt",
             "output_vars": [
               "style_prompt"
             ],
-            "history_var": "style_history"
-          },
-          {
-            "action": "log",
-            "message": "Style prompt: {{ style_prompt }}"
-          },
-          {
-            "action": "terminate",
-            "mode": "normal",
-            "test": "{{ session_count >= 12 }}"
+            "image_inputs": [
+              "{{ source_image }}"
+            ]
           },
           {
             "action": "generate",
@@ -115,7 +138,7 @@
             },
             "workflow": "flux_1_kontext_dev_1pic-l.json",
             "publish": true,
-            "reasoner": "adapt",
+            "refiner": "adapt",
             "output_var": "styled_image",
             "history_var": "generation_history"
           },
@@ -124,15 +147,17 @@
             "message": "Applied style transformation - iteration {{ session_count }} complete"
           },
           {
-            "action": "wait",
-            "duration": "1m"
+            "action": "terminate",
+            "mode": "normal",
+            "test": "{{ session_count >= 12 }}"
           },
           {
             "action": "throw_event",
-            "scope": "{{ _current_destination }}",
+            "scope": "current",
             "event": "styliser_start"
           }
-        ]
+        ],
+        "important": true
       }
     }
   ]

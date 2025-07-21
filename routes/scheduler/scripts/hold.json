@@ -14,7 +14,7 @@
         "action": "throw_event",
         "event": "hold_terminate",
         "delay": "2h",
-        "scope": "{{ _current_destination }}"
+        "scope": "current"
       }
     ]
   },

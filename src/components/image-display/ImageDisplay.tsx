@@ -234,7 +234,6 @@ export function ImageDisplay(props: ImageDisplayProps) {
     let isMounted = true;
     const fetchSchedulerStatuses = async () => {
       if (!isMounted) return;
-      console.log('[poll] fetchSchedulerStatuses triggered at', new Date().toLocaleTimeString());
       try {
         const statuses = await Promise.all(
           destinationsWithBuckets.map(async (dest) => {
@@ -254,8 +253,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
       // Initial fetch
       fetchSchedulerStatuses();
       
-      // Set up polling interval (every 15 seconds)
-      const intervalId = setInterval(fetchSchedulerStatuses, 15000);
+      // Set up polling interval (every 30 seconds instead of 15)
+      const intervalId = setInterval(fetchSchedulerStatuses, 30000);
       
       // Cleanup interval and mounted flag on unmount or when destinations change
       return () => {

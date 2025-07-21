@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import typedWorkflows from '@/data/typedWorkflows';
 import refinersData from '@/data/refiners.json';
 import apiService from '@/utils/api';
+import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
-interface PromptFormInitialValues {
+export interface PromptFormInitialValues {
   selectedWorkflow?: string;
   selectedRefiner?: string;
   selectedPublish?: string;
@@ -39,11 +40,6 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
   const defaultWorkflowId = getDefaultWorkflowId();
   const defaultRefinerId = getDefaultRefinerId();
   
-  // Log the initial selections for debugging
-  console.log("usePromptForm: Initializing with workflow ID:", defaultWorkflowId);
-  console.log("usePromptForm: Initializing with refiner ID:", defaultRefinerId);
-  console.log("usePromptForm: Initial values provided:", initialValues);
-  
   const [selectedWorkflow, setSelectedWorkflow] = useState(defaultWorkflowId);
   const [selectedRefiner, setSelectedRefiner] = useState(defaultRefinerId);
   const [selectedPublish, setSelectedPublish] = useState(initialValues.selectedPublish || 'none');
@@ -52,65 +48,41 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
     batch_size: 1, // Default batch size is now 1
   });
   const [refinerParams, setRefinerParams] = useState<Record<string, any>>(initialValues.refinerParams || {});
-  const [publishDestinations, setPublishDestinations] = useState<any[]>([]);
   
-  // Verify that selectedWorkflow is set correctly
+  // Use shared hook for publish destinations
+  const { destinations: publishDestinations } = usePublishDestinations();
+  
+  // Log initialization only once on mount
+  useEffect(() => {
+    console.log("usePromptForm: Initializing with workflow ID:", defaultWorkflowId);
+    console.log("usePromptForm: Initializing with refiner ID:", defaultRefinerId);
+    console.log("usePromptForm: Initial values provided:", initialValues);
+  }, []); // Empty dependency array ensures this only runs once on mount
+
+  // Log current state for debugging - only when values actually change
   useEffect(() => {
     console.log("usePromptForm: Current selected workflow:", selectedWorkflow);
     console.log("usePromptForm: Current selected refiner:", selectedRefiner);
   }, [selectedWorkflow, selectedRefiner]);
-  
-  // Initialize workflow parameters based on the selected workflow once on mount
+
+  // Initialize workflow parameters when workflow changes
   useEffect(() => {
-    // Skip parameter initialization for "auto" workflow since we don't know which workflow will be selected
     if (selectedWorkflow === 'auto') {
       console.log("usePromptForm: Skipping parameter initialization for auto workflow");
       return;
     }
     
-    // Log the current selected workflow for debugging
-    console.log("usePromptForm: Initializing parameters for workflow:", selectedWorkflow);
-    
-    // Find the selected workflow
     const workflow = typedWorkflows.find(w => w.id === selectedWorkflow);
-    
-    if (workflow && workflow.params) {
-      // Create an object with default parameter values
-      const defaultParams: Record<string, any> = {};
-      
-      workflow.params.forEach(param => {
+    if (workflow && workflow.parameters) {
+      const initialParams: Record<string, any> = {};
+      workflow.parameters.forEach(param => {
         if (param.default !== undefined) {
-          defaultParams[param.id] = param.default;
+          initialParams[param.id] = param.default;
         }
       });
-      
-      // Set workflow parameters with default values, but only for params that don't already exist
-      setWorkflowParams(prevParams => {
-        const mergedParams = { ...prevParams };
-        
-        // Only add default params for keys that don't exist in current params
-        Object.keys(defaultParams).forEach(key => {
-          if (mergedParams[key] === undefined) {
-            mergedParams[key] = defaultParams[key];
-          }
-        });
-        
-        return mergedParams;
-      });
+      setWorkflowParams(initialParams);
     }
   }, [selectedWorkflow]);
-
-  useEffect(() => {
-    const fetchDestinations = async () => {
-      try {
-        const destinations = await apiService.getPublishDestinations();
-        setPublishDestinations(destinations);
-      } catch (error) {
-        console.error('Error fetching publish destinations:', error);
-      }
-    };
-    fetchDestinations();
-  }, []);
 
   const handleWorkflowChange = (workflowId: string) => {
     console.log(`usePromptForm: User changed workflow to ${workflowId}`);
@@ -217,3 +189,5 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
 };
 
 export default usePromptForm;
+
+

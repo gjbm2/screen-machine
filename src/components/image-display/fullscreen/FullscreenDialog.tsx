@@ -130,7 +130,7 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <h3 className="font-medium">Generation Time</h3>
+                      <h3 className="font-medium">Created</h3>
                       <p className="text-sm text-muted-foreground">
                         {image.timestamp ? formatDate(new Date(image.timestamp)) : "Unknown"}
                       </p>
@@ -138,6 +138,21 @@ const ImageInfoDialog: React.FC<ImageInfoDialogProps> = ({
                     <div>
                       <h3 className="font-medium">Workflow</h3>
                       <p className="text-sm text-muted-foreground">{workflowName}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="font-medium">Generation Time</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {image.generation_time_seconds ? `${image.generation_time_seconds}s` : "Unknown"}
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="font-medium">Cost</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {image.generation_cost_gbp ? `£${(image.generation_cost_gbp * 100).toFixed(1)}p` : "Unknown"}
+                      </p>
                     </div>
                   </div>
                   

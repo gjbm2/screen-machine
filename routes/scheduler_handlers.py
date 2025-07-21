@@ -975,6 +975,36 @@ def handle_terminate(instruction, context, now, output, publish_destination):
         # If this is from an event, don't throw another event (prevents infinite loop)
         if from_event:
             debug(f"Not throwing __terminate__ event as this instruction is already from an event")
+            
+            # Execute final actions when terminating from an event
+            try:
+                from routes.scheduler_utils import extract_instructions
+                from routes.scheduler import scheduler_schedule_stacks, scheduler_logs, run_instruction
+                
+                # Get the current schedule
+                if publish_destination in scheduler_schedule_stacks and scheduler_schedule_stacks[publish_destination]:
+                    current_schedule = scheduler_schedule_stacks[publish_destination][-1]
+                    final_instructions = extract_instructions(current_schedule.get("final_actions", {}))
+                    
+                    if final_instructions:
+                        msg = "Executing final actions from terminate event"
+                        log_schedule(msg, publish_destination, now, output)
+                        
+                        for instr in final_instructions:
+                            try:
+                                run_instruction(instr, context, now, output, publish_destination)
+                            except Exception as e:
+                                error_msg = f"Error running final instruction: {str(e)}"
+                                log_schedule(error_msg, publish_destination, now, output)
+                    else:
+                        debug("No final actions to execute")
+                else:
+                    debug("No current schedule found for final actions")
+                    
+            except Exception as e:
+                error_msg = f"Error executing final actions: {str(e)}"
+                log_schedule(error_msg, publish_destination, now, output)
+            
             return False
             
         # Throw a __terminate__ event which will be picked up urgently
@@ -1554,6 +1584,11 @@ def handle_throw_event(instruction, context, now, output, publish_destination):
     # Get parameters from the instruction
     event_key = instruction["event"]
     scope = instruction.get("scope", publish_destination)  # Default to current destination 
+    
+    # Handle "current" special case
+    if scope == "current":
+        scope = publish_destination
+        
     display_name = instruction.get("display_name")
     ttl = instruction.get("ttl", "60s")
     delay = instruction.get("delay")

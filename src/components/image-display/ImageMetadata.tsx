@@ -14,6 +14,8 @@ interface ImageMetadataProps {
   onOpenInNewTab?: (e: React.MouseEvent) => void;
   onInfoClick?: () => void;
   hasReferenceImages?: boolean;
+  generation_time_seconds?: number;
+  generation_cost_gbp?: number;
 }
 
 const ImageMetadata: React.FC<ImageMetadataProps> = ({ 
@@ -22,7 +24,9 @@ const ImageMetadata: React.FC<ImageMetadataProps> = ({
   imageUrl, 
   onOpenInNewTab,
   onInfoClick,
-  hasReferenceImages
+  hasReferenceImages,
+  generation_time_seconds,
+  generation_cost_gbp
 }) => {
   const formatTimeAgo = (timestamp?: number) => {
     if (!timestamp) return "Unknown time";
@@ -40,6 +44,20 @@ const ImageMetadata: React.FC<ImageMetadataProps> = ({
           <Clock className="h-3 w-3 md:h-4 md:w-4 mr-1" />
           <span className="whitespace-nowrap">{formatTimeAgo(timestamp)}</span>
         </div>
+        {generation_time_seconds && (
+          <div className="flex items-center">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {generation_time_seconds}s
+            </span>
+          </div>
+        )}
+        {generation_cost_gbp && (
+          <div className="flex items-center">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              £{(generation_cost_gbp * 100).toFixed(1)}p
+            </span>
+          </div>
+        )}
       </div>
       
       <div className="flex items-center gap-1">

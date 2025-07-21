@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Sparkles } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { ReferenceImageService } from '@/services/reference-image-service';
+import { toast } from 'sonner';
 
 // Add type declaration for window.generateImage
 declare global {
@@ -343,16 +344,6 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
     },
   ], [onDeleteBatch, batchId]);
   
-  // Log selection changes for debugging
-  useEffect(() => {
-    console.log(`[RecentBatch] ${batchId} selection changed: index=${selectedIndex}, id=${selectedId}`);
-  }, [selectedIndex, selectedId, batchId]);
-
-  // Log collapse state changes
-  useEffect(() => {
-    console.log(`[RecentBatch] ${batchId} collapse state:`, isCollapsed);
-  }, [isCollapsed, batchId]);
-  
   // Collapsed view – show only thumbnails
   if (isCollapsed) {
     return (
@@ -493,6 +484,66 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                     >
                       <Sparkles className="h-4 w-4 mr-2" />
                       Use as prompt
+                    </DropdownMenuItem>
+                  )}
+                  
+                  {/* Start Again - only show for images with reference images */}
+                  {selectedImage.reference_images && selectedImage.reference_images.length > 0 && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        try {
+                          // Get the prompt text and reference images from the image
+                          const promptText = selectedImage.promptKey || selectedImage.metadata?.prompt || '';
+                          const referenceImages = selectedImage.reference_images || [];
+                          
+                          // Set the prompt text
+                          window.dispatchEvent(
+                            new CustomEvent('setPromptText', {
+                              detail: { prompt: promptText }
+                            })
+                          );
+                          
+                          // Convert reference images to URLs and load them into the prompt area
+                          const bucketId = selectedImage.bucketId || '_recent';
+                          const referenceUrls = ReferenceImageService.getReferenceImageUrls(bucketId, referenceImages);
+                          
+                          // Clear existing reference images and set the first one
+                          if (referenceUrls.length > 0) {
+                            window.dispatchEvent(
+                              new CustomEvent('useImageAsPrompt', {
+                                detail: {
+                                  url: referenceUrls[0],
+                                  append: false // Clear existing and set this one
+                                }
+                              })
+                            );
+                            
+                            // Add remaining reference images
+                            for (let i = 1; i < referenceUrls.length; i++) {
+                              window.dispatchEvent(
+                                new CustomEvent('useImageAsPrompt', {
+                                  detail: {
+                                    url: referenceUrls[i],
+                                    append: true // Add to existing
+                                  }
+                                })
+                              );
+                            }
+                          }
+                          
+                          toast.success('Loaded prompt and reference images for editing');
+                        } catch (error) {
+                          console.error('Error starting again:', error);
+                          toast.error('Failed to load prompt and reference images');
+                        }
+                      }}
+                      className="flex items-center"
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Start Again
                     </DropdownMenuItem>
                   )}
                   

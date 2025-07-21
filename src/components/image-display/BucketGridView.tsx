@@ -55,6 +55,7 @@ import { Api } from "@/utils/api";
 import { Download } from 'lucide-react';
 import { getTranscriptionStatus } from '../../api';
 import { ReferenceImageService } from '@/services/reference-image-service';
+import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
 // Define the expected types based on the API response
 interface BucketItem extends ApiBucketItem {
@@ -1012,6 +1013,7 @@ export const BucketGridView = ({
     raw_url: img.raw_url,
     metadata: img.metadata,
     bucketId: destination,
+    reference_images: img.reference_images || [],
   });
 
   const handleFavouriteOrderChange = (newOrder: string[]) => {

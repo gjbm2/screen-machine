@@ -551,6 +551,84 @@ def raw(bucket_id: str, filename: str):
     file_path = bucket_path(bucket_id) / filename
     return send_from_directory(bucket_path(bucket_id), filename)
 
+@buckets_bp.route("/buckets/<bucket_id>/image/<path:filename>/complete", methods=["GET"])
+def get_image_complete(bucket_id: str, filename: str):
+    """Get complete metadata and reference images for a single image"""
+    # Verify this is a valid destination with has_bucket=true
+    dests = _load_json_once("publish_destinations", "publish-destinations.json")
+    dest = next((d for d in dests if d["id"] == bucket_id and d.get("has_bucket", False)), None)
+    if not dest:
+        abort(400, "Invalid bucket_id or destination does not support buckets")
+    
+    # Get bucket metadata
+    meta = load_meta(bucket_id)
+    
+    # Check if file exists
+    bucket_dir = bucket_path(bucket_id)
+    file_path = bucket_dir / filename
+    if not file_path.exists():
+        abort(404, "Image not found")
+    
+    # Get file metadata from sidecar if it exists
+    sidecar = sidecar_path(file_path)
+    file_meta = {}
+    if sidecar.exists():
+        try:
+            file_meta = json.loads(sidecar.read_text("utf-8"))
+        except Exception as e:
+            warning(f"Failed to read sidecar for {file_path.name}: {e}")
+    
+    # Get file stats for timestamps
+    file_stats = file_path.stat()
+    
+    # Get sequence entry data
+    raw_sequence = meta.get("sequence", [])
+    seq_entry = {}
+    for entry in raw_sequence:
+        if isinstance(entry, dict):
+            if entry.get("file") == filename:
+                seq_entry = entry
+                break
+        elif entry == filename:
+            seq_entry = {"file": filename}
+            break
+    
+    # Prefer explicit timestamp from sidecar metadata or sequence entry
+    # Fallback to file modification time
+    timestamp = (
+        file_meta.get("timestamp")
+        or seq_entry.get("timestamp")
+        or file_stats.st_mtime
+    )
+
+    # Get reference images for this file
+    reference_images = []
+    try:
+        from routes.bucket_utils import ReferenceImageStorage
+        ref_storage = ReferenceImageStorage()
+        base_filename = file_path.stem
+        ref_images = ref_storage.get_reference_images(base_filename, bucket_id)
+        reference_images = [ref.to_dict(bucket_id) for ref in ref_images]  # Pass bucket_id for URL conversion
+    except Exception as e:
+        error(f"Failed to get reference images for {file_path.name}: {e}")
+    
+    return jsonify({
+        "bucket_id": bucket_id,
+        "filename": file_path.name,
+        "size": file_stats.st_size,
+        "modified": file_stats.st_mtime,
+        "created_at": timestamp,
+        "metadata": {
+            **file_meta,
+            "timestamp": timestamp,
+            "batchId": seq_entry.get("batchId")
+        },
+        "favorite": file_path.name in meta.get("favorites", []),
+        "thumbnail_url": f"/output/{bucket_id}/thumbnails/{file_path.stem}{file_path.suffix}.jpg",
+        "raw_url": f"/output/{bucket_id}/{file_path.name}",
+        "reference_images": reference_images
+    })
+
 # ───────────────────────────── bucket maintenance ───────────────────────────
 
 @buckets_bp.route("/buckets/<bucket_id>/purge", methods=["DELETE"])

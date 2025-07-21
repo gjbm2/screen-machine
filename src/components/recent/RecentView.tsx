@@ -202,7 +202,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
       const storedPlaceholders = localStorage.getItem('activePlaceholders');
       if (storedPlaceholders) {
         const parsed = JSON.parse(storedPlaceholders);
-        console.log('[recent] Loaded placeholders from localStorage:', parsed);
+        // Removed verbose logging to reduce console noise
         return parsed;
       }
     } catch (error) {
@@ -224,7 +224,6 @@ export const RecentView: React.FC<RecentViewProps> = ({
         
         if (activePlaceholders.length !== parsed.length) {
           localStorage.setItem('activePlaceholders', JSON.stringify(activePlaceholders));
-          console.log('[recent] Cleaned up expired placeholders, remaining:', activePlaceholders.length);
         }
       }
     } catch (error) {
@@ -250,10 +249,6 @@ export const RecentView: React.FC<RecentViewProps> = ({
       
       // Map bucket items to our internal format
       const images = details.items.map((item: any) => {
-        console.log('Processing API item:', item.filename);
-        console.log('  - item.reference_images:', item.reference_images);
-        console.log('  - reference_images length:', item.reference_images?.length || 0);
-        
         return {
           id: item.filename,
           url: item.url || '',
@@ -290,7 +285,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
           return activePlaceholders.some((active: any) => active.id === placeholder.id);
         });
         
-        console.log(`[recent] Preserving ${relevantPlaceholders.length} placeholders through polling`);
+
         
         // Create a Map to deduplicate images by ID
         const uniqueImages = new Map<string, BucketImage>();
@@ -439,11 +434,9 @@ export const RecentView: React.FC<RecentViewProps> = ({
   
   // Convert BucketImage to ImageItem for components
   const toImageItem = (img: BucketImage): ImageItem => {
-    console.log('Converting BucketImage to ImageItem:', img.id);
-    console.log('  - img.reference_images:', img.reference_images);
-    console.log('  - img.reference_images length:', img.reference_images?.length || 0);
+    const mediaType: 'image' | 'video' = isVideoFile(img.id) ? 'video' : 'image';
     
-    const imageItem = {
+    const imageItem: ImageItem = {
       id: img.id,
       // Ensure the key for this item is truly unique by using both id and batchId
       uniqueKey: `${img.id}_${img.batchId || 'unknown'}`,
@@ -453,16 +446,13 @@ export const RecentView: React.FC<RecentViewProps> = ({
       seed: 0,
       createdAt: img.created_at ? new Date(img.created_at * 1000).toISOString() : new Date().toISOString(),
       isFavourite: false, // Always false in Recent
-      mediaType: isVideoFile(img.id) ? 'video' : 'image',
+      mediaType,
       raw_url: img.raw_url || img.url || '',
       metadata: img.metadata || {},
       bucketId: img.bucketId || '_recent', // Use actual bucket ID, fallback to _recent for backward compatibility
       // Copy reference images to ImageItem
       reference_images: img.reference_images || []
     };
-    
-    console.log('  - Created ImageItem with reference_images:', imageItem.reference_images);
-    console.log('  - ImageItem reference_images length:', imageItem.reference_images?.length || 0);
     
     return imageItem;
   };
@@ -593,37 +583,15 @@ export const RecentView: React.FC<RecentViewProps> = ({
   
   // Handle image click (open in Loope)
   const handleImageClick = (img: ImageItem) => {
-    console.log('=== RecentView handleImageClick Debug ===');
-    console.log('Clicked image:', img);
-    console.log('Clicked image.reference_images:', img.reference_images);
-    console.log('Clicked image.metadata.reference_images:', (img.metadata as any)?.reference_images);
-    
     // Find batch that contains this image
     const batch = batchGroups.find(b => b.images.some(i => i.id === img.id));
     if (!batch || !openLoope) return;
     
-    console.log('Found batch:', batch);
-    console.log('Batch images count:', batch.images.length);
-    
-    // Log reference images for all images in the batch
-    batch.images.forEach((batchImg, index) => {
-      console.log(`Batch image ${index}:`, {
-        id: batchImg.id,
-        reference_images: batchImg.reference_images,
-        reference_images_count: batchImg.reference_images?.length || 0
-      });
-    });
-    
     // Find index of clicked image
     const clickedIdx = batch.images.findIndex(i => i.id === img.id);
-    console.log('Clicked image index:', clickedIdx);
     
     // Get the prompt text for the title
     const prompt = batch.images[0]?.promptKey || 'No prompt';
-    console.log('Using prompt for title:', prompt);
-    
-    console.log('About to open loope with batch.images:', batch.images);
-    console.log('=============================================');
     
     // Open Loope with just this batch's images
     openLoope(
@@ -776,7 +744,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
           const filteredPrev = prev.filter(img => 
             !placeholders.some((p: { placeholderId: string }) => p.placeholderId === img.id)
           );
-          console.log(`[recent] Adding ${newPlaceholders.length} placeholders, filtered out ${prev.length - filteredPrev.length} duplicates`);
+
           return [...newPlaceholders, ...filteredPrev];
         });
         
@@ -811,7 +779,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     };
     
     window.addEventListener('recent:batch-placeholders', handleBatchPlaceholders as EventListener);
-    console.log('[recent] listener added for batch-placeholders');
+    // Removed verbose logging to reduce console noise
     return () => window.removeEventListener('recent:batch-placeholders', handleBatchPlaceholders as EventListener);
   }, []);
 
@@ -822,7 +790,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
         const { batchId, count, autoExpand } = e.detail || {};
         if (!batchId) return;
         
-        console.log(`[recent] Generation complete for batch ${batchId} with ${count} images`);
+
         
         if (autoExpand) {
           // Expand this container and collapse others
@@ -855,7 +823,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
             const parsed = JSON.parse(storedPlaceholders);
             const remaining = parsed.filter((p: any) => p.batchId !== batchId);
             localStorage.setItem('activePlaceholders', JSON.stringify(remaining));
-            console.log(`[recent] Removed completed placeholders for batch ${batchId} from localStorage`);
+
           }
         } catch (error) {
           console.error('[recent] Error cleaning up localStorage placeholders:', error);
@@ -866,7 +834,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     };
     
     window.addEventListener('recent:generation-complete', handleGenerationComplete as EventListener);
-    console.log('[recent] listener added for generation-complete');
+    // Removed verbose logging to reduce console noise
     return () => window.removeEventListener('recent:generation-complete', handleGenerationComplete as EventListener);
   }, []);
 
@@ -908,7 +876,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
           };
         });
         
-        console.log("[handleRecentAdd] Created images with metadata:", newImgs);
+
         
         // For each real image that arrived, find one placeholder to remove
         setBucketImages(prev => {
@@ -924,9 +892,10 @@ export const RecentView: React.FC<RecentViewProps> = ({
             const placeholderIds = placeholdersToRemove.map(p => p.id);
             
             // Also update our placeholder tracking state
-            setPlaceholders(prevPlaceholders => 
-              prevPlaceholders.filter(p => !placeholderIds.includes(p.id))
-            );
+            // Temporarily disabled to fix setState during render warning
+            // setPlaceholders(prevPlaceholders => 
+            //   prevPlaceholders.filter(p => !placeholderIds.includes(p.id))
+            // );
             
             // Filter out the placeholders we're removing, keep everything else
             const remainingImages = prev.filter(img => !placeholderIds.includes(img.id));
@@ -982,7 +951,10 @@ export const RecentView: React.FC<RecentViewProps> = ({
         
         // Force select the newest image (assume first of newImgs array)
         if (newImgs.length > 0) {
-          setSelectedImageByBatch(prev => ({ ...prev, [batchId]: newImgs[0].id }));
+          // Defer this state update to avoid setState during render warning
+          setTimeout(() => {
+            setSelectedImageByBatch(prev => ({ ...prev, [batchId]: newImgs[0].id }));
+          }, 0);
         }
       } catch (err) {
         console.warn('recent:add handler error', err);
@@ -990,7 +962,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     };
     
     window.addEventListener('recent:add', handleRecentAdd as EventListener);
-    console.log('[recent] listener added for placeholder');
+    // Removed verbose logging to reduce console noise
     return () => window.removeEventListener('recent:add', handleRecentAdd as EventListener);
   }, []);
   
@@ -1015,11 +987,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
       return;
     }
 
-    console.log('[DnD Debug] Batch drag start:', {
-      activeId: active.id,
-      activeRect: active.rect,
-      currentBatchOrder: [...batchOrder],
-    });
+
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -1041,12 +1009,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
 
     if (oldIndex === -1 || newIndex === -1) return;
 
-    console.log('[DnD Debug] Reordering batches', {
-      activeId: active.id,
-      overId: over.id,
-      oldIndex,
-      newIndex,
-    });
+
 
     // Update batch order
     setBatchOrder((items) => arrayMove(items, oldIndex, newIndex));
@@ -1111,7 +1074,6 @@ export const RecentView: React.FC<RecentViewProps> = ({
 
   // Add targeted logging to key useEffect hooks
   useEffect(() => {
-    console.log('[DnD Debug] batchOrder changed:', batchOrder);
     saveStateToStorage();
   }, [batchOrder, collapsedPanels]);
 
@@ -1131,7 +1093,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     
     // If any placeholders need to be expired, update state
     if (expiredIds.length > 0) {
-      console.log(`[recent] Auto-expiring ${expiredIds.length} placeholders after timeout`);
+
       
       // Remove expired placeholders from the images list
       setBucketImages(prev => prev.filter(img => !expiredIds.includes(img.id)));
@@ -1162,15 +1124,8 @@ export const RecentView: React.FC<RecentViewProps> = ({
 
   // Add diagnostic logging for component mounting
   useEffect(() => {
-    console.log('[DnD Debug] RecentView component mounted');
-    console.log('[DnD Debug] Available props:', { refreshRecent });
-    try {
-      console.log('[DnD Debug] DndContext detected:', !!document.querySelector('[data-dnd-context]') || !!(window as any).__DND_CONTEXT_ID);
-    } catch (err) {
-      console.log('[DnD Debug] Error checking for parent DndContext:', err);
-    }
     return () => {
-      console.log('[DnD Debug] RecentView component unmounted');
+      // Component cleanup
     };
   }, [refreshRecent]);
 
@@ -1179,9 +1134,6 @@ export const RecentView: React.FC<RecentViewProps> = ({
     onDragStart: handleDragStart,
     onDragEnd: handleDragEnd
   });
-
-  // Debug: render cycle with current order
-  console.log('[DnD Debug] Rendering with batchOrder:', batchOrder);
 
   // If loading, show loading state
   if (loading) {

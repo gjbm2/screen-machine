@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ import {
 import { toast } from 'sonner';
 import apiService from '@/utils/api';
 import { PublishDestination } from '@/utils/api';
+import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
 interface HeaderSectionProps {
   onToggleConsole: () => void;
@@ -42,27 +43,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   isConsoleVisible,
   onOpenAboutDialog
 }) => {
-  const [destinations, setDestinations] = useState<PublishDestination[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Fetch publish destinations on component mount
-  useEffect(() => {
-    const fetchDestinations = async () => {
-      try {
-        setIsLoading(true);
-        const dests = await apiService.getPublishDestinations();
-        // Filter out headless destinations
-        const visibleDests = dests.filter(dest => !dest.headless);
-        setDestinations(visibleDests);
-      } catch (error) {
-        console.error("Error fetching destinations:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchDestinations();
-  }, []);
+  const { destinations } = usePublishDestinations();
 
   const handleCancelAllJobs = async () => {
     toast.loading("Cancelling all jobs...");
@@ -139,11 +120,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               </DropdownMenuSubTrigger>
               <DropdownMenuPortal>
                 <DropdownMenuSubContent>
-                  {isLoading ? (
-                    <DropdownMenuItem disabled>
-                      <span>Loading...</span>
-                    </DropdownMenuItem>
-                  ) : destinations.length > 0 ? (
+                  {destinations.length > 0 ? (
                     destinations.map(dest => (
                       <DropdownMenuItem key={dest.id} asChild>
                         <Link to={`/display/${dest.id}`} target="_blank" rel="noopener noreferrer">

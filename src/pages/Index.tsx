@@ -31,6 +31,7 @@ import { useUploadedImages } from '@/hooks/image-generation/use-uploaded-images'
 import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
 import { useReferenceImagesAdapter } from '@/hooks/context-adapter';
 
+
 interface OverlayMessage {
   html: string;
   duration: number;
@@ -261,7 +262,8 @@ const Index = () => {
   } = useImageGeneration(addConsoleLog);
   
   const { addReferenceUrl, referenceUrls } = useReferenceImages();
-  
+
+
   const handleJobStatusMessage = useCallback((message: JobStatusMessage) => {
     console.log('🔍 handleJobStatusMessage called with:', message);
     
@@ -495,7 +497,7 @@ const Index = () => {
         return;
       }
 
-      const ws = new WebSocket(import.meta.env.VITE_WS_HOST || 'ws://185.254.136.253:8765');
+      const ws = new WebSocket(import.meta.env.VITE_WS_HOST);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -810,9 +812,14 @@ const Index = () => {
 
       let effectiveParams = params ? { ...params } : { ...currentParams };
 
-      if (publish && publish !== 'none') {
-        console.log('Adding publish destination to params:', publish);
-        effectiveParams.publish_destination = publish;
+      if (publish) {
+        if (publish !== 'none') {
+          console.log('Adding publish destination to params:', publish);
+          effectiveParams.publish_destination = publish;
+        } else {
+          console.log('Removing publish destination from params (Not published selected)');
+          delete effectiveParams.publish_destination;
+        }
       }
 
       setCurrentParams(effectiveParams);
@@ -1105,12 +1112,8 @@ const Index = () => {
               const pubDestMatch = job.message.match(/^([^:]+):/);
               const pubDest = pubDestMatch ? pubDestMatch[1].trim() : null;
               
-              // Extract progress percentage from message (skip for completion messages)
-              let progressPercent = null;
-              if (job.message !== 'Done') {
-                const progressMatch = job.message.match(/(\d+)%/);
-                progressPercent = progressMatch ? parseInt(progressMatch[1]) : null;
-              }
+              // Use the progress from the job object (already correctly extracted)
+              const progressPercent = job.progress;
               
               // Strip HTML and get clean status text
               const tempDiv = document.createElement('div');
@@ -1170,19 +1173,6 @@ const Index = () => {
       </div>
     </div>
   ) : null;
-
-  useEffect(() => {
-    const fetchDestinations = async () => {
-      try {
-        const destinations = await apiService.getPublishDestinations();
-        setPublishDestinations(destinations);
-      } catch (error) {
-        console.error('Error fetching publish destinations:', error);
-      }
-    };
-
-    fetchDestinations();
-  }, []);
 
   // Add DnD sensors
   const sensors = useSensors(
@@ -1305,7 +1295,7 @@ const Index = () => {
           onDeleteImage={handleDeleteImage}
           onDeleteContainer={handleDeleteContainer}
           fullscreenRefreshTrigger={fullscreenRefreshTrigger}
-          publishDestinations={publishDestinations.map(dest => dest.id)}
+                     publishDestinations={publishDestinations.map(dest => dest.id)}
         />
         </DndContext>
       </MainLayout>

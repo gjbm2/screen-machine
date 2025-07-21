@@ -1,37 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import apiService from '@/utils/api';
-import { PublishDestination } from '@/utils/api';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Share2, ScreenShareOff } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Share2, MoreHorizontal } from 'lucide-react';
+import { ImageItem } from '@/types/image';
+import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
 interface DetailViewActionBarProps {
-  image: {
-    id: string;
-    url: string;
-  };
+  image: ImageItem;
   onClose: () => void;
 }
 
 const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({ image, onClose }) => {
-  const [destinations, setDestinations] = useState<PublishDestination[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { destinations } = usePublishDestinations();
   const [selectedDestinations, setSelectedDestinations] = useState<string[]>([]);
-
-  useEffect(() => {
-    const fetchDestinations = async () => {
-      try {
-        const data = await apiService.getPublishDestinations();
-        setDestinations(data);
-      } catch (error) {
-        console.error('Error fetching destinations:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchDestinations();
-  }, []);
 
   const handleToggleDestination = (destId: string) => {
     setSelectedDestinations(prev =>
@@ -41,7 +22,7 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({ image, onClos
     );
   };
 
-  if (isLoading) {
+  if (destinations.length === 0) {
     return <div>Loading...</div>;
   }
 
