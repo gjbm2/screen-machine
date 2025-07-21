@@ -2,7 +2,7 @@
   "schedule_stack": [],
   "context_stack": [],
   "state": "stopped",
-  "last_updated": "2025-07-18T12:16:05.728808",
+  "last_updated": "2025-07-21T06:01:18.560509",
   "last_trigger_executions": {
     "7bc512d74b13f60c705deb7e1061e1c0_2025-06-10_24": "2025-06-10T12:01:00.103358",
     "7bc512d74b13f60c705deb7e1061e1c0_2025-06-10_25": "2025-06-10T12:31:00.738562",
@@ -1463,230 +1463,6 @@
   "event_history": [
     {
       "key": "_user_interacting",
-      "active_from": "2025-07-09T21:44:38.888070",
-      "expires": "2025-07-10T00:44:38.888070",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:44:38.888070",
-      "unique_id": "11449e12-cfda-4349-9a0f-6706eea28841",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:44:38.937733"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:44:38.888070",
-      "expires": "2025-07-10T00:44:38.888070",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:44:38.888070",
-      "unique_id": "11449e12-cfda-4349-9a0f-6706eea28841",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:44:38.937733"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:45:41.350226",
-      "expires": "2025-07-10T00:45:41.350226",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:45:41.350226",
-      "unique_id": "5db9e707-c280-47c7-bc33-b186fd24af2d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:45:41.782846"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:45:41.350226",
-      "expires": "2025-07-10T00:45:41.350226",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:45:41.350226",
-      "unique_id": "5db9e707-c280-47c7-bc33-b186fd24af2d",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:45:41.782846"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:46:35.710145",
-      "expires": "2025-07-10T00:46:35.710145",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:46:35.710145",
-      "unique_id": "7e787660-b04b-4023-9fce-692f2ac14b75",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:46:36.754508"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:46:35.710145",
-      "expires": "2025-07-10T00:46:35.710145",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:46:35.710145",
-      "unique_id": "7e787660-b04b-4023-9fce-692f2ac14b75",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:46:36.754508"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:47:32.489001",
-      "expires": "2025-07-10T00:47:32.489001",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:47:32.489001",
-      "unique_id": "27dfcf37-77ec-4696-aaa6-c87dce91c3f0",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:47:33.577004"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:47:32.489001",
-      "expires": "2025-07-10T00:47:32.489001",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:47:32.489001",
-      "unique_id": "27dfcf37-77ec-4696-aaa6-c87dce91c3f0",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:47:33.577004"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:52:06.672707",
-      "expires": "2025-07-10T00:52:06.672707",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:52:06.672707",
-      "unique_id": "f8183153-153d-4856-a0d6-6a78d01db158",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:52:07.823940"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-09T21:52:06.672707",
-      "expires": "2025-07-10T00:52:06.672707",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "10m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-09T21:52:06.672707",
-      "unique_id": "f8183153-153d-4856-a0d6-6a78d01db158",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-09T21:52:07.823940"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-10T00:37:22.321599",
-      "expires": "2025-07-10T03:37:22.321599",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "2m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-10T00:37:22.321599",
-      "unique_id": "d34be5f0-4d6f-4d6d-8adc-e81df451a0d9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-10T00:37:24.312293"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-10T00:37:22.321599",
-      "expires": "2025-07-10T03:37:22.321599",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "2m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-10T00:37:22.321599",
-      "unique_id": "d34be5f0-4d6f-4d6d-8adc-e81df451a0d9",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-10T00:37:24.312293"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-10T00:38:18.316207",
-      "expires": "2025-07-10T03:38:18.316207",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "2m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-10T00:38:18.316207",
-      "unique_id": "fc66d81c-bf4b-4bac-a8bb-7b3124d5f324",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-10T00:38:18.350027"
-    },
-    {
-      "key": "_user_interacting",
-      "active_from": "2025-07-10T00:38:18.316207",
-      "expires": "2025-07-10T03:38:18.316207",
-      "display_name": "User Interaction",
-      "payload": {
-        "wait": "2m",
-        "action": "generate"
-      },
-      "single_consumer": false,
-      "created_at": "2025-07-10T00:38:18.316207",
-      "unique_id": "fc66d81c-bf4b-4bac-a8bb-7b3124d5f324",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_devtest",
-      "consumed_at": "2025-07-10T00:38:18.350027"
-    },
-    {
-      "key": "_user_interacting",
       "active_from": "2025-07-10T00:39:25.966635",
       "expires": "2025-07-10T03:39:25.966635",
       "display_name": "User Interaction",
@@ -3012,6 +2788,212 @@
       "status": "EXPIRED",
       "consumed_by": "expiration",
       "consumed_at": "2025-07-18T12:16:05.715716"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-18T17:18:48.093564",
+      "expires": "2025-07-18T20:18:48.093564",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T17:18:48.093564",
+      "unique_id": "4359d1f0-2f2b-437a-b8b4-77f2ca9091fc",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-18T20:18:57.360225"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-18T17:20:34.404096",
+      "expires": "2025-07-18T20:20:34.404096",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T17:20:34.404096",
+      "unique_id": "13645861-fc87-4f54-a63c-66bd78f4e888",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-18T20:20:43.696448"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-18T17:21:29.179773",
+      "expires": "2025-07-18T20:21:29.179773",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T17:21:29.179773",
+      "unique_id": "b1edcf38-ac32-4739-82d5-5de6f99cefc3",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-18T20:21:43.751867"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-18T18:28:44.680239",
+      "expires": "2025-07-18T21:28:44.680239",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T18:28:44.680239",
+      "unique_id": "3a04d5ef-914d-45a3-949e-2cac861fe579",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-18T21:28:50.184755"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-18T17:18:48.093564",
+      "expires": "2025-07-18T20:18:48.093564",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T17:18:48.093564",
+      "unique_id": "4359d1f0-2f2b-437a-b8b4-77f2ca9091fc",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-18T20:18:57.360225"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-18T17:20:34.404096",
+      "expires": "2025-07-18T20:20:34.404096",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T17:20:34.404096",
+      "unique_id": "13645861-fc87-4f54-a63c-66bd78f4e888",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-18T20:20:43.696448"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-18T17:21:29.179773",
+      "expires": "2025-07-18T20:21:29.179773",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T17:21:29.179773",
+      "unique_id": "b1edcf38-ac32-4739-82d5-5de6f99cefc3",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-18T20:21:43.751867"
+    },
+    {
+      "key": "_user_interacting",
+      "active_from": "2025-07-18T18:28:44.680239",
+      "expires": "2025-07-18T21:28:44.680239",
+      "display_name": "User Interaction",
+      "payload": {
+        "wait": "2m",
+        "action": "generate"
+      },
+      "single_consumer": false,
+      "created_at": "2025-07-18T18:28:44.680239",
+      "unique_id": "3a04d5ef-914d-45a3-949e-2cac861fe579",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-18T21:28:50.184755"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-19T06:00:09.529323",
+      "expires": "2025-07-19T06:01:09.529323",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-19T06:00:09.529323",
+      "unique_id": "103aa7d3-d322-47d3-adbe-d79d65e1585f",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-19T06:01:11.062039"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-19T06:00:09.529323",
+      "expires": "2025-07-19T06:01:09.529323",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-19T06:00:09.529323",
+      "unique_id": "103aa7d3-d322-47d3-adbe-d79d65e1585f",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-19T06:01:11.062039"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-20T06:00:10.985855",
+      "expires": "2025-07-20T06:01:10.985855",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-20T06:00:10.985855",
+      "unique_id": "e04c5293-e452-4acc-b663-7d6061cff73d",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-20T06:01:15.591593"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-20T06:00:10.985855",
+      "expires": "2025-07-20T06:01:10.985855",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-20T06:00:10.985855",
+      "unique_id": "e04c5293-e452-4acc-b663-7d6061cff73d",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-20T06:01:15.591593"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-21T06:00:13.232166",
+      "expires": "2025-07-21T06:01:13.232166",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-21T06:00:13.232166",
+      "unique_id": "c4991974-3524-4d63-b9f3-2e4e53598fbd",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-21T06:01:18.524389"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2025-07-21T06:00:13.232166",
+      "expires": "2025-07-21T06:01:13.232166",
+      "display_name": null,
+      "payload": {},
+      "single_consumer": false,
+      "created_at": "2025-07-21T06:00:13.232166",
+      "unique_id": "c4991974-3524-4d63-b9f3-2e4e53598fbd",
+      "status": "EXPIRED",
+      "consumed_by": "expiration",
+      "consumed_at": "2025-07-21T06:01:18.524389"
     }
   ]
 }

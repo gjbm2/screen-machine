@@ -88,20 +88,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
 
     // Log destination information without hardcoding specific IDs
     useEffect(() => {
-      console.log("All destinations count:", destinations.length);
-      console.log("Non-headless destinations count:", nonHeadlessDestinations.length);
-      
-      // Log bucketless destinations for debugging
-      const bucketlessDestinations = destinations.filter(d => d.has_bucket === false);
-      if (bucketlessDestinations.length > 0) {
-        console.log("Bucketless destinations:", bucketlessDestinations);
-      }
-      
-      // Log headless destinations for debugging
-      const headlessDestinations = destinations.filter(d => d.headless === true);
-      if (headlessDestinations.length > 0) {
-        console.log("Headless destinations:", headlessDestinations);
-      }
+      // Removed verbose logging to reduce console noise
     }, [destinations, nonHeadlessDestinations]);
 
     /* ------------------------------------------------------------------ */

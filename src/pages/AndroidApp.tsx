@@ -18,7 +18,7 @@ const AndroidApp = () => {
     const recording = searchParams.get('recording');
     
     // Get base URL from environment variables
-    const baseUrl = import.meta.env.VITE_APP_BASE_URL || 'http://185.254.136.253:8000';
+    const baseUrl = import.meta.env.VITE_APP_BASE_URL;
     const appPackage = import.meta.env.VITE_ANDROID_APP_PACKAGE || 'com.screenmachine.audio';
     
     // Construct the deep link

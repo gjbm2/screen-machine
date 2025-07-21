@@ -246,30 +246,18 @@ const PromptForm: React.FC<PromptFormProps> = ({
       append?: boolean;
     }>) => {
       try {
-        console.log('====== USE IMAGE AS PROMPT EVENT RECEIVED ======');
-        console.log('Event detail:', event.detail);
-        console.log('Event source:', event.detail.source);
-        console.log('=================================================');
-        
         const { url, preserveFavorites, useReferenceUrl, source, append } = event.detail;
-        console.log('Using image as prompt:', { url, preserveFavorites, useReferenceUrl, source, append });
         
         // Instead of modifying local state, use the context methods
         if (append) {
-          console.log('Appending image to existing reference images:', url);
           addReferenceUrl(url, true);
         } else {
-          console.log('Replacing all reference images with:', url);
           clearReferenceUrls();
           addReferenceUrl(url, false);
         }
         
-        // Also update the imageFiles array for backward compatibility
-        if (append) {
-          setImageFiles(prev => [...prev, url]);
-        } else {
-          setImageFiles([url]);
-        }
+        // Note: imageFiles now only contains File objects, not URLs
+        // URLs are handled by the referenceUrls context
       } catch (error) {
         console.error('Error in useImageAsPrompt handler:', error);
       }
@@ -280,7 +268,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
       console.log('Removing useImageAsPrompt event listener');
       window.removeEventListener('useImageAsPrompt', handleUseImageAsPrompt as EventListener);
     };
-  }, [addReferenceUrl, clearReferenceUrls]);
+  }, [addReferenceUrl, clearReferenceUrls, referenceUrls]);
 
   // Add event listener for setting prompt text
   useEffect(() => {

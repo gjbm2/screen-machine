@@ -350,6 +350,14 @@
               "title": "History Variable",
               "description": "Optional: variable name where operation history will be stored. Each entry contains timestamp, prompt, and generation results."
             },
+            "images": {
+              "type": "array",
+              "title": "Input Images",
+              "description": "Array of image paths to use as input for generation.",
+              "items": {
+                "type": "string"
+              }
+            },
             "dontwait": { "$ref": "#/definitions/dontWaitProp" },
             "additionalProperties": {
               "type": "string",
@@ -737,7 +745,8 @@
               "type": "string",
               "title": "Event Scope",
               "enum": [
-                "global"
+                "global",
+                "current"
                 {% if DEST_GROUPS %}
                 {% for group in DEST_GROUPS %}
                 ,"{{ group }}"
@@ -748,7 +757,7 @@
                 {% endfor %}
               ],
               "default": "global",
-              "description": "The scope of the event: a destination ID, group name, or 'global'."
+              "description": "The scope of the event: 'global', 'current' (current destination), a destination ID, or group name."
             },
             "ttl": {
               "type": "string",

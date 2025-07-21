@@ -58,7 +58,6 @@ export const useImageGeneration = (
 ): UseImageGenerationResult => {
   // Use "auto" as the default workflow to let the backend resolve the best workflow
   const getDefaultWorkflowId = (): string => {
-    console.log("useImageGeneration: Using auto workflow for backend resolution");
     return 'auto';
   };
 
@@ -67,6 +66,11 @@ export const useImageGeneration = (
   const [currentWorkflow, setCurrentWorkflow] = useState<string>(getDefaultWorkflowId());
   const [currentParams, setCurrentParams] = useState<Record<string, any>>({});
   const [currentGlobalParams, setCurrentGlobalParams] = useState<Record<string, any>>({});
+
+  // Log initialization only once
+  useState(() => {
+    console.log("useImageGeneration: Using auto workflow for backend resolution");
+  });
 
   // Initialize global image counter if it doesn't exist
   useState(() => {

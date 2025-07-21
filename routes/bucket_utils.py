@@ -60,6 +60,13 @@ class ReferenceImageInfo:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ReferenceImageInfo':
         """Create from dictionary"""
+        # Add defensive checks for missing fields
+        required_fields = ["index", "original_filename", "stored_path", "thumbnail_path", "content_type", "size", "source_type"]
+        missing_fields = [field for field in required_fields if field not in data]
+        
+        if missing_fields:
+            raise ValueError(f"Missing required fields in reference image data: {missing_fields}. Available fields: {list(data.keys())}")
+        
         return cls(
             index=data["index"],
             original_filename=data["original_filename"],

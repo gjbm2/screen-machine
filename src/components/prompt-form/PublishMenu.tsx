@@ -1,37 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import apiService from '@/utils/api';
-import { PublishDestination } from '@/utils/api';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Share2, ScreenShareOff } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Share2 } from 'lucide-react';
+import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
 interface PublishMenuProps {
-  onSelect: (value: string) => void;
+  onSelect: (publishId: string) => void;
 }
 
 const PublishMenu: React.FC<PublishMenuProps> = ({ onSelect }) => {
-  const [destinations, setDestinations] = useState<PublishDestination[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { destinations } = usePublishDestinations();
   const [selectedDestinations, setSelectedDestinations] = useState<string[]>([]);
-
-  useEffect(() => {
-    const fetchDestinations = async () => {
-      try {
-        const data = await apiService.getPublishDestinations();
-        setDestinations(data);
-      } catch (error) {
-        console.error('Error fetching destinations:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchDestinations();
-  }, []);
-
-  useEffect(() => {
-    onSelect(selectedDestinations.length === 0 ? 'none' : selectedDestinations.join(','));
-  }, [selectedDestinations, onSelect]);
 
   const handleToggleDestination = (destId: string) => {
     setSelectedDestinations(prev =>
@@ -41,7 +25,12 @@ const PublishMenu: React.FC<PublishMenuProps> = ({ onSelect }) => {
     );
   };
 
-  if (isLoading) {
+  // Update parent when selections change
+  React.useEffect(() => {
+    onSelect(selectedDestinations.length === 0 ? 'none' : selectedDestinations.join(','));
+  }, [selectedDestinations, onSelect]);
+
+  if (destinations.length === 0) {
     return <div>Loading...</div>;
   }
 

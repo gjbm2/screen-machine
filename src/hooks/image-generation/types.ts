@@ -28,6 +28,9 @@ export interface GeneratedImage {
   containerId?: number;
   title?: string;
   uniqueKey?: string;
+  reference_images?: any[]; // Add reference images support
+  generation_time_seconds?: number; // Generation time in seconds
+  generation_cost_gbp?: number; // Generation cost in GBP
 }
 
 export interface AsyncGenerationUpdate {

@@ -8,6 +8,18 @@ import { processGenerationResults, markBatchAsError } from './result-handler';
 import { findExistingContainerId, getContainerIdForBatch } from './batch-utils';
 import { generateImageTitle } from './title-util';
 
+// Helper to extract batchId from filename
+const extractBatchId = (filename: string): string => {
+  // Extract "batch-XYZ" pattern from the filename - capture everything after "batch-" until the next file extension
+  const batchMatch = filename.match(/batch-([^\.]+)/);
+  if (batchMatch && batchMatch[1]) {
+    return batchMatch[1]; // Return the full batch ID value including underscores
+  }
+  
+  // Fallback if pattern not found: use filename hash
+  return filename.split('.')[0];
+};
+
 export interface ImageGenerationParams {
   prompt: string;
   imageFiles?: (File | string)[];
@@ -338,6 +350,71 @@ export const generateImage = async (
               }
             })
           );
+        }
+        
+        // Make a roundtrip call to get reference images for this batch
+        // This ensures the frontend has access to the persisted reference images
+        if (response.batch_id && response.recent_files && response.recent_files.length > 0) {
+          try {
+            // Fetch metadata for each generated file individually
+            const imageDetailsPromises = response.recent_files.map(async (filename: string) => {
+              try {
+                const imageDetails = await apiService.getImageComplete('_recent', filename);
+                return { filename, details: imageDetails };
+              } catch (error) {
+                console.warn(`[image-generator] Failed to fetch details for ${filename}:`, error);
+                return { filename, details: null };
+              }
+            });
+            
+            const imageDetailsResults = await Promise.all(imageDetailsPromises);
+            const successfulResults = imageDetailsResults.filter(result => result.details !== null);
+            
+            if (successfulResults.length > 0) {
+              // Update the generated images with reference image information
+              setGeneratedImages(prevImages => {
+                return prevImages.map(img => {
+                  if (img.batchId === response.batch_id) {
+                    // Find the matching image details by URL
+                    const matchingResult = successfulResults.find(result => {
+                      const details = result.details!;
+                      return details.raw_url === img.url || details.thumbnail_url === img.url;
+                    });
+                    
+                    if (matchingResult?.details?.reference_images) {
+                      return {
+                        ...img,
+                        reference_images: matchingResult.details.reference_images
+                      };
+                    }
+                  }
+                  return img;
+                });
+              });
+              
+              // Dispatch an event to update the Recent tab with reference images
+              const referenceImagesByFile = successfulResults.reduce((acc, result) => {
+                if (result.details?.reference_images) {
+                  acc[result.filename] = result.details.reference_images;
+                }
+                return acc;
+              }, {} as Record<string, any[]>);
+              
+              if (Object.keys(referenceImagesByFile).length > 0) {
+                window.dispatchEvent(
+                  new CustomEvent('recent:reference-images-updated', {
+                    detail: {
+                      batchId: response.batch_id,
+                      referenceImages: referenceImagesByFile
+                    }
+                  })
+                );
+              }
+            }
+          } catch (error) {
+            console.warn('[image-generator] Failed to fetch reference images for batch:', response.batch_id, error);
+            // Don't fail the generation if reference image fetch fails
+          }
         }
         
         // Also remove active placeholders for this batch from localStorage since generation is complete

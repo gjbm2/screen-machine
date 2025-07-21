@@ -3,7 +3,7 @@
     "instructions_block": [
       {
         "action": "log",
-        "message": "Styliser session complete - 20 minutes of stylistic exploration finished"
+        "message": "Hairify session complete - 20 minutes of hair-raising transformations finished!"
       },
       {
         "action": "wait",
@@ -28,7 +28,7 @@
     "instructions_block": [
       {
         "action": "log",
-        "message": "** Starting Styliser Session **"
+        "message": "** Starting Hairify Session - Let's Get Hairy! **"
       },
       {
         "action": "set_var",
@@ -43,7 +43,7 @@
       },
       {
         "action": "overlay",
-        "text": "Stylising will begin in 2 minutes using the current image displayed. You have time to create or upload a different image.",
+        "text": "Hairify will begin in 2 minutes using the current image displayed. Time to prepare for some wild hair transformations!",
         "duration": "2m"
       },
       {
@@ -54,7 +54,7 @@
       },
       {
         "action": "set_var",
-        "var": "style_history",
+        "var": "hair_history",
         "input": {
           "value": []
         }
@@ -76,7 +76,7 @@
         "instructions_block": [
           {
             "action": "log",
-            "message": "** Starting Styliser Process **"
+            "message": "** Starting Hairify Process - Let's Get Creative! **"
           },
           {
             "action": "set_var",
@@ -92,7 +92,7 @@
           {
             "action": "throw_event",
             "scope": "current",
-            "event": "styliser_start"
+            "event": "hairify_start"
           }
         ],
         "important": true
@@ -100,7 +100,7 @@
     },
     {
       "type": "event",
-      "value": "styliser_start",
+      "value": "hairify_start",
       "trigger_actions": {
         "instructions_block": [
           {
@@ -119,10 +119,10 @@
           },
           {
             "action": "reason",
-            "text_input": "First, analyze the image to determine if the subject appears to be male or female. Then create a detailed style transformation prompt that's appropriate for their gender. Be BOLD, WHIMSICAL, and AMUSING! For MALE subjects, focus on masculine styles like: 'sporting a handlebar mustache that could hold a teacup', 'bald as a bowling ball with a beard that would make a lumberjack jealous', 'a beard braided like a Viking warrior', 'a mustache so twirly it could open wine bottles', 'a beard that looks like it was sculpted by Michelangelo', 'rocking a gravity-defying mohawk with rainbow streaks', 'hair styled like a 1980s rock star on steroids', 'hair so spiky it could puncture a tire', 'a beard so long it could be used as a scarf', 'sideburns that could double as ear warmers', 'a goatee that's been waxed to a mirror shine', 'hair in a man bun so perfect it belongs in a shampoo commercial'. For FEMALE subjects, focus on feminine styles like: 'hair so big it has its own weather system', 'twin braids that could be used as jump ropes', 'hair styled like a 1980s rock star on steroids', 'a beehive hairdo that could house actual bees', 'curls so bouncy they could power a trampoline', 'hair extensions so long they could be used as a rope ladder', 'a ponytail so high it's practically a satellite dish', 'braids so intricate they look like they were woven by fairies', 'hair so straight it could be used as a ruler', 'a pixie cut so cute it could make puppies jealous', 'hair dyed in rainbow colors that would make a unicorn envious', 'a crown braid that would make any princess proud'. Avoid these recent styles: {{ style_history[-5:] | map(attribute='outputs.style_prompt') | list if style_history else [] }}. Return only the style transformation prompt that can be used directly for image generation.",
+            "text_input": "First, analyze the image to determine if the subject appears to be male or female. Then create a detailed hair transformation prompt that's appropriate for their gender. Be BOLD, WHIMSICAL, and AMUSING! For MALE subjects, focus on facial hair and masculine hairstyles like: 'sporting a handlebar mustache that could hold a teacup', 'bald as a bowling ball with a beard that would make a lumberjack jealous', 'a beard braided like a Viking warrior', 'a mustache so twirly it could open wine bottles', 'a beard that looks like it was sculpted by Michelangelo', 'rocking a gravity-defying mohawk with rainbow streaks', 'hair styled like a 1980s rock star on steroids', 'hair so spiky it could puncture a tire', 'a beard so long it could be used as a scarf', 'sideburns that could double as ear warmers', 'a goatee that's been waxed to a mirror shine', 'hair in a man bun so perfect it belongs in a shampoo commercial'. For FEMALE subjects, focus on hairstyles and hair accessories like: 'hair so big it has its own weather system', 'twin braids that could be used as jump ropes', 'hair styled like a 1980s rock star on steroids', 'a beehive hairdo that could house actual bees', 'curls so bouncy they could power a trampoline', 'hair extensions so long they could be used as a rope ladder', 'a ponytail so high it's practically a satellite dish', 'braids so intricate they look like they were woven by fairies', 'hair so straight it could be used as a ruler', 'a pixie cut so cute it could make puppies jealous', 'hair dyed in rainbow colors that would make a unicorn envious', 'a crown braid that would make any princess proud'. Avoid these recent styles: {{ hair_history[-5:] | map(attribute='outputs.hair_prompt') | list if hair_history else [] }}. Return only the hair transformation prompt that can be used directly for image generation.",
             "reasoner": "adapt",
             "output_vars": [
-              "style_prompt"
+              "hair_prompt"
             ],
             "image_inputs": [
               "{{ source_image }}"
@@ -134,17 +134,17 @@
               "{{ source_image }}"
             ],
             "input": {
-              "prompt": "{{ style_prompt }}"
+              "prompt": "{{ hair_prompt }}"
             },
             "workflow": "flux_1_kontext_dev_1pic-l.json",
             "publish": true,
             "refiner": "adapt",
-            "output_var": "styled_image",
+            "output_var": "hairified_image",
             "history_var": "generation_history"
           },
           {
             "action": "log",
-            "message": "Applied style transformation - iteration {{ session_count }} complete"
+            "message": "Applied hair transformation - iteration {{ session_count }} complete! Looking fabulous!"
           },
           {
             "action": "terminate",
@@ -154,7 +154,7 @@
           {
             "action": "throw_event",
             "scope": "current",
-            "event": "styliser_start"
+            "event": "hairify_start"
           }
         ],
         "important": true

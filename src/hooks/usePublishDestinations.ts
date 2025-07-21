@@ -12,7 +12,6 @@ export function usePublishDestinations() {
     async function fetchDestinations() {
       try {
         const data = await api.getPublishDestinations();
-        console.log('Raw publish destinations from API:', data);
         setDestinations(data);
         setError(null);
       } catch (err) {

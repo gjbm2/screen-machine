@@ -91,21 +91,31 @@ interface BucketDetails {
 
 export class Api {
   private apiUrl: string;
+  private wsUrl: string;
   private mockMode: boolean;
+  private static instance: Api | null = null;
 
-  constructor(apiUrl: string = DEFAULT_API_URL) {
-    this.apiUrl = apiUrl;
+  constructor() {
+    // Singleton pattern to prevent multiple instances
+    if (Api.instance) {
+      return Api.instance;
+    }
+    
+    this.apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    this.wsUrl = import.meta.env.VITE_WS_HOST;
+    
     // Check if we're running in mock mode (when backend is not available)
     this.mockMode = window.location.hostname.includes('lovable') || 
-                    !apiUrl.startsWith('http');
+                    !this.apiUrl.startsWith('http');
 
+    // Reduced logging to prevent console spam
     if (this.mockMode) {
-      console.info('apiUrl:', apiUrl);
-      console.info('hostname:', window.location.hostname);
       console.info('API Service running in mock mode - backend simulation active'); 
     } else { 
       console.info('API Service running in normal mode - backend live');
     }
+    
+    Api.instance = this;
   }
 
   // Get the API URL
@@ -1931,7 +1941,7 @@ export class Api {
       }
       
       const data = await response.json();
-      console.log('Raw bucket details response:', data);
+      // Removed verbose logging to reduce console noise
       
       // Map files to items with the correct fields
       const items = Array.isArray(data.files) ? data.files.map(file => {
@@ -1957,33 +1967,23 @@ export class Api {
       
       // Get published info from the published object
       const published = data.published || null;
+      const publishedAt = published?.published_at || null;
+      const raw_url = published?.raw_url || null;
+      const thumbnail_url = published?.thumbnail_url || null;
       
-      // Log info about the published image but don't add it to items
-      if (published && published.from_bucket === false) {
-        console.log('Published image is not from this bucket:', published.filename);
-        console.log('Published at:', published.published_at);
-        console.log('Raw URL:', published.raw_url);
-        console.log('Thumbnail URL:', published.thumbnail_url);
-      }
-      
-      // Ensure we have a valid BucketDetails object
-      const bucketDetails = {
-        name: data.bucket_id || bucketId,
-        items: items,
-        published: published?.filename || null,
-        publishedAt: published?.published_at || null,
-        raw_url: published?.raw_url || null,
-        thumbnail_url: published?.thumbnail_url || null,
-        favorites: Array.isArray(data.favorites) ? data.favorites : [],
-        sequence: Array.isArray(data.sequence) ? data.sequence : [],
+      return {
+        name: bucketId,
+        items,
+        published,
+        publishedAt,
+        raw_url,
+        thumbnail_url,
+        favorites: data.favorites || [],
+        sequence: data.sequence || [],
         error: null
       };
-      
-      console.log('Processed bucket details:', bucketDetails);
-      return bucketDetails;
     } catch (error) {
-      console.error(`Error fetching bucket details for ${bucketId}:`, error);
-      // Return an empty bucket details instead of throwing
+      console.error('Error getting bucket details:', error);
       return {
         name: bucketId,
         items: [],
@@ -1993,8 +1993,37 @@ export class Api {
         thumbnail_url: null,
         favorites: [],
         sequence: [],
-        error: null
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
+    }
+  }
+
+  async getImageComplete(bucketId: string, filename: string): Promise<{
+    bucket_id: string;
+    filename: string;
+    size: number;
+    modified: number;
+    created_at: number;
+    metadata: Record<string, any>;
+    favorite: boolean;
+    thumbnail_url: string;
+    raw_url: string;
+    reference_images: ReferenceImageInfo[];
+  }> {
+    try {
+      const response = await fetch(`${this.apiUrl}/buckets/${bucketId}/image/${encodeURIComponent(filename)}/complete`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get image details: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('Image complete response:', data);
+      
+      return data;
+    } catch (error) {
+      console.error('Error getting image details:', error);
+      throw error;
     }
   }
 

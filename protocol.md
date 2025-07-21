@@ -1,7 +1,7 @@
 # Audio Streaming Protocol
 
 ## 1. Connection
-1.1. Client connects to WebSocket at `ws://185.254.136.253:8765`
+1.1. Client connects to WebSocket at `ws://${VITE_WS_HOST}`
 1.2. Client sends initial message:
 ```json
 {

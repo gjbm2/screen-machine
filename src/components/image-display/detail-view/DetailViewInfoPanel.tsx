@@ -80,6 +80,8 @@ const DetailViewInfoPanel: React.FC<DetailViewInfoPanelProps> = ({
         onOpenInNewTab={onOpenInNewTab}
         onInfoClick={onInfoClick}
         hasReferenceImages={hasReferenceImages}
+        generation_time_seconds={activeImage?.generation_time_seconds}
+        generation_cost_gbp={activeImage?.generation_cost_gbp}
       />
       
       {/* Image Actions Bar - all buttons in a single row */}
