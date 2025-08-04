@@ -160,7 +160,23 @@ def send_overlay(
             if isinstance(substitutions, str):
                 substitutions = ast.literal_eval(substitutions)
             if isinstance(substitutions, dict):
-                final_html = dict_substitute(html_content, substitutions)
+                # Automatically add common contextual substitutions
+                from routes.utils import build_schema_subs, get_qr
+                auto_subs = build_schema_subs()
+                
+                # Add screen-specific contextual substitutions
+                if screens and len(screens) > 0:
+                    primary_screen = screens[0]
+                    auto_subs['QR_BASE64'] = get_qr(publish=primary_screen)
+                    auto_subs['SCREEN_NAME'] = primary_screen
+                    
+                    # Get screen display name from destinations
+                    destinations = auto_subs.get('ALL_DESTINATIONS', [])  # This comes from build_schema_subs
+                    # Could add more contextual info here
+                
+                # Merge with provided substitutions (provided ones take precedence)
+                final_subs = {**auto_subs, **substitutions}
+                final_html = dict_substitute(html_content, final_subs)
             else:
                 warning("Substitutions is not a dict, skipping templating")
                 final_html = html_content

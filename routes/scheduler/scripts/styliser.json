@@ -43,7 +43,7 @@
       },
       {
         "action": "overlay",
-        "text": "Stylising will begin in 2 minutes using the current image displayed. You have time to create or upload a different image.",
+        "text": "Stylising will begin in 2 minutes using the image currently displayed. You have time to create or upload a different image.<br><br><div style=\"display: flex; justify-content: center; margin: 20px 0;\"><img src=\"{{ QR_BASE64 }}\" style=\"width: 200px; height: auto; border-radius: 16px; opacity: 0.9; box-shadow: 0 4px 12px rgba(0,0,0,0.15);\" /></div><br>Scan the QR code to upload a new image to this screen, or we'll go with the one we have.",
         "duration": "2m"
       },
       {
@@ -61,7 +61,7 @@
       },
       {
         "action": "set_var",
-        "var": "session_count",
+        "var": "session_countwhere ",
         "input": {
           "value": 0
         }
@@ -80,14 +80,14 @@
           },
           {
             "action": "set_var",
-            "var": "source_image",
+            "var": "working_image",
             "input": {
               "value": "{{ _current_image }}"
             }
           },
           {
             "action": "log",
-            "message": "Captured source image: {{ source_image }}"
+            "message": "Captured working image for all generations: {{ working_image }}"
           },
           {
             "action": "throw_event",
@@ -114,12 +114,12 @@
             "action": "set_var",
             "var": "source_image",
             "input": {
-              "value": "{{ _current_image }}"
+              "value": "{{ working_image }}"
             }
           },
           {
             "action": "reason",
-            "text_input": "First, analyze the image to determine if the subject appears to be male or female. Then create a detailed style transformation prompt that's appropriate for their gender. Be BOLD, WHIMSICAL, and AMUSING! For MALE subjects, focus on masculine styles like: 'sporting a handlebar mustache that could hold a teacup', 'bald as a bowling ball with a beard that would make a lumberjack jealous', 'a beard braided like a Viking warrior', 'a mustache so twirly it could open wine bottles', 'a beard that looks like it was sculpted by Michelangelo', 'rocking a gravity-defying mohawk with rainbow streaks', 'hair styled like a 1980s rock star on steroids', 'hair so spiky it could puncture a tire', 'a beard so long it could be used as a scarf', 'sideburns that could double as ear warmers', 'a goatee that's been waxed to a mirror shine', 'hair in a man bun so perfect it belongs in a shampoo commercial'. For FEMALE subjects, focus on feminine styles like: 'hair so big it has its own weather system', 'twin braids that could be used as jump ropes', 'hair styled like a 1980s rock star on steroids', 'a beehive hairdo that could house actual bees', 'curls so bouncy they could power a trampoline', 'hair extensions so long they could be used as a rope ladder', 'a ponytail so high it's practically a satellite dish', 'braids so intricate they look like they were woven by fairies', 'hair so straight it could be used as a ruler', 'a pixie cut so cute it could make puppies jealous', 'hair dyed in rainbow colors that would make a unicorn envious', 'a crown braid that would make any princess proud'. Avoid these recent styles: {{ style_history[-5:] | map(attribute='outputs.style_prompt') | list if style_history else [] }}. Return only the style transformation prompt that can be used directly for image generation.",
+            "text_input": "Analyze this image and create a detailed artistic style transformation prompt. Choose from diverse visual art styles like: Impressionism (soft, dreamy brushstrokes with light effects), Cubism (geometric shapes and fragmented perspectives), Art Nouveau (flowing organic lines and decorative elements), Pop Art (bold colors and commercial imagery), Surrealism (dreamlike and fantastical elements), Abstract Expressionism (bold colors and gestural brushwork), Minimalism (clean lines and simple forms), Baroque (dramatic lighting and rich details), Art Deco (geometric patterns and luxurious elements), Fauvism (wild, non-naturalistic colors), Pointillism (composed of small dots of color), Gothic (dark, mysterious atmosphere), Renaissance (classical proportions and techniques), Watercolor (translucent, flowing effects), Oil Painting (rich textures and blended colors), Pencil Sketch (detailed line work), Digital Art (modern computer-generated effects), Street Art/Graffiti (urban, expressive style), Vintage Photography (sepia tones, aged effects), or Anime/Manga (stylized Japanese animation style). Be creative and specific about colors, textures, lighting, and artistic techniques. Avoid these recent styles: {{ style_history[-5:] | map(attribute='outputs.style_prompt') | list if style_history else [] }}. Return only the artistic style transformation prompt that can be used directly for image generation.",
             "reasoner": "adapt",
             "output_vars": [
               "style_prompt"
@@ -140,7 +140,7 @@
             "publish": true,
             "refiner": "adapt",
             "output_var": "styled_image",
-            "history_var": "generation_history"
+            "history_var": "style_history"
           },
           {
             "action": "log",

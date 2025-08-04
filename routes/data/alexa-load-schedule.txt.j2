@@ -13,7 +13,9 @@ Your job is to:
    - Handle variations in naming (e.g., "show case" should match "showcase")
    - Handle underscores vs spaces (e.g., "art rotation" should match "art_rotation") 
    - Handle partial matches (e.g., "quick" should match "quick_demo")
+   - Handle common mispronunciations and typos
    - Be case-insensitive
+   - Use fuzzy matching - if a script name is 80% similar to what the user said, consider it a match
    
 3. Determine the target screen:
    - If the user explicitly mentions a target, use that (choose from: {{ALEXA_TARGETS}})

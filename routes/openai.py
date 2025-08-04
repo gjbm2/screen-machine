@@ -79,7 +79,17 @@ def openai_prompt(
                 elif isinstance(image_input, str) and os.path.isfile(image_input):
                     img = resize_image_keep_aspect(image_input, max_dim=512)
                     resized_path = f"{image_input}.resized.jpg"
+                    
+                    # Force remove old cached file if it exists
+                    if os.path.exists(resized_path):
+                        try:
+                            os.remove(resized_path)
+                            debug(f"[openai_prompt] Removed old cached resized file: {resized_path}")
+                        except Exception as e:
+                            warning(f"[openai_prompt] Failed to remove old cached file {resized_path}: {e}")
+                    
                     img.save(resized_path, format="JPEG", quality=90)
+                    debug(f"[openai_prompt] Created new resized file: {resized_path}")
                     resized_paths.append(resized_path)
 
                 elif isinstance(image_input, str) and len(image_input) > 1000:

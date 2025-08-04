@@ -60,7 +60,7 @@
     "name": "Animate an image",
 	"system_prompt": "refiner-image-to-video.txt",
     "description": "Create a short video from an image",
-    "default-workflow": "flux1-dev-scale-l.json",
+    "default-workflow": "wan_image_to_video_upscale_slow.json",
     "icon": "MessageCircleHeart",
 	"uploadimages": 1,
 	"alexavisible": true
