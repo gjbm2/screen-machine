@@ -11,8 +11,8 @@
       {"name": "Upscaling", "weight": 10}
     ],	
     "alexavisible": true,
-    "style_guidance": "Use for photography, lifelike imagery, cinematic lighting, or physical objects such as sculpture, carved relief, or material artifacts.",
-    "style_descriptor": "photo-realistic, soft cinematic lighting, medium format lens, glossy textures",
+    "style_guidance": "Use ONLY for explicitly stylized, commercial, or synthetic photorealistic imagery. Ideal for fashion photography, product shots, commercial advertising, studio portraits, or when the user specifically requests glossy, artificial, or enhanced lighting effects. For natural, documentary, or authentic photography, prefer krea instead.",
+    "style_descriptor": "explicitly stylized commercial photography, enhanced artificial lighting, glossy perfection, studio lighting, synthetic aesthetics",
     "params": [
       { 
       "id": "steps",
@@ -46,6 +46,68 @@
       "name": "Lora strength",
       "type": "number",
       "default": 0.2
+      },
+        {
+      "id": "seed",
+      "name": "Random seed",
+      "type": "number"
+      },
+      {
+      "id": "upscaler",
+      "name": "Upscaler model",
+      "type": "select",
+      "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
+        "default": "RealESRGAN_x2plus.pth"
+      }
+    ]
+  },
+  {
+    "id": "krea.json",
+    "name": "Text to Image (krea)",
+    "input": ["text"],
+    "description": "Image from text using Krea",
+    "runpod_id": "72q39lkzxcmfca",
+    "icon": "Camera",
+    "processing_stages": [
+      {"name": "Rendering", "weight": 90},
+      {"name": "Upscaling", "weight": 10}
+    ],	
+    "alexavisible": true,
+    "style_guidance": "Use for most photorealistic imagery including natural, authentic, documentary, candid, street, landscape, portrait, and general photography. Ideal for realistic scenes, natural lighting, authentic details, and lifelike rendering. This is the preferred choice for most photorealistic requests unless the user explicitly requests stylized, commercial, or synthetic effects.",
+    "style_descriptor": "natural photorealistic photography, authentic lighting, lifelike details, realistic textures, documentary photography, candid photography, street photography, landscape photography",
+    "params": [
+      { 
+      "id": "steps",
+      "name": "Steps",
+      "type": "number",
+      "default": 30
+      },
+      {
+      "id": "width",
+      "name": "Width",
+      "type": "select",
+      "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+      "default": "1280"
+      },
+        {
+      "id": "height",
+      "name": "Height",
+      "type": "select",
+      "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+      "default": "720"
+      },
+        {
+      "id": "lora",
+      "name": "Lora",
+      "type": "select",
+        "options": ["lora.safetensors"],
+      "default": "lora.safetensors"
+      },
+        {
+      "id": "lora_strength",
+      "name": "Lora strength",
+      "type": "number",
+      "default": 0
       },
         {
       "id": "seed",

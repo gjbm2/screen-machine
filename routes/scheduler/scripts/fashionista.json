@@ -1,0 +1,164 @@
+{
+  "final_actions": {
+    "instructions_block": [
+      {
+        "action": "log",
+        "message": "Fashionista session complete - 20 minutes of runway-worthy transformations finished!"
+      },
+      {
+        "action": "wait",
+        "duration": "1m"
+      },
+      {
+        "action": "log",
+        "message": "Restoring original image: {{ original_image }}"
+      },
+      {
+        "action": "publish",
+        "source": "{{ original_image }}",
+        "silent": true
+      },
+      {
+        "action": "log",
+        "message": "Original image restored - system returned to ex ante state"
+      }
+    ]
+  },
+  "initial_actions": {
+    "instructions_block": [
+      {
+        "action": "log",
+        "message": "** Starting Fashionista Session - Let's Hit the Runway! **"
+      },
+      {
+        "action": "set_var",
+        "var": "original_image",
+        "input": {
+          "value": "{{ _current_image }}"
+        }
+      },
+      {
+        "action": "log",
+        "message": "Stored original image for restoration: {{ original_image }}"
+      },
+      {
+        "action": "overlay",
+        "text": "Fashionista will begin in 2 minutes using the current image displayed. Time to prepare for some runway-worthy fashion transformations!<br><br><div style=\"display: flex; justify-content: center; margin: 20px 0;\"><img src=\"{{ QR_BASE64 }}\" style=\"width: 200px; height: auto; border-radius: 16px; opacity: 0.9; box-shadow: 0 4px 12px rgba(0,0,0,0.15);\" /></div><br>Scan the QR code to upload a new image to this screen.",
+        "duration": "2m"
+      },
+      {
+        "action": "throw_event",
+        "scope": "current",
+        "event": "get_started",
+        "delay": "2m"
+      },
+      {
+        "action": "set_var",
+        "var": "fashion_history",
+        "input": {
+          "value": []
+        }
+      },
+      {
+        "action": "set_var",
+        "var": "session_count",
+        "input": {
+          "value": 0
+        }
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "type": "event",
+      "value": "get_started",
+      "trigger_actions": {
+        "instructions_block": [
+          {
+            "action": "log",
+            "message": "** Starting Fashionista Process - Let's Get Fabulous! **"
+          },
+          {
+            "action": "set_var",
+            "var": "working_image",
+            "input": {
+              "value": "{{ _current_image }}"
+            }
+          },
+          {
+            "action": "log",
+            "message": "Captured working image for all generations: {{ working_image }}"
+          },
+          {
+            "action": "throw_event",
+            "scope": "current",
+            "event": "fashionista_start"
+          }
+        ],
+        "important": true
+      }
+    },
+    {
+      "type": "event",
+      "value": "fashionista_start",
+      "trigger_actions": {
+        "instructions_block": [
+          {
+            "action": "set_var",
+            "var": "session_count",
+            "input": {
+              "value": "{{ session_count + 1 }}"
+            }
+          },
+          {
+            "action": "set_var",
+            "var": "source_image",
+            "input": {
+              "value": "{{ working_image }}"
+            }
+          },
+          {
+            "action": "reason",
+            "text_input": "First, analyze the image to determine if the subject appears to be male or female. Then create a detailed fashion transformation prompt that's appropriate for their gender. Be BOLD, WHIMSICAL, and AMUSING! Focus on ULTRA-COOL, OUTLANDISH, and FUNKY fashion choices as if they're walking a high-fashion runway! For MALE subjects, focus on avant-garde masculine fashion like: 'wearing a suit made entirely of LED lights that pulse to their heartbeat', 'rocking a jacket with shoulder pads so big they could double as wings', 'sporting a tie that's actually a live snake', 'wearing pants with so many zippers they look like a puzzle', 'a shirt that changes color based on their mood', 'wearing a cape made of feathers from endangered birds (fashion statement)', 'sporting a hat that's actually a miniature disco ball', 'wearing shoes that light up with every step', 'a jacket with sleeves so long they drag on the ground', 'wearing a shirt that's transparent but somehow still modest', 'sporting a bow tie that's actually a butterfly', 'wearing pants that are so tight they might be painted on'. For FEMALE subjects, focus on runway-worthy feminine fashion like: 'wearing a dress made entirely of mirrors that reflect the entire room', 'rocking a skirt so wide it could serve as a parachute', 'sporting a top with sleeves so dramatic they could sweep the floor', 'wearing a dress that's half evening gown, half spacesuit', 'a jacket with so many sequins it could blind someone', 'wearing pants that are actually a pair of curtains from a palace', 'sporting a hat that's bigger than her entire body', 'wearing shoes with heels so high they defy gravity', 'a dress that's made entirely of balloons (somehow elegant)', 'wearing a top that's actually a birdcage with live birds', 'sporting a skirt that's so short it's practically a belt', 'wearing a jacket that's actually a blanket from a luxury hotel'. Avoid these recent styles: {{ fashion_history[-5:] | map(attribute='outputs.fashion_prompt') | list if fashion_history else [] }}. Return only the fashion transformation prompt that can be used directly for image generation.",
+            "reasoner": "adapt",
+            "output_vars": [
+              "fashion_prompt"
+            ],
+            "image_inputs": [
+              "{{ source_image }}"
+            ]
+          },
+          {
+            "action": "generate",
+            "images": [
+              "{{ source_image }}"
+            ],
+            "input": {
+              "prompt": "{{ fashion_prompt }}"
+            },
+            "workflow": "flux_1_kontext_dev_1pic-l.json",
+            "publish": true,
+            "refiner": "adapt",
+            "output_var": "fashionista_image",
+            "history_var": "fashion_history"
+          },
+          {
+            "action": "log",
+            "message": "Applied fashion transformation - iteration {{ session_count }} complete! Looking runway-ready!"
+          },
+          {
+            "action": "terminate",
+            "mode": "normal",
+            "test": "{{ session_count >= 12 }}"
+          },
+          {
+            "action": "throw_event",
+            "scope": "current",
+            "event": "fashionista_start"
+          }
+        ],
+        "important": true
+      }
+    }
+  ]
+} 

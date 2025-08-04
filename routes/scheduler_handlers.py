@@ -7,7 +7,7 @@ import random
 import json
 from routes.scheduler_utils import log_schedule, scheduler_contexts_stacks, get_next_scheduled_action as get_next_action, process_jinja_template
 from routes.service_factory import get_generation_service, get_animation_service, get_display_service
-from routes.utils import dict_substitute, build_schema_subs
+from routes.utils import dict_substitute, build_schema_subs, get_qr
 from routes.samsung_utils import device_sleep, device_wake, device_sync, device_standby
 from routes.bucketer import purge_bucket as bucketer_purge_bucket, _append_to_bucket
 import routes.openai
@@ -1785,7 +1785,7 @@ def handle_overlay(instruction, context, now, output, publish_destination):
     """
     from routes.display import send_overlay
     
-    # Get parameters from the instruction
+    # Get parameters from the instruction - use raw instruction to avoid double Jinja processing
     text = instruction.get("text", "")
     duration_raw = instruction.get("duration", "1m")
     
@@ -1808,14 +1808,29 @@ def handle_overlay(instruction, context, now, output, publish_destination):
     log_schedule(msg, publish_destination, now, output)
     
     try:
-        # Send the overlay using the guidance template
+        # Build ALL substitutions like other parts of the scheduler system
+        from routes.utils import dict_substitute
+        subs = build_schema_subs()
+        
+        # Add context variables
+        if 'vars' in context:
+            subs.update(context['vars'])
+        
+        # Add contextual substitutions needed for text processing
+        subs['QR_BASE64'] = get_qr(publish=publish_destination)
+        subs['SCREEN_NAME'] = publish_destination
+        subs['DURATION'] = duration // 1000
+        
+        # Process the text with ALL substitutions
+        processed_text = dict_substitute(text, subs)
+        
+        # Send the overlay with the processed text
         send_overlay(
             html="overlay_guidance.html.j2",
             screens=[publish_destination],
             duration=duration,
-            position="bottom-center",
             substitutions={
-                'TEXT': text
+                'TEXT': processed_text
             },
             clear=True
         )

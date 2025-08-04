@@ -657,12 +657,16 @@ def _publish_to_destination(
         
         # Only update the published pointer if requested
         if update_published:
+            # CRITICAL FIX: For same-bucket publishing, cross_bucket_mode should ALWAYS be False
+            # to ensure immutable bucket URLs are generated correctly
+            actual_cross_bucket_mode = cross_bucket_mode and (source_filepath != display_path)
+            
             _record_publish(
                 bucket=publish_destination_id,
                 filename=bucket_filename or source_filepath.name, 
                 when=publish_time,
                 source_metadata=effective_metadata,
-                cross_bucket_mode=cross_bucket_mode,
+                cross_bucket_mode=actual_cross_bucket_mode,
                 file_extension=file_extension,
                 is_history_navigation=is_history_navigation
             )

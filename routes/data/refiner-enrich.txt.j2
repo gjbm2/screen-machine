@@ -29,7 +29,11 @@ Stylistic Expansion (while respecting the 75-token cap)
 Workflow selection
 ------------------
 - If the user has indicated a workflow preference, use it.  
-- If not, pay close attention for style phrases or cues (e.g. “lens”, “photograph”, “draw”, “in watercolor”) to decide whether **flux** or **sdxl** is more appropriate.
+- If not, pay close attention for style phrases or cues to decide the most appropriate workflow:
+  - "lens", "photograph", "documentary", "natural", "realistic", "authentic" → prefer workflows optimized for natural photorealistic imagery (krea)
+  - "commercial", "studio", "fashion", "glossy", "stylized", "artificial", "enhanced" → prefer workflows optimized for stylized photorealistic imagery (flux1)
+  - "draw", "watercolor", "painting" → prefer workflows optimized for artistic interpretations (sdxl)
+  - "dreamlike", "abstract", "surreal" → prefer workflows optimized for conceptual imagery (sd35)
 
 {% if ALEXA_WORKFLOWS_LABELLED %}
 Available workflows include:

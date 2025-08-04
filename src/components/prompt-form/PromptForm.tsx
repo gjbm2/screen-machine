@@ -10,6 +10,7 @@ import { Workflow } from '@/types/workflows';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { dataURItoFile, isDataURI } from '@/utils/imageUtils';
 import { clearAll } from '@/utils/photoCache';
+import apiService from '@/utils/api';
 
 // Debug flag - set to true to enable on-screen debug messages
 const DEBUG_MODE = false;
@@ -464,6 +465,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
       console.log('- referenceUrls:', referenceUrls.length, referenceUrls);
       console.log('- prompt:', prompt);
       console.log('- selectedWorkflow:', selectedWorkflow);
+      console.log('- selectedPublish:', selectedPublish);
       
       // Separate data URIs (from camera) from regular URLs
       const dataURIs: string[] = [];
@@ -498,17 +500,46 @@ const PromptForm: React.FC<PromptFormProps> = ({
       
       showDebugMessage(`📸 Submitting ${allImages.length} total images`);
       
-      // Call the onSubmit prop with all the necessary data
-      onSubmit(
-        prompt,
-        allImages,
-        selectedWorkflow,
-        workflowParams,
-        globalParams,
-        selectedRefiner,
-        refinerParams,
-        selectedPublish
+      // NEW LOGIC: Check if this is a direct upload scenario
+      // Scenario: User uploads images, no prompt, workflow/refiner is 'auto', but has publish destination
+      const isDirectUploadScenario = (
+        prompt.trim() === '' && // No prompt text
+        allImages.length > 0 && // Has images
+        selectedWorkflow === 'auto' && // Workflow is auto
+        selectedRefiner === 'auto' && // Refiner is auto
+        selectedPublish !== 'none' && 
+        selectedPublish !== undefined && 
+        selectedPublish !== '' // Has valid publish destination
       );
+      
+      if (isDirectUploadScenario) {
+        console.log('📸 DETECTED: Direct upload scenario - uploading images to bucket and publishing');
+        showDebugMessage('📸 Direct upload detected - uploading to bucket and publishing');
+        
+        toast.info(`Uploading ${allImages.length} image(s) to ${selectedPublish}...`);
+        
+        // Handle direct upload to bucket and publish
+        await handleDirectUploadToPublish(allImages, selectedPublish);
+        
+        toast.success(`Successfully uploaded ${allImages.length} image(s) to ${selectedPublish}`);
+        showDebugMessage('📸 Direct upload completed');
+      } else {
+        // Normal generation flow
+        console.log('📸 Normal generation flow');
+        showDebugMessage('📸 Normal generation flow');
+        
+        // Call the onSubmit prop with all the necessary data
+        onSubmit(
+          prompt,
+          allImages,
+          selectedWorkflow,
+          workflowParams,
+          globalParams,
+          selectedRefiner,
+          refinerParams,
+          selectedPublish
+        );
+      }
       
       showDebugMessage('📸 Form submitted successfully');
       
@@ -528,6 +559,115 @@ const PromptForm: React.FC<PromptFormProps> = ({
       console.error('Error in handleSubmit:', error);
       showDebugMessage('❌ Form submission failed');
       setLocalLoading(false);
+    }
+  };
+
+  // NEW FUNCTION: Handle direct upload to bucket and publish
+  const handleDirectUploadToPublish = async (images: (File | string)[], publishDestination: string) => {
+    console.log('📸 handleDirectUploadToPublish called with:', {
+      imageCount: images.length,
+      publishDestination,
+      images: images.map(img => typeof img === 'string' ? `url(${img.substring(0, 50)}...)` : `file(${img.name})`)
+    });
+    
+    try {
+      // Process each image
+      for (const image of images) {
+        if (image instanceof File) {
+          // Upload file to bucket and publish
+          await uploadFileToBucketAndPublish(image, publishDestination);
+        } else if (typeof image === 'string') {
+          // Publish URL directly to destination
+          await publishUrlToDestination(image, publishDestination);
+        }
+      }
+      
+      console.log('📸 Direct upload to publish completed successfully');
+      showDebugMessage('📸 Direct upload completed');
+      
+    } catch (error) {
+      console.error('Error in handleDirectUploadToPublish:', error);
+      showDebugMessage('❌ Direct upload failed');
+      toast.error(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
+    }
+  };
+
+  // NEW FUNCTION: Upload file to bucket and publish
+  const uploadFileToBucketAndPublish = async (file: File, publishDestination: string) => {
+    console.log('📸 uploadFileToBucketAndPublish:', file.name, 'to', publishDestination);
+    
+    try {
+      // Step 1: Upload file to bucket
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const uploadResponse = await fetch(`${apiService.getApiUrl()}/buckets/${publishDestination}/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed: ${uploadResponse.statusText}`);
+      }
+      
+      const uploadResult = await uploadResponse.json();
+      console.log('📸 Upload successful:', uploadResult);
+      
+      // Step 2: Publish from bucket to display
+      const publishResponse = await fetch(`${apiService.getApiUrl()}/publish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          dest_bucket_id: publishDestination,
+          src_bucket_id: publishDestination,
+          filename: uploadResult.filename
+        })
+      });
+      
+      if (!publishResponse.ok) {
+        throw new Error(`Publish failed: ${publishResponse.statusText}`);
+      }
+      
+      const publishResult = await publishResponse.json();
+      console.log('📸 Publish successful:', publishResult);
+      
+    } catch (error) {
+      console.error('Error in uploadFileToBucketAndPublish:', error);
+      toast.error(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
+    }
+  };
+
+  // NEW FUNCTION: Publish URL directly to destination
+  const publishUrlToDestination = async (url: string, publishDestination: string) => {
+    console.log('📸 publishUrlToDestination:', url.substring(0, 50) + '...', 'to', publishDestination);
+    
+    try {
+      const response = await fetch(`${apiService.getApiUrl()}/publish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          dest_bucket_id: publishDestination,
+          source_url: url
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Publish failed: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      console.log('📸 URL publish successful:', result);
+      
+    } catch (error) {
+      console.error('Error in publishUrlToDestination:', error);
+      toast.error(`Failed to publish URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
     }
   };
 
