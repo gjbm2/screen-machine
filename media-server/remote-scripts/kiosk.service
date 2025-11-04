@@ -1,0 +1,32 @@
+[Unit]
+Description=Dual-HDMI kiosk (north/south rules) with verbose logging
+After=network.target snapd.seeded.service
+Requires=snapd.seeded.service
+
+[Service]
+Type=simple
+KillMode=control-group
+
+# ➤ ensure the user runtime dir exists BEFORE Xorg or Chromium start
+ExecStartPre=/bin/mkdir -p /run/user/1000
+ExecStartPre=/bin/chown gjbm2:gjbm2 /run/user/1000
+ExecStartPre=/bin/chmod 700 /run/user/1000
+
+# ➤ give snapd / GPU drivers time to settle
+ExecStartPre=/bin/sleep 1
+
+# ➤ start X and then your wrapper/loop
+ExecStart=/usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+ExecStartPost=/usr/local/bin/kiosk-wait-start.sh
+
+Restart=always
+RestartSec=5
+
+Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+[Install]
+WantedBy=multi-user.target
+
+
+

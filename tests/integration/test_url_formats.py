@@ -24,7 +24,7 @@ def test_cross_bucket_mp4_url_format():
     test_timestamp = "2025-05-11T15:05:00.498026Z"
     
     # Get API URL for testing
-    vite_api_url = os.environ.get("VITE_API_URL", "http://185.254.136.253:5000/api").rstrip("/")
+    vite_api_url = os.environ.get("VITE_API_URL", "http://localhost:5000/api").rstrip("/")
     
     # Test with cross_bucket_mode=True and MP4 file extension
     _record_publish(

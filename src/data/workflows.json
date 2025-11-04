@@ -62,7 +62,7 @@
     ]
   },
   {
-    "id": "krea.json",
+    "id": "kreav2.json",
     "name": "Text to Image (krea)",
     "input": ["text"],
     "description": "Image from text using Krea",

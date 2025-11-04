@@ -425,7 +425,7 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
         is_history_navigation: True if this is an undo/redo operation, False for new publishes
     """
     # Get API URL from environment
-    VITE_API_URL = os.environ.get("VITE_API_URL", "http://185.254.136.253:5000/api").rstrip("/")
+    VITE_API_URL = os.environ.get("VITE_API_URL", "http://localhost:5000/api").rstrip("/")
     
     # Determine if running in test mode
     is_test_mode = 'pytest' in sys.modules
@@ -698,7 +698,7 @@ def get_published_info(publish_destination_id: str) -> dict:
     """
     debug(f"get_published_info called for destination: {publish_destination_id}")
     try:
-        VITE_API_URL = os.environ.get("VITE_API_URL", "http://185.254.136.253:5000/api").rstrip("/")
+        VITE_API_URL = os.environ.get("VITE_API_URL", "http://localhost:5000/api").rstrip("/")
         
         dest = get_destination(publish_destination_id)
         
