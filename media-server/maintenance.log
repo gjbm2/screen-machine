@@ -1,0 +1,1258 @@
+===========================================
+Media Server Quick Status: gjbm2@192.168.1.92
+===========================================
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+[sudo] password for gjbm2: Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue  4 Nov 09:37:37 UTC 2025
+
+  System load:  0.78               Temperature:             66.0 C
+  Usage of /:   25.9% of 47.76GB   Processes:               172
+  Memory usage: 14%                Users logged in:         0
+  Swap usage:   0%                 IPv4 address for wlp2s0: 192.168.1.92
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+118 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** /dev/sda6 will be checked for errors at next reboot ***
+
+=== Kiosk Service Status ===
+[0;32m✓ Service is RUNNING[0m
+
+● kiosk.service - Dual-HDMI kiosk (north/south rules) with verbose logging
+     Loaded: loaded (/etc/systemd/system/kiosk.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2025-11-04 09:13:31 UTC; 24min ago
+    Process: 1354 ExecStartPre=/bin/mkdir -p /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 1356 ExecStartPre=/bin/chown gjbm2:gjbm2 /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 1358 ExecStartPre=/bin/chmod 700 /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 1360 ExecStartPre=/bin/sleep 1 (code=exited, status=0/SUCCESS)
+    Process: 1363 ExecStartPost=/usr/local/bin/kiosk-wait-start.sh (code=exited, status=0/SUCCESS)
+   Main PID: 1362 (Xorg)
+      Tasks: 231 (limit: 9164)
+     Memory: 1.7G (peak: 2.1G)
+        CPU: 15min 48.863s
+     CGroup: /system.slice/kiosk.service
+             ├─1362 /usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+             ├─1379 runuser -u gjbm2 -- /usr/local/bin/kiosk-loop.sh
+             ├─1380 bash /usr/local/bin/kiosk-loop.sh
+             ├─1437 openbox --startup /bin/true
+             ├─1438 unclutter -idle 0
+             ├─1461 /usr/bin/google-chrome-stable --no-first-run --no-default-browser-check --noerrdialogs --kiosk --disable-features=DBusDaemon --kiosk-mode-no-dialogs --kiosk-mode-no-prompts --disable-session-crashed-bubble --disable-infobars --user-data-dir=/tmp/chrome-north --window-position=0,0 --window-size=3840,2160 http://95.141.21.170:8000/display/north-screen
+             ├─1462 /usr/bin/google-chrome-stable --no-first-run --no-default-browser-check --noerrdialogs --kiosk --disable-features=DBusDaemon --kiosk-mode-no-dialogs --kiosk-mode-no-prompts --disable-session-crashed-bubble --disable-infobars --user-data-dir=/tmp/chrome-south --window-position=3840,0 --window-size=3840,2160 http://95.141.21.170:8000/display/south-screen
+
+=== Light Sensor Service Status ===
+[0;32m✓ Service is RUNNING[0m
+
+● light-relay.service - Yoctopuce Light Sensor WebSocket Relay
+     Loaded: loaded (/etc/systemd/system/light-relay.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2025-11-04 09:16:57 UTC; 20min ago
+   Main PID: 4106 (python)
+      Tasks: 3 (limit: 9164)
+     Memory: 16.1M (peak: 28.9M)
+        CPU: 7.638s
+     CGroup: /system.slice/light-relay.service
+             └─4106 /home/gjbm2/.venv/bin/python /home/gjbm2/lightsense.py
+
+Nov 04 09:16:57 screen-machine-drawingroom systemd[1]: light-relay.service: Scheduled restart job, restart counter is at 5.
+Nov 04 09:16:57 screen-machine-drawingroom systemd[1]: Started light-relay.service - Yoctopuce Light Sensor WebSocket Relay.
+
+WebSocket connection:
+python  4106 gjbm2   12u  IPv4  24183      0t0  TCP 192.168.1.92:41428->95.141.21.170:8765 (ESTABLISHED)
+
+USB Sensor:
+Bus 003 Device 002: ID 24e0:00c5 Yoctopuce Sarl Yocto-Light-V5
+
+=== Display Processes ===
+[0;32m✓ Display processes running[0m
+root        1362  2.7  1.3 719116 106112 ?       Ssl  09:13   0:39 /usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+gjbm2       1461  1.6  3.2 34449148 257900 ?     Sl   09:13   0:23 /usr/bin/google-chrome-stable --no-first-run --no-default-browser-check --noerrdialogs --kiosk --disable-features=DBusDaemon --kiosk-mode-no-dialogs --kiosk-mode-no-prompts --disable-session-crashed-bubble --disable-infobars --user-data-dir=/tmp/chrome-north --window-position=0,0 --window-size=3840,2160 http://95.141.21.170:8000/display/north-screen
+gjbm2       1462  1.8  3.2 34449148 258760 ?     Sl   09:13   0:26 /usr/bin/google-chrome-stable --no-first-run --no-default-browser-check --noerrdialogs --kiosk --disable-features=DBusDaemon --kiosk-mode-no-dialogs --kiosk-mode-no-prompts --disable-session-crashed-bubble --disable-infobars --user-data-dir=/tmp/chrome-south --window-position=3840,0 --window-size=3840,2160 http://95.141.21.170:8000/display/south-screen
+gjbm2       1476  0.0  0.0 33576532 3456 ?       Sl   09:13   0:00 /opt/google/chrome/chrome_crashpad_handler --monitor-self --monitor-self-annotation=ptype=crashpad-handler --database=/home/gjbm2/.config/google-chrome/Crash Reports --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=lsb-release=Ubuntu 24.04.2 LTS --annotation=plat=Linux --annotation=prod=Chrome_Linux --annotation=ver=136.0.7103.113 --initial-client-fd=5 --shared-client-connection
+gjbm2       1477  0.0  0.0 33576532 3456 ?       Sl   09:13   0:00 /opt/google/chrome/chrome_crashpad_handler --monitor-self --monitor-self-annotation=ptype=crashpad-handler --database=/home/gjbm2/.config/google-chrome/Crash Reports --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=lsb-release=Ubuntu 24.04.2 LTS --annotation=plat=Linux --annotation=prod=Chrome_Linux --annotation=ver=136.0.7103.113 --initial-client-fd=5 --shared-client-connection
+gjbm2       1480  0.0  0.0 33568320 3328 ?       Sl   09:13   0:00 /opt/google/chrome/chrome_crashpad_handler --no-periodic-tasks --monitor-self-annotation=ptype=crashpad-handler --database=/home/gjbm2/.config/google-chrome/Crash Reports --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=lsb-release=Ubuntu 24.04.2 LTS --annotation=plat=Linux --annotation=prod=Chrome_Linux --annotation=ver=136.0.7103.113 --initial-client-fd=4 --shared-client-connection
+gjbm2       1481  0.0  0.0 33568320 3328 ?       Sl   09:13   0:00 /opt/google/chrome/chrome_crashpad_handler --no-periodic-tasks --monitor-self-annotation=ptype=crashpad-handler --database=/home/gjbm2/.config/google-chrome/Crash Reports --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=lsb-release=Ubuntu 24.04.2 LTS --annotation=plat=Linux --annotation=prod=Chrome_Linux --annotation=ver=136.0.7103.113 --initial-client-fd=4 --shared-client-connection
+gjbm2       1492  0.0  1.3 34410944 110464 ?     S    09:13   0:00 /opt/google/chrome/chrome --type=zygote --no-zygote-sandbox --crashpad-handler-pid=1477 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/chrome-north --change-stack-guard-on-fork=enable
+gjbm2       1493  0.0  1.4 34410940 110976 ?     S    09:13   0:00 /opt/google/chrome/chrome --type=zygote --no-zygote-sandbox --crashpad-handler-pid=1476 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/chrome-south --change-stack-guard-on-fork=enable
+gjbm2       1494  0.0  1.4 34410932 110720 ?     S    09:13   0:00 /opt/google/chrome/chrome --type=zygote --crashpad-handler-pid=1476 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/chrome-south --change-stack-guard-on-fork=enable
+
+=== Displays Detected ===
+[0;32m✓ Displays connected[0m
+HDMI-1 connected primary 3840x2160+0+0 (normal left inverted right x axis y axis) 1872mm x 1053mm
+HDMI-2 connected 3840x2160+3840+0 (normal left inverted right x axis y axis) 1872mm x 1053mm
+
+=== Chrome URLs and Status ===
+Chrome kiosk processes found:
+
+  Process 1461 (north-screen):
+    URL: http://95.141.21.170:8000/display/north-screen
+    Memory: 251.9 MB
+    Data dir: /tmp/chrome-north
+    CPU: 1.6%
+
+  Process 1462 (south-screen):
+    URL: http://95.141.21.170:8000/display/south-screen
+    Memory: 252.7 MB
+    Data dir: /tmp/chrome-south
+    CPU: 1.8%
+
+=== Chrome Console Logs: Proof Pages Are Rendering ===
+
+--- NORTH Screen Console (last 25 lines) ---
+[1;33m⚠ No console log at /tmp/chrome-north/chrome_console.log[0m
+   (Chrome needs to be restarted after kiosk-loop.sh update)
+
+--- SOUTH Screen Console (last 25 lines) ---
+[1;33m⚠ No console log at /tmp/chrome-south/chrome_console.log[0m
+   (Chrome needs to be restarted after kiosk-loop.sh update)
+
+=== What URLs Were Loaded at Startup ===
+(from kiosk startup log)
+2025-10-30 06:07:52  spawn NORTH on HDMI-1  and  SOUTH on HDMI-2
+2025-10-31 06:46:52  spawn NORTH on HDMI-1  and  SOUTH on HDMI-2
+2025-11-04 09:13:40  spawn NORTH on HDMI-1  and  SOUTH on HDMI-2
+
+GPU Process status:
+  [0;32m✓ GPU process running[0m
+
+=== Network Verification: Are Pages Actually Loaded? ===
+Active connections from Chrome to Flask server (port 8000):
+[0;32m✓ 8 active connections to port 8000[0m
+Connection details:
+chrome  1558 gjbm2   19u  IPv4  17393      0t0  TCP 192.168.1.92:34596->95.141.21.170:8000 (ESTABLISHED)
+chrome  1558 gjbm2   21u  IPv4  18815      0t0  TCP 192.168.1.92:34586->95.141.21.170:8000 (ESTABLISHED)
+chrome  1558 gjbm2   22u  IPv4  17394      0t0  TCP 192.168.1.92:34602->95.141.21.170:8000 (ESTABLISHED)
+chrome  1558 gjbm2   32u  IPv4  14731      0t0  TCP 192.168.1.92:58382->95.141.21.170:8000 (ESTABLISHED)
+chrome  1559 gjbm2   21u  IPv4  17391      0t0  TCP 192.168.1.92:34572->95.141.21.170:8000 (ESTABLISHED)
+chrome  1559 gjbm2   24u  IPv4  17392      0t0  TCP 192.168.1.92:34580->95.141.21.170:8000 (ESTABLISHED)
+chrome  1559 gjbm2   31u  IPv4  18816      0t0  TCP 192.168.1.92:34618->95.141.21.170:8000 (ESTABLISHED)
+chrome  1559 gjbm2   32u  IPv4  12884      0t0  TCP 192.168.1.92:58398->95.141.21.170:8000 (ESTABLISHED)
+
+WebSocket connections (port 8765):
+chrome  1558 gjbm2   26u  IPv4  18697      0t0  TCP 192.168.1.92:42654->95.141.21.170:8765 (ESTABLISHED)
+chrome  1558 gjbm2   28u  IPv4  17887      0t0  TCP 192.168.1.92:42634->95.141.21.170:8765 (ESTABLISHED)
+chrome  1559 gjbm2   17u  IPv4  17893      0t0  TCP 192.168.1.92:42670->95.141.21.170:8765 (ESTABLISHED)
+chrome  1559 gjbm2   23u  IPv4  19685      0t0  TCP 192.168.1.92:42646->95.141.21.170:8765 (ESTABLISHED)
+python  4106 gjbm2   12u  IPv4  24183      0t0  TCP 192.168.1.92:41428->95.141.21.170:8765 (ESTABLISHED)
+
+=== Recent Errors (last 10) ===
+Nov 04 09:13:20 screen-machine-drawingroom systemd[1]: Failed to start kiosk.service - Dual-HDMI kiosk (north/south rules) with verbose logging.
+
+=== Disk Usage ===
+/dev/sda6        48G   13G   33G  28% /
+
+=== Memory Usage ===
+Mem:           7.5Gi       2.0Gi       3.2Gi       726Mi       3.3Gi       5.6Gi
+
+[0;34m========================================[0m
+[0;32mStatus check complete![0m
+[0;34m========================================[0m
+=========================================
+Status check completed successfully
+=========================================
+
+[1;33mLog file:[0m /home/gjbm2/dev/screen-machine/media-server/maintenance.log
+Media Server Quick Status - 09:37:43
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 24 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [0;32m✓ Running + Connected to Flask[0m
+[Chrome North] [0;32m✓ Loaded (PID 1461, 13 conns, CPU 1%)[0m
+[Chrome South] [0;32m✓ Loaded (PID 1462, 13 conns, CPU 1%)[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.80 | Mem: 26% | Disk: 28%
+================================================================
+For detailed view: ./check-status.sh --verbose
+✓ Loaded configuration from .env
+[0;34m========================================[0m
+[0;34m  Deploy Kiosk Scripts[0m
+[0;34m========================================[0m
+
+[0;32m[✓][0m Deploying ALL kiosk scripts...
+
+[0;32m[✓][0m Deploying kiosk-loop.sh...
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue  4 Nov 09:37:37 UTC 2025
+
+  System load:  0.78               Temperature:             66.0 C
+  Usage of /:   25.9% of 47.76GB   Processes:               172
+  Memory usage: 14%                Users logged in:         0
+  Swap usage:   0%                 IPv4 address for wlp2s0: 192.168.1.92
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+118 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** /dev/sda6 will be checked for errors at next reboot ***
+
+[sudo] password for gjbm2: [0;32m[✓][0m ✓ Deployed: kiosk-loop.sh
+✓ Loaded configuration from .env
+[0;34m========================================[0m
+[0;34m  Deploy Kiosk Scripts[0m
+[0;34m========================================[0m
+
+[0;32m[✓][0m Deploying ALL kiosk scripts...
+
+[0;32m[✓][0m Deploying kiosk-loop.sh...
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue  4 Nov 09:37:37 UTC 2025
+
+  System load:  0.78               Temperature:             66.0 C
+  Usage of /:   25.9% of 47.76GB   Processes:               172
+  Memory usage: 14%                Users logged in:         0
+  Swap usage:   0%                 IPv4 address for wlp2s0: 192.168.1.92
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+118 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** /dev/sda6 will be checked for errors at next reboot ***
+
+[sudo] password for gjbm2: [0;32m[✓][0m ✓ Deployed: kiosk-loop.sh
+=========================================
+Starting kiosk restart for gjbm2@192.168.1.92
+=========================================
+[0;34m========================================[0m
+[0;34m  Restart Kiosk Service[0m
+[0;34m  Server: gjbm2@192.168.1.92[0m
+[0;34m========================================[0m
+
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+[sudo] password for gjbm2: Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue  4 Nov 09:38:44 UTC 2025
+
+  System load:  0.46               Temperature:             68.0 C
+  Usage of /:   25.9% of 47.76GB   Processes:               173
+  Memory usage: 13%                Users logged in:         0
+  Swap usage:   0%                 IPv4 address for wlp2s0: 192.168.1.92
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+118 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** /dev/sda6 will be checked for errors at next reboot ***
+
+=== Current Status ===
+● kiosk.service - Dual-HDMI kiosk (north/south rules) with verbose logging
+     Loaded: loaded (/etc/systemd/system/kiosk.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2025-11-04 09:13:31 UTC; 25min ago
+    Process: 1354 ExecStartPre=/bin/mkdir -p /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 1356 ExecStartPre=/bin/chown gjbm2:gjbm2 /run/user/1000 (code=exited, status=0/SUCCESS)
+
+=== Stopping Kiosk Service ===
+[0;32m✓ Service stopped[0m
+
+=== Cleaning Up Processes ===
+[0;32m✓ Cleanup complete[0m
+
+=== Starting Kiosk Service ===
+[0;32m✓ Service started[0m
+
+=== New Status ===
+[0;32m✓ Kiosk service is RUNNING[0m
+● kiosk.service - Dual-HDMI kiosk (north/south rules) with verbose logging
+     Loaded: loaded (/etc/systemd/system/kiosk.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2025-11-04 09:38:53 UTC; 3s ago
+    Process: 9922 ExecStartPre=/bin/mkdir -p /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 9924 ExecStartPre=/bin/chown gjbm2:gjbm2 /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 9926 ExecStartPre=/bin/chmod 700 /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 9928 ExecStartPre=/bin/sleep 1 (code=exited, status=0/SUCCESS)
+    Process: 9931 ExecStartPost=/usr/local/bin/kiosk-wait-start.sh (code=exited, status=0/SUCCESS)
+   Main PID: 9930 (Xorg)
+      Tasks: 8 (limit: 9164)
+     Memory: 166.7M (peak: 168.4M)
+        CPU: 585ms
+     CGroup: /system.slice/kiosk.service
+             ├─9930 /usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+             ├─9947 runuser -u gjbm2 -- /usr/local/bin/kiosk-loop.sh
+
+=== Display Check (in 5 seconds) ===
+[0;32m✓ Display processes detected[0m
+root        9930  7.5  1.2 710884 101624 ?       Dsl  09:38   0:00 /usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+
+=== Connected Displays ===
+HDMI-1 connected primary 3840x2160+0+0 (normal left inverted right x axis y axis) 1872mm x 1053mm
+HDMI-2 connected 3840x2160+3840+0 (normal left inverted right x axis y axis) 1872mm x 1053mm
+
+[0;34m========================================[0m
+[0;32mKiosk restart complete![0m
+[0;34m========================================[0m
+=========================================
+Kiosk restart completed successfully
+=========================================
+
+[1;33mLog file:[0m /home/gjbm2/dev/screen-machine/media-server/maintenance.log
+
+[1;33mTip:[0m Check logs in real-time:
+  ssh gjbm2@192.168.1.92 'sudo journalctl -u kiosk.service -f'
+Media Server Quick Status - 09:39:13
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 26 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [0;32m✓ Running + Connected to Flask[0m
+[Chrome North] [0;32m✓ Loaded (PID 10043, 6 conns, CPU 8%)[0m
+[Chrome South] [0;32m✓ Loaded (PID 10044, 6 conns, CPU 8%)[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.59 | Mem: 17% | Disk: 28%
+================================================================
+For detailed view: ./check-status.sh --verbose
+=========================================
+Starting status check for gjbm2@192.168.1.92
+=========================================
+[0;34m========================================[0m
+[0;34m  Media Server Status Check[0m
+[0;34m  Server: gjbm2@192.168.1.92[0m
+[0;34m========================================[0m
+
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+[sudo] password for gjbm2: Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue  4 Nov 09:38:44 UTC 2025
+
+  System load:  0.46               Temperature:             68.0 C
+  Usage of /:   25.9% of 47.76GB   Processes:               173
+  Memory usage: 13%                Users logged in:         0
+  Swap usage:   0%                 IPv4 address for wlp2s0: 192.168.1.92
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+118 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** /dev/sda6 will be checked for errors at next reboot ***
+
+=== System Info ===
+Hostname: screen-machine-drawingroom
+Uptime: up 26 minutes
+
+=== Kiosk Service Status ===
+[0;32m✓ Service is RUNNING[0m
+
+● kiosk.service - Dual-HDMI kiosk (north/south rules) with verbose logging
+     Loaded: loaded (/etc/systemd/system/kiosk.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2025-11-04 09:38:53 UTC; 27s ago
+    Process: 9922 ExecStartPre=/bin/mkdir -p /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 9924 ExecStartPre=/bin/chown gjbm2:gjbm2 /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 9926 ExecStartPre=/bin/chmod 700 /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 9928 ExecStartPre=/bin/sleep 1 (code=exited, status=0/SUCCESS)
+    Process: 9931 ExecStartPost=/usr/local/bin/kiosk-wait-start.sh (code=exited, status=0/SUCCESS)
+   Main PID: 9930 (Xorg)
+      Tasks: 215 (limit: 9164)
+     Memory: 634.4M (peak: 669.5M)
+        CPU: 5.983s
+     CGroup: /system.slice/kiosk.service
+             ├─ 9930 /usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+             ├─ 9947 runuser -u gjbm2 -- /usr/local/bin/kiosk-loop.sh
+             ├─ 9949 bash /usr/local/bin/kiosk-loop.sh
+             ├─10008 openbox --startup /bin/true
+             ├─10009 unclutter -idle 0
+             ├─10043 /usr/bin/google-chrome-stable --no-first-run --no-default-browser-check --noerrdialogs --kiosk --disable-features=DBusDaemon --kiosk-mode-no-dialogs --kiosk-mode-no-prompts --disable-session-crashed-bubble --disable-infobars --enable-logging=stderr --v=1 --user-data-dir=/tmp/chrome-north --window-position=0,0 --window-size=3840,2160 http://185.254.136.244:8000/display/north-screen
+             ├─10044 /usr/bin/google-chrome-stable --no-first-run --no-default-browser-check --noerrdialogs --kiosk --disable-features=DBusDaemon --kiosk-mode-no-dialogs --kiosk-mode-no-prompts --disable-session-crashed-bubble --disable-infobars --enable-logging=stderr --v=1 --user-data-dir=/tmp/chrome-south --window-position=3840,0 --window-size=3840,2160 http://185.254.136.244:8000/display/south-screen
+
+=== Light Sensor Service Status ===
+[0;32m✓ Service is RUNNING[0m
+
+● light-relay.service - Yoctopuce Light Sensor WebSocket Relay
+     Loaded: loaded (/etc/systemd/system/light-relay.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2025-11-04 09:16:57 UTC; 22min ago
+   Main PID: 4106 (python)
+      Tasks: 3 (limit: 9164)
+     Memory: 16.1M (peak: 28.9M)
+        CPU: 8.257s
+     CGroup: /system.slice/light-relay.service
+             └─4106 /home/gjbm2/.venv/bin/python /home/gjbm2/lightsense.py
+
+Nov 04 09:16:57 screen-machine-drawingroom systemd[1]: light-relay.service: Scheduled restart job, restart counter is at 5.
+Nov 04 09:16:57 screen-machine-drawingroom systemd[1]: Started light-relay.service - Yoctopuce Light Sensor WebSocket Relay.
+
+WebSocket connection:
+python   4106 gjbm2   12u  IPv4  24183      0t0  TCP 192.168.1.92:41428->95.141.21.170:8765 (ESTABLISHED)
+
+USB Sensor:
+Bus 003 Device 002: ID 24e0:00c5 Yoctopuce Sarl Yocto-Light-V5
+
+=== Display Processes ===
+[0;32m✓ Display processes running[0m
+root        9930  5.8  1.3 716796 106360 ?       Ssl  09:38   0:01 /usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+gjbm2      10043  5.1  3.4 34418272 272976 ?     Sl   09:39   0:00 /usr/bin/google-chrome-stable --no-first-run --no-default-browser-check --noerrdialogs --kiosk --disable-features=DBusDaemon --kiosk-mode-no-dialogs --kiosk-mode-no-prompts --disable-session-crashed-bubble --disable-infobars --enable-logging=stderr --v=1 --user-data-dir=/tmp/chrome-north --window-position=0,0 --window-size=3840,2160 http://185.254.136.244:8000/display/north-screen
+gjbm2      10044  5.2  3.4 34418272 272572 ?     Sl   09:39   0:00 /usr/bin/google-chrome-stable --no-first-run --no-default-browser-check --noerrdialogs --kiosk --disable-features=DBusDaemon --kiosk-mode-no-dialogs --kiosk-mode-no-prompts --disable-session-crashed-bubble --disable-infobars --enable-logging=stderr --v=1 --user-data-dir=/tmp/chrome-south --window-position=3840,0 --window-size=3840,2160 http://185.254.136.244:8000/display/south-screen
+gjbm2      10058  0.0  0.0 33576532 3712 ?       Sl   09:39   0:00 /opt/google/chrome/chrome_crashpad_handler --monitor-self --monitor-self-annotation=ptype=crashpad-handler --database=/home/gjbm2/.config/google-chrome/Crash Reports --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=lsb-release=Ubuntu 24.04.2 LTS --annotation=plat=Linux --annotation=prod=Chrome_Linux --annotation=ver=136.0.7103.113 --initial-client-fd=5 --shared-client-connection
+gjbm2      10059  0.0  0.0 33576532 3584 ?       Sl   09:39   0:00 /opt/google/chrome/chrome_crashpad_handler --monitor-self --monitor-self-annotation=ptype=crashpad-handler --database=/home/gjbm2/.config/google-chrome/Crash Reports --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=lsb-release=Ubuntu 24.04.2 LTS --annotation=plat=Linux --annotation=prod=Chrome_Linux --annotation=ver=136.0.7103.113 --initial-client-fd=5 --shared-client-connection
+gjbm2      10062  0.0  0.0 33568320 3328 ?       Sl   09:39   0:00 /opt/google/chrome/chrome_crashpad_handler --no-periodic-tasks --monitor-self-annotation=ptype=crashpad-handler --database=/home/gjbm2/.config/google-chrome/Crash Reports --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=lsb-release=Ubuntu 24.04.2 LTS --annotation=plat=Linux --annotation=prod=Chrome_Linux --annotation=ver=136.0.7103.113 --initial-client-fd=4 --shared-client-connection
+gjbm2      10063  0.0  0.0 33568320 3328 ?       Sl   09:39   0:00 /opt/google/chrome/chrome_crashpad_handler --no-periodic-tasks --monitor-self-annotation=ptype=crashpad-handler --database=/home/gjbm2/.config/google-chrome/Crash Reports --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=lsb-release=Ubuntu 24.04.2 LTS --annotation=plat=Linux --annotation=prod=Chrome_Linux --annotation=ver=136.0.7103.113 --initial-client-fd=4 --shared-client-connection
+gjbm2      10073  0.2  1.4 34410936 112640 ?     S    09:39   0:00 /opt/google/chrome/chrome --type=zygote --no-zygote-sandbox --enable-logging=stderr --v=1 --crashpad-handler-pid=10059 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/chrome-north --change-stack-guard-on-fork=enable
+gjbm2      10075  0.2  1.4 34410932 113536 ?     S    09:39   0:00 /opt/google/chrome/chrome --type=zygote --enable-logging=stderr --v=1 --crashpad-handler-pid=10059 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/chrome-north --change-stack-guard-on-fork=enable
+gjbm2      10076  0.2  1.4 34410940 113024 ?     S    09:39   0:00 /opt/google/chrome/chrome --type=zygote --no-zygote-sandbox --enable-logging=stderr --v=1 --crashpad-handler-pid=10058 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/chrome-south --change-stack-guard-on-fork=enable
+
+=== Displays Detected ===
+[0;32m✓ Displays connected[0m
+HDMI-1 connected primary 3840x2160+0+0 (normal left inverted right x axis y axis) 1872mm x 1053mm
+HDMI-2 connected 3840x2160+3840+0 (normal left inverted right x axis y axis) 1872mm x 1053mm
+
+=== Chrome URLs and Status ===
+Chrome kiosk processes found:
+
+  Process 10043 (north-screen):
+    URL: http://185.254.136.244:8000/display/north-screen
+    Memory: 266.6 MB
+    Data dir: /tmp/chrome-north
+    CPU: 5.0%
+
+  Process 10044 (south-screen):
+    URL: http://185.254.136.244:8000/display/south-screen
+    Memory: 266.2 MB
+    Data dir: /tmp/chrome-south
+    CPU: 5.1%
+
+=== Chrome Console Logs: Proof Pages Are Rendering ===
+
+--- NORTH Screen Console (last 25 lines) ---
+[10043:10043:1104/093908.607948:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:277] ExecuteModelAndGetScore: segment=RESUME_HEAVY_USER_SEGMENT server segment info not available
+[10043:10043:1104/093908.607953:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:201] OnGotModelScore: segment=RESUME_HEAVY_USER_SEGMENT failed to get score from executing server model, getting score from default model from db.
+[10043:10043:1104/093908.607957:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:240] GetCachedModelScore: segment=RESUME_HEAVY_USER_SEGMENT has expired or unavailable result.
+[10043:10043:1104/093908.607962:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:210] OnGotModelScore: segment=RESUME_HEAVY_USER_SEGMENT failed to get database model score, trying default model.
+[10043:10043:1104/093908.607970:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:295] ExecuteModelAndGetScore: segment=RESUME_HEAVY_USER_SEGMENT signal collection not met
+[10043:10043:1104/093908.607975:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:226] GetCachedModelScore: segment=PASSWORD_MANAGER_USER does not have a segment info.
+[10043:10043:1104/093908.607980:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:172] OnGotModelScore: segment=PASSWORD_MANAGER_USER failed to get score from database, executing server model.
+[10043:10043:1104/093908.607984:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:277] ExecuteModelAndGetScore: segment=PASSWORD_MANAGER_USER server segment info not available
+[10043:10043:1104/093908.607989:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:201] OnGotModelScore: segment=PASSWORD_MANAGER_USER failed to get score from executing server model, getting score from default model from db.
+[10043:10043:1104/093908.607993:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:240] GetCachedModelScore: segment=PASSWORD_MANAGER_USER has expired or unavailable result.
+[10043:10043:1104/093908.607998:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:210] OnGotModelScore: segment=PASSWORD_MANAGER_USER failed to get database model score, trying default model.
+[10043:10043:1104/093908.608008:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:295] ExecuteModelAndGetScore: segment=PASSWORD_MANAGER_USER signal collection not met
+[10043:10043:1104/093908.608093:VERBOSE1:components/segmentation_platform/internal/database/cached_result_writer.cc:106] IsPrefUpdateRequiredForClient: previous client_result for segmentation_key: shopping_user has not yet expired. Expiration: 2025-11-06 09:13:47.013591 UTC
+[10043:10043:1104/093908.681747:VERBOSE1:components/update_client/request_sender.cc:189] Request completed from url: https://update.googleapis.com/service/update2/json?cup2key=15:FEQuJ00tYuowR4PUJgWLM6odVVSuRzl09kbxR1ADRDI&cup2hreq=4363a2c361c71736dd91b88daf6e4eaaa72efa86525f585bf044721a7603b993
+[10043:10043:1104/093908.683116:VERBOSE1:chrome/browser/profiles/profile_manager.cc:1340] RemoveKeepAlive(Default, kExtensionUpdater). keep_alives=[kBrowserWindow (1)]
+[10129:10161:1104/093913.382244:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: https://optimizationguide-pa.googleapis.com/v1:GetModels?key=AIzaSyBqJZh-7pA44blAaAkH6490hUFOwX0KCYM
+[10129:10161:1104/093913.390195:VERBOSE1:net/third_party/quiche/src/quiche/quic/core/tls_handshaker.cc:105] TlsClient: Continuing handshake
+[10129:10161:1104/093913.595949:VERBOSE1:net/third_party/quiche/src/quiche/quic/core/tls_handshaker.cc:105] TlsClient: Continuing handshake
+[10129:10161:1104/093913.597085:VERBOSE1:net/third_party/quiche/src/quiche/quic/core/tls_handshaker.cc:105] TlsClient: Continuing handshake
+[10129:10161:1104/093913.598064:VERBOSE1:net/third_party/quiche/src/quiche/quic/core/tls_handshaker.cc:105] TlsClient: Continuing handshake
+[10129:10161:1104/093913.598163:VERBOSE1:net/third_party/quiche/src/quiche/quic/core/tls_handshaker.cc:105] TlsClient: Continuing handshake
+[10129:10161:1104/093913.604554:VERBOSE1:net/third_party/quiche/src/quiche/quic/core/tls_handshaker.cc:105] TlsClient: Continuing handshake
+[10129:10160:1104/093913.686457:VERBOSE1:base/files/file_util_posix.cc:315] Cannot stat "/tmp/chrome-north/Default/Cache/Cache_Data/2aceca19dbe03621_0": No such file or directory (2)
+[10129:10160:1104/093913.686550:VERBOSE1:base/files/file_util_posix.cc:315] Cannot stat "/tmp/chrome-north/Default/Cache/Cache_Data/2aceca19dbe03621_1": No such file or directory (2)
+[10129:10160:1104/093913.686583:VERBOSE1:base/files/file_util_posix.cc:315] Cannot stat "/tmp/chrome-north/Default/Cache/Cache_Data/2aceca19dbe03621_s": No such file or directory (2)
+
+--- SOUTH Screen Console (last 25 lines) ---
+[10044:10044:1104/093908.614126:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:277] ExecuteModelAndGetScore: segment=RESUME_HEAVY_USER_SEGMENT server segment info not available
+[10044:10044:1104/093908.614131:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:201] OnGotModelScore: segment=RESUME_HEAVY_USER_SEGMENT failed to get score from executing server model, getting score from default model from db.
+[10044:10044:1104/093908.614134:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:240] GetCachedModelScore: segment=RESUME_HEAVY_USER_SEGMENT has expired or unavailable result.
+[10044:10044:1104/093908.614138:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:210] OnGotModelScore: segment=RESUME_HEAVY_USER_SEGMENT failed to get database model score, trying default model.
+[10044:10044:1104/093908.614145:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:295] ExecuteModelAndGetScore: segment=RESUME_HEAVY_USER_SEGMENT signal collection not met
+[10044:10044:1104/093908.614152:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:226] GetCachedModelScore: segment=PASSWORD_MANAGER_USER does not have a segment info.
+[10044:10044:1104/093908.614156:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:172] OnGotModelScore: segment=PASSWORD_MANAGER_USER failed to get score from database, executing server model.
+[10044:10044:1104/093908.614159:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:277] ExecuteModelAndGetScore: segment=PASSWORD_MANAGER_USER server segment info not available
+[10044:10044:1104/093908.614163:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:201] OnGotModelScore: segment=PASSWORD_MANAGER_USER failed to get score from executing server model, getting score from default model from db.
+[10044:10044:1104/093908.614167:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:240] GetCachedModelScore: segment=PASSWORD_MANAGER_USER has expired or unavailable result.
+[10044:10044:1104/093908.614171:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:210] OnGotModelScore: segment=PASSWORD_MANAGER_USER failed to get database model score, trying default model.
+[10044:10044:1104/093908.614179:VERBOSE1:components/segmentation_platform/internal/selection/segment_result_provider.cc:295] ExecuteModelAndGetScore: segment=PASSWORD_MANAGER_USER signal collection not met
+[10044:10044:1104/093908.614509:VERBOSE1:components/segmentation_platform/internal/database/cached_result_writer.cc:106] IsPrefUpdateRequiredForClient: previous client_result for segmentation_key: shopping_user has not yet expired. Expiration: 2025-11-06 09:13:47.013583 UTC
+[10044:10044:1104/093908.742669:VERBOSE1:components/update_client/request_sender.cc:189] Request completed from url: https://update.googleapis.com/service/update2/json?cup2key=15:Qo_SpWXROmxwiUQvrZBSObAXbJVmajve_fj8EFTpcYg&cup2hreq=5a00ed8b9bf1b65b2e2e6da0379efb55a17214d17519beeb68815471c7268756
+[10044:10044:1104/093908.744355:VERBOSE1:chrome/browser/profiles/profile_manager.cc:1340] RemoveKeepAlive(Default, kExtensionUpdater). keep_alives=[kBrowserWindow (1)]
+[10136:10174:1104/093913.398487:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: https://optimizationguide-pa.googleapis.com/v1:GetModels?key=AIzaSyBqJZh-7pA44blAaAkH6490hUFOwX0KCYM
+[10136:10174:1104/093913.405694:VERBOSE1:net/third_party/quiche/src/quiche/quic/core/tls_handshaker.cc:105] TlsClient: Continuing handshake
+[10136:10174:1104/093913.597526:VERBOSE1:net/third_party/quiche/src/quiche/quic/core/tls_handshaker.cc:105] TlsClient: Continuing handshake
+[10136:10174:1104/093913.597603:VERBOSE1:net/third_party/quiche/src/quiche/quic/core/tls_handshaker.cc:105] TlsClient: Continuing handshake
+[10136:10174:1104/093913.598561:VERBOSE1:net/third_party/quiche/src/quiche/quic/core/tls_handshaker.cc:105] TlsClient: Continuing handshake
+[10136:10174:1104/093913.598646:VERBOSE1:net/third_party/quiche/src/quiche/quic/core/tls_handshaker.cc:105] TlsClient: Continuing handshake
+[10136:10174:1104/093913.604558:VERBOSE1:net/third_party/quiche/src/quiche/quic/core/tls_handshaker.cc:105] TlsClient: Continuing handshake
+[10136:10173:1104/093913.686523:VERBOSE1:base/files/file_util_posix.cc:315] Cannot stat "/tmp/chrome-south/Default/Cache/Cache_Data/2aceca19dbe03621_0": No such file or directory (2)
+[10136:10173:1104/093913.686598:VERBOSE1:base/files/file_util_posix.cc:315] Cannot stat "/tmp/chrome-south/Default/Cache/Cache_Data/2aceca19dbe03621_1": No such file or directory (2)
+[10136:10173:1104/093913.686631:VERBOSE1:base/files/file_util_posix.cc:315] Cannot stat "/tmp/chrome-south/Default/Cache/Cache_Data/2aceca19dbe03621_s": No such file or directory (2)
+
+=== What URLs Were Loaded at Startup ===
+(from kiosk startup log)
+2025-10-31 06:46:52  spawn NORTH on HDMI-1  and  SOUTH on HDMI-2
+2025-11-04 09:13:40  spawn NORTH on HDMI-1  and  SOUTH on HDMI-2
+2025-11-04 09:39:03  spawn NORTH on HDMI-1  and  SOUTH on HDMI-2
+
+GPU Process status:
+  [0;32m✓ GPU process running[0m
+
+=== Network Verification: Are Pages Actually Loaded? ===
+Active connections from Chrome to Flask server (port 8000):
+[0;31m✗ No active connections to port 8000 - pages may not be loaded![0m
+
+WebSocket connections (port 8765):
+python   4106 gjbm2   12u  IPv4  24183      0t0  TCP 192.168.1.92:41428->95.141.21.170:8765 (ESTABLISHED)
+
+=== Recent Errors (last 10) ===
+Nov 04 09:13:20 screen-machine-drawingroom systemd[1]: Failed to start kiosk.service - Dual-HDMI kiosk (north/south rules) with verbose logging.
+
+=== Disk Usage ===
+/dev/sda6        48G   13G   33G  28% /
+
+=== Memory Usage ===
+Mem:           7.5Gi       1.2Gi       4.0Gi       316Mi       2.9Gi       6.3Gi
+
+[0;34m========================================[0m
+[0;32mStatus check complete![0m
+[0;34m========================================[0m
+=========================================
+Status check completed successfully
+=========================================
+
+[1;33mLog file:[0m /home/gjbm2/dev/screen-machine/media-server/maintenance.log
+=========================================
+Starting kiosk restart for gjbm2@192.168.1.92
+=========================================
+[0;34m========================================[0m
+[0;34m  Restart Kiosk Service[0m
+[0;34m  Server: gjbm2@192.168.1.92[0m
+[0;34m========================================[0m
+
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+[sudo] password for gjbm2: Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue  4 Nov 09:40:21 UTC 2025
+
+  System load:  0.18               Temperature:             63.0 C
+  Usage of /:   26.0% of 47.76GB   Processes:               172
+  Memory usage: 9%                 Users logged in:         0
+  Swap usage:   0%                 IPv4 address for wlp2s0: 192.168.1.92
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+118 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** /dev/sda6 will be checked for errors at next reboot ***
+
+=== Current Status ===
+● kiosk.service - Dual-HDMI kiosk (north/south rules) with verbose logging
+     Loaded: loaded (/etc/systemd/system/kiosk.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2025-11-04 09:38:53 UTC; 1min 53s ago
+    Process: 9922 ExecStartPre=/bin/mkdir -p /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 9924 ExecStartPre=/bin/chown gjbm2:gjbm2 /run/user/1000 (code=exited, status=0/SUCCESS)
+
+=== Stopping Kiosk Service ===
+[0;32m✓ Service stopped[0m
+
+=== Cleaning Up Processes ===
+[0;32m✓ Cleanup complete[0m
+
+=== Starting Kiosk Service ===
+[0;32m✓ Service started[0m
+
+=== New Status ===
+[0;32m✓ Kiosk service is RUNNING[0m
+● kiosk.service - Dual-HDMI kiosk (north/south rules) with verbose logging
+     Loaded: loaded (/etc/systemd/system/kiosk.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2025-11-04 09:40:55 UTC; 3s ago
+    Process: 11159 ExecStartPre=/bin/mkdir -p /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 11161 ExecStartPre=/bin/chown gjbm2:gjbm2 /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 11163 ExecStartPre=/bin/chmod 700 /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 11165 ExecStartPre=/bin/sleep 1 (code=exited, status=0/SUCCESS)
+    Process: 11168 ExecStartPost=/usr/local/bin/kiosk-wait-start.sh (code=exited, status=0/SUCCESS)
+   Main PID: 11167 (Xorg)
+      Tasks: 8 (limit: 9164)
+     Memory: 166.7M (peak: 168.5M)
+        CPU: 594ms
+     CGroup: /system.slice/kiosk.service
+             ├─11167 /usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+             ├─11187 runuser -u gjbm2 -- /usr/local/bin/kiosk-loop.sh
+
+=== Display Check (in 5 seconds) ===
+[0;32m✓ Display processes detected[0m
+root       11167  7.5  1.2 710888 101620 ?       Dsl  09:40   0:00 /usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+
+=== Connected Displays ===
+HDMI-1 connected primary 3840x2160+0+0 (normal left inverted right x axis y axis) 1872mm x 1053mm
+HDMI-2 connected 3840x2160+3840+0 (normal left inverted right x axis y axis) 1872mm x 1053mm
+
+[0;34m========================================[0m
+[0;32mKiosk restart complete![0m
+[0;34m========================================[0m
+=========================================
+Kiosk restart completed successfully
+=========================================
+
+[1;33mLog file:[0m /home/gjbm2/dev/screen-machine/media-server/maintenance.log
+
+[1;33mTip:[0m Check logs in real-time:
+  ssh gjbm2@192.168.1.92 'sudo journalctl -u kiosk.service -f'
+✓ Loaded configuration from .env
+[0;34m========================================[0m
+[0;34m  Deploy Kiosk Scripts[0m
+[0;34m========================================[0m
+
+[0;32m[✓][0m Deploying: kiosk-loop.sh
+
+[0;32m[✓][0m Deploying kiosk-loop.sh...
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue  4 Nov 09:40:21 UTC 2025
+
+  System load:  0.18               Temperature:             63.0 C
+  Usage of /:   26.0% of 47.76GB   Processes:               172
+  Memory usage: 9%                 Users logged in:         0
+  Swap usage:   0%                 IPv4 address for wlp2s0: 192.168.1.92
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+118 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** /dev/sda6 will be checked for errors at next reboot ***
+
+[sudo] password for gjbm2: [0;32m[✓][0m ✓ Deployed: kiosk-loop.sh
+✓ Loaded configuration from .env
+[0;34m========================================[0m
+[0;34m  Deploy Kiosk Scripts[0m
+[0;34m========================================[0m
+
+[0;32m[✓][0m Deploying: kiosk-loop.sh
+
+[0;32m[✓][0m Deploying kiosk-loop.sh...
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue  4 Nov 09:42:29 UTC 2025
+
+  System load:  0.14               Temperature:             60.0 C
+  Usage of /:   26.0% of 47.76GB   Processes:               171
+  Memory usage: 9%                 Users logged in:         0
+  Swap usage:   0%                 IPv4 address for wlp2s0: 192.168.1.92
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+118 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** /dev/sda6 will be checked for errors at next reboot ***
+
+[sudo] password for gjbm2: [0;32m[✓][0m ✓ Deployed: kiosk-loop.sh
+Media Server Quick Status - 09:42:46
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 29 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [0;32m✓ Running + Connected to Flask[0m
+[Chrome North] [0;32m✓ Loaded (PID 11283, 3 conns, CPU 1%)[0m
+[Chrome South] [0;32m✓ Loaded (PID 11284, 3 conns, CPU 1%)[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.10 | Mem: 16% | Disk: 28%
+================================================================
+For detailed view: ./check-status.sh --verbose
+✓ Loaded configuration from .env
+[0;34m========================================[0m
+[0;34m  Deploy Kiosk Scripts[0m
+[0;34m========================================[0m
+
+[0;32m[✓][0m Deploying: kiosk-loop.sh
+
+[0;32m[✓][0m Deploying kiosk-loop.sh...
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue  4 Nov 09:42:29 UTC 2025
+
+  System load:  0.14               Temperature:             60.0 C
+  Usage of /:   26.0% of 47.76GB   Processes:               171
+  Memory usage: 9%                 Users logged in:         0
+  Swap usage:   0%                 IPv4 address for wlp2s0: 192.168.1.92
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+118 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** /dev/sda6 will be checked for errors at next reboot ***
+
+[sudo] password for gjbm2: [0;32m[✓][0m ✓ Deployed: kiosk-loop.sh
++++ dirname ./remote-maintenance.sh
+++ cd .
+++ pwd
++ SCRIPT_DIR=/home/gjbm2/dev/screen-machine/media-server/local-scripts
++ '[' -f /home/gjbm2/dev/screen-machine/media-server/local-scripts/.env ']'
++ set -a
++ source /home/gjbm2/dev/screen-machine/media-server/local-scripts/.env
+++ MEDIA_SERVER_HOST=192.168.1.92
+++ MEDIA_SERVER_USER=gjbm2
+++ MEDIA_SERVER_PORT=22
+++ MEDIA_SERVER_PASSWORD='V0luptuary!u'
++ set +a
++ echo '✓ Loaded configuration from .env'
+✓ Loaded configuration from .env
++ REMOTE_HOST=192.168.1.92
++ REMOTE_USER=gjbm2
++ REMOTE_PORT=22
++ SSH_KEY=
++ SSH_PASSWORD='V0luptuary!u'
++ REMOTE_TMP=/tmp/maintenance-3734128
++ LOCAL_RESULTS=./maintenance-results
+++ date +%Y%m%d-%H%M%S
++ TIMESTAMP=20251104-094331
++ SSH_OPTS='-p 22'
++ SCP_OPTS='-P 22'
++ '[' '!' -z '' ']'
++ SSH_CMD='ssh -p 22'
++ SCP_CMD='scp -P 22'
++ RED='\033[0;31m'
++ GREEN='\033[0;32m'
++ YELLOW='\033[1;33m'
++ BLUE='\033[0;34m'
++ NC='\033[0m'
++ mkdir -p ./maintenance-results
++ case "${1:-}" in
++ cmd_deploy_scripts kiosk-loop.sh --restart
++ local script_name=kiosk-loop.sh
++ local auto_restart=--restart
++ print_header 'Deploy Kiosk Scripts'
++ echo -e '\033[0;34m========================================\033[0m'
+[0;34m========================================[0m
++ echo -e '\033[0;34m  Deploy Kiosk Scripts\033[0m'
+[0;34m  Deploy Kiosk Scripts[0m
++ echo -e '\033[0;34m========================================\033[0m'
+[0;34m========================================[0m
++ echo ''
+
++ local scripts_to_deploy
++ '[' kiosk-loop.sh == all ']'
++ scripts_to_deploy=("$script_name")
++ print_status 'Deploying: kiosk-loop.sh'
++ echo -e '\033[0;32m[✓]\033[0m Deploying: kiosk-loop.sh'
+[0;32m[✓][0m Deploying: kiosk-loop.sh
++ echo ''
+
++ local deployed_count=0
++ for script in "${scripts_to_deploy[@]}"
++ local local_path=/home/gjbm2/dev/screen-machine/media-server/remote-scripts/kiosk-loop.sh
++ '[' '!' -f /home/gjbm2/dev/screen-machine/media-server/remote-scripts/kiosk-loop.sh ']'
++ print_status 'Deploying kiosk-loop.sh...'
++ echo -e '\033[0;32m[✓]\033[0m Deploying kiosk-loop.sh...'
+[0;32m[✓][0m Deploying kiosk-loop.sh...
++ '[' '!' -z 'V0luptuary!u' ']'
++ command -v sshpass
++ sshpass -p 'V0luptuary!u' scp -P 22 /home/gjbm2/dev/screen-machine/media-server/remote-scripts/kiosk-loop.sh gjbm2@192.168.1.92:/tmp/kiosk-loop.sh
++ '[' '!' -z 'V0luptuary!u' ']'
++ command -v sshpass
++ sshpass -p 'V0luptuary!u' ssh -p 22 gjbm2@192.168.1.92
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue  4 Nov 09:43:32 UTC 2025
+
+  System load:  0.31               Temperature:             60.0 C
+  Usage of /:   26.0% of 47.76GB   Processes:               173
+  Memory usage: 9%                 Users logged in:         0
+  Swap usage:   0%                 IPv4 address for wlp2s0: 192.168.1.92
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+118 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** /dev/sda6 will be checked for errors at next reboot ***
+
+[sudo] password for gjbm2: + print_status '✓ Deployed: kiosk-loop.sh'
++ echo -e '\033[0;32m[✓]\033[0m ✓ Deployed: kiosk-loop.sh'
+[0;32m[✓][0m ✓ Deployed: kiosk-loop.sh
++ (( deployed_count++ ))
+=========================================
+Starting kiosk restart for gjbm2@192.168.1.92
+=========================================
+[0;34m========================================[0m
+[0;34m  Restart Kiosk Service[0m
+[0;34m  Server: gjbm2@192.168.1.92[0m
+[0;34m========================================[0m
+
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+[sudo] password for gjbm2: Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue  4 Nov 09:43:32 UTC 2025
+
+  System load:  0.31               Temperature:             60.0 C
+  Usage of /:   26.0% of 47.76GB   Processes:               173
+  Memory usage: 9%                 Users logged in:         0
+  Swap usage:   0%                 IPv4 address for wlp2s0: 192.168.1.92
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+118 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** /dev/sda6 will be checked for errors at next reboot ***
+
+=== Current Status ===
+● kiosk.service - Dual-HDMI kiosk (north/south rules) with verbose logging
+     Loaded: loaded (/etc/systemd/system/kiosk.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2025-11-04 09:40:55 UTC; 2min 55s ago
+    Process: 11159 ExecStartPre=/bin/mkdir -p /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 11161 ExecStartPre=/bin/chown gjbm2:gjbm2 /run/user/1000 (code=exited, status=0/SUCCESS)
+
+=== Stopping Kiosk Service ===
+[0;32m✓ Service stopped[0m
+
+=== Cleaning Up Processes ===
+[0;32m✓ Cleanup complete[0m
+
+=== Starting Kiosk Service ===
+[0;32m✓ Service started[0m
+
+=== New Status ===
+[0;32m✓ Kiosk service is RUNNING[0m
+● kiosk.service - Dual-HDMI kiosk (north/south rules) with verbose logging
+     Loaded: loaded (/etc/systemd/system/kiosk.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2025-11-04 09:43:59 UTC; 3s ago
+    Process: 12555 ExecStartPre=/bin/mkdir -p /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 12557 ExecStartPre=/bin/chown gjbm2:gjbm2 /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 12559 ExecStartPre=/bin/chmod 700 /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 12561 ExecStartPre=/bin/sleep 1 (code=exited, status=0/SUCCESS)
+    Process: 12564 ExecStartPost=/usr/local/bin/kiosk-wait-start.sh (code=exited, status=0/SUCCESS)
+   Main PID: 12563 (Xorg)
+      Tasks: 8 (limit: 9164)
+     Memory: 166.7M (peak: 168.4M)
+        CPU: 594ms
+     CGroup: /system.slice/kiosk.service
+             ├─12563 /usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+             ├─12580 runuser -u gjbm2 -- /usr/local/bin/kiosk-loop.sh
+
+=== Display Check (in 5 seconds) ===
+[0;32m✓ Display processes detected[0m
+root       12563  7.6  1.2 710888 101632 ?       Dsl  09:43   0:00 /usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+
+=== Connected Displays ===
+HDMI-1 connected primary 3840x2160+0+0 (normal left inverted right x axis y axis) 1872mm x 1053mm
+HDMI-2 connected 3840x2160+3840+0 (normal left inverted right x axis y axis) 1872mm x 1053mm
+
+[0;34m========================================[0m
+[0;32mKiosk restart complete![0m
+[0;34m========================================[0m
+=========================================
+Kiosk restart completed successfully
+=========================================
+
+[1;33mLog file:[0m /home/gjbm2/dev/screen-machine/media-server/maintenance.log
+
+[1;33mTip:[0m Check logs in real-time:
+  ssh gjbm2@192.168.1.92 'sudo journalctl -u kiosk.service -f'
+Media Server Quick Status - 09:44:35
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 31 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [0;32m✓ Running + Connected to Flask[0m
+[Chrome North] [0;32m✓ Loaded (PID 12676, 14 conns, CPU 6%)[0m
+[Chrome South] [0;32m✓ Loaded (PID 12677, 14 conns, CPU 6%)[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.40 | Mem: 33% | Disk: 28%
+================================================================
+For detailed view: ./check-status.sh --verbose
+===========================================
+Media Server Quick Status: gjbm2@192.168.1.92
+===========================================
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+[sudo] password for gjbm2: Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-87-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Tue  4 Nov 09:44:35 UTC 2025
+
+  System load:  0.4                Temperature:             62.0 C
+  Usage of /:   26.0% of 47.76GB   Processes:               172
+  Memory usage: 13%                Users logged in:         0
+  Swap usage:   0%                 IPv4 address for wlp2s0: 192.168.1.92
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+118 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+*** /dev/sda6 will be checked for errors at next reboot ***
+
+=== Kiosk Service Status ===
+[0;32m✓ Service is RUNNING[0m
+
+● kiosk.service - Dual-HDMI kiosk (north/south rules) with verbose logging
+     Loaded: loaded (/etc/systemd/system/kiosk.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2025-11-04 09:43:59 UTC; 46s ago
+    Process: 12555 ExecStartPre=/bin/mkdir -p /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 12557 ExecStartPre=/bin/chown gjbm2:gjbm2 /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 12559 ExecStartPre=/bin/chmod 700 /run/user/1000 (code=exited, status=0/SUCCESS)
+    Process: 12561 ExecStartPre=/bin/sleep 1 (code=exited, status=0/SUCCESS)
+    Process: 12564 ExecStartPost=/usr/local/bin/kiosk-wait-start.sh (code=exited, status=0/SUCCESS)
+   Main PID: 12563 (Xorg)
+      Tasks: 211 (limit: 9164)
+     Memory: 1.4G (peak: 2.5G)
+        CPU: 35.639s
+     CGroup: /system.slice/kiosk.service
+             ├─12563 /usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+             ├─12580 runuser -u gjbm2 -- /usr/local/bin/kiosk-loop.sh
+             ├─12582 bash /usr/local/bin/kiosk-loop.sh
+             ├─12641 openbox --startup /bin/true
+             ├─12642 unclutter -idle 0
+             ├─12676 /usr/bin/google-chrome-stable --no-first-run --no-default-browser-check --noerrdialogs --kiosk --disable-features=DBusDaemon --kiosk-mode-no-dialogs --kiosk-mode-no-prompts --disable-session-crashed-bubble --disable-infobars --enable-logging=stderr --v=1 --user-data-dir=/tmp/chrome-north --window-position=0,0 --window-size=3840,2160 http://95.141.21.170:8000/display/north-screen
+             ├─12677 /usr/bin/google-chrome-stable --no-first-run --no-default-browser-check --noerrdialogs --kiosk --disable-features=DBusDaemon --kiosk-mode-no-dialogs --kiosk-mode-no-prompts --disable-session-crashed-bubble --disable-infobars --enable-logging=stderr --v=1 --user-data-dir=/tmp/chrome-south --window-position=3840,0 --window-size=3840,2160 http://95.141.21.170:8000/display/south-screen
+
+=== Light Sensor Service Status ===
+[0;32m✓ Service is RUNNING[0m
+
+● light-relay.service - Yoctopuce Light Sensor WebSocket Relay
+     Loaded: loaded (/etc/systemd/system/light-relay.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2025-11-04 09:16:57 UTC; 27min ago
+   Main PID: 4106 (python)
+      Tasks: 3 (limit: 9164)
+     Memory: 16.1M (peak: 28.9M)
+        CPU: 10.267s
+     CGroup: /system.slice/light-relay.service
+             └─4106 /home/gjbm2/.venv/bin/python /home/gjbm2/lightsense.py
+
+Nov 04 09:16:57 screen-machine-drawingroom systemd[1]: light-relay.service: Scheduled restart job, restart counter is at 5.
+Nov 04 09:16:57 screen-machine-drawingroom systemd[1]: Started light-relay.service - Yoctopuce Light Sensor WebSocket Relay.
+
+WebSocket connection:
+python   4106 gjbm2   12u  IPv4  24183      0t0  TCP 192.168.1.92:41428->95.141.21.170:8765 (ESTABLISHED)
+
+USB Sensor:
+Bus 003 Device 002: ID 24e0:00c5 Yoctopuce Sarl Yocto-Light-V5
+
+=== Display Processes ===
+[0;32m✓ Display processes running[0m
+root       12563  4.7  1.3 716924 106624 ?       Ssl  09:43   0:02 /usr/lib/xorg/Xorg :0 vt1 -nolisten tcp
+gjbm2      12676  5.4  3.5 34502836 279592 ?     Sl   09:44   0:02 /usr/bin/google-chrome-stable --no-first-run --no-default-browser-check --noerrdialogs --kiosk --disable-features=DBusDaemon --kiosk-mode-no-dialogs --kiosk-mode-no-prompts --disable-session-crashed-bubble --disable-infobars --enable-logging=stderr --v=1 --user-data-dir=/tmp/chrome-north --window-position=0,0 --window-size=3840,2160 http://95.141.21.170:8000/display/north-screen
+gjbm2      12677  5.5  3.5 34502900 284196 ?     Sl   09:44   0:02 /usr/bin/google-chrome-stable --no-first-run --no-default-browser-check --noerrdialogs --kiosk --disable-features=DBusDaemon --kiosk-mode-no-dialogs --kiosk-mode-no-prompts --disable-session-crashed-bubble --disable-infobars --enable-logging=stderr --v=1 --user-data-dir=/tmp/chrome-south --window-position=3840,0 --window-size=3840,2160 http://95.141.21.170:8000/display/south-screen
+gjbm2      12691  0.0  0.0 33576532 3584 ?       Sl   09:44   0:00 /opt/google/chrome/chrome_crashpad_handler --monitor-self --monitor-self-annotation=ptype=crashpad-handler --database=/home/gjbm2/.config/google-chrome/Crash Reports --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=lsb-release=Ubuntu 24.04.2 LTS --annotation=plat=Linux --annotation=prod=Chrome_Linux --annotation=ver=136.0.7103.113 --initial-client-fd=5 --shared-client-connection
+gjbm2      12692  0.0  0.0 33576532 3584 ?       Sl   09:44   0:00 /opt/google/chrome/chrome_crashpad_handler --monitor-self --monitor-self-annotation=ptype=crashpad-handler --database=/home/gjbm2/.config/google-chrome/Crash Reports --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=lsb-release=Ubuntu 24.04.2 LTS --annotation=plat=Linux --annotation=prod=Chrome_Linux --annotation=ver=136.0.7103.113 --initial-client-fd=5 --shared-client-connection
+gjbm2      12695  0.0  0.0 33568320 3200 ?       Sl   09:44   0:00 /opt/google/chrome/chrome_crashpad_handler --no-periodic-tasks --monitor-self-annotation=ptype=crashpad-handler --database=/home/gjbm2/.config/google-chrome/Crash Reports --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=lsb-release=Ubuntu 24.04.2 LTS --annotation=plat=Linux --annotation=prod=Chrome_Linux --annotation=ver=136.0.7103.113 --initial-client-fd=4 --shared-client-connection
+gjbm2      12696  0.0  0.0 33568320 3328 ?       Sl   09:44   0:00 /opt/google/chrome/chrome_crashpad_handler --no-periodic-tasks --monitor-self-annotation=ptype=crashpad-handler --database=/home/gjbm2/.config/google-chrome/Crash Reports --url=https://clients2.google.com/cr/report --annotation=channel= --annotation=lsb-release=Ubuntu 24.04.2 LTS --annotation=plat=Linux --annotation=prod=Chrome_Linux --annotation=ver=136.0.7103.113 --initial-client-fd=4 --shared-client-connection
+gjbm2      12706  0.1  1.4 34410944 113280 ?     S    09:44   0:00 /opt/google/chrome/chrome --type=zygote --no-zygote-sandbox --enable-logging=stderr --v=1 --crashpad-handler-pid=12691 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/chrome-north --change-stack-guard-on-fork=enable
+gjbm2      12708  0.1  1.4 34410932 113408 ?     S    09:44   0:00 /opt/google/chrome/chrome --type=zygote --enable-logging=stderr --v=1 --crashpad-handler-pid=12691 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/chrome-north --change-stack-guard-on-fork=enable
+gjbm2      12709  0.1  1.4 34410940 113024 ?     S    09:44   0:00 /opt/google/chrome/chrome --type=zygote --no-zygote-sandbox --enable-logging=stderr --v=1 --crashpad-handler-pid=12692 --enable-crash-reporter=, --noerrdialogs --user-data-dir=/tmp/chrome-south --change-stack-guard-on-fork=enable
+
+=== Displays Detected ===
+[0;32m✓ Displays connected[0m
+HDMI-1 connected primary 3840x2160+0+0 (normal left inverted right x axis y axis) 1872mm x 1053mm
+HDMI-2 connected 3840x2160+3840+0 (normal left inverted right x axis y axis) 1872mm x 1053mm
+
+=== Chrome URLs and Status ===
+Chrome kiosk processes found:
+
+  Process 12676 (north-screen):
+    URL: http://95.141.21.170:8000/display/north-screen
+    Memory: 273.0 MB
+    Data dir: /tmp/chrome-north
+    CPU: 5.4%
+
+  Process 12677 (south-screen):
+    URL: http://95.141.21.170:8000/display/south-screen
+    Memory: 277.5 MB
+    Data dir: /tmp/chrome-south
+    CPU: 5.5%
+
+=== Chrome Console Logs: Proof Pages Are Rendering ===
+
+--- NORTH Screen Console (last 25 lines) ---
+[12676:12676:1104/094444.291744:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.8, "timestamp": 1762249484.7213829, "target_intensity": 0.5768279446037924, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12676:12676:1104/094444.295718:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.8}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12676:12676:1104/094444.295935:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.8}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12758:12796:1104/094444.628541:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:8000/output/north-screen.jpg
+[12758:12796:1104/094444.629981:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:8000/output/north-screen.JPG
+[12758:12796:1104/094444.630773:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:8000/output/north-screen.mp4
+[12676:12676:1104/094444.808794:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.8, "timestamp": 1762249485.2719226, "target_intensity": 0.5765623556830339, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12676:12676:1104/094444.809371:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.8, "timestamp": 1762249485.2719226, "target_intensity": 0.5765623556830339, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12676:12676:1104/094444.813737:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.8}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12676:12676:1104/094444.818865:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.8}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12758:12796:1104/094444.939311:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:5000/api/north-screen/mask
+[12758:12795:1104/094444.939779:VERBOSE1:base/files/file_util_posix.cc:315] Cannot stat "/tmp/chrome-north/Default/Cache/Cache_Data/266045cbc73e804a_1": No such file or directory (2)
+[12758:12795:1104/094444.939839:VERBOSE1:base/files/file_util_posix.cc:315] Cannot stat "/tmp/chrome-north/Default/Cache/Cache_Data/266045cbc73e804a_s": No such file or directory (2)
+[12758:12796:1104/094444.961411:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:5000/api/north-screen/mask
+[12676:12676:1104/094445.326139:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.7, "timestamp": 1762249485.8215928, "target_intensity": 0.5758181127102167, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12676:12676:1104/094445.330735:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.7, "timestamp": 1762249485.8215928, "target_intensity": 0.5758181127102167, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12676:12676:1104/094445.330883:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.7}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12676:12676:1104/094445.334160:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.7}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12758:12796:1104/094445.627291:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:8000/output/north-screen.jpg
+[12758:12796:1104/094445.628362:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:8000/output/north-screen.JPG
+[12758:12796:1104/094445.628938:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:8000/output/north-screen.mp4
+[12676:12676:1104/094445.840004:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 43.0, "timestamp": 1762249486.3661938, "target_intensity": 0.5757544901681734, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12676:12676:1104/094445.840519:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 43.0, "timestamp": 1762249486.3661938, "target_intensity": 0.5757544901681734, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12676:12676:1104/094445.844183:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 43.0}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12676:12676:1104/094445.844600:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 43.0}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+
+--- SOUTH Screen Console (last 25 lines) ---
+[12677:12677:1104/094444.296993:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.8}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12770:12806:1104/094444.658882:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:8000/output/south-screen.jpg
+[12770:12806:1104/094444.659407:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:8000/output/south-screen.JPG
+[12770:12806:1104/094444.659921:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:8000/output/south-screen.mp4
+[12677:12677:1104/094444.808794:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.8, "timestamp": 1762249485.2719226, "target_intensity": 0.5765623556830339, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12677:12677:1104/094444.809820:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.8, "timestamp": 1762249485.2719226, "target_intensity": 0.5765623556830339, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12677:12677:1104/094444.813871:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.8}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12677:12677:1104/094444.814073:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.8}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12770:12806:1104/094444.943971:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:5000/api/south-screen/mask
+[12770:12805:1104/094444.944309:VERBOSE1:base/files/file_util_posix.cc:315] Cannot stat "/tmp/chrome-south/Default/Cache/Cache_Data/ac7be6a83d5be103_1": No such file or directory (2)
+[12770:12805:1104/094444.944354:VERBOSE1:base/files/file_util_posix.cc:315] Cannot stat "/tmp/chrome-south/Default/Cache/Cache_Data/ac7be6a83d5be103_s": No such file or directory (2)
+[12770:12806:1104/094444.984607:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:5000/api/south-screen/mask
+[12770:12805:1104/094444.984883:VERBOSE1:base/files/file_util_posix.cc:315] Cannot stat "/tmp/chrome-south/Default/Cache/Cache_Data/ac7be6a83d5be103_1": No such file or directory (2)
+[12770:12805:1104/094444.984924:VERBOSE1:base/files/file_util_posix.cc:315] Cannot stat "/tmp/chrome-south/Default/Cache/Cache_Data/ac7be6a83d5be103_s": No such file or directory (2)
+[12677:12677:1104/094445.328187:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.7, "timestamp": 1762249485.8215928, "target_intensity": 0.5758181127102167, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12677:12677:1104/094445.328306:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.7, "timestamp": 1762249485.8215928, "target_intensity": 0.5758181127102167, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12677:12677:1104/094445.331632:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.7}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12677:12677:1104/094445.331812:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 42.7}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12770:12806:1104/094445.656202:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:8000/output/south-screen.jpg
+[12770:12806:1104/094445.656542:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:8000/output/south-screen.JPG
+[12770:12806:1104/094445.656701:VERBOSE1:net/base/network_delegate.cc:37] NetworkDelegate::NotifyBeforeURLRequest: http://95.141.21.170:8000/output/south-screen.mp4
+[12677:12677:1104/094445.840519:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 43.0, "timestamp": 1762249486.3661938, "target_intensity": 0.5757544901681734, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12677:12677:1104/094445.840636:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 43.0, "timestamp": 1762249486.3661938, "target_intensity": 0.5757544901681734, "target_group": "living-room"}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12677:12677:1104/094445.844597:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 43.0}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+[12677:12677:1104/094445.844651:INFO:CONSOLE:30] "📬 WS message received: {"sensor_name": "living-room", "lux": 43.0}", source: http://95.141.21.170:8000/src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (30)
+
+=== What URLs Were Loaded at Startup ===
+(from kiosk startup log)
+2025-11-04 09:39:03  spawn NORTH on HDMI-1  and  SOUTH on HDMI-2
+2025-11-04 09:41:04  spawn NORTH on HDMI-1  and  SOUTH on HDMI-2
+2025-11-04 09:44:08  spawn NORTH on HDMI-1  and  SOUTH on HDMI-2
+
+GPU Process status:
+  [0;32m✓ GPU process running[0m
+
+=== Network Verification: Are Pages Actually Loaded? ===
+Active connections from Chrome to Flask server (port 8000):
+[0;32m✓ 8 active connections to port 8000[0m
+Connection details:
+chrome  12758 gjbm2   28u  IPv4  61059      0t0  TCP 192.168.1.92:48998->95.141.21.170:8000 (ESTABLISHED)
+chrome  12758 gjbm2   30u  IPv4  74771      0t0  TCP 192.168.1.92:35630->95.141.21.170:8000 (ESTABLISHED)
+chrome  12758 gjbm2   38u  IPv4  74772      0t0  TCP 192.168.1.92:35646->95.141.21.170:8000 (ESTABLISHED)
+chrome  12758 gjbm2   40u  IPv4  74773      0t0  TCP 192.168.1.92:35662->95.141.21.170:8000 (ESTABLISHED)
+chrome  12770 gjbm2   25u  IPv4  59970      0t0  TCP 192.168.1.92:49040->95.141.21.170:8000 (ESTABLISHED)
+chrome  12770 gjbm2   29u  IPv4  74777      0t0  TCP 192.168.1.92:35664->95.141.21.170:8000 (ESTABLISHED)
+chrome  12770 gjbm2   30u  IPv4  74778      0t0  TCP 192.168.1.92:35678->95.141.21.170:8000 (ESTABLISHED)
+chrome  12770 gjbm2   35u  IPv4  74779      0t0  TCP 192.168.1.92:35682->95.141.21.170:8000 (ESTABLISHED)
+
+WebSocket connections (port 8765):
+python   4106 gjbm2   12u  IPv4  24183      0t0  TCP 192.168.1.92:41428->95.141.21.170:8765 (ESTABLISHED)
+chrome  12758 gjbm2   26u  IPv4  74314      0t0  TCP 192.168.1.92:33178->95.141.21.170:8765 (ESTABLISHED)
+chrome  12758 gjbm2   34u  IPv4  74309      0t0  TCP 192.168.1.92:33176->95.141.21.170:8765 (ESTABLISHED)
+chrome  12770 gjbm2   24u  IPv4  74315      0t0  TCP 192.168.1.92:33190->95.141.21.170:8765 (ESTABLISHED)
+chrome  12770 gjbm2   34u  IPv4  73656      0t0  TCP 192.168.1.92:33164->95.141.21.170:8765 (ESTABLISHED)
+
+=== Recent Errors (last 10) ===
+Nov 04 09:13:20 screen-machine-drawingroom systemd[1]: Failed to start kiosk.service - Dual-HDMI kiosk (north/south rules) with verbose logging.
+
+=== Disk Usage ===
+/dev/sda6        48G   13G   33G  28% /
+
+=== Memory Usage ===
+Mem:           7.5Gi       2.1Gi       3.1Gi       934Mi       3.5Gi       5.4Gi
+
+[0;34m========================================[0m
+[0;32mStatus check complete![0m
+[0;34m========================================[0m
+=========================================
+Status check completed successfully
+=========================================
+
+[1;33mLog file:[0m /home/gjbm2/dev/screen-machine/media-server/maintenance.log
+Media Server Quick Status - 09:45:48
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 32 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [0;32m✓ Running + Connected to Flask[0m
+[Chrome North] [1;33m⚠ No URL load detected in logs[0m
+[Chrome South] [1;33m⚠ No URL load detected in logs[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.92 | Mem: 29% | Disk: 28%
+================================================================
+For detailed view: ./check-status.sh --verbose
+Media Server Quick Status - 09:45:53
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 32 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [0;32m✓ Running + Connected to Flask[0m
+[Chrome North] [1;33m⚠ No URL load detected in logs[0m
+[Chrome South] [1;33m⚠ No URL load detected in logs[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.93 | Mem: 29% | Disk: 28%
+================================================================
+For detailed view: ./check-status.sh --verbose
+Media Server Quick Status - 09:46:36
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 33 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [0;32m✓ Running + Connected to Flask[0m
+[Chrome North] [0;32m✓ Rendering page (15 conns)[0m
+[Chrome South] [0;32m✓ Rendering page (15 conns)[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.76 | Mem: 31% | Disk: 28%
+================================================================
+For detailed view: ./check-status.sh --verbose
+Media Server Quick Status - 09:46:41
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 33 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [0;32m✓ Running + Connected to Flask[0m
+[Chrome North] [0;32m✓ Rendering page (15 conns)[0m
+[Chrome South] [0;32m✓ Rendering page (15 conns)[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.70 | Mem: 30% | Disk: 28%
+================================================================
+For detailed view: ./check-status.sh --verbose
