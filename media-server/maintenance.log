@@ -9343,3 +9343,63 @@ Media Server Quick Status - 06:08:03
 [Resources] Load: 0.40 | Mem: 34% | Disk: 64%
 ================================================================
 For detailed view: ./check-status.sh --verbose
+Media Server Quick Status - 23:46:45
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 2 weeks, 6 days, 2 hours, 7 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [1;33m⚠ Running but NOT connected[0m
+[Chrome North] [0;32m✓ Rendering page (12 conns)[0m
+[Chrome South] [0;32m✓ Rendering page (12 conns)[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.54 | Mem: 43% | Disk: 66%
+================================================================
+For detailed view: ./check-status.sh --verbose
+Media Server Quick Status - 23:47:44
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 2 weeks, 6 days, 2 hours, 8 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [1;33m⚠ Running but NOT connected[0m
+[Chrome North] [0;32m✓ Rendering page (12 conns)[0m
+[Chrome South] [0;32m✓ Rendering page (12 conns)[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.35 | Mem: 30% | Disk: 66%
+================================================================
+For detailed view: ./check-status.sh --verbose
+Media Server Quick Status - 23:48:44
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 2 weeks, 6 days, 2 hours, 9 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [1;33m⚠ Running but NOT connected[0m
+[Chrome North] [0;32m✓ Rendering page (10 conns)[0m
+[Chrome South] [0;32m✓ Rendering page (10 conns)[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.24 | Mem: 30% | Disk: 66%
+================================================================
+For detailed view: ./check-status.sh --verbose
+Media Server Quick Status - 23:49:44
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 2 weeks, 6 days, 2 hours, 10 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [1;33m⚠ Running but NOT connected[0m
+[Chrome North] [0;32m✓ Rendering page (11 conns)[0m
+[Chrome South] [0;32m✓ Rendering page (11 conns)[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.27 | Mem: 30% | Disk: 66%
+================================================================
+For detailed view: ./check-status.sh --verbose
+Media Server Quick Status - 23:50:44
+================================================================
+[System] screen-machine-drawingroom | Uptime: up 2 weeks, 6 days, 2 hours, 11 minutes
+[Kiosk Service] [0;32m✓ Running[0m
+[Light Sensor] [1;33m⚠ Running but NOT connected[0m
+[Chrome North] [0;32m✓ Rendering page (10 conns)[0m
+[Chrome South] [0;32m✓ Rendering page (10 conns)[0m
+[GPU Process] [0;32m✓ Running[0m
+[Displays] [0;32m✓ 2 displays connected[0m
+[Resources] Load: 0.36 | Mem: 30% | Disk: 66%
+================================================================
+For detailed view: ./check-status.sh --verbose

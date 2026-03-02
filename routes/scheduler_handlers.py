@@ -933,17 +933,7 @@ def handle_terminate(instruction, context, now, output, publish_destination):
     # Check test condition if provided
     test_expr = instruction.get("test")
     if test_expr:
-        # DEBUG: Show exactly what we received after Jinja processing
-        msg = f"DEBUG TERMINATE: test_expr = '{test_expr}', conf_int in context = {context.get('vars', {}).get('conf_int', 'NOT_FOUND')}"
-        log_schedule(msg, publish_destination, now, output)
-        
-        # The test expression is already processed by process_instruction_jinja at runtime
-        # Convert to boolean using our robust function
         test_result = jinja_string_to_bool(test_expr)
-        
-        # DEBUG: Show boolean conversion result
-        msg = f"DEBUG TERMINATE: Boolean result = {test_result}"
-        log_schedule(msg, publish_destination, now, output)
             
         if not test_result:
             msg = f"Terminate instruction test condition evaluated to false: '{test_expr}'"
