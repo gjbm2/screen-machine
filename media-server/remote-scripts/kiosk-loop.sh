@@ -33,6 +33,8 @@ W=3840 H=2160
 
 DIR_NORTH=/tmp/chrome-north
 DIR_SOUTH=/tmp/chrome-south
+DBG_NORTH=9222
+DBG_SOUTH=9223
 mkdir -p "$DIR_NORTH" "$DIR_SOUTH"
 chmod 700 "$DIR_NORTH" "$DIR_SOUTH"
 
@@ -116,14 +118,14 @@ while sleep 2; do
       "HDMI-1 " )
           xrandr --output HDMI-1 --auto --primary --pos 0x0
           echo "$(date '+%F %T')  spawn NORTH on HDMI-1"
-          $CHROME --user-data-dir="$DIR_NORTH" \
+          $CHROME --remote-debugging-port=$DBG_NORTH --user-data-dir="$DIR_NORTH" \
                   --window-position=0,0  --window-size=${W},${H}  "$URL_NORTH" \
                   > "$DIR_NORTH/chrome_console.log" 2>&1 &
           ;;
       "HDMI-2 " )
           xrandr --output HDMI-2 --auto --primary --pos 0x0
           echo "$(date '+%F %T')  spawn SOUTH on HDMI-2"
-          $CHROME --user-data-dir="$DIR_SOUTH" \
+          $CHROME --remote-debugging-port=$DBG_SOUTH --user-data-dir="$DIR_SOUTH" \
                   --window-position=0,0  --window-size=${W},${H}  "$URL_SOUTH" \
                   > "$DIR_SOUTH/chrome_console.log" 2>&1 &
           ;;
@@ -134,7 +136,7 @@ while sleep 2; do
               xrandr --output HDMI-2 --off
               xrandr --fb ${W}x${H}               # shrink the root FB
               echo "$(date '+%F %T')  ONE_SCREEN (off) – single kiosk window on HDMI-1"
-              $CHROME --user-data-dir="$DIR_NORTH" \
+              $CHROME --remote-debugging-port=$DBG_NORTH --user-data-dir="$DIR_NORTH" \
                       --window-position=0,0 --window-size=${W},${H}  "$URL_NORTH" \
                       > "$DIR_NORTH/chrome_console.log" 2>&1 &
           elif [[ "$ONE_SCREEN" == "mirror" ]]; then
@@ -142,7 +144,7 @@ while sleep 2; do
               xrandr --output HDMI-1 --auto --primary --pos 0x0
               xrandr --output HDMI-2 --auto --same-as HDMI-1
               echo "$(date '+%F %T')  ONE_SCREEN (mirror) – single kiosk window on HDMI-1"
-              $CHROME --user-data-dir="$DIR_NORTH" \
+              $CHROME --remote-debugging-port=$DBG_NORTH --user-data-dir="$DIR_NORTH" \
                       --window-position=0,0 --window-size=${W},${H}  "$URL_NORTH" \
                       > "$DIR_NORTH/chrome_console.log" 2>&1 &
           else
@@ -151,11 +153,11 @@ while sleep 2; do
               xrandr --output HDMI-2 --auto --right-of HDMI-1
               echo "$(date '+%F %T')  spawn NORTH on HDMI-1  and  SOUTH on HDMI-2"
 
-              $CHROME --user-data-dir="$DIR_NORTH" \
+              $CHROME --remote-debugging-port=$DBG_NORTH --user-data-dir="$DIR_NORTH" \
                       --window-position=0,0      --window-size=${W},${H}  "$URL_NORTH" \
                       > "$DIR_NORTH/chrome_console.log" 2>&1 &
 
-              $CHROME --user-data-dir="$DIR_SOUTH" \
+              $CHROME --remote-debugging-port=$DBG_SOUTH --user-data-dir="$DIR_SOUTH" \
                       --window-position=${W},0   --window-size=${W},${H}  "$URL_SOUTH" \
                       > "$DIR_SOUTH/chrome_console.log" 2>&1 &
           fi

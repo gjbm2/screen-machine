@@ -55,12 +55,12 @@ export async function restorePhotoIfValid(): Promise<Blob | null> {
     return null;
   }
   
-  // Check if < 15 seconds old
+  // Check if recent enough to be a "camera handoff" recovery (mobile Safari may reload the tab).
   const timestamp = parseInt(timestampStr);
   const age = Date.now() - timestamp;
-  const FIFTEEN_SECONDS = 15000;
+  const ONE_MINUTE = 60_000;
   
-  if (age > FIFTEEN_SECONDS) {
+  if (age > ONE_MINUTE) {
     console.log('photoCache: Cached photo too old, clearing');
     showDebugMessage('📸 Cache: Photo too old, clearing');
     await clearAll();
@@ -133,8 +133,9 @@ export function restoreFormState(): UiSnapshot | null {
     console.log('photoCache: Parsed form state from sessionStorage:', state);
     showDebugMessage('📸 Cache: Form state parsed from sessionStorage');
     
-    // Check if < 15 seconds old
-    if (state.timestamp && (Date.now() - state.timestamp) < 15000) {
+    // Keep in sync with photo TTL (mobile camera round-trips can take longer than a few seconds).
+    const ONE_MINUTE = 60_000;
+    if (state.timestamp && (Date.now() - state.timestamp) < ONE_MINUTE) {
       console.log('photoCache: Form state is valid, restoring');
       showDebugMessage('📸 Cache: Form state is valid, restoring');
       return state;

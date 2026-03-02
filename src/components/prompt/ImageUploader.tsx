@@ -59,6 +59,32 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   
   const { addReferenceUrl, clearReferenceUrls } = useReferenceImages();
 
+  const isLikelyImageByName = (name: string) => {
+    const lower = name.toLowerCase();
+    return (
+      lower.endsWith('.jpg') ||
+      lower.endsWith('.jpeg') ||
+      lower.endsWith('.png') ||
+      lower.endsWith('.webp') ||
+      lower.endsWith('.gif') ||
+      lower.endsWith('.heic') ||
+      lower.endsWith('.heif')
+    );
+  };
+
+  const validateIncomingImageFile = (file: File): string | null => {
+    // Some mobile browsers return empty mime types; fall back to filename heuristics.
+    const typeOk = file.type ? file.type.startsWith('image/') : isLikelyImageByName(file.name);
+    if (!typeOk) return `${file.name || 'File'} is not an image file`;
+
+    // Keep the existing 5MB default behavior for now (matches gallery upload path).
+    // If we want to allow larger camera originals, we should add client-side downscale/compression first.
+    const MAX_BYTES = 5 * 1024 * 1024;
+    if (file.size > MAX_BYTES) return `${file.name || 'Image'} exceeds the 5MB size limit`;
+
+    return null;
+  };
+
   useEffect(() => {
     const handleImageSelected = (event: CustomEvent) => {
       if (event.detail && event.detail.files) {
@@ -94,26 +120,20 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       
       if (cachedPhoto) {
         console.log('ImageUploader: Found cached photo, restoring');
-        showDebugMessage('📸 Found cached photo, converting to data URI...');
-        
-        // Convert to data URI and display
-        const readerStartTime = performance.now();
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const readerTime = performance.now() - readerStartTime;
-          const dataUri = e.target?.result as string;
-          console.log('ImageUploader: Adding cached photo to display');
-          console.log(`ImageUploader: FileReader conversion took ${readerTime.toFixed(2)}ms`);
-          showDebugMessage(`📸 Cached photo displayed (conversion: ${readerTime.toFixed(0)}ms)`);
-          
-          // Add timing for addReferenceUrl
-          const addRefStartTime = performance.now();
-          addReferenceUrl(dataUri, false);
-          const addRefTime = performance.now() - addRefStartTime;
-          console.log(`ImageUploader: addReferenceUrl took ${addRefTime.toFixed(2)}ms`);
-          showDebugMessage(`📸 Reference URL added in ${addRefTime.toFixed(0)}ms`);
-        };
-        reader.readAsDataURL(cachedPhoto);
+        showDebugMessage('📸 Found cached photo, restoring as File...');
+
+        // IMPORTANT: Avoid converting large images to base64 data URIs on mobile (memory spike / tab reload risk).
+        // Instead, restore as a File and funnel through the normal upload path (PromptForm previews via object URL).
+        try {
+          const inferredType = (cachedPhoto as any)?.type || 'image/jpeg';
+          const restoredFile = new File([cachedPhoto], `camera-photo-${Date.now()}.jpg`, { type: inferredType });
+          console.log('ImageUploader: Restored cached photo as File:', restoredFile.name, restoredFile.size, restoredFile.type);
+          showDebugMessage('📸 Cached photo restored (File)');
+          onImageUpload([restoredFile]);
+        } catch (error) {
+          console.error('ImageUploader: Failed restoring cached photo as File:', error);
+          toast.error('Failed to restore cached photo');
+        }
         
         // Restore form state if available (already retrieved above)
         if (formState && onRestoreFormState) {
@@ -281,6 +301,9 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       return;
     }
 
+    // Clear input early so selecting the same photo again still triggers onChange on iOS/Safari.
+    e.target.value = '';
+
     // TEMPORARY: Debug message
     console.log('📸 UPLOADER: Camera input received', file.name, file.size);
     showDebugMessage('📸 Camera photo received');
@@ -288,6 +311,13 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     console.log('ImageUploader: Processing camera photo');
 
     try {
+      const validationError = validateIncomingImageFile(file);
+      if (validationError) {
+        toast.error(validationError);
+        showDebugMessage(`❌ ${validationError}`);
+        return;
+      }
+
       // 1. Store photo to cache
       await putPhoto(file);
       console.log('ImageUploader: Photo stored to cache');
@@ -305,18 +335,10 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         showDebugMessage('❌ No form state provided');
       }
 
-      // 3. Convert to data URI and display
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUri = e.target?.result as string;
-        console.log('ImageUploader: Adding photo to display');
-        showDebugMessage('📸 Photo displayed');
-        addReferenceUrl(dataUri, false);
-      };
-      reader.readAsDataURL(file);
-
-      // Clear input
-      e.target.value = '';
+      // 3. Upload as a File (PromptForm will generate object URLs for preview).
+      // Avoid converting to base64 data URIs on mobile (memory + crash/reload risk).
+      onImageUpload([file]);
+      showDebugMessage('📸 Photo added (File)');
 
     } catch (error) {
       console.error('ImageUploader: Error processing camera input:', error);

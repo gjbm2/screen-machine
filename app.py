@@ -39,6 +39,7 @@ from overlay_ws_server import start_ws_server, send_overlay_to_clients
 from routes.lightsensor import lightsensor_bp
 from routes.audio_utils import audio_bp
 from routes.audio_api import audio_api
+from routes.admin_api import admin_api
 
 # Load environment variables
 load_dotenv()
@@ -65,6 +66,7 @@ app.register_blueprint(mask_bp, url_prefix=API_PREFIX)
 app.register_blueprint(lightsensor_bp, url_prefix=API_PREFIX)
 app.register_blueprint(audio_bp)
 app.register_blueprint(audio_api, url_prefix=API_PREFIX)
+app.register_blueprint(admin_api, url_prefix=API_PREFIX)
 
 # Register test blueprints (no prefix needed for test routes)
 app.register_blueprint(test_buckets_bp)

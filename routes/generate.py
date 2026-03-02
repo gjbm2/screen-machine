@@ -535,7 +535,7 @@ def start(
         status = run_request.status()
         info(f"Initial status: '{status}'")
 
-        timeout = 100000  # TEMPORARY
+        timeout = 1200  # 20 minutes – enough for WAN2 video jobs
         poll_interval = getattr(args_namespace, "poll_interval", 0.5)
         info(f"> Polling RunPod every {poll_interval}s for up to {timeout}s...")
 

@@ -63,6 +63,32 @@ running_schedulers = {}
 # Format: {publish_destination: {trigger_id: timestamp}}
 last_trigger_executions = {}
 
+# Maximum number of days of trigger execution history to retain.
+# Keys older than this are irrelevant (they only prevent same-day re-execution).
+_TRIGGER_EXECUTIONS_RETAIN_DAYS = 2
+
+def _prune_trigger_executions(executions: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove entries from a last_trigger_executions dict that are older than
+    _TRIGGER_EXECUTIONS_RETAIN_DAYS.  Keys contain an ISO date (YYYY-MM-DD)
+    that we extract with a regex.  Entries whose date cannot be parsed are kept."""
+    if not executions:
+        return executions
+    cutoff = (datetime.now() - timedelta(days=_TRIGGER_EXECUTIONS_RETAIN_DAYS)).date()
+    date_re = re.compile(r'(\d{4}-\d{2}-\d{2})')
+    pruned: Dict[str, Any] = {}
+    for key, value in executions.items():
+        m = date_re.search(key)
+        if m:
+            try:
+                key_date = datetime.strptime(m.group(1), "%Y-%m-%d").date()
+                if key_date >= cutoff:
+                    pruned[key] = value
+                continue
+            except ValueError:
+                pass
+        pruned[key] = value
+    return pruned
+
 # Add a global variable for rate-limiting debug logging
 _last_debug_log_time = {}
 
@@ -1181,7 +1207,11 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
                                 trigger_executions[trigger_id] = None
                         except Exception as e:
                             error(f"Error parsing trigger execution time: {str(e)}")
-                    last_trigger_executions[publish_destination] = trigger_executions
+                    last_trigger_executions[publish_destination] = _prune_trigger_executions(trigger_executions)
+                    before = len(trigger_executions)
+                    after = len(last_trigger_executions[publish_destination])
+                    if before != after:
+                        info(f"Pruned {before - after} stale trigger execution entries for {publish_destination} (kept {after})")
                     
                 info(f"Loaded scheduler state for {publish_destination}, state: {scheduler_states.get(publish_destination, 'unknown')}")
         else:
@@ -1316,8 +1346,11 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
         if should_log:
             debug(f"Will save state='{state_to_save['state']}' for {publish_destination}")
         
-        # Convert datetime objects in last_trigger_executions to ISO format strings
+        # Prune stale trigger executions (only keep recent days) then serialize
         if publish_destination in last_trigger_executions:
+            last_trigger_executions[publish_destination] = _prune_trigger_executions(
+                last_trigger_executions[publish_destination]
+            )
             for trigger_id, execution_time in last_trigger_executions[publish_destination].items():
                 try:
                     if isinstance(execution_time, datetime):
@@ -1422,12 +1455,14 @@ def update_scheduler_state(publish_destination: str,
         debug(f"Calling save_scheduler_state for {publish_destination}")
     
     if force_save:
-        # Create a complete state object to force saving everything
+        # Prune stale entries then create a complete state object for force-save
+        pruned = _prune_trigger_executions(last_trigger_executions.get(publish_destination, {}))
+        last_trigger_executions[publish_destination] = pruned
         save_state = {
             "schedule_stack": scheduler_schedule_stacks.get(publish_destination, []),
             "context_stack": scheduler_contexts_stacks.get(publish_destination, []),
             "state": scheduler_states.get(publish_destination, "stopped"),
-            "last_trigger_executions": {k: v.isoformat() for k, v in last_trigger_executions.get(publish_destination, {}).items()},
+            "last_trigger_executions": {k: v.isoformat() for k, v in pruned.items()},
             "last_updated": datetime.now().isoformat()
         }
         save_scheduler_state(publish_destination, save_state)

@@ -143,6 +143,37 @@ deploy_scripts() {
     print_success "Scripts deployed successfully"
 }
 
+# Function to lock down the system for kiosk use
+lockdown_system() {
+    print_status "Locking down system for kiosk use..."
+
+    # Mask getty on tty1 -- prevents login prompt stealing VT1 from Xorg
+    print_status "Masking getty@tty1.service (prevents VT1 conflict with Xorg)..."
+    sudo systemctl stop getty@tty1.service 2>/dev/null || true
+    sudo systemctl disable getty@tty1.service 2>/dev/null || true
+    sudo systemctl mask getty@tty1.service
+    if systemctl is-enabled getty@tty1.service 2>/dev/null | grep -q masked; then
+        print_success "getty@tty1.service masked"
+    else
+        print_warning "getty@tty1.service may not be fully masked -- verify manually"
+    fi
+
+    # Disable all automatic updates -- prevents surprise kernel upgrades and reboots
+    print_status "Disabling automatic updates..."
+    for svc in unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service; do
+        sudo systemctl stop "$svc" 2>/dev/null || true
+        sudo systemctl disable "$svc" 2>/dev/null || true
+        sudo systemctl mask "$svc" 2>/dev/null || true
+    done
+    if systemctl is-enabled unattended-upgrades.service 2>/dev/null | grep -q masked; then
+        print_success "Automatic updates disabled and masked"
+    else
+        print_warning "unattended-upgrades may not be fully masked -- verify manually"
+    fi
+
+    print_success "System lockdown complete"
+}
+
 # Function to install systemd service
 install_service() {
     print_status "Installing systemd service..."
@@ -194,6 +225,19 @@ start_service() {
 verify_installation() {
     print_status "Verifying installation..."
     
+    # Check system lockdown
+    if systemctl is-enabled getty@tty1.service 2>/dev/null | grep -q masked; then
+        print_success "✓ getty@tty1.service is masked"
+    else
+        print_error "✗ getty@tty1.service is NOT masked -- kiosk may fail after reboot!"
+    fi
+    
+    if systemctl is-enabled unattended-upgrades.service 2>/dev/null | grep -q masked; then
+        print_success "✓ Automatic updates are disabled"
+    else
+        print_error "✗ Automatic updates are NOT disabled -- system may update and break!"
+    fi
+    
     # Check service status
     if sudo systemctl is-active kiosk.service >/dev/null 2>&1; then
         print_success "✓ Kiosk service is running"
@@ -202,7 +246,7 @@ verify_installation() {
     fi
     
     # Check if Xorg is running
-    if ps aux | grep -q "Xorg :0"; then
+    if ps aux | grep -q "[X]org :0"; then
         print_success "✓ Xorg is running"
     else
         print_warning "✗ Xorg is not running"
@@ -239,10 +283,11 @@ show_usage() {
     echo "  1. Install system dependencies"
     echo "  2. Install Google Chrome"
     echo "  3. Create user account (gjbm2)"
-    echo "  4. Deploy kiosk scripts"
-    echo "  5. Install systemd service"
-    echo "  6. Start the kiosk service"
-    echo "  7. Verify installation"
+    echo "  4. Lock down system (mask getty@tty1, disable auto-updates)"
+    echo "  5. Deploy kiosk scripts"
+    echo "  6. Install systemd service"
+    echo "  7. Start the kiosk service"
+    echo "  8. Verify installation"
 }
 
 # Function for remote deployment
@@ -311,6 +356,23 @@ print_status "Setting up user account..."
 sudo useradd -m -s /bin/bash gjbm2 2>/dev/null || print_warning "User gjbm2 already exists"
 sudo usermod -aG audio,video gjbm2
 
+# Lock down system for kiosk use
+print_status "Locking down system for kiosk use..."
+
+# Mask getty on tty1 (prevents VT1 conflict with Xorg)
+sudo systemctl stop getty@tty1.service 2>/dev/null || true
+sudo systemctl disable getty@tty1.service 2>/dev/null || true
+sudo systemctl mask getty@tty1.service
+print_success "getty@tty1.service masked"
+
+# Disable all automatic updates (prevents surprise kernel upgrades/reboots)
+for svc in unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service; do
+    sudo systemctl stop "$svc" 2>/dev/null || true
+    sudo systemctl disable "$svc" 2>/dev/null || true
+    sudo systemctl mask "$svc" 2>/dev/null || true
+done
+print_success "Automatic updates disabled and masked"
+
 # Copy scripts
 print_status "Deploying scripts..."
 sudo cp /tmp/kiosk-*.sh /usr/local/bin/
@@ -340,6 +402,20 @@ sleep 5
 
 # Verify installation
 print_status "Verifying installation..."
+
+# Check lockdown
+if systemctl is-enabled getty@tty1.service 2>/dev/null | grep -q masked; then
+    print_success "✓ getty@tty1.service is masked"
+else
+    print_error "✗ getty@tty1.service is NOT masked"
+fi
+
+if systemctl is-enabled unattended-upgrades.service 2>/dev/null | grep -q masked; then
+    print_success "✓ Automatic updates are disabled"
+else
+    print_error "✗ Automatic updates are NOT disabled"
+fi
+
 if sudo systemctl is-active kiosk.service >/dev/null 2>&1; then
     print_success "✓ Kiosk service is running"
 else
@@ -390,6 +466,7 @@ main() {
     install_dependencies
     install_chrome
     create_user
+    lockdown_system
     deploy_scripts
     install_service
     start_service

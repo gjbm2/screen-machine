@@ -14,6 +14,7 @@ import { ReferenceImagesProvider } from "./contexts/ReferenceImagesContext";
 import { LoopeViewProvider } from "@/contexts/LoopeViewContext";
 import LightSense from './pages/LightSense';
 import AndroidApp from './pages/AndroidApp';
+import AdminPanel from './pages/AdminPanel';
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/lightsense" element={<LightSense />} />
             <Route path="/androidapp" element={<AndroidApp />} />
             <Route path="/app" element={<AndroidApp />} />
+            <Route path="/adminadmin" element={<AdminPanel />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

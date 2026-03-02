@@ -2,6 +2,7 @@
 Description=Dual-HDMI kiosk (north/south rules) with verbose logging
 After=network.target snapd.seeded.service
 Requires=snapd.seeded.service
+Conflicts=getty@tty1.service
 
 [Service]
 Type=simple
