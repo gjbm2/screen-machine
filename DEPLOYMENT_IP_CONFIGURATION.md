@@ -56,7 +56,12 @@ cd /home/gjbm2/dev/screen-machine
 npm run dev
 
 # Start Ngrok (Terminal 3)
-ngrok http --domain=adapted-vervet-eternal.ngrok-free.app 8080
+# IMPORTANT (WSL/Win11): tunnel the service that actually owns the webhook route.
+# Alexa webhook is served by Flask at /api/alexa (port 5000), so point ngrok at 5000.
+ngrok http --domain=adapted-vervet-eternal.ngrok-free.app 5000
+
+# (Optional) If you want to expose the frontend separately, start a *second* tunnel
+# to the Vite server (port 8080) using a different ngrok domain/subdomain.
 ```
 
 ### Step 3: Update Media Server Scripts

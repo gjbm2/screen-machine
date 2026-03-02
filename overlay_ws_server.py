@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import websockets
 from datetime import datetime, timedelta
 
@@ -9,6 +10,33 @@ from routes.audio_utils import get_audio_transcriber
 from connection_registry import registry  # NEW central registry
 
 DEBUGGING = False  # Keep original debugging off
+
+# websockets will log "opening handshake failed" at ERROR with a full traceback
+# whenever a non-WebSocket client (TCP port check / health check / scanner)
+# connects and disconnects without sending a proper HTTP Upgrade request.
+#
+# This isn't a server bug; it's just noise. Keep the log line but demote it and
+# drop the traceback so real WS issues remain visible.
+_WS_LOGGER = logging.getLogger("screen_machine.websockets")
+_WS_LOGGER.setLevel(logging.INFO)
+
+
+class _WebsocketsHandshakeNoiseFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True
+
+        if "opening handshake failed" in msg:
+            record.levelno = logging.INFO
+            record.levelname = "INFO"
+            record.exc_info = None
+            record.stack_info = None
+        return True
+
+
+_WS_LOGGER.addFilter(_WebsocketsHandshakeNoiseFilter())
 
 # Registry for job progress listeners (used by generator.py)
 job_progress_listeners = {}  # job_id: list of asyncio.Queue
@@ -263,7 +291,13 @@ async def send_overlay_to_clients(data: dict):
 
 # WebSocket server entry point
 async def ws_main():
-    async with websockets.serve(handler, "0.0.0.0", 8765, compression=None):
+    async with websockets.serve(
+        handler,
+        "0.0.0.0",
+        8765,
+        compression=None,
+        logger=_WS_LOGGER,
+    ):
         debug("🌐 WebSocket server running on ws://0.0.0.0:8765")
         await asyncio.Future()  # run forever
 

@@ -483,11 +483,18 @@ const PromptForm: React.FC<PromptFormProps> = ({
       showDebugMessage(`📸 Found ${dataURIs.length} data URIs, ${regularUrls.length} URLs`);
       
       // Convert data URIs to File objects
-      const filesFromDataURIs = dataURIs.map((dataURI, index) => {
+      const filesFromDataURIs: File[] = [];
+      for (let index = 0; index < dataURIs.length; index++) {
+        const dataURI = dataURIs[index];
         const filename = `camera-photo-${index + 1}.jpg`;
-        console.log('PromptForm: Converting data URI to File:', filename);
-        return dataURItoFile(dataURI, filename);
-      });
+        try {
+          console.log('PromptForm: Converting data URI to File:', filename);
+          filesFromDataURIs.push(dataURItoFile(dataURI, filename));
+        } catch (error) {
+          console.error('PromptForm: Failed converting data URI to File:', error);
+          toast.error('A camera image could not be processed. Please re-take the photo.');
+        }
+      }
       
       // Combine all files and URLs
       const allFiles = [...imageFiles, ...filesFromDataURIs];

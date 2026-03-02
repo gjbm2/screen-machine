@@ -4,7 +4,7 @@ import json
 import ast
 import os
 from pathlib import Path
-from flask import Blueprint, jsonify, abort
+from flask import Blueprint, jsonify, abort, request
 from routes.utils import findfile, dict_substitute, _load_json_once
 from routes.display_utils import compute_mask
 from overlay_ws_server import send_overlay_to_clients
@@ -17,6 +17,10 @@ mask_bp = Blueprint("mask", __name__)
 
 # Store mask state for each destination
 mask_states = {}  # {dest_id: bool} - True = mask on, False = mask off
+
+# Manual brightness override: {dest_id: float|None}
+# When set, the mask endpoint returns this brightness instead of computing it
+brightness_overrides = {}  # {dest_id: float 0.0-1.0}
 
 # Store last output values per screen
 _last_output_by_screen = {}  # {dest_id: dict}
@@ -72,6 +76,33 @@ def mask_state(dest_id: str):
     debug(f"[mask_state] Mask state for '{dest_id}': {enabled}")
     return jsonify({"enabled": enabled, "destination": dest_id})
 
+@mask_bp.route("/<dest_id>/brightness-override", methods=["POST"])
+def set_brightness_override(dest_id: str):
+    """Set manual brightness override. Body: {brightness: 0.0-1.0}"""
+    dests = {dest["id"]: dest for dest in _load_json_once("destination", "publish-destinations.json")}
+    if dest_id not in dests:
+        abort(404, description=f"Unknown destination '{dest_id}'")
+    data = request.get_json() or {}
+    brightness = data.get("brightness")
+    if brightness is None or not (0.0 <= float(brightness) <= 1.0):
+        return jsonify({"error": "brightness must be 0.0-1.0"}), 400
+    brightness_overrides[dest_id] = float(brightness)
+    debug(f"[brightness-override] Set override for '{dest_id}': {brightness}")
+    return jsonify({"status": "override_set", "destination": dest_id, "brightness": float(brightness)})
+
+@mask_bp.route("/<dest_id>/brightness-override", methods=["DELETE"])
+def clear_brightness_override(dest_id: str):
+    """Clear manual brightness override, returning to automatic."""
+    brightness_overrides.pop(dest_id, None)
+    debug(f"[brightness-override] Cleared override for '{dest_id}'")
+    return jsonify({"status": "override_cleared", "destination": dest_id})
+
+@mask_bp.route("/<dest_id>/brightness-override", methods=["GET"])
+def get_brightness_override(dest_id: str):
+    """Get current brightness override state."""
+    override = brightness_overrides.get(dest_id)
+    return jsonify({"destination": dest_id, "override": override, "active": override is not None})
+
 @mask_bp.route("/<dest_id>/mask", methods=["GET"])
 def mask(dest_id: str):
     """
@@ -89,6 +120,20 @@ def mask(dest_id: str):
     if not dest:
         warning(f"[mask] Destination '{dest_id}' not found in publish-destinations.json")
         abort(404, description=f"Unknown destination '{dest_id}'")
+
+    # Check for manual brightness override
+    if dest_id in brightness_overrides:
+        override_val = brightness_overrides[dest_id]
+        now_utc = datetime.utcnow().replace(tzinfo=timezone.utc)
+        payload = {
+            "brightness": override_val,
+            "warm_hex": "#FFFFFF",
+            "warm_alpha": 0.0,
+            "source": "manual_override",
+            "timestamp": now_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
+        }
+        debug(f"[mask] Manual brightness override for {dest_id}: {override_val}")
+        return jsonify(payload)
 
     # Check if masking is disabled for this destination
     if dest_id in mask_states and not mask_states[dest_id]:

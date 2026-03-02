@@ -90,6 +90,91 @@ media-server/
 
 ---
 
+## Critical System Configuration
+
+These settings are **essential** for a reliable kiosk. Without them, the system will
+appear to work initially but break unpredictably (e.g. after a reboot or kernel update).
+
+### 1. Mask getty on tty1
+
+Xorg runs on virtual terminal 1 (`vt1`). Ubuntu's default `getty@tty1.service` also
+claims tty1 to show a text login prompt. If both services run, they race for the
+terminal -- and on some kernel versions getty wins after ~20 seconds, killing Xorg
+and leaving a bare login prompt on the physical display.
+
+**Symptoms if not done:** Kiosk shows a Linux login prompt instead of Chrome.
+Kiosk service may show as running briefly then go `inactive (dead)`.
+
+```bash
+# On the media server:
+sudo systemctl stop getty@tty1.service
+sudo systemctl disable getty@tty1.service
+sudo systemctl mask getty@tty1.service
+# Verify:
+systemctl is-enabled getty@tty1.service   # should print "masked"
+```
+
+The `kiosk.service` file also includes `Conflicts=getty@tty1.service` as a
+second layer of protection, but **masking is the primary defence** -- it prevents
+getty from starting at all, regardless of boot ordering or kernel behaviour.
+
+To undo (e.g. if you need a local console for debugging):
+```bash
+sudo systemctl unmask getty@tty1.service
+sudo systemctl start getty@tty1.service
+```
+
+### 2. Disable all automatic updates
+
+A kiosk must **never** update itself. Automatic updates can install new kernels,
+change driver behaviour, or trigger reboots -- any of which can break the display.
+Ubuntu 24.04 ships with `unattended-upgrades` enabled by default.
+
+**Symptoms if not done:** System reboots unexpectedly into a new kernel version.
+Kiosk may fail to start after reboot due to driver/timing changes.
+
+```bash
+# On the media server -- stop, disable, and mask all five update services:
+sudo systemctl stop unattended-upgrades.service
+sudo systemctl disable unattended-upgrades.service
+sudo systemctl mask unattended-upgrades.service
+
+sudo systemctl stop apt-daily.timer
+sudo systemctl disable apt-daily.timer
+sudo systemctl mask apt-daily.timer
+
+sudo systemctl stop apt-daily-upgrade.timer
+sudo systemctl disable apt-daily-upgrade.timer
+sudo systemctl mask apt-daily-upgrade.timer
+
+sudo systemctl stop apt-daily.service
+sudo systemctl mask apt-daily.service
+
+sudo systemctl stop apt-daily-upgrade.service
+sudo systemctl mask apt-daily-upgrade.service
+
+# Verify all masked:
+systemctl is-enabled unattended-upgrades.service  # masked
+systemctl is-enabled apt-daily.timer               # masked
+systemctl is-enabled apt-daily-upgrade.timer       # masked
+```
+
+**Updates should only ever be done manually**, during a planned maintenance window,
+with physical or SSH access to the box to recover if something breaks.
+
+### 3. Disable automatic reboot (if unattended-upgrades is ever re-enabled)
+
+As an extra precaution, ensure the unattended-upgrades config does not allow
+automatic reboots:
+
+```bash
+# /etc/apt/apt.conf.d/50unattended-upgrades
+# Ensure this line is set to "false":
+Unattended-Upgrade::Automatic-Reboot "false";
+```
+
+---
+
 ## Quick Admin Commands
 
 For daily operations, use these simple scripts from the `media-server/` directory:
@@ -353,10 +438,22 @@ VITE_FRONTEND_URL=http://95.141.21.170:8000
 
 **What it does:**
 - Starts on boot (`multi-user.target`)
-- Creates user runtime directory
+- Creates user runtime directory (`/run/user/1000`)
+- **Conflicts with `getty@tty1.service`** to prevent VT1 ownership race (see below)
 - Launches Xorg :0 on vt1
-- Executes kiosk-wait-start.sh
+- Executes kiosk-wait-start.sh as post-start hook
 - Auto-restarts on failure (RestartSec=5)
+
+**Critical: VT1 / getty conflict**
+
+Xorg runs on virtual terminal 1 (`vt1`). Ubuntu's default `getty@tty1.service` also
+uses tty1 to show a login prompt. If both run simultaneously, they race for VT1
+ownership. On some kernel versions getty wins after ~20 seconds, killing Xorg and
+leaving a bare Linux login prompt on the display instead of the kiosk.
+
+The service file includes `Conflicts=getty@tty1.service` so systemd stops getty
+when the kiosk starts. For belt-and-suspenders reliability, getty should also be
+**masked** on the server (see [Critical System Configuration](#critical-system-configuration)).
 
 **Management:**
 ```bash
@@ -522,9 +619,12 @@ cd media-server/local-scripts/
 1. **System packages:** xorg, openbox, wmctrl, unclutter, xrandr, snapd
 2. **Google Chrome:** From official repository
 3. **User account:** gjbm2 (UID 1000)
-4. **Scripts:** Deployed to `/usr/local/bin/` with correct ownership
-5. **Service:** Installed, enabled, and started
-6. **Logs:** `/var/log/kiosk.log` created
+4. **System lockdown:**
+   - `getty@tty1.service` masked (prevents VT1 conflict)
+   - `unattended-upgrades` + all `apt-daily*` services masked (prevents automatic updates)
+5. **Scripts:** Deployed to `/usr/local/bin/` with correct ownership
+6. **Service:** Installed, enabled, and started (with `Conflicts=getty@tty1.service`)
+7. **Logs:** `/var/log/kiosk.log` created
 
 ### Post-Deployment
 
@@ -621,12 +721,14 @@ nano /home/gjbm2/lightsense.py
 sudo systemctl restart light-relay.service
 ```
 
-### Manual Deployment
+### Manual Deployment (step-by-step)
 
-If you prefer step-by-step control:
+Complete walkthrough for configuring a fresh Ubuntu 24.04 box as a kiosk from scratch.
 
 ```bash
-# 1. Install dependencies
+# ============================================================
+# STEP 1: Install dependencies
+# ============================================================
 sudo apt update && sudo apt upgrade -y
 wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
 echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | \
@@ -635,26 +737,76 @@ sudo apt update
 sudo apt install -y google-chrome-stable xorg xserver-xorg-core openbox \
   unclutter wmctrl xrandr xset snapd
 
-# 2. Create user
+# ============================================================
+# STEP 2: Create kiosk user
+# ============================================================
 sudo useradd -m -s /bin/bash gjbm2
 sudo usermod -aG audio,video gjbm2
 
-# 3. Deploy scripts
+# ============================================================
+# STEP 3: Lock down the system (CRITICAL -- do not skip)
+# ============================================================
+
+# 3a. Mask getty on tty1 (prevents login prompt stealing the display)
+sudo systemctl stop getty@tty1.service
+sudo systemctl disable getty@tty1.service
+sudo systemctl mask getty@tty1.service
+
+# 3b. Disable ALL automatic updates (prevents surprise reboots/breakage)
+sudo systemctl stop unattended-upgrades.service
+sudo systemctl disable unattended-upgrades.service
+sudo systemctl mask unattended-upgrades.service
+
+sudo systemctl stop apt-daily.timer
+sudo systemctl disable apt-daily.timer
+sudo systemctl mask apt-daily.timer
+
+sudo systemctl stop apt-daily-upgrade.timer
+sudo systemctl disable apt-daily-upgrade.timer
+sudo systemctl mask apt-daily-upgrade.timer
+
+sudo systemctl stop apt-daily.service
+sudo systemctl mask apt-daily.service
+
+sudo systemctl stop apt-daily-upgrade.service
+sudo systemctl mask apt-daily-upgrade.service
+
+# 3c. Verify lockdown
+systemctl is-enabled getty@tty1.service           # masked
+systemctl is-enabled unattended-upgrades.service  # masked
+systemctl is-enabled apt-daily.timer              # masked
+systemctl is-enabled apt-daily-upgrade.timer      # masked
+
+# ============================================================
+# STEP 4: Deploy kiosk scripts
+# ============================================================
 sudo cp remote-scripts/kiosk-*.sh /usr/local/bin/
 sudo cp remote-scripts/webview-manager.sh /usr/local/bin/
 sudo chown root:root /usr/local/bin/kiosk-*.sh
 sudo chown gjbm2:gjbm2 /usr/local/bin/webview-manager.sh
 sudo chmod +x /usr/local/bin/kiosk-*.sh /usr/local/bin/webview-manager.sh
 
-# 4. Install service
+# ============================================================
+# STEP 5: Install and start systemd service
+# ============================================================
 sudo cp remote-scripts/kiosk.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable kiosk.service
 sudo systemctl start kiosk.service
 
-# 5. Create log
+# ============================================================
+# STEP 6: Create log file
+# ============================================================
 sudo touch /var/log/kiosk.log
 sudo chown gjbm2:gjbm2 /var/log/kiosk.log
+
+# ============================================================
+# STEP 7: Verify everything is working
+# ============================================================
+systemctl status kiosk.service                    # should be active (running)
+systemctl is-enabled getty@tty1.service           # should be masked
+DISPLAY=:0 xrandr --query 2>/dev/null | grep " connected"  # should show HDMI outputs
+ps aux | grep "google-chrome-stable.*kiosk"       # should show Chrome processes
 ```
 
 ---
@@ -695,6 +847,31 @@ chmod 700 ~/.ssh
 chmod 600 ~/.ssh/id_ed25519
 ```
 
+### Kiosk Shows Linux Login Prompt Instead of Chrome
+
+**Problem:** Physical display shows a text login prompt (`login:`) instead of Chrome kiosk.
+
+**Cause:** `getty@tty1.service` is running and has taken over VT1 from Xorg. This is
+the most common failure mode after a fresh install or kernel update.
+
+**Fix:**
+```bash
+ssh gjbm2@screen-machine-drawingroom
+
+# Mask getty (permanent fix)
+sudo systemctl stop getty@tty1.service
+sudo systemctl mask getty@tty1.service
+
+# Restart kiosk
+sudo systemctl restart kiosk.service
+
+# Verify
+systemctl is-enabled getty@tty1.service   # should be "masked"
+systemctl is-active kiosk.service          # should be "active"
+```
+
+See [Critical System Configuration](#critical-system-configuration) for full details.
+
 ### Kiosk Service Issues
 
 **Problem:** Service won't start or crashes
@@ -714,6 +891,7 @@ cat /var/log/kiosk.log
 ```
 
 **Common Causes:**
+- **getty@tty1 conflict** (most common): see section above
 - Chrome not installed: `which google-chrome-stable`
 - User doesn't exist: `id gjbm2`
 - Runtime dir missing: `ls -la /run/user/1000/`
@@ -820,20 +998,35 @@ curl http://NEW_IP:5000/api/health
 curl http://NEW_IP:5000/api/lightsensor/lightsense
 ```
 
-### After System Update
+### After System Update (manual, planned only)
+
+**Automatic updates are disabled on the kiosk.** Only perform manual updates during
+a planned maintenance window when you have SSH or physical access to recover from
+breakage. Kernel updates in particular can change driver/timing behaviour and break
+the kiosk.
+
 ```bash
 # SSH to media server
 ssh gjbm2@screen-machine-drawingroom
 
-# Update packages
-sudo apt update && sudo apt upgrade -y
+# Check what would be updated BEFORE applying
+sudo apt update
+apt list --upgradable
 
-# Reboot if kernel updated
+# Only proceed if you understand the changes and have recovery access
+sudo apt upgrade -y
+
+# Reboot if kernel was updated
 sudo reboot
 
-# Verify after reboot
-cd media-server/local-scripts/
-./remote-maintenance.sh system-status
+# Verify after reboot (from dev machine)
+cd media-server/
+./check-status-compact.sh
+
+# If kiosk shows login prompt instead of Chrome after reboot:
+ssh gjbm2@screen-machine-drawingroom
+systemctl is-enabled getty@tty1.service   # check if still masked
+sudo systemctl restart kiosk.service       # try restarting
 ```
 
 ---
@@ -910,7 +1103,7 @@ cd media-server/local-scripts/
 - **Previous IPs:** 185.254.136.244, 185.254.136.253
 - **Media Server:** screen-machine-drawingroom
 - **User:** gjbm2 (UID 1000)
-- **Last Updated:** November 4, 2025
+- **Last Updated:** February 8, 2026
 
 ---
 
@@ -921,7 +1114,13 @@ cd media-server/local-scripts/
 - ✅ Keep `.env` in `.gitignore`
 - ✅ Use strong passphrases on SSH keys
 - ✅ Limit SSH access to specific IPs (optional)
-- ✅ Keep system packages updated
+
+### System Stability (Critical)
+- ✅ **Disable automatic updates** -- mask `unattended-upgrades`, `apt-daily*` (see [Critical System Configuration](#critical-system-configuration))
+- ✅ **Mask `getty@tty1`** -- prevents login prompt from stealing Xorg's display
+- ✅ **Never run `apt upgrade`** on the kiosk without a planned maintenance window and physical/SSH recovery access
+- ✅ **Pin the kernel** -- if the system is working, avoid kernel changes
+- ❌ Do NOT enable unattended upgrades, auto-reboot, or any automatic package management
 
 ### Operations
 - ✅ Always test with `system-status` before changes
@@ -931,7 +1130,8 @@ cd media-server/local-scripts/
 - ✅ Document any custom modifications
 
 ### Deployment
-- ✅ Use automated `deploy-kiosk.sh` script
+- ✅ Use automated `deploy-kiosk.sh` script (includes system lockdown)
+- ✅ Verify getty is masked and updates are disabled after every fresh install
 - ✅ Update IP addresses immediately after deployment
 - ✅ Verify displays before considering deployment complete
 - ✅ Test light sensor if present
@@ -976,5 +1176,5 @@ cd media-server/local-scripts/
 ---
 
 **Maintained by:** Screen Machine Project  
-**Last Updated:** November 4, 2025  
-**Version:** 2.0
+**Last Updated:** February 8, 2026  
+**Version:** 2.1
