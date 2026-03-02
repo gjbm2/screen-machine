@@ -29,6 +29,7 @@ MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
 SCHEDULER_TICK_INTERVAL = 2.0  # Seconds between scheduler trigger checks
 SCHEDULER_TICK_BUFFER = 0.5    # Additional buffer time for scheduler operations 
 MAX_EVENT_HISTORY = 100
+MAX_SCHEDULER_LOG_SIZE = 5000
 
 # User interaction settings
 USER_INTERACTION_WAIT_TIME = "2m"  # Wait time after user interaction before resuming normal operation

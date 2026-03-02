@@ -54,7 +54,7 @@ active_events: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
 # Keep history of recent events for UI display (capped length)
 event_history: Dict[str, List[Dict[str, Any]]] = {}
 # Maximum history entries to retain per destination
-from config import MAX_EVENT_HISTORY
+from config import MAX_EVENT_HISTORY, MAX_SCHEDULER_LOG_SIZE
 
 # Store running scheduler tasks
 running_schedulers = {}
@@ -396,21 +396,20 @@ def log_schedule(message: str, publish_destination: Optional[str] = None, now: O
     formatted_msg = f"[{now.strftime('%H:%M')}] {message}"
     
     if publish_destination is None:
-        # Log to all available destinations
         for dest in scheduler_logs.keys():
             scheduler_logs[dest].append(formatted_msg)
+            if len(scheduler_logs[dest]) > MAX_SCHEDULER_LOG_SIZE:
+                scheduler_logs[dest] = scheduler_logs[dest][-MAX_SCHEDULER_LOG_SIZE:]
     else:
-        # Ensure the log list exists for this destination
         if publish_destination not in scheduler_logs:
             scheduler_logs[publish_destination] = []
         
-        # Log to the specific destination
         scheduler_logs[publish_destination].append(formatted_msg)
+        if len(scheduler_logs[publish_destination]) > MAX_SCHEDULER_LOG_SIZE:
+            scheduler_logs[publish_destination] = scheduler_logs[publish_destination][-MAX_SCHEDULER_LOG_SIZE:]
     
-    # Also log to console with INFO level for visibility
     info(message)
     
-    # Avoid duplicating the entry if `output` is exactly the same list object as scheduler_logs[publish_destination]
     if output is not None and output is not scheduler_logs.get(publish_destination, None):
         output.append(formatted_msg)
 
