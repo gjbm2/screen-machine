@@ -204,8 +204,8 @@ Socket.IO provides: rooms (topic filtering), automatic reconnection, message ack
 There is no concept of identity anywhere in the system. No login, no sessions, no tokens, no API keys, no request validation. `CORS(app)` allows all origins. The ngrok tunnel exposes every endpoint — including server reboot and SSH command execution — to the public internet.
 
 **Specific risks:**
-- `POST /api/admin-k9x7m/reboot` — reboots the media server, accessible to anyone via ngrok
-- `POST /api/admin-k9x7m/set-url` — navigates Chrome to any URL via CDP, accessible to anyone
+- `POST /api/admin-355729b8/reboot` — reboots the media server, accessible to anyone via ngrok
+- `POST /api/admin-355729b8/set-url` — navigates Chrome to any URL via CDP, accessible to anyone
 - `POST /api/alexa` — no Amazon request signature verification, anyone can forge requests
 - `POST /api/generate-image` — can be called by anyone, incurring OpenAI/RunPod costs
 - WS port 8765 — accepts any connection, no authentication

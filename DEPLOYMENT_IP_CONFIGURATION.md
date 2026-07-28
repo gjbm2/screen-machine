@@ -19,12 +19,12 @@ VITE_URL=http://YOUR_PUBLIC_IP:8000           # Frontend URL
 
 ### 2. Server Ports
 - **Flask API**: Port 5000 (configured in `config.py`)
-- **Vite Dev Server**: Port 8080 (configured in `vite.config.ts`)
+- **Frontend (prod)**: served by Flask on port 5000 (static `dist/` build); Vite dev server uses port 8080 (dev only)
 - **WebSocket Server**: Port 8765 (configured in `config.py`)
 
 ### 3. External Access
 - **Direct API Access**: `http://YOUR_PUBLIC_IP:5000/api/`
-- **Frontend Access**: `http://YOUR_PUBLIC_IP:8080/`
+- **Frontend Access**: `http://YOUR_PUBLIC_IP:8000/` (router forwards to Flask :5000)
 - **Ngrok Tunnel**: `http://YOUR_PUBLIC_IP:8000/` (if using ngrok)
 
 ## When Your ISP Changes Your IP Address
@@ -61,7 +61,7 @@ npm run dev
 ngrok http --domain=adapted-vervet-eternal.ngrok-free.app 5000
 
 # (Optional) If you want to expose the frontend separately, start a *second* tunnel
-# to the Vite server (port 8080) using a different ngrok domain/subdomain.
+# to Flask (port 5000 serves the frontend in prod) using a different ngrok domain/subdomain.
 ```
 
 ### Step 3: Update Media Server Scripts

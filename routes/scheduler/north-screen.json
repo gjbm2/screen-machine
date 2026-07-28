@@ -389,28 +389,8 @@
         "_b_theme": "Hidden corners of a resurgent garden",
         "_style": "Art Nouveau illustration, inspired by Alphonse Mucha's natural motifs",
         "_guidance": "Select urban scenes where rain enhances the narrative qualities of the setting, capturing dynamic interactions and emotions while ensuring these compositions differ from recent mid-summer and aviation themes.",
-        "prompt": "Art Nouveau-inspired rooftop garden under twilight rain, marble fountains, and celestial figures lingering on ivied paths, pastel skies melding with whispered hues of emerald and violet.",
+        "prompt": "Secluded Art Nouveau cafe under a dripping vine canopy, fantasy figures converse with shadowed patrons around rain-slicked tables, intertwined spirals of nature and mystery in ochre and jade.",
         "history_var": [
-          {
-            "timestamp": "2026-06-27 20:30:04",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "A rain-drenched laundromat scene, raindrops tapping on glass while patrons inside fold clothes, capturing an interplay of exterior weather and everyday routine in timeless black and white."
-            },
-            "text_input": "'Symphony of cascading raindrops' in the style ...",
-            "explanation": "I focused on a laundromat setting to capture how rain affects indoor solitude, avoiding previous ..."
-          },
-          {
-            "timestamp": "2026-06-27 21:30:03",
-            "type": "reason",
-            "reasoner": "devise_prompt",
-            "outputs": {
-              "prompt": "Dramatic scene of taxi cabs queued in rain-soaked traffic jam, headlights reflecting off glistening asphalt; drivers lost in contemplation, capturing urban rhythm in iconic monochrome style."
-            },
-            "text_input": "'Instruments of the urban environment respondin...",
-            "explanation": "I concentrated on the quintessential urban scene of taxi cabs in a rain-soaked traffic jam, steer..."
-          },
           {
             "timestamp": "2026-06-27 22:30:04",
             "type": "reason",
@@ -590,29 +570,29 @@
             },
             "text_input": "'Imagined encounters with figures of fantasy wi...",
             "explanation": "I centered the prompt around a rooftop garden\u2014a unique urban setting not previously explored\u2014enha..."
+          },
+          {
+            "timestamp": "2026-07-28 11:21:35",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Art Nouveau balcony overlooking laneway, ethereal figures glimpsed through rain-veiled ironwork and flowering vines, blending celestial whispers amid muted gold and sage strokes."
+            },
+            "text_input": "'Imagined encounters with figures of fantasy wi...",
+            "explanation": "I focused on an Art Nouveau balcony, using the perspective of looking down a laneway. This distin..."
+          },
+          {
+            "timestamp": "2026-07-28 11:30:03",
+            "type": "reason",
+            "reasoner": "devise_prompt",
+            "outputs": {
+              "prompt": "Secluded Art Nouveau cafe under a dripping vine canopy, fantasy figures converse with shadowed patrons around rain-slicked tables, intertwined spirals of nature and mystery in ochre and jade."
+            },
+            "text_input": "'Imagined encounters with figures of fantasy wi...",
+            "explanation": "I chose a secluded cafe setting, distinct from other urban environments like balconies or gardens..."
           }
         ],
         "prompt_history": [
-          {
-            "timestamp": "2026-06-27 21:30:07",
-            "type": "generation",
-            "prompt": "Dramatic scene of taxi cabs queued in rain-soak...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [],
-            "published": true
-          },
-          {
-            "timestamp": "2026-06-27 22:30:06",
-            "type": "generation",
-            "prompt": "Subdued image of rain filling a cracked city si...",
-            "refiner": "enrich",
-            "workflow": null,
-            "image_paths": [
-              "20260627-213034-51e432a8.jpg"
-            ],
-            "published": true
-          },
           {
             "timestamp": "2026-06-27 23:30:06",
             "type": "generation",
@@ -808,6 +788,28 @@
             "workflow": null,
             "image_paths": [
               "20260712-203227-49851807.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2026-07-28 11:21:38",
+            "type": "generation",
+            "prompt": "Art Nouveau balcony overlooking laneway, ethere...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20260728-102249-5af1627e.jpg"
+            ],
+            "published": true
+          },
+          {
+            "timestamp": "2026-07-28 11:30:05",
+            "type": "generation",
+            "prompt": "Secluded Art Nouveau cafe under a dripping vine...",
+            "refiner": "enrich",
+            "workflow": null,
+            "image_paths": [
+              "20260728-103032-1f845457.jpg"
             ],
             "published": true
           }
@@ -1240,270 +1242,20 @@
         "session_countwhere ": 0,
         "working_image": "/home/gjbm2/dev/screen-machine/output/north-screen/20250721-205215-ca6e6b24.jpg"
       },
-      "last_generated": "20260712-203227-49851807.jpg"
+      "last_generated": "20260728-103032-1f845457.jpg"
     }
   ],
   "state": "running",
-  "last_updated": "2026-07-19T10:30:08.258387",
+  "last_updated": "2026-07-28T11:32:31.332565",
   "last_trigger_executions": {
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_0": "2026-07-17T00:15:00.658956",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_1": "2026-07-17T00:30:01.352746",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_2": "2026-07-17T00:45:01.740138",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_3": "2026-07-17T01:00:00.610827",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_4": "2026-07-17T01:15:01.809604",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_5": "2026-07-17T01:30:00.215329",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_6": "2026-07-17T01:45:00.025173",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_7": "2026-07-17T02:00:01.263499",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_8": "2026-07-17T02:15:01.598849",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_9": "2026-07-17T02:30:01.373455",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_10": "2026-07-17T02:45:00.301417",
-    "86fcab81240ed277bf13e63c5c2c9595_2026-07-17": "2026-07-17T03:00:01.773132",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_11": "2026-07-17T03:00:01.773132",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_12": "2026-07-17T03:15:01.905566",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_13": "2026-07-17T03:30:01.582808",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_14": "2026-07-17T03:45:01.307883",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_15": "2026-07-17T04:00:00.277464",
-    "158578f4060f785538defa5246c1f15b_2026-07-17": "2026-07-17T04:10:00.102604",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_16": "2026-07-17T04:15:00.233265",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_17": "2026-07-17T04:30:00.168217",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_18": "2026-07-17T04:45:01.343264",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_19": "2026-07-17T05:00:01.939315",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_20": "2026-07-17T05:15:00.459100",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_21": "2026-07-17T05:30:00.942527",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_22": "2026-07-17T05:45:00.428381",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_23": "2026-07-17T06:00:01.221801",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_24": "2026-07-17T06:15:01.445507",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_25": "2026-07-17T06:30:01.142748",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-17_26": "2026-07-17T06:45:00.978653",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_0": "2026-07-17T07:30:01.393523",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-17_0": "2026-07-17T08:05:01.092792",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_1": "2026-07-17T08:30:01.479824",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_2": "2026-07-17T09:30:00.165690",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-17_1": "2026-07-17T10:05:01.958843",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_3": "2026-07-17T10:30:00.854191",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_4": "2026-07-17T11:30:01.833549",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-17_2": "2026-07-17T12:05:01.213664",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_5": "2026-07-17T12:30:00.060533",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_6": "2026-07-17T13:30:00.868220",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-17_3": "2026-07-17T14:05:01.385187",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_7": "2026-07-17T14:30:01.258576",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_8": "2026-07-17T15:30:00.124141",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-17_4": "2026-07-17T16:05:00.294329",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_9": "2026-07-17T16:30:01.223038",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_10": "2026-07-17T17:30:01.564718",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-17_5": "2026-07-17T18:05:00.602776",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_11": "2026-07-17T18:30:00.038359",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_12": "2026-07-17T19:30:00.740153",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-17_6": "2026-07-17T20:05:01.795366",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_13": "2026-07-17T20:30:01.161541",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_14": "2026-07-17T21:30:00.482171",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-17_7": "2026-07-17T22:05:01.199598",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_15": "2026-07-17T22:30:00.581828",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-17_16": "2026-07-17T23:30:01.029753",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_0": "2026-07-18T00:15:01.365638",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_1": "2026-07-18T00:30:01.391585",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_2": "2026-07-18T00:45:01.401965",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_3": "2026-07-18T01:00:01.293391",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_4": "2026-07-18T01:15:00.967143",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_5": "2026-07-18T01:30:00.156188",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_6": "2026-07-18T01:45:01.179455",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_7": "2026-07-18T02:00:01.816725",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_8": "2026-07-18T02:15:00.512789",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_9": "2026-07-18T02:30:01.714531",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_10": "2026-07-18T02:45:00.145179",
-    "86fcab81240ed277bf13e63c5c2c9595_2026-07-18": "2026-07-18T03:00:01.609661",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_11": "2026-07-18T03:00:01.609661",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_12": "2026-07-18T03:15:01.703702",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_13": "2026-07-18T03:30:01.461084",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_14": "2026-07-18T03:45:00.158474",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_15": "2026-07-18T04:00:01.109975",
-    "158578f4060f785538defa5246c1f15b_2026-07-18": "2026-07-18T04:10:00.569329",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_16": "2026-07-18T04:15:00.788258",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_17": "2026-07-18T04:30:01.960840",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_18": "2026-07-18T04:45:00.833699",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_19": "2026-07-18T05:00:00.491058",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_20": "2026-07-18T05:15:01.424512",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_21": "2026-07-18T05:30:01.843314",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_22": "2026-07-18T05:45:01.713754",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_23": "2026-07-18T06:00:01.434684",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_24": "2026-07-18T06:15:01.349105",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_25": "2026-07-18T06:30:00.936514",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-18_26": "2026-07-18T06:45:01.852929",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_0": "2026-07-18T07:30:01.065029",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-18_0": "2026-07-18T08:05:01.431590",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_1": "2026-07-18T08:30:00.909627",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_2": "2026-07-18T09:30:01.899561",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-18_1": "2026-07-18T10:05:01.452429",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_3": "2026-07-18T10:30:01.667366",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_4": "2026-07-18T11:30:00.002484",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-18_2": "2026-07-18T12:05:01.495000",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_5": "2026-07-18T12:30:00.502279",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_6": "2026-07-18T13:30:01.372786",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-18_3": "2026-07-18T14:05:01.291548",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_7": "2026-07-18T14:30:00.701384",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_8": "2026-07-18T15:30:00.566642",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-18_4": "2026-07-18T16:05:01.569497",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_9": "2026-07-18T16:30:00.439208",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_10": "2026-07-18T17:30:00.223310",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-18_5": "2026-07-18T18:05:01.797304",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_11": "2026-07-18T18:30:01.368272",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_12": "2026-07-18T19:30:01.817436",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-18_6": "2026-07-18T20:05:00.972987",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_13": "2026-07-18T20:30:01.601141",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_14": "2026-07-18T21:30:00.403595",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-18_7": "2026-07-18T22:05:01.298966",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_15": "2026-07-18T22:30:01.728651",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-18_16": "2026-07-18T23:30:01.831693",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_0": "2026-07-19T00:15:01.481151",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_1": "2026-07-19T00:30:01.780804",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_2": "2026-07-19T00:45:00.458078",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_3": "2026-07-19T01:00:00.271858",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_4": "2026-07-19T01:15:00.032973",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_5": "2026-07-19T01:30:00.392384",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_6": "2026-07-19T01:45:00.104103",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_7": "2026-07-19T02:00:00.726949",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_8": "2026-07-19T02:15:01.855801",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_9": "2026-07-19T02:30:00.658125",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_10": "2026-07-19T02:45:00.689206",
-    "86fcab81240ed277bf13e63c5c2c9595_2026-07-19": "2026-07-19T03:00:00.618102",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_11": "2026-07-19T03:00:00.618102",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_12": "2026-07-19T03:15:01.568112",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_13": "2026-07-19T03:30:00.407749",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_14": "2026-07-19T03:45:00.486751",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_15": "2026-07-19T04:00:00.832546",
-    "158578f4060f785538defa5246c1f15b_2026-07-19": "2026-07-19T04:10:00.891935",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_16": "2026-07-19T04:15:01.246974",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_17": "2026-07-19T04:30:01.249967",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_18": "2026-07-19T04:45:01.153440",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_19": "2026-07-19T05:00:01.406515",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_20": "2026-07-19T05:15:00.700978",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_21": "2026-07-19T05:30:01.776822",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_22": "2026-07-19T05:45:01.377558",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_23": "2026-07-19T06:00:00.222896",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_24": "2026-07-19T06:15:00.529775",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_25": "2026-07-19T06:30:01.440013",
-    "62f2a3630480757a87877f58eafcf4bf_2026-07-19_26": "2026-07-19T06:45:01.868084",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-19_0": "2026-07-19T07:30:00.226301",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-19_0": "2026-07-19T08:05:00.076886",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-19_1": "2026-07-19T08:30:00.119676",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-19_2": "2026-07-19T09:30:01.217554",
-    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-19_1": "2026-07-19T10:05:01.326258",
-    "e5599a76599fa8b9d5d8002c1308974d_2026-07-19_3": "2026-07-19T10:30:00.723976"
+    "0361cac9cb18b707d6ba32ef7b28196f_2026-07-28_1": "2026-07-28T10:05:00.410533",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-07-28_3": "2026-07-28T10:30:00.253742",
+    "e5599a76599fa8b9d5d8002c1308974d_2026-07-28_4": "2026-07-28T11:30:00.527899"
   },
-  "active_events": {
-    "Generate": []
-  },
+  "active_events": {},
   "event_history": [
     {
       "key": "Generate",
-      "active_from": "2026-07-17T12:30:00.078376",
-      "expires": "2026-07-17T12:31:00.078376",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T12:30:00.078376",
-      "unique_id": "9833a343-f841-4b7e-8a3b-6fef8cc88ec4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T12:30:02.109655"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T12:30:00.078376",
-      "expires": "2026-07-17T12:31:00.078376",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T12:30:00.078376",
-      "unique_id": "9833a343-f841-4b7e-8a3b-6fef8cc88ec4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T12:30:02.109655"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T13:30:00.881761",
-      "expires": "2026-07-17T13:31:00.881761",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T13:30:00.881761",
-      "unique_id": "ed96d841-4fc4-4989-9531-e83750d82db4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T13:30:02.925549"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T13:30:00.881761",
-      "expires": "2026-07-17T13:31:00.881761",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T13:30:00.881761",
-      "unique_id": "ed96d841-4fc4-4989-9531-e83750d82db4",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T13:30:02.925549"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2026-07-17T14:05:01.576196",
-      "expires": "2026-07-17T14:06:01.576196",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2026-07-17T14:05:01.576196",
-      "unique_id": "eb3dd7e6-0cdc-421e-be5a-75975ef2ecf5",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T14:05:03.421250"
-    },
-    {
-      "key": "__exit_block__",
-      "active_from": "2026-07-17T14:05:01.576196",
-      "expires": "2026-07-17T14:06:01.576196",
-      "display_name": null,
-      "payload": {
-        "mode": "block"
-      },
-      "single_consumer": false,
-      "created_at": "2026-07-17T14:05:01.576196",
-      "unique_id": "eb3dd7e6-0cdc-421e-be5a-75975ef2ecf5",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T14:05:03.421250"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T14:30:01.283236",
-      "expires": "2026-07-17T14:31:01.283236",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T14:30:01.283236",
-      "unique_id": "01d99d8a-3cb6-4524-a118-a2597ad3bcfa",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T14:30:03.342405"
-    },
-    {
-      "key": "Generate",
-      "active_from": "2026-07-17T14:30:01.283236",
-      "expires": "2026-07-17T14:31:01.283236",
-      "display_name": null,
-      "payload": null,
-      "single_consumer": false,
-      "created_at": "2026-07-17T14:30:01.283236",
-      "unique_id": "01d99d8a-3cb6-4524-a118-a2597ad3bcfa",
-      "status": "CONSUMED",
-      "consumed_by": "scheduler_north-screen",
-      "consumed_at": "2026-07-17T14:30:03.342405"
-    },
-    {
-      "key": "Generate",
       "active_from": "2026-07-17T15:30:00.149700",
       "expires": "2026-07-17T15:31:00.149700",
       "display_name": null,
@@ -2753,6 +2505,114 @@
       "status": "CONSUMED",
       "consumed_by": "scheduler_north-screen",
       "consumed_at": "2026-07-19T10:30:02.768699"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2026-07-28T10:05:00.585172",
+      "expires": "2026-07-28T10:06:00.585172",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2026-07-28T10:05:00.585172",
+      "unique_id": "e428db3d-7ee8-4422-abec-4b08e4b8b9f4",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-07-28T10:05:02.414152"
+    },
+    {
+      "key": "__exit_block__",
+      "active_from": "2026-07-28T10:05:00.585172",
+      "expires": "2026-07-28T10:06:00.585172",
+      "display_name": null,
+      "payload": {
+        "mode": "block"
+      },
+      "single_consumer": false,
+      "created_at": "2026-07-28T10:05:00.585172",
+      "unique_id": "e428db3d-7ee8-4422-abec-4b08e4b8b9f4",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-07-28T10:05:02.414152"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-28T10:30:00.267703",
+      "expires": "2026-07-28T10:31:00.267703",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-28T10:30:00.267703",
+      "unique_id": "5bf48037-6085-4587-a23c-dfd3a76b3de8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-07-28T10:30:02.299587"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-28T10:30:00.267703",
+      "expires": "2026-07-28T10:31:00.267703",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-28T10:30:00.267703",
+      "unique_id": "5bf48037-6085-4587-a23c-dfd3a76b3de8",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-07-28T10:30:02.299587"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-28T11:21:34.541816",
+      "expires": "2026-07-28T11:22:34.541816",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-28T11:21:34.541816",
+      "unique_id": "a46a3324-d497-4df7-ad0a-472b9a64929a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-07-28T11:21:35.287579"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-28T11:21:34.541816",
+      "expires": "2026-07-28T11:22:34.541816",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-28T11:21:34.541816",
+      "unique_id": "a46a3324-d497-4df7-ad0a-472b9a64929a",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-07-28T11:21:35.287579"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-28T11:30:00.549639",
+      "expires": "2026-07-28T11:31:00.549639",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-28T11:30:00.549639",
+      "unique_id": "2b480825-c8cf-4987-9df2-3553f5d43073",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-07-28T11:30:02.544728"
+    },
+    {
+      "key": "Generate",
+      "active_from": "2026-07-28T11:30:00.549639",
+      "expires": "2026-07-28T11:31:00.549639",
+      "display_name": null,
+      "payload": null,
+      "single_consumer": false,
+      "created_at": "2026-07-28T11:30:00.549639",
+      "unique_id": "2b480825-c8cf-4987-9df2-3553f5d43073",
+      "status": "CONSUMED",
+      "consumed_by": "scheduler_north-screen",
+      "consumed_at": "2026-07-28T11:30:02.544728"
     }
   ]
 }

@@ -41,8 +41,7 @@ const AndroidApp = () => {
   }, [searchParams, isIOS]);
 
   const handleSdkDownload = () => {
-    // Open SDK download location using WSL path
-    window.location.href = 'file:///home/gjbm2/dev/screen-machine/androidapp/sdk';
+    window.location.href = '/sdk/app-release.apk';
   };
 
   // Play Store implementation coming soon

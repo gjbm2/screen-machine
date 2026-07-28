@@ -65,7 +65,7 @@ def jpg_from_mp4():
                 import requests
                 import tempfile
                 
-                response = requests.get(file_path, stream=True)
+                response = requests.get(file_path, stream=True, timeout=(10, 120))
                 response.raise_for_status()
                 
                 # Create temp file with the right extension

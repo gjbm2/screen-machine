@@ -1,8 +1,10 @@
 """
 Admin API for remote media server management.
-Blueprint at /api/admin-k9x7m.
+Blueprint at /api/admin-355729b8. All routes require
+Authorization: Bearer <ADMIN_API_TOKEN> (set in .env).
 """
 
+import hmac
 import subprocess
 import os
 from datetime import datetime
@@ -10,6 +12,20 @@ from flask import Blueprint, request, jsonify
 from dotenv import dotenv_values
 
 admin_api = Blueprint('admin_api', __name__)
+
+
+@admin_api.before_request
+def _require_admin_token():
+    # CORS preflight carries no credentials
+    if request.method == 'OPTIONS':
+        return None
+    # Read lazily: this module is imported before app.py calls load_dotenv()
+    expected = os.environ.get('ADMIN_API_TOKEN', '')
+    auth = request.headers.get('Authorization', '')
+    provided = auth[7:] if auth.startswith('Bearer ') else ''
+    # Fail closed: an unset token means no access at all
+    if not expected or not hmac.compare_digest(provided, expected):
+        return jsonify({'error': 'unauthorized'}), 401
 
 # Load SSH config from media-server env
 _env_path = os.path.join(os.path.dirname(__file__), '..', 'media-server', 'local-scripts', '.env')
@@ -56,7 +72,7 @@ def _ssh_run(remote_cmd, timeout=30):
         }
 
 
-@admin_api.route('/admin-k9x7m/status', methods=['GET'])
+@admin_api.route('/admin-355729b8/status', methods=['GET'])
 def status():
     """Compact status: uptime, kiosk, disk, memory, displays, chrome."""
     cmd = r"""
@@ -90,7 +106,7 @@ echo "LOAD=$(uptime | awk -F'load average:' '{print $2}' | cut -d, -f1 | tr -d '
     return jsonify(_ssh_run(cmd))
 
 
-@admin_api.route('/admin-k9x7m/logs', methods=['GET'])
+@admin_api.route('/admin-355729b8/logs', methods=['GET'])
 def logs():
     """Recent kiosk service logs."""
     cmd = 'sudo journalctl -u kiosk.service --no-pager -n 50 2>/dev/null || echo "Cannot read logs"'
@@ -99,7 +115,7 @@ def logs():
     return jsonify(_ssh_run(full_cmd))
 
 
-@admin_api.route('/admin-k9x7m/restart-kiosk', methods=['POST'])
+@admin_api.route('/admin-355729b8/restart-kiosk', methods=['POST'])
 def restart_kiosk():
     """Full kiosk service restart (both screens)."""
     cmd = f"""
@@ -115,7 +131,7 @@ echo "STATUS=$(systemctl is-active kiosk.service)"
     return jsonify(_ssh_run(cmd, timeout=30))
 
 
-@admin_api.route('/admin-k9x7m/restart-screen', methods=['POST'])
+@admin_api.route('/admin-355729b8/restart-screen', methods=['POST'])
 def restart_screen():
     """Restart Chrome for one screen only. Body: {screen: "north"|"south"}."""
     data = request.get_json() or {}
@@ -143,7 +159,7 @@ fi
     return jsonify(_ssh_run(cmd, timeout=20))
 
 
-@admin_api.route('/admin-k9x7m/set-url', methods=['POST'])
+@admin_api.route('/admin-355729b8/set-url', methods=['POST'])
 def set_url():
     """Change URL for a screen. Body: {screen: "north"|"south", url: string}."""
     data = request.get_json() or {}
@@ -238,7 +254,7 @@ s.close()
 """
 
 
-@admin_api.route('/admin-k9x7m/reboot', methods=['POST'])
+@admin_api.route('/admin-355729b8/reboot', methods=['POST'])
 def reboot():
     """Full server reboot."""
     cmd = f'echo "{SSH_PASS}" | sudo -S reboot'

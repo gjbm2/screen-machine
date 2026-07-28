@@ -13,7 +13,7 @@ This script restores the Windows-host side plumbing after a reboot/update:
 - Verifies each port with Test-NetConnection
 
 Matches your router forwarding setup:
-- WAN:8000 -> Windows:8080 (Vite)
+- WAN:8000 -> Windows:8080 -> WSL:5000 (Flask serves the built frontend in prod)
 - WAN:5000 -> Windows:5000 (Flask)
 - WAN:8765 -> Windows:8765 (Overlay WS)
 - WAN:2222 -> Windows:2222 (SSH -> WSL:22)
@@ -82,8 +82,14 @@ try {
 Write-Section "[4/5] Rebuilding portproxy rules to current WSL IP"
 
 # Router forwards WAN:8000 -> Windows:8080, so portproxy must listen on 8080 (not 8000)
+# Prod: the frontend is a built bundle served by Flask on :5000, so the 8080
+# listener forwards to 5000 (Vite dev server is no longer in the prod path).
+# NOTE: this assumes PROD mode. If the box is running dev (npm run dev on
+# WSL:8080), the public :8000 URL will serve the last-built dist/ from Flask,
+# NOT the live dev server — reach dev directly at WSL-IP:8080 on the LAN, or
+# temporarily change the first mapping's ConnectPort back to 8080.
 $mappings = @(
-  @{ ListenPort = 8080; ConnectPort = 8080; Name = 'Vite' },
+  @{ ListenPort = 8080; ConnectPort = 5000; Name = 'Frontend (Flask prod)' },
   @{ ListenPort = 5000; ConnectPort = 5000; Name = 'Flask' },
   @{ ListenPort = 8765; ConnectPort = 8765; Name = 'Overlay WS' },
   @{ ListenPort = 2222; ConnectPort = 22;   Name = 'SSH' }
@@ -133,7 +139,7 @@ foreach ($m in $mappings) {
 
 Write-Host ""
 Write-Host "Notes:" -ForegroundColor Cyan
-Write-Host "  - Router: WAN:8000 -> Windows:8080 -> WSL:8080 (via portproxy)" -ForegroundColor Gray
+Write-Host "  - Router: WAN:8000 -> Windows:8080 -> WSL:5000 (via portproxy; Flask serves frontend)" -ForegroundColor Gray
 Write-Host "  - Public URL should be reachable at: http://95.141.21.170:8000/" -ForegroundColor Gray
 Write-Host ""
 Pause-Script

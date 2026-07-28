@@ -14,7 +14,7 @@ This directory provides a complete maintenance and deployment system for the Scr
 │  │  - Overlay management                                       │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │  Vite Frontend (port 8080)                                  │ │
+│  │  Frontend: built dist/ via Flask :5000                                │ │
 │  │  - React UI for content management                          │ │
 │  │  - Proxies API requests to Flask                            │ │
 │  └────────────────────────────────────────────────────────────┘ │
