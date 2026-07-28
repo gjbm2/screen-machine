@@ -28,6 +28,8 @@ from routes.scheduler_utils import (
 import time
 from routes.scheduler_queue import get_instruction_queue, check_urgent_events, process_triggers, clear_instruction_queue
 from config import SCHEDULER_TICK_INTERVAL, SCHEDULER_TICK_BUFFER
+from utils.alerts import alert
+from utils.alerts import health as alerts_health
 
 # === Event Loop Management ===
 # Per-destination event loops and threads
@@ -785,7 +787,18 @@ def start_scheduler(publish_destination: str, schedule: Dict[str, Any], *args, *
         
         # Update the placeholder with the actual future
         running_schedulers[publish_destination]["future"] = future
-        
+
+        # The future's exception is otherwise never read: a loop that dies
+        # with an error would be unobserved (see docs/ALERTING_PROPOSAL.md)
+        def _observe_scheduler_future(fut, dest=publish_destination):
+            if not fut.cancelled() and fut.exception() is not None:
+                alert("scheduler.loop_died",
+                      f"Scheduler loop for '{dest}' died: {fut.exception()!r}",
+                      severity="critical", exc=fut.exception(),
+                      dedup_key=f"sched-died:{dest}",
+                      context={"destination": dest})
+        future.add_done_callback(_observe_scheduler_future)
+
         info(f"Scheduler for {publish_destination} started successfully")
     except Exception as e:
         error(f"Error starting scheduler for {publish_destination}: {str(e)}")
@@ -949,6 +962,13 @@ def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None
                 error(f"Error in resumed scheduler: {str(e)}")
                 import traceback
                 error(traceback.format_exc())
+                # This wrapper swallows the exception, so the future's
+                # done-callback would see success — alert here instead
+                alert("scheduler.loop_died",
+                      f"Resumed scheduler loop for '{publish_destination}' died: {e!r}",
+                      severity="critical", exc=e,
+                      dedup_key=f"sched-died:{publish_destination}",
+                      context={"destination": publish_destination})
         
         # CRITICAL: Set placeholder in running_schedulers BEFORE starting coroutine
         # This prevents the race condition where run_scheduler_loop() checks running_schedulers
@@ -966,7 +986,16 @@ def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None
         
         # Update the placeholder with the actual future
         running_schedulers[publish_destination]["future"] = future
-        
+
+        def _observe_resumed_future(fut, dest=publish_destination):
+            if not fut.cancelled() and fut.exception() is not None:
+                alert("scheduler.loop_died",
+                      f"Resumed scheduler loop for '{dest}' died: {fut.exception()!r}",
+                      severity="critical", exc=fut.exception(),
+                      dedup_key=f"sched-died:{dest}",
+                      context={"destination": dest})
+        future.add_done_callback(_observe_resumed_future)
+
         info(f"Scheduler for {publish_destination} resumed successfully")
     except Exception as e:
         error(f"Error resuming scheduler: {str(e)}")
@@ -1000,6 +1029,9 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
         is_in_wait_state = False
         
         while True:
+            # Heartbeat for wedge detection and the healthchecks.io gate
+            alerts_health.tick(publish_destination)
+
             # Check if scheduler is stopped
             if publish_destination not in running_schedulers:
                 scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M:%S')}] Scheduler stopped")
@@ -1309,6 +1341,11 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M:%S')}] {error_msg}")
         import traceback
         error(traceback.format_exc())
+        alert("scheduler.loop_died",
+              f"Scheduler loop for '{publish_destination}' hit a fatal error: {e!r}",
+              severity="critical", exc=e,
+              dedup_key=f"sched-died:{publish_destination}",
+              context={"destination": publish_destination})
         raise
     finally:
         # Only update state if we're actually stopping

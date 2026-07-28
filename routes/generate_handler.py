@@ -666,6 +666,13 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
                     results[index] = result  # Store result in shared list
                 except Exception as e:
                     utils.logger.error(f"Generation job failed: {e}")
+                    # This catch swallows the exception (results[index]=None is
+                    # silently filtered later), so alert before it vanishes
+                    from utils.alerts import alert
+                    alert("generation.job_failed", f"Generation job failed: {e}",
+                          exc=e,
+                          context={"destination": destination,
+                                   "workflow": corrected_workflow})
                     results[index] = None
 
             thread = threading.Thread(target=thread_fn)

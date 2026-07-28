@@ -8,9 +8,11 @@ import jsonschema
 import base64
 from io import BytesIO
 from PIL import Image
+import openai as _openai_sdk
 from openai import OpenAI
 from routes.utils import findfile, resize_image_keep_aspect
 from utils.logger import log_to_console, info, error, warning, debug, console_logs
+from utils.alerts import alert
 
 _system_prompt_cache = {}
 _system_prompt_mtime = {}
@@ -48,6 +50,32 @@ def _image_to_base64_data_url(image_input, index=0, max_dim=512, quality=90):
         warning(f"[openai_prompt] Failed to process image {index}: {e}")
         return None
 
+def _create_with_alerting(openai_client, **api_kwargs):
+    """Every chat.completions.create call routes through here so quota/auth
+    failures raise an operator alert BEFORE callers swallow them into
+    fallbacks (scheduler_handlers, alexa) — the exception still propagates
+    so caller behaviour is unchanged."""
+    try:
+        return openai_client.chat.completions.create(**api_kwargs)
+    except _openai_sdk.RateLimitError as e:
+        if "insufficient_quota" in str(e):
+            alert("openai.quota", "OpenAI account out of credit",
+                  severity="critical", exc=e,
+                  context={"model": api_kwargs.get("model")})
+        else:
+            alert("openai.error", "OpenAI rate-limited (429 after SDK retries)",
+                  severity="warning", exc=e,
+                  context={"model": api_kwargs.get("model")})
+        raise
+    except _openai_sdk.AuthenticationError as e:
+        alert("openai.auth", "OpenAI API key rejected", severity="critical", exc=e)
+        raise
+    except _openai_sdk.OpenAIError as e:
+        alert("openai.error", f"OpenAI API failure: {type(e).__name__}",
+              exc=e, context={"model": api_kwargs.get("model")})
+        raise
+
+
 def openai_prompt(
     user_prompt,
     system_prompt=None,
@@ -59,6 +87,7 @@ def openai_prompt(
 ):
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
+        alert("openai.auth", "OPENAI_API_KEY is not set", severity="critical")
         raise RuntimeError("OPENAI_API_KEY is not set in environment. Check your .env file or environment variables.")
     openai_client = OpenAI(api_key=openai_key)
 
@@ -156,7 +185,7 @@ def openai_prompt(
             if response_format_arg:
                 api_kwargs["response_format"] = response_format_arg
 
-            response = openai_client.chat.completions.create(**api_kwargs)
+            response = _create_with_alerting(openai_client, **api_kwargs)
             raw = response.choices[0].message.content
             debug(f"[openai_prompt] Vision response ({response.usage.prompt_tokens}+{response.usage.completion_tokens} tokens):\n{raw}")
 
@@ -179,7 +208,8 @@ def openai_prompt(
         messages = [{"role": "system", "content": system_message}] if system_message else []
         messages.append({"role": "user", "content": user_prompt})
 
-        response = openai_client.chat.completions.create(
+        response = _create_with_alerting(
+            openai_client,
             model=model_name,
             messages=messages
         )
@@ -235,7 +265,8 @@ def openai_prompt(
         messages = [{"role": "system", "content": system_message}] if system_message else []
         messages.append({"role": "user", "content": user_prompt})
 
-        response = openai_client.chat.completions.create(
+        response = _create_with_alerting(
+            openai_client,
             model=model_name,
             messages=messages,
             tools=[{"type": "function", "function": fn_def}],

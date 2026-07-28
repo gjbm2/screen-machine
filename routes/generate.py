@@ -18,8 +18,10 @@ from routes.utils import (
     save_jpeg_with_metadata
 )
 import routes.display
-from time import sleep, time 
+from time import sleep, time
 import uuid
+from utils.alerts import alert
+from utils.alerts import health as alerts_health
 from overlay_ws_server import job_progress_listeners_latest
 from routes.manage_jobs import add_job
 from routes.publisher import publish_to_destination
@@ -637,6 +639,12 @@ def start(
 
             elif status in {"FAILED", "CANCELLED"}:
                 error_text = "Generation cancelled." if status == "CANCELLED" else "❌ Generation failed."
+                alert("runpod.job_failed",
+                      f"RunPod job {status}: workflow '{args_namespace.workflow}' on endpoint {runpod_id}",
+                      context={"job_id": job_id, "endpoint": runpod_id,
+                               "workflow": args_namespace.workflow,
+                               "destination": publish_destination},
+                      dedup_key=f"runpod.job_failed:{args_namespace.workflow}")
                 routes.display.send_overlay(
                     html="overlay_generating.html.j2",
                     screens=["index"],
@@ -700,8 +708,22 @@ def start(
                 last_value = value
 
             if time() - start_time > timeout:
+                alert("runpod.timeout",
+                      f"RunPod job timed out after {timeout}s — if it never left "
+                      f"IN_QUEUE, check RunPod credit",
+                      context={"job_id": job_id, "endpoint": runpod_id,
+                               "workflow": args_namespace.workflow,
+                               "destination": publish_destination},
+                      dedup_key=f"runpod.timeout:{args_namespace.workflow}")
                 raise TimeoutError(f"⏰ RunPod job timed out after {timeout} seconds.")
 
+            # A wait=True generation blocks its scheduler loop thread in
+            # join() for up to 20 min; tick from here so a busy destination
+            # doesn't read as wedged (HEARTBEAT_STALE_S is only 10 min)
+            for _dest in ([publish_destination]
+                          if isinstance(publish_destination, str)
+                          else (publish_destination or [])):
+                alerts_health.tick(_dest)
             sleep(poll_interval)
 
         
