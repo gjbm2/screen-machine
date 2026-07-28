@@ -203,7 +203,7 @@ Use the provided helper:
 ```
 ### 12.2 Front-End HMR
 ```bash
-npm run dev     # Vite dev-server on :5173 (proxy to :5000)
+npm run dev     # Vite dev-server on :8080 (proxy to :5000)
 ```
 ### 12.3 Linting & Formatting
 * **ESLint** config in `eslint.config.js` (TypeScript rules).  

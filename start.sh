@@ -61,17 +61,25 @@ start_flask() {
 }
 
 start_vite() {
-  screen_wipe
-  if screen_running vite; then
-    echo "Vite: already running"
-    return 0
-  fi
   if [[ "$MODE" == "prod" ]]; then
     cd "$PROJECT_ROOT"
-    npm run build
-    screen -dmS vite bash -c "cd '$PROJECT_ROOT' && npx serve -s dist -l 5173"
-    echo "Vite: started in PROD mode (screen session 'vite')"
+    # Build into a staging dir and swap atomically so a running Flask never
+    # serves a half-written dist/, and a failed build keeps the previous one
+    if npx vite build --outDir dist_next --emptyOutDir; then
+      rm -rf dist_prev
+      if [[ -d dist ]]; then mv dist dist_prev; fi
+      mv dist_next dist
+      echo "Vite: built frontend into dist/ (served by Flask on :5000; no separate FE server in prod)"
+    else
+      rm -rf dist_next
+      echo "Vite: BUILD FAILED — keeping previous dist/" >&2
+    fi
   else
+    screen_wipe
+    if screen_running vite; then
+      echo "Vite: already running"
+      return 0
+    fi
     screen -dmS vite bash -c "cd '$PROJECT_ROOT' && npm run dev"
     echo "Vite: started in DEV mode (screen session 'vite')"
   fi
@@ -102,7 +110,6 @@ stop_flask() {
 
 stop_vite() {
   pkill -f "npm run dev" 2>/dev/null || true
-  pkill -f "npx serve" 2>/dev/null || true
   screen -S vite -X quit 2>/dev/null || true
   screen_wipe
   echo "Vite: stopped"
@@ -144,7 +151,7 @@ case "$ACTION" in
       flask)  start_flask ;;
       vite)   start_vite ;;
       ngrok)  start_ngrok ;;
-      all|"") start_flask; start_vite; start_ngrok ;;
+      all|"") start_vite; start_flask; start_ngrok ;;  # prod: build before Flask serves it
       *)      echo "Unknown target: $TARGET"; exit 1 ;;
     esac
     ;;
@@ -162,7 +169,7 @@ case "$ACTION" in
       flask)  stop_flask;  sleep 1; start_flask ;;
       vite)   stop_vite;   sleep 1; start_vite ;;
       ngrok)  stop_ngrok;  sleep 1; start_ngrok ;;
-      all|"") stop_flask; stop_vite; stop_ngrok; sleep 1; start_flask; start_vite; start_ngrok ;;
+      all|"") stop_flask; stop_vite; stop_ngrok; sleep 1; start_vite; start_flask; start_ngrok ;;
       *)      echo "Unknown target: $TARGET"; exit 1 ;;
     esac
     ;;

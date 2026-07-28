@@ -195,7 +195,7 @@ fi
 echo ""
 
 echo "=== Network Verification: Are Pages Actually Loaded? ==="
-echo "Active connections from Chrome to Flask server (port 8000):"
+echo "Active connections from Chrome to the frontend origin (port 8000 -> Flask :5000):"
 CHROME_CONNS=\$(lsof -i -n -P 2>/dev/null | grep chrome | grep ":8000" | grep ESTABLISHED | wc -l)
 if [ "\$CHROME_CONNS" -gt 0 ]; then
     echo -e "\${GREEN}✓ \$CHROME_CONNS active connections to port 8000\${NC}"

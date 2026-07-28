@@ -1,8 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import destinations from '../data/publish-destinations.json';
 
-const API = '/api/admin-k9x7m';
+const API = '/api/admin-355729b8';
 const POLL_INTERVAL = 120_000; // 2 minutes
+const TOKEN_KEY = 'sm_admin_token';
+
+function authHeaders(): Record<string, string> {
+  const t = localStorage.getItem(TOKEN_KEY) || '';
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
 
 // Screens that have a /display/ page
 const displayScreens = destinations.filter(
@@ -54,6 +60,8 @@ export default function AdminPanel() {
   const [lightData, setLightData] = useState<any>(null);
   const [maskData, setMaskData] = useState<Record<string, any>>({});
   const [overrides, setOverrides] = useState<Record<string, { active: boolean; override: number | null }>>({});
+  const [authRequired, setAuthRequired] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   const addLog = useCallback((action: string, result: ApiResult) => {
@@ -62,7 +70,14 @@ export default function AdminPanel() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/status`);
+      const res = await fetch(`${API}/status`, { headers: authHeaders() });
+      if (res.status === 401) {
+        setAuthRequired(true);
+        setStatusOk(false);
+        setStatus(null);
+        return;
+      }
+      setAuthRequired(false);
       const data: ApiResult = await res.json();
       if (data.success) {
         const parsed = parseStatus(data.output);
@@ -119,9 +134,18 @@ export default function AdminPanel() {
     try {
       const res = await fetch(`${API}/${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: body ? JSON.stringify(body) : undefined,
       });
+      if (res.status === 401) {
+        setAuthRequired(true);
+        addLog(label, {
+          success: false, output: '', error: 'Unauthorized — enter the admin token',
+          timestamp: new Date().toISOString(),
+        });
+        setLoading('');
+        return;
+      }
       const data: ApiResult = await res.json();
       addLog(label, data);
     } catch (e) {
@@ -157,6 +181,36 @@ export default function AdminPanel() {
       <p style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
         Auto-polls every 2 min · Last: {lastPoll || 'loading...'}
       </p>
+
+      {/* Token Entry */}
+      {authRequired && (
+        <div style={{
+          background: '#1a1a1a', borderRadius: 10, padding: 16, marginBottom: 20,
+          border: '1px solid #ef444444',
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>Admin token required</div>
+          <input
+            type="password"
+            value={tokenInput}
+            onChange={e => setTokenInput(e.target.value)}
+            placeholder="Paste ADMIN_API_TOKEN"
+            style={{
+              width: '100%', padding: 10, borderRadius: 8, border: '1px solid #333',
+              background: '#111', color: '#e5e5e5', marginBottom: 10, boxSizing: 'border-box',
+            }}
+          />
+          <button
+            style={{ ...btnBase, background: '#2563eb' }}
+            onClick={() => {
+              localStorage.setItem(TOKEN_KEY, tokenInput.trim());
+              setTokenInput('');
+              fetchStatus();
+            }}
+          >
+            Save token
+          </button>
+        </div>
+      )}
 
       {/* Status Card */}
       <div style={{

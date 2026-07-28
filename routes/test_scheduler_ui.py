@@ -853,7 +853,7 @@ def schedule_editor(destination, layer, message=None, error=False):
         schema = get_schema()
         
         # Load VITE URL from environment
-        vite_url = os.getenv('VITE_URL', 'http://localhost:5173')
+        vite_url = os.getenv('VITE_URL', 'http://localhost:5000')
         if vite_url.endswith('/'):
             vite_url = vite_url[:-1]
             
@@ -967,7 +967,7 @@ def create_editor_url(destination):
         }
 
         # Get Vite URL from environment
-        vite_url = os.getenv('VITE_URL', 'http://localhost:5173')
+        vite_url = os.getenv('VITE_URL', 'http://localhost:5000')
         if vite_url.endswith('/'):
             vite_url = vite_url[:-1]
 
